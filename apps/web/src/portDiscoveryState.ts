@@ -72,20 +72,6 @@ export function useDiscoveredPortsState(
   );
 }
 
-export function useThreadDiscoveredPorts(input: {
-  readonly environmentId: EnvironmentId | null;
-  readonly threadId: ThreadId | null;
-}): ReadonlyArray<DiscoveredLocalServer> {
-  const ports = useDiscoveredPorts(input.environmentId);
-  return useMemo(
-    () =>
-      input.threadId
-        ? ports.filter((port) => port.terminal?.threadId === input.threadId)
-        : EMPTY_PORTS,
-    [input.threadId, ports],
-  );
-}
-
 export function useTerminalDiscoveredPorts(input: {
   readonly environmentId: EnvironmentId | null;
   readonly threadId: ThreadId | null;

@@ -60,6 +60,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       before the capability existed, which all accept it, so only an explicit
       false hides the control. */
   vcsStackedActions: Schema.optionalKey(Schema.Boolean),
+  /** Server accepts worktree-backed threads. Absent on older servers, which
+      allow worktrees, so only an explicit false from a Zerops server hides
+      the client option; the server-side policy remains the enforcement. */
+  worktreesAllowed: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.settle / thread.unsettle commands. Absent on
       pre-settlement servers, so clients treat missing as unsupported and
       never send the commands under version skew. */

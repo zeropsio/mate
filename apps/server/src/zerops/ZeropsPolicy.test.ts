@@ -157,11 +157,13 @@ describe("the capabilities the client reads", () => {
   it("hides the stacked git pipeline on Zerops", () => {
     const capabilities = makeServerEnvironmentCapabilities(ZEROPS_POLICY);
     assert.strictEqual(capabilities.vcsStackedActions, false);
+    assert.strictEqual(capabilities.worktreesAllowed, false);
   });
 
   it("stay on upstream everywhere else", () => {
     const capabilities = makeServerEnvironmentCapabilities(UPSTREAM_POLICY);
     assert.strictEqual(capabilities.vcsStackedActions, true);
+    assert.strictEqual(capabilities.worktreesAllowed, true);
   });
 });
 
