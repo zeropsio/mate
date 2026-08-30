@@ -36,9 +36,17 @@ const finding = (overrides: Partial<ExceptionFinding> = {}): ExceptionFinding =>
   path: "apps/web/src/Button.tsx",
   kind: "Literal",
   fingerprint: 'const color = "#fff"',
-  ledgered: true,
   ...overrides,
 });
+
+const permutations = <A>(values: ReadonlyArray<A>): ReadonlyArray<ReadonlyArray<A>> =>
+  values.length < 2
+    ? [values]
+    : values.flatMap((value, index) =>
+        permutations(values.filter((_, candidateIndex) => candidateIndex !== index)).map(
+          (permutation) => [value, ...permutation],
+        ),
+      );
 
 const writeJson = Effect.fn("test.writeExceptionJson")(function* (
   directory: string,
@@ -248,12 +256,12 @@ describe("exception reconciliation", () => {
     {
       name: "unlisted finding",
       entries: [],
-      findings: [finding({ ledgered: false })],
+      findings: [finding()],
       completedPhases: new Set<string>(),
       scope: "ast" as const,
       expected: {
         entryCount: 0,
-        unlisted: [finding({ ledgered: false })],
+        unlisted: [finding()],
         dead: [],
         changed: [],
         expired: [],
@@ -276,12 +284,12 @@ describe("exception reconciliation", () => {
     {
       name: "changed entry",
       entries: [entry()],
-      findings: [finding({ fingerprint: "changed source", ledgered: false })],
+      findings: [finding({ fingerprint: "changed source" })],
       completedPhases: new Set<string>(),
       scope: "ast" as const,
       expected: {
         entryCount: 1,
-        unlisted: [finding({ fingerprint: "changed source", ledgered: false })],
+        unlisted: [finding({ fingerprint: "changed source" })],
         dead: [],
         changed: [entry()],
         expired: [],
@@ -359,6 +367,183 @@ describe("exception reconciliation", () => {
     });
   }
 
+  it("one entry suppresses exactly one occurrence — a second identical finding is unlisted", () => {
+    const duplicate = finding();
+
+    assert.deepStrictEqual(
+      reconcileExceptions({
+        entries: [entry()],
+        findings: [duplicate, duplicate],
+        completedPhases: new Set<string>(),
+        scope: "ast",
+      }),
+      {
+        entryCount: 1,
+        unlisted: [duplicate],
+        dead: [],
+        changed: [],
+        expired: [],
+      },
+    );
+  });
+
+  it("two identical entries reconcile two identical findings", () => {
+    assert.deepStrictEqual(
+      reconcileExceptions({
+        entries: [entry(), entry()],
+        findings: [finding(), finding()],
+        completedPhases: new Set<string>(),
+        scope: "ast",
+      }),
+      {
+        entryCount: 2,
+        unlisted: [],
+        dead: [],
+        changed: [],
+        expired: [],
+      },
+    );
+  });
+
+  it("a duplicate entry with no second occurrence is dead", () => {
+    assert.deepStrictEqual(
+      reconcileExceptions({
+        entries: [entry(), entry()],
+        findings: [finding()],
+        completedPhases: new Set<string>(),
+        scope: "ast",
+      }),
+      {
+        entryCount: 2,
+        unlisted: [],
+        dead: [entry()],
+        changed: [],
+        expired: [],
+      },
+    );
+  });
+
+  it("an unlisted duplicate is reported once per occurrence with the same add-hint", () => {
+    const duplicate = finding();
+    const result = reconcileExceptions({
+      entries: [entry()],
+      findings: [duplicate, duplicate, duplicate],
+      completedPhases: new Set<string>(),
+      scope: "ast",
+    });
+    const lines = formatReconcileReport({ ruleName: "sample-rule", result }).split("\n");
+
+    assert.equal(result.unlisted.length, 2);
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0], lines[1]);
+  });
+
+  it("matches nested path suffix entries independent of entry order", () => {
+    const specific = entry({ path: "apps/web/src/Button.tsx" });
+    const suffix = entry({ path: "Button.tsx" });
+    const findings = [
+      finding({ path: "apps/web/src/Button.tsx" }),
+      finding({ path: "packages/client-runtime/src/Button.tsx" }),
+    ];
+    const expected = {
+      entryCount: 2,
+      unlisted: [],
+      dead: [],
+      changed: [],
+      expired: [],
+    };
+
+    for (const entries of [
+      [specific, suffix],
+      [suffix, specific],
+    ]) {
+      assert.deepStrictEqual(
+        reconcileExceptions({
+          entries,
+          findings,
+          completedPhases: new Set<string>(),
+          scope: "ast",
+        }),
+        expected,
+      );
+    }
+  });
+
+  it("prefers an active entry over an identical expired entry independent of entry order", () => {
+    const active = entry({ expires: "never" });
+    const expired = entry({ expires: "F3" });
+    const expected = {
+      entryCount: 2,
+      unlisted: [],
+      dead: [],
+      changed: [],
+      expired: [expired],
+    };
+
+    for (const entries of [
+      [expired, active],
+      [active, expired],
+    ]) {
+      assert.deepStrictEqual(
+        reconcileExceptions({
+          entries,
+          findings: [finding()],
+          completedPhases: new Set(["F3"]),
+          scope: "ast",
+        }),
+        expected,
+      );
+    }
+  });
+
+  it("returns the same result for every entry and finding permutation", () => {
+    const cases = [
+      {
+        entries: [entry({ path: "Button.tsx" }), entry({ path: "apps/web/src/Button.tsx" })],
+        findings: [
+          finding({ path: "packages/client-runtime/src/Button.tsx" }),
+          finding({ path: "apps/web/src/Button.tsx" }),
+        ],
+      },
+      {
+        entries: [
+          entry({ path: "dead.ts", expires: "never" }),
+          entry({ path: "changed.ts", expires: "never" }),
+        ],
+        findings: [
+          finding({ path: "new.ts", fingerprint: "new" }),
+          finding({ path: "changed.ts", fingerprint: "changed" }),
+        ],
+      },
+      {
+        entries: [entry({ expires: "F3" }), entry({ expires: "never" }), entry()],
+        findings: [finding(), finding()],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const expected = reconcileExceptions({
+        entries: testCase.entries,
+        findings: testCase.findings,
+        completedPhases: new Set(["F3"]),
+        scope: "ast",
+      });
+      for (const entries of permutations(testCase.entries)) {
+        for (const findings of permutations(testCase.findings)) {
+          assert.deepStrictEqual(
+            reconcileExceptions({
+              entries,
+              findings,
+              completedPhases: new Set(["F3"]),
+              scope: "ast",
+            }),
+            expected,
+          );
+        }
+      }
+    }
+  });
+
   it("formats actionable problem and success reports", () => {
     const clean = reconcileExceptions({
       entries: [entry()],
@@ -373,7 +558,7 @@ describe("exception reconciliation", () => {
 
     const problems = reconcileExceptions({
       entries: [entry()],
-      findings: [finding({ fingerprint: "changed source", ledgered: false })],
+      findings: [finding({ fingerprint: "changed source" })],
       completedPhases: new Set(["F3"]),
       scope: "ast",
     });
