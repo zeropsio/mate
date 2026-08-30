@@ -176,14 +176,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<Spinner className=\"size-3 shrink-0\" />",
-    "owner": "karel",
-    "reason": "F5b replaces the active lifecycle strip Spinner with the shared StatusDot",
-    "expires": "F5b"
-  },
-  {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-chroma{animation:ultrathink-chroma-shift 10s linear infinite}",
@@ -206,14 +198,6 @@
     "owner": "karel",
     "reason": "The skeleton loading sweep uses continuous compositor motion",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@theme inline{--animate-status-ping:status-ping 2s infinite}",
-    "owner": "karel",
-    "reason": "The status ping inherits continuous easing from its unstepped 40% interval; F5b replaces it with the reviewed duty-cycle helper",
-    "expires": "F5b"
   },
   {
     "path": "apps/web/src/index.css",

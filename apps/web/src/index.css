@@ -252,18 +252,28 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
   }
   @keyframes status-ping {
-    /* Burst first (immediate feedback for click ripples), then hold
-       invisible for the rest of the cycle. Mirrors animate-ping's
-       75%-scale start. */
-    0% {
+    /* Four visible frames per two-second cycle. The ring expands in discrete
+       quarters and resets instead of repainting continuously. */
+    0%,
+    100% {
       opacity: 0.9;
       scale: 0.75;
-      animation-timing-function: steps(8);
+      animation-timing-function: steps(1);
     }
-    40%,
-    100% {
+    25% {
+      opacity: 0.6;
+      scale: 1.1;
+      animation-timing-function: steps(1);
+    }
+    50% {
+      opacity: 0.3;
+      scale: 1.45;
+      animation-timing-function: steps(1);
+    }
+    75% {
       opacity: 0;
       scale: 2;
+      animation-timing-function: steps(1);
     }
   }
 }
@@ -1201,6 +1211,31 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --info-foreground: var(--color-blue-700);
   --success: #00cc55;
   --success-foreground: #0f7a38;
+  --zerops-status-ok: #66bb6a;
+  --zerops-status-ok-surface: #e8f7ec;
+  --zerops-status-ok-text: #2e7d32;
+  --zerops-status-busy: #42a5f5;
+  --zerops-status-busy-surface: #eff9fd;
+  --zerops-status-attention: #ffa726;
+  --zerops-status-attention-surface: #fff4e0;
+  --zerops-status-attention-text: #a26000;
+  --zerops-status-failed: #ef5350;
+  --zerops-status-failed-surface: #fdefef;
+  --zerops-status-off: #bdbdbd;
+  --zerops-status-off-surface: #f3f5f7;
+  --zerops-micro-label-font-size: 10px;
+  --zerops-micro-label-font-weight: 600;
+  --zerops-micro-label-tracking: 0.06em;
+  --zerops-micro-label-opacity: 0.45;
+  --zerops-pill-radius: 80px;
+  --zerops-chip-radius: 10px;
+  --zerops-card-radius: 10px;
+  --zerops-key-chip-radius: 3px;
+  --zerops-flat-card-border: transparent;
+  --zerops-mint-panel: #e8f7ec;
+  --zerops-process-step-column: 30px;
+  --zerops-process-step-glyph-size: 17px;
+  --zerops-process-step-border-width: 2px;
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
   --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
@@ -1251,6 +1286,33 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --info-foreground: var(--color-blue-400);
     --success: #56d364;
     --success-foreground: #56d364;
+    --zerops-status-ok: #56d364;
+    --zerops-status-ok-surface: #1d3323;
+    --zerops-status-ok-text: #56d364;
+    --zerops-status-busy: #58a6ff;
+    --zerops-status-busy-surface: #1e2e3b;
+    --zerops-status-busy-text: #58a6ff;
+    --zerops-status-attention: #e8a33d;
+    --zerops-status-attention-surface: #453f36;
+    --zerops-status-attention-text: #ffb74d;
+    --zerops-status-failed: #f47067;
+    --zerops-status-failed-surface: #312828;
+    --zerops-status-failed-text: #f47067;
+    --zerops-status-off: #5e6e69;
+    --zerops-status-off-surface: #151b1a;
+    --zerops-micro-label-font-size: 10px;
+    --zerops-micro-label-font-weight: 600;
+    --zerops-micro-label-tracking: 0.06em;
+    --zerops-micro-label-opacity: 0.45;
+    --zerops-pill-radius: 80px;
+    --zerops-chip-radius: 10px;
+    --zerops-card-radius: 10px;
+    --zerops-key-chip-radius: 3px;
+    --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
+    --zerops-mint-panel: #1d3323;
+    --zerops-process-step-column: 30px;
+    --zerops-process-step-glyph-size: 17px;
+    --zerops-process-step-border-width: 2px;
     --warning-foreground: var(--color-amber-400);
     --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
     --update-foreground: var(--color-blue-400);

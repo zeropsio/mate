@@ -12,7 +12,6 @@
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
-import { Spinner } from "~/components/ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
@@ -58,7 +57,12 @@ export function ZeropsStripLine({
           />
         }
       >
-        {state.tone === "active" ? <Spinner className="size-3 shrink-0" /> : null}
+        {state.tone === "active" ? (
+          <span
+            aria-hidden="true"
+            className="size-2 shrink-0 animate-status-pulse rounded-full bg-current motion-reduce:animate-none"
+          />
+        ) : null}
         <span className="truncate">{state.label}</span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">Open the Zerops service map</TooltipPopup>
