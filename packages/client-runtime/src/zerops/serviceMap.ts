@@ -44,10 +44,12 @@ export interface ZeropsProductionLink {
 
 export interface ZeropsServiceRow {
   readonly service: ZeropsService;
+  readonly tone: ZeropsServiceTone;
   /** `type` without its OS prefix: `ubuntu/nodejs@22` reads as `nodejs@22`. */
   readonly typeLabel: string;
   /** The paired stage service, folded into its dev row. */
   readonly stage?: ZeropsService;
+  readonly stageTone?: ZeropsServiceTone;
   /** Production projects this service feeds, from the lifecycle envelope. */
   readonly production: ReadonlyArray<ZeropsProductionLink>;
 }
@@ -92,6 +94,21 @@ export interface ZeropsServiceMapView {
 export function zeropsTypeLabel(type: string): string {
   const slash = type.indexOf("/");
   return slash < 0 ? type : type.slice(slash + 1);
+}
+
+/**
+ * A settled status is chrome; anything else is the interesting case. Failure
+ * words are matched loosely on purpose — the platform's vocabulary grows
+ * (`REPAIR_FAILED`, `CONTAINER_FAILED`, `ACTION_FAILED`) and a status this
+ * build has not seen should still read as bad news rather than as normal.
+ */
+export type ZeropsServiceTone = "error" | "warning" | "outline";
+
+export function serviceStatusTone(service: ZeropsService): ZeropsServiceTone {
+  if (/FAIL/u.test(service.status)) {
+    return "error";
+  }
+  return service.transient ? "warning" : "outline";
 }
 
 /** `kanbanstage` → `kanbandev`, the hostname its dev partner would have. */
@@ -155,8 +172,9 @@ export function buildZeropsServiceMap(
         );
         return {
           service: entry,
+          tone: serviceStatusTone(entry),
           typeLabel: zeropsTypeLabel(entry.type),
-          ...(stage === undefined ? {} : { stage }),
+          ...(stage === undefined ? {} : { stage, stageTone: serviceStatusTone(stage) }),
           production: productionOf(entry.hostname, lifecycle),
         };
       }),

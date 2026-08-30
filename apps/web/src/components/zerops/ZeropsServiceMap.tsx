@@ -13,23 +13,19 @@ import type {
   ZeropsServiceMapGroup,
   ZeropsServiceMapView,
   ZeropsServiceRow,
+  ZeropsServiceTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { ZeropsService } from "@t3tools/contracts";
 
-/**
- * A settled status is chrome; anything else is the interesting case. Failure
- * words are matched loosely on purpose — the platform's vocabulary grows
- * (`REPAIR_FAILED`, `CONTAINER_FAILED`, `ACTION_FAILED`) and a status this
- * build has not seen should still read as bad news rather than as normal.
- */
-function statusVariant(service: ZeropsService): "outline" | "warning" | "error" {
-  if (/FAIL/u.test(service.status)) {
-    return "error";
-  }
-  return service.transient ? "warning" : "outline";
-}
-
-function ServiceLine({ service, typeLabel }: { service: ZeropsService; typeLabel?: string }) {
+function ServiceLine({
+  service,
+  tone,
+  typeLabel,
+}: {
+  service: ZeropsService;
+  tone: ZeropsServiceTone;
+  typeLabel?: string;
+}) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span className="truncate text-sm font-medium text-foreground">{service.hostname}</span>
@@ -37,9 +33,10 @@ function ServiceLine({ service, typeLabel }: { service: ZeropsService; typeLabel
         <span className="truncate text-xs text-muted-foreground">{typeLabel}</span>
       )}
       <Badge
+        data-zerops-service-tone={tone}
         data-zerops-service-transient={service.transient ? "" : undefined}
         size="sm"
-        variant={statusVariant(service)}
+        variant={tone}
       >
         {service.status}
       </Badge>
@@ -67,10 +64,10 @@ function ServiceLine({ service, typeLabel }: { service: ZeropsService; typeLabel
 function ServiceRow({ row }: { row: ZeropsServiceRow }) {
   return (
     <li className="rounded-xl border border-border/55 bg-card/20 px-4 py-3">
-      <ServiceLine service={row.service} typeLabel={row.typeLabel} />
-      {row.stage === undefined ? null : (
+      <ServiceLine service={row.service} tone={row.tone} typeLabel={row.typeLabel} />
+      {row.stage === undefined || row.stageTone === undefined ? null : (
         <div className="mt-2 border-border/40 border-l pl-3">
-          <ServiceLine service={row.stage} />
+          <ServiceLine service={row.stage} tone={row.stageTone} />
         </div>
       )}
       {row.production.length === 0 ? null : (

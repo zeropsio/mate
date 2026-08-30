@@ -112,7 +112,9 @@
       "docs": { "none": "No docs/user page documents the Zerops service map yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
-        "packages/client-runtime/src/zerops/serviceMap.test.ts"
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/serviceMap.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": [
         "web:service-map-live",
@@ -149,7 +151,8 @@
       "docs": { "none": "No docs/user page documents Zerops quick actions yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
-        "packages/client-runtime/src/zerops/quickActions.test.ts"
+        "packages/client-runtime/src/zerops/quickActions.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": []
     },
@@ -203,7 +206,9 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
-        "packages/client-runtime/src/zerops/agentLogin.test.ts"
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/agentLogin.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": ["web:agent-auth-attention", "web:agent-auth-ok"]
     },
@@ -233,7 +238,9 @@
       "docs": { "none": "No docs/user page documents the Zerops lifecycle strip yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
-        "packages/client-runtime/src/zerops/strip.test.ts"
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/strip.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": ["web:lifecycle-active", "web:lifecycle-waiting"]
     },
@@ -270,8 +277,10 @@
         "apps/web/src/components/chat/MessagesTimeline.test.tsx",
         "apps/web/src/components/zerops/ZeropsToolCard.test.tsx",
         "packages/client-runtime/src/zerops/cards/milestone.test.ts",
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
         "packages/client-runtime/src/zerops/cards/payloads.test.ts",
-        "packages/client-runtime/src/zerops/activityResult.test.ts"
+        "packages/client-runtime/src/zerops/activityResult.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
       "captures": ["web:cards"]
     },
