@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, ZEROPS_THEME } from "@t3tools/shared/themePalettes";
 
 import {
   getThemeColorsForMode,
@@ -31,6 +31,7 @@ import {
   createManagedThemeColors,
   createVividThemeColors,
   getDefaultThemeColors,
+  getStandardThemeColors,
   themeColorToHex,
   toCanonicalThemeColor,
   THEME_FILE_VERSION,
@@ -74,6 +75,11 @@ function contrastRatio(first: string, second: string): number {
 }
 
 describe("theme files", () => {
+  it("getStandardThemeColors returns the Zerops palette", () => {
+    expect(getStandardThemeColors("light")).toBe(ZEROPS_THEME.colors);
+    expect(getStandardThemeColors("dark")).toBe(ZEROPS_THEME.variants!.dark!);
+  });
+
   it("keeps every built-in palette value in canonical OKLCH form", () => {
     for (const theme of BUILT_IN_THEMES) {
       for (const colors of [theme.colors, ...Object.values(theme.variants ?? {})]) {
@@ -207,7 +213,7 @@ describe("theme files", () => {
       colors: {
         canvas: canonical("#07152f"),
         accent: canonical("#67c2ff"),
-        placeholder: canonical("#968d9f"),
+        placeholder: getDefaultThemeColors("dark").placeholder,
       },
     });
   });

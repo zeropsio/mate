@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./brand": {
+      "types": "./src/brand.ts",
+      "import": "./src/brand.ts"
+    },
     "./legacyVocabulary": {
       "types": "./src/legacyVocabulary.ts",
       "import": "./src/legacyVocabulary.ts"

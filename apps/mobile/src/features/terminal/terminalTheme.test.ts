@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
+import {
+  BUILT_IN_THEMES,
+  getThemeColorsForAppearance,
+  ZEROPS_THEME,
+} from "@t3tools/shared/themePalettes";
 
 import { themeColorToNativeColor } from "../../lib/mobileTheme";
 
@@ -7,6 +11,7 @@ import {
   buildGhosttyThemeConfig,
   getMobileTerminalTheme,
   getPierreTerminalTheme,
+  type TerminalAppearanceScheme,
 } from "./terminalTheme";
 
 describe("getPierreTerminalTheme", () => {
@@ -30,14 +35,20 @@ describe("getPierreTerminalTheme", () => {
 });
 
 describe("getMobileTerminalTheme", () => {
-  it("preserves the Pierre terminal for the default theme", () => {
-    for (const scheme of ["light", "dark"] as const) {
-      expect(getMobileTerminalTheme("t3-code", scheme)).toEqual(getPierreTerminalTheme(scheme));
+  it("applies the Zerops terminal roles without replacing ANSI status colors", () => {
+    for (const scheme of ["light", "dark"] satisfies ReadonlyArray<TerminalAppearanceScheme>) {
+      const colors = getThemeColorsForAppearance(ZEROPS_THEME, scheme) ?? ZEROPS_THEME.colors;
+      const terminal = getMobileTerminalTheme("zerops", scheme);
+
+      expect(terminal.background).toBe(themeColorToNativeColor(colors.terminalBackground));
+      expect(terminal.foreground).toBe(themeColorToNativeColor(colors.terminalForeground));
+      expect(terminal.cursorForeground).toBe(themeColorToNativeColor(colors.terminalCursor));
+      expect(terminal.palette).toEqual(getPierreTerminalTheme(scheme).palette);
     }
   });
 
   it("applies the selected palette without replacing ANSI status colors", () => {
-    const standard = getMobileTerminalTheme("t3-code", "dark");
+    const standard = getMobileTerminalTheme("zerops", "dark");
     const ocean = getMobileTerminalTheme("ocean", "dark");
 
     expect(ocean.background).not.toBe(standard.background);

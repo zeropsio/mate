@@ -27,6 +27,16 @@ afterEach(() => {
 });
 
 describe("theme failure handling", () => {
+  it("defaults to the zerops palette", async () => {
+    vi.stubGlobal("window", {
+      localStorage: createStorage(),
+    });
+
+    const { readThemePreference } = await import("./useTheme");
+
+    expect(readThemePreference()).toBe("zerops");
+  });
+
   it("preserves exact storage causes and operation context", async () => {
     const readCause = new Error("storage read blocked");
     const writeCause = new Error("storage quota exceeded");

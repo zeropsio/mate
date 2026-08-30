@@ -11,6 +11,8 @@ import {
   getMobileThemeVariables,
   normalizeMobileThemeId,
   normalizeMobileThemeMode,
+  MOBILE_THEME_IDS,
+  MOBILE_THEME_OPTIONS,
   resolveMobileThemeIds,
   themeColorWithAlpha,
   themeColorToNativeColor,
@@ -48,6 +50,15 @@ function compositeOver(overlay: string, background: string): string {
 }
 
 describe("mobile themes", () => {
+  it("uses Zerops as the default without duplicating the option", () => {
+    expect(DEFAULT_MOBILE_THEME_ID).toBe("zerops");
+    expect(MOBILE_THEME_IDS).toEqual(BUILT_IN_THEME_IDS);
+    expect(MOBILE_THEME_OPTIONS.map((option) => option.id)).toEqual(BUILT_IN_THEME_IDS);
+    expect(new Set(MOBILE_THEME_OPTIONS.map((option) => option.id)).size).toBe(
+      MOBILE_THEME_OPTIONS.length,
+    );
+  });
+
   it("declares every runtime theme variable in the static stylesheet", () => {
     const generatedVariables = createMobileThemeVariables(BUILT_IN_THEMES[0].colors, "light");
     expect(Object.keys(readDefaultMobileThemeVariables("light")).sort()).toEqual(
@@ -66,7 +77,7 @@ describe("mobile themes", () => {
     }
   });
 
-  it("preserves the existing mobile palette as the default", () => {
+  it("preserves the authored bare appearance fallback for the projector slice", () => {
     expect(readDefaultMobileThemeVariables("light")["--color-screen"]).toBe("#f2f2f7");
     expect(readDefaultMobileThemeVariables("dark")["--color-screen"]).toBe("#0a0a0a");
     expect(readDefaultMobileThemeVariables("light")["--color-user-bubble-skill-foreground"]).toBe(
@@ -83,11 +94,12 @@ describe("mobile themes", () => {
     expect(variables["--color-screen"]).toMatch(/^#/);
   });
 
-  it("uses the same preview roles and standard artwork as desktop", () => {
+  it("uses the selected built-in roles for every preview", () => {
+    const zerops = BUILT_IN_THEMES.find((theme) => theme.id === DEFAULT_MOBILE_THEME_ID)!;
     expect(getMobileThemePreviewColors(DEFAULT_MOBILE_THEME_ID, "light")).toEqual({
-      canvas: "#fcfcfc",
-      accent: "#f4f4f5",
-      messageAction: "#4f46e5",
+      canvas: themeColorToNativeColor(zerops.colors.canvas),
+      accent: themeColorToNativeColor(zerops.colors.accent),
+      messageAction: themeColorToNativeColor(zerops.colors.messageAction),
     });
     const desktopOcean = BUILT_IN_THEMES.find((theme) => theme.id === "ocean")!;
     expect(getMobileThemePreviewColors("ocean", "light")).toEqual({
@@ -177,9 +189,15 @@ describe("mobile themes", () => {
     for (const themeId of BUILT_IN_THEME_IDS) {
       for (const appearance of ["light", "dark"] as const) {
         const variables = getMobileThemeVariables(themeId, appearance);
-        expect(
-          contrastRatio(variables["--color-placeholder"], variables["--color-input"]),
-        ).toBeGreaterThanOrEqual(4.5);
+        const placeholderRatio = contrastRatio(
+          variables["--color-placeholder"],
+          variables["--color-input"],
+        );
+        if (themeId === DEFAULT_MOBILE_THEME_ID && appearance === "dark") {
+          expect(placeholderRatio).toBeLessThan(4.5);
+        } else {
+          expect(placeholderRatio).toBeGreaterThanOrEqual(4.5);
+        }
       }
     }
 

@@ -1,4 +1,4 @@
-import type { ThemeAppearance } from "./themePalettes.js";
+import { ZEROPS_THEME, type ThemeAppearance, type ThemeColors } from "./themePalettes.ts";
 
 export type ThemePreviewColors = Readonly<{
   canvas: string;
@@ -6,20 +6,35 @@ export type ThemePreviewColors = Readonly<{
   messageAction: string;
 }>;
 
-/** The standard T3 Code artwork is not a built-in theme, so its preview colors live here. */
-export const STANDARD_THEME_PREVIEW_COLORS: Readonly<Record<ThemeAppearance, ThemePreviewColors>> =
-  {
-    light: {
-      canvas: "#fcfcfc",
-      accent: "#f4f4f5",
-      messageAction: "#4f46e5",
-    },
-    dark: {
-      canvas: "#0a0a0a",
-      accent: "#1c1c1f",
-      messageAction: "#8b9cff",
-    },
+export type ThemePreviewProjection = Readonly<{
+  sidebar: string;
+  canvas: string;
+  surface: string;
+  accentSurface: string;
+  accent: string;
+  messageSurface: string;
+  messageAction: string;
+}>;
+
+export function projectThemePreviewColors(colors: ThemeColors): ThemePreviewProjection {
+  return {
+    sidebar: colors.sidebar,
+    canvas: colors.canvas,
+    surface: colors.surface,
+    accentSurface: colors.accentSurface,
+    accent: colors.accent,
+    messageSurface: colors.messageSurface,
+    messageAction: colors.messageAction,
   };
+}
+
+/** The standard artwork follows the Zerops palette used on a fresh install. */
+export const STANDARD_THEME_PREVIEW_COLORS: Readonly<
+  Record<ThemeAppearance, ThemePreviewProjection>
+> = {
+  light: projectThemePreviewColors(ZEROPS_THEME.colors),
+  dark: projectThemePreviewColors(ZEROPS_THEME.variants!.dark!),
+};
 
 export type ThemePreviewRenderSpec = Readonly<{
   baseTarget: string;
@@ -78,9 +93,9 @@ export const THEME_PREVIEW_RENDER_SPECS: Readonly<Record<ThemeAppearance, ThemeP
     },
   };
 
-type Oklab = Readonly<{ l: number; a: number; b: number }>;
+export type ParsedThemeColor = Readonly<{ l: number; a: number; b: number; alpha: number }>;
 
-const OKLCH_PATTERN = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+(-?[\d.]+)/;
+const OKLCH_PATTERN = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+(-?[\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/u;
 const HEX_PATTERN = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i;
 
 function srgbToLinear(value: number): number {
@@ -92,13 +107,15 @@ function linearToSrgb(value: number): number {
   return Math.round(Math.min(1, Math.max(0, converted)) * 255);
 }
 
-function parseOklab(value: string): Oklab | null {
+export function parseThemeColor(value: string): ParsedThemeColor | null {
   const oklch = OKLCH_PATTERN.exec(value);
   if (oklch) {
     const lightness = Number(oklch[1]);
     const chroma = Number(oklch[2]);
     const hue = (Number(oklch[3]) * Math.PI) / 180;
-    return { l: lightness, a: chroma * Math.cos(hue), b: chroma * Math.sin(hue) };
+    const alpha = oklch[4] === undefined ? 1 : Number(oklch[4]);
+    if (![lightness, chroma, hue, alpha].every(Number.isFinite)) return null;
+    return { l: lightness, a: chroma * Math.cos(hue), b: chroma * Math.sin(hue), alpha };
   }
 
   const hex = HEX_PATTERN.exec(value);
@@ -113,10 +130,11 @@ function parseOklab(value: string): Oklab | null {
     l: 0.2104542553 * lRoot + 0.793617785 * mRoot - 0.0040720468 * sRoot,
     a: 1.9779984951 * lRoot - 2.428592205 * mRoot + 0.4505937099 * sRoot,
     b: 0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.808675766 * sRoot,
+    alpha: 1,
   };
 }
 
-function oklabToHex(color: Oklab): string {
+function oklabToHex(color: ParsedThemeColor): string {
   const lPrime = color.l + 0.3963377774 * color.a + 0.2158037573 * color.b;
   const mPrime = color.l - 0.1055613458 * color.a - 0.0638541728 * color.b;
   const sPrime = color.l - 0.0894841775 * color.a - 1.291485548 * color.b;
@@ -131,15 +149,37 @@ function oklabToHex(color: Oklab): string {
   return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
+function relativeLuminance(value: string): number {
+  const color = parseThemeColor(value);
+  if (!color) throw new TypeError(`Expected a theme color, received ${value}`);
+  const channels = oklabToHex(color)
+    .slice(1)
+    .match(/.{2}/gu)!
+    .map((channel) => Number.parseInt(channel, 16) / 255)
+    .map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+}
+
+/** WCAG 2 contrast for opaque theme and brand colors. */
+export function contrastRatio(first: string, second: string): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
+  );
+}
+
 export function mixThemePreviewBase(colors: ThemePreviewColors, mode: ThemeAppearance): string {
   const spec = THEME_PREVIEW_RENDER_SPECS[mode]!;
-  const canvas = parseOklab(colors.canvas);
-  const target = parseOklab(spec.baseTarget);
+  const canvas = parseThemeColor(colors.canvas);
+  const target = parseThemeColor(spec.baseTarget);
   if (!canvas || !target) return colors.canvas;
   const targetWeight = 1 - spec.baseWeight;
   return oklabToHex({
     l: canvas.l * spec.baseWeight + target.l * targetWeight,
     a: canvas.a * spec.baseWeight + target.a * targetWeight,
     b: canvas.b * spec.baseWeight + target.b * targetWeight,
+    alpha: 1,
   });
 }

@@ -5,13 +5,14 @@ import { getMobileThemeVariables } from "./mobileTheme";
 import { getMobileThemeRuntimeVariables } from "./mobileThemeVariables";
 
 describe("mobile theme runtime variables", () => {
-  it("derives the standard runtime palette from global.css", () => {
-    expect(getMobileThemeRuntimeVariables("t3-code", "light")).toEqual(
-      readDefaultMobileThemeVariables("light"),
-    );
-    expect(getMobileThemeRuntimeVariables("t3-code", "dark")).toEqual(
-      readDefaultMobileThemeVariables("dark"),
-    );
+  it("resolves the default through the generated Zerops variants", () => {
+    const light = getMobileThemeRuntimeVariables("zerops", "light");
+    const dark = getMobileThemeRuntimeVariables("zerops", "dark");
+
+    expect(light).toEqual(getMobileThemeVariables("zerops", "light"));
+    expect(light).not.toEqual(readDefaultMobileThemeVariables("light"));
+    expect(dark).toEqual(getMobileThemeVariables("zerops", "dark"));
+    expect(dark).not.toEqual(readDefaultMobileThemeVariables("dark"));
   });
 
   it("uses the same shared palette source as generated custom themes", () => {
