@@ -211,6 +211,11 @@ describe("t3code/no-theme-escape-hatches", () => {
       harness: harnesses.zeropsWeb,
       source: `const surface = <div className={'content-["label:#fff"]'} />;`,
     },
+    {
+      name: "allows tokens with excess closing brackets",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <><div className="]:text-red-500" /><div className="foo]:text-red-500" /></>;`,
+    },
     ...[
       "data-[state=open]:bg-[var(--x)]",
       "supports-[display:grid]:flex",
@@ -452,6 +457,34 @@ describe("t3code/no-theme-escape-hatches", () => {
       name: "reports a named colour followed by a Tailwind separator",
       harness: harnesses.zeropsWeb,
       source: `const surface = <div className="[background:red_url(x)]" />;`,
+    },
+    {
+      name: "reports raw colours after quoted brackets in arbitrary values",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <><div className="bg-[url('x[y')_#fff]" /><div className="content-['[']" /></>;`,
+      count: 1,
+    },
+    {
+      name: "reports raw colours after quoted brackets in arbitrary properties",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <><div className="[background:url('foo[bar.png')_#fff]" /><div className="bg-[url('a[b')]" /></>;`,
+      count: 1,
+    },
+    {
+      name: "reports palette utilities after quoted brackets in arbitrary variants",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <div className="[&[data-label='[']]:text-red-500" />;`,
+    },
+    {
+      name: "reports arbitrary colours after quoted brackets in arbitrary variants",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <div className="[&[data-label='[']]:[color:#fff]" />;`,
+    },
+    {
+      name: "reports balanced variants but ignores an excess closing bracket",
+      harness: harnesses.zeropsWeb,
+      source: `const surface = <><div className="[&::before]]:text-red-500" /><div className="[&::before]:text-red-500" /></>;`,
+      count: 1,
     },
     ...["[&::before]:text-red-500", "[&::after]:bg-white", "[&::placeholder]:text-red-500"].map(
       (utility) => ({
