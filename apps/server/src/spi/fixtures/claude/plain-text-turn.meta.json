@@ -21,21 +21,13 @@
       "type": "preset",
       "preset": "claude_code"
     },
-    "settingSources": [
-      "user",
-      "project",
-      "local"
-    ],
+    "settingSources": ["user", "project", "local"],
     "permissionMode": "auto",
     "includePartialMessages": true,
     "canUseTool": "<function>",
     "onUserDialog": "<function>",
-    "supportedDialogKinds": [
-      "resume_return"
-    ],
+    "supportedDialogKinds": ["resume_return"],
     "env": "<omitted>",
-    "additionalDirectories": [
-      "/var/www"
-    ]
+    "additionalDirectories": ["/var/www"]
   }
 }

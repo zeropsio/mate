@@ -61,8 +61,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 
-const DEFAULT_SDK_PATH =
-  "/home/zerops/.zcp/z3/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs";
+const DEFAULT_SDK_PATH = "/home/zerops/.zcp/z3/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs";
 const DEFAULT_ALLOWED_TOOLS = [
   "mcp__zerops__zerops_workflow",
   "mcp__zerops__zerops_mount",
@@ -236,7 +235,10 @@ async function main() {
         updatedInput: { questions: input.questions, answers },
       };
     } else if (toolName === "ExitPlanMode") {
-      answer = { behavior: "deny", message: "recorder: ExitPlanMode not exercised by this fixture." };
+      answer = {
+        behavior: "deny",
+        message: "recorder: ExitPlanMode not exercised by this fixture.",
+      };
     } else if (args.allowedTools.includes(toolName)) {
       answer = { behavior: "allow", updatedInput: input };
     } else {
@@ -373,7 +375,10 @@ async function main() {
     notes: args.notes,
     sdkOptions: sanitizeOptionsForMeta(queryOptions, redact),
   };
-  writeFileSync(`${args.out.replace(/\.jsonl$/, "")}.meta.json`, `${JSON.stringify(meta, null, 2)}\n`);
+  writeFileSync(
+    `${args.out.replace(/\.jsonl$/, "")}.meta.json`,
+    `${JSON.stringify(meta, null, 2)}\n`,
+  );
 
   const durationMs = Date.now() - startedAt;
   process.stdout.write(
