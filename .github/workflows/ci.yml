@@ -27,6 +27,14 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
+      - name: Reject untracked package shells
+        run: |
+          test -z "$(git ls-files packages/ssh packages/tailscale)" &&
+            test ! -d packages/ssh -a ! -d packages/tailscale || {
+            printf '%s\n' 'packages/ssh and packages/tailscale were deleted at the freeze; a directory here means a workspace manifest or script still expects them.'
+            exit 1
+          }
+
       - name: Reject repository-owned PR assets
         run: |
           files="$(git ls-files .github/pr-assets)"
@@ -62,6 +70,12 @@ jobs:
 
       - name: Check legacy vocabulary exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
+
+      - name: Check CSS theme tokens
+        run: node scripts/check-css-tokens.ts
+
+      - name: Check theme escape-hatch exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-theme-escape-hatches
 
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
