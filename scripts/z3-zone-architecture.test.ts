@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import type { PlatformError } from "effect/PlatformError";
+import * as Schema from "effect/Schema";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const repoRoot = Effect.service(Path.Path).pipe(
@@ -20,6 +21,8 @@ const repoRoot = Effect.service(Path.Path).pipe(
 
 const TS_EXTENSIONS = new Set([".ts", ".tsx"]);
 const EXCLUDED_DIRECTORY_NAMES = new Set(["node_modules", "dist", "dist-electron"]);
+const decodeUnknownJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 function collectTsFiles(
   root: string,
@@ -71,6 +74,7 @@ const collectProviderContractFiles = Effect.fn("collectProviderContractFiles")(f
 
 interface ImportStatement {
   readonly clause: string;
+  readonly reexport: boolean;
   readonly specifier: string;
   readonly typeOnly: boolean;
 }
@@ -125,32 +129,128 @@ function collectImportStatements(source: string): ReadonlyArray<ImportStatement>
     const clause = match[2] ?? "";
     statements.push({
       clause,
+      reexport: false,
       specifier: match[3]!,
       typeOnly: match[1] !== undefined || isBracedTypeOnlyClause(clause),
     });
   }
   for (const match of source.matchAll(SIDE_EFFECT_IMPORT_PATTERN)) {
-    statements.push({ clause: "", specifier: match[1]!, typeOnly: false });
+    statements.push({ clause: "", reexport: false, specifier: match[1]!, typeOnly: false });
   }
   for (const match of source.matchAll(REEXPORT_PATTERN)) {
     const clause = match[2] ?? "";
     statements.push({
       clause,
+      reexport: true,
       specifier: match[3]!,
       typeOnly: match[1] !== undefined || isBracedTypeOnlyClause(clause),
     });
   }
   for (const argument of collectDynamicImportArguments(source)) {
     if (isPlainStringLiteral(argument)) {
-      statements.push({ clause: "", specifier: argument.slice(1, -1), typeOnly: false });
+      statements.push({
+        clause: "",
+        reexport: false,
+        specifier: argument.slice(1, -1),
+        typeOnly: false,
+      });
     }
   }
   return statements;
 }
 
+interface ExportBinding {
+  readonly exported: string;
+  readonly source: string;
+  readonly typeOnly: boolean;
+}
+
+function collectExportBindings(clause: string): ReadonlyArray<ExportBinding> {
+  const trimmed = clause.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return [];
+  }
+  return trimmed
+    .slice(1, -1)
+    .split(",")
+    .map((binding) => binding.trim())
+    .filter((binding) => binding.length > 0)
+    .map((binding) => {
+      const typeOnly = binding.startsWith("type ");
+      const valueBinding = typeOnly ? binding.slice("type ".length).trim() : binding;
+      const [source, exported = source] = valueBinding.split(/\s+as\s+/u);
+      return { exported: exported!, source: source!, typeOnly };
+    });
+}
+
+function requestedRuntimeExports(clause: string): ReadonlySet<string> | undefined {
+  const trimmed = clause.trim();
+  if (trimmed === "" || trimmed.startsWith("*")) {
+    return undefined;
+  }
+
+  const requested = new Set<string>();
+  const braceStart = trimmed.indexOf("{");
+  if (braceStart === -1) {
+    requested.add("default");
+  } else {
+    if (trimmed.slice(0, braceStart).replace(/,$/u, "").trim() !== "") {
+      requested.add("default");
+    }
+    const braceEnd = trimmed.lastIndexOf("}");
+    for (const binding of collectExportBindings(trimmed.slice(braceStart, braceEnd + 1))) {
+      if (!binding.typeOnly) {
+        requested.add(binding.source);
+      }
+    }
+  }
+  return requested.size === 0 ? undefined : requested;
+}
+
+function requestedReexportSources(
+  clause: string,
+  requestedExports: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const requestedSources = new Set<string>();
+  for (const binding of collectExportBindings(clause)) {
+    if (!binding.typeOnly && requestedExports.has(binding.exported)) {
+      requestedSources.add(binding.source);
+    }
+  }
+  return requestedSources;
+}
+
 interface ImportViolation {
   readonly file: string;
   readonly specifier: string;
+}
+
+interface SourceFile {
+  readonly file: string;
+  readonly source: string;
+}
+
+const UI_IMPORT_PREFIXES = [
+  "react",
+  "react-dom",
+  "react-native",
+  "expo",
+  "expo-",
+  "@effect/atom-react",
+] as const;
+
+function collectUiImportViolations(
+  files: ReadonlyArray<SourceFile>,
+): ReadonlyArray<ImportViolation> {
+  const violations: Array<ImportViolation> = [];
+  for (const file of files) {
+    for (const { specifier } of collectImportStatements(file.source)) {
+      if (UI_IMPORT_PREFIXES.some((prefix) => specifier.startsWith(prefix))) {
+        violations.push({ file: file.file, specifier });
+      }
+    }
+  }
+  return violations;
 }
 
 const PROTECTED_ROOTS = [
@@ -238,11 +338,45 @@ function walkProtectedRoot(
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const root = `apps/web/src/${path.relative(webSrcDir, rootFile)}`;
-    const visited = new Set<string>();
-    const violations: Array<ProtectedRootViolation> = [];
+    const rootDir = path.resolve(webSrcDir, "../../..");
+    const clientRuntimeDir = path.join(rootDir, "packages/client-runtime");
+    const clientRuntimeSrcDir = path.join(clientRuntimeDir, "src");
+    const clientRuntimePackageJson = decodeUnknownJson(
+      yield* fs.readFileString(path.join(clientRuntimeDir, "package.json")),
+    );
+    const packageExports = new Map<string, string>();
+    if (
+      typeof clientRuntimePackageJson === "object" &&
+      clientRuntimePackageJson !== null &&
+      "exports" in clientRuntimePackageJson &&
+      typeof clientRuntimePackageJson.exports === "object" &&
+      clientRuntimePackageJson.exports !== null
+    ) {
+      for (const [subpath, conditions] of Object.entries(clientRuntimePackageJson.exports)) {
+        if (typeof conditions === "string") {
+          packageExports.set(subpath, conditions);
+          continue;
+        }
+        if (typeof conditions !== "object" || conditions === null) {
+          continue;
+        }
+        const target =
+          "default" in conditions && typeof conditions.default === "string"
+            ? conditions.default
+            : "import" in conditions && typeof conditions.import === "string"
+              ? conditions.import
+              : undefined;
+        if (target !== undefined) {
+          packageExports.set(subpath, target);
+        }
+      }
+    }
 
-    const moduleLabel = (file: string): string => `apps/web/src/${path.relative(webSrcDir, file)}`;
+    const moduleLabel = (file: string): string => path.relative(rootDir, file);
+    const root = moduleLabel(rootFile);
+    const scannedFiles = new Set<string>();
+    const visitedTraversals = new Set<string>();
+    const violations: Array<ProtectedRootViolation> = [];
 
     const resolveLocalModule = Effect.fn("resolveProtectedLocalModule")(function* (
       fromFile: string,
@@ -252,7 +386,20 @@ function walkProtectedRoot(
         ? path.join(webSrcDir, specifier.slice(2))
         : specifier.startsWith(".")
           ? path.resolve(path.dirname(fromFile), specifier)
-          : undefined;
+          : specifier.startsWith("@t3tools/client-runtime/")
+            ? (() => {
+                const subpath = `.${specifier.slice("@t3tools/client-runtime".length)}`;
+                const target = packageExports.get(subpath);
+                if (target === undefined) {
+                  return undefined;
+                }
+                const targetPath = path.resolve(clientRuntimeDir, target);
+                const relativeTarget = path.relative(clientRuntimeSrcDir, targetPath);
+                return relativeTarget === ".." || relativeTarget.startsWith(`..${path.sep}`)
+                  ? undefined
+                  : targetPath;
+              })()
+            : undefined;
       if (unresolved === undefined) {
         return undefined;
       }
@@ -275,73 +422,162 @@ function walkProtectedRoot(
       return undefined;
     });
 
+    const exportProviderCache = new Map<string, boolean>();
+    const moduleProvidesExport: (
+      file: string,
+      exportName: string,
+      trail: ReadonlySet<string>,
+    ) => Effect.Effect<boolean, PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
+      "protectedModuleProvidesExport",
+    )(function* (file: string, exportName: string, trail: ReadonlySet<string>) {
+      const cacheKey = `${file}\0${exportName}`;
+      const cached = exportProviderCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+      if (trail.has(cacheKey)) {
+        return false;
+      }
+
+      const nextTrail = new Set(trail);
+      nextTrail.add(cacheKey);
+      const source = yield* fs.readFileString(file);
+      const escapedExportName = exportName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      if (
+        new RegExp(
+          `\\bexport\\s+(?:async\\s+)?(?:const|let|var|function|class|interface|type|enum)\\s+${escapedExportName}\\b`,
+          "u",
+        ).test(source) ||
+        (exportName === "default" && /\bexport\s+default\b/u.test(source))
+      ) {
+        exportProviderCache.set(cacheKey, true);
+        return true;
+      }
+
+      for (const statement of collectImportStatements(source)) {
+        if (!statement.reexport || statement.typeOnly) {
+          continue;
+        }
+        const importedFile = yield* resolveLocalModule(file, statement.specifier);
+        if (importedFile === undefined) {
+          continue;
+        }
+        if (statement.clause === "*") {
+          if (yield* moduleProvidesExport(importedFile, exportName, nextTrail)) {
+            exportProviderCache.set(cacheKey, true);
+            return true;
+          }
+          continue;
+        }
+        if (
+          collectExportBindings(statement.clause).some(
+            (binding) => !binding.typeOnly && binding.exported === exportName,
+          )
+        ) {
+          exportProviderCache.set(cacheKey, true);
+          return true;
+        }
+      }
+
+      exportProviderCache.set(cacheKey, false);
+      return false;
+    });
+
     const visit: (
       file: string,
+      requestedExports?: ReadonlySet<string>,
     ) => Effect.Effect<void, PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
       "visitProtectedModule",
-    )(function* (file: string) {
-      if (visited.has(file)) {
+    )(function* (file: string, requestedExports?: ReadonlySet<string>) {
+      const traversalKey = `${file}\0${
+        requestedExports === undefined ? "*" : [...requestedExports].sort().join(",")
+      }`;
+      if (visitedTraversals.has(traversalKey)) {
         return;
       }
-      visited.add(file);
+      visitedTraversals.add(traversalKey);
 
       const fileLabel = moduleLabel(file);
-      const forbiddenModuleReason = FORBIDDEN_PROTECTED_MODULES.get(fileLabel);
-      if (forbiddenModuleReason !== undefined) {
-        violations.push({ root, file: fileLabel, reason: forbiddenModuleReason });
-      }
-
       const source = yield* fs.readFileString(file);
-      if (source.includes("zerops.io")) {
-        violations.push({
-          root,
-          file: fileLabel,
-          reason: "contains the Zerops API host literal zerops.io",
-        });
-      }
+      if (!scannedFiles.has(file)) {
+        scannedFiles.add(file);
+        /**
+         * Rule 6 applies the forbidden-binding and WS_METHODS checks to every
+         * web file and every `packages/client-runtime/src/zerops/**` target.
+         * The client-runtime core is trusted infrastructure that protected
+         * roots reach only for subscriptions; host-literal, dynamic-import,
+         * and import-assignment checks still apply to every core target and
+         * relative edge.
+         */
+        const checksProtectedCommandVocabulary =
+          fileLabel.startsWith("apps/web/src/") ||
+          fileLabel.startsWith("packages/client-runtime/src/zerops/");
+        const forbiddenModuleReason = FORBIDDEN_PROTECTED_MODULES.get(fileLabel);
+        if (forbiddenModuleReason !== undefined) {
+          violations.push({ root, file: fileLabel, reason: forbiddenModuleReason });
+        }
 
-      for (const argument of collectDynamicImportArguments(source)) {
-        if (!isPlainStringLiteral(argument)) {
+        if (source.includes("zerops.io")) {
           violations.push({
             root,
             file: fileLabel,
-            reason: "dynamic import argument is not a plain string literal",
+            reason: "contains the Zerops API host literal zerops.io",
           });
         }
-      }
 
-      const importAssignmentCount = source.match(IMPORT_ASSIGNMENT_PATTERN)?.length ?? 0;
-      for (let index = 0; index < importAssignmentCount; index += 1) {
-        violations.push({
-          root,
-          file: fileLabel,
-          reason: "TypeScript import assignments are not allowed in protected graphs",
-        });
-      }
-
-      for (const [binding, reason] of FORBIDDEN_PROTECTED_BINDING_NAMES) {
-        if (new RegExp(`\\b${binding}\\b`, "u").test(source)) {
-          violations.push({ root, file: fileLabel, reason });
+        for (const argument of collectDynamicImportArguments(source)) {
+          if (!isPlainStringLiteral(argument)) {
+            violations.push({
+              root,
+              file: fileLabel,
+              reason: "dynamic import argument is not a plain string literal",
+            });
+          }
         }
-      }
 
-      for (const match of source.matchAll(/\bWS_METHODS\.([A-Za-z0-9_]+)/g)) {
-        const method = match[1]!;
-        if (
-          !PROTECTED_WS_READ_METHODS.has(method) &&
-          !PROTECTED_WS_ALLOWED_COMMAND_METHODS.has(method) &&
-          !SHARED_RUNTIME_READ_SCOPE_METHODS.get(fileLabel)?.has(method) &&
-          !LATENCY_CLASSIFICATION_ONLY_OPERATE_METHODS.get(fileLabel)?.has(method)
-        ) {
+        const importAssignmentCount = source.match(IMPORT_ASSIGNMENT_PATTERN)?.length ?? 0;
+        for (let index = 0; index < importAssignmentCount; index += 1) {
           violations.push({
             root,
             file: fileLabel,
-            reason: `WS_METHODS.${method} is not in the reviewed read or allowed-command set`,
+            reason: "TypeScript import assignments are not allowed in protected graphs",
           });
+        }
+
+        if (checksProtectedCommandVocabulary) {
+          for (const [binding, reason] of FORBIDDEN_PROTECTED_BINDING_NAMES) {
+            if (new RegExp(`\\b${binding}\\b`, "u").test(source)) {
+              violations.push({ root, file: fileLabel, reason });
+            }
+          }
+
+          for (const match of source.matchAll(/\bWS_METHODS\.([A-Za-z0-9_]+)/g)) {
+            const method = match[1]!;
+            if (
+              !PROTECTED_WS_READ_METHODS.has(method) &&
+              !PROTECTED_WS_ALLOWED_COMMAND_METHODS.has(method) &&
+              !SHARED_RUNTIME_READ_SCOPE_METHODS.get(fileLabel)?.has(method) &&
+              !LATENCY_CLASSIFICATION_ONLY_OPERATE_METHODS.get(fileLabel)?.has(method)
+            ) {
+              violations.push({
+                root,
+                file: fileLabel,
+                reason: `WS_METHODS.${method} is not in the reviewed read or allowed-command set`,
+              });
+            }
+          }
         }
       }
 
       for (const statement of collectImportStatements(source)) {
+        const isClientRuntimePackageSpecifier = statement.specifier.startsWith(
+          "@t3tools/client-runtime/",
+        );
+        const importedFile = yield* resolveLocalModule(file, statement.specifier);
+        if (isClientRuntimePackageSpecifier && importedFile === undefined) {
+          violations.push({ root, file: fileLabel, reason: "unresolved package subpath" });
+          continue;
+        }
         if (statement.typeOnly) {
           continue;
         }
@@ -351,11 +587,35 @@ function walkProtectedRoot(
         );
         if (forbiddenPackageReason !== undefined) {
           violations.push({ root, file: fileLabel, reason: forbiddenPackageReason });
+          continue;
         }
 
-        const importedFile = yield* resolveLocalModule(file, statement.specifier);
         if (importedFile !== undefined) {
-          yield* visit(importedFile);
+          if (statement.reexport && requestedExports !== undefined) {
+            if (statement.clause === "*") {
+              const providedExports = new Set<string>();
+              for (const exportName of requestedExports) {
+                if (yield* moduleProvidesExport(importedFile, exportName, new Set())) {
+                  providedExports.add(exportName);
+                }
+              }
+              if (providedExports.size > 0) {
+                yield* visit(importedFile, providedExports);
+              }
+            } else {
+              const requestedSources = requestedReexportSources(statement.clause, requestedExports);
+              if (requestedSources.size > 0) {
+                yield* visit(importedFile, requestedSources);
+              }
+            }
+          } else {
+            yield* visit(
+              importedFile,
+              isClientRuntimePackageSpecifier
+                ? requestedRuntimeExports(statement.clause)
+                : undefined,
+            );
+          }
         }
       }
     });
@@ -377,6 +637,11 @@ const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function*
     yield* fs.makeDirectory(path.dirname(file), { recursive: true });
     yield* fs.writeFileString(file, source);
   }
+  const packageJson = path.join(fixtureRoot, "packages/client-runtime/package.json");
+  if (!(yield* fs.exists(packageJson))) {
+    yield* fs.makeDirectory(path.dirname(packageJson), { recursive: true });
+    yield* fs.writeFileString(packageJson, encodeUnknownJson({ exports: {} }));
+  }
   return {
     rootFile: path.join(webSrcDir, "components/Root.tsx"),
     webSrcDir,
@@ -384,6 +649,38 @@ const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function*
 });
 
 it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
+  it.effect("collects UI imports from client-runtime Zerops fixtures", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "z3-ui-imports-" });
+      const fixtureFile = path.join(fixtureRoot, "packages/client-runtime/src/zerops/probe.ts");
+      yield* fs.makeDirectory(path.dirname(fixtureFile), { recursive: true });
+      yield* fs.writeFileString(
+        fixtureFile,
+        'import { renderToStaticMarkup } from "react-dom/server";\n',
+      );
+
+      const files = yield* collectTsFiles(
+        path.join(fixtureRoot, "packages/client-runtime/src/zerops"),
+      );
+      const sources = [];
+      for (const file of files) {
+        sources.push({
+          file: path.relative(fixtureRoot, file),
+          source: yield* fs.readFileString(file),
+        });
+      }
+
+      assert.deepStrictEqual(collectUiImportViolations(sources), [
+        {
+          file: "packages/client-runtime/src/zerops/probe.ts",
+          specifier: "react-dom/server",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("ported zone (imported + provider drivers) imports nothing matching zerops", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -412,6 +709,27 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
       }
 
       assert.deepStrictEqual(violations, []);
+    }),
+  );
+
+  it.effect("client-runtime zerops is UI-free and platform-free", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* repoRoot;
+      const files = yield* collectTsFiles(path.join(root, "packages/client-runtime/src/zerops"));
+      assert.isAbove(
+        files.length,
+        0,
+        "the client-runtime Zerops scan found no files; did the directory move?",
+      );
+
+      const sources: Array<SourceFile> = [];
+      for (const file of files) {
+        sources.push({ file: path.relative(root, file), source: yield* fs.readFileString(file) });
+      }
+
+      assert.deepStrictEqual(collectUiImportViolations(sources), []);
     }),
   );
 
@@ -674,6 +992,14 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
         "components/Root.tsx": 'import { hook } from "./hook";\nexport const Root = hook;\n',
         "components/hook.ts":
           'import { client } from "@t3tools/client-runtime/zerops";\nexport const hook = client;\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./zerops": {
+              default: "./src/zerops/index.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/zerops/index.ts": "export const client = true;\n",
       });
 
       const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
@@ -688,11 +1014,227 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "protected root walker follows a value import of a client-runtime subpath and applies the host-literal check there",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeProtectedRootFixture({
+          "components/Root.tsx":
+            'import { value } from "@t3tools/client-runtime/zerops/probe";\nexport const Root = value;\n',
+          "../../../packages/client-runtime/package.json": encodeUnknownJson({
+            exports: {
+              "./zerops/probe": {
+                default: "./src/zerops/probe.ts",
+              },
+            },
+          }),
+          "../../../packages/client-runtime/src/zerops/probe.ts":
+            'export const value = "https://api.zerops.io";\n',
+        });
+
+        const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+        assert.deepStrictEqual(violations, [
+          {
+            root: "apps/web/src/components/Root.tsx",
+            file: "packages/client-runtime/src/zerops/probe.ts",
+            reason: "contains the Zerops API host literal zerops.io",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker does not follow a type-only client-runtime subpath import", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import type { Value } from "@t3tools/client-runtime/zerops/probe";\nexport type Root = Value;\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./zerops/probe": {
+              default: "./src/zerops/probe.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/zerops/probe.ts":
+          'export type Value = "https://api.zerops.io";\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects an unmapped type-only client-runtime subpath", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import type { Value } from "@t3tools/client-runtime/nope";\nexport type Root = Value;\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "unresolved package subpath",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker vets forbidden bindings in mapped Zerops targets", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { value } from "@t3tools/client-runtime/zerops/probe";\nexport const Root = value;\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./zerops/probe": {
+              default: "./src/zerops/probe.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/zerops/probe.ts":
+          "export const value = ZeropsApiClient;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "packages/client-runtime/src/zerops/probe.ts",
+          reason: "the Zerops platform REST client can mutate projects",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker trusts command vocabulary in mapped runtime core targets", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { environment } from "@t3tools/client-runtime/environment";\nexport const Root = environment;\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./environment": {
+              default: "./src/environment.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/environment.ts":
+          "export const environment = createEnvironmentRpcCommand;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker applies host and dynamic-import checks in runtime core", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { environment } from "@t3tools/client-runtime/environment";\nexport const Root = environment;\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./environment": {
+              default: "./src/environment.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/environment.ts":
+          'export { environment } from "./environmentValue.ts";\n',
+        "../../../packages/client-runtime/src/environmentValue.ts":
+          'export const environment = "https://api.zerops.io";\nexport const lazy = import(`./${part}.ts`);\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "packages/client-runtime/src/environmentValue.ts",
+          reason: "contains the Zerops API host literal zerops.io",
+        },
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "packages/client-runtime/src/environmentValue.ts",
+          reason: "dynamic import argument is not a plain string literal",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects every unmapped client-runtime subpath", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { value } from "@t3tools/client-runtime/zeropsX";\nexport const Root = value;\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "unresolved package subpath",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "protected root walker resolves client-runtime subpaths through the package exports map",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeProtectedRootFixture({
+          "components/Root.tsx": [
+            'import { mapped } from "@t3tools/client-runtime/zerops/mapped";',
+            'import { missing } from "@t3tools/client-runtime/zerops/missing";',
+            "export const Root = [mapped, missing];",
+          ].join("\n"),
+          "../../../packages/client-runtime/package.json": encodeUnknownJson({
+            exports: {
+              "./zerops/mapped": {
+                import: "./src/zerops/mapped.ts",
+              },
+            },
+          }),
+          "../../../packages/client-runtime/src/zerops/mapped.ts":
+            'export const mapped = "safe";\n',
+        });
+
+        const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+        assert.deepStrictEqual(violations, [
+          {
+            root: "apps/web/src/components/Root.tsx",
+            file: "apps/web/src/components/Root.tsx",
+            reason: "unresolved package subpath",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("protected root walker rejects forbidden namespace property access", () =>
     Effect.gen(function* () {
       const fixture = yield* makeProtectedRootFixture({
         "components/Root.tsx":
           'import * as Runtime from "@t3tools/client-runtime/state/runtime";\nexport const Root = Runtime.createEnvironmentRpcCommand(runtime, options);\n',
+        "../../../packages/client-runtime/package.json": encodeUnknownJson({
+          exports: {
+            "./state/runtime": {
+              default: "./src/state/runtime.ts",
+            },
+          },
+        }),
+        "../../../packages/client-runtime/src/state/runtime.ts": "export const safe = true;\n",
       });
 
       const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
