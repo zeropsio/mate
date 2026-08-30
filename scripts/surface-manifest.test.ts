@@ -98,21 +98,16 @@ const WebCaptureId = Schema.NonEmptyString.check(Schema.isPattern(SHOWCASE_SCENE
  * declared mobile components, including the manual-link surface, are
  * existence-checked but are not scan roots.
  */
-const Surface = Schema.Struct({
+const CommonSurfaceFields = {
   id: KebabCaseId,
   title: Schema.NonEmptyString,
   components: Schema.NonEmptyArray(RepoRelativePath),
-  entryPoints: Schema.NonEmptyArray(EntryPoint),
   clients: Schema.Struct({
     web: ClientAvailability,
     desktop: ClientAvailability,
     mobile: ClientAvailability,
   }),
   providers: ProviderApplicability,
-  connectionModes: ConnectionModes,
-  connectionModeNote: Schema.optional(Schema.NonEmptyString),
-  contracts: Schema.NonEmptyArray(ContractId),
-  reverseStates: Schema.NonEmptyArray(ReverseState),
   docs: Schema.Union([
     RepoRelativePath,
     Schema.Struct({
@@ -122,6 +117,16 @@ const Surface = Schema.Struct({
   tests: Schema.Array(RepoRelativePath),
   untested: Schema.optional(Schema.NonEmptyString),
   captures: Schema.Array(Schema.Union([Schema.Literals(SHOWCASE_SCENES), WebCaptureId])),
+} as const;
+
+const RoutedSurface = Schema.Struct({
+  ...CommonSurfaceFields,
+  kind: Schema.optional(Schema.Literal("routed")),
+  entryPoints: Schema.NonEmptyArray(EntryPoint),
+  connectionModes: ConnectionModes,
+  connectionModeNote: Schema.optional(Schema.NonEmptyString),
+  contracts: Schema.NonEmptyArray(ContractId),
+  reverseStates: Schema.NonEmptyArray(ReverseState),
 }).check(
   Schema.makeFilter((surface) => {
     const issues: Array<Schema.FilterIssue> = [];
@@ -154,6 +159,25 @@ const Surface = Schema.Struct({
   }),
 );
 
+/** Component sets are recursively claimed source groups, not launchable surfaces. */
+const ComponentSetSurface = Schema.Struct({
+  ...CommonSurfaceFields,
+  kind: Schema.Literal("component-set"),
+}).check(
+  Schema.makeFilter((surface) =>
+    surface.tests.length === 0 && surface.untested === undefined
+      ? [
+          {
+            path: ["tests"],
+            issue: "Expected at least one test path or an untested reason",
+          },
+        ]
+      : [],
+  ),
+);
+
+const Surface = Schema.Union([RoutedSurface, ComponentSetSurface]);
+
 const SurfaceManifest = Schema.Struct({
   version: Schema.Literal(1),
   surfaces: Schema.Array(Surface),
@@ -174,6 +198,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-agent-auth-card",
   "zerops-lifecycle-strip",
   "zerops-tool-card",
+  "zerops-primitives",
   "zerops-landing",
   "zerops-projects",
   "zerops-settings",
@@ -198,6 +223,22 @@ const VALID_SURFACE_FIXTURE = {
     { action: "Open", reverse: "Close" },
     { action: "Close", reverse: "Open" },
   ],
+  docs: { none: "The fixture has no user documentation." },
+  tests: ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
+  captures: [],
+} as const;
+
+const VALID_COMPONENT_SET_FIXTURE = {
+  id: "fixture-components",
+  kind: "component-set",
+  title: "Fixture components",
+  components: ["packages/client-runtime/src/zerops/firstPrompt.ts"],
+  clients: {
+    web: "yes",
+    desktop: "yes",
+    mobile: { status: "planned", reason: "The fixture is not on mobile yet." },
+  },
+  providers: "n/a",
   docs: { none: "The fixture has no user documentation." },
   tests: ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
   captures: [],
@@ -231,6 +272,10 @@ describe("surface manifest schema", () => {
     assert.doesNotThrow(() => decodeSurface(VALID_SURFACE_FIXTURE));
   });
 
+  it("decodes an honest component set without routed-surface claims", () => {
+    assert.doesNotThrow(() => decodeSurface(VALID_COMPONENT_SET_FIXTURE));
+  });
+
   it("decodes the checked-in manifest with the complete ordered id set", () => {
     const manifest = decodeSurfaceManifest(surfaceManifestJson);
     const ids = manifest.surfaces.map(({ id }) => id);
@@ -239,7 +284,9 @@ describe("surface manifest schema", () => {
     assert.strictEqual(new Set(ids).size, ids.length, "surface ids must be unique");
     assert.deepStrictEqual(
       manifest.surfaces
-        .filter(({ connectionModeNote }) => connectionModeNote !== undefined)
+        .filter(
+          (surface) => "connectionModeNote" in surface && surface.connectionModeNote !== undefined,
+        )
         .map(({ id }) => id),
       ["zerops-first-prompt"],
     );
@@ -274,6 +321,16 @@ describe("surface manifest schema", () => {
 
   it("rejects an empty connection-mode list", () => {
     assert.throws(() => decodeSurface({ ...VALID_SURFACE_FIXTURE, connectionModes: [] }));
+  });
+
+  it("rejects an empty entry-point list for a routed surface", () => {
+    assert.throws(() => decodeSurface({ ...VALID_SURFACE_FIXTURE, entryPoints: [] }));
+  });
+
+  it("rejects route-only claims on a component set", () => {
+    assert.throws(() =>
+      decodeSurface({ ...VALID_COMPONENT_SET_FIXTURE, connectionModes: ["zerops-door"] }),
+    );
   });
 
   it("rejects an unknown Zerops RPC name", () => {
