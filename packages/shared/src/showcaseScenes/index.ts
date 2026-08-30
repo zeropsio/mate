@@ -15,6 +15,7 @@ import { ZeropsActivityResult } from "./activityResult.ts";
 import { ShowcaseSceneJson, type ShowcaseScene } from "./schema.ts";
 
 export { ZeropsActivityResult } from "./activityResult.ts";
+export { withoutOptionals, withUnknownShape } from "./variants.ts";
 export {
   SHOWCASE_SCENE_ID_PATTERN,
   ShowcaseAgentLoginSnapshot,

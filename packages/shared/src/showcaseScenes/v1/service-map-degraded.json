@@ -20,7 +20,7 @@
         "hostname": "apidev",
         "serviceId": "service-api",
         "type": "ubuntu/nodejs@22",
-        "status": "ACTIVE",
+        "status": "FAILED",
         "group": "runtimes",
         "adoptionState": "adopted",
         "isManagedService": false,
@@ -33,11 +33,11 @@
         "hostname": "db",
         "serviceId": "service-db",
         "type": "postgresql:single@18",
-        "status": "RUNNING",
+        "status": "CREATING",
         "group": "data",
         "adoptionState": "managed-dep",
         "isManagedService": true,
-        "transient": false,
+        "transient": true,
         "mounted": false
       },
       {
