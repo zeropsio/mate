@@ -475,6 +475,17 @@ describe("resolveEffectiveEnvMode", () => {
       }),
     ).toBe("worktree");
   });
+
+  it("uses local mode when the environment forbids worktrees", () => {
+    expect(
+      resolveEffectiveEnvMode({
+        activeWorktreePath: null,
+        hasServerThread: false,
+        draftThreadEnvMode: "worktree",
+        worktreesAllowed: false,
+      }),
+    ).toBe("local");
+  });
 });
 
 describe("resolveEnvModeLabel", () => {
