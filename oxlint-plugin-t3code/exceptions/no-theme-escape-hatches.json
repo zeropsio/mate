@@ -156,7 +156,7 @@
     "kind": "Literal",
     "fingerprint": "\"#0a0a0a\"",
     "owner": "karel",
-    "reason": "Shiki syntax-highlighting palette",
+    "reason": "vendor diff/highlight themes",
     "expires": "never"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "Literal",
     "fingerprint": "\"#ffffff\"",
     "owner": "karel",
-    "reason": "Shiki syntax-highlighting palette",
+    "reason": "vendor diff/highlight themes",
     "expires": "never"
   },
   {
@@ -316,7 +316,7 @@
     "kind": "Literal",
     "fingerprint": "\"#0a0a0a\"",
     "owner": "karel",
-    "reason": "ANSI-16/Pierre terminal table",
+    "reason": "fixed terminal palette; only bg/fg/cursor/border are themed",
     "expires": "never"
   },
   {
@@ -324,7 +324,7 @@
     "kind": "Literal",
     "fingerprint": "\"#f2f2f7\"",
     "owner": "karel",
-    "reason": "ANSI-16/Pierre terminal table",
+    "reason": "fixed terminal palette; only bg/fg/cursor/border are themed",
     "expires": "never"
   },
   {
@@ -642,42 +642,10 @@
   {
     "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
     "kind": "Literal",
-    "fingerprint": "\"absolute inset-0 bg-[linear-gradient(to_bottom,transparent_20%,rgba(7,18,55,0.46)_100%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AuthSurfaceShell awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(136,204,255,0.5),transparent_38%),linear-gradient(135deg,#2468df,#172f82)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AuthSurfaceShell awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative h-24 overflow-hidden bg-[linear-gradient(135deg,#1e61de,#17348e)] text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AuthSurfaceShell awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
-    "kind": "Literal",
     "fingerprint": "\"relative w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card/94 shadow-2xl shadow-black/20 backdrop-blur-md\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in AuthSurfaceShell awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-[10px] font-semibold tracking-[0.2em] text-white/80 uppercase\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AuthSurfaceShell awaiting semantic roles",
-    "expires": "F4"
+    "reason": "auth card shadow retained outside semantic roles",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/auth/PairingRouteSurface.tsx",
@@ -2348,40 +2316,40 @@
     "kind": "Literal",
     "fingerprint": "\"flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ProviderAccentColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ProviderAccentColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ProviderAccentColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ProviderAccentColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
     "owner": "karel",
-    "reason": "T3 chrome styling in ProviderAccentColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ProviderModelsSection.tsx",
@@ -2564,56 +2532,56 @@
     "kind": "Literal",
     "fingerprint": "\"h-2.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)]\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"w-28 shrink-0 rounded-md border-0 bg-black/10 font-mono text-xs text-foreground shadow-none focus-within:bg-black/15 focus-within:ring-0 dark:bg-black/20 dark:focus-within:bg-black/25 [&_[data-slot=input]]:text-right\"",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
     "owner": "karel",
-    "reason": "T3 chrome styling in ThemeColorPicker awaiting semantic roles",
-    "expires": "F4"
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/ThemeSettings.tsx",
@@ -3340,80 +3308,80 @@
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-frame{--ultrathink-spectrum:linear-gradient( 120deg, #ff6b6b 0%, #f59e0b 18%, #22c55e 36%, #14b8a6 54%, #3b82f6 72%, #ec4899 90%, #ff6b6b 100% )}",
     "owner": "karel",
-    "reason": "ultrathink spectrum outside semantic roles",
-    "expires": "F4"
+    "reason": "deliberate rainbow affordance (T3 idiom kept)",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--accent-foreground:#f7f9ff}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--accent:#191a1d}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--background:#000}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--border:rgb(255 255 255 / 8%)}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--card:#000}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--foreground:#f1f3f7}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--input:rgb(255 255 255 / 18%)}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--muted-foreground:#a3a3a3}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
     "fingerprint": "[data-app-sidebar] > @variant dark{--muted:#0a0a0a}",
     "owner": "karel",
-    "reason": "second sidebar palette outside the theme system",
-    "expires": "F4"
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/index.css",
@@ -3589,30 +3557,6 @@
     "fingerprint": "#theme-inspector-hover [data-theme-inspector-hover-label]{box-shadow:0 4px 16px rgb(0 0 0 / 24%)}",
     "owner": "karel",
     "reason": "theme inspector overlay / shadow",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "html[data-theme-id=\"t3-chat\"] :is(.chat-composer-banner-stack-cap, .chat-composer-drawer-surface, .chat-composer-top-drawer):is( :not([data-variant]), [data-variant=\"default\"] ) > @variant dark{--chat-composer-attached-outline:#241e28}",
-    "owner": "karel",
-    "reason": "t3-chat composer glass special case awaiting W2-F4 decision rows",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "html[data-theme-id=\"t3-chat\"] .chat-composer-glass-shell > @variant dark{--chat-composer-highlight:color-mix(in srgb, #432d48 12%, transparent)}",
-    "owner": "karel",
-    "reason": "t3-chat composer glass special case awaiting W2-F4 decision rows",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "html[data-theme-id=\"t3-chat\"] .chat-composer-glass-shell > @variant dark{--chat-composer-outline:#241e28}",
-    "owner": "karel",
-    "reason": "t3-chat composer glass special case awaiting W2-F4 decision rows",
     "expires": "F4"
   },
   {
