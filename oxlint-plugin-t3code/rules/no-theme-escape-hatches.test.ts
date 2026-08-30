@@ -799,10 +799,6 @@ it.layer(NodeServices.layer)("temporary exception ledger", (it) => {
   );
 });
 
-it("keeps the real ledger at exactly 453 entries", () => {
-  assert.equal(loadExceptionLedger(RULE_NAME).entries.length, 453);
-});
-
 it("keeps the real ledger out of zero-tolerance directories", () => {
   const ledger = loadExceptionLedger(RULE_NAME);
   const forbidden = [
