@@ -1,15 +1,8 @@
-import { useEffect } from "react";
 import { View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 
 import type { RemoteClientConnectionState } from "../../lib/connection";
+import { useDutyCycle } from "../../lib/useDutyCycle";
 
 export type ConnectionStatusDotState = RemoteClientConnectionState;
 
@@ -44,29 +37,11 @@ function statusDotTone(state: ConnectionStatusDotState): {
 }
 
 function usePulseAnimation(pulse: boolean) {
-  const pulseProgress = useSharedValue(0);
-
-  useEffect(() => {
-    if (pulse) {
-      pulseProgress.value = withRepeat(
-        withTiming(1, {
-          duration: 1100,
-          easing: Easing.out(Easing.cubic),
-        }),
-        -1,
-        false,
-      );
-      return;
-    }
-
-    cancelAnimation(pulseProgress);
-    pulseProgress.value = withTiming(0, {
-      duration: 180,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [pulse, pulseProgress]);
-
-  return pulseProgress;
+  return useDutyCycle(pulse, {
+    duration: 1_200,
+    frameCount: 3,
+    reducedMotionValue: 0,
+  }).progress;
 }
 
 export function ConnectionStatusDot(props: {

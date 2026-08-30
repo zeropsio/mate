@@ -74,6 +74,7 @@ const STYLE_COLOR_KEYS = new Set([
 const ZERO_TOLERANCE_MARKERS = [
   "/apps/web/src/zerops/",
   "/apps/web/src/components/zerops/",
+  "/apps/mobile/src/components/zerops/",
   "/apps/mobile/src/features/zerops/",
 ] as const;
 

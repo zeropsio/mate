@@ -16,6 +16,9 @@ const harnesses = {
   zeropsWeb: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
     filename: "apps/web/src/components/zerops/Probe.tsx",
   }),
+  zeropsMobile: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+    filename: "apps/mobile/src/components/zerops/Probe.tsx",
+  }),
   web: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
     filename: "apps/web/src/components/Probe.tsx",
   }),
@@ -791,10 +794,22 @@ it.layer(NodeServices.layer)("temporary exception ledger", (it) => {
 
   it.effect("does not consult the ledger inside a zero-tolerance directory", () =>
     withFixtureLedger(
-      [entry("apps/web/src/components/zerops/Probe.tsx", "Literal", '"text-red-600"')],
-      harnesses.zeropsWeb
-        .runAndExpectFailure(`const surface = <div className="text-red-600" />;`)
-        .pipe(Effect.tap((output) => Effect.sync(() => assert.include(output, RULE_NAME)))),
+      [
+        entry("apps/web/src/components/zerops/Probe.tsx", "Literal", '"text-red-600"'),
+        entry("apps/mobile/src/components/zerops/Probe.tsx", "Literal", '"text-red-600"'),
+      ],
+      Effect.all([
+        harnesses.zeropsWeb.runAndExpectFailure(
+          `const surface = <div className="text-red-600" />;`,
+        ),
+        harnesses.zeropsMobile.runAndExpectFailure(
+          `const surface = <View className="text-red-600" />;`,
+        ),
+      ]).pipe(
+        Effect.tap((outputs) =>
+          Effect.sync(() => outputs.forEach((output) => assert.include(output, RULE_NAME))),
+        ),
+      ),
     ),
   );
 });
@@ -804,6 +819,7 @@ it("keeps the real ledger out of zero-tolerance directories", () => {
   const forbidden = [
     "apps/web/src/zerops/",
     "apps/web/src/components/zerops/",
+    "apps/mobile/src/components/zerops/",
     "apps/mobile/src/features/zerops/",
   ];
 

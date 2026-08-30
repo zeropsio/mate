@@ -2,6 +2,7 @@
 
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { CHIP_TINTS, FLAT_CARD_BORDER, SERVICE_STATUS_TONES } from "@t3tools/shared/brand";
 import tailwindColors from "tailwindcss/colors";
 import { BUILT_IN_THEME_IDS, type BuiltInThemeId } from "@t3tools/shared/themePalettes";
 
@@ -49,6 +50,40 @@ const color = (family: TailwindColorFamily, shade?: TailwindColorShade, opacity 
   if (value === "#000") return `rgb(0 0 0 / ${percentage}%)`;
   return `color-mix(in srgb, ${value} ${percentage}%, transparent)`;
 };
+
+const CHIP_TONE_SOURCE_IDS = {
+  access: "access-green",
+  region: "region-purple",
+  info: "info-chip",
+} as const;
+
+const formatCssColor = (value: string) => {
+  const rgba = /^rgba\((\d+),(\d+),(\d+),(\.\d+)\)$/u.exec(value);
+  return rgba ? `rgba(${rgba[1]}, ${rgba[2]}, ${rgba[3]}, 0${rgba[4]})` : value;
+};
+
+const zeropsPrimitiveVariablesFor = (appearance: MobileThemeAppearance) => ({
+  ...Object.fromEntries(
+    Object.entries(SERVICE_STATUS_TONES).flatMap(([toneId, appearances]) => {
+      const tone = appearances[appearance];
+      return [
+        [`--color-zerops-status-${toneId}-dot`, tone.dot],
+        ...("text" in tone ? [[`--color-zerops-status-${toneId}-text`, tone.text] as const] : []),
+        [`--color-zerops-status-${toneId}-surface`, tone.surface],
+      ];
+    }),
+  ),
+  ...Object.fromEntries(
+    Object.entries(CHIP_TONE_SOURCE_IDS).flatMap(([toneId, sourceId]) => {
+      const tint = CHIP_TINTS[sourceId][appearance];
+      return [
+        [`--color-zerops-chip-${toneId}-surface`, formatCssColor(tint.surface)],
+        [`--color-zerops-chip-${toneId}-text`, formatCssColor(tint.text)],
+      ];
+    }),
+  ),
+  "--color-zerops-flat-card-border": formatCssColor(FLAT_CARD_BORDER[appearance]),
+});
 
 // These replace the remaining dark:* utility pairs. A registered palette theme is
 // neither literally `light` nor `dark`, so appearance-sensitive values must also be
@@ -142,12 +177,15 @@ export const customThemeNames = BUILT_IN_THEME_IDS.flatMap((themeId) =>
 );
 
 const adaptiveVariablesFor = (appearance: MobileThemeAppearance) =>
-  Object.fromEntries(
-    Object.entries(ADAPTIVE_COLORS).map(([name, values]) => [
-      name,
-      values[appearance === "light" ? 0 : 1],
-    ]),
-  );
+  ({
+    ...Object.fromEntries(
+      Object.entries(ADAPTIVE_COLORS).map(([name, values]) => [
+        name,
+        values[appearance === "light" ? 0 : 1],
+      ]),
+    ),
+    ...zeropsPrimitiveVariablesFor(appearance),
+  }) as Readonly<Record<string, string>>;
 
 const variablesFor = (themeId: BuiltInThemeId, appearance: MobileThemeAppearance) => ({
   ...getMobileThemeVariables(themeId, appearance),
