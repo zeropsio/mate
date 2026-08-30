@@ -15,20 +15,12 @@
  * arrange and no accumulator that could drift. `feeds.test.ts` pins it rather
  * than assuming it.
  *
- * `agentLoginStart`/`agentLoginCancel` (S7 follow-up F8) are the one
- * exception: the two writes this file carries, driving a server-side login
- * session whose resulting `login` state rides the `agentAuth` snapshot
- * above rather than a reply of their own — see `useAgentLogin.ts`.
- *
  * The factory takes its runtime so a test can supply a fake
  * `EnvironmentRegistry`; the app's instance is wired in `../state/zerops.ts`.
  * Same shape as `createPreviewEnvironmentAtoms` and its siblings.
  */
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import {
-  createEnvironmentRpcCommand,
-  createEnvironmentRpcSubscriptionAtomFamily,
-} from "@t3tools/client-runtime/state/runtime";
+import { createEnvironmentRpcSubscriptionAtomFamily } from "@t3tools/client-runtime/state/runtime";
 import { WS_METHODS } from "@t3tools/contracts";
 import type {
   EnvironmentId,
@@ -77,22 +69,6 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
   });
 
   /**
-   * The two agent-login commands (S7 follow-up F8) — the ONLY writes in this
-   * otherwise read-only file. The resulting `login` state rides the
-   * `agentAuth` subscription above, not a reply from these; a caller awaits
-   * only to know the RPC itself was accepted.
-   */
-  const agentLoginStart = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:start",
-    tag: WS_METHODS.zeropsAgentLoginStart,
-  });
-
-  const agentLoginCancel = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:agentLogin:cancel",
-    tag: WS_METHODS.zeropsAgentLoginCancel,
-  });
-
-  /**
    * Consumers below get a plain value rather than an `AsyncResult`, because
    * there is nothing they could do about a pending or failed subscription: an
    * absent feed means "no Zerops here", which a live snapshot says for itself
@@ -127,12 +103,8 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
     topology,
     lifecycle,
     agentAuth,
-    agentLoginStart,
-    agentLoginCancel,
     topologyValue: (target: ZeropsTopologyTarget) => topologyValue(targetKey(target)),
     lifecycleValue: (target: ZeropsLifecycleTarget) => lifecycleValue(targetKey(target)),
     agentAuthValue: (target: ZeropsAgentAuthTarget) => agentAuthValue(targetKey(target)),
   };
 }
-
-export type ZeropsFeedAtoms = ReturnType<typeof createZeropsFeedAtoms>;

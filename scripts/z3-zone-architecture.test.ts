@@ -4,8 +4,8 @@
 // the two import-direction invariants that make those zones meaningful:
 // the ported zone must stay Zerops-free, and owned product must reach
 // providers only through the (not-yet-built) SPI, never their internals
-// directly. No AST — a regex over `import ... from "..."` / `import(...)`
-// is enough for both checks.
+// directly. No AST — small source scans over import and re-export syntax are
+// enough for these checks.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -72,20 +72,78 @@ const collectProviderContractFiles = Effect.fn("collectProviderContractFiles")(f
 interface ImportStatement {
   readonly clause: string;
   readonly specifier: string;
+  readonly typeOnly: boolean;
 }
 
 // `[^;]*?` (not `.*?`) so a multi-line brace clause is captured whole: import
 // clauses never contain a semicolon, so this cannot run past the statement.
-const STATIC_IMPORT_PATTERN = /import\s+(?:type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/g;
-const DYNAMIC_IMPORT_PATTERN = /import\(\s*["']([^"']+)["']\s*\)/g;
+const STATIC_IMPORT_PATTERN = /import\s+(type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/g;
+const SIDE_EFFECT_IMPORT_PATTERN = /import\s*["']([^"']+)["']/g;
+const REEXPORT_PATTERN = /export\s+(type\s+)?(\*|\{[^;]*?\})\s+from\s+["']([^"']+)["']/g;
+const DYNAMIC_IMPORT_CALL_PATTERN = /\bimport\s*\(\s*([^)]*?)\s*\)/gs;
+const IMPORT_ASSIGNMENT_PATTERN = /\bimport\s+(?:type\s+)?[A-Za-z_$][\w$]*\s*=\s*require\s*\(/g;
+
+function isBracedTypeOnlyClause(clause: string): boolean {
+  const trimmed = clause.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return false;
+  }
+  const bindings = trimmed
+    .slice(1, -1)
+    .split(",")
+    .map((binding) => binding.trim())
+    .filter((binding) => binding.length > 0);
+  return bindings.length > 0 && bindings.every((binding) => /^type\s+/u.test(binding));
+}
+
+function isPlainStringLiteral(value: string): boolean {
+  if (value.length < 2) {
+    return false;
+  }
+  const quote = value[0];
+  if ((quote !== '"' && quote !== "'") || value.at(-1) !== quote) {
+    return false;
+  }
+  for (let index = 1; index < value.length - 1; index += 1) {
+    const character = value[index];
+    if (character === "\\") {
+      index += 1;
+    } else if (character === quote || character === "\n" || character === "\r") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function collectDynamicImportArguments(source: string): ReadonlyArray<string> {
+  return [...source.matchAll(DYNAMIC_IMPORT_CALL_PATTERN)].map((match) => match[1]!.trim());
+}
 
 function collectImportStatements(source: string): ReadonlyArray<ImportStatement> {
   const statements: Array<ImportStatement> = [];
   for (const match of source.matchAll(STATIC_IMPORT_PATTERN)) {
-    statements.push({ clause: match[1] ?? "", specifier: match[2]! });
+    const clause = match[2] ?? "";
+    statements.push({
+      clause,
+      specifier: match[3]!,
+      typeOnly: match[1] !== undefined || isBracedTypeOnlyClause(clause),
+    });
   }
-  for (const match of source.matchAll(DYNAMIC_IMPORT_PATTERN)) {
-    statements.push({ clause: "", specifier: match[1]! });
+  for (const match of source.matchAll(SIDE_EFFECT_IMPORT_PATTERN)) {
+    statements.push({ clause: "", specifier: match[1]!, typeOnly: false });
+  }
+  for (const match of source.matchAll(REEXPORT_PATTERN)) {
+    const clause = match[2] ?? "";
+    statements.push({
+      clause,
+      specifier: match[3]!,
+      typeOnly: match[1] !== undefined || isBracedTypeOnlyClause(clause),
+    });
+  }
+  for (const argument of collectDynamicImportArguments(source)) {
+    if (isPlainStringLiteral(argument)) {
+      statements.push({ clause: "", specifier: argument.slice(1, -1), typeOnly: false });
+    }
   }
   return statements;
 }
@@ -94,6 +152,236 @@ interface ImportViolation {
   readonly file: string;
   readonly specifier: string;
 }
+
+const PROTECTED_ROOTS = [
+  "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+  "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+  "apps/web/src/components/zerops/ZeropsToolCard.tsx",
+  "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
+] as const;
+
+const FORBIDDEN_PROTECTED_MODULES = new Map<string, string>([
+  ["apps/web/src/zerops/commands.ts", "reviewed Zerops RPC command atoms"],
+  ["apps/web/src/state/zeropsCommands.ts", "application Zerops command atoms"],
+  ["apps/web/src/state/use-atom-command.ts", "write-only atom command runner"],
+  ["apps/web/src/zerops/useAgentLogin.ts", "starts a server-side agent login"],
+  ["apps/web/src/zerops/useAgentLoginCancel.ts", "cancels a server-side agent login"],
+  ["apps/web/src/zerops/ZeropsSessionProvider.tsx", "mutates the Zerops platform session"],
+  ["apps/web/src/zerops/useZeropsProvisioning.ts", "creates a Zerops project"],
+  [
+    "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+    "creates projects and restarts services",
+  ],
+]);
+
+const FORBIDDEN_PROTECTED_PACKAGE_SPECIFIERS = new Map<string, string>([
+  ["@t3tools/client-runtime/zerops", "the Zerops platform REST client can mutate projects"],
+]);
+
+const FORBIDDEN_PROTECTED_BINDING_NAMES = new Map<string, string>([
+  ["createEnvironmentRpcCommand", "constructs an environment RPC command"],
+  ["runAtomCommand", "runs an atom command"],
+  ["useAtomCommand", "runs an atom command from React"],
+  ["ZeropsApiClient", "the Zerops platform REST client can mutate projects"],
+]);
+
+// Mirrors apps/server/src/auth/RpcAuthorization.ts:94–107. Mutability is
+// authored there and is never inferred from a `subscribe` prefix or verb.
+const PROTECTED_WS_READ_METHODS = new Set([
+  "zeropsTopologyGet",
+  "zeropsTopologyRefresh",
+  "zeropsLifecycleGet",
+  "subscribeZeropsTopology",
+  "subscribeZeropsLifecycle",
+  "subscribeZeropsAgentAuth",
+]);
+const PROTECTED_WS_ALLOWED_COMMAND_METHODS = new Set([
+  "zeropsAgentLoginStart",
+  "zeropsAgentLoginCancel",
+]);
+
+const SHARED_RUNTIME_READ_SCOPE_METHODS = new Map<string, ReadonlySet<string>>([
+  // The shared atom runtime installs this reporter. The server authors these methods as AuthOrchestrationReadScope in RpcAuthorization.ts:52,92,93.
+  [
+    "apps/web/src/lib/backgroundActivityReporter.ts",
+    new Set(["subscribeResourceTelemetry", "subscribeVcsStatus", "serverReportClientActivity"]),
+  ],
+]);
+
+const LATENCY_CLASSIFICATION_ONLY_OPERATE_METHODS = new Map<string, ReadonlySet<string>>([
+  // These operate-scope tokens appear only as latency-classification Set members at requestLatencyState.ts:31,33–35, never as calls.
+  [
+    "apps/web/src/rpc/requestLatencyState.ts",
+    new Set([
+      "previewAutomationConnect",
+      "serverUpdateProvider",
+      "serverRefreshProviders",
+      "serverUpdateServer",
+    ]),
+  ],
+]);
+
+interface ProtectedRootViolation {
+  readonly root: string;
+  readonly file: string;
+  readonly reason: string;
+}
+
+function walkProtectedRoot(
+  rootFile: string,
+  webSrcDir: string,
+): Effect.Effect<
+  ReadonlyArray<ProtectedRootViolation>,
+  PlatformError,
+  FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = `apps/web/src/${path.relative(webSrcDir, rootFile)}`;
+    const visited = new Set<string>();
+    const violations: Array<ProtectedRootViolation> = [];
+
+    const moduleLabel = (file: string): string => `apps/web/src/${path.relative(webSrcDir, file)}`;
+
+    const resolveLocalModule = Effect.fn("resolveProtectedLocalModule")(function* (
+      fromFile: string,
+      specifier: string,
+    ) {
+      const unresolved = specifier.startsWith("~/")
+        ? path.join(webSrcDir, specifier.slice(2))
+        : specifier.startsWith(".")
+          ? path.resolve(path.dirname(fromFile), specifier)
+          : undefined;
+      if (unresolved === undefined) {
+        return undefined;
+      }
+
+      // Match the web resolver: source files precede directory indexes, and
+      // `.ts` precedes `.tsx` when an extensionless specifier has both.
+      const candidates = TS_EXTENSIONS.has(path.extname(unresolved))
+        ? [unresolved]
+        : [
+            `${unresolved}.ts`,
+            `${unresolved}.tsx`,
+            path.join(unresolved, "index.ts"),
+            path.join(unresolved, "index.tsx"),
+          ];
+      for (const candidate of candidates) {
+        if (yield* fs.exists(candidate)) {
+          return candidate;
+        }
+      }
+      return undefined;
+    });
+
+    const visit: (
+      file: string,
+    ) => Effect.Effect<void, PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
+      "visitProtectedModule",
+    )(function* (file: string) {
+      if (visited.has(file)) {
+        return;
+      }
+      visited.add(file);
+
+      const fileLabel = moduleLabel(file);
+      const forbiddenModuleReason = FORBIDDEN_PROTECTED_MODULES.get(fileLabel);
+      if (forbiddenModuleReason !== undefined) {
+        violations.push({ root, file: fileLabel, reason: forbiddenModuleReason });
+      }
+
+      const source = yield* fs.readFileString(file);
+      if (source.includes("zerops.io")) {
+        violations.push({
+          root,
+          file: fileLabel,
+          reason: "contains the Zerops API host literal zerops.io",
+        });
+      }
+
+      for (const argument of collectDynamicImportArguments(source)) {
+        if (!isPlainStringLiteral(argument)) {
+          violations.push({
+            root,
+            file: fileLabel,
+            reason: "dynamic import argument is not a plain string literal",
+          });
+        }
+      }
+
+      const importAssignmentCount = source.match(IMPORT_ASSIGNMENT_PATTERN)?.length ?? 0;
+      for (let index = 0; index < importAssignmentCount; index += 1) {
+        violations.push({
+          root,
+          file: fileLabel,
+          reason: "TypeScript import assignments are not allowed in protected graphs",
+        });
+      }
+
+      for (const [binding, reason] of FORBIDDEN_PROTECTED_BINDING_NAMES) {
+        if (new RegExp(`\\b${binding}\\b`, "u").test(source)) {
+          violations.push({ root, file: fileLabel, reason });
+        }
+      }
+
+      for (const match of source.matchAll(/\bWS_METHODS\.([A-Za-z0-9_]+)/g)) {
+        const method = match[1]!;
+        if (
+          !PROTECTED_WS_READ_METHODS.has(method) &&
+          !PROTECTED_WS_ALLOWED_COMMAND_METHODS.has(method) &&
+          !SHARED_RUNTIME_READ_SCOPE_METHODS.get(fileLabel)?.has(method) &&
+          !LATENCY_CLASSIFICATION_ONLY_OPERATE_METHODS.get(fileLabel)?.has(method)
+        ) {
+          violations.push({
+            root,
+            file: fileLabel,
+            reason: `WS_METHODS.${method} is not in the reviewed read or allowed-command set`,
+          });
+        }
+      }
+
+      for (const statement of collectImportStatements(source)) {
+        if (statement.typeOnly) {
+          continue;
+        }
+
+        const forbiddenPackageReason = FORBIDDEN_PROTECTED_PACKAGE_SPECIFIERS.get(
+          statement.specifier,
+        );
+        if (forbiddenPackageReason !== undefined) {
+          violations.push({ root, file: fileLabel, reason: forbiddenPackageReason });
+        }
+
+        const importedFile = yield* resolveLocalModule(file, statement.specifier);
+        if (importedFile !== undefined) {
+          yield* visit(importedFile);
+        }
+      }
+    });
+
+    yield* visit(rootFile);
+    return violations;
+  });
+}
+
+const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function* (
+  files: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "z3-protected-root-" });
+  const webSrcDir = path.join(fixtureRoot, "apps/web/src");
+  for (const [relativePath, source] of Object.entries(files)) {
+    const file = path.join(webSrcDir, relativePath);
+    yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+    yield* fs.writeFileString(file, source);
+  }
+  return {
+    rootFile: path.join(webSrcDir, "components/Root.tsx"),
+    webSrcDir,
+  };
+});
 
 it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
   it.effect("ported zone (imported + provider drivers) imports nothing matching zerops", () =>
@@ -194,16 +482,16 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
         // an owned, typed capability under `apps/server/src/spi/`. Listed
         // explicitly, no wildcard: a second file needing this exception is
         // a new decision, not an automatic grant.
-        const ALLOWED_PROVIDER_IMPORT_FILES: ReadonlyArray<string> = [
+        const ALLOWED_PROVIDER_IMPORT_FILES: ReadonlySet<string> = new Set([
           path.join(root, "apps/server/src/provider/Services/ProviderInstanceRegistry.ts"),
-        ];
+        ]);
 
         function isAllowedProviderImport(fromFile: string, specifier: string): boolean {
           if (!specifier.includes("/provider/")) {
             return true;
           }
           const resolved = path.resolve(path.dirname(fromFile), specifier);
-          return ALLOWED_PROVIDER_IMPORT_FILES.includes(resolved);
+          return ALLOWED_PROVIDER_IMPORT_FILES.has(resolved);
         }
 
         const targets = [
@@ -263,5 +551,327 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
 
         assert.deepStrictEqual(violations, []);
       }),
+  );
+
+  it.effect("protected roots render only", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* repoRoot;
+      const webSrcDir = path.join(root, "apps/web/src");
+
+      const violations: Array<ProtectedRootViolation> = [];
+      for (const protectedRoot of PROTECTED_ROOTS) {
+        const rootFile = path.join(root, protectedRoot);
+        assert.isTrue(
+          yield* fs.exists(rootFile),
+          `protected root ${protectedRoot} does not exist; did it move?`,
+        );
+        violations.push(...(yield* walkProtectedRoot(rootFile, webSrcDir)));
+      }
+
+      assert.deepStrictEqual(violations, []);
+    }),
+  );
+
+  it.effect("protected root walker follows transitive write modules", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": 'import { hook } from "./hook";\nexport const Root = hook;\n',
+        "components/hook.ts":
+          'import { command } from "../zerops/commands";\nexport const hook = command;\n',
+        "zerops/commands.ts": "export const command = true;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/zerops/commands.ts",
+          reason: "reviewed Zerops RPC command atoms",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker accepts reviewed read WS methods", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": [
+          "export const subscription = WS_METHODS.subscribeZeropsTopology;",
+          "export const refresh = WS_METHODS.zeropsTopologyRefresh;",
+        ].join("\n"),
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects unreviewed WS methods", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": "export const write = WS_METHODS.terminalWrite;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "WS_METHODS.terminalWrite is not in the reviewed read or allowed-command set",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker skips type-only edges", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import type { command } from "../zerops/commands";\nexport type Root = typeof command;\n',
+        "zerops/commands.ts": "export const command = true;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker resolves aliases and extensionless relative imports", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { x } from "~/lib/x";\nimport { y } from "../y";\nexport const Root = [x, y];\n',
+        "lib/x.ts": 'export const x = "https://api.zerops.io";\n',
+        "y.ts": 'export const y = "https://api.zerops.io";\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/lib/x.ts",
+          reason: "contains the Zerops API host literal zerops.io",
+        },
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/y.ts",
+          reason: "contains the Zerops API host literal zerops.io",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects a transitive forbidden package specifier", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": 'import { hook } from "./hook";\nexport const Root = hook;\n',
+        "components/hook.ts":
+          'import { client } from "@t3tools/client-runtime/zerops";\nexport const hook = client;\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/hook.ts",
+          reason: "the Zerops platform REST client can mutate projects",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects forbidden namespace property access", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import * as Runtime from "@t3tools/client-runtime/state/runtime";\nexport const Root = Runtime.createEnvironmentRpcCommand(runtime, options);\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "constructs an environment RPC command",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker follows export-star chains", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { command } from "./barrel";\nexport const Root = command;\n',
+        "components/barrel.ts": 'export * from "../zerops/commands";\n',
+        "zerops/commands.ts": "export const command = true;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/zerops/commands.ts",
+          reason: "reviewed Zerops RPC command atoms",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker follows named re-export chains", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { renamed } from "./barrel";\nexport const Root = renamed;\n',
+        "components/barrel.ts": 'export { command as renamed } from "../zerops/commands";\n',
+        "zerops/commands.ts": "export const command = true;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/zerops/commands.ts",
+          reason: "reviewed Zerops RPC command atoms",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker skips type-only re-export chains", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": 'export type { Command } from "../zerops/commands";\n',
+        "zerops/commands.ts": "export interface Command { readonly value: string }\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects template-literal dynamic imports", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": "export const Root = import(`../zerops/${moduleName}`);\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "dynamic import argument is not a plain string literal",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker follows quoted dynamic imports", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": 'export const Root = import("../zerops/commands");\n',
+        "zerops/commands.ts": "export const command = true;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/zerops/commands.ts",
+          reason: "reviewed Zerops RPC command atoms",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker resolves alias directory indexes", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx": 'import { value } from "~/dir";\nexport const Root = value;\n',
+        "dir/index.ts": 'export const value = "https://api.zerops.io";\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/dir/index.ts",
+          reason: "contains the Zerops API host literal zerops.io",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker scopes WS token exceptions by file", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { tracked } from "../rpc/requestLatencyState";\nimport { invoked } from "../rpc/invoker";\nexport const Root = [tracked, invoked];\n',
+        "rpc/requestLatencyState.ts":
+          "export const tracked = WS_METHODS.previewAutomationConnect;\n",
+        "rpc/invoker.ts": "export const invoked = WS_METHODS.previewAutomationConnect;\n",
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/rpc/invoker.ts",
+          reason:
+            "WS_METHODS.previewAutomationConnect is not in the reviewed read or allowed-command set",
+        },
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker prefers a TypeScript sibling before TSX", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import { value } from "../lib/value";\nexport const Root = value;\n',
+        "lib/value.ts": 'export const value = "static";\n',
+        "lib/value.tsx": 'export const value = "https://api.zerops.io";\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, []);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("protected root walker rejects import assignments", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeProtectedRootFixture({
+        "components/Root.tsx":
+          'import Runtime = require("@t3tools/client-runtime/state/runtime");\nexport const Root = Runtime;\n',
+      });
+
+      const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
+
+      assert.deepStrictEqual(violations, [
+        {
+          root: "apps/web/src/components/Root.tsx",
+          file: "apps/web/src/components/Root.tsx",
+          reason: "TypeScript import assignments are not allowed in protected graphs",
+        },
+      ]);
+    }).pipe(Effect.scoped),
   );
 });
