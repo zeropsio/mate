@@ -56,7 +56,12 @@ interface RuleHarness {
     NodeServices.NodeServices
   >;
   readonly valid: (name: string, source: string) => void;
-  readonly invalid: (name: string, source: string, assertion?: (output: string) => void) => void;
+  readonly invalid: (
+    name: string,
+    source: string,
+    assertion?: (output: string) => void,
+    expectedFindingCount?: number,
+  ) => void;
 }
 
 interface RuleHarnessOptions {
@@ -158,13 +163,19 @@ export const createOxlintRuleHarness = (
         it.effect("passes", () => run(source));
       });
     },
-    invalid(name, source, assertion) {
+    invalid(name, source, assertion, expectedFindingCount) {
       test(name, (it) => {
         it.effect("reports the rule diagnostic", () =>
           runAndExpectFailure(source).pipe(
             Effect.tap((output) =>
               Effect.sync(() => {
                 assert.match(output, new RegExp(diagnosticRuleName));
+                if (expectedFindingCount !== undefined) {
+                  assert.equal(
+                    output.match(new RegExp(diagnosticRuleName, "g"))?.length ?? 0,
+                    expectedFindingCount,
+                  );
+                }
                 assertion?.(output);
               }),
             ),

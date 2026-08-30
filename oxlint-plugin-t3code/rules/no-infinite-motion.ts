@@ -7,7 +7,13 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
-import { getPropertyName, unwrapExpression } from "../utils.ts";
+import {
+  classAttributeName,
+  createClassLikeMatcher,
+  getPropertyName,
+  resolveVariable,
+  unwrapExpression,
+} from "../utils.ts";
 
 const RULE_NAME = "no-infinite-motion";
 const LEDGER_DIRECTORY_ENV = "T3CODE_INFINITE_MOTION_LEDGER_DIRECTORY";
@@ -22,15 +28,6 @@ const INFINITE_ANIMATION_CLASSES = new Set([
   "animate-ping",
   "animate-bounce",
 ]);
-const CLASS_BUILDER_IMPORTS: ReadonlyArray<readonly [string, ReadonlySet<string>]> = [
-  ["/lib/utils", new Set(["cn"])],
-  ["/lib/cn", new Set(["cn"])],
-  ["clsx", new Set(["clsx"])],
-  ["class-variance-authority", new Set(["cva"])],
-  ["tailwind-merge", new Set(["twMerge"])],
-  ["tailwind-variants", new Set(["tv"])],
-];
-
 // Keep this list identical to zone rule 6 in scripts/z3-zone-architecture.test.ts.
 const PROTECTED_ROOTS = new Set([
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
@@ -67,11 +64,6 @@ const containsInfiniteAnimationClass = (value: string): boolean =>
     const arbitrary = ARBITRARY_ANIMATION_PATTERN.exec(utility);
     return arbitrary?.[1]?.split("_").some((part) => /^infinite$/iu.test(part)) ?? false;
   });
-
-const classAttributeName = (node: ESTree.Node): string | undefined => {
-  if (node.type !== "JSXAttribute" || node.name.type !== "JSXIdentifier") return undefined;
-  return node.name.name;
-};
 
 const staticStringValue = (node: unknown): string | undefined => {
   const expression = unwrapExpression(node);
@@ -110,22 +102,13 @@ export default defineRule({
     const reactNativeStyleSheets = new Set<Variable>();
     const reactNativeNamespaces = new Set<Variable>();
     const spinnerComponents = new Set<Variable>();
-    const classBuilders = new Set<Variable>();
     const reportedNodes = new WeakSet<ESTree.Node>();
-
-    const resolveVariable = (node: ESTree.Node, name: string): Variable | undefined => {
-      let scope = context.sourceCode.getScope(node);
-      while (true) {
-        const variable = scope.set.get(name);
-        if (variable !== undefined || scope.upper === null) return variable;
-        scope = scope.upper;
-      }
-    };
+    const isClassLike = createClassLikeMatcher(context);
 
     const resolvedIdentifierIsIn = (node: unknown, variables: ReadonlySet<Variable>): boolean => {
       const identifier = unwrapExpression(node);
       if (Option.isNone(identifier) || identifier.value.type !== "Identifier") return false;
-      const variable = resolveVariable(identifier.value, identifier.value.name);
+      const variable = resolveVariable(context, identifier.value);
       return variable !== undefined && variables.has(variable);
     };
 
@@ -156,29 +139,6 @@ export default defineRule({
         resolvedIdentifierIsIn(callee.value.object, directObjects) ||
         namespaceMemberIs(callee.value.object, reactNativeNamespaces, namespaceObjectName)
       );
-    };
-
-    const isClassBuilderCall = (node: ESTree.CallExpression): boolean =>
-      resolvedIdentifierIsIn(node.callee, classBuilders);
-
-    const isClassLike = (node: ESTree.Node): boolean => {
-      let current: ESTree.Node | null = node.parent;
-      while (current !== null) {
-        const attributeName = classAttributeName(current);
-        if (attributeName === "className" || attributeName === "class") return true;
-
-        if (
-          current.type === "CallExpression" &&
-          isClassBuilderCall(current) &&
-          current.arguments.some(
-            (argument) => node.start >= argument.start && node.end <= argument.end,
-          )
-        ) {
-          return true;
-        }
-        current = current.parent;
-      }
-      return false;
     };
 
     const isInsideJsxStyle = (node: ESTree.Node): boolean => {
@@ -241,7 +201,7 @@ export default defineRule({
       ) {
         return false;
       }
-      const variable = resolveVariable(identifier.value, identifier.value.name);
+      const variable = resolveVariable(context, identifier.value);
       return (
         variable === undefined || (variable.scope.type === "global" && variable.defs.length === 0)
       );
@@ -318,19 +278,6 @@ export default defineRule({
           ) {
             spinnerComponents.add(variable);
           }
-
-          const builderNames = CLASS_BUILDER_IMPORTS.find(([suffix]) =>
-            importedModuleEndsWith(node.source.value, suffix),
-          )?.[1];
-          if (
-            (specifier.type === "ImportSpecifier" &&
-              importedName !== undefined &&
-              builderNames?.has(importedName) === true) ||
-            (specifier.type === "ImportDefaultSpecifier" &&
-              importedModuleEndsWith(node.source.value, "clsx"))
-          ) {
-            classBuilders.add(variable);
-          }
         }
       },
       VariableDeclarator(node) {
@@ -376,7 +323,7 @@ export default defineRule({
       },
       JSXOpeningElement(node) {
         if (!PROTECTED_ROOTS.has(path) || node.name.type !== "JSXIdentifier") return;
-        const variable = resolveVariable(node.name, node.name.name);
+        const variable = resolveVariable(context, node.name);
         if (variable === undefined || !spinnerComponents.has(variable)) return;
         report(
           node,
