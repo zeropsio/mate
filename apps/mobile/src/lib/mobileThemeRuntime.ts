@@ -1,15 +1,12 @@
 import { resolveTextScaleVariables } from "./appearancePreferences";
 import { BUILT_IN_THEME_IDS, type BuiltInThemeId } from "@t3tools/shared/themePalettes";
 import {
-  DEFAULT_MOBILE_THEME_ID,
   type MobileThemeAppearance,
   type MobileThemeId,
   type MobileThemeMode,
 } from "./mobileTheme";
 
-export type MobileUniwindThemeName =
-  | MobileThemeAppearance
-  | `${BuiltInThemeId}-${MobileThemeAppearance}`;
+export type MobileUniwindThemeName = `${BuiltInThemeId}-${MobileThemeAppearance}`;
 
 export interface MobileThemeRuntimeState {
   readonly baseFontSize: number;
@@ -42,7 +39,7 @@ export function getMobileUniwindThemeName(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileUniwindThemeName {
-  return themeId === DEFAULT_MOBILE_THEME_ID ? appearance : `${themeId}-${appearance}`;
+  return `${themeId}-${appearance}`;
 }
 
 /**
