@@ -3,14 +3,18 @@ import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  type BrandAppearance,
   CHIP_TINTS,
   FALLBACK_PROVIDER_ACCENT,
+  FLAT_CARD_BORDER,
   ICON_MAP,
   IDENTITY,
   MINT_PANEL,
   PROVIDER_ACCENT_SWATCHES,
+  PROCESS_STEPS,
   RADII,
   SEMANTIC_INDICATORS,
+  type ServiceStatusTone,
   SERVICE_STATUS_TONES,
   TYPE_SCALE,
   ZEROPS_MARK,
@@ -56,14 +60,99 @@ describe("Zerops brand tokens", () => {
     ]);
   });
 
-  it.each([
-    ["ok light text pair 4.63", SERVICE_STATUS_TONES.ok.light, 4.5],
-    ["attention dark text pair 6.01", SERVICE_STATUS_TONES.attention.dark, 4.5],
-    ["busy dark text pair 5.51", SERVICE_STATUS_TONES.busy.dark, 4.5],
-    ["failed dark text pair 5.02", SERVICE_STATUS_TONES.failed.dark, 4.5],
-  ])("keeps %s readable", (_name, tone, threshold) => {
-    expect(tone.text).toBeDefined();
-    expect(contrastRatio(tone.text!, tone.surface)).toBeGreaterThanOrEqual(threshold);
+  it("projects every service status and primitive token into both web palettes", () => {
+    const indexCss = NodeFS.readFileSync(
+      new URL("../../../apps/web/src/index.css", import.meta.url),
+      "utf8",
+    );
+    const rootStart = indexCss.indexOf(":root {\n  color-scheme: light;");
+    const darkStart = indexCss.indexOf("\n  @variant dark {", rootStart);
+    const darkEnd = indexCss.indexOf("\n  }\n}", darkStart);
+    expect(rootStart).toBeGreaterThanOrEqual(0);
+    expect(darkStart).toBeGreaterThan(rootStart);
+    expect(darkEnd).toBeGreaterThan(darkStart);
+
+    const palettes: Record<BrandAppearance, string> = {
+      light: indexCss.slice(rootStart, darkStart),
+      dark: indexCss.slice(darkStart, darkEnd),
+    };
+    const valuesFor = (source: string, property: string) =>
+      [...source.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
+    const allValuesFor = (property: string) => valuesFor(indexCss, property);
+
+    for (const [tone, appearances] of Object.entries(SERVICE_STATUS_TONES)) {
+      for (const appearance of ["light", "dark"] as const) {
+        const status = appearances[appearance] as ServiceStatusTone;
+        for (const field of ["dot", "surface", "text"] as const) {
+          const suffix = field === "dot" ? "" : `-${field}`;
+          const expected = status[field];
+          expect(valuesFor(palettes[appearance], `--zerops-status-${tone}${suffix}`)).toEqual(
+            expected === undefined ? [] : [expected],
+          );
+        }
+      }
+    }
+
+    expect(allValuesFor("--zerops-micro-label-font-size")).toEqual([
+      `${TYPE_SCALE.microLabel.fontSize}px`,
+      `${TYPE_SCALE.microLabel.fontSize}px`,
+    ]);
+    expect(allValuesFor("--zerops-micro-label-font-weight")).toEqual([
+      `${TYPE_SCALE.microLabel.fontWeight}`,
+      `${TYPE_SCALE.microLabel.fontWeight}`,
+    ]);
+    expect(allValuesFor("--zerops-micro-label-tracking")).toEqual([
+      `${TYPE_SCALE.microLabel.letterSpacingEm}em`,
+      `${TYPE_SCALE.microLabel.letterSpacingEm}em`,
+    ]);
+    expect(allValuesFor("--zerops-micro-label-opacity")).toEqual([
+      `${TYPE_SCALE.microLabel.opacity}`,
+      `${TYPE_SCALE.microLabel.opacity}`,
+    ]);
+    expect(allValuesFor("--zerops-pill-radius")).toEqual([`${RADII.pill}px`, `${RADII.pill}px`]);
+    expect(allValuesFor("--zerops-chip-radius")).toEqual([`${RADII.chip}px`, `${RADII.chip}px`]);
+    expect(allValuesFor("--zerops-info-chip-radius")).toEqual([]);
+    expect(allValuesFor("--zerops-card-radius")).toEqual([`${RADII.card}px`, `${RADII.card}px`]);
+    expect(allValuesFor("--zerops-key-chip-radius")).toEqual([
+      `${RADII.keyChip}px`,
+      `${RADII.keyChip}px`,
+    ]);
+    expect(
+      allValuesFor("--zerops-flat-card-border").map((value) =>
+        (value ?? "").replaceAll(" ", "").replace("0.06", ".06"),
+      ),
+    ).toEqual([FLAT_CARD_BORDER.light, FLAT_CARD_BORDER.dark]);
+    expect(allValuesFor("--zerops-mint-panel")).toEqual([MINT_PANEL.light, MINT_PANEL.dark]);
+    expect(allValuesFor("--zerops-process-step-column")).toEqual([
+      `${PROCESS_STEPS.glyphColumn}px`,
+      `${PROCESS_STEPS.glyphColumn}px`,
+    ]);
+    expect(allValuesFor("--zerops-process-step-glyph-size")).toEqual([
+      `${PROCESS_STEPS.glyphSize}px`,
+      `${PROCESS_STEPS.glyphSize}px`,
+    ]);
+    expect(allValuesFor("--zerops-process-step-border-width")).toEqual([
+      `${PROCESS_STEPS.glyphBorderWidth}px`,
+      `${PROCESS_STEPS.glyphBorderWidth}px`,
+    ]);
+  });
+
+  it("keeps every chip label at AA contrast, including neutral --foreground fallbacks", () => {
+    const neutralForeground = { light: "#27272a", dark: "#f5f5f5" } as const;
+    const withheld: Array<string> = [];
+
+    for (const [tone, appearances] of Object.entries(SERVICE_STATUS_TONES)) {
+      for (const appearance of ["light", "dark"] as const) {
+        const status = appearances[appearance] as ServiceStatusTone;
+        if (status.text === undefined) withheld.push(`${tone}.${appearance}`);
+        expect(
+          contrastRatio(status.text ?? neutralForeground[appearance], status.surface),
+          `${tone}.${appearance}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+
+    expect(withheld).toEqual(["busy.light", "failed.light", "off.light", "off.dark"]);
   });
 
   it("pins the exact ok dark surface and its 7.030395873026908 AA contrast", () => {
@@ -74,10 +163,11 @@ describe("Zerops brand tokens", () => {
     expect(contrastRatio(tone.text, tone.surface)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("records attention light at 3.89 as an indicator pair", () => {
+  it("pins the corrected attention light label above AA contrast", () => {
     const tone = SERVICE_STATUS_TONES.attention.light;
-    expect(contrastRatio(tone.text!, tone.surface)).toBeCloseTo(3.89, 2);
-    expect(contrastRatio(tone.text!, tone.surface)).toBeLessThan(4.5);
+    expect(tone.text).toBe("#a26000");
+    expect(contrastRatio(tone.text, tone.surface)).toBeCloseTo(4.577498770334955, 12);
+    expect(contrastRatio(tone.text, tone.surface)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps fixed identity, chip, and mint-panel tokens outside the theme library", () => {
@@ -137,6 +227,10 @@ describe("Zerops brand tokens", () => {
       deploy: "Rocket",
       authorized: "CircleCheck",
       warning: "TriangleAlert",
+      queued: "Clock",
+      running: "Play",
+      done: "Check",
+      failed: "CircleAlert",
     });
   });
 
@@ -149,6 +243,19 @@ describe("Zerops brand tokens", () => {
       infoChip: 8,
       keyChip: 3,
       composer: 22,
+      pill: 80,
+    });
+  });
+
+  it("pins the flat-card border and process-step geometry", () => {
+    expect(FLAT_CARD_BORDER).toEqual({
+      light: "transparent",
+      dark: "rgba(255,255,255,.06)",
+    });
+    expect(PROCESS_STEPS).toEqual({
+      glyphColumn: 30,
+      glyphSize: 17,
+      glyphBorderWidth: 2,
     });
   });
 
@@ -159,7 +266,12 @@ describe("Zerops brand tokens", () => {
       cardTitle: { fontSize: 14, fontWeight: 500 },
       projectName: { fontSize: 20, fontWeight: 500 },
       description: { fontSize: 13, fontWeight: 400, lineHeight: 1.6, opacity: 0.7 },
-      microLabel: { fontSize: 10, fontWeight: 600 },
+      microLabel: {
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacingEm: 0.06,
+        opacity: 0.45,
+      },
       draftHero: { fontSize: 32, fontWeight: 400 },
     });
   });

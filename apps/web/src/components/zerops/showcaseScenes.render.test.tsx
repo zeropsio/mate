@@ -8,6 +8,7 @@ import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decod
 import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
+import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
 import { expect, it } from "vite-plus/test";
 import * as Predicate from "effect/Predicate";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -16,6 +17,17 @@ import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsStripLine } from "./ZeropsLifecycleStrip";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsToolCard } from "./ZeropsToolCard";
+import {
+  Chip,
+  FlatCard,
+  KeyChip,
+  LivenessLine,
+  MicroLabel,
+  MintPanel,
+  Pill,
+  ProcessSteps,
+  StatusDot,
+} from "./primitives";
 
 function activityPayload(activity: OrchestrationThreadActivity) {
   return Predicate.isObject(activity.payload) && !Array.isArray(activity.payload)
@@ -75,4 +87,101 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
 
   expect(markup.join("\n")).not.toContain("undefined");
   expect(markup.join("\n")).not.toContain("[object Object]");
+});
+
+it("renders the complete primitive probe from existing showcase facts", () => {
+  const scenes = listShowcaseScenes();
+  const probesByTone = new Map<
+    ServiceStatusToneId,
+    { readonly label: string; readonly tone: ServiceStatusToneId }
+  >();
+  const addProbe = (tone: ServiceStatusToneId, label: string) => {
+    if (!probesByTone.has(tone)) probesByTone.set(tone, { label, tone });
+  };
+
+  for (const scene of scenes) {
+    if (!scene.topology.available) addProbe("off", scene.title);
+    for (const tool of scene.lifecycle.recentTools) {
+      if (tool.status === "inProgress") addProbe("busy", `${tool.toolName} running`);
+    }
+    for (const agent of scene.agentAuth.agents) {
+      if (agent.state === "not-authorized") {
+        addProbe("attention", `${agent.agentId} needs authorization`);
+      }
+    }
+    for (const service of scene.topology.services) {
+      addProbe(
+        /FAIL/u.test(service.status) ? "failed" : "ok",
+        `${service.hostname} ${service.status.toLowerCase()}`,
+      );
+    }
+  }
+
+  const toneProbes = [...probesByTone.values()];
+  const toneMarkup = toneProbes
+    .flatMap(({ label, tone }) => [
+      renderToStaticMarkup(<StatusDot key={`dot-${tone}`} label={label} tone={tone} />),
+      renderToStaticMarkup(<Chip key={`chip-${tone}`} label={label} tone={tone} />),
+    ])
+    .join("\n");
+  const processMarkup = scenes
+    .filter((scene) => scene.topology.services.length > 0)
+    .map((scene) =>
+      renderToStaticMarkup(
+        <ProcessSteps
+          steps={scene.topology.services.map((service) => ({
+            id: `${scene.id}:${service.hostname}`,
+            label: service.hostname,
+            state: /FAIL/u.test(service.status)
+              ? ("failed" as const)
+              : service.transient
+                ? ("running" as const)
+                : ("done" as const),
+            stateLabel: service.status.toLowerCase(),
+          }))}
+        />,
+      ),
+    )
+    .join("\n");
+  const livenessMarkup = scenes
+    .map((scene) => {
+      if (!scene.topology.available) return renderToStaticMarkup(<LivenessLine state="absent" />);
+      return scene.topology.doorbellConnected === false
+        ? renderToStaticMarkup(
+            <LivenessLine label={scene.topology.reason ?? scene.title} state="doorbell-down" />,
+          )
+        : renderToStaticMarkup(<LivenessLine label={scene.title} state="live" />);
+    })
+    .join("\n");
+  const primitivesMarkup = scenes
+    .flatMap((scene) => [
+      renderToStaticMarkup(<MicroLabel>{scene.title}</MicroLabel>),
+      renderToStaticMarkup(<Pill label={scene.title} />),
+      renderToStaticMarkup(<FlatCard>{scene.title}</FlatCard>),
+      renderToStaticMarkup(<MintPanel>{scene.title}</MintPanel>),
+      renderToStaticMarkup(<KeyChip>{scene.id}</KeyChip>),
+    ])
+    .join("\n");
+  const markup = `${toneMarkup}\n${primitivesMarkup}\n${processMarkup}\n${livenessMarkup}`;
+
+  for (const primitive of [
+    "status-dot",
+    "micro-label",
+    "chip",
+    "pill",
+    "flat-card",
+    "mint-panel",
+    "process-steps",
+    "key-chip",
+    "liveness-line",
+  ]) {
+    expect(markup).toContain(`data-zerops-primitive="${primitive}"`);
+  }
+  expect(toneProbes.map(({ tone }) => tone).sort()).toEqual(
+    Object.keys(SERVICE_STATUS_TONES).sort(),
+  );
+  for (const { tone } of toneProbes) {
+    expect(markup).toContain(`data-zerops-status-tone="${tone}"`);
+    expect(markup).toContain(`data-zerops-chip-tone="${tone}"`);
+  }
 });

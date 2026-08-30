@@ -41,7 +41,7 @@ export const SERVICE_STATUS_TONES = {
     dark: { dot: "#58a6ff", text: "#58a6ff", surface: "#1e2e3b" },
   },
   attention: {
-    light: { dot: "#ffa726", text: "#b26a00", surface: "#fff4e0" },
+    light: { dot: "#ffa726", text: "#a26000", surface: "#fff4e0" },
     dark: { dot: "#e8a33d", text: "#ffb74d", surface: "#453f36" },
   },
   failed: {
@@ -53,6 +53,8 @@ export const SERVICE_STATUS_TONES = {
     dark: { dot: "#5e6e69", surface: "#151b1a" },
   },
 } as const satisfies Readonly<Record<string, Readonly<Record<BrandAppearance, ServiceStatusTone>>>>;
+
+export type ServiceStatusToneId = keyof typeof SERVICE_STATUS_TONES;
 
 export const IDENTITY = {
   mark: { main: "#3cbdb2", secondary: "#00b1a3" },
@@ -81,6 +83,17 @@ export const MINT_PANEL = {
   dark: DARK_MINT_SURFACE,
 } as const;
 
+export const FLAT_CARD_BORDER = {
+  light: "transparent",
+  dark: "rgba(255,255,255,.06)",
+} as const;
+
+export const PROCESS_STEPS = {
+  glyphColumn: 30,
+  glyphSize: 17,
+  glyphBorderWidth: 2,
+} as const;
+
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",
   paths: [
@@ -104,7 +117,7 @@ export const ZEROPS_MARK = {
 } as const;
 
 /** Cross-platform intent names; each client resolves these through its native icon library. */
-export const ICON_MAP: Record<string, string> = {
+export const ICON_MAP = {
   project: "Folder",
   cloudIde: "Cloud",
   serviceMap: "LayoutGrid",
@@ -120,7 +133,11 @@ export const ICON_MAP: Record<string, string> = {
   deploy: "Rocket",
   authorized: "CircleCheck",
   warning: "TriangleAlert",
-};
+  queued: "Clock",
+  running: "Play",
+  done: "Check",
+  failed: "CircleAlert",
+} as const satisfies Record<string, string>;
 
 export const RADII = {
   card: 10,
@@ -130,6 +147,7 @@ export const RADII = {
   infoChip: 8,
   keyChip: 3,
   composer: 22,
+  pill: 80,
 } as const;
 
 export const TYPE_SCALE = {
@@ -138,6 +156,6 @@ export const TYPE_SCALE = {
   cardTitle: { fontSize: 14, fontWeight: 500 },
   projectName: { fontSize: 20, fontWeight: 500 },
   description: { fontSize: 13, fontWeight: 400, lineHeight: 1.6, opacity: 0.7 },
-  microLabel: { fontSize: 10, fontWeight: 600 },
+  microLabel: { fontSize: 10, fontWeight: 600, letterSpacingEm: 0.06, opacity: 0.45 },
   draftHero: { fontSize: 32, fontWeight: 400 },
 } as const;

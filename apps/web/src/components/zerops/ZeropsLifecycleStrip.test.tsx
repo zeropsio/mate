@@ -78,9 +78,13 @@ describe("ZeropsStripLine", () => {
     expect(render(undefined)).toBe("");
   });
 
-  it("spins only while something is running", () => {
-    expect(render({ tone: "active", label: "zerops_deploy running" })).toContain("animate-spin");
-    expect(render({ tone: "done", label: "task complete" })).not.toContain("animate-spin");
+  it("uses a stepped reduced-motion-safe pulse only while something is running", () => {
+    const active = render({ tone: "active", label: "zerops_deploy running" });
+
+    expect(active).toContain("animate-status-pulse");
+    expect(active).toContain("motion-reduce:animate-none");
+    expect(active).not.toContain("animate-spin");
+    expect(render({ tone: "done", label: "task complete" })).not.toContain("animate-status-pulse");
   });
 
   it("colours a waiting strip differently from a finished one", () => {
