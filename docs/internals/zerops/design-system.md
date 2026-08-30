@@ -119,11 +119,11 @@ their tests are shared (`oxlint-plugin-t3code/exceptions.ts`, W1-EXC).
 
 **Ledger sizes** (updated at every wave end; the machine files are the truth):
 
-| Rule | File                                      |       Entries | `never` | Notes                                                                                                                                                     |
-| ---- | ----------------------------------------- | ------------: | ------: | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R3   | `exceptions/no-theme-escape-hatches.json` | 446 (+35 css) |     210 | baseline = today's violations outside the Zerops dirs (the plan counts 225 web utilities + 155 mobile literals — the exact number is what the scan finds) |
-| R4   | `exceptions/no-legacy-vocabulary.json`    |           100 |      47 | the manual one-time-link fallback component's exact literals                                                                                              |
-| R6   | `exceptions/no-infinite-motion.json`      |            29 |      25 | the four known continuous uses today                                                                                                                      |
+| Rule | File                                      |                Entries | `never` | Notes                                                                                                                                                     |
+| ---- | ----------------------------------------- | ---------------------: | ------: | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R3   | `exceptions/no-theme-escape-hatches.json` | 446 (411 ast + 35 css) |     210 | baseline = today's violations outside the Zerops dirs (the plan counts 225 web utilities + 155 mobile literals — the exact number is what the scan finds) |
+| R4   | `exceptions/no-legacy-vocabulary.json`    |                    100 |      47 | the manual one-time-link fallback component's exact literals                                                                                              |
+| R6   | `exceptions/no-infinite-motion.json`      |                     29 |      25 | the four known continuous uses today                                                                                                                      |
 
 ## 6. Decisions taken inside the programme
 
