@@ -25,17 +25,17 @@ Lots of apps have gotten bogged down with bad tech decisions and "slop". We have
 
 ### 3. Remote ready
 
-The architecture of T3 Code's websocket layer (npx t3) enables a lot of awesome remote features. These have become core to the product. Whether users are connecting directly over their local network or leaning in fully with T3 Connect (our tunnel solution, also in this repo), we need to make sure new features are properly supported.
+The server runs inside a Zerops container and every client reaches it over the container's public origin through the Zerops-identity door, or through a one-time link as the manual fallback. There is no local-network mode and no tunnel — T3 Connect and Tailscale left with the fork. A feature is done when it works through that door from every client.
 
 ### 4. Multi-surface
 
-T3 Code has 3 key app surfaces: **web**, **desktop**, and **mobile**.
+z3 has 3 app surfaces: **web**, **desktop**, and **mobile** — one hosted-static web bundle, reached three ways.
 
-**Web** is kind of two surfaces, as we have the public facing "app.t3.codes" as well as locally hosting the web app through the `npx t3` command. Both need to be supported by all new features where reasonable.
+**Web** is that bundle served by the container itself under `/z3/`, on the same origin as the rest of `zcp`. It is the surface a Zerops user signs into first.
 
-**Desktop** is the main surface most users install first. It's a full Electron app that bundles the server runner as well. The desktop app can also be used as the host server, allowing remote connections from app.t3.codes or the mobile app.
+**Desktop** is an Electron shell around the same hosted-static bundle: keychain, dialogs, updater, preview webview, window/menu/theme. It hosts nothing — no local backend, no server sidecar — and connects to a container like any other client.
 
-**Mobile** is a React Native app for both iOS and Android, available on the App Store and Google Play. The mobile app allows for connecting to any T3 Code server to control work remotely.
+**Mobile** is a React Native app for iOS and Android that connects to a container to control work remotely.
 
 ## A note from Theo
 
@@ -78,7 +78,7 @@ The most common defect in this repo is a change that works on the path you teste
 - **Providers.** Codex, Claude, Cursor, Grok, and OpenCode each have an adapter. Provider-shaped features need a decision per adapter, even if the decision is "not supported here".
 - **Contracts.** Anything crossing the wire is typed in `packages/contracts`. Change the schema and the server, web, mobile, and desktop all follow.
 - **Reverse states.** If you added a way in, add the way out and the way to see it. Snooze needs unsnooze. Close needs reopen. A one-way door is a bug.
-- **Connection modes.** Local, remote/relay, and tunnel behave differently. Multi-device and multi-environment cases are real.
+- **Connection modes.** The Zerops door and the manual one-time link behave differently. Multi-device and multi-project cases are real.
 - **Docs.** `docs/` splits by audience. Behavior changes that a user would notice belong in `docs/user/` (shipped-product voice, no repo tooling or source paths); architecture and contributor changes in `docs/internals/`; runbooks in `docs/operations/`; new vocabulary in `docs/internals/glossary.md`.
 
 ## Dev servers

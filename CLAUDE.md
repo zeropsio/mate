@@ -16,18 +16,19 @@ the spec or the ledger. To answer a question, go to the home:
 | Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                                     |
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
 | Measured facts (dated, one writer)                                                                                       | the ledger: `docs/internals/zerops/{verified,questions,hacks,map,poc-findings}.md` |
+| Client design system — vocabulary, glossary, icon map, rules R1–R8 with their tests, exception ledgers                   | `docs/internals/zerops/design-system.md`                                           |
 | Behavior invariant                                                                                                       | a test                                                                             |
 | Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                           |
 | Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                        |
 
 ## Zones
 
-| Zone                                                                                                  | Rule                                                                                      |
-| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Import** — wire-protocol packages (`packages/effect-codex-app-server`, `packages/effect-acp`)       | byte-identical, re-imported from an upstream SHA in one commit, pinned by `imported.lock` |
-| **Port** — provider drivers (`apps/server/src/provider/**`, provider contracts)                       | ported behind the adapter SPI, our edits stay minimal so ports stay cheap                 |
-| **Owned** — the rest of `apps/server`, shared packages, desktop, mobile                               | ours; upstream changes are optional cherry-picks                                          |
-| **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`, `docs/internals/zerops/**` | ours only                                                                                 |
+| Zone                                                                                                                                                                                                                                                                     | Rule                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| **Import** — wire-protocol packages (`packages/effect-codex-app-server`, `packages/effect-acp`)                                                                                                                                                                          | byte-identical, re-imported from an upstream SHA in one commit, pinned by `imported.lock`  |
+| **Port** — provider drivers (`apps/server/src/provider/**`, provider contracts)                                                                                                                                                                                          | ported behind the adapter SPI, our edits stay minimal so ports stay cheap                  |
+| **Owned** — the rest of `apps/server`, shared packages, desktop, mobile                                                                                                                                                                                                  | ours; upstream changes are optional cherry-picks                                           |
+| **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`, `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`, `apps/mobile/src/features/zerops/**`, `packages/shared/src/{brand,threadStatus}.ts`, `docs/internals/zerops/**` | ours only; the client design system rules live in `docs/internals/zerops/design-system.md` |
 
 Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/internals/zerops/fork.md` §3.
 
