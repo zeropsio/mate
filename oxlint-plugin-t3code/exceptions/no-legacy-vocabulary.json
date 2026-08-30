@@ -192,14 +192,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/lib/mobileTheme.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "shipped theme name, not the application display name",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/state/use-selected-thread-git-actions.ts",
     "kind": "Literal",
     "fingerprint": "\"Creating worktree\"",
@@ -725,14 +717,6 @@
     "fingerprint": "New worktree",
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemePreviewCircles.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "shipped theme name, not the application display name",
     "expires": "never"
   },
   {

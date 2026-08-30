@@ -93,6 +93,7 @@ const STATUS_CONSUMER_MODULES = [
 
 /** These modules define the semantic roles protected by this rule, so their palettes are sources. */
 const THEME_SOURCE_MODULES = [
+  "/packages/shared/src/brand.ts",
   "/packages/shared/src/themePalettes.ts",
   "/apps/web/src/themePalette.ts",
   "/apps/mobile/src/lib/mobileTheme.ts",
