@@ -73,9 +73,9 @@ function platformArch(
 /**
  * The capability set this server advertises.
  *
- * Both git-pipeline capabilities key off the same rule: on Zerops zcp owns
- * commit, push and the remote, so the client hides its own controls rather
- * than offering a button that the server-side refusal would answer.
+ * On Zerops zcp owns commit, push and the remote, so the client hides its
+ * stacked action control rather than offering a button that the server-side
+ * refusal would answer.
  */
 export const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
@@ -87,7 +87,6 @@ export const makeServerEnvironmentCapabilities = (
     connectionProbe: true,
     attachmentUploads: true,
     fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
-    pullRequests: policy.stackedVcsActionsAllowed,
     vcsStackedActions: policy.stackedVcsActionsAllowed,
     threadSettlement: true,
     threadSnooze: true,
