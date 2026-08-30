@@ -19,7 +19,7 @@
  * as `undefined`, and the caller renders the generic tool block. That path is
  * ordinary, not exceptional.
  */
-import type { ZeropsActivityResult } from "../activityResult";
+import type { ZeropsActivityResult } from "../activityResult.ts";
 
 export interface ZeropsCardSource {
   /** Tool name without the `mcp__<server>__` prefix, e.g. `zerops_deploy`. */

@@ -1,7 +1,7 @@
-import type { ZeropsRegistrationResponse, ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveProvisioningStart } from "./registrationHandoff";
+import type { ZeropsRegistrationResponse, ZeropsUser } from "./api.ts";
+import { deriveProvisioningStart } from "./registrationHandoff.ts";
 
 function user(overrides: Partial<ZeropsUser> = {}): ZeropsUser {
   return {

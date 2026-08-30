@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
 
-import { buildZeropsServiceMap } from "./serviceMap";
+import { buildZeropsServiceMap } from "./serviceMap.ts";
 
 const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>
   ({
@@ -26,7 +26,7 @@ const topology = (
     project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
     services,
     warnings: [],
-    readAt: new Date("2026-08-28T10:00:00Z"),
+    readAt: "2026-08-28T10:00:00Z",
     ...overrides,
   }) as unknown as ZeropsTopologySnapshot;
 
@@ -210,8 +210,18 @@ describe("buildZeropsServiceMap", () => {
       topology(realServices),
       lifecycle({
         recentTools: [
-          { toolName: "zerops_deploy", status: "inProgress", at: new Date(), itemId: "item-1" },
-          { toolName: "zerops_mount", status: "completed", at: new Date(), itemId: "item-0" },
+          {
+            toolName: "zerops_deploy",
+            status: "inProgress",
+            at: "2026-08-28T10:00:00Z",
+            itemId: "item-1",
+          },
+          {
+            toolName: "zerops_mount",
+            status: "completed",
+            at: "2026-08-28T09:00:00Z",
+            itemId: "item-0",
+          },
         ],
       } as unknown as Partial<ZeropsLifecycle>),
     );
@@ -224,7 +234,12 @@ describe("buildZeropsServiceMap", () => {
       topology(realServices),
       lifecycle({
         recentTools: [
-          { toolName: "zerops_deploy", status: "completed", at: new Date(), itemId: "item-1" },
+          {
+            toolName: "zerops_deploy",
+            status: "completed",
+            at: "2026-08-28T10:00:00Z",
+            itemId: "item-1",
+          },
         ],
       } as unknown as Partial<ZeropsLifecycle>),
     );

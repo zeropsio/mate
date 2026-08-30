@@ -16,7 +16,7 @@ import { useCallback } from "react";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
-import { agentLoginTerminalToFocus } from "./agentLogin";
+import { agentLoginTerminalToFocus } from "@t3tools/client-runtime/zerops/agentLogin";
 
 export function useAgentLogin(threadRef: ScopedThreadRef | null): (agentId: ZeropsAgentId) => void {
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);

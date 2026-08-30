@@ -2,7 +2,7 @@
  * The Zerops service map: what exists in the project, grouped and live.
  *
  * Presentational only — every rule it renders is decided in
- * `../../zerops/serviceMap.ts` and tested there. It mutates nothing: the agent
+ * `@t3tools/client-runtime/zerops/serviceMap` and tested there. It mutates nothing: the agent
  * owns every change to the project, and the one action offered here opens a URL
  * the feed already carries.
  */
@@ -13,7 +13,7 @@ import type {
   ZeropsServiceMapGroup,
   ZeropsServiceMapView,
   ZeropsServiceRow,
-} from "../../zerops/serviceMap";
+} from "@t3tools/client-runtime/zerops/serviceMap";
 import type { ZeropsService } from "@t3tools/contracts";
 
 /**

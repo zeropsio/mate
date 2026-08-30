@@ -1,8 +1,11 @@
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import type { ZeropsProject } from "./api.ts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsCandidate } from "./candidates";
-import { newestProvisioningCandidate, shouldAutoEnterProvisioning } from "./autoEnterProvisioning";
+import {
+  newestProvisioningCandidate,
+  shouldAutoEnterProvisioning,
+} from "./autoEnterProvisioning.ts";
+import type { ZeropsCandidate } from "./candidates.ts";
 
 function project(overrides: Partial<ZeropsProject> & { readonly id: string }): ZeropsProject {
   return { name: "p", status: "CREATING", ...overrides };

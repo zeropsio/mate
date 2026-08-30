@@ -78,7 +78,7 @@
       "title": "Zerops service map",
       "components": [
         "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-        "apps/web/src/zerops/serviceMap.ts"
+        "packages/client-runtime/src/zerops/serviceMap.ts"
       ],
       "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
       "clients": {
@@ -101,7 +101,7 @@
       "docs": { "none": "No docs/user page documents the Zerops service map yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
-        "apps/web/src/zerops/serviceMap.test.ts"
+        "packages/client-runtime/src/zerops/serviceMap.test.ts"
       ],
       "captures": []
     },
@@ -110,7 +110,7 @@
       "title": "Zerops quick actions",
       "components": [
         "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
-        "apps/web/src/zerops/quickActions.ts"
+        "packages/client-runtime/src/zerops/quickActions.ts"
       ],
       "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
       "clients": {
@@ -133,7 +133,7 @@
       "docs": { "none": "No docs/user page documents Zerops quick actions yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
-        "apps/web/src/zerops/quickActions.test.ts"
+        "packages/client-runtime/src/zerops/quickActions.test.ts"
       ],
       "captures": []
     },
@@ -142,7 +142,7 @@
       "title": "Zerops agent authorization card",
       "components": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
-        "apps/web/src/zerops/agentLogin.ts",
+        "packages/client-runtime/src/zerops/agentLogin.ts",
         "apps/web/src/zerops/useAgentLogin.ts",
         "apps/web/src/zerops/useAgentLoginCancel.ts"
       ],
@@ -187,7 +187,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
-        "apps/web/src/zerops/agentLogin.test.ts"
+        "packages/client-runtime/src/zerops/agentLogin.test.ts"
       ],
       "captures": []
     },
@@ -196,7 +196,7 @@
       "title": "Zerops lifecycle strip",
       "components": [
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
-        "apps/web/src/zerops/strip.ts"
+        "packages/client-runtime/src/zerops/strip.ts"
       ],
       "entryPoints": [{ "kind": "inline", "value": "ChatHeader" }],
       "clients": {
@@ -217,7 +217,7 @@
       "docs": { "none": "No docs/user page documents the Zerops lifecycle strip yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
-        "apps/web/src/zerops/strip.test.ts"
+        "packages/client-runtime/src/zerops/strip.test.ts"
       ],
       "captures": []
     },
@@ -226,8 +226,8 @@
       "title": "Zerops tool result card",
       "components": [
         "apps/web/src/components/zerops/ZeropsToolCard.tsx",
-        "apps/web/src/zerops/activityResult.ts",
-        "apps/web/src/zerops/cards/payloads.ts"
+        "packages/client-runtime/src/zerops/activityResult.ts",
+        "packages/client-runtime/src/zerops/cards/payloads.ts"
       ],
       "entryPoints": [{ "kind": "inline", "value": "MessagesTimeline tool result" }],
       "clients": {
@@ -250,8 +250,8 @@
       "docs": { "none": "No docs/user page documents Zerops tool result cards yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsToolCard.test.tsx",
-        "apps/web/src/zerops/cards/payloads.test.ts",
-        "apps/web/src/zerops/activityResult.test.ts"
+        "packages/client-runtime/src/zerops/cards/payloads.test.ts",
+        "packages/client-runtime/src/zerops/activityResult.test.ts"
       ],
       "captures": []
     },
@@ -313,11 +313,11 @@
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
         "apps/web/src/components/zerops/ZeropsProjectPicker.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
-        "apps/web/src/zerops/autoEnterProvisioning.ts",
-        "apps/web/src/zerops/candidates.ts",
-        "apps/web/src/zerops/containerHealth.ts",
-        "apps/web/src/zerops/provisioning.ts",
-        "apps/web/src/zerops/registrationHandoff.ts",
+        "packages/client-runtime/src/zerops/autoEnterProvisioning.ts",
+        "packages/client-runtime/src/zerops/candidates.ts",
+        "packages/client-runtime/src/zerops/containerHealth.ts",
+        "packages/client-runtime/src/zerops/provisioning.ts",
+        "packages/client-runtime/src/zerops/registrationHandoff.ts",
         "apps/web/src/zerops/turnstile.tsx"
       ],
       "entryPoints": [
@@ -373,11 +373,11 @@
       "tests": [
         "apps/web/src/components/zerops/ZeropsProjectPicker.test.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.test.tsx",
-        "apps/web/src/zerops/candidates.test.ts",
-        "apps/web/src/zerops/provisioning.test.ts",
-        "apps/web/src/zerops/autoEnterProvisioning.test.ts",
-        "apps/web/src/zerops/registrationHandoff.test.ts",
-        "apps/web/src/zerops/containerHealth.test.ts",
+        "packages/client-runtime/src/zerops/candidates.test.ts",
+        "packages/client-runtime/src/zerops/provisioning.test.ts",
+        "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",
+        "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
+        "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts"
       ],
       "captures": []
@@ -422,8 +422,9 @@
       "id": "zerops-first-prompt",
       "title": "Zerops first prompt",
       "components": [
-        "apps/web/src/zerops/firstPrompt.ts",
-        "apps/web/src/zerops/composeFirstPrompt.ts"
+        "packages/client-runtime/src/zerops/firstPrompt.ts",
+        "apps/web/src/zerops/composeFirstPrompt.ts",
+        "apps/web/src/zerops/firstPromptStorage.ts"
       ],
       "entryPoints": [
         { "kind": "inline", "value": "First thread created after connecting an environment" }
@@ -450,7 +451,7 @@
         }
       ],
       "docs": { "none": "No docs/user page documents the Zerops first prompt yet." },
-      "tests": ["apps/web/src/zerops/firstPrompt.test.ts"],
+      "tests": ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
       "captures": []
     },
     {

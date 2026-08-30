@@ -12,7 +12,7 @@
  * alone. `useAgentLogin` is what the handler actually does (asks the server
  * to run the login and opens the terminal panel so the user can watch it);
  * deciding whether the card is worth showing at all is
- * `zeropsAgentAuthNeedsAttention` (`../../zerops/agentLogin`), left to the
+ * `zeropsAgentAuthNeedsAttention` (`@t3tools/client-runtime/zerops/agentLogin`), left to the
  * caller so this stays pure.
  */
 import { useState } from "react";
@@ -25,7 +25,7 @@ import {
   agentLoginLabel,
   classifyAgentLogin,
   type ZeropsAgentLoginPresentation,
-} from "../../zerops/agentLogin";
+} from "@t3tools/client-runtime/zerops/agentLogin";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",

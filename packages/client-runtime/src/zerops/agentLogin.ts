@@ -11,7 +11,7 @@
  * `classifyAgentAuth`'s own shape so a state can never get a label from one
  * branch and a button from another.
  */
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import type { AtomCommandResult } from "../state/runtime.ts";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,

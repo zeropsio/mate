@@ -202,7 +202,7 @@ function ensureLinkedEnvironmentMatches(input: {
  * origin the linking browser reached it through, not sent by this function.
  * No UI in this codebase currently calls this — a Settings → Notifications
  * trigger is the natural home for one, built against a Zerops candidate's
- * `containerOrigin` (apps/web/src/zerops/candidates.ts) as `target`.
+ * `containerOrigin` (`@t3tools/client-runtime/zerops/candidates`) as `target`.
  */
 export function linkPrimaryEnvironmentToCloud(input: {
   readonly target: CloudLinkTarget;

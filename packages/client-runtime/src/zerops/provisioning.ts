@@ -16,9 +16,9 @@
  *    cap that runs out leaves a retryable state rather than an error.
  */
 
-import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "./api.ts";
 
-import { deriveZeropsCandidates } from "./candidates";
+import { deriveZeropsCandidates } from "./candidates.ts";
 
 /** What a `/healthz` probe concluded about a container. */
 export type ZeropsContainerHealth = "ready" | "initializing" | "predates-z3" | "unreachable";

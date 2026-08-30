@@ -17,7 +17,10 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 
-import { type ZeropsActivityResult, readZeropsActivityResult } from "./zerops/activityResult";
+import {
+  type ZeropsActivityResult,
+  readZeropsActivityResult,
+} from "@t3tools/client-runtime/zerops/activityResult";
 
 import type {
   ChatMessage,
@@ -83,7 +86,7 @@ export interface WorkLogEntry {
   /**
    * The `zerops_*` result this entry carries, when it is a Zerops tool call.
    * Attached by the server because the slimming pass drops MCP results — see
-   * `zerops/activityResult.ts`. Absent for every other tool.
+   * `@t3tools/client-runtime/zerops/activityResult`. Absent for every other tool.
    */
   zeropsResult?: ZeropsActivityResult;
   itemType?: ToolLifecycleItemType;

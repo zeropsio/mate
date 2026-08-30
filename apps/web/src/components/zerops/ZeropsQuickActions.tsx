@@ -4,11 +4,11 @@
  * They are prompts, never calls. Every change to a Zerops project goes through
  * the agent's MCP tools, so these prefill and stop — the same seam the file
  * browser's "add to chat" uses (`FileBrowserPanel`). Which actions make sense
- * is decided in `../../zerops/quickActions.ts`.
+ * is decided in `@t3tools/client-runtime/zerops/quickActions`.
  */
 import { Button } from "~/components/ui/button";
 import { useComposerHandleContext } from "../../composerHandleContext";
-import type { ZeropsQuickAction } from "../../zerops/quickActions";
+import type { ZeropsQuickAction } from "@t3tools/client-runtime/zerops/quickActions";
 
 export function ZeropsQuickActions({
   actions,

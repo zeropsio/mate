@@ -9,9 +9,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { ZeropsCandidate } from "./candidates";
-import { probeZeropsContainerHealth } from "./containerHealth";
-import type { ZeropsContainerHealth } from "./provisioning";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
 const PROBE_CONCURRENCY = 4;
 

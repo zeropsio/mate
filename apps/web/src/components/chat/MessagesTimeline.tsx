@@ -118,8 +118,8 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { ZeropsToolCard } from "../zerops/ZeropsToolCard";
-import { readZeropsCardSource } from "../../zerops/cards/decode";
-import { decodeZeropsCard } from "../../zerops/cards/payloads";
+import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
+import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
 
-import { zeropsQuickActions } from "./quickActions";
+import { zeropsQuickActions } from "./quickActions.ts";
 
 const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>
   ({
@@ -25,7 +25,7 @@ const topology = (
     degraded: false,
     services,
     warnings: [],
-    readAt: new Date("2026-08-28T10:00:00Z"),
+    readAt: "2026-08-28T10:00:00Z",
     ...overrides,
   }) as unknown as ZeropsTopologySnapshot;
 

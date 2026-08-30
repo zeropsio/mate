@@ -16,7 +16,7 @@ import {
   readRecordArray,
   readString,
   readStringArray,
-} from "./decode";
+} from "./decode.ts";
 
 export interface ZeropsCheckLine {
   readonly name: string;

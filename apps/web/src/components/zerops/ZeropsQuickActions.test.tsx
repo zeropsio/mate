@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsQuickAction } from "../../zerops/quickActions";
+import type { ZeropsQuickAction } from "@t3tools/client-runtime/zerops/quickActions";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
 
 const actions: ReadonlyArray<ZeropsQuickAction> = [
