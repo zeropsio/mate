@@ -275,7 +275,11 @@ function walkProtectedRoot(
       return undefined;
     });
 
-    const visit = Effect.fn("visitProtectedModule")(function* (file: string) {
+    const visit: (
+      file: string,
+    ) => Effect.Effect<void, PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
+      "visitProtectedModule",
+    )(function* (file: string) {
       if (visited.has(file)) {
         return;
       }
