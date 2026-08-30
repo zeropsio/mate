@@ -158,7 +158,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
       assert.deepStrictEqual(config, {
         provider: "github",
-        owner: "krls2020",
+        owner: "zeropsio",
         repo: "z3",
         releaseType: "release",
       });

@@ -33,7 +33,7 @@ import type { ServerProviderDraft } from "./providerSnapshot.ts";
 // Fork-controlled: the fork serves its own copy instead of trusting upstream's
 // mutable `main`. New models arrive through the upstream intake — see docs/internals/zerops/fork.md.
 const MODEL_MANIFEST_URL =
-  "https://raw.githubusercontent.com/krls2020/z3/main/apps/server/src/provider/model-manifest.json";
+  "https://raw.githubusercontent.com/zeropsio/z3/main/apps/server/src/provider/model-manifest.json";
 
 /** How long a fetched manifest stays fresh before the next probe re-fetches. */
 const MANIFEST_TTL_MS = 60 * 60 * 1000;

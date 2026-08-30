@@ -1189,13 +1189,13 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     updateRepository: Config.string("T3CODE_DESKTOP_UPDATE_REPOSITORY").pipe(Config.option),
     githubRepository: Config.string("GITHUB_REPOSITORY").pipe(Config.option),
   });
-  // This build script is owned by, and lives in, krls2020/z3 (the Zerops
+  // This build script is owned by, and lives in, zeropsio/z3 (the Zerops
   // fork's own repo) — default to it when neither env var overrides the
   // update repository, rather than silently omitting a publish config.
   const rawRepo = (
     Option.getOrUndefined(env.updateRepository)?.trim() ||
     Option.getOrUndefined(env.githubRepository)?.trim() ||
-    "krls2020/z3"
+    "zeropsio/z3"
   ).trim();
 
   const [owner, repo, ...rest] = rawRepo.split("/");
