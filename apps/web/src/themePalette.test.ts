@@ -2,12 +2,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
 
 import {
-  applyThemeColorPreview,
-  applyThemePalette,
   getThemeColorsForMode,
   getThemeDefinition,
   getThemeModes,
-  getThemePreviewSidebarArtwork,
   getThemePreferenceMode,
   isKnownThemePreference,
   getCustomThemes,
@@ -23,9 +20,7 @@ import {
   resolveDesktopTheme,
   resolveThemeAppearance,
   serializeThemeFile,
-  subscribeToThemePreview,
   subscribeToCustomThemes,
-  themeAllowsSidebarArtwork,
   T3_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
@@ -325,7 +320,7 @@ describe("theme files", () => {
     expect(parseThemeFile(JSON.parse(serialized)).collection).toEqual(theme.collection);
   });
 
-  it("keeps sidebar artwork disabled for custom theme files", () => {
+  it("imports legacy theme documents without preserving sidebar artwork metadata", () => {
     const theme = parseThemeFile({
       version: THEME_FILE_VERSION,
       name: "Art sidebar",
@@ -334,31 +329,8 @@ describe("theme files", () => {
       sidebarArtwork: true,
     });
 
-    expect(theme.sidebarArtwork).toBeUndefined();
+    expect(theme).not.toHaveProperty("sidebarArtwork");
     expect(JSON.parse(serializeThemeFile(theme))).not.toHaveProperty("sidebarArtwork");
-  });
-
-  it("suppresses sidebar artwork during a live custom-theme preview", () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeToThemePreview(listener);
-    vi.stubGlobal("document", {
-      documentElement: {
-        classList: { toggle: vi.fn() },
-        dataset: {},
-        style: { removeProperty: vi.fn(), setProperty: vi.fn() },
-      },
-    });
-
-    applyThemeColorPreview(T3_CHAT_THEME.colors, "light");
-    expect(getThemePreviewSidebarArtwork()).toBe(false);
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    applyThemePalette("system");
-    expect(getThemePreviewSidebarArtwork()).toBeNull();
-    expect(listener).toHaveBeenCalledTimes(2);
-
-    unsubscribe();
-    vi.unstubAllGlobals();
   });
 
   it("keeps optional light and dark palettes under one theme id", () => {
@@ -437,8 +409,6 @@ describe("theme files", () => {
     for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
       expect(getThemeDefinition(theme.id)).toBe(theme);
       expect(getThemeModes(theme)).toEqual(["light", "dark"]);
-      expect(theme.sidebarArtwork).toBe(true);
-      expect(themeAllowsSidebarArtwork(theme.id)).toBe(true);
       expect(theme.colors.accent).toMatch(/^oklch\(/);
       expect(theme.variants?.dark?.accent).toMatch(/^oklch\(/);
 
@@ -473,7 +443,6 @@ describe("theme files", () => {
         );
       }
     }
-    expect(themeAllowsSidebarArtwork("my-custom-theme")).toBe(false);
   });
 
   it("rejects a variant that repeats the base appearance", () => {

@@ -1039,5 +1039,4 @@ export {
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
-  useSidebarVisibility,
 };
