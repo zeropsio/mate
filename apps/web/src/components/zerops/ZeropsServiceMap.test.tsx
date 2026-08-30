@@ -101,6 +101,20 @@ describe("ZeropsServiceMap", () => {
     expect(html).not.toContain("animate-spin");
   });
 
+  it("exposes the shared service tone without coupling tests to classes", () => {
+    const html = render(
+      topology([
+        service({ hostname: "failed", status: "FAILED" }),
+        service({ hostname: "creating", status: "CREATING", transient: true }),
+        service({ hostname: "active" }),
+      ]),
+    );
+
+    expect(html).toContain('data-zerops-service-tone="error"');
+    expect(html).toContain('data-zerops-service-tone="warning"');
+    expect(html).toContain('data-zerops-service-tone="outline"');
+  });
+
   it("names a running tool as a phrase, not a spinner", () => {
     const html = render(topology([service({ hostname: "kanbandev" })]), {
       threadId: "thread-a",

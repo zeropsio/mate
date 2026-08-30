@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
 
-import { buildZeropsServiceMap } from "./serviceMap.ts";
+import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
 
 const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>
   ({
@@ -62,6 +62,19 @@ const realServices: ReadonlyArray<ZeropsService> = [
 
 const lifecycle = (overrides: Partial<ZeropsLifecycle>): ZeropsLifecycle =>
   ({ threadId: "thread-1", recentTools: [], ...overrides }) as unknown as ZeropsLifecycle;
+
+describe("serviceStatusTone", () => {
+  it.each([
+    ["FAILED", false, "error"],
+    ["ACTION_FAILED", false, "error"],
+    ["CONTAINER_FAILED", false, "error"],
+    ["REPAIR_FAILED", false, "error"],
+    ["CREATING", true, "warning"],
+    ["ACTIVE", false, "outline"],
+  ] as const)("maps %s (transient=%s) to %s", (status, transient, tone) => {
+    expect(serviceStatusTone(service({ hostname: "app", status, transient }))).toBe(tone);
+  });
+});
 
 describe("buildZeropsServiceMap", () => {
   it("orders the groups runtimes, data, infrastructure", () => {
