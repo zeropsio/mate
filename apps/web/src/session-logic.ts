@@ -16,6 +16,7 @@ import {
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
+import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 
 import {
   type ZeropsActivityResult,
@@ -373,17 +374,6 @@ export function formatElapsed(startIso: string, endIso: string | undefined): str
 
 type LatestTurnTiming = Pick<OrchestrationLatestTurn, "turnId" | "startedAt" | "completedAt">;
 type SessionActivityState = Pick<NonNullable<Thread["session"]>, "status" | "activeTurnId">;
-
-export function isLatestTurnSettled(
-  latestTurn: LatestTurnTiming | null,
-  session: SessionActivityState | null,
-): boolean {
-  if (!latestTurn?.startedAt) return false;
-  if (!latestTurn.completedAt) return false;
-  if (!session) return true;
-  if (session.status === "running") return false;
-  return true;
-}
 
 export function deriveActiveWorkStartedAt(
   latestTurn: LatestTurnTiming | null,

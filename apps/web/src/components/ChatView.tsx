@@ -103,8 +103,8 @@ import {
   findLatestProposedPlan,
   deriveWorkLogEntries,
   hasActionableProposedPlan,
-  isLatestTurnSettled,
 } from "../session-logic";
+import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { type LegendListRef } from "@legendapp/list/react";
 import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timelineScrollAnchoring";
 import {
