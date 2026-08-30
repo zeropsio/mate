@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off -- This test reads the CSS projection it verifies.
+import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -13,6 +15,16 @@ import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
 } from "./appearanceFonts";
+
+describe("default font stacks", () => {
+  it("the sans stack mirrors index.css and starts with Roboto", () => {
+    const indexCss = NodeFS.readFileSync(new URL("./index.css", import.meta.url), "utf8");
+    const sansDeclaration = /--font-sans:\s*([^;]+);/u.exec(indexCss);
+
+    expect(sansDeclaration?.[1]).toBe(DEFAULT_SANS_FONT_STACK);
+    expect(DEFAULT_SANS_FONT_STACK.startsWith("Roboto, ")).toBe(true);
+  });
+});
 
 describe("areFontAdvancesMonospace", () => {
   it("accepts a fixed advance and rejects any proportional glyph", () => {

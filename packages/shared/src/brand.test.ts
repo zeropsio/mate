@@ -1,11 +1,16 @@
+// @effect-diagnostics nodeBuiltinImport:off -- This test reads the CSS projection it verifies.
+import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   CHIP_TINTS,
+  FALLBACK_PROVIDER_ACCENT,
   ICON_MAP,
   IDENTITY,
   MINT_PANEL,
+  PROVIDER_ACCENT_SWATCHES,
   RADII,
+  SEMANTIC_INDICATORS,
   SERVICE_STATUS_TONES,
   TYPE_SCALE,
   ZEROPS_MARK,
@@ -13,6 +18,44 @@ import {
 import { contrastRatio } from "./themePreview.ts";
 
 describe("Zerops brand tokens", () => {
+  it("publishes the product provider accents with a neutral fallback", () => {
+    expect(PROVIDER_ACCENT_SWATCHES).toEqual([
+      "#0077cc",
+      "#16a34a",
+      "#ea580c",
+      "#dc2626",
+      "#7c3aed",
+      "#0891b2",
+    ]);
+    expect(FALLBACK_PROVIDER_ACCENT).toBe("#5f6a72");
+  });
+
+  it("keeps index.css --success/--info equal to SEMANTIC_INDICATORS", () => {
+    const indexCss = NodeFS.readFileSync(
+      new URL("../../../apps/web/src/index.css", import.meta.url),
+      "utf8",
+    );
+    const valuesFor = (property: string) =>
+      [...indexCss.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
+
+    expect(valuesFor("--success")).toEqual([
+      SEMANTIC_INDICATORS.success.light,
+      SEMANTIC_INDICATORS.success.dark,
+    ]);
+    expect(valuesFor("--success-foreground")).toEqual([
+      SEMANTIC_INDICATORS.successForeground.light,
+      SEMANTIC_INDICATORS.successForeground.dark,
+    ]);
+    expect(valuesFor("--info")).toEqual([
+      SEMANTIC_INDICATORS.info.light,
+      SEMANTIC_INDICATORS.info.dark,
+    ]);
+    expect(valuesFor("--info-foreground")).toEqual([
+      SEMANTIC_INDICATORS.infoForeground.light,
+      SEMANTIC_INDICATORS.infoForeground.dark,
+    ]);
+  });
+
   it.each([
     ["ok light text pair 4.63", SERVICE_STATUS_TONES.ok.light, 4.5],
     ["attention dark text pair 6.01", SERVICE_STATUS_TONES.attention.dark, 4.5],

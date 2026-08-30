@@ -1081,9 +1081,9 @@ export function AppearanceSettingsPanel() {
 
 function useFontDefaultFamilies() {
   const settings = usePrimarySettings();
-  // An unset preference shows the font it resolves to on this machine; the
-  // default stacks are the platform's own faces, so the name is probed, not
-  // hardcoded.
+  // An unset preference shows the first available face in its default stack,
+  // so the bundled interface default resolves to Roboto while the code default
+  // still follows the first installed monospace face.
   const defaults = useMemo(
     () => ({
       sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? "System default",

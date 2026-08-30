@@ -9,6 +9,24 @@ export type ServiceStatusTone = Readonly<{
 // Exact 14% #56d364 over the #141918 dark surface.
 const DARK_MINT_SURFACE = "#1d3323";
 
+export const PROVIDER_ACCENT_SWATCHES = [
+  "#0077cc",
+  "#16a34a",
+  "#ea580c",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+] as const;
+
+export const FALLBACK_PROVIDER_ACCENT = "#5f6a72";
+
+export const SEMANTIC_INDICATORS = {
+  success: { light: "#00cc55", dark: "#56d364" },
+  successForeground: { light: "#0f7a38", dark: "#56d364" },
+  info: { light: "#0077cc", dark: "#58a6ff" },
+  infoForeground: { light: "var(--color-blue-700)", dark: "var(--color-blue-400)" },
+} as const;
+
 /**
  * Service and agent-auth presentations consume these fixed platform tones.
  * Thread-status tone ids are mapped by the later primitives slice, not here.

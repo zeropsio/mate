@@ -1,5 +1,6 @@
 "use client";
 
+import { FALLBACK_PROVIDER_ACCENT, PROVIDER_ACCENT_SWATCHES } from "@t3tools/shared/brand";
 import { PipetteIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
@@ -9,23 +10,12 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 
-const PROVIDER_ACCENT_SWATCHES = [
-  "#2563eb",
-  "#16a34a",
-  "#ea580c",
-  "#dc2626",
-  "#7c3aed",
-  "#0891b2",
-] as const;
-
-const FALLBACK_ACCENT_COLOR = PROVIDER_ACCENT_SWATCHES[0];
-
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
 function hexToHsv(hex: string) {
-  const normalized = normalizeProviderAccentColor(hex) ?? FALLBACK_ACCENT_COLOR;
+  const normalized = normalizeProviderAccentColor(hex) ?? FALLBACK_PROVIDER_ACCENT;
   const numeric = Number.parseInt(normalized.slice(1), 16);
   const red = ((numeric >> 16) & 255) / 255;
   const green = ((numeric >> 8) & 255) / 255;
@@ -184,7 +174,7 @@ function ProviderCustomColorPicker(props: {
   readonly selected: boolean;
   readonly onCommit: (value: string) => void;
 }) {
-  const normalized = normalizeProviderAccentColor(props.value) ?? FALLBACK_ACCENT_COLOR;
+  const normalized = normalizeProviderAccentColor(props.value) ?? FALLBACK_PROVIDER_ACCENT;
 
   return (
     <Popover>
