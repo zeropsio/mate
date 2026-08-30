@@ -1,21 +1,5 @@
 [
   {
-    "path": "apps/mobile/src/components/LoadingStrip.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "withRepeat( withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.quad), }), -1, false, )",
-    "owner": "karel",
-    "reason": "The mobile indeterminate loading strip lacks a reduced-motion guard; F5b replaces it with a three-frame duty cycle",
-    "expires": "F5b"
-  },
-  {
-    "path": "apps/mobile/src/features/connection/ConnectionStatusDot.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "withRepeat( withTiming(1, { duration: 1100, easing: Easing.out(Easing.cubic), }), -1, false, )",
-    "owner": "karel",
-    "reason": "The mobile connection halo lacks a reduced-motion guard; F5b replaces it with a three-frame duty cycle",
-    "expires": "F5b"
-  },
-  {
     "path": "apps/web/src/components/DiffPanel.tsx",
     "kind": "Literal",
     "fingerprint": "\"animate-spin\"",

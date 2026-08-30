@@ -1,13 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+
+import { useDutyCycle } from "../lib/useDutyCycle";
 
 const INDICATOR_WIDTH_FRACTION = 0.3;
 const MIN_INDICATOR_WIDTH = 48;
@@ -37,24 +32,14 @@ function LoadingStripFrame(props: {
 
 function IndeterminateLoadingStrip() {
   const [containerWidth, setContainerWidth] = useState(0);
-  const travelProgress = useSharedValue(0);
+  const { progress: travelProgress, reducedMotion } = useDutyCycle(true, {
+    duration: 1_200,
+    frameCount: 3,
+    startValue: 0.1,
+    endValue: 0.9,
+    reducedMotionValue: 0.5,
+  });
   const indicatorWidth = Math.max(MIN_INDICATOR_WIDTH, containerWidth * INDICATOR_WIDTH_FRACTION);
-
-  useEffect(() => {
-    travelProgress.value = 0;
-    travelProgress.value = withRepeat(
-      withTiming(1, {
-        duration: 1100,
-        easing: Easing.inOut(Easing.quad),
-      }),
-      -1,
-      false,
-    );
-
-    return () => {
-      cancelAnimation(travelProgress);
-    };
-  }, [travelProgress]);
 
   const indicatorStyle = useAnimatedStyle(
     () => ({
@@ -67,6 +52,18 @@ function IndeterminateLoadingStrip() {
     }),
     [containerWidth, indicatorWidth],
   );
+
+  if (reducedMotion) {
+    return (
+      <LoadingStripFrame onLayout={setContainerWidth}>
+        <View className="h-full flex-row items-center justify-center gap-1">
+          <View className="h-full w-4 rounded-full bg-primary" />
+          <View className="h-full w-4 rounded-full bg-primary" />
+          <View className="h-full w-4 rounded-full bg-primary" />
+        </View>
+      </LoadingStripFrame>
+    );
+  }
 
   return (
     <LoadingStripFrame onLayout={setContainerWidth}>
