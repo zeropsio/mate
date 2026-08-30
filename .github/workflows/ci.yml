@@ -48,6 +48,12 @@ jobs:
       - name: z3 zone architecture
         run: vp test run scripts/z3-zone-architecture.test.ts
 
+      - name: Check CSS motion
+        run: node scripts/check-css-motion.ts
+
+      - name: Reconcile no-infinite-motion exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-infinite-motion
+
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 
