@@ -10,7 +10,37 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+const tryOpenExternalUrl = vi.hoisted(() => vi.fn(async () => true));
+
+vi.mock("react-native", () => ({
+  Alert: { alert: vi.fn() },
+  Platform: { select: (options: { readonly default?: unknown }) => options.default },
+  Pressable: "Pressable",
+  View: "View",
+  useWindowDimensions: () => ({ width: 390 }),
+}));
+vi.mock("../../components/AppSymbol", () => ({ SymbolView: "SymbolView" }));
+vi.mock("../../components/AppText", () => ({ AppText: "Text" }));
+vi.mock("../../components/ControlPill", () => ({ ControlPillMenu: "ControlPillMenu" }));
+vi.mock("../../components/ProjectFavicon", () => ({ ProjectFavicon: "ProjectFavicon" }));
+vi.mock("../../components/ProviderIcon", () => ({ ProviderIcon: "ProviderIcon" }));
+vi.mock("../../lib/openExternalUrl", () => ({ tryOpenExternalUrl }));
+vi.mock("../../lib/useUniwindTheme", () => ({
+  useUniwindTheme: () => ({
+    "--color-drawer": "drawer",
+    "--color-screen": "screen",
+    "--color-subtle": "subtle",
+    "--color-user-bubble": "user-bubble",
+  }),
+}));
+vi.mock("../../state/use-thread-pr", () => ({ useThreadPr: () => null }));
+vi.mock("../home/thread-swipe-actions", () => ({ ThreadSwipeable: "ThreadSwipeable" }));
+vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
+  useAppearancePreferences: () => ({ themeAppearance: "light" }),
+}));
+vi.mock("./thread-search-match", () => ({ ThreadSearchMatchExcerpt: "ThreadSearchMatchExcerpt" }));
 
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
@@ -60,38 +90,58 @@ const linkedPullRequest = {
   url: "https://github.com/pingdotgg/t3code/pull/42",
 };
 
-describe("resolveThreadListV2ChangeRequestState", () => {
-  it("preserves the previous state while a linked pull request reloads", () => {
-    expect(
-      resolveThreadListV2ChangeRequestState({
-        linkedPullRequest,
-        state: null,
-        updatedAt: null,
-      }),
-    ).toBeUndefined();
-  });
+describe("ThreadListV2PullRequestLink", () => {
+  it("renders #number with the exact external action and neutral presentation", async () => {
+    const module = await import("./thread-list-v2-items");
+    expect(module.ThreadListV2PullRequestLink).toBeTypeOf("function");
+    if (typeof module.ThreadListV2PullRequestLink !== "function") return;
 
-  it("clears the previous state after a pull request is unlinked", () => {
+    const element = module.ThreadListV2PullRequestLink({
+      pr: {
+        number: 42,
+        repository: "pingdotgg/t3code",
+        url: "https://github.com/pingdotgg/t3code/pull/42",
+        label: "42",
+        accessibilityLabel: "#42 pull request",
+        textClassName: "text-foreground-tertiary",
+      },
+      selected: false,
+    });
+    expect(element.props.accessibilityRole).toBe("link");
+    expect(element.props.accessibilityLabel).toBe("#42 pull request");
+    expect(element.props.children.props.children.join("")).toBe("#42");
+    expect(element.props.children.props.className).toContain("text-foreground-tertiary");
+    expect(element.props.children.props.className).not.toMatch(/emerald|violet|red/u);
+
+    const stopPropagation = vi.fn();
+    element.props.onPress({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(tryOpenExternalUrl).toHaveBeenCalledExactlyOnceWith(
+      "https://github.com/pingdotgg/t3code/pull/42",
+      "pull-request",
+    );
+  });
+});
+
+describe("resolveThreadListV2ChangeRequestState", () => {
+  it("clears settlement state when there is no checkout pull request", () => {
     expect(
       resolveThreadListV2ChangeRequestState({
-        linkedPullRequest: null,
         state: null,
         updatedAt: null,
       }),
     ).toBeNull();
   });
 
-  it("reports a loaded linked pull request", () => {
+  it("reports a checkout pull request with real state", () => {
     expect(
       resolveThreadListV2ChangeRequestState({
-        linkedPullRequest,
         state: "merged",
         updatedAt: "2026-06-02T00:00:00.000Z",
       }),
     ).toEqual({
       state: "merged",
       updatedAt: "2026-06-02T00:00:00.000Z",
-      linkedPullRequestKey: '["project-1","pingdotgg/t3code",42]',
     });
   });
 });
@@ -295,7 +345,7 @@ describe("sortThreadsForListV2", () => {
 });
 
 describe("buildThreadListV2Items", () => {
-  it("ignores the previous pull request state after a different pull request is linked", () => {
+  it("ignores checkout pull request state when a static pull request is linked", () => {
     const thread = makeThread({
       id: ThreadId.make("linked"),
       title: "Linked pull request",
@@ -310,7 +360,6 @@ describe("buildThreadListV2Items", () => {
           `${environmentId}:${thread.id}`,
           {
             state: "merged" as const,
-            linkedPullRequestKey: '["project-1","pingdotgg/t3code",41]',
           },
         ],
       ]),
@@ -321,11 +370,10 @@ describe("buildThreadListV2Items", () => {
     expect(layout.items[0]?.variant).toBe("card");
   });
 
-  it("settles a thread only when the cached pull request identity matches", () => {
+  it("settles an unlinked thread from its checkout pull request state", () => {
     const thread = makeThread({
-      id: ThreadId.make("linked-merged"),
-      title: "Linked merged pull request",
-      linkedPullRequest,
+      id: ThreadId.make("checkout-merged"),
+      title: "Checkout merged pull request",
     });
     const layout = buildThreadListV2Items({
       threads: [thread],
@@ -336,7 +384,6 @@ describe("buildThreadListV2Items", () => {
           `${environmentId}:${thread.id}`,
           {
             state: "merged" as const,
-            linkedPullRequestKey: '["project-1","pingdotgg/t3code",42]',
           },
         ],
       ]),

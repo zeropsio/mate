@@ -15,10 +15,11 @@ import { ControlPillMenu } from "../../components/ControlPill";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { relativeTime } from "../../lib/time";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
-import { useThreadPr } from "../../state/use-thread-pr";
+import { useThreadPr, type ThreadPrPresentation } from "../../state/use-thread-pr";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
@@ -45,6 +46,33 @@ const MONO_FONT = Platform.select({
   android: "monospace",
   default: "monospace",
 });
+
+export function ThreadListV2PullRequestLink(props: {
+  readonly pr: ThreadPrPresentation;
+  readonly selected: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={props.pr.accessibilityLabel}
+      accessibilityRole="link"
+      hitSlop={8}
+      onPress={(event) => {
+        event.stopPropagation();
+        void tryOpenExternalUrl(props.pr.url, "pull-request");
+      }}
+    >
+      <Text
+        className={cn(
+          "text-xs",
+          props.selected ? "text-user-bubble-foreground" : props.pr.textClassName,
+        )}
+        style={{ fontFamily: MONO_FONT }}
+      >
+        #{props.pr.label}
+      </Text>
+    </Pressable>
+  );
+}
 
 // Status hues follow the system-wide convention set by sidebar v1 and the
 // Live Activity/widgets (amber approval, indigo input, sky working) so a
@@ -370,8 +398,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly canMovePinnedDown?: boolean;
   readonly onSwipeableWillOpen: (methods: SwipeableMethods) => void;
   readonly onSwipeableClose: (methods: SwipeableMethods) => void;
-  /** Reports this row's live PR (state + last activity) for the partition's
-      merge and close rules. Mirrors web's onChangeRequestState. */
+  /** Reports this row's live checkout PR for the partition's merge and
+      close rules. Static linked references never enter settlement state. */
   readonly onChangeRequestState?: (
     threadKey: string,
     changeRequest: ThreadListV2ChangeRequestState | null,
@@ -404,18 +432,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const pinnedRow = props.pinned === true;
 
   const pr = useThreadPr(thread, props.projectCwd ?? props.project?.workspaceRoot ?? null);
-  const prState = pr?.state ?? null;
-  const prUpdatedAt = pr?.updatedAt ?? null;
+  const livePr = pr !== null && "state" in pr ? pr : null;
+  const prState = livePr?.state ?? null;
+  const prUpdatedAt = livePr?.updatedAt ?? null;
   const threadKey = `${thread.environmentId}:${thread.id}`;
   useEffect(() => {
-    const changeRequest = resolveThreadListV2ChangeRequestState({
-      linkedPullRequest: thread.linkedPullRequest,
-      state: prState,
-      updatedAt: prUpdatedAt,
-    });
-    if (changeRequest === undefined) return;
-    onChangeRequestState?.(threadKey, changeRequest);
-  }, [onChangeRequestState, prState, prUpdatedAt, thread.linkedPullRequest, threadKey]);
+    onChangeRequestState?.(
+      threadKey,
+      resolveThreadListV2ChangeRequestState({ state: prState, updatedAt: prUpdatedAt }),
+    );
+  }, [onChangeRequestState, prState, prUpdatedAt, threadKey]);
 
   const theme = useUniwindTheme();
   const screenColor = theme["--color-screen"];
@@ -782,15 +808,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : (
           <View className="flex-1" />
         )}
-        {pr ? (
-          <Text
-            accessibilityLabel={pr.accessibilityLabel}
-            className={cn("text-xs", selected ? "text-user-bubble-foreground" : pr.textClassName)}
-            style={{ fontFamily: MONO_FONT }}
-          >
-            #{pr.label}
-          </Text>
-        ) : null}
+        {pr ? <ThreadListV2PullRequestLink pr={pr} selected={selected} /> : null}
         {props.providerDriver ? (
           <View className="opacity-60">
             <ProviderIcon provider={props.providerDriver} size={14} />

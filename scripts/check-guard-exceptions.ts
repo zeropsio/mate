@@ -182,7 +182,6 @@ const parseFindings = (
         path: toRepoPath(cwd, diagnostic.filename),
         kind: parsed.kind,
         fingerprint: parsed.fingerprint,
-        ledgered: parsed.ledgered,
       };
     });
 };

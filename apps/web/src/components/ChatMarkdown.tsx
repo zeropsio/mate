@@ -1742,7 +1742,7 @@ function ChatMarkdown({
     event.clipboardData.setData("text/plain", payload.text);
     event.clipboardData.setData("text/html", payload.html);
   }, []);
-  const openChangeRequestLink = useOpenChangeRequestLink(threadRef);
+  const openChangeRequestLink = useOpenChangeRequestLink();
   const resolveThreadPullRequest = useCallback(
     (href: string): ThreadLinkedPullRequest | null => {
       if (
@@ -2037,10 +2037,8 @@ function ChatMarkdown({
                   handleMarkdownFragmentClick(event, href);
                   return;
                 }
-                // A link to a change request in a workspace project opens beside the
-                // conversation instead of in a browser: it is the thing being talked about, and
-                // the panel it opens offers the browser as one of its actions. Anything else is
-                // an ordinary link and keeps the `_blank` the shell already handles.
+                // Markdown anchors keep their native `_blank` behavior. The context menu below
+                // adds the thread link/unlink actions for recognized change requests.
                 if (href) openChangeRequestLink(event, href);
               }}
               onContextMenu={(event) => {

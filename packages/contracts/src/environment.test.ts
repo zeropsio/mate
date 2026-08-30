@@ -27,17 +27,13 @@ describe("ExecutionEnvironmentDescriptor", () => {
     ).toBe(false);
   });
 
-  it("treats a missing pull-request capability as unsupported under version skew", () => {
-    expect(decodeDescriptor(descriptor).capabilities.pullRequests).toBeUndefined();
-  });
-
-  it("preserves an advertised pull-request capability", () => {
+  it("does not carry a pullRequests capability any more", () => {
     expect(
       decodeDescriptor({
         ...descriptor,
-        capabilities: { ...descriptor.capabilities, pullRequests: true },
-      }).capabilities.pullRequests,
-    ).toBe(true);
+        capabilities: { repositoryIdentity: true, pullRequests: true },
+      }).capabilities,
+    ).toEqual({ repositoryIdentity: true });
   });
 
   it("treats a missing attachment upload capability as unsupported", () => {

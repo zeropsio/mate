@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -35,5 +35,30 @@ describe("ThreadWorktreeIndicator", () => {
     );
 
     expect(markup).toBe("");
+  });
+});
+
+describe("LinkedPullRequestLink", () => {
+  it("renders the static pull request number and exact external href without state", async () => {
+    const module = await import("./ThreadStatusIndicators");
+    expect(module.LinkedPullRequestLink).toBeTypeOf("function");
+    if (typeof module.LinkedPullRequestLink !== "function") return;
+
+    const markup = renderToStaticMarkup(
+      <module.LinkedPullRequestLink
+        indicator={module.linkedPullRequestIndicator({
+          projectId: ProjectId.make("project-1"),
+          repository: "pingdotgg/t3code",
+          number: 42,
+          url: "https://github.com/pingdotgg/t3code/pull/42",
+        })}
+      />,
+    );
+
+    expect(markup).toContain('href="https://github.com/pingdotgg/t3code/pull/42"');
+    expect(markup).toContain('target="_blank"');
+    expect(markup).toContain('rel="noopener noreferrer"');
+    expect(markup).toContain(">#42</a>");
+    expect(markup).not.toMatch(/text-(?:emerald|violet|red)|PR #42 (?:open|merged|closed)/u);
   });
 });

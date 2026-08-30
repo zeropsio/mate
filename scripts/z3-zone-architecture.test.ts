@@ -253,6 +253,7 @@ function collectUiImportViolations(
   return violations;
 }
 
+// Keep this list identical to t3code/no-infinite-motion's protected roots.
 const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
   "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
