@@ -1,3 +1,4 @@
+import * as NodeFS from "node:fs";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
@@ -10,6 +11,8 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const tryOpenExternalUrl = vi.hoisted(() => vi.fn(async () => true));
@@ -49,9 +52,10 @@ import {
   resolveThreadListV2ChangeRequestState,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozeGateExpiryMs,
-  resolveThreadListV2Status,
   resolveThreadListV2SwipeActions,
   sortThreadsForListV2,
+  threadListV2FailureDetail,
+  threadListV2StatusPresentation,
 } from "./threadListV2";
 
 const environmentId = EnvironmentId.make("environment-1");
@@ -194,7 +198,37 @@ describe("resolveThreadListV2SnoozeMenuSelection", () => {
   });
 });
 
-describe("resolveThreadListV2Status", () => {
+describe("threadListV2StatusPresentation", () => {
+  it.each(threadStatusVectors)("matches the shared status for $name", (vector) => {
+    const status = resolveThreadStatus(vector.input);
+    expect(status).toEqual(vector.expected);
+    expect(threadListV2StatusPresentation(status).label).toBe(vector.expectedLabel);
+  });
+
+  it("emits only tone classes present in the generated Uniwind theme", () => {
+    const themeCss = NodeFS.readFileSync(
+      new URL("../../../generated-uniwind-themes.css", import.meta.url),
+      "utf8",
+    );
+    const toneClasses = new Set(
+      threadStatusVectors.map(
+        (vector) => threadListV2StatusPresentation(vector.expected).className,
+      ),
+    );
+
+    expect(toneClasses.size).toBe(7);
+    for (const className of toneClasses) {
+      expect(className.startsWith("text-")).toBe(true);
+      expect(themeCss).toContain(`--color-${className.slice("text-".length)}:`);
+    }
+  });
+
+  it("shows failure detail only for failed threads", () => {
+    expect(threadListV2FailureDetail({ kind: "failed", toneId: "danger" }, "boom")).toBe("boom");
+    expect(threadListV2FailureDetail({ kind: "working", toneId: "active" }, "boom")).toBeNull();
+    expect(threadListV2FailureDetail({ kind: "failed", toneId: "danger" }, null)).toBeNull();
+  });
+
   it("prioritizes approval over a running session", () => {
     const thread = makeThread({
       id: ThreadId.make("t"),
@@ -211,13 +245,43 @@ describe("resolveThreadListV2Status", () => {
         updatedAt: NOW,
       },
     });
-    expect(resolveThreadListV2Status(thread)).toBe("approval");
+    expect(resolveThreadStatus(thread).kind).toBe("approval");
   });
 
-  it("resolves ready for quiescent threads", () => {
-    expect(resolveThreadListV2Status(makeThread({ id: ThreadId.make("t"), title: "t" }))).toBe(
-      "ready",
+  it("resolves idle for quiescent threads", () => {
+    expect(resolveThreadStatus(makeThread({ id: ThreadId.make("t"), title: "t" })).kind).toBe(
+      "idle",
     );
+  });
+
+  it("renders Monitoring for background monitoring", () => {
+    expect(
+      threadListV2StatusPresentation(
+        resolveThreadStatus({
+          ...makeThread({ id: ThreadId.make("t"), title: "t" }),
+          backgroundLiveness: "monitoring",
+        }),
+      ).label,
+    ).toBe("Monitoring");
+  });
+
+  it("renders Connecting for a starting session", () => {
+    expect(
+      threadListV2StatusPresentation(
+        resolveThreadStatus({
+          ...makeThread({ id: ThreadId.make("t"), title: "t" }),
+          session: {
+            threadId: ThreadId.make("t"),
+            status: "starting",
+            providerName: "Codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: NOW,
+          },
+        }),
+      ).label,
+    ).toBe("Connecting");
   });
 });
 

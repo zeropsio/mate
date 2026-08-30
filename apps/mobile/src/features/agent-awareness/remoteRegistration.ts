@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts/relay";
 import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
+import { awarenessPhaseStatusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
 import {
   isAtomCommandInterrupted,
   settleAsyncResult,
@@ -504,6 +505,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     if (AgentActivity.getInstances().length > 0) {
       return;
     }
+    const startingStatus = awarenessPhaseStatusLabel("starting");
     const nowIso = new Date(Date.now()).toISOString();
     const activity = AgentActivity.start({
       title: "T3 Code",
@@ -518,7 +520,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
           threadTitle: input.threadTitle,
           modelTitle: "",
           phase: "starting",
-          status: "Connecting",
+          status: startingStatus,
           updatedAt: nowIso,
           deepLink: "/",
         },

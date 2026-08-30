@@ -9,7 +9,8 @@ import type {
 } from "@t3tools/contracts";
 import { ProviderInstanceId } from "@t3tools/contracts";
 
-import { projectThreadAwareness } from "./agentAwareness.ts";
+import { projectThreadAwareness, type ProjectThreadAwarenessInput } from "./agentAwareness.ts";
+import { threadStatusVectors } from "./threadStatus.vectors.ts";
 
 const NOW = "2026-05-22T12:00:00.000Z";
 
@@ -19,17 +20,7 @@ const project = {
 
 function thread(
   overrides: Partial<OrchestrationThreadShell> = {},
-): Pick<
-  OrchestrationThreadShell,
-  | "id"
-  | "title"
-  | "modelSelection"
-  | "session"
-  | "latestTurn"
-  | "updatedAt"
-  | "hasPendingApprovals"
-  | "hasPendingUserInput"
-> {
+): ProjectThreadAwarenessInput["thread"] {
   return {
     id: "thread-1" as ThreadId,
     title: "Fix failing CI",
@@ -39,11 +30,26 @@ function thread(
     updatedAt: NOW,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
     ...overrides,
   };
 }
 
 describe("projectThreadAwareness", () => {
+  it.each(threadStatusVectors)(
+    "phase equals the shared resolver's bridge for every vector: $name",
+    (vector) => {
+      const state = projectThreadAwareness({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: thread(vector.input),
+      });
+      expect(state?.phase ?? null).toBe(vector.expectedAwarenessPhase);
+    },
+  );
+
   it("returns null for idle threads without an active awareness state", () => {
     expect(
       projectThreadAwareness({

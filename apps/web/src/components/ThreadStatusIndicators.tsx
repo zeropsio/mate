@@ -4,6 +4,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import type { ThreadLinkedPullRequest, VcsStatusResult } from "@t3tools/contracts";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { Atom } from "effect/unstable/reactivity";
 import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useMemo, type MouseEventHandler, type ReactNode } from "react";
@@ -15,7 +16,7 @@ import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { vcsEnvironment } from "../state/vcs";
 import { useUiStateStore } from "../uiStateStore";
 import { resolveChangeRequestPresentation } from "../sourceControlPresentation";
-import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
+import { threadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -485,12 +486,12 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   );
   const pr = resolveThreadPr({ threadBranch: thread.branch, gitStatus: gitStatus.data });
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
-  const threadStatus = resolveThreadStatusPill({
-    thread: {
+  const threadStatus = threadStatusPill(
+    resolveThreadStatus({
       ...thread,
-      lastVisitedAt,
-    },
-  });
+      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
+    }),
+  );
 
   if (!linkedPullRequest && !prStatus && !threadStatus) {
     return null;

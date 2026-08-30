@@ -65,9 +65,9 @@ export function AgentActivity(
   const primaryForeground = "primary";
   const secondaryForeground = "secondary";
 
-  // Status tints mirror the web sidebar's pills
-  // (apps/web/src/components/Sidebar.logic.ts resolveThreadStatusPill): amber
-  // for approval, indigo for input, sky for working, emerald for completed.
+  // Status tints follow @t3tools/shared/threadStatus. This inline map is the
+  // structural exemption because widget serialization requires this function
+  // to stay self-contained.
   // On iPhone the LA sits on a dark material, but macOS (iPhone Mirroring /
   // Mac notification center) renders it on a light one — so pick the web
   // palette's light (-600) or dark (-300) variant off the color scheme.

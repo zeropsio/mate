@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { awarenessPhaseStatusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
+import type { ThreadStatusToneId } from "@t3tools/shared/threadStatus";
+import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
 
 vi.mock("@expo/ui/swift-ui", () => ({
   HStack: "HStack",
@@ -63,7 +66,65 @@ const lightEnvironment = {
   isLuminanceReduced: false,
 } as const;
 
+const darkTintByTone: Record<ThreadStatusToneId, string | null> = {
+  attention: "#fcd34d",
+  input: "#a5b4fc",
+  active: "#7dd3fc",
+  danger: "#fca5a5",
+  plan: null,
+  success: "#6ee7b7",
+  neutral: null,
+};
+
 describe("AgentActivity widget layout", () => {
+  it.each(threadStatusVectors)("matches the shared vector for $name", (vector) => {
+    const phase = vector.expectedAwarenessPhase;
+    if (phase === null) {
+      expect(vector.expectedAwarenessLabel).toBeNull();
+      expect(vector.expectedAwarenessToneId).toBeNull();
+      expect(vector.expectedWidgetTrailing).toBeNull();
+      return;
+    }
+    const status = awarenessPhaseStatusLabel(phase);
+    expect(status).toBe(vector.expectedAwarenessLabel);
+    const toneId = vector.expectedAwarenessToneId;
+    if (toneId === null) throw new Error("a visible awareness phase must have a tone");
+    const tint = darkTintByTone[toneId];
+    if (tint === null) throw new Error(`widget phase ${phase} has no expected tint`);
+    const layout = AgentActivity(
+      {
+        ...props,
+        activeCount: phase === "completed" || phase === "failed" ? 0 : 1,
+        activities: [makeRow({ phase, status })],
+      },
+      environment as never,
+    );
+
+    expect(JSON.stringify(layout.banner)).toContain(vector.expectedAwarenessLabel);
+    expect(JSON.stringify(layout.banner)).toContain(tint);
+    expect(JSON.stringify(layout.compactTrailing)).toContain(vector.expectedWidgetTrailing);
+    if (phase === "completed" || phase === "failed") {
+      expect(JSON.stringify(layout.expandedLeading)).toContain(vector.expectedWidgetTrailing);
+    }
+  });
+
+  it("renders the stale presentation edge", () => {
+    const status = awarenessPhaseStatusLabel("stale");
+    const layout = AgentActivity(
+      {
+        ...props,
+        activeCount: 1,
+        activities: [makeRow({ phase: "stale", status })],
+      },
+      environment as never,
+    );
+
+    expect(status).toBe("Waiting");
+    expect(JSON.stringify(layout.banner)).toContain("Waiting");
+    expect(JSON.stringify(layout.banner)).toContain("#7dd3fc");
+    expect(JSON.stringify(layout.compactTrailing)).toContain("1 active");
+  });
+
   it("tints each row by its own phase using the web sidebar's dark palette", () => {
     const layout = AgentActivity(
       {

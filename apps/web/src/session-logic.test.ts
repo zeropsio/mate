@@ -18,7 +18,6 @@ import {
   deriveWorkLogEntries,
   findLatestProposedPlan,
   hasActionableProposedPlan,
-  isLatestTurnSettled,
   workEntryIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   workEntryIndicatesToolSuccess,
@@ -1923,54 +1922,6 @@ describe("deriveWorkLogEntries context window handling", () => {
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.label).toBe("Context compacted");
-  });
-});
-
-describe("isLatestTurnSettled", () => {
-  const latestTurn = {
-    turnId: TurnId.make("turn-1"),
-    startedAt: "2026-02-27T21:10:00.000Z",
-    completedAt: "2026-02-27T21:10:06.000Z",
-  } as const;
-
-  it("returns false while the same turn is still active in a running session", () => {
-    expect(
-      isLatestTurnSettled(latestTurn, {
-        status: "running",
-        activeTurnId: TurnId.make("turn-1"),
-      }),
-    ).toBe(false);
-  });
-
-  it("returns false while any turn is running to avoid stale latest-turn banners", () => {
-    expect(
-      isLatestTurnSettled(latestTurn, {
-        status: "running",
-        activeTurnId: TurnId.make("turn-2"),
-      }),
-    ).toBe(false);
-  });
-
-  it("returns true once the session is no longer running that turn", () => {
-    expect(
-      isLatestTurnSettled(latestTurn, {
-        status: "ready",
-        activeTurnId: null,
-      }),
-    ).toBe(true);
-  });
-
-  it("returns false when turn timestamps are incomplete", () => {
-    expect(
-      isLatestTurnSettled(
-        {
-          turnId: TurnId.make("turn-1"),
-          startedAt: null,
-          completedAt: "2026-02-27T21:10:06.000Z",
-        },
-        null,
-      ),
-    ).toBe(false);
   });
 });
 

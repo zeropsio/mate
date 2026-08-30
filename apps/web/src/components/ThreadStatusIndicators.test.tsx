@@ -1,8 +1,43 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ThreadWorktreeIndicator } from "./ThreadStatusIndicators";
+import type { SidebarThreadSummary } from "../types";
+import { ThreadRowLeadingStatus, ThreadWorktreeIndicator } from "./ThreadStatusIndicators";
+
+vi.mock("../state/entities", () => ({ useProject: () => null }));
+vi.mock("../state/query", () => ({ useEnvironmentQuery: () => ({ data: null }) }));
+
+describe("ThreadRowLeadingStatus", () => {
+  it("renders Failed for a failed leading status vector", () => {
+    const vector = threadStatusVectors.find(({ expected }) => expected.kind === "failed");
+    if (!vector) throw new Error("the shared vectors must include a failed status");
+    const thread = {
+      environmentId: EnvironmentId.make("environment-1"),
+      id: ThreadId.make("thread-1"),
+      projectId: ProjectId.make("project-1"),
+      title: "Failed thread",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      branch: null,
+      worktreePath: null,
+      linkedPullRequest: null,
+      createdAt: "2026-08-30T10:00:00.000Z",
+      updatedAt: "2026-08-30T12:00:00.000Z",
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      latestUserMessageAt: null,
+      ...vector.input,
+    } satisfies SidebarThreadSummary;
+
+    const markup = renderToStaticMarkup(<ThreadRowLeadingStatus thread={thread} />);
+
+    expect(markup).toContain('aria-label="Failed"');
+    expect(markup).toContain(">Failed<");
+  });
+});
 
 describe("ThreadWorktreeIndicator", () => {
   it("renders the worktree folder and branch in an accessible label", () => {

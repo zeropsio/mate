@@ -4,6 +4,11 @@ import type {
   RelayDeliveryResult,
   RelayPublishResponse,
 } from "@t3tools/contracts/relay";
+import {
+  awarenessPhaseStatusLabel,
+  statusLabel,
+} from "@t3tools/client-runtime/zerops/statusPresentation";
+import { kindForAwarenessPhase } from "@t3tools/shared/threadStatus";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -182,24 +187,8 @@ export const make = Effect.gen(function* () {
 });
 
 function statusForPhase(phase: RelayAgentActivityState["phase"]): string {
-  switch (phase) {
-    case "waiting_for_approval":
-      return "Approval";
-    case "waiting_for_input":
-      return "Input";
-    case "completed":
-      return "Done";
-    case "failed":
-      return "Failed";
-    case "starting":
-      // Matches the web sidebar's pill wording (Sidebar.logic.ts) so the same
-      // thread reads the same across surfaces.
-      return "Connecting";
-    case "running":
-      return "Working";
-    case "stale":
-      return "Waiting";
-  }
+  if (phase === "stale") return awarenessPhaseStatusLabel(phase);
+  return statusLabel(kindForAwarenessPhase(phase));
 }
 
 function aggregateRowForState(state: RelayAgentActivityState) {
