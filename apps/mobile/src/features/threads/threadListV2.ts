@@ -11,26 +11,19 @@ import type {
   SnoozePreset,
 } from "@t3tools/client-runtime/state/thread-settled";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { statusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
   activeThreadAnchorTimestampMs,
   sortPinnedThreadsByOrderKey,
 } from "@t3tools/client-runtime/state/thread-sort";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { ThreadStatus, ThreadStatusToneId } from "@t3tools/shared/threadStatus";
 
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 
 export { snoozeWakeLabel };
 
-/**
- * Thread List v2 model, ported from the web sidebar v2
- * (apps/web/src/components/Sidebar.logic.ts + SidebarV2.tsx).
- *
- * Four visual states, three colors: color is reserved for "act now"
- * (approval), "in motion" (working), and "broken" (failed). Ready is the
- * unlabeled resting state.
- */
-export type ThreadListV2Status = "approval" | "input" | "working" | "failed" | "ready";
 export type ThreadListV2SwipeAction = "archive" | "settle" | "unsettle" | "snooze" | "unsnooze";
 
 export type ThreadListV2ChangeRequestState = ChangeRequestSettleSource;
@@ -121,22 +114,28 @@ export function resolveThreadListV2SnoozeGateExpiryMs(
 export const THREAD_LIST_V2_SETTLED_INITIAL_COUNT = 10;
 export const THREAD_LIST_V2_SETTLED_PAGE_COUNT = 25;
 
-export function resolveThreadListV2Status(
-  thread: Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "session">,
-): ThreadListV2Status {
-  if (thread.hasPendingApprovals) {
-    return "approval";
-  }
-  if (thread.hasPendingUserInput) {
-    return "input";
-  }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
-    return "working";
-  }
-  if (thread.session?.status === "error") {
-    return "failed";
-  }
-  return "ready";
+const THREAD_LIST_V2_TONE_CLASS: Record<ThreadStatusToneId, string> = {
+  attention: "text-adaptive-amber-700-300",
+  input: "text-adaptive-indigo-600-300",
+  active: "text-adaptive-sky-600-400",
+  danger: "text-adaptive-red-700-300",
+  plan: "text-adaptive-violet-700-300",
+  success: "text-adaptive-emerald-700-300",
+  neutral: "text-foreground-tertiary",
+};
+
+export function threadListV2StatusPresentation(status: ThreadStatus) {
+  return {
+    label: statusLabel(status.kind),
+    className: THREAD_LIST_V2_TONE_CLASS[status.toneId],
+  };
+}
+
+export function threadListV2FailureDetail(
+  resolvedStatus: ThreadStatus,
+  lastError: string | null | undefined,
+): string | null {
+  return resolvedStatus.kind === "failed" ? (lastError ?? null) : null;
 }
 
 /** NaN-safe Date.parse for sort comparators: a malformed timestamp must not
