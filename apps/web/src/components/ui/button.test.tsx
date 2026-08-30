@@ -5,6 +5,16 @@ import { FlaskConicalIcon } from "lucide-react";
 import { Button } from "./button";
 
 describe("button geometry tokens", () => {
+  it("adds the pill CTA variant without changing the default", () => {
+    const pill = renderToStaticMarkup(<Button variant="pill">Deploy</Button>);
+    const defaultButton = renderToStaticMarkup(<Button>Deploy</Button>);
+
+    expect(pill).toContain("rounded-[var(--zerops-pill-radius)]");
+    expect(pill).toContain("bg-primary");
+    expect(defaultButton).toContain("rounded-[var(--control-radius)]");
+    expect(defaultButton).not.toContain("rounded-[var(--zerops-pill-radius)]");
+  });
+
   it("uses the shared control radius and an opaque semantic icon color", () => {
     const html = renderToStaticMarkup(
       <Button size="icon-xs" variant="outline" aria-label="Run tests">

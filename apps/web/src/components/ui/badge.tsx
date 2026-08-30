@@ -22,6 +22,7 @@ const badgeVariants = cva(
       },
       variant: {
         default: "bg-primary text-primary-foreground [button&,a&]:hover:bg-primary/90",
+        chip: "rounded-[var(--zerops-chip-radius)] bg-muted text-foreground [button&,a&]:hover:bg-accent",
         destructive: "bg-destructive text-white [button&,a&]:hover:bg-destructive/90",
         error: "bg-destructive/8 text-destructive-foreground dark:bg-destructive/16",
         info: "bg-info/8 text-info-foreground dark:bg-info/16",
