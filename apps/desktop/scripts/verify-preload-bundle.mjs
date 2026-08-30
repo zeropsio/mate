@@ -6,12 +6,18 @@ import * as NodeURL from "node:url";
 import * as NodeVM from "node:vm";
 import { parse } from "acorn";
 
+// The desktop is a pure hosted Zerops client: `b36e895b3` deleted the local
+// backend (`getLocalEnvironmentBootstraps`), local folder picking
+// (`pickFolder`) and Clerk (`__clerk_internal_electron_passkeys`) from the
+// preload bridge and from the DesktopBridge contract. What this script still
+// proves is the thing worth proving — that the bundle executes at all and
+// hands the renderer a working bridge.
 const expectedDesktopBridgeApis = [
   "getClientPlatform",
-  "getLocalEnvironmentBootstraps",
-  "pickFolder",
+  "getAppBranding",
+  "getClientSettings",
+  "openExternal",
 ];
-const clerkPasskeysGlobal = "__clerk_internal_electron_passkeys";
 const preloadExecutionTimeoutMs = 1_000;
 const desktopPackage = JSON.parse(
   NodeFS.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -133,7 +139,6 @@ export const verifyPreloadBundle = (source) => {
     (api) => typeof desktopBridge?.[api] !== "function",
   );
   if (!exposedGlobals.has("desktopBridge")) missingApis.unshift("desktopBridge exposure");
-  if (!exposedGlobals.has(clerkPasskeysGlobal)) missingApis.push(`${clerkPasskeysGlobal} exposure`);
 
   if (missingApis.length > 0) {
     throw new Error(`Desktop preload bundle is missing executable APIs: ${missingApis.join(", ")}`);
