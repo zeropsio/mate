@@ -54,7 +54,7 @@ server machine. Also test the manual pairing guidance when a headless environmen
 
 ### Packaged web bundle topology
 
-The desktop app has no embedded server. `scripts/build-desktop-artifact.ts`'s
+The desktop app has no embedded server. `scripts/stage-desktop-web.ts`'s
 `stageHostedWebBundle` builds `apps/web` in hosted-static mode
 (`VITE_HOSTED_APP_CHANNEL` set to the desktop's own update channel,
 `VITE_HTTP_URL`/`VITE_WS_URL` both scrubbed) and stages the resulting dist as an
@@ -64,9 +64,12 @@ sidecar path). At runtime `DesktopEnvironment.resolveResourcePathCandidates`
 finds `resources/web/index.html`, and `ElectronProtocol` serves the rest of
 that directory from disk with an `index.html` SPA fallback.
 
-The artifact builder rejects a package when the staged web bundle is missing
-(`MissingDesktopBuildInputError` with artifact `"web-dist"`) or fails asset
-validation (`validateBundledClientAssets`).
+For a development-tree smoke run, stage that same bundle with
+`node scripts/stage-desktop-web.ts`.
+
+The staging script rejects a package when the hosted web build is missing
+(`DesktopWebBuildMissingError`) or references missing assets
+(`DesktopWebBuildAssetsMissingError`).
 
 NSIS differential packaging remains enabled.
 

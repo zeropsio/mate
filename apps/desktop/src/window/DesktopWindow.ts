@@ -12,6 +12,7 @@ import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
+import { installSmokeCapture } from "../app/smokeCapture.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
@@ -309,6 +310,7 @@ export const make = Effect.gen(function* () {
         webviewTag: true,
       },
     });
+    void installSmokeCapture(window, (code) => runPromise(electronApp.exit(code)));
 
     if (environment.platform === "darwin") {
       window.setAutoHideCursor(false);

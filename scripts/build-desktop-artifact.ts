@@ -7,7 +7,6 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
-import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
 import {
   BRAND_ASSET_PATHS,
   resolveWebAssetBrandForChannel,
@@ -16,6 +15,7 @@ import {
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import { findInlinedExternalPackages } from "./lib/cli-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
+import { resolveDesktopUpdateChannel, stageHostedWebBundle } from "./stage-desktop-web.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -270,20 +270,6 @@ export class DesktopDmgBackgroundSourceMissingError extends Schema.TaggedErrorCl
   }
 }
 
-export class BundledClientAssetsMissingError extends Schema.TaggedErrorClass<BundledClientAssetsMissingError>()(
-  "BundledClientAssetsMissingError",
-  {
-    indexPath: Schema.String,
-    missingFiles: Schema.Array(Schema.String),
-  },
-) {
-  override get message(): string {
-    const preview = this.missingFiles.slice(0, 6).join(", ");
-    const suffix = this.missingFiles.length > 6 ? ` (+${this.missingFiles.length - 6} more)` : "";
-    return `Bundled client references missing files in ${this.indexPath}: ${preview}${suffix}. Rebuild web/server artifacts.`;
-  }
-}
-
 export class UnsupportedDesktopBuildPlatformError extends Schema.TaggedErrorClass<UnsupportedDesktopBuildPlatformError>()(
   "UnsupportedDesktopBuildPlatformError",
   {
@@ -318,14 +304,12 @@ const DesktopBuildInputArtifact = Schema.Literals([
   "desktop-dist",
   "desktop-resources",
   "server-dist",
-  "web-dist",
 ]);
 type DesktopBuildInputArtifact = typeof DesktopBuildInputArtifact.Type;
 const desktopBuildInputArtifactNames = {
   "desktop-dist": "desktopDist",
   "desktop-resources": "desktopResources",
   "server-dist": "serverDist",
-  "web-dist": "hosted web bundle (apps/web/dist)",
 } satisfies Record<DesktopBuildInputArtifact, string>;
 
 /**
@@ -367,7 +351,7 @@ export class MissingDesktopBuildInputError extends Schema.TaggedErrorClass<Missi
   {
     artifact: DesktopBuildInputArtifact,
     artifactPath: Schema.String,
-    buildCommand: Schema.Literals(["vp run build:desktop", "vp run --filter @t3tools/web build"]),
+    buildCommand: Schema.Literal("vp run build:desktop"),
   },
 ) {
   override get message(): string {
@@ -1128,42 +1112,6 @@ function stageWindowsIcons(stageResourcesDir: string, sourceIco: string) {
   });
 }
 
-function validateBundledClientAssets(clientDir: string) {
-  return Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const indexPath = path.join(clientDir, "index.html");
-    const indexHtml = yield* fs.readFileString(indexPath);
-    const refs = [...indexHtml.matchAll(/\b(?:src|href)=["']([^"']+)["']/g)]
-      .map((match) => match[1])
-      .filter((value): value is string => value !== undefined);
-    const missing: string[] = [];
-
-    for (const ref of refs) {
-      const normalizedRef = ref.split("#")[0]?.split("?")[0] ?? "";
-      if (!normalizedRef) continue;
-      if (normalizedRef.startsWith("http://") || normalizedRef.startsWith("https://")) continue;
-      if (normalizedRef.startsWith("data:") || normalizedRef.startsWith("mailto:")) continue;
-
-      const ext = path.extname(normalizedRef);
-      if (!ext) continue;
-
-      const relativePath = normalizedRef.replace(/^\/+/, "");
-      const assetPath = path.join(clientDir, relativePath);
-      if (!(yield* fs.exists(assetPath))) {
-        missing.push(normalizedRef);
-      }
-    }
-
-    if (missing.length > 0) {
-      return yield* new BundledClientAssetsMissingError({
-        indexPath,
-        missingFiles: missing,
-      });
-    }
-  });
-}
-
 export function resolveDesktopRuntimeDependencies(
   dependencies: Record<string, string> | undefined,
   catalog: Record<string, string>,
@@ -1209,10 +1157,6 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
   };
 });
-
-export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
-}
 
 function isDesktopPreviewVersion(version: string): boolean {
   return /-pr\./.test(version);
@@ -1403,78 +1347,6 @@ const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(f
   if (platform === "win") {
     yield* stageWindowsIcons(stageResourcesDir, iconAssets.windowsIconIco);
   }
-});
-
-// Builds (unless skipBuild) the hosted-static apps/web bundle — the same
-// build the Vercel-hosted web app uses (VITE_HOSTED_APP_CHANNEL set,
-// VITE_HTTP_URL/VITE_WS_URL unset so isHostedStaticApp() is true and the
-// client never points at a local backend) — then stamps its brand assets and
-// copies it into the staged app so electron-builder's extraResources entry
-// (DESKTOP_EXTRA_RESOURCES) lands it at resourcesPath/web/**.
-// DesktopEnvironment.ts's resolveResourcePathCandidates() is what
-// DesktopApp.ts's assets.resolveResourcePath("web/index.html") and
-// ElectronProtocol.ts's serveStaticFile resolve it through at runtime.
-export const stageHostedWebBundle = Effect.fn("stageHostedWebBundle")(function* (input: {
-  readonly repoRoot: string;
-  readonly webDistDir: string;
-  readonly stageWebResourcesDir: string;
-  readonly appVersion: string;
-  readonly webAssetBrand: WebAssetBrand;
-  readonly skipBuild: boolean;
-  readonly verbose: boolean;
-}) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  if (!input.skipBuild) {
-    yield* Effect.log("[desktop-artifact] Building hosted-static web bundle...");
-    const spawnCommand = yield* resolveSpawnCommand("vp", [
-      "run",
-      "--filter",
-      "@t3tools/web",
-      "build",
-    ]);
-    yield* runCommand(
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        cwd: input.repoRoot,
-        shell: spawnCommand.shell,
-        env: {
-          ...process.env,
-          VITE_HOSTED_APP_CHANNEL: resolveDesktopUpdateChannel(input.appVersion),
-          // isHostedStaticApp() treats a configured backend URL as "not
-          // hosted"; scrub both explicitly so a developer's .env/.env.local
-          // cannot leak a local backend target into the packaged bundle.
-          VITE_HTTP_URL: "",
-          VITE_WS_URL: "",
-        },
-      }),
-      { label: "vp run --filter @t3tools/web build", verbose: input.verbose },
-    );
-  }
-
-  const webBundleEntry = path.join(input.webDistDir, "index.html");
-  if (!(yield* fs.exists(webBundleEntry))) {
-    return yield* new MissingDesktopBuildInputError({
-      artifact: "web-dist",
-      artifactPath: webBundleEntry,
-      buildCommand: "vp run --filter @t3tools/web build",
-    });
-  }
-
-  // applyWebBrandAssets resolves both sides of the copy relative to the repo
-  // root itself, so this must stay a repo-relative path, not input.webDistDir.
-  yield* applyWebBrandAssets(input.webAssetBrand, "apps/web/dist");
-  yield* Effect.log(`[desktop-artifact] Applied ${input.webAssetBrand} web client branding.`);
-  yield* validateBundledClientAssets(input.webDistDir);
-
-  yield* fs
-    .remove(input.stageWebResourcesDir, { recursive: true, force: true })
-    .pipe(Effect.ignore);
-  yield* fs.makeDirectory(path.dirname(input.stageWebResourcesDir), { recursive: true });
-  yield* fs.copy(input.webDistDir, input.stageWebResourcesDir);
-  yield* Effect.log(
-    `[desktop-artifact] Staged hosted web bundle at ${input.stageWebResourcesDir}.`,
-  );
 });
 
 const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
