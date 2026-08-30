@@ -105,10 +105,10 @@ const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
 
-const dmSansFonts = {
-  regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
-  medium: "@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf",
-  bold: "@expo-google-fonts/dm-sans/700Bold/DMSans_700Bold.ttf",
+const robotoFonts = {
+  regular: "@expo-google-fonts/roboto/400Regular/Roboto_400Regular.ttf",
+  medium: "@expo-google-fonts/roboto/500Medium/Roboto_500Medium.ttf",
+  bold: "@expo-google-fonts/roboto/700Bold/Roboto_700Bold.ttf",
 } as const;
 
 const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
@@ -242,21 +242,21 @@ const config: ExpoConfig = {
       "expo-font",
       {
         ios: {
-          fonts: [dmSansFonts.regular, dmSansFonts.medium, dmSansFonts.bold],
+          fonts: [robotoFonts.regular, robotoFonts.medium, robotoFonts.bold],
         },
         android: {
           fonts: [
             {
-              fontFamily: "DMSans-Regular",
-              fontDefinitions: [{ path: dmSansFonts.regular, weight: 400 }],
+              fontFamily: "Roboto-Regular",
+              fontDefinitions: [{ path: robotoFonts.regular, weight: 400 }],
             },
             {
-              fontFamily: "DMSans-Medium",
-              fontDefinitions: [{ path: dmSansFonts.medium, weight: 500 }],
+              fontFamily: "Roboto-Medium",
+              fontDefinitions: [{ path: robotoFonts.medium, weight: 500 }],
             },
             {
-              fontFamily: "DMSans-Bold",
-              fontDefinitions: [{ path: dmSansFonts.bold, weight: 700 }],
+              fontFamily: "Roboto-Bold",
+              fontDefinitions: [{ path: robotoFonts.bold, weight: 700 }],
             },
           ],
         },
