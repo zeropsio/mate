@@ -626,7 +626,7 @@ export function BranchToolbarBranchSelector({
   const branchPrTooltip = branchPr
     ? `Open ${sourceControlPresentation.terminology.singular} #${branchPr.number} (${branchPr.state})`
     : "";
-  const openPrLink = useOpenPrLink(threadRef);
+  const openPrLink = useOpenPrLink();
 
   function renderPickerItem(itemValue: string, index: number) {
     if (checkoutPullRequestItemValue && itemValue === checkoutPullRequestItemValue) {

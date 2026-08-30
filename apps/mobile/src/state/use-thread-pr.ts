@@ -1,21 +1,38 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import {
-  createLinkedPullRequestDetailAtomFamily,
-  pullRequestDetailToVcsStatus,
-} from "@t3tools/client-runtime/state/pull-requests";
+import type { ThreadLinkedPullRequest } from "@t3tools/contracts";
 
-import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";
-import { presentThreadPr, type ThreadPrPresentation } from "./thread-pr-presentation";
+import {
+  presentThreadPr,
+  type ThreadPrPresentation as LiveThreadPrPresentation,
+} from "./thread-pr-presentation";
 import { vcsEnvironment } from "./vcs";
 
-const linkedPullRequestDetailAtom = createLinkedPullRequestDetailAtomFamily(connectionAtomRuntime);
+export { presentThreadPr, type ThreadPr } from "./thread-pr-presentation";
 
-export {
-  presentThreadPr,
-  type ThreadPr,
-  type ThreadPrPresentation,
-} from "./thread-pr-presentation";
+export interface LinkedThreadPrPresentation {
+  readonly number: number;
+  readonly repository: string;
+  readonly url: string;
+  readonly label: string;
+  readonly accessibilityLabel: string;
+  readonly textClassName: string;
+}
+
+export type ThreadPrPresentation = LiveThreadPrPresentation | LinkedThreadPrPresentation;
+
+export function presentLinkedThreadPr(
+  linkedPullRequest: ThreadLinkedPullRequest,
+): LinkedThreadPrPresentation {
+  return {
+    number: linkedPullRequest.number,
+    repository: linkedPullRequest.repository,
+    url: linkedPullRequest.url,
+    label: String(linkedPullRequest.number),
+    accessibilityLabel: `#${linkedPullRequest.number} pull request`,
+    textClassName: "text-foreground-tertiary",
+  };
+}
 
 /**
  * Live PR status for a thread's branch. Subscriptions are deduplicated per
@@ -36,28 +53,8 @@ export function useThreadPr(
         })
       : null,
   );
-  const linkedPullRequest = useEnvironmentQuery(
-    thread.linkedPullRequest == null
-      ? null
-      : linkedPullRequestDetailAtom({
-          environmentId: thread.environmentId,
-          input: {
-            projectId: thread.linkedPullRequest.projectId,
-            repository: thread.linkedPullRequest.repository,
-            number: thread.linkedPullRequest.number,
-          },
-        }),
-  );
-
   if (thread.linkedPullRequest != null) {
-    const detail = linkedPullRequest.data;
-    return detail === null
-      ? null
-      : presentThreadPr(pullRequestDetailToVcsStatus(detail), {
-          kind: detail.provider,
-          name: detail.provider,
-          baseUrl: "",
-        });
+    return presentLinkedThreadPr(thread.linkedPullRequest);
   }
 
   const status = gitStatus.data;

@@ -56,9 +56,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       maxUploadBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     }),
   ),
-  /** Server exposes the pull-request list, detail, activity, diff, and mutation APIs. Absent on
-      servers from before the pull-request workspace shipped, so clients must not probe them. */
-  pullRequests: Schema.optionalKey(Schema.Boolean),
   /** Server accepts the stacked commit/push/PR action. Absent on servers from
       before the capability existed, which all accept it, so only an explicit
       false hides the control. */

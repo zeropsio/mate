@@ -105,7 +105,6 @@ function renderTabs(
       onCopyFilePath={() => undefined}
       onAddBrowser={() => undefined}
       onAddTerminal={() => undefined}
-      onAddPullRequest={() => undefined}
       onAddDiff={() => undefined}
       onAddFiles={() => undefined}
       onAddAgents={() => undefined}
@@ -115,7 +114,6 @@ function renderTabs(
       terminalAvailable={false}
       diffAvailable={false}
       filesAvailable={false}
-      pullRequestAvailable={false}
       agentsAvailable={false}
       zeropsAvailable={false}
     >
