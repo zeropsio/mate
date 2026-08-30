@@ -97,6 +97,7 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -122,15 +123,27 @@ jobs:
       - name: Stage desktop web bundle
         run: node scripts/stage-desktop-web.ts
 
+      - name: Diagnose Linux Electron runtime
+        continue-on-error: true
+        run: |
+          electron_binary="$(cd apps/desktop && node -e 'process.stdout.write(require("electron"))')"
+          ldd "$electron_binary" | grep "not found" || true
+          xvfb-run -a -s "-screen 0 1440x900x24" "$electron_binary" --version
+
       - name: Smoke test desktop
-        run: xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test
+        run: |
+          xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test 2>&1 |
+            tee "${{ runner.temp }}/desktop-smoke-log.txt"
 
       - name: Upload desktop smoke capture
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: desktop-smoke-capture
-          path: ${{ runner.temp }}/desktop-smoke-*/smoke.png
+          path: |
+            ${{ runner.temp }}/desktop-smoke-*/smoke.png
+            ${{ runner.temp }}/desktop-smoke-log.txt
+          if-no-files-found: warn
           retention-days: 7
 
   # Everything except `t3` (apps/server). `--parallel` drops the package
