@@ -50,6 +50,7 @@ const COPY_MODULES = [
   "apps/web/src/environments/primary/auth.ts",
   "apps/web/src/components/settings/settingsSearch.ts",
   "apps/web/src/components/RightPanelTabs.tsx",
+  "apps/web/src/rightPanelKinds.ts",
   "apps/web/src/versionSkew.ts",
   "apps/web/src/components/desktopUpdate.logic.ts",
   "apps/web/src/components/settings/providerStatus.ts",
