@@ -13,7 +13,7 @@
 import type { ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback } from "react";
 
-import { zeropsCommands } from "../state/zeropsCommands";
+import { zeropsFeeds } from "../state/zerops";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { agentLoginTerminalToFocus } from "./agentLogin";
@@ -21,7 +21,7 @@ import { agentLoginTerminalToFocus } from "./agentLogin";
 export function useAgentLogin(threadRef: ScopedThreadRef | null): (agentId: ZeropsAgentId) => void {
   const setTerminalOpen = useTerminalUiStateStore((state) => state.setTerminalOpen);
   const ensureTerminal = useTerminalUiStateStore((state) => state.ensureTerminal);
-  const startLogin = useAtomCommand(zeropsCommands.agentLoginStart, "zerops agent login start");
+  const startLogin = useAtomCommand(zeropsFeeds.agentLoginStart, "zerops agent login start");
 
   return useCallback(
     (agentId: ZeropsAgentId) => {

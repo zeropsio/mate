@@ -13,13 +13,13 @@
 import type { ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback } from "react";
 
-import { zeropsCommands } from "../state/zeropsCommands";
+import { zeropsFeeds } from "../state/zerops";
 import { useAtomCommand } from "../state/use-atom-command";
 
 export function useAgentLoginCancel(
   threadRef: ScopedThreadRef | null,
 ): (agentId: ZeropsAgentId) => void {
-  const cancelLogin = useAtomCommand(zeropsCommands.agentLoginCancel, "zerops agent login cancel");
+  const cancelLogin = useAtomCommand(zeropsFeeds.agentLoginCancel, "zerops agent login cancel");
 
   return useCallback(
     (agentId: ZeropsAgentId) => {
