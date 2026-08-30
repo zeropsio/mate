@@ -49,6 +49,12 @@ export const devUrlFlag = Flag.string("dev-url").pipe(
   Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
   Flag.optional,
 );
+export const zeropsFixturesFlag = Flag.string("zerops-fixtures").pipe(
+  Flag.withDescription(
+    "Publish a Zerops showcase scene by web:<id> or an absolute scene JSON path (equivalent to T3CODE_ZEROPS_FIXTURES).",
+  ),
+  Flag.optional,
+);
 export const noBrowserFlag = Flag.boolean("no-browser").pipe(
   Flag.withDescription("Disable automatic browser opening."),
   Flag.optional,
@@ -145,6 +151,10 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  zeropsFixtures: Config.string("T3CODE_ZEROPS_FIXTURES").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   noBrowser: Config.boolean("T3CODE_NO_BROWSER").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -171,6 +181,7 @@ export interface CliServerFlags {
   readonly baseDir: Option.Option<string>;
   readonly cwd: Option.Option<string>;
   readonly devUrl: Option.Option<URL>;
+  readonly zeropsFixtures: Option.Option<string>;
   readonly noBrowser: Option.Option<boolean>;
   readonly bootstrapFd: Option.Option<number>;
   readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
@@ -204,6 +215,7 @@ export const sharedServerCommandFlags = {
     Argument.optional,
   ),
   devUrl: devUrlFlag,
+  zeropsFixtures: zeropsFixturesFlag,
   noBrowser: noBrowserFlag,
   bootstrapFd: bootstrapFdFlag,
   autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
@@ -248,6 +260,7 @@ export const resolveServerConfig = (
       baseDir: flags.baseDir ?? Option.none(),
       cwd: flags.cwd ?? Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
+      zeropsFixtures: flags.zeropsFixtures ?? Option.none(),
       noBrowser: flags.noBrowser ?? Option.none(),
       bootstrapFd: flags.bootstrapFd ?? Option.none(),
       autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
@@ -360,6 +373,17 @@ export const resolveServerConfig = (
         resolveOptionPrecedence(normalizedFlags.basePath, Option.fromUndefinedOr(env.basePath)),
       ),
     );
+    const zeropsFixtures = Option.getOrUndefined(
+      resolveOptionPrecedence(
+        normalizedFlags.zeropsFixtures,
+        Option.fromUndefinedOr(env.zeropsFixtures),
+      ),
+    );
+    if (zeropsFixtures !== undefined) {
+      yield* Effect.logInfo("Zerops identity door is off because fixture mode is on.", {
+        zeropsFixtures,
+      });
+    }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const config: ServerConfig.ServerConfig["Service"] = {
@@ -390,13 +414,17 @@ export const resolveServerConfig = (
       staticDir,
       devUrl,
       devAllowedOrigins: env.devAllowedOrigins,
-      zerops: resolveZeropsEnvironment({
-        projectId: env.zeropsProjectId,
-        apiHost: env.zeropsApiHost,
-        allowedOrigins: env.zeropsAllowedOrigins,
-        membershipTtlSeconds: env.zeropsMembershipTtlSeconds,
-        publicOrigin: env.zeropsPublicOrigin,
-      }),
+      zeropsFixtures,
+      zerops:
+        zeropsFixtures === undefined
+          ? resolveZeropsEnvironment({
+              projectId: env.zeropsProjectId,
+              apiHost: env.zeropsApiHost,
+              allowedOrigins: env.zeropsAllowedOrigins,
+              membershipTtlSeconds: env.zeropsMembershipTtlSeconds,
+              publicOrigin: env.zeropsPublicOrigin,
+            })
+          : undefined,
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,
@@ -423,6 +451,7 @@ export const resolveCliAuthConfig = (
       baseDir: flags.baseDir,
       cwd: Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
+      zeropsFixtures: Option.none(),
       noBrowser: Option.none(),
       bootstrapFd: Option.none(),
       autoBootstrapProjectFromCwd: Option.none(),

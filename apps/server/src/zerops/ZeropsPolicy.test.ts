@@ -33,7 +33,11 @@ const configLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) 
     ServerConfig.ServerConfig,
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
-      return { ...config, ...overrides } satisfies ServerConfig.ServerConfig["Service"];
+      return {
+        ...config,
+        zeropsFixtures: undefined,
+        ...overrides,
+      } satisfies ServerConfig.ServerConfig["Service"];
     }),
   ).pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-zerops-policy-test-" })),

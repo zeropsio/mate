@@ -61,7 +61,11 @@ const makeLayer = (route: (url: string) => Response) =>
         ServerConfig.ServerConfig,
         Effect.gen(function* () {
           const config = yield* ServerConfig.ServerConfig;
-          return { ...config, zerops: environment } satisfies ServerConfig.ServerConfig["Service"];
+          return {
+            ...config,
+            zeropsFixtures: undefined,
+            zerops: environment,
+          } satisfies ServerConfig.ServerConfig["Service"];
         }),
       ).pipe(
         Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-zerops-gate-test-" })),

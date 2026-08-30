@@ -22,6 +22,7 @@ const makeServerConfigLayer = (
       const config = yield* ServerConfig.ServerConfig;
       return {
         ...config,
+        zeropsFixtures: undefined,
         ...overrides,
       } satisfies ServerConfig.ServerConfig["Service"];
     }),

@@ -59,11 +59,103 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     baseDir: Option.none(),
     cwd: Option.none(),
     devUrl: Option.none(),
+    zeropsFixtures: Option.none(),
     noBrowser: Option.none(),
     bootstrapFd: Option.none(),
     autoBootstrapProjectFromCwd: Option.none(),
     logWebSocketEvents: Option.none(),
   } as const;
+
+  it.effect("reads Zerops fixtures from the environment without enabling the identity door", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-fixtures-env");
+      const resolved = yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(baseDir),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: { T3CODE_ZEROPS_FIXTURES: "web:service-map-live" },
+              }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.zeropsFixtures).toBe("web:service-map-live");
+      expect(resolved.zerops).toBeUndefined();
+    }),
+  );
+
+  it.effect("keeps the identity door off when fixtures and a Zerops project are both set", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-fixtures-in-zerops");
+      const resolved = yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(baseDir),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: {
+                  T3CODE_ZEROPS_FIXTURES: "web:service-map-live",
+                  T3CODE_ZEROPS_PROJECT_ID: "project-that-must-not-enable-the-door",
+                },
+              }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.zeropsFixtures).toBe("web:service-map-live");
+      expect(resolved.zerops).toBeUndefined();
+    }),
+  );
+
+  it.effect("prefers --zerops-fixtures over the environment", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-fixtures-flag");
+      const resolved = yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(baseDir),
+          zeropsFixtures: Option.some("web:agent-auth-ok"),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: { T3CODE_ZEROPS_FIXTURES: "web:service-map-live" },
+              }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.zeropsFixtures).toBe("web:agent-auth-ok");
+      expect(resolved.zerops).toBeUndefined();
+    }),
+  );
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
     const fs = yield* FileSystem.FileSystem;
@@ -93,6 +185,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.none(),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -164,6 +257,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.some(true),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(true),
@@ -238,6 +332,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.some(false),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.some(false),
@@ -311,6 +406,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.none(),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -377,6 +473,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.some(customCwd),
           devUrl: Option.some(new URL("http://127.0.0.1:5173")),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -436,6 +533,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -510,6 +608,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),
@@ -650,6 +749,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
+          zeropsFixtures: Option.none(),
           noBrowser: Option.none(),
           bootstrapFd: Option.none(),
           autoBootstrapProjectFromCwd: Option.none(),

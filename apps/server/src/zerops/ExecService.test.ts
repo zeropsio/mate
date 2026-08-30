@@ -25,6 +25,7 @@ const makeLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
           return {
             ...config,
             zerops: zeropsEnvironment,
+            zeropsFixtures: undefined,
             ...overrides,
           } satisfies ServerConfig.ServerConfig["Service"];
         }),
