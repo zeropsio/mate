@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
+import { ZeropsActivityResult } from "@t3tools/shared/showcaseScenes";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import { readZeropsActivityResult } from "./activityResult.ts";
+
+const decodeSharedActivityResult = Schema.decodeUnknownSync(ZeropsActivityResult);
+const decodeSharedActivityResultOption = Schema.decodeUnknownOption(ZeropsActivityResult);
 
 describe("readZeropsActivityResult", () => {
   it("reads a completed zerops result", () => {
@@ -51,5 +57,49 @@ describe("readZeropsActivityResult", () => {
     });
 
     expect(result).toEqual({ toolName: "zerops_verify" });
+  });
+
+  it("accepts the shared shape and normalizes its two deliberately permissive fields", () => {
+    const candidates: ReadonlyArray<{
+      readonly value: unknown;
+      readonly readerAccepts: boolean;
+      readonly schemaAccepts: boolean;
+    }> = [
+      { value: { toolName: "zerops_import" }, readerAccepts: true, schemaAccepts: true },
+      {
+        value: { toolName: "zerops_verify", resultText: '{"status":"healthy"}' },
+        readerAccepts: true,
+        schemaAccepts: true,
+      },
+      {
+        value: { toolName: "zerops_deploy", truncated: true },
+        readerAccepts: true,
+        schemaAccepts: true,
+      },
+      {
+        value: { toolName: "zerops_verify", resultText: 42 },
+        readerAccepts: true,
+        schemaAccepts: false,
+      },
+      {
+        value: { toolName: "zerops_deploy", truncated: false },
+        readerAccepts: true,
+        schemaAccepts: false,
+      },
+      { value: {}, readerAccepts: false, schemaAccepts: false },
+      { value: { toolName: "" }, readerAccepts: false, schemaAccepts: false },
+      { value: { toolName: 42 }, readerAccepts: false, schemaAccepts: false },
+      { value: null, readerAccepts: false, schemaAccepts: false },
+      { value: [], readerAccepts: false, schemaAccepts: false },
+    ];
+    for (const { value, readerAccepts, schemaAccepts } of candidates) {
+      const schemaResult = decodeSharedActivityResultOption(value);
+      const readerResult = readZeropsActivityResult({ zerops: value });
+      expect(readerResult !== undefined).toBe(readerAccepts);
+      expect(Option.isSome(schemaResult)).toBe(schemaAccepts);
+      if (readerResult !== undefined) {
+        expect(decodeSharedActivityResult(readerResult)).toEqual(readerResult);
+      }
+    }
   });
 });

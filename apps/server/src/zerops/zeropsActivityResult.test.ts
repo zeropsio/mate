@@ -1,10 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { SpiEvent, SpiToolCall } from "@t3tools/contracts";
+import { ZeropsActivityResult } from "@t3tools/shared/showcaseScenes";
+import * as Schema from "effect/Schema";
 
 import { ZEROPS_RESULT_TEXT_LIMIT, projectZeropsResult } from "./zeropsActivityResult.ts";
 
 const spiEvent = (toolCall?: SpiToolCall): SpiEvent => ({ toolCall }) as SpiEvent;
+const strictParseOptions = {
+  errors: "all",
+  onExcessProperty: "error",
+} as const;
+const decodeSharedActivityResult = Schema.decodeUnknownSync(
+  ZeropsActivityResult,
+  strictParseOptions,
+);
 
 const zeropsCall = (overrides: Partial<SpiToolCall> = {}): SpiToolCall => ({
   name: "zerops_deploy",
@@ -69,5 +79,26 @@ describe("projectZeropsResult", () => {
 
   it("ignores an event that carries no toolCall", () => {
     expect(projectZeropsResult(spiEvent(undefined))).toBeUndefined();
+  });
+
+  it("the projected result decodes through the shared ZeropsActivityResult schema", () => {
+    const projected = [
+      projectZeropsResult(spiEvent(zeropsCall())),
+      projectZeropsResult(
+        spiEvent(zeropsCall({ result: { text: '{"status":"DEPLOYED"}', failed: false } })),
+      ),
+      projectZeropsResult(
+        spiEvent(
+          zeropsCall({
+            result: { text: "x".repeat(ZEROPS_RESULT_TEXT_LIMIT + 1), failed: false },
+          }),
+        ),
+      ),
+    ];
+
+    for (const result of projected) {
+      expect(result).toBeDefined();
+      expect(() => decodeSharedActivityResult(result)).not.toThrow();
+    }
   });
 });

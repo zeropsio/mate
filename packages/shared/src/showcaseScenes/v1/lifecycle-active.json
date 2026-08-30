@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "id": "web:lifecycle-active",
+  "title": "Lifecycle active",
+  "synthetic": true,
+  "source": {
+    "recordedAt": "2026-08-30T12:00:00.000Z",
+    "from": "authored"
+  },
+  "topology": {
+    "available": true,
+    "degraded": false,
+    "project": {
+      "id": "showcase-project",
+      "name": "Zerops Showcase",
+      "status": "ACTIVE"
+    },
+    "services": [],
+    "warnings": [],
+    "doorbellConnected": true,
+    "readAt": "2026-08-30T12:00:00.000Z"
+  },
+  "lifecycle": {
+    "threadId": "showcase-thread",
+    "envelope": {
+      "phase": "develop-active",
+      "environment": "container",
+      "project": {
+        "id": "showcase-project",
+        "name": "Zerops Showcase"
+      },
+      "services": [
+        {
+          "hostname": "apidev",
+          "typeVersion": "ubuntu/nodejs@22",
+          "runtimeClass": "dynamic",
+          "status": "ACTIVE",
+          "bootstrapped": true,
+          "deployed": true
+        },
+        {
+          "hostname": "db",
+          "typeVersion": "postgresql:single@18",
+          "runtimeClass": "managed",
+          "status": "RUNNING",
+          "bootstrapped": true
+        },
+        {
+          "hostname": "zcp",
+          "typeVersion": "ubuntu/zcp@latest",
+          "runtimeClass": "system",
+          "status": "ACTIVE",
+          "bootstrapped": true
+        }
+      ],
+      "generated": "2026-08-30T12:00:00.000Z",
+      "workSession": {
+        "intent": "Ship the Zerops showcase",
+        "services": ["apidev"],
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      }
+    },
+    "recentTools": [
+      {
+        "toolName": "zerops_deploy",
+        "status": "inProgress",
+        "at": "2026-08-30T12:00:00.000Z",
+        "itemId": "lifecycle-active-deploy"
+      }
+    ],
+    "updatedAt": "2026-08-30T12:00:00.000Z"
+  },
+  "agentAuth": {
+    "available": true,
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      },
+      {
+        "agentId": "codex",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      }
+    ]
+  },
+  "agentLogin": {},
+  "projects": [
+    {
+      "id": "showcase-project",
+      "title": "Zerops Showcase",
+      "workspaceRoot": "/workspace/zerops-showcase",
+      "defaultModelSelection": null,
+      "scripts": [],
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z"
+    }
+  ],
+  "threads": [
+    {
+      "id": "showcase-thread",
+      "projectId": "showcase-project",
+      "title": "Lifecycle active",
+      "modelSelection": {
+        "instanceId": "codex",
+        "model": "gpt-5.4"
+      },
+      "runtimeMode": "full-access",
+      "interactionMode": "default",
+      "branch": "feat/showcase-scenes",
+      "worktreePath": "/workspace/zerops-showcase",
+      "latestTurn": null,
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z",
+      "archivedAt": null,
+      "settledOverride": null,
+      "settledAt": null,
+      "session": null,
+      "latestUserMessageAt": "2026-08-30T12:00:00.000Z",
+      "hasPendingApprovals": false,
+      "hasPendingUserInput": false,
+      "hasActionableProposedPlan": false
+    }
+  ],
+  "threadActivities": {},
+  "steps": [
+    {
+      "afterMs": 2000,
+      "lifecycle": {
+        "threadId": "showcase-thread",
+        "envelope": {
+          "phase": "develop-closed-auto",
+          "environment": "container",
+          "project": {
+            "id": "showcase-project",
+            "name": "Zerops Showcase"
+          },
+          "services": [
+            {
+              "hostname": "apidev",
+              "typeVersion": "ubuntu/nodejs@22",
+              "runtimeClass": "dynamic",
+              "status": "ACTIVE",
+              "bootstrapped": true,
+              "deployed": true
+            },
+            {
+              "hostname": "db",
+              "typeVersion": "postgresql:single@18",
+              "runtimeClass": "managed",
+              "status": "RUNNING",
+              "bootstrapped": true
+            },
+            {
+              "hostname": "zcp",
+              "typeVersion": "ubuntu/zcp@latest",
+              "runtimeClass": "system",
+              "status": "ACTIVE",
+              "bootstrapped": true
+            }
+          ],
+          "generated": "2026-08-30T12:00:02.000Z",
+          "workSession": {
+            "intent": "Ship the Zerops showcase",
+            "services": ["apidev"],
+            "createdAt": "2026-08-30T12:00:00.000Z"
+          }
+        },
+        "recentTools": [
+          {
+            "toolName": "zerops_deploy",
+            "status": "completed",
+            "at": "2026-08-30T12:00:02.000Z",
+            "itemId": "lifecycle-active-deploy"
+          }
+        ],
+        "updatedAt": "2026-08-30T12:00:02.000Z"
+      }
+    }
+  ]
+}

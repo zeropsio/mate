@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "id": "web:no-zerops",
+  "title": "No Zerops environment",
+  "synthetic": true,
+  "source": {
+    "recordedAt": "2026-08-30T12:00:00.000Z",
+    "from": "authored"
+  },
+  "topology": {
+    "available": false,
+    "degraded": false,
+    "reason": "Not a Zerops environment",
+    "services": [],
+    "warnings": [],
+    "readAt": "2026-08-30T12:00:00.000Z"
+  },
+  "lifecycle": {
+    "threadId": "showcase-thread",
+    "recentTools": []
+  },
+  "agentAuth": {
+    "available": false,
+    "reason": "Not a Zerops environment",
+    "agents": []
+  },
+  "agentLogin": {},
+  "projects": [
+    {
+      "id": "showcase-project",
+      "title": "Zerops Showcase",
+      "workspaceRoot": "/workspace/zerops-showcase",
+      "defaultModelSelection": null,
+      "scripts": [],
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z"
+    }
+  ],
+  "threads": [
+    {
+      "id": "showcase-thread",
+      "projectId": "showcase-project",
+      "title": "No Zerops environment",
+      "modelSelection": {
+        "instanceId": "codex",
+        "model": "gpt-5.4"
+      },
+      "runtimeMode": "full-access",
+      "interactionMode": "default",
+      "branch": "feat/showcase-scenes",
+      "worktreePath": "/workspace/zerops-showcase",
+      "latestTurn": null,
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z",
+      "archivedAt": null,
+      "settledOverride": null,
+      "settledAt": null,
+      "session": null,
+      "latestUserMessageAt": "2026-08-30T12:00:00.000Z",
+      "hasPendingApprovals": false,
+      "hasPendingUserInput": false,
+      "hasActionableProposedPlan": false
+    }
+  ],
+  "threadActivities": {},
+  "steps": []
+}
