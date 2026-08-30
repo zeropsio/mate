@@ -15,6 +15,10 @@
       "types": "./src/themePalettes.ts",
       "import": "./src/themePalettes.ts"
     },
+    "./mobileThemeVariables": {
+      "types": "./src/mobileThemeVariables.ts",
+      "import": "./src/mobileThemeVariables.ts"
+    },
     "./themePreview": {
       "types": "./src/themePreview.ts",
       "import": "./src/themePreview.ts"

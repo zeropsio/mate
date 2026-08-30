@@ -339,9 +339,8 @@ describe("index.html boot script", () => {
     expect(boot.backgroundColor).toBe(colors.chrome);
   });
 
-  // Asserting against the real palette definitions (not literals) turns the
-  // boot script's hand-maintained copy into a CI-enforced contract: any
-  // palette change breaks this test until the copy in index.html is updated.
+  // Asserting against the real palette definitions (not literals) verifies
+  // that the generated boot copy stays byte-derived from the canonical palettes.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
     for (const theme of [
       ZEROPS_THEME,

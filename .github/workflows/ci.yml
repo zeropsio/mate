@@ -77,6 +77,12 @@ jobs:
       - name: Check theme escape-hatch exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-theme-escape-hatches
 
+      - name: Check generated theme tokens
+        run: node scripts/generate-theme-tokens.ts --check
+
+      - name: Check generated mobile themes
+        run: vp run --filter @t3tools/mobile generate -- --check
+
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 

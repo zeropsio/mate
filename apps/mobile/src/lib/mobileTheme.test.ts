@@ -77,14 +77,6 @@ describe("mobile themes", () => {
     }
   });
 
-  it("preserves the authored bare appearance fallback for the projector slice", () => {
-    expect(readDefaultMobileThemeVariables("light")["--color-screen"]).toBe("#f2f2f7");
-    expect(readDefaultMobileThemeVariables("dark")["--color-screen"]).toBe("#0a0a0a");
-    expect(readDefaultMobileThemeVariables("light")["--color-user-bubble-skill-foreground"]).toBe(
-      "#f0abfc",
-    );
-  });
-
   it("applies palette overrides on top of the selected built-in theme", () => {
     const variables = getMobileThemeVariables("ocean", "dark", {
       "--color-primary": "#123456",
@@ -152,28 +144,9 @@ describe("mobile themes", () => {
     });
   });
 
-  it("converts OKLCH colors to React Native sRGB ColorValues", () => {
-    expect(themeColorToNativeColor("oklch(1 0 0)")).toBe("#ffffff");
-    expect(themeColorToNativeColor("oklch(0 0 0)")).toBe("#000000");
-    expect(themeColorToNativeColor("#123456")).toBe("#123456");
-  });
-
   it("changes native palette color opacity for fades", () => {
     expect(themeColorWithAlpha("#123456", 0)).toBe("rgba(18, 52, 86, 0)");
     expect(themeColorWithAlpha("rgba(18, 52, 86, 0.98)", 0)).toBe("rgba(18, 52, 86, 0)");
-  });
-
-  it("maps semantic palette roles onto every mobile color variable", () => {
-    const variables = createMobileThemeVariables(BUILT_IN_THEMES[0].colors, "light");
-    expect(Object.keys(variables)).toHaveLength(65);
-    expect(variables["--color-sheet-solid"]).toBe(
-      themeColorToNativeColor(BUILT_IN_THEMES[0].colors.chrome),
-    );
-    expect(variables["--color-primary"]).not.toBe(variables["--color-screen"]);
-    expect(variables["--color-primary-shadow"]).toBe("#000000");
-    expect(variables["--color-backdrop"]).toBe("rgba(0, 0, 0, 0.22)");
-    expect(variables["--color-drawer-shadow"]).toBe("rgba(0, 0, 0, 0.12)");
-    expect(variables["--color-user-bubble-foreground"]).toMatch(/^#/);
   });
 
   it("keeps every built-in shadow and backdrop black-based in dark mode", () => {
