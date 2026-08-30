@@ -89,6 +89,7 @@ export const makeServerEnvironmentCapabilities = (
     fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
     pullRequests: policy.stackedVcsActionsAllowed,
     vcsStackedActions: policy.stackedVcsActionsAllowed,
+    worktreesAllowed: policy.worktreesAllowed,
     threadSettlement: true,
     threadSnooze: true,
     threadPinning: true,

@@ -22,8 +22,16 @@ import {
   getProjectOrderKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
-import { resolveDefaultThreadEnvMode } from "@t3tools/shared/threadEnvMode";
-import { readThreadShell, useProjects, useThread } from "../state/entities";
+import {
+  resolveDefaultThreadEnvMode,
+  resolveThreadEnvModeForCapability,
+} from "@t3tools/shared/threadEnvMode";
+import {
+  readEnvironmentAllowsWorktrees,
+  readThreadShell,
+  useProjects,
+  useThread,
+} from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
@@ -41,11 +49,17 @@ interface NewThreadWorkspaceOptions {
 // The workspace options the caller passed explicitly, shaped for the draft
 // store: absent keys stay absent so they never overwrite existing draft
 // state. Every reuse path applies exactly this set.
-function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undefined) {
+function pickExplicitWorkspaceOptions(
+  options: NewThreadWorkspaceOptions | undefined,
+  worktreesAllowed: boolean,
+) {
+  const envMode = options?.envMode
+    ? resolveThreadEnvModeForCapability(options.envMode, worktreesAllowed)
+    : undefined;
   return {
     ...(options?.branch !== undefined ? { branch: options.branch } : {}),
     ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
-    ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
+    ...(envMode !== undefined ? { envMode } : {}),
     ...(options?.startFromOrigin !== undefined ? { startFromOrigin: options.startFromOrigin } : {}),
   };
 }
@@ -161,11 +175,13 @@ export function useNewThreadHandler() {
           candidate.id === projectRef.projectId &&
           candidate.environmentId === projectRef.environmentId,
       );
+      const worktreesAllowed = readEnvironmentAllowsWorktrees(projectRef.environmentId);
       // The shared resolver owns the priority order. The t3.json read is
       // skipped entirely when a higher-priority source decides, and its
       // query atom caches per project after the first call.
       const resolveDefaultEnvMode = async (): Promise<DraftThreadEnvMode> => {
-        const consultProjectFile = project !== undefined && project.defaultThreadEnvMode == null;
+        const consultProjectFile =
+          worktreesAllowed && project !== undefined && project.defaultThreadEnvMode == null;
         return resolveDefaultThreadEnvMode({
           projectSetting: project?.defaultThreadEnvMode,
           projectFile: consultProjectFile
@@ -175,6 +191,7 @@ export function useNewThreadHandler() {
               )
             : null,
           globalDefault: primaryServerSettings.defaultThreadEnvMode,
+          worktreesAllowed,
         });
       };
       const logicalProjectKey = project
@@ -233,7 +250,7 @@ export function useNewThreadHandler() {
           // the user may have just picked a branch in the composer.
           let workspaceContext: NewThreadWorkspaceOptions | null = null;
           if (hasExplicitWorkspaceOption) {
-            workspaceContext = pickExplicitWorkspaceOptions(options);
+            workspaceContext = pickExplicitWorkspaceOptions(options, worktreesAllowed);
           } else if (!isDraftAlreadyOpen) {
             const defaultEnvMode = await resolveDefaultEnvMode();
             // The await yields. If the draft was opened (a concurrent
@@ -339,14 +356,17 @@ export function useNewThreadHandler() {
           hasEnvModeOption ||
           hasStartFromOriginOption
         ) {
-          setDraftThreadContext(currentRouteTarget.draftId, pickExplicitWorkspaceOptions(options));
+          setDraftThreadContext(
+            currentRouteTarget.draftId,
+            pickExplicitWorkspaceOptions(options, worktreesAllowed),
+          );
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
           threadId: latestActiveDraftThread.threadId,
           createdAt: latestActiveDraftThread.createdAt,
           runtimeMode: latestActiveDraftThread.runtimeMode,
           interactionMode: latestActiveDraftThread.interactionMode,
-          ...pickExplicitWorkspaceOptions(options),
+          ...pickExplicitWorkspaceOptions(options, worktreesAllowed),
         });
         return Promise.resolve({
           draftId: currentRouteTarget.draftId,
@@ -358,7 +378,8 @@ export function useNewThreadHandler() {
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
       return (async () => {
-        const initialEnvMode = options?.envMode ?? (await resolveDefaultEnvMode());
+        const explicitEnvMode = pickExplicitWorkspaceOptions(options, worktreesAllowed).envMode;
+        const initialEnvMode = explicitEnvMode ?? (await resolveDefaultEnvMode());
         // The await yields, so a concurrent invocation may have registered a
         // draft for this logical project in the meantime. Registering ours
         // too would evict that draft while its navigation is in flight —
@@ -386,7 +407,7 @@ export function useNewThreadHandler() {
             createdAt: racedDraft.createdAt,
             runtimeMode: racedDraft.runtimeMode,
             interactionMode: racedDraft.interactionMode,
-            ...pickExplicitWorkspaceOptions(options),
+            ...pickExplicitWorkspaceOptions(options, worktreesAllowed),
           });
           carryComposerContentTo(racedDraft.draftId);
           await router.navigate({

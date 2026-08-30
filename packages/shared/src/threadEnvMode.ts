@@ -1,20 +1,34 @@
 import type { ThreadEnvMode } from "@t3tools/contracts";
 
+export function resolveThreadEnvModeForCapability(
+  mode: ThreadEnvMode,
+  worktreesAllowed: boolean | undefined,
+): ThreadEnvMode {
+  return worktreesAllowed === false && mode === "worktree" ? "local" : mode;
+}
+
 /**
- * Canonical priority order for a project's default thread env mode:
- * per-project setting > checked-in t3.json > global server setting.
+ * Canonical priority order for a project's default thread env mode: an
+ * explicit server refusal > per-project setting > checked-in t3.json >
+ * global server setting. A missing capability preserves the upstream
+ * worktree behavior under version skew.
  *
- * An explicit composer pick outranks all of these; callers apply it before
- * consulting the defaults. Web resolves the sources imperatively at draft
- * creation, mobile reactively — both must route through this function so the
- * platforms cannot disagree on the order.
+ * An explicit composer pick outranks the defaults but not a server refusal;
+ * callers clamp explicit picks with resolveThreadEnvModeForCapability. Web
+ * resolves the sources imperatively at draft creation, mobile reactively —
+ * both must route through this function so the platforms cannot disagree on
+ * the order.
  */
 export function resolveDefaultThreadEnvMode(sources: {
   readonly projectSetting: ThreadEnvMode | null | undefined;
   readonly projectFile: ThreadEnvMode | null | undefined;
   readonly globalDefault: ThreadEnvMode;
+  readonly worktreesAllowed?: boolean;
 }): ThreadEnvMode {
-  return sources.projectSetting ?? sources.projectFile ?? sources.globalDefault;
+  return resolveThreadEnvModeForCapability(
+    sources.projectSetting ?? sources.projectFile ?? sources.globalDefault,
+    sources.worktreesAllowed,
+  );
 }
 
 /**

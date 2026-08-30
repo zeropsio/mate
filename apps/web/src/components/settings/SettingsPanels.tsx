@@ -35,6 +35,7 @@ import {
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
+import { resolveThreadEnvModeForCapability } from "@t3tools/shared/threadEnvMode";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
@@ -73,7 +74,8 @@ import {
 import { ensureLocalApi, readLocalApi } from "../../localApi";
 import { isMacPlatform } from "../../lib/utils";
 import { primaryServerObservabilityAtom, primaryServerProvidersAtom } from "../../state/server";
-import { useProjects } from "../../state/entities";
+import { useEnvironmentAllowsWorktrees, useProjects } from "../../state/entities";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
@@ -423,6 +425,12 @@ export function useSettingsRestore(onRestored?: () => void) {
   } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const worktreesAllowed = useEnvironmentAllowsWorktrees(primaryEnvironmentId);
+  const effectiveDefaultThreadEnvMode = resolveThreadEnvModeForCapability(
+    settings.defaultThreadEnvMode,
+    worktreesAllowed,
+  );
 
   const isTextGenerationModelDirty = !Equal.equals(
     settings.textGenerationModelSelection ?? null,
@@ -470,11 +478,11 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Provider update checks"]
         : []),
       ...(isBackgroundActivityDirty ? ["Background activity"] : []),
-      ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
+      ...(effectiveDefaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
         : []),
-      ...(settings.newWorktreesStartFromOrigin !==
-      DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
+      ...(worktreesAllowed &&
+      settings.newWorktreesStartFromOrigin !== DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin
         ? ["New worktrees start from origin"]
         : []),
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
@@ -498,6 +506,8 @@ export function useSettingsRestore(onRestored?: () => void) {
     [
       isTextGenerationModelDirty,
       isBackgroundActivityDirty,
+      effectiveDefaultThreadEnvMode,
+      worktreesAllowed,
       settings.browserDefaultViewport,
       settings.browserDefaultZoomFactor,
       settings.browserDefaultAppearance,
@@ -1744,6 +1754,17 @@ function LegacyFeaturesSection() {
 export function GeneralSettingsPanel() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const worktreesAllowed = useEnvironmentAllowsWorktrees(primaryEnvironmentId);
+  const effectiveDefaultThreadEnvMode = resolveThreadEnvModeForCapability(
+    settings.defaultThreadEnvMode,
+    worktreesAllowed,
+  );
+  const newThreadSettingsDirty =
+    effectiveDefaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode ||
+    (worktreesAllowed &&
+      settings.newWorktreesStartFromOrigin !==
+        DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin);
   const [backgroundActivityDialogOpen, setBackgroundActivityDialogOpen] = useState(false);
   const lastEnabledProjectGroupingMode = useRef<SidebarProjectGroupingMode>(
     readLastEnabledProjectGroupingMode(),
@@ -2108,9 +2129,7 @@ export function GeneralSettingsPanel() {
           {...searchableSetting("new-threads")}
           description="Pick the default workspace mode for newly created draft threads."
           resetAction={
-            settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode ||
-            settings.newWorktreesStartFromOrigin !==
-              DEFAULT_UNIFIED_SETTINGS.newWorktreesStartFromOrigin ? (
+            newThreadSettingsDirty ? (
               <SettingResetButton
                 label="new threads"
                 onClick={() =>
@@ -2125,31 +2144,33 @@ export function GeneralSettingsPanel() {
           }
           control={
             <Select
-              value={settings.defaultThreadEnvMode}
+              value={effectiveDefaultThreadEnvMode}
               onValueChange={(value) => {
-                if (value === "local" || value === "worktree") {
+                if (value === "local" || (worktreesAllowed && value === "worktree")) {
                   updateSettings({ defaultThreadEnvMode: value });
                 }
               }}
             >
               <SelectTrigger className="w-full sm:w-44" aria-label="Default thread mode">
                 <SelectValue>
-                  {settings.defaultThreadEnvMode === "worktree" ? "New worktree" : "Local"}
+                  {effectiveDefaultThreadEnvMode === "worktree" ? "New worktree" : "Local"}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value="local">
                   Local
                 </SelectItem>
-                <SelectItem hideIndicator value="worktree">
-                  New worktree
-                </SelectItem>
+                {worktreesAllowed ? (
+                  <SelectItem hideIndicator value="worktree">
+                    New worktree
+                  </SelectItem>
+                ) : null}
               </SelectPopup>
             </Select>
           }
         />
 
-        {settings.defaultThreadEnvMode === "worktree" ? (
+        {worktreesAllowed && effectiveDefaultThreadEnvMode === "worktree" ? (
           <SettingsRow
             className="bg-muted/20 sm:pl-9"
             title={searchableSetting("start-from-origin").title}

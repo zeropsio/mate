@@ -67,7 +67,7 @@ import {
   type SidebarProjectSnapshot,
 } from "../../sidebarProjectGrouping";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
-import { useProjects, useThreadShells } from "../../state/entities";
+import { useProjects, useServerConfigs, useThreadShells } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
 import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -293,6 +293,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const threads = useThreadShells();
+  const serverConfigs = useServerConfigs();
   const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
   const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
@@ -321,6 +322,10 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     group.memberProjects.find(
       (member) => member.environmentId === group.environmentId && member.id === group.id,
     ) ?? group.memberProjects[0]!;
+  const worktreesAllowed = group.memberProjects.every(
+    (member) =>
+      serverConfigs.get(member.environmentId)?.environment.capabilities.worktreesAllowed !== false,
+  );
   const faviconPath = representative.faviconPath ?? null;
 
   const threadCountByMember = useMemo(() => {
@@ -426,6 +431,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
 
   // ----- new-thread workspace mode -----
   const storedEnvMode = representative.defaultThreadEnvMode ?? null;
+  const effectiveStoredEnvMode = worktreesAllowed ? storedEnvMode : null;
   const setDefaultThreadEnvMode = useCallback(
     (mode: ThreadEnvMode | null) =>
       void updateAllMembers(
@@ -476,6 +482,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   // What the "Default" option resolves to while no override is set: the
   // repo's t3.json value when present, otherwise the global setting.
   const inheritedEnvMode = t3File.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
+  const displayedInheritedEnvMode = worktreesAllowed ? inheritedEnvMode : "local";
   const inheritedEnvModeSource = t3File.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const importableScripts = useMemo(
     () =>
@@ -870,7 +877,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             title="Workspace"
             description="Where new threads in this project start. Overrides t3.json and the global default; applies to every checkout in this group."
             resetAction={
-              storedEnvMode !== null ? (
+              effectiveStoredEnvMode !== null ? (
                 <SettingResetButton
                   label="project workspace default"
                   onClick={() => setDefaultThreadEnvMode(null)}
@@ -879,31 +886,37 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             }
             control={
               <Select
-                value={storedEnvMode ?? "inherit"}
+                value={worktreesAllowed ? (storedEnvMode ?? "inherit") : "local"}
                 onValueChange={(value) => {
-                  if (value === "worktree" || value === "local") {
+                  if (value === "local" || (worktreesAllowed && value === "worktree")) {
                     setDefaultThreadEnvMode(value);
-                  } else if (value === "inherit") {
+                  } else if (worktreesAllowed && value === "inherit") {
                     setDefaultThreadEnvMode(null);
                   }
                 }}
               >
                 <SelectTrigger aria-label="New-thread workspace">
                   <SelectValue>
-                    {storedEnvMode === null
-                      ? group.memberProjects.length > 1
-                        ? "Default (per checkout)"
-                        : `Default (${resolveEnvModeLabel(inheritedEnvMode).toLowerCase()})`
-                      : resolveEnvModeLabel(storedEnvMode)}
+                    {!worktreesAllowed
+                      ? resolveEnvModeLabel("local")
+                      : storedEnvMode === null
+                        ? group.memberProjects.length > 1
+                          ? "Default (per checkout)"
+                          : `Default (${resolveEnvModeLabel(displayedInheritedEnvMode).toLowerCase()})`
+                        : resolveEnvModeLabel(storedEnvMode)}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
-                  <SelectItem value="inherit">
-                    {group.memberProjects.length > 1
-                      ? "Default (each checkout's t3.json or global setting)"
-                      : `Default (${inheritedEnvModeSource}: ${resolveEnvModeLabel(inheritedEnvMode).toLowerCase()})`}
-                  </SelectItem>
-                  <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
+                  {worktreesAllowed ? (
+                    <SelectItem value="inherit">
+                      {group.memberProjects.length > 1
+                        ? "Default (each checkout's t3.json or global setting)"
+                        : `Default (${inheritedEnvModeSource}: ${resolveEnvModeLabel(displayedInheritedEnvMode).toLowerCase()})`}
+                    </SelectItem>
+                  ) : null}
+                  {worktreesAllowed ? (
+                    <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
+                  ) : null}
                   <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
                 </SelectPopup>
               </Select>

@@ -21,6 +21,7 @@ export const PREVIOUS_WORKTREE_SELECT_VALUE = "previous-worktree";
 
 interface BranchToolbarEnvModeSelectorProps {
   envLocked: boolean;
+  worktreesAllowed: boolean;
   effectiveEnvMode: EnvMode;
   activeWorktreePath: string | null;
   onEnvModeChange: (mode: EnvMode) => void;
@@ -30,22 +31,26 @@ interface BranchToolbarEnvModeSelectorProps {
 
 export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSelector({
   envLocked,
+  worktreesAllowed,
   effectiveEnvMode,
   activeWorktreePath,
   onEnvModeChange,
   previousWorktreeLabel,
   onUsePreviousWorktree,
 }: BranchToolbarEnvModeSelectorProps) {
-  const showPreviousWorktree = Boolean(previousWorktreeLabel && onUsePreviousWorktree);
+  const renderedEnvMode = worktreesAllowed ? effectiveEnvMode : "local";
+  const showPreviousWorktree = Boolean(
+    worktreesAllowed && previousWorktreeLabel && onUsePreviousWorktree,
+  );
   const envModeItems = useMemo(
     () => [
       { value: "local", label: resolveCurrentWorkspaceLabel(activeWorktreePath) },
-      { value: "worktree", label: resolveEnvModeLabel("worktree") },
+      ...(worktreesAllowed ? [{ value: "worktree", label: resolveEnvModeLabel("worktree") }] : []),
       ...(showPreviousWorktree && previousWorktreeLabel
         ? [{ value: PREVIOUS_WORKTREE_SELECT_VALUE, label: previousWorktreeLabel }]
         : []),
     ],
-    [activeWorktreePath, previousWorktreeLabel, showPreviousWorktree],
+    [activeWorktreePath, previousWorktreeLabel, showPreviousWorktree, worktreesAllowed],
   );
 
   if (envLocked) {
@@ -72,7 +77,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
   return (
     <Select
       modal={false}
-      value={effectiveEnvMode}
+      value={renderedEnvMode}
       onValueChange={(value: string | null) => {
         if (value === PREVIOUS_WORKTREE_SELECT_VALUE) {
           onUsePreviousWorktree?.();
@@ -89,7 +94,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
         aria-label="Workspace"
         data-composer-context-control
       >
-        {effectiveEnvMode === "worktree" ? (
+        {renderedEnvMode === "worktree" ? (
           <FolderGit2Icon className="size-3" />
         ) : activeWorktreePath ? (
           <FolderGitIcon className="size-3" />
@@ -121,12 +126,14 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
               {resolveCurrentWorkspaceLabel(activeWorktreePath)}
             </span>
           </SelectItem>
-          <SelectItem value="worktree">
-            <span className="inline-flex items-center gap-1.5">
-              <FolderGit2Icon className="size-3" />
-              {resolveEnvModeLabel("worktree")}
-            </span>
-          </SelectItem>
+          {worktreesAllowed ? (
+            <SelectItem value="worktree">
+              <span className="inline-flex items-center gap-1.5">
+                <FolderGit2Icon className="size-3" />
+                {resolveEnvModeLabel("worktree")}
+              </span>
+            </SelectItem>
+          ) : null}
           {showPreviousWorktree && previousWorktreeLabel ? (
             <SelectItem value={PREVIOUS_WORKTREE_SELECT_VALUE}>
               <span className="inline-flex items-center gap-1.5">
