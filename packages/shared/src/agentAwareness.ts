@@ -4,6 +4,7 @@ import type {
   OrchestrationThreadShell,
   ThreadId,
 } from "@t3tools/contracts";
+import { resolveThreadStatus, type ThreadStatusInput } from "./threadStatus.ts";
 
 export type AgentAwarenessPhase =
   | "starting"
@@ -40,6 +41,9 @@ export interface ProjectThreadAwarenessInput {
     | "updatedAt"
     | "hasPendingApprovals"
     | "hasPendingUserInput"
+    | "hasActionableProposedPlan"
+    | "interactionMode"
+    | "backgroundLiveness"
   >;
 }
 
@@ -74,46 +78,44 @@ export function projectThreadAwareness(
   };
 }
 
-function resolveThreadAwarenessPhase(
-  thread: ProjectThreadAwarenessInput["thread"],
-): AgentAwarenessPhase | null {
-  if (thread.hasPendingApprovals) {
-    return "waiting_for_approval";
-  }
-  if (thread.hasPendingUserInput) {
-    return "waiting_for_input";
-  }
-  if (thread.session?.status === "error" || thread.latestTurn?.state === "error") {
-    return "failed";
-  }
-  if (thread.session?.status === "starting") {
-    return "starting";
-  }
-  if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
-    return "running";
-  }
-  if (thread.latestTurn?.state === "completed") {
-    return "completed";
-  }
-  // A turn that finished can still read as "interrupted" here: session
-  // teardown settles still-running turns by session status, and that write
-  // can race the turn.completed one. completedAt survives the race — a turn
-  // that has a completion timestamp finished, whatever the state column says.
-  // Without this, quick finish-then-teardown threads resolve to null
-  // persistently and get tombstoned instead of published as completed.
+function completedAwarenessPhase(thread: ThreadStatusInput): AgentAwarenessPhase | null {
+  if (thread.latestTurn?.state === "completed") return "completed";
+  // Session teardown can settle a finished turn as interrupted, while
+  // completedAt remains the durable evidence that the work finished.
   if (thread.latestTurn?.state === "interrupted" && thread.latestTurn.completedAt !== null) {
     return "completed";
   }
-  // Threads whose turns never produce a checkpoint (no code changes) have no
-  // materialized latestTurn in the shell at all, and the session-set
-  // projection clears latest_turn_id the moment the session settles. The
-  // session status is then the only surviving completion signal: a live
-  // session at "ready"/"idle" with nothing pending and nothing running means
-  // the agent finished and is waiting for the next prompt — Done.
+  // No-change turns may leave no materialized turn, making a settled
+  // session the only completion signal available to the relay.
   if (thread.session?.status === "ready" || thread.session?.status === "idle") {
     return "completed";
   }
   return null;
+}
+
+function resolveThreadAwarenessPhase(thread: ThreadStatusInput): AgentAwarenessPhase | null {
+  switch (resolveThreadStatus(thread).kind) {
+    case "approval":
+      return "waiting_for_approval";
+    case "input":
+      return "waiting_for_input";
+    case "failed":
+      return "failed";
+    case "connecting":
+      return "starting";
+    case "working":
+      if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
+        return "running";
+      }
+      return completedAwarenessPhase(thread);
+    case "planReady":
+    case "monitoring":
+    case "done":
+    case "woke":
+      return "completed";
+    case "idle":
+      return completedAwarenessPhase(thread);
+  }
 }
 
 function headlineForPhase(phase: AgentAwarenessPhase): string {

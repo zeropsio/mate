@@ -31,6 +31,14 @@
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
     },
+    "./threadStatus.vectors": {
+      "types": "./src/threadStatus.vectors.ts",
+      "import": "./src/threadStatus.vectors.ts"
+    },
+    "./threadStatus": {
+      "types": "./src/threadStatus.ts",
+      "import": "./src/threadStatus.ts"
+    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
