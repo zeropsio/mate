@@ -3,6 +3,20 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { buildHomeListFilterMenu } from "./home-list-filter-menu";
 
 describe("buildHomeListFilterMenu", () => {
+  it("omits list organization actions", () => {
+    const menu = buildHomeListFilterMenu({
+      environments: [],
+      projects: [],
+      selectedEnvironmentId: null,
+      selectedProjectKey: null,
+      onEnvironmentChange: vi.fn(),
+      onProjectChange: vi.fn(),
+    });
+
+    expect(menu.items.some((item) => item.title === "Sort projects")).toBe(false);
+    expect(menu.items.some((item) => item.title === "Sort threads")).toBe(false);
+  });
+
   it("adds a project scope submenu that selects and clears the same scope as the chips", () => {
     const onProjectChange = vi.fn();
     const menu = buildHomeListFilterMenu({
@@ -13,12 +27,8 @@ describe("buildHomeListFilterMenu", () => {
       ],
       selectedEnvironmentId: null,
       selectedProjectKey: "environment-1:project-1",
-      projectSortOrder: "updated_at",
-      threadSortOrder: "updated_at",
       onEnvironmentChange: vi.fn(),
       onProjectChange,
-      onProjectSortOrderChange: vi.fn(),
-      onThreadSortOrderChange: vi.fn(),
     });
 
     const projectMenu = menu.items.find(
