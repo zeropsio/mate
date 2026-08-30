@@ -27,18 +27,6 @@ const snapshot = (agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSnapsh
 const noop = () => {};
 
 describe("ZeropsAgentAuthCard", () => {
-  it("renders nothing when the feed is not available", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsAgentAuthCard
-        snapshot={{ available: false, agents: [] }}
-        onSignIn={noop}
-        onCancel={noop}
-      />,
-    );
-
-    expect(html).toBe("");
-  });
-
   it("renders one row per agent, with its name and state label", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard

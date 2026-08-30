@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./legacyVocabulary": {
+      "types": "./src/legacyVocabulary.ts",
+      "import": "./src/legacyVocabulary.ts"
+    },
     "./themePalettes": {
       "types": "./src/themePalettes.ts",
       "import": "./src/themePalettes.ts"
@@ -26,6 +30,14 @@
     "./agentAwareness": {
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
+    },
+    "./threadStatus.vectors": {
+      "types": "./src/threadStatus.vectors.ts",
+      "import": "./src/threadStatus.vectors.ts"
+    },
+    "./threadStatus": {
+      "types": "./src/threadStatus.ts",
+      "import": "./src/threadStatus.ts"
     },
     "./git": {
       "types": "./src/git.ts",
@@ -234,6 +246,10 @@
     "./claudeCompaction": {
       "types": "./src/claudeCompaction.ts",
       "import": "./src/claudeCompaction.ts"
+    },
+    "./showcaseScenes": {
+      "types": "./src/showcaseScenes/index.ts",
+      "import": "./src/showcaseScenes/index.ts"
     }
   },
   "scripts": {

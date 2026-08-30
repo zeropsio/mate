@@ -77,7 +77,7 @@ export function clientPresentationMetadata(input: {
 }): AuthClientPresentationMetadata {
   if (input.desktopBridge !== undefined) {
     return {
-      label: "T3 Code Desktop",
+      label: "Zerops Code Desktop",
       deviceType: "desktop",
       os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform?.()),
       surface: "desktop",
@@ -91,7 +91,7 @@ export function clientPresentationMetadata(input: {
     // otherwise be two identical rows.
     label: input.hosted
       ? `Zerops Code · ${browserFamily(input.identity.userAgent)} on ${browserClientOs(input.identity)}`
-      : "T3 Code Web",
+      : "Zerops Code Web",
     deviceType: browserDeviceType(input.identity),
     os: browserClientOs(input.identity),
     surface: "web",

@@ -45,6 +45,9 @@ jobs:
       - name: Check imported.lock
         run: node scripts/imported-lock.ts --check
 
+      - name: Check showcase scenes
+        run: node scripts/showcase-scenes.ts --check
+
       - name: z3 zone architecture
         run: vp test run scripts/z3-zone-architecture.test.ts
 
@@ -56,6 +59,9 @@ jobs:
 
       - name: Reconcile no-infinite-motion exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-infinite-motion
+
+      - name: Check legacy vocabulary exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
 
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron

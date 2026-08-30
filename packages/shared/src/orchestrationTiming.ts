@@ -4,10 +4,15 @@ type LatestTurnTiming = {
   readonly completedAt: string | null;
 };
 
-type SessionActivityState = {
-  readonly orchestrationStatus: string;
-  readonly activeTurnId?: string | null;
-};
+type SessionActivityState =
+  | {
+      readonly orchestrationStatus: string;
+      readonly activeTurnId?: string | null;
+    }
+  | {
+      readonly status: string;
+      readonly activeTurnId?: string | null;
+    };
 
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return "0ms";
@@ -38,7 +43,9 @@ export function isLatestTurnSettled(
   if (!latestTurn?.startedAt) return false;
   if (!latestTurn.completedAt) return false;
   if (!session) return true;
-  if (session.orchestrationStatus === "running") return false;
+  const orchestrationStatus =
+    "orchestrationStatus" in session ? session.orchestrationStatus : session.status;
+  if (orchestrationStatus === "running") return false;
   return true;
 }
 

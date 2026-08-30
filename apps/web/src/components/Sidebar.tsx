@@ -32,6 +32,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { hasUnseenCompletion, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import {
   AlarmClockIcon,
   AlarmClockOffIcon,
@@ -118,7 +119,7 @@ import {
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
-import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
+import { formatRelativeTimeLabel } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
@@ -127,14 +128,12 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
-  hasUnseenCompletion,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   planPinnedReorder,
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
-  resolveSidebarThreadStatus,
   searchSidebarThreadsByTitle,
   shouldCreateNewThreadInCurrentProject,
   resolveWorkingStartedAt,
@@ -142,6 +141,7 @@ import {
   sortPinnedThreadsForSidebar,
   sortSettledThreadsForSidebar,
   sortThreadsForSidebar,
+  threadStatusRowPresentation,
   useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
@@ -220,7 +220,7 @@ function settledTimeLabel(thread: SidebarThreadSummary): string {
 // Floats at the row's right edge, vertically centered, while the jump
 // modifier is held. An overlay pill instead of an inline slot: the hint
 // must neither displace the status/time label (holding ⌘ used to blank
-// out "Working") nor shift any layout when it appears. pointer-events-none
+// out "Working") nor shift the layout when it appears. pointer-events-none
 // so it never swallows clicks meant for the settle/un-settle buttons it
 // can overlap.
 function JumpHintBadge(props: { label: string }) {
@@ -811,8 +811,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   // Never-visited counts as read so threads that predate unread tracking do not
   // light up as unread.
-  const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
-  const status = resolveSidebarThreadStatus(thread);
+  const clientVisit = lastVisitedAt === undefined ? {} : { lastVisitedAt };
+  const isUnread = hasUnseenCompletion({ latestTurn: thread.latestTurn, ...clientVisit });
   // A woken thread reappears at its original position (the sort is
   // deliberately static), so the pill has to carry the weight. Snoozing is
   // an explicit act, so the pill clears only when the user re-engages:
@@ -820,15 +820,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // message, settling, archiving, or a change request state that settles the
   // thread. Timer wakes survive a mere visit. An unparseable visit timestamp
   // counts as never-visited, so corrupt local data cannot eat the wake signal.
-  const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
-  const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
-  const isWoke =
-    wokeAtDate !== null &&
-    (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
-    !changeRequestAutoSettles(pr, {
-      autoSettleOnMerge: props.autoSettleOnMerge,
-      thread,
-    });
+  const wokeAt = changeRequestAutoSettles(pr, {
+    autoSettleOnMerge: props.autoSettleOnMerge,
+    thread,
+  })
+    ? null
+    : props.wokeAt;
+  const resolvedStatus = resolveThreadStatus({ ...thread, ...clientVisit, wokeAt });
+  const status = resolvedStatus.kind;
+  const isWoke = status === "woke";
   // In-flight rows (working, or waiting on approval/input) fade as a whole:
   // there is nothing for the user to do yet, so prominence is reserved for
   // rows that need a human — done (unread), read-but-unsettled, failed, and
@@ -837,63 +837,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // working threads aren't your problem yet) — only the colored status label
   // stands out.
   const isInFlight =
-    status === "working" || status === "monitoring" || status === "approval" || status === "input";
+    status === "connecting" ||
+    status === "working" ||
+    status === "monitoring" ||
+    status === "approval" ||
+    status === "input";
   const shouldRecede =
-    (status === "ready" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
-  // Status hues follow the system-wide convention set by sidebar v1 and the
-  // mobile Live Activity/widgets (amber approval, indigo input, sky working)
-  // so a thread reads the same color everywhere it surfaces.
-  const topStatus =
-    status === "working"
-      ? {
-          label: "Working",
-          icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Working is a background state, so it rests at the dim end of what
-          // the old pulse cycled through; only the thread you have open gets
-          // the label at full strength.
-          className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
-        }
-      : status === "monitoring"
-        ? {
-            // Monitoring is calm background presence, not active progress
-            // (monitoring-pill D6), so it keeps the label at full strength.
-            label: "Monitoring",
-            icon: null,
-            className: "text-sky-600 dark:text-sky-400",
-          }
-        : status === "approval"
-          ? {
-              label: "Approval",
-              icon: null,
-              className: "text-amber-700 dark:text-amber-300",
-            }
-          : status === "input"
-            ? {
-                label: "Input",
-                icon: null,
-                className: "text-indigo-600 dark:text-indigo-300",
-              }
-            : status === "failed"
-              ? {
-                  label: "Failed",
-                  icon: null,
-                  className: "text-red-700 dark:text-red-300",
-                }
-              : isWoke
-                ? {
-                    label: "Woke",
-                    icon: "woke" as const,
-                    className: "text-amber-700 dark:text-amber-300",
-                  }
-                : isUnread
-                  ? {
-                      label: "Done",
-                      icon: "done" as const,
-                      className: "text-emerald-700 dark:text-emerald-300",
-                    }
-                  : null;
+    (status === "idle" || isInFlight) && !isUnread && !isWoke && !props.isActive && !isSelected;
+  const topStatus = threadStatusRowPresentation(resolvedStatus, props.isActive);
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -1295,7 +1246,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-amber-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-300"
                         >
                           <AlarmClockIcon aria-hidden className="size-3" />
-                          <span role="status">Woke</span>
+                          <span role="status">{topStatus?.label}</span>
                         </button>
                       }
                     />

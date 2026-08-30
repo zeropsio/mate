@@ -1,4 +1,10 @@
 import type { RelayAgentActivityState, RelayDeliveryResult } from "@t3tools/contracts/relay";
+import {
+  awarenessPhaseStatusLabel,
+  statusLabel,
+} from "@t3tools/client-runtime/zerops/statusPresentation";
+import { kindForAwarenessPhase } from "@t3tools/shared/threadStatus";
+import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -653,6 +659,41 @@ describe("isExpiredAgentActivityState", () => {
 });
 
 describe("makeAggregateState", () => {
+  it.each(threadStatusVectors)("uses the shared status phrase for $name", (vector) => {
+    const phase = vector.expectedAwarenessPhase;
+    if (phase === null) {
+      expect(
+        AgentActivityPublisher.makeAggregateState({
+          activeStates: [],
+          terminalState: null,
+          nowMs: 0,
+        }),
+      ).toBeNull();
+      return;
+    }
+
+    const rowState = { ...state, phase };
+    const terminal = phase === "completed" || phase === "failed";
+    const aggregate = AgentActivityPublisher.makeAggregateState({
+      activeStates: terminal ? [] : [rowState],
+      terminalState: terminal ? rowState : null,
+      nowMs: 0,
+    });
+
+    expect(aggregate?.activities).toHaveLength(1);
+    expect(aggregate?.activities[0]?.status).toBe(statusLabel(kindForAwarenessPhase(phase)));
+  });
+
+  it("uses the shared stale edge phrase", () => {
+    const aggregate = AgentActivityPublisher.makeAggregateState({
+      activeStates: [{ ...state, phase: "stale" }],
+      terminalState: null,
+      nowMs: 0,
+    });
+
+    expect(aggregate?.activities[0]?.status).toBe(awarenessPhaseStatusLabel("stale"));
+  });
+
   const hourMs = 60 * 60 * 1_000;
 
   it("drops expired rows from the aggregate", () => {

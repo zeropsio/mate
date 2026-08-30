@@ -210,6 +210,10 @@
     "./zerops/strip": {
       "types": "./src/zerops/strip.ts",
       "default": "./src/zerops/strip.ts"
+    },
+    "./zerops/statusPresentation": {
+      "types": "./src/zerops/statusPresentation.ts",
+      "default": "./src/zerops/statusPresentation.ts"
     }
   },
   "scripts": {

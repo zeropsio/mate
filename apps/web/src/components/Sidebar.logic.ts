@@ -1,7 +1,9 @@
 import * as React from "react";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import type { ThreadStatus, ThreadStatusToneId } from "@t3tools/shared/threadStatus";
 import {
   activeThreadAnchorTimestampMs,
   getThreadSortTimestamp,
@@ -12,7 +14,6 @@ import {
 import type { SidebarThreadSummary, Thread } from "../types";
 import type { ThreadRouteTarget } from "../threadRoutes";
 import { cn } from "../lib/utils";
-import { isLatestTurnSettled } from "../session-logic";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
@@ -125,45 +126,99 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
   };
 }
 
-export interface ThreadStatusPill {
-  label:
-    | "Working"
-    | "Monitoring"
-    | "Connecting"
-    | "Completed"
-    | "Pending Approval"
-    | "Awaiting Input"
-    | "Plan Ready";
-  colorClass: string;
-  dotClass: string;
-  pulse: boolean;
+interface ThreadStatusToneClasses {
+  readonly colorClass: string;
+  readonly dotClass: string;
+  readonly rowClass: string;
 }
 
-// Rollup order mirrors the per-thread resolver exactly: attention states,
-// then active work, then the actionable plan prompt, then passive
-// monitoring. A Monitoring sibling must never hide a Plan Ready thread.
-const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 6,
-  "Awaiting Input": 5,
-  Working: 4,
-  Connecting: 4,
-  "Plan Ready": 3,
-  Monitoring: 2,
-  Completed: 1,
+const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneClasses> = {
+  attention: {
+    colorClass: "text-amber-600 dark:text-amber-300/90",
+    dotClass: "bg-amber-500 dark:bg-amber-300/90",
+    rowClass: "text-amber-700 dark:text-amber-300",
+  },
+  input: {
+    colorClass: "text-indigo-600 dark:text-indigo-300/90",
+    dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+    rowClass: "text-indigo-600 dark:text-indigo-300",
+  },
+  active: {
+    colorClass: "text-sky-600 dark:text-sky-300/80",
+    dotClass: "bg-sky-500 dark:bg-sky-300/80",
+    rowClass: "text-sky-600 dark:text-sky-400",
+  },
+  danger: {
+    colorClass: "text-red-600 dark:text-red-300/90",
+    dotClass: "bg-red-500 dark:bg-red-300/90",
+    rowClass: "text-red-700 dark:text-red-300",
+  },
+  plan: {
+    colorClass: "text-violet-600 dark:text-violet-300/90",
+    dotClass: "bg-violet-500 dark:bg-violet-300/90",
+    rowClass: "text-violet-600 dark:text-violet-300",
+  },
+  success: {
+    colorClass: "text-emerald-600 dark:text-emerald-300/90",
+    dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+    rowClass: "text-emerald-700 dark:text-emerald-300",
+  },
+  neutral: {
+    colorClass: "text-muted-foreground",
+    dotClass: "bg-muted-foreground/40",
+    rowClass: "text-muted-foreground",
+  },
 };
 
-type ThreadStatusInput = Pick<
-  SidebarThreadSummary,
-  | "hasActionableProposedPlan"
-  | "hasPendingApprovals"
-  | "hasPendingUserInput"
-  | "interactionMode"
-  | "latestTurn"
-  | "session"
-  | "backgroundLiveness"
-> & {
-  lastVisitedAt?: string | undefined;
-};
+export interface ThreadStatusPill extends ThreadStatus {
+  readonly label: string;
+  readonly colorClass: string;
+  readonly dotClass: string;
+  readonly pulse: boolean;
+}
+
+export interface ThreadStatusRowPresentation {
+  readonly label: string;
+  readonly icon: "working" | "woke" | "done" | null;
+  readonly className: string;
+}
+
+export function threadStatusPill(status: ThreadStatus): ThreadStatusPill | null {
+  const label = statusLabel(status.kind);
+  if (label === null) return null;
+  const tone = THREAD_STATUS_TONE_CLASSES[status.toneId];
+  return {
+    ...status,
+    label,
+    colorClass: tone.colorClass,
+    dotClass: tone.dotClass,
+    pulse: statusPulses(status.kind),
+  };
+}
+
+export function threadStatusRowPresentation(
+  status: ThreadStatus,
+  isActive: boolean,
+): ThreadStatusRowPresentation | null {
+  const label = statusLabel(status.kind);
+  if (label === null) return null;
+  const icon =
+    status.kind === "connecting" || status.kind === "working"
+      ? "working"
+      : status.kind === "woke"
+        ? "woke"
+        : status.kind === "done"
+          ? "done"
+          : null;
+  return {
+    label,
+    icon,
+    className: cn(
+      THREAD_STATUS_TONE_CLASSES[status.toneId].rowClass,
+      status.kind === "working" && !isActive && "opacity-75",
+    ),
+  };
+}
 
 export interface ThreadJumpHintVisibilityController {
   sync: (shouldShow: boolean) => void;
@@ -255,17 +310,6 @@ export function useThreadJumpHintVisibility(): {
     showThreadJumpHints,
     updateThreadJumpHintsVisibility,
   };
-}
-
-export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
-  if (!thread.latestTurn?.completedAt) return false;
-  const completedAt = Date.parse(thread.latestTurn.completedAt);
-  if (Number.isNaN(completedAt)) return false;
-  if (!thread.lastVisitedAt) return false;
-
-  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
-  if (Number.isNaN(lastVisitedAt)) return true;
-  return completedAt > lastVisitedAt;
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
@@ -460,52 +504,6 @@ export function resolveThreadRowClassName(input: {
   );
 }
 
-// ── Sidebar thread status model ─────────────────────────────────────
-// Five visual states, three colors: color is reserved for "act now"
-// (approval), "in motion" (working), and "broken" (failed). Ready is the
-// unlabeled resting state — the agent stopped and is waiting on the user,
-// whether it finished, asked a question, or proposed a plan.
-// Unread completion is tracked separately: it describes whether a ready
-// thread needs attention, not what the thread is currently doing.
-export type SidebarThreadStatus =
-  | "approval"
-  | "input"
-  | "working"
-  | "monitoring"
-  | "failed"
-  | "ready";
-
-type SidebarThreadStatusInput = Pick<
-  SidebarThreadSummary,
-  "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
->;
-
-export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
-  if (thread.hasPendingApprovals) {
-    return "approval";
-  }
-  if (thread.hasPendingUserInput) {
-    return "input";
-  }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
-    return "working";
-  }
-  // A failed session outranks lingering background liveness: the user must
-  // see the failure, not a stale Working (review finding).
-  if (thread.session?.status === "error") {
-    return "failed";
-  }
-  // Background work outlives the turn: fleets read as working; monitoring
-  // only when watch loops are the sole live work.
-  if (thread.backgroundLiveness === "working") {
-    return "working";
-  }
-  if (thread.backgroundLiveness === "monitoring") {
-    return "monitoring";
-  }
-  return "ready";
-}
-
 /** NaN-safe Date.parse for sort comparators: a malformed timestamp must not
     poison the whole ordering, so it sinks to the epoch instead. */
 export function parseTimestampMs(isoDate: string): number {
@@ -648,115 +646,6 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
-export function resolveThreadStatusPill(input: {
-  thread: ThreadStatusInput;
-}): ThreadStatusPill | null {
-  const { thread } = input;
-
-  if (thread.hasPendingApprovals) {
-    return {
-      label: "Pending Approval",
-      colorClass: "text-amber-600 dark:text-amber-300/90",
-      dotClass: "bg-amber-500 dark:bg-amber-300/90",
-      pulse: false,
-    };
-  }
-
-  if (thread.hasPendingUserInput) {
-    return {
-      label: "Awaiting Input",
-      colorClass: "text-indigo-600 dark:text-indigo-300/90",
-      dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
-      pulse: false,
-    };
-  }
-
-  if (thread.session?.status === "running") {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
-  }
-
-  if (thread.session?.status === "starting") {
-    return {
-      label: "Connecting",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
-  }
-
-  // An actionable plan prompt outranks lingering background work: it needs
-  // the user's decision, while liveness merely reports (review finding).
-  const hasPlanReadyPrompt =
-    !thread.hasPendingUserInput &&
-    thread.interactionMode === "plan" &&
-    isLatestTurnSettled(thread.latestTurn, thread.session) &&
-    thread.hasActionableProposedPlan;
-  if (hasPlanReadyPrompt) {
-    return {
-      label: "Plan Ready",
-      colorClass: "text-violet-600 dark:text-violet-300/90",
-      dotClass: "bg-violet-500 dark:bg-violet-300/90",
-      pulse: false,
-    };
-  }
-
-  // The turn can settle while native background work runs on. Subagent and
-  // workflow fleets read as plain Working; Monitoring is reserved for watch
-  // loops (a parent agent babysitting a PR, tailing checks) with no other
-  // live work. Same recede treatment as Working per inbox-zero.
-  if (thread.backgroundLiveness === "working") {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
-  }
-
-  if (thread.backgroundLiveness === "monitoring") {
-    return {
-      label: "Monitoring",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: false,
-    };
-  }
-
-  if (hasUnseenCompletion(thread)) {
-    return {
-      label: "Completed",
-      colorClass: "text-emerald-600 dark:text-emerald-300/90",
-      dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
-      pulse: false,
-    };
-  }
-
-  return null;
-}
-
-export function resolveProjectStatusIndicator(
-  statuses: ReadonlyArray<ThreadStatusPill | null>,
-): ThreadStatusPill | null {
-  let highestPriorityStatus: ThreadStatusPill | null = null;
-
-  for (const status of statuses) {
-    if (status === null) continue;
-    if (
-      highestPriorityStatus === null ||
-      THREAD_STATUS_PRIORITY[status.label] > THREAD_STATUS_PRIORITY[highestPriorityStatus.label]
-    ) {
-      highestPriorityStatus = status;
-    }
-  }
-
-  return highestPriorityStatus;
 }
 
 export function getVisibleThreadsForProject<T extends Pick<Thread, "id">>(input: {

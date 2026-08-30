@@ -220,6 +220,216 @@ function requestedReexportSources(
   return requestedSources;
 }
 
+const THREAD_STATUS_PHRASES = [
+  "Working",
+  "Connecting",
+  "Monitoring",
+  "Failed",
+  "Plan Ready",
+  "Done",
+  "Woke",
+  "Approval",
+  "Input",
+  "Pending Approval",
+  "Awaiting Input",
+  "Completed",
+  "Waiting",
+] as const;
+
+interface SourceLiteral {
+  readonly value: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+function decodeSourceLiteral(raw: string): string {
+  return raw.replace(
+    /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0btnrfv\\'"`]))/gu,
+    (
+      _match,
+      codePoint: string | undefined,
+      unicode: string | undefined,
+      hex: string | undefined,
+      simple: string | undefined,
+    ) => {
+      if (codePoint !== undefined) return String.fromCodePoint(Number.parseInt(codePoint, 16));
+      if (unicode !== undefined) return String.fromCodePoint(Number.parseInt(unicode, 16));
+      if (hex !== undefined) return String.fromCodePoint(Number.parseInt(hex, 16));
+      switch (simple) {
+        case "0":
+          return "\0";
+        case "b":
+          return "\b";
+        case "t":
+          return "\t";
+        case "n":
+          return "\n";
+        case "r":
+          return "\r";
+        case "f":
+          return "\f";
+        case "v":
+          return "\v";
+        default:
+          return simple ?? "";
+      }
+    },
+  );
+}
+
+function scanSourceLiterals(source: string): {
+  readonly literals: ReadonlyArray<SourceLiteral>;
+  readonly jsxSource: string;
+} {
+  const literals: Array<SourceLiteral> = [];
+  const jsxCharacters = source.split("");
+
+  const mask = (start: number, end: number) => {
+    for (let index = start; index < end; index += 1) {
+      if (jsxCharacters[index] !== "\n" && jsxCharacters[index] !== "\r") {
+        jsxCharacters[index] = " ";
+      }
+    }
+  };
+
+  const readQuoted = (start: number, quote: "'" | '"'): number => {
+    let index = start + 1;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (source[index] === quote) {
+        const end = index + 1;
+        literals.push({
+          value: decodeSourceLiteral(source.slice(start + 1, index)),
+          start,
+          end,
+        });
+        mask(start, end);
+        return end;
+      }
+      index += 1;
+    }
+    mask(start, source.length);
+    return source.length;
+  };
+
+  const readLineComment = (start: number): number => {
+    const newline = source.indexOf("\n", start + 2);
+    const end = newline === -1 ? source.length : newline;
+    mask(start, end);
+    return end;
+  };
+
+  const readBlockComment = (start: number): number => {
+    const close = source.indexOf("*/", start + 2);
+    const end = close === -1 ? source.length : close + 2;
+    mask(start, end);
+    return end;
+  };
+
+  const readTemplate = (start: number): number => {
+    let quasiStart = start + 1;
+    let index = quasiStart;
+    let braceDepth = 0;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (source[index] === "`" && braceDepth === 0) {
+        literals.push({
+          value: decodeSourceLiteral(source.slice(quasiStart, index)),
+          start: quasiStart,
+          end: index,
+        });
+        const end = index + 1;
+        mask(start, end);
+        return end;
+      }
+      if (source[index] === "$" && source[index + 1] === "{" && braceDepth === 0) {
+        literals.push({
+          value: decodeSourceLiteral(source.slice(quasiStart, index)),
+          start: quasiStart,
+          end: index,
+        });
+        braceDepth = 1;
+        index += 2;
+        continue;
+      }
+      if (braceDepth > 0) {
+        if (source[index] === "'" || source[index] === '"') {
+          index = readQuoted(index, source[index] as "'" | '"');
+          continue;
+        }
+        if (source[index] === "`") {
+          index = readTemplate(index);
+          continue;
+        }
+        if (source[index] === "/" && source[index + 1] === "/") {
+          index = readLineComment(index);
+          continue;
+        }
+        if (source[index] === "/" && source[index + 1] === "*") {
+          index = readBlockComment(index);
+          continue;
+        }
+        if (source[index] === "{") braceDepth += 1;
+        if (source[index] === "}") {
+          braceDepth -= 1;
+          if (braceDepth === 0) quasiStart = index + 1;
+        }
+      }
+      index += 1;
+    }
+    mask(start, source.length);
+    return source.length;
+  };
+
+  let index = 0;
+  while (index < source.length) {
+    if (source[index] === "'" || source[index] === '"') {
+      index = readQuoted(index, source[index] as "'" | '"');
+    } else if (source[index] === "`") {
+      index = readTemplate(index);
+    } else if (source[index] === "/" && source[index + 1] === "/") {
+      index = readLineComment(index);
+    } else if (source[index] === "/" && source[index + 1] === "*") {
+      index = readBlockComment(index);
+    } else {
+      index += 1;
+    }
+  }
+
+  return { literals, jsxSource: jsxCharacters.join("") };
+}
+
+function findLocalThreadStatusPhrases(source: string): ReadonlyArray<string> {
+  const phrases = new Set<string>(THREAD_STATUS_PHRASES);
+  const found = new Set<string>();
+  const { literals, jsxSource } = scanSourceLiterals(source);
+  const sortedLiterals = [...literals].sort((left, right) => left.start - right.start);
+
+  for (const literal of sortedLiterals) {
+    const value = literal.value.trim();
+    if (phrases.has(value)) found.add(value);
+  }
+  for (let index = 0; index < sortedLiterals.length - 1; index += 1) {
+    const left = sortedLiterals[index]!;
+    const right = sortedLiterals[index + 1]!;
+    if (!/^\s*\+\s*$/u.test(source.slice(left.end, right.start))) continue;
+    const value = `${left.value}${right.value}`.trim();
+    if (phrases.has(value)) found.add(value);
+  }
+  for (const match of jsxSource.matchAll(/>([^<>]*)</gsu)) {
+    const value = match[1]?.trim() ?? "";
+    if (phrases.has(value)) found.add(value);
+  }
+
+  return [...found].sort();
+}
+
 interface ImportViolation {
   readonly file: string;
   readonly specifier: string;
@@ -890,6 +1100,65 @@ it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
       }
 
       assert.deepStrictEqual(violations, []);
+    }),
+  );
+
+  it.effect("one status resolver", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* repoRoot;
+      const consumers = [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/components/Sidebar.logic.ts",
+        "apps/web/src/components/ThreadStatusIndicators.tsx",
+        "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
+        "apps/mobile/src/features/threads/threadListV2.ts",
+        "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",
+        "infra/relay/src/agentActivity/AgentActivityPublisher.ts",
+      ] as const;
+      const violations: Array<{ readonly file: string; readonly reason: string }> = [];
+
+      // AgentActivity.tsx is structurally exempt because its `"widget"`
+      // function is serialized and must stay self-contained. Its inline
+      // tables are kept aligned by AgentActivity.test.ts's shared vectors.
+      for (const consumer of consumers) {
+        const file = path.join(root, consumer);
+        assert.isTrue(yield* fs.exists(file), `status consumer ${consumer} moved or was deleted`);
+        const source = yield* fs.readFileString(file);
+        const importsSharedStatus = collectImportStatements(source).some(
+          ({ specifier }) =>
+            specifier === "@t3tools/shared/threadStatus" ||
+            specifier === "@t3tools/client-runtime/zerops/statusPresentation",
+        );
+        if (!importsSharedStatus) {
+          violations.push({ file: consumer, reason: "does not import the shared status modules" });
+        }
+
+        for (const phrase of findLocalThreadStatusPhrases(source)) {
+          violations.push({ file: consumer, reason: `contains local status phrase ${phrase}` });
+        }
+      }
+
+      assert.deepStrictEqual(violations, []);
+    }),
+  );
+
+  it.effect("status phrase scanner catches structural bypasses", () =>
+    Effect.sync(() => {
+      const fixtures = [
+        ['const status = "Plan " + "Ready";', "Plan Ready"],
+        ["const status = `Plan Ready`;", "Plan Ready"],
+        ["const status = <span>\n  Plan Ready\n</span>;", "Plan Ready"],
+      ] as const;
+
+      for (const [source, phrase] of fixtures) {
+        assert.deepStrictEqual(findLocalThreadStatusPhrases(source), [phrase]);
+      }
+      assert.deepStrictEqual(
+        findLocalThreadStatusPhrases('// "Plan Ready"\nconst copy = "Plan Ready later";'),
+        [],
+      );
     }),
   );
 

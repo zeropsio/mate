@@ -46,10 +46,6 @@ export function ZeropsAgentAuthCard({
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
-  if (!snapshot.available) {
-    return null;
-  }
-
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3" data-zerops-agent-auth-card>
       {snapshot.agents.map((agent) => (

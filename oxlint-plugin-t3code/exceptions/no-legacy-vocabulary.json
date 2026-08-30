@@ -1,0 +1,818 @@
+[
+  {
+    "path": "apps/desktop/src/app/DesktopEnvironment.ts",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code (Alpha)\"",
+    "owner": "karel",
+    "reason": "persisted user-data directory name; renaming it strands existing desktop profiles",
+    "expires": "never"
+  },
+  {
+    "path": "apps/desktop/src/app/DesktopEnvironment.ts",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code (Dev)\"",
+    "owner": "karel",
+    "reason": "persisted user-data directory name; renaming it strands existing desktop profiles",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/connection/platform.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Sign in to T3 Connect to connect this environment.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/mobile/src/connection/platform.ts",
+    "kind": "Literal",
+    "fingerprint": "\"The T3 Connect session is unavailable.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionEnvironmentRow.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Managed by T3 Connect. Tunnel details update automatically.",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing...\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Pairing code",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/pairing.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Scanned QR code did not contain a pairing URL.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
+    "kind": "JSXText",
+    "fingerprint": "This thread has no ready turn diffs and the worktree diff is empty.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/reviewModel.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Dirty worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/reviewModel.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Tracked, staged, and untracked worktree changes\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"a new worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadGitControls.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Turn diffs and worktree changes\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadGitControls.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Turn diffs and worktree changes\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Branches & worktrees\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Create worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "JSXText",
+    "fingerprint": "New worktree",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Branches & worktrees\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Inspect turn diffs, worktree changes, and base branch diff\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Switch branch, create branch, or move to a worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/new-task-context-presentation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Current worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/new-task-context-presentation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/projectThreadCreationValidation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Select a base branch before creating a worktree.\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/lib/mobileTheme.ts",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code\"",
+    "owner": "karel",
+    "reason": "shipped theme name, not the application display name",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/use-selected-thread-git-actions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Creating worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Current worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Local checkout\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Previous worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "TemplateElement",
+    "fingerprint": "`Previous worktree (${",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Start worktree from origin\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Creates the worktree from the latest matching branch on origin instead of your local branch.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Preparing worktree...\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "JSXText",
+    "fingerprint": ", then create the draft thread in the main repo or in a dedicated worktree.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Enter a pairing token to start a session with this environment.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing backend\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing failed\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing token\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing with this environment\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing...\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing...\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Paste a one-time token or pairing secret\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"This environment expects a trusted pairing credential before the app can connect.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"This one-time pairing token was already submitted. Request a new pairing link.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"This pairing link is missing its backend host or token.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Validating the pairing link and preparing your session.\"",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
+    "kind": "TemplateElement",
+    "fingerprint": "} If the backend accepted this one-time token, request a new pairing link before retrying.`",
+    "owner": "karel",
+    "reason": "manual one-time-link fallback copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Preparing worktree...",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Preparing worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/clerk/T3ConnectSidebarSignIn.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Sign in to T3 Connect",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Redirecting to authorize T3 Connect for your CLI…\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Sign in to continue authorizing T3 Connect for your CLI.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Only enter this code in a terminal session you started yourself. Anyone holding it can link their machine to your T3 Connect account while it is valid.",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Run automatically on worktree creation",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Clipboard copy is unavailable here. Open or manually copy this full pairing URL on the device you want to connect.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Could not copy pairing URL\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Could not copy pairing code\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Could not create pairing URL\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Could not revoke pairing link\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Enter a backend host and pairing code.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Hosted app pairing link\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Inspect pairing links and authorized clients.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Other paired clients will need a new pairing link before reconnecting.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing URL copied\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing code copied\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing code\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing link scopes\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing link — scan to open on another device\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing link — scan to open on another device\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing link\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Pairing links and client-session management require the access:write scope for this backend.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Paste it into another client to finish pairing.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Create pairing link",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "JSXText",
+    "fingerprint": "No pairing links or client sessions.",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Pairing code",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Paste a full pairing URL here to fill both fields automatically.",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Creates the worktree from the latest matching branch on origin instead of your local branch.\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Start new worktrees from origin by default\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"new worktrees start from origin\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXText",
+    "fingerprint": "New worktree",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemePreviewCircles.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code\"",
+    "owner": "karel",
+    "reason": "shipped theme name, not the application display name",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/connection/platform.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Sign in to T3 Connect to connect this environment.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/connection/platform.ts",
+    "kind": "Literal",
+    "fingerprint": "\"The T3 Connect session is unavailable.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  },
+  {
+    "path": "apps/web/src/environments/primary/auth.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Enter a pairing token to continue.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/environments/primary/auth.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Invalid pairing token. Check the token and try again.\"",
+    "owner": "karel",
+    "reason": "legacy pairing copy — reworded by the door slice",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/hooks/useThreadActions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Delete the worktree too?\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/hooks/useThreadActions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Failed to remove orphaned worktree after thread deletion\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/hooks/useThreadActions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"This thread is the only one linked to this worktree:\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/hooks/useThreadActions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Thread deleted, but worktree removal failed\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/hooks/useThreadActions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Unknown error removing worktree.\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/routes/_chat.index.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Sign in to T3 Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually.\"",
+    "owner": "karel",
+    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
+    "expires": "F2"
+  }
+]

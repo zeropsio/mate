@@ -5,6 +5,7 @@ import type {
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -27,10 +28,10 @@ import {
   resolveThreadListV2ChangeRequestState,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozeGateExpiryMs,
-  resolveThreadListV2Status,
   resolveThreadListV2SwipeActions,
+  threadListV2FailureDetail,
+  threadListV2StatusPresentation,
   type ThreadListV2ChangeRequestState,
-  type ThreadListV2Status,
 } from "./threadListV2";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
@@ -73,18 +74,6 @@ export function ThreadListV2PullRequestLink(props: {
     </Pressable>
   );
 }
-
-// Status hues follow the system-wide convention set by sidebar v1 and the
-// Live Activity/widgets (amber approval, indigo input, sky working) so a
-// thread reads the same color everywhere it surfaces.
-const STATUS_LABEL_BY_STATUS: Partial<
-  Record<ThreadListV2Status, { label: string; className: string }>
-> = {
-  approval: { label: "Approval", className: "text-adaptive-amber-700-300" },
-  input: { label: "Input", className: "text-adaptive-indigo-600-300" },
-  working: { label: "Working", className: "text-adaptive-sky-600-400" },
-  failed: { label: "Failed", className: "text-adaptive-red-700-300" },
-};
 
 function threadTimeLabel(thread: EnvironmentThreadShell): string {
   return relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt);
@@ -451,8 +440,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const sidebarPane = props.pane === "sidebar";
   const selected = props.selected === true;
 
-  const status = resolveThreadListV2Status(thread);
-  const statusLabel = STATUS_LABEL_BY_STATUS[status];
+  const resolvedStatus = resolveThreadStatus(thread);
+  const statusPresentation = threadListV2StatusPresentation(resolvedStatus);
+  const failureDetail = threadListV2FailureDetail(resolvedStatus, thread.session?.lastError);
   const timeLabel = threadTimeLabel(thread);
 
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
@@ -734,12 +724,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         <Text
           className={cn(
             "text-xs tabular-nums",
-            selected
-              ? "text-user-bubble-foreground"
-              : (statusLabel?.className ?? "text-foreground-tertiary"),
+            selected ? "text-user-bubble-foreground" : statusPresentation.className,
           )}
         >
-          {statusLabel?.label ?? timeLabel}
+          {statusPresentation.label ?? timeLabel}
         </Text>
       </View>
       <Text
@@ -761,7 +749,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         </View>
       ) : null}
       <View className="mt-1 flex-row items-center gap-2">
-        {status === "failed" && thread.session?.lastError ? (
+        {failureDetail !== null ? (
           <Text
             className={cn(
               "flex-1 text-xs",
@@ -769,7 +757,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             )}
             numberOfLines={1}
           >
-            {thread.session.lastError}
+            {failureDetail}
           </Text>
         ) : thread.branch || props.environmentLabel ? (
           /* "branch · machine" share one truncating line. The machine sits

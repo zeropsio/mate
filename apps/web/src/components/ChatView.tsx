@@ -103,8 +103,8 @@ import {
   findLatestProposedPlan,
   deriveWorkLogEntries,
   hasActionableProposedPlan,
-  isLatestTurnSettled,
 } from "../session-logic";
+import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { type LegendListRef } from "@legendapp/list/react";
 import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timelineScrollAnchoring";
 import {
@@ -166,7 +166,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsAgentAuthCard } from "./zerops/ZeropsAgentAuthCard";
-import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
+import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { useAgentLogin } from "../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../zerops/useAgentLoginCancel";
 import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";
@@ -3455,15 +3455,14 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "zerops");
   }, [activeThreadRef]);
-  // The Zerops tab exists only where there is a Zerops project behind the
-  // server. `available: false` is the feed saying "no zcp here", which is a
-  // plain answer rather than an error, so it simply hides the surface.
-  const zeropsAvailable =
-    useZeropsTopology(activeThreadRef?.environmentId ?? null)?.available === true;
-  // The "no authenticated provider" surface for a Zerops thread: shown beside
-  // ProviderStatusBanner below, only while at least one agent CLI needs the
-  // user's attention (S7 plan D4).
-  const zeropsAgentAuth = useZeropsAgentAuth(activeThreadRef?.environmentId ?? null);
+  const activeZeropsEnvironmentId = activeThreadRef === null ? null : activeThreadRef.environmentId;
+  const zeropsTopology = useZeropsTopology(activeZeropsEnvironmentId);
+  const zeropsAgentAuth = useZeropsAgentAuth(activeZeropsEnvironmentId);
+  const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
+    topology: zeropsTopology,
+    agentAuth: zeropsAgentAuth,
+    activeRightPanelKind,
+  });
   const signInToZeropsAgent = useAgentLogin(activeThreadRef);
   const cancelZeropsAgentLogin = useAgentLoginCancel(activeThreadRef);
   const openFileSurface = useCallback(
@@ -6711,13 +6710,15 @@ function ChatViewContent(props: ChatViewProps) {
     ) : activeRightPanelSurface?.kind === "agents" ? (
       <AgentsPanel
         model={agentPanelModel}
-        environmentId={activeThreadRef?.environmentId ?? null}
-        threadId={activeThreadRef?.threadId ?? null}
+        environmentId={activeThreadRef.environmentId}
+        threadId={activeThreadRef.threadId}
       />
     ) : activeRightPanelSurface?.kind === "zerops" ? (
       <ZeropsPanel
-        environmentId={activeThreadRef?.environmentId ?? null}
-        threadId={activeThreadRef?.threadId ?? null}
+        agentAuthCard={
+          zeropsChrome.attention?.surface === "panel" ? zeropsChrome.attention.snapshot : null
+        }
+        threadRef={zeropsChrome.threadRef}
       />
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
       activeProject &&
@@ -6806,9 +6807,8 @@ function ChatViewContent(props: ChatViewProps) {
           */}
           <div className={cn("flex min-w-0 shrink", !rightPanelOpen && "mr-16")}>
             <ZeropsLifecycleStrip
-              environmentId={activeThread.environmentId}
               pendingUserInput={activePendingUserInput !== null}
-              threadId={activeThread.id}
+              threadRef={zeropsChrome.threadRef}
             />
           </div>
         </WorkspacePageHeader>
@@ -6852,12 +6852,12 @@ function ChatViewContent(props: ChatViewProps) {
                 status={visibleProviderStatus}
                 onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
               />
-              {zeropsAgentAuth !== undefined && zeropsAgentAuthNeedsAttention(zeropsAgentAuth) ? (
+              {zeropsChrome.attention?.surface === "banner" ? (
                 <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">
                   <ZeropsAgentAuthCard
                     onCancel={cancelZeropsAgentLogin}
                     onSignIn={signInToZeropsAgent}
-                    snapshot={zeropsAgentAuth}
+                    snapshot={zeropsChrome.attention.snapshot}
                   />
                 </div>
               ) : null}
@@ -7220,7 +7220,7 @@ function ChatViewContent(props: ChatViewProps) {
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
           agentsAvailable
-          zeropsAvailable={zeropsAvailable}
+          zeropsAvailable={zeropsChrome.launcher}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -7259,7 +7259,7 @@ function ChatViewContent(props: ChatViewProps) {
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
             agentsAvailable
-            zeropsAvailable={zeropsAvailable}
+            zeropsAvailable={zeropsChrome.launcher}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

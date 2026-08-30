@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { WS_METHODS, ZeropsAgentId } from "@t3tools/contracts";
+import { SHOWCASE_SCENE_ID_PATTERN, SHOWCASE_SCENE_IDS } from "@t3tools/shared/showcaseScenes";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -84,9 +85,7 @@ const ReverseState = Schema.Struct({
   reverse: Schema.NonEmptyString,
 });
 
-const WebCaptureId = Schema.NonEmptyString.check(
-  Schema.isPattern(/^web:[a-z0-9]+(?:-[a-z0-9]+)*$/u),
-);
+const WebCaptureId = Schema.NonEmptyString.check(Schema.isPattern(SHOWCASE_SCENE_ID_PATTERN));
 
 /**
  * Manifest connection vocabulary maps `zerops-door` to the wire's
@@ -329,6 +328,28 @@ describe("surface manifest schema", () => {
         ...VALID_SURFACE_FIXTURE,
         captures: ["fixture-surface"],
       }),
+    );
+  });
+
+  it("claims every showcase scene and reserves no unknown web capture", () => {
+    const manifest = decodeSurfaceManifest(surfaceManifestJson);
+    const webCaptures = manifest.surfaces
+      .flatMap(({ captures }) => captures)
+      .filter((capture) => capture.startsWith("web:"));
+    const claimed = new Set(webCaptures);
+
+    assert.deepStrictEqual(
+      webCaptures.filter(
+        (capture): capture is `web:${string}` =>
+          !SHOWCASE_SCENE_IDS.includes(capture as (typeof SHOWCASE_SCENE_IDS)[number]),
+      ),
+      [],
+      "every manifest web capture must name a checked-in scene",
+    );
+    assert.deepStrictEqual(
+      SHOWCASE_SCENE_IDS.filter((id) => !claimed.has(id)),
+      [],
+      "every checked-in scene must be claimed by at least one surface",
     );
   });
 });

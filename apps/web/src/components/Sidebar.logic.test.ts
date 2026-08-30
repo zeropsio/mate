@@ -12,16 +12,12 @@ import {
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
   getProjectSortTimestamp,
-  hasUnseenCompletion,
   isContextMenuPointerDown,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
-  resolveProjectStatusIndicator,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
-  resolveSidebarThreadStatus,
-  resolveThreadStatusPill,
   resolveWorkingStartedAt,
   searchSidebarThreadsByTitle,
   formatWorkingDurationLabel,
@@ -36,6 +32,8 @@ import {
   sortProjectsForSidebar,
   sortScopedProjectsForSidebar,
   shouldCreateNewThreadInCurrentProject,
+  threadStatusPill,
+  threadStatusRowPresentation,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
 } from "./Sidebar.logic";
 import {
@@ -45,6 +43,8 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
+import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -287,36 +287,6 @@ function makeLatestTurn(overrides?: {
       overrides?.completedAt !== undefined ? overrides.completedAt : "2026-03-09T10:05:00.000Z",
   };
 }
-
-describe("hasUnseenCompletion", () => {
-  it("returns true when a thread completed after its last visit", () => {
-    expect(
-      hasUnseenCompletion({
-        hasActionableProposedPlan: false,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        interactionMode: "default",
-        latestTurn: makeLatestTurn(),
-        lastVisitedAt: "2026-03-09T10:04:00.000Z",
-        session: null,
-      }),
-    ).toBe(true);
-  });
-
-  it("treats a missing client visit marker as read", () => {
-    expect(
-      hasUnseenCompletion({
-        hasActionableProposedPlan: false,
-        hasPendingApprovals: false,
-        hasPendingUserInput: false,
-        interactionMode: "default",
-        latestTurn: makeLatestTurn(),
-        lastVisitedAt: undefined,
-        session: null,
-      }),
-    ).toBe(false);
-  });
-});
 
 describe("createThreadJumpHintVisibilityController", () => {
   beforeEach(() => {
@@ -693,73 +663,21 @@ describe("isContextMenuPointerDown", () => {
   });
 });
 
-describe("resolveSidebarThreadStatus", () => {
-  const session = {
-    threadId: ThreadId.make("thread-1"),
-    status: "running" as const,
-    providerName: "Codex",
-    providerInstanceId: ProviderInstanceId.make("codex"),
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    activeTurnId: "turn-1" as never,
-    lastError: null,
-    updatedAt: "2026-03-09T10:00:00.000Z",
-  };
-
-  const idle = { hasPendingApprovals: false, hasPendingUserInput: false };
-
-  it("prioritizes approval over a running session", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, session })).toBe(
-      "approval",
-    );
-  });
-
-  it("prioritizes awaiting input over a running session, below approval", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, hasPendingUserInput: true, session })).toBe(
-      "input",
-    );
-    expect(
-      resolveSidebarThreadStatus({
-        ...idle,
-        hasPendingApprovals: true,
-        hasPendingUserInput: true,
-        session,
-      }),
-    ).toBe("approval");
-  });
-
-  it("reports working for running and starting sessions", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, session })).toBe("working");
-    expect(
-      resolveSidebarThreadStatus({
-        ...idle,
-        session: { ...session, status: "starting" as const },
-      }),
-    ).toBe("working");
-  });
-
-  it("reports failed only while the session status is error", () => {
-    expect(
-      resolveSidebarThreadStatus({
-        ...idle,
-        session: { ...session, status: "error" as const, lastError: "boom" },
-      }),
-    ).toBe("failed");
-    expect(
-      resolveSidebarThreadStatus({
-        ...idle,
-        session: { ...session, status: "stopped" as const, lastError: "persisted" },
-      }),
-    ).toBe("ready");
-    expect(
-      resolveSidebarThreadStatus({
-        ...idle,
-        session: { ...session, status: "ready" as const, lastError: "persisted" },
-      }),
-    ).toBe("ready");
-  });
-
-  it("defaults to ready with no session", () => {
-    expect(resolveSidebarThreadStatus({ ...idle, session: null })).toBe("ready");
+describe("shared thread status vectors", () => {
+  it.each(threadStatusVectors)("keeps the row and pill aligned for $name", (vector) => {
+    const status = resolveThreadStatus(vector.input);
+    expect(status).toEqual(vector.expected);
+    expect(threadStatusRowPresentation(status, false)?.label ?? null).toBe(vector.expectedLabel);
+    const pill = threadStatusPill(status);
+    if (vector.expectedLabel === null) {
+      expect(pill).toBeNull();
+    } else {
+      expect(pill).toMatchObject({
+        ...vector.expected,
+        label: vector.expectedLabel,
+        pulse: vector.expectedPulse,
+      });
+    }
   });
 });
 
@@ -1101,109 +1019,6 @@ describe("formatWorkingDurationLabel", () => {
   });
 });
 
-describe("resolveThreadStatusPill", () => {
-  const baseThread = {
-    hasActionableProposedPlan: false,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    interactionMode: "plan" as const,
-    latestTurn: null,
-    lastVisitedAt: undefined,
-    session: {
-      threadId: ThreadId.make("thread-1"),
-      status: "running" as const,
-      providerName: "Codex",
-      providerInstanceId: ProviderInstanceId.make("codex"),
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      activeTurnId: "turn-1" as never,
-      lastError: null,
-      updatedAt: "2026-03-09T10:00:00.000Z",
-    },
-  };
-
-  it("shows pending approval before all other statuses", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          hasPendingApprovals: true,
-          hasPendingUserInput: true,
-        },
-      }),
-    ).toMatchObject({ label: "Pending Approval", pulse: false });
-  });
-
-  it("shows awaiting input when plan mode is blocked on user answers", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          hasPendingUserInput: true,
-        },
-      }),
-    ).toMatchObject({ label: "Awaiting Input", pulse: false });
-  });
-
-  it("falls back to working when the thread is actively running without blockers", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: baseThread,
-      }),
-    ).toMatchObject({ label: "Working", pulse: true });
-  });
-
-  it("shows plan ready when a settled plan turn has a proposed plan ready for follow-up", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          hasActionableProposedPlan: true,
-          latestTurn: makeLatestTurn(),
-          session: {
-            ...baseThread.session,
-            status: "ready",
-            activeTurnId: null,
-          },
-        },
-      }),
-    ).toMatchObject({ label: "Plan Ready", pulse: false });
-  });
-
-  it("does not manufacture completed state without a client visit marker", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          latestTurn: makeLatestTurn(),
-          session: {
-            ...baseThread.session,
-            status: "ready",
-            activeTurnId: null,
-          },
-        },
-      }),
-    ).toBeNull();
-  });
-
-  it("shows completed when there is an unseen completion and no active blocker", () => {
-    expect(
-      resolveThreadStatusPill({
-        thread: {
-          ...baseThread,
-          interactionMode: "default",
-          latestTurn: makeLatestTurn(),
-          lastVisitedAt: "2026-03-09T10:04:00.000Z",
-          session: {
-            ...baseThread.session,
-            status: "ready",
-            activeTurnId: null,
-          },
-        },
-      }),
-    ).toMatchObject({ label: "Completed", pulse: false });
-  });
-});
-
 describe("resolveThreadRowClassName", () => {
   it("uses the active sidebar surface when a thread is both selected and active", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: true });
@@ -1223,56 +1038,6 @@ describe("resolveThreadRowClassName", () => {
     const className = resolveThreadRowClassName({ isActive: true, isSelected: false });
     expect(className).toContain("bg-sidebar-row-active");
     expect(className).toContain("hover:bg-sidebar-row-active");
-  });
-});
-
-describe("resolveProjectStatusIndicator", () => {
-  it("returns null when no threads have a notable status", () => {
-    expect(resolveProjectStatusIndicator([null, null])).toBeNull();
-  });
-
-  it("surfaces the highest-priority actionable state across project threads", () => {
-    expect(
-      resolveProjectStatusIndicator([
-        {
-          label: "Completed",
-          colorClass: "text-emerald-600",
-          dotClass: "bg-emerald-500",
-          pulse: false,
-        },
-        {
-          label: "Pending Approval",
-          colorClass: "text-amber-600",
-          dotClass: "bg-amber-500",
-          pulse: false,
-        },
-        {
-          label: "Working",
-          colorClass: "text-sky-600",
-          dotClass: "bg-sky-500",
-          pulse: true,
-        },
-      ]),
-    ).toMatchObject({ label: "Pending Approval", dotClass: "bg-amber-500" });
-  });
-
-  it("prefers plan-ready over completed when no stronger action is needed", () => {
-    expect(
-      resolveProjectStatusIndicator([
-        {
-          label: "Completed",
-          colorClass: "text-emerald-600",
-          dotClass: "bg-emerald-500",
-          pulse: false,
-        },
-        {
-          label: "Plan Ready",
-          colorClass: "text-violet-600",
-          dotClass: "bg-violet-500",
-          pulse: false,
-        },
-      ]),
-    ).toMatchObject({ label: "Plan Ready", dotClass: "bg-violet-500" });
   });
 });
 
