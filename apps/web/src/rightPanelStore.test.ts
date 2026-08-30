@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { DROPPED_RIGHT_PANEL_KINDS } from "./rightPanelKinds";
 import {
   migratePersistedRightPanelState,
   selectActiveRightPanel,
@@ -169,6 +170,11 @@ describe("rightPanelStore", () => {
               },
             ],
           },
+          "env-1:thread-C": {
+            isOpen: true,
+            activeSurfaceId: "zerops",
+            surfaces: [{ id: "zerops", kind: "zerops" }],
+          },
           "env-1:pull-requests-panel": {
             isOpen: true,
             activeSurfaceId: "diff",
@@ -187,6 +193,35 @@ describe("rightPanelStore", () => {
           isOpen: false,
           activeSurfaceId: null,
           surfaces: [],
+        },
+        "env-1:thread-C": {
+          isOpen: true,
+          activeSurfaceId: "zerops",
+          surfaces: [{ id: "zerops", kind: "zerops" }],
+        },
+      },
+    });
+  });
+
+  it("drops every kind named by the retired-kind migration list", () => {
+    const surfaces = DROPPED_RIGHT_PANEL_KINDS.map((kind) => ({ id: kind, kind }));
+
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: DROPPED_RIGHT_PANEL_KINDS[0],
+            surfaces: [...surfaces, { id: "zerops", kind: "zerops" }],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "zerops",
+          surfaces: [{ id: "zerops", kind: "zerops" }],
         },
       },
     });

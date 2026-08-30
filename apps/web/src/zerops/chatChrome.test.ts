@@ -57,14 +57,13 @@ const THREADS = [
 ] as const;
 
 const TOPOLOGIES = [
-  { label: "before topology answers", value: undefined, panel: "unknown", launcher: false },
+  { label: "before topology answers", value: undefined, panel: "unknown" },
   {
     label: "when Zerops is unavailable",
     value: topology(false),
     panel: "unavailable",
-    launcher: false,
   },
-  { label: "when Zerops is available", value: topology(true), panel: "available", launcher: true },
+  { label: "when Zerops is available", value: topology(true), panel: "available" },
 ] as const;
 
 const AUTH_STATES = [
@@ -95,13 +94,11 @@ const CASES = THREADS.flatMap((thread) =>
             ? {
                 threadRef: null,
                 panel: "unknown" as const,
-                launcher: false,
                 attention: null,
               }
             : {
                 threadRef: thread.value,
                 panel: topologyState.panel,
-                launcher: topologyState.launcher,
                 attention: authState.needsAttention
                   ? { snapshot: ATTENTION, surface: panelKind.surface }
                   : null,

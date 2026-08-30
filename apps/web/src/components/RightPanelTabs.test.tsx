@@ -3,6 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  launcherActions,
+  type RightPanelAvailability,
+  type RightPanelKind,
+} from "../rightPanelKinds";
+import {
   RightPanelTabs,
   surfaceShortcutActionForKey,
   surfaceShortcutTargetsTypingContext,
@@ -52,6 +57,16 @@ const sessions: Readonly<Record<string, PreviewSessionSnapshot>> = {
     updatedAt: "2026-08-09T00:00:00.000Z",
   },
 };
+
+const ALL_AVAILABLE = {
+  diff: "available",
+  files: "available",
+  file: "available",
+  preview: "available",
+  terminal: "available",
+  agents: "available",
+  zerops: "available",
+} as const;
 
 const favicon = (dataUrl: string, pageUrl: string): DesktopPreviewFavicon => ({
   dataUrl,
@@ -103,24 +118,69 @@ function renderTabs(
       onCloseSurfacesToRight={() => undefined}
       onCloseAllSurfaces={() => undefined}
       onCopyFilePath={() => undefined}
-      onAddBrowser={() => undefined}
+      onAdd={() => undefined}
       onAddTerminal={() => undefined}
-      onAddDiff={() => undefined}
-      onAddFiles={() => undefined}
-      onAddAgents={() => undefined}
-      onAddZerops={() => undefined}
+      availability={ALL_AVAILABLE}
       liveAgentCount={0}
-      browserAvailable
-      terminalAvailable={false}
-      diffAvailable={false}
-      filesAvailable={false}
-      agentsAvailable={false}
-      zeropsAvailable={false}
     >
       <div>content</div>
     </RightPanelTabs>,
   );
 }
+
+function renderLauncher(
+  availability: Record<RightPanelKind, RightPanelAvailability> = ALL_AVAILABLE,
+) {
+  return renderToStaticMarkup(
+    <RightPanelTabs
+      mode="inline"
+      surfaces={[]}
+      activeSurfaceId={null}
+      pendingSurfaceIds={new Set()}
+      previewSessions={{}}
+      desktopByTabId={{}}
+      terminalLabelsById={new Map()}
+      onActivate={() => undefined}
+      onCloseSurface={() => undefined}
+      onCloseOtherSurfaces={() => undefined}
+      onCloseSurfacesToRight={() => undefined}
+      onCloseAllSurfaces={() => undefined}
+      onCopyFilePath={() => undefined}
+      onAdd={() => undefined}
+      onAddTerminal={() => undefined}
+      availability={availability}
+      liveAgentCount={0}
+    >
+      <div>content</div>
+    </RightPanelTabs>,
+  );
+}
+
+describe("RightPanelTabs launcher", () => {
+  it("publishes the real shortcut order for available kinds", () => {
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="BTFDAZ"');
+    expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
+      'data-surface-launcher-keys="BTFDA"',
+    );
+  });
+
+  it("characterizes the established hint for every unavailable launcher kind", () => {
+    const html = renderLauncher({
+      diff: "unavailable",
+      files: "unavailable",
+      file: "unavailable",
+      preview: "unavailable",
+      terminal: "unavailable",
+      agents: "unavailable",
+      zerops: "unavailable",
+    });
+    expect(html).toContain("Only available in the desktop app.");
+    expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
+    expect(html).toContain("Available for Git repositories.");
+    expect(html).toContain("Available from a thread.");
+    expect(html).toContain("Available in a Zerops project.");
+  });
+});
 
 describe("RightPanelTabs preview favicon", () => {
   it("prefers a live capture and never asks Google about a private hostname", () => {
@@ -146,21 +206,15 @@ describe("RightPanelTabs preview favicon", () => {
 });
 
 describe("surface shortcuts", () => {
-  const actions = [
-    { shortcut: "B", available: true, label: "Browser" },
-    { shortcut: "D", available: false, label: "Diff" },
-  ] as const;
-
-  it("matches available surface shortcuts case-insensitively", () => {
+  it("matches real available surface shortcuts case-insensitively", () => {
+    const actions = launcherActions({ ...ALL_AVAILABLE, diff: "unavailable" });
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("b"))).toBe(actions[0]);
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("B"))).toBe(actions[0]);
-  });
-
-  it("does not activate unavailable surfaces", () => {
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("d"))).toBeNull();
   });
 
-  it("leaves modified, composing, and already-handled key events alone", () => {
+  it("leaves modified, composing, and already-handled keys out of the real table", () => {
+    const actions = launcherActions(ALL_AVAILABLE);
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("b", { metaKey: true }))).toBeNull();
     expect(
       surfaceShortcutActionForKey(actions, shortcutEvent("b", { isComposing: true })),
