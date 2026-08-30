@@ -1,8 +1,9 @@
-import type { AuthSessionState } from "@t3tools/contracts";
+import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import React, { startTransition, useEffect, useRef, useState, useCallback } from "react";
 
 import { APP_DISPLAY_NAME } from "../../branding";
+import { appBasePathHref } from "../../basePath";
 import { connectPairing } from "../../connection/onboarding";
 import {
   peekPairingTokenFromUrl,
@@ -40,17 +41,15 @@ export function PairingPendingSurface() {
 }
 
 export function PairingRouteSurface({
-  auth,
-  initialErrorMessage,
+  methods,
   onAuthenticated,
 }: {
-  auth: AuthSessionState["auth"];
-  initialErrorMessage?: string;
+  methods: ReadonlyArray<ServerAuthBootstrapMethod>;
   onAuthenticated: () => void;
 }) {
   const autoPairTokenRef = useRef<string | null>(peekPairingTokenFromUrl());
   const [credential, setCredential] = useState(() => autoPairTokenRef.current ?? "");
-  const [errorMessage, setErrorMessage] = useState(initialErrorMessage ?? "");
+  const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const autoSubmitAttemptedRef = useRef(false);
 
@@ -88,14 +87,14 @@ export function PairingRouteSurface({
 
   useEffect(() => {
     const token = autoPairTokenRef.current;
-    if (!token || autoSubmitAttemptedRef.current) {
+    if (methods.length === 0 || !token || autoSubmitAttemptedRef.current) {
       return;
     }
 
     autoSubmitAttemptedRef.current = true;
     stripPairingTokenFromUrl();
     void submitCredential(token);
-  }, [submitCredential]);
+  }, [methods.length, submitCredential]);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
@@ -110,57 +109,63 @@ export function PairingRouteSurface({
           {APP_DISPLAY_NAME}
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-          {MANUAL_LINK_COPY.credential.heading}
+          {methods.length === 0
+            ? MANUAL_LINK_COPY.credential.unavailableHeading
+            : MANUAL_LINK_COPY.credential.heading}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {MANUAL_LINK_COPY.describeAuthGate(auth.bootstrapMethods)}
+          {MANUAL_LINK_COPY.describeAuthGate(methods)}
         </p>
 
-        <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="pairing-token">
-              {MANUAL_LINK_COPY.credential.tokenLabel}
-            </label>
-            <Input
-              id="pairing-token"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-              disabled={isSubmitting}
-              nativeInput
-              onChange={(event) => setCredential(event.currentTarget.value)}
-              placeholder={MANUAL_LINK_COPY.credential.tokenPlaceholder}
-              spellCheck={false}
-              value={credential}
-            />
-          </div>
+        {methods.length === 0 ? null : (
+          <>
+            <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="pairing-token">
+                  {MANUAL_LINK_COPY.credential.tokenLabel}
+                </label>
+                <Input
+                  id="pairing-token"
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  disabled={isSubmitting}
+                  nativeInput
+                  onChange={(event) => setCredential(event.currentTarget.value)}
+                  placeholder={MANUAL_LINK_COPY.credential.tokenPlaceholder}
+                  spellCheck={false}
+                  value={credential}
+                />
+              </div>
 
-          {errorMessage ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/6 px-3 py-2 text-sm text-destructive">
-              {errorMessage}
+              {errorMessage ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/6 px-3 py-2 text-sm text-destructive">
+                  {errorMessage}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={isSubmitting} size="sm" type="submit">
+                  {isSubmitting
+                    ? MANUAL_LINK_COPY.credential.submittingAction
+                    : MANUAL_LINK_COPY.credential.continueAction}
+                </Button>
+                <Button
+                  disabled={isSubmitting}
+                  onClick={() => window.location.reload()}
+                  size="sm"
+                  variant="outline"
+                >
+                  {MANUAL_LINK_COPY.credential.reloadAction}
+                </Button>
+              </div>
+            </form>
+
+            <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
+              {MANUAL_LINK_COPY.describeSupportedMethods(methods)}
             </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={isSubmitting} size="sm" type="submit">
-              {isSubmitting
-                ? MANUAL_LINK_COPY.credential.submittingAction
-                : MANUAL_LINK_COPY.credential.continueAction}
-            </Button>
-            <Button
-              disabled={isSubmitting}
-              onClick={() => window.location.reload()}
-              size="sm"
-              variant="outline"
-            >
-              {MANUAL_LINK_COPY.credential.reloadAction}
-            </Button>
-          </div>
-        </form>
-
-        <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-          {MANUAL_LINK_COPY.describeSupportedMethods(auth.bootstrapMethods)}
-        </div>
+          </>
+        )}
       </section>
     </div>
   );
@@ -282,7 +287,11 @@ export function HostedPairingRouteSurface() {
             </Button>
           ) : null}
           {status === "paired" ? (
-            <Button size="sm" variant="outline" onClick={() => (window.location.href = "/")}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => (window.location.href = appBasePathHref())}
+            >
               {MANUAL_LINK_COPY.hosted.openAction}
             </Button>
           ) : null}
