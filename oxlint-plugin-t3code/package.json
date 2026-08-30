@@ -2,6 +2,9 @@
   "name": "@t3tools/oxlint-plugin-t3code",
   "private": true,
   "type": "module",
+  "exports": {
+    "./exceptions": "./exceptions.ts"
+  },
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "vp test run"
