@@ -1292,6 +1292,85 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('data-testid="file-diff"');
   });
 
+  it("renders a settled deploy milestone as a Zerops card", () => {
+    const resultText = JSON.stringify({
+      status: "DEPLOYED",
+      targetService: "kanbandev",
+      subdomainUrl: "https://kanbandev.example.com",
+    });
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "deploy-entry",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "deploy-work",
+              createdAt: MESSAGE_CREATED_AT,
+              turnId: TurnId.make("turn-deploy"),
+              label: "Deploy kanbandev",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "completed",
+              zeropsResult: { toolName: "zerops_deploy", resultText },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("data-zerops-card");
+  });
+
+  it("keeps a standalone tool section around a milestone beside a remainder toggle", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "deploy-entry",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "deploy-work",
+              createdAt: MESSAGE_CREATED_AT,
+              label: "Deploy kanbandev",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "completed",
+              zeropsResult: {
+                toolName: "zerops_deploy",
+                resultText: JSON.stringify({ status: "DEPLOYED", targetService: "kanbandev" }),
+              },
+            },
+          },
+          {
+            id: "mount-entry",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:29.000Z",
+            entry: {
+              id: "mount-work",
+              createdAt: "2026-03-17T19:12:29.000Z",
+              label: "Mount api",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "completed",
+              zeropsResult: {
+                toolName: "zerops_mount",
+                resultText: JSON.stringify({ hostname: "api", status: "MOUNTED" }),
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Used 1 tool");
+    expect(markup).toMatch(/<section[^>]*aria-label="1 tool call"[^>]*>.*data-zerops-card/s);
+  });
+
   it("renders a muted failure marker for failed tool lifecycle entries", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

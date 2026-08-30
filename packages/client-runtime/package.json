@@ -175,6 +175,10 @@
       "types": "./src/zerops/cards/liveFixtures.ts",
       "default": "./src/zerops/cards/liveFixtures.ts"
     },
+    "./zerops/cards/milestone": {
+      "types": "./src/zerops/cards/milestone.ts",
+      "default": "./src/zerops/cards/milestone.ts"
+    },
     "./zerops/cards/payloads": {
       "types": "./src/zerops/cards/payloads.ts",
       "default": "./src/zerops/cards/payloads.ts"
