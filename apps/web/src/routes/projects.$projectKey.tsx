@@ -1,14 +1,16 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { ProjectSettingsPage } from "../components/settings/ProjectSettingsPanel";
+import { resolveDoor } from "./-door";
 
 export const Route = createFileRoute("/projects/$projectKey")({
-  beforeLoad: async ({ context }) => {
-    if (
-      context.authGateState.status !== "authenticated" &&
-      context.authGateState.status !== "hosted-static"
-    ) {
-      throw redirect({ to: "/pair", replace: true });
+  beforeLoad: async ({ context, location }) => {
+    const door = resolveDoor(context.authGateState, {
+      pathname: location.pathname,
+      environmentCount: 0,
+    });
+    if (door.redirect !== null) {
+      throw redirect({ to: door.redirect, replace: true });
     }
   },
   component: () => <ProjectSettingsPage projectKey={Route.useParams().projectKey} />,

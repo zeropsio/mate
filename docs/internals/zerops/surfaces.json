@@ -518,6 +518,7 @@
       "docs": { "none": "No docs/user page documents manual pairing links yet." },
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
+        "apps/web/src/components/auth/PairingRouteSurface.test.tsx",
         "apps/web/src/routes/-chatIndexTitlebar.test.ts",
         "apps/mobile/src/features/connection/pairing.test.ts"
       ],

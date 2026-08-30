@@ -39,6 +39,7 @@ import { useUiStateStore } from "../uiStateStore";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
+import type { AuthGateState } from "../environments/primary/auth";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
 import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
@@ -54,22 +55,25 @@ import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
 } from "../components/KeybindingsUpdateToast.logic";
+import { resolveDoor } from "./-door";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
     if (location.pathname === "/pair" && hasHostedPairingRequest(new URL(window.location.href))) {
+      const authGateState: AuthGateState = {
+        status: "hosted-pairing",
+      };
       return {
-        authGateState: {
-          status: "hosted-pairing",
-        } as const,
+        authGateState,
       };
     }
 
     if (isHostedStaticApp(new URL(window.location.href))) {
+      const authGateState: AuthGateState = {
+        status: "hosted-static",
+      };
       return {
-        authGateState: {
-          status: "hosted-static",
-        } as const,
+        authGateState,
       };
     }
 
@@ -88,7 +92,11 @@ export const Route = createRootRoute({
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+  const door = resolveDoor(authGateState, {
+    pathname,
+    environmentCount: 0,
+  });
+  const primaryEnvironmentAuthenticated = door.session === "authenticated";
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -99,16 +107,7 @@ function RootRouteView() {
     };
   }, [pathname]);
 
-  if (pathname === "/pair" || pathname === "/connect" || pathname.startsWith("/connect/")) {
-    return (
-      <>
-        <DocumentTitleSync />
-        <Outlet />
-      </>
-    );
-  }
-
-  if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
+  if (door.shell === "bare") {
     return (
       <>
         <DocumentTitleSync />

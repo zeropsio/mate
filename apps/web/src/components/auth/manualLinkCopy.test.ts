@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { LEGACY_VOCABULARY_PATTERNS } from "@t3tools/shared/legacyVocabulary";
 
 import { PairingPendingSurface } from "./PairingRouteSurface";
+import { MANUAL_LINK_COPY } from "./manualLinkCopy";
 
 const JSX_OPENING_TAG_PATTERN = /<[A-Za-z][^<>]*>/gu;
 const TECHNICAL_PAIRING_ATTRIBUTE_PATTERN =
@@ -57,5 +58,35 @@ describe("manual one-time-link copy", () => {
     const markup = renderToStaticMarkup(createElement(PairingPendingSurface));
 
     expect(markup).toContain("Pairing with this environment");
+  });
+
+  it("names the Zerops identity gate", () => {
+    expect(MANUAL_LINK_COPY.describeAuthGate(["zerops-identity", "one-time-token"])).toBe(
+      "This environment signs you in through Zerops.",
+    );
+  });
+
+  it("names Zerops and the one-time-link fallback regardless of method order", () => {
+    expect(MANUAL_LINK_COPY.describeSupportedMethods(["one-time-token", "zerops-identity"])).toBe(
+      "Sign in through Zerops, or paste a one-time link.",
+    );
+  });
+
+  it("delegates an identity-only supported-method set to the gate description", () => {
+    expect(MANUAL_LINK_COPY.describeSupportedMethods(["zerops-identity"])).toBe(
+      MANUAL_LINK_COPY.describeAuthGate(["zerops-identity"]),
+    );
+  });
+
+  it("explains an empty authentication gate", () => {
+    expect(MANUAL_LINK_COPY.describeAuthGate([])).toBe(
+      "This environment offers no sign-in from here; ask an operator for a one-time link.",
+    );
+  });
+
+  it("explains an empty supported-method set", () => {
+    expect(MANUAL_LINK_COPY.describeSupportedMethods([])).toBe(
+      "This environment offers no sign-in from here; ask an operator for a one-time link.",
+    );
   });
 });

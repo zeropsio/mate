@@ -18,7 +18,7 @@ import {
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
-import { resolveChatIndexView } from "./-chatIndexView";
+import { resolveDoor } from "./-door";
 import { composeZeropsFirstPrompt } from "~/zerops/composeFirstPrompt";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 
@@ -26,12 +26,12 @@ function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments } = useEnvironments();
 
-  if (
-    resolveChatIndexView({
-      authGateStatus: authGateState.status,
-      environmentCount: environments.length,
-    }) === "zerops-onboarding"
-  ) {
+  const door = resolveDoor(authGateState, {
+    pathname: "/",
+    environmentCount: environments.length,
+  });
+
+  if (door.surface === "zerops-onboarding") {
     // Upstream's empty state is kept whole and handed to the landing, which
     // offers it as the manual fallback.
     return <ZeropsHostedLanding manualFallback={<HostedStaticOnboardingState />} />;

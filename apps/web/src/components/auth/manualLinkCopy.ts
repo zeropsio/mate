@@ -1,3 +1,48 @@
+import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
+
+function describeAuthGate(bootstrapMethods: ReadonlyArray<ServerAuthBootstrapMethod>): string {
+  if (bootstrapMethods.length === 0) {
+    return "This environment offers no sign-in from here; ask an operator for a one-time link.";
+  }
+
+  if (bootstrapMethods.includes("zerops-identity")) {
+    return "This environment signs you in through Zerops.";
+  }
+
+  if (bootstrapMethods.includes("desktop-bootstrap")) {
+    return "This environment expects a trusted pairing credential before the app can connect.";
+  }
+
+  return "Enter a pairing token to start a session with this environment.";
+}
+
+function describeSupportedMethods(
+  bootstrapMethods: ReadonlyArray<ServerAuthBootstrapMethod>,
+): string {
+  if (bootstrapMethods.length === 0) {
+    return describeAuthGate(bootstrapMethods);
+  }
+
+  if (bootstrapMethods.includes("zerops-identity")) {
+    return bootstrapMethods.includes("one-time-token")
+      ? "Sign in through Zerops, or paste a one-time link."
+      : describeAuthGate(bootstrapMethods);
+  }
+
+  if (
+    bootstrapMethods.includes("desktop-bootstrap") &&
+    bootstrapMethods.includes("one-time-token")
+  ) {
+    return "Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.";
+  }
+
+  if (bootstrapMethods.includes("desktop-bootstrap")) {
+    return "This environment is desktop-managed. Open it from the desktop app or paste a bootstrap credential if one was issued explicitly.";
+  }
+
+  return "This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.";
+}
+
 export const MANUAL_LINK_COPY = {
   pending: {
     heading: "Pairing with this environment",
@@ -5,6 +50,7 @@ export const MANUAL_LINK_COPY = {
   },
   credential: {
     heading: "Pair with this environment",
+    unavailableHeading: "No sign-in from here",
     tokenLabel: "Pairing token",
     tokenPlaceholder: "Paste a one-time token or pairing secret",
     submittingAction: "Pairing...",
@@ -27,27 +73,8 @@ export const MANUAL_LINK_COPY = {
     openAction: "Open app",
   },
   unknownAuthenticationError: "Authentication failed.",
-  describeAuthGate(bootstrapMethods: ReadonlyArray<string>): string {
-    if (bootstrapMethods.includes("desktop-bootstrap")) {
-      return "This environment expects a trusted pairing credential before the app can connect.";
-    }
-
-    return "Enter a pairing token to start a session with this environment.";
-  },
-  describeSupportedMethods(bootstrapMethods: ReadonlyArray<string>): string {
-    if (
-      bootstrapMethods.includes("desktop-bootstrap") &&
-      bootstrapMethods.includes("one-time-token")
-    ) {
-      return "Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.";
-    }
-
-    if (bootstrapMethods.includes("desktop-bootstrap")) {
-      return "This environment is desktop-managed. Open it from the desktop app or paste a bootstrap credential if one was issued explicitly.";
-    }
-
-    return "This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.";
-  },
+  describeAuthGate,
+  describeSupportedMethods,
   describeSavedEnvironment(label: string): string {
     return `${label || "The environment"} is saved in this browser.`;
   },

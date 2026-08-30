@@ -3,6 +3,7 @@ import type {
   AuthClientMetadata,
   AuthEnvironmentScope,
   AuthPairingCredentialResult,
+  ServerAuthDescriptor,
   ServerAuthSessionMethod,
   AuthSessionId,
   AuthSessionState,
@@ -21,6 +22,12 @@ import {
 
 import { PrimaryEnvironmentHttpClient } from "./httpClient";
 import { runPrimaryHttp } from "../../lib/runtime";
+
+export type AuthGateState =
+  | { readonly status: "hosted-pairing" }
+  | { readonly status: "hosted-static" }
+  | { readonly status: "authenticated" }
+  | { readonly status: "requires-auth"; readonly auth: ServerAuthDescriptor };
 
 const PrimaryEnvironmentRequestOperation = Schema.Literals([
   "fetch-session-state",
@@ -124,13 +131,10 @@ export interface ServerClientSessionRecord {
   readonly current: boolean;
 }
 
-type ServerAuthGateState =
-  | { status: "authenticated" }
-  | {
-      status: "requires-auth";
-      auth: AuthSessionState["auth"];
-      errorMessage?: string;
-    };
+type ServerAuthGateState = Extract<
+  AuthGateState,
+  { readonly status: "authenticated" | "requires-auth" }
+>;
 
 let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
 let resolvedAuthenticatedGateState: ServerAuthGateState | null = null;

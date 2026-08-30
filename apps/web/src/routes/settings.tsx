@@ -15,6 +15,7 @@ import { Button } from "../components/ui/button";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { isElectron } from "../env";
+import { resolveDoor } from "./-door";
 
 function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
@@ -96,11 +97,12 @@ function SettingsRouteLayout() {
 
 export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context, location }) => {
-    if (
-      context.authGateState.status !== "authenticated" &&
-      context.authGateState.status !== "hosted-static"
-    ) {
-      throw redirect({ to: "/pair", replace: true });
+    const door = resolveDoor(context.authGateState, {
+      pathname: location.pathname,
+      environmentCount: 0,
+    });
+    if (door.redirect !== null) {
+      throw redirect({ to: door.redirect, replace: true });
     }
 
     if (location.pathname === "/settings") {
