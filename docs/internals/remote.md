@@ -2,9 +2,9 @@
 
 > For maintainers. Using T3 Code? See [docs/user](../user/).
 
-Remote environments are shipped, not planned. Direct, bearer-paired, relay-tunneled, and
-desktop-managed SSH access all exist today. This document describes the model they share and where
-each piece lives. For the user-facing setup guide see
+Remote environments are shipped, not planned. Direct, bearer-paired, and desktop-managed SSH access
+all exist today. This document describes the model they share and where each piece lives. For the
+user-facing setup guide see
 [remote access](../user/remote-access.md).
 
 ## The model
@@ -21,8 +21,7 @@ the connection layer, never by splitting the runtime.
                 │ resolves one access endpoint
 ┌───────────────▼──────────────────────────────┐
 │ Access method                                │
-│  direct ws/wss, relay tunnel,                │
-│  desktop-managed ssh                         │
+│  direct ws/wss, desktop-managed ssh          │
 └───────────────┬──────────────────────────────┘
                 │ connects to one T3 server
 ┌───────────────▼──────────────────────────────┐
@@ -54,10 +53,9 @@ control plane or a copy of session state.
 | ------------------------- | ------------------------------------------------------------------------ |
 | `PrimaryConnectionTarget` | The platform-managed local server (desktop backend, CLI-served web app). |
 | `BearerConnectionTarget`  | Any manually paired endpoint reached over direct HTTP/WebSocket.         |
-| `RelayConnectionTarget`   | Managed T3 Connect relay tunnels.                                        |
 | `SshConnectionTarget`     | Desktop-managed SSH environments.                                        |
 
-Bearer, relay, and SSH are persisted; primary is platform-managed. Any manually paired endpoint,
+Bearer and SSH are persisted; primary is platform-managed. Any manually paired endpoint,
 regardless of what private network it is reached over, is paired through the ordinary bearer path in
 [`onboarding.ts`][onboarding] (`preparePairingRegistration`), which accepts either a pairing URL or a
 host plus pairing code.
@@ -131,15 +129,6 @@ how the server got started or who manages the process.
 It works for desktop, mobile, and web with no client-side process management. Browser security rules
 are part of it: a hosted HTTPS client cannot connect to plain `ws://` or `http://` LAN backends.
 
-### Relay-tunneled access
-
-Managed T3 Connect relay tunnels use `RelayConnectionTarget` and are the answer when the host is
-behind NAT, inbound ports are unavailable, or mobile must reach a desktop-hosted environment. From
-the client's perspective this is still an ordinary WebSocket connection; the route is mediated. The
-relay Worker only brokers credentials and a managed endpoint; application traffic then flows over
-the provisioned Cloudflare tunnel hostname for the life of the connection, not through the relay
-Worker itself. See [t3-connect.md](./t3-connect.md).
-
 ### Desktop-managed SSH access
 
 SSH is an access and launch helper, not a separate environment type. `DesktopSshEnvironment`
@@ -171,12 +160,8 @@ it separate from access.
   server, forwards a port, and the renderer connects normally. The saved environment records that it
   came from SSH launch for reconnect and lifecycle UX only; that metadata never changes the protocol
   or the identity model.
-- **Client-managed local publish.** A local server is published through the relay with
-  `t3 connect link`, exposing a desktop-hosted environment to mobile without router or firewall
-  changes.
-
-The same `ExecutionEnvironment` can be reached several of these ways. Only the launch and access
-paths differ.
+  The same `ExecutionEnvironment` can be reached several of these ways. Only the launch and access
+  paths differ.
 
 ## Security model
 
@@ -210,7 +195,6 @@ supervisor owns the resulting disconnect and reconnect like any other involuntar
 These remain unbuilt and are listed to keep the model honest:
 
 - third-party tunnel products as additional endpoint providers;
-- a relay-hosted OAuth callback broker (see [t3-connect.md](./t3-connect.md));
 - richer multi-environment UI beyond the current connections list.
 
 [model]: ../../packages/client-runtime/src/connection/model.ts
