@@ -132,9 +132,12 @@ const makeSnapshotPublisher = <Snapshot>(
     };
   });
 
+/** Scene steps are absolute snapshots for each feed rather than patches over the previous value. */
+type FixtureSceneStep = NonNullable<ShowcaseScene["steps"]>[number];
+
 const replaySteps = <Snapshot>(
   scene: ShowcaseScene,
-  select: (step: NonNullable<ShowcaseScene["steps"]>[number]) => Snapshot | undefined,
+  select: (step: FixtureSceneStep) => Snapshot | undefined,
   publish: (snapshot: Snapshot) => Effect.Effect<Snapshot>,
 ) =>
   Effect.forEach(

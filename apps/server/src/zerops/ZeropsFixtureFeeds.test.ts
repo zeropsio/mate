@@ -54,6 +54,31 @@ const activeLoginStepScene: ShowcaseScene = {
   ],
 };
 
+const absoluteLoginStepScene: ShowcaseScene = {
+  ...serviceMapScene,
+  agentLogin: {
+    "claude-code": {
+      phase: "awaiting-browser",
+      terminalId: "scripted-login-claude-code",
+      startedAt: scriptedLoginStartedAt,
+      url: "https://claude.ai/login",
+    },
+  },
+  steps: [
+    {
+      afterMs: 300,
+      agentLogin: {
+        codex: {
+          phase: "awaiting-code",
+          terminalId: "scripted-login-codex",
+          startedAt: scriptedLoginStartedAt,
+          code: "SCRIPTED-CODE",
+        },
+      },
+    },
+  ],
+};
+
 const withFixtureFeeds = <A>(
   scene: ShowcaseScene,
   use: (feeds: {
@@ -313,6 +338,27 @@ it.effect("a non-terminal login step seeds a cancellable session", () =>
       assert.equal(cancelled?.phase, "cancelled");
       assert.equal(cancelled?.terminalId, "scripted-login-codex");
       assert.deepEqual(cancelled?.startedAt, scriptedLoginStartedAt);
+    }),
+  ),
+);
+
+it.effect("agent login steps replace the whole login snapshot", () =>
+  withFixtureFeeds(absoluteLoginStepScene, ({ agentLogin }) =>
+    Effect.gen(function* () {
+      const first = yield* agentLogin
+        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId)
+        .pipe(Effect.orDie);
+      assert.equal(first.terminalId, "scripted-login-claude-code");
+
+      yield* advanceTestClock(300);
+      yield* advanceTestClock(2_700);
+      assert.equal((yield* agentLogin.latest)["claude-code"], undefined);
+
+      const restarted = yield* agentLogin
+        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId)
+        .pipe(Effect.orDie);
+      assert.notEqual(restarted.terminalId, first.terminalId);
+      assert.equal((yield* agentLogin.latest)["claude-code"]?.phase, "starting");
     }),
   ),
 );
