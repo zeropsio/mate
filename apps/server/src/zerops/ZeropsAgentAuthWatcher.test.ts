@@ -4,9 +4,9 @@
 // Exercises watchWithFallback's own plain-Node behavior directly — see that
 // module's header comment for why it deliberately bypasses Effect's
 // FileSystem.watch.
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
@@ -15,11 +15,11 @@ import { watchWithFallback } from "./ZeropsAgentAuthWatcher.ts";
 let root: string;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), "z3-agent-auth-watcher-"));
+  root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "z3-agent-auth-watcher-"));
 });
 
 afterEach(() => {
-  fs.rmSync(root, { recursive: true, force: true });
+  NodeFS.rmSync(root, { recursive: true, force: true });
 });
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 2000): Promise<void> => {
@@ -62,17 +62,17 @@ const waitForWithNudge = async (
 
 describe("watchWithFallback", () => {
   it("fires when the target file already exists and changes", async () => {
-    const target = path.join(root, "auth.json");
-    fs.writeFileSync(target, "{}");
+    const target = NodePath.join(root, "auth.json");
+    NodeFS.writeFileSync(target, "{}");
     let fired = 0;
     const handle = watchWithFallback(target, root, () => {
       fired += 1;
     });
     try {
-      fs.writeFileSync(target, '{"changed":true}');
+      NodeFS.writeFileSync(target, '{"changed":true}');
       await waitForWithNudge(
         () => fired > 0,
-        () => fs.writeFileSync(target, '{"changed":true,"nudge":true}'),
+        () => NodeFS.writeFileSync(target, '{"changed":true,"nudge":true}'),
       );
       expect(fired).toBeGreaterThan(0);
     } finally {
@@ -81,16 +81,16 @@ describe("watchWithFallback", () => {
   });
 
   it("tolerates a missing target directory, firing once it is created", async () => {
-    const dir = path.join(root, ".codex");
-    const target = path.join(dir, "auth.json");
+    const dir = NodePath.join(root, ".codex");
+    const target = NodePath.join(dir, "auth.json");
     let fired = 0;
     const handle = watchWithFallback(dir, root, () => {
       fired += 1;
     });
     try {
       // dir does not exist yet — the fallback watch (root) must catch its creation.
-      fs.mkdirSync(dir);
-      fs.writeFileSync(target, "{}");
+      NodeFS.mkdirSync(dir);
+      NodeFS.writeFileSync(target, "{}");
       await waitFor(() => fired > 0);
       expect(fired).toBeGreaterThan(0);
     } finally {
@@ -99,18 +99,18 @@ describe("watchWithFallback", () => {
   });
 
   it("keeps reporting changes to the target after it re-attaches", async () => {
-    const dir = path.join(root, ".codex");
+    const dir = NodePath.join(root, ".codex");
     let fired = 0;
     const handle = watchWithFallback(dir, root, () => {
       fired += 1;
     });
     try {
-      fs.mkdirSync(dir);
-      fs.writeFileSync(path.join(dir, "auth.json"), "{}");
+      NodeFS.mkdirSync(dir);
+      NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), "{}");
       await waitFor(() => fired > 0);
       const afterAttach = fired;
 
-      fs.writeFileSync(path.join(dir, "auth.json"), '{"again":true}');
+      NodeFS.writeFileSync(NodePath.join(dir, "auth.json"), '{"again":true}');
       await waitFor(() => fired > afterAttach);
       expect(fired).toBeGreaterThan(afterAttach);
     } finally {
@@ -119,8 +119,8 @@ describe("watchWithFallback", () => {
   });
 
   it("gives up quietly when the fallback directory itself does not exist", async () => {
-    const dir = path.join(root, "missing-parent", "also-missing");
-    const fallback = path.join(root, "missing-parent");
+    const dir = NodePath.join(root, "missing-parent", "also-missing");
+    const fallback = NodePath.join(root, "missing-parent");
     let fired = 0;
     const handle = watchWithFallback(dir, fallback, () => {
       fired += 1;
@@ -136,10 +136,10 @@ describe("watchWithFallback", () => {
   // the same directory — Claude's own `backups/`, `sessions/` writes were
   // re-triggering the credential check on every probe before this fix.
   it("ignores writes to sibling files in the same directory", async () => {
-    const target = path.join(root, ".credentials.json");
-    const sibling = path.join(root, "backups", "x.json");
-    fs.writeFileSync(target, "{}");
-    fs.mkdirSync(path.join(root, "backups"));
+    const target = NodePath.join(root, ".credentials.json");
+    const sibling = NodePath.join(root, "backups", "x.json");
+    NodeFS.writeFileSync(target, "{}");
+    NodeFS.mkdirSync(NodePath.join(root, "backups"));
     let fired = 0;
     const handle = watchWithFallback(target, root, () => {
       fired += 1;
@@ -156,17 +156,17 @@ describe("watchWithFallback", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       fired = 0;
 
-      fs.writeFileSync(sibling, "{}");
+      NodeFS.writeFileSync(sibling, "{}");
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(fired).toBe(0);
 
       // Confirm the watcher is actually live — a real change to the target
       // itself still fires, so a silent "nothing ever fires" bug wouldn't
       // pass this test by accident.
-      fs.writeFileSync(target, '{"changed":true}');
+      NodeFS.writeFileSync(target, '{"changed":true}');
       await waitForWithNudge(
         () => fired > 0,
-        () => fs.writeFileSync(target, '{"changed":true,"nudge":true}'),
+        () => NodeFS.writeFileSync(target, '{"changed":true,"nudge":true}'),
       );
       expect(fired).toBeGreaterThan(0);
     } finally {
@@ -175,14 +175,14 @@ describe("watchWithFallback", () => {
   });
 
   it("stops firing after dispose", async () => {
-    const target = path.join(root, "auth.json");
-    fs.writeFileSync(target, "{}");
+    const target = NodePath.join(root, "auth.json");
+    NodeFS.writeFileSync(target, "{}");
     let fired = 0;
     const handle = watchWithFallback(target, root, () => {
       fired += 1;
     });
     handle.dispose();
-    fs.writeFileSync(target, '{"changed":true}');
+    NodeFS.writeFileSync(target, '{"changed":true}');
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(fired).toBe(0);
   });

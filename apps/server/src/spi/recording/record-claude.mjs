@@ -33,7 +33,7 @@
  * Options:
  *   --prompt <text>            required. The single user turn to send.
  *   --cwd <path>                default /var/www.
- *   --out <file>                required. JSONL output path.
+ *   --out <file>                required. JSONL output NodePath.
  *   --allowed-tools <a,b,c>     recorder-side safety allowlist consulted by
  *                               THIS script's canUseTool (NOT an SDK option
  *                               — the adapter never sets one either). Tools
@@ -56,10 +56,10 @@
  *   --notes <text>             free-text note recorded in the meta sidecar.
  */
 
-import { writeFileSync, appendFileSync, existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
-import path from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeURL from "node:url";
+import * as NodePath from "node:path";
 
 const DEFAULT_SDK_PATH = "/home/zerops/.zcp/z3/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs";
 const DEFAULT_ALLOWED_TOOLS = [
@@ -131,7 +131,7 @@ function parseArgs(argv) {
 function resolveClaudeBinary(explicit) {
   if (explicit) return explicit;
   try {
-    return execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
+    return NodeChildProcess.execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
   } catch {
     return "/home/zerops/.local/bin/claude";
   }
@@ -202,25 +202,29 @@ async function main() {
   const redact = homeRedactor();
 
   const claudeBinaryPath = resolveClaudeBinary(args.claudeBinary);
-  const sdkAbsPath = path.resolve(args.sdkPath);
-  if (!existsSync(sdkAbsPath)) {
+  const sdkAbsPath = NodePath.resolve(args.sdkPath);
+  if (!NodeFS.existsSync(sdkAbsPath)) {
     throw new Error(`SDK not found at ${sdkAbsPath} (pass --sdk-path)`);
   }
   const sdkPackageJson = JSON.parse(
-    execFileSync("cat", [path.join(path.dirname(sdkAbsPath), "package.json")], {
-      encoding: "utf8",
-    }),
+    NodeChildProcess.execFileSync(
+      "cat",
+      [NodePath.join(NodePath.dirname(sdkAbsPath), "package.json")],
+      {
+        encoding: "utf8",
+      },
+    ),
   );
   const sdkVersion = sdkPackageJson.version;
 
-  const { query } = await import(pathToFileURL(sdkAbsPath).href);
+  const { query } = await import(NodeURL.pathToFileURL(sdkAbsPath).href);
 
   // Reset the output file.
-  writeFileSync(args.out, "");
+  NodeFS.writeFileSync(args.out, "");
   const counters = { message: 0, control: 0 };
   const writeLine = (obj) => {
     counters[obj.kind] += 1;
-    appendFileSync(args.out, `${JSON.stringify(obj)}\n`);
+    NodeFS.appendFileSync(args.out, `${JSON.stringify(obj)}\n`);
   };
 
   const typeSubtypeSeq = [];
@@ -354,7 +358,7 @@ async function main() {
   runtime.close();
 
   try {
-    system.cliVersion = execFileSync(claudeBinaryPath, ["--version"], {
+    system.cliVersion = NodeChildProcess.execFileSync(claudeBinaryPath, ["--version"], {
       encoding: "utf8",
     }).trim();
   } catch (err) {
@@ -375,7 +379,7 @@ async function main() {
     notes: args.notes,
     sdkOptions: sanitizeOptionsForMeta(queryOptions, redact),
   };
-  writeFileSync(
+  NodeFS.writeFileSync(
     `${args.out.replace(/\.jsonl$/, "")}.meta.json`,
     `${JSON.stringify(meta, null, 2)}\n`,
   );

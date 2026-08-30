@@ -20,7 +20,7 @@
  * the fallback->target swap itself fires once) — debouncing is the caller's
  * job, not this module's.
  */
-import * as NodeFs from "node:fs";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 export interface WatcherHandle {
@@ -39,7 +39,7 @@ export const watchWithFallback = (
   fallbackDir: string,
   onChange: () => void,
 ): WatcherHandle => {
-  let watcher: NodeFs.FSWatcher | undefined;
+  let watcher: NodeFS.FSWatcher | undefined;
   let generation = 0;
   let disposed = false;
 
@@ -55,13 +55,13 @@ export const watchWithFallback = (
   const attachFallback = () => {
     const myGeneration = ++generation;
     try {
-      watcher = NodeFs.watch(fallbackDir, () => {
+      watcher = NodeFS.watch(fallbackDir, () => {
         if (disposed || myGeneration !== generation) {
           return;
         }
         let exists = false;
         try {
-          exists = NodeFs.existsSync(target);
+          exists = NodeFS.existsSync(target);
         } catch {
           exists = false;
         }
@@ -90,12 +90,12 @@ export const watchWithFallback = (
       // directory-plus-filter form is the standard, more reliable fix.
       let isDirectory = false;
       try {
-        isDirectory = NodeFs.statSync(target).isDirectory();
+        isDirectory = NodeFS.statSync(target).isDirectory();
       } catch {
         isDirectory = false;
       }
       if (isDirectory) {
-        watcher = NodeFs.watch(target, () => {
+        watcher = NodeFS.watch(target, () => {
           if (disposed || myGeneration !== generation) {
             return;
           }
@@ -104,7 +104,7 @@ export const watchWithFallback = (
       } else {
         const dir = NodePath.dirname(target);
         const base = NodePath.basename(target);
-        watcher = NodeFs.watch(dir, (_event, filename) => {
+        watcher = NodeFS.watch(dir, (_event, filename) => {
           if (disposed || myGeneration !== generation) {
             return;
           }
@@ -122,7 +122,7 @@ export const watchWithFallback = (
 
   let targetExists = false;
   try {
-    targetExists = NodeFs.existsSync(target);
+    targetExists = NodeFS.existsSync(target);
   } catch {
     targetExists = false;
   }

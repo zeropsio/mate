@@ -4,8 +4,8 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as NodeFsSync from "node:fs";
-import * as NodeOs from "node:os";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { afterEach, beforeEach, vi } from "vite-plus/test";
 
@@ -25,10 +25,10 @@ import * as ElectronProtocol from "./ElectronProtocol.ts";
 const testLayer = ElectronProtocol.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
 function makeBundleFixture(): string {
-  const bundleDir = NodeFsSync.mkdtempSync(NodePath.join(NodeOs.tmpdir(), "t3code-web-bundle-"));
-  NodeFsSync.writeFileSync(NodePath.join(bundleDir, "index.html"), "<html>root</html>");
-  NodeFsSync.mkdirSync(NodePath.join(bundleDir, "assets"));
-  NodeFsSync.writeFileSync(NodePath.join(bundleDir, "assets", "app.js"), "console.log('app');");
+  const bundleDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-web-bundle-"));
+  NodeFS.writeFileSync(NodePath.join(bundleDir, "index.html"), "<html>root</html>");
+  NodeFS.mkdirSync(NodePath.join(bundleDir, "assets"));
+  NodeFS.writeFileSync(NodePath.join(bundleDir, "assets", "app.js"), "console.log('app');");
   return bundleDir;
 }
 
@@ -130,7 +130,7 @@ describe("ElectronProtocol", () => {
     });
 
     afterEach(() => {
-      NodeFsSync.rmSync(bundleDir, { recursive: true, force: true });
+      NodeFS.rmSync(bundleDir, { recursive: true, force: true });
     });
 
     it.effect("serves index.html from disk at the bundle root", () =>

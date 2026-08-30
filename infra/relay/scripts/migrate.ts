@@ -15,7 +15,7 @@
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import * as NodeUrl from "node:url";
+import * as NodeURL from "node:url";
 
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
@@ -62,7 +62,7 @@ export function splitStatements(migrationSql: string): ReadonlyArray<string> {
 
 const defaultMigrationsDir = () =>
   NodePath.join(
-    NodePath.dirname(NodeUrl.fileURLToPath(import.meta.url)),
+    NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
     "..",
     "migrations",
     "postgres",
