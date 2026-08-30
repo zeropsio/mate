@@ -202,6 +202,17 @@ describe("mobile connection storage", () => {
     await expect(loadPreferences()).resolves.toEqual({});
   });
 
+  it("drops a legacy thread-list preference from stored preferences", async () => {
+    const loadStoredPreferences = (preferences: unknown) => {
+      mocks.setPreferencesJson(JSON.stringify(preferences), 10);
+      return loadPreferences();
+    };
+
+    await expect(
+      loadStoredPreferences({ legacyThreadListEnabled: true }),
+    ).resolves.not.toHaveProperty("legacyThreadListEnabled");
+  });
+
   it("falls back to secure storage when SQLite cannot save preferences", async () => {
     mocks.setDatabaseFailures(true, true);
     await expect(savePreferencesPatch({ baseFontSize: 19 })).resolves.toEqual({ baseFontSize: 19 });

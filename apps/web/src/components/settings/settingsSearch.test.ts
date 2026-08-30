@@ -71,6 +71,14 @@ describe("searchSettings", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("no longer offers the legacy sidebar", () => {
+    // `as const satisfies` narrows the id union, so String avoids TS2367 here.
+    expect(SETTINGS_SEARCH_ITEMS.some((item) => String(item.id) === "legacy-sidebar")).toBe(false);
+    expect(SETTINGS_SEARCH_ITEMS.some((item) => item.title.includes("Sidebar (legacy)"))).toBe(
+      false,
+    );
+  });
+
   it("serves anchor props to panels from the catalog", () => {
     expect(searchableSetting("word-wrap")).toEqual({ id: "word-wrap", title: "Word wrap" });
     expect(searchableSetting("archive")).toEqual({ id: "archive", title: "Archived threads" });
@@ -85,11 +93,7 @@ describe("searchSettings", () => {
       id: "word-wrap",
       to: "/settings/appearance",
     });
-    expect(searchSettings("environment identification")[0]).toMatchObject({
-      id: "environment-identification",
-      to: "/settings/appearance",
-      targetId: "appearance",
-    });
+    expect(searchSettings("environment identification")).toEqual([]);
   });
 });
 
