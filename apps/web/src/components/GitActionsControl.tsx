@@ -97,11 +97,6 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
-  /**
-   * Opens the thread's own change request beside it. Absent when the thread has no project to
-   * place it against, in which case it still opens in the browser.
-   */
-  onOpenPullRequest?: ((number: number) => void) | undefined;
 }
 
 interface PendingDefaultBranchAction {
@@ -979,7 +974,6 @@ export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
   draftId,
-  onOpenPullRequest,
 }: GitActionsControlProps) {
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
@@ -1223,12 +1217,6 @@ export default function GitActionsControl({
 
   const openExistingPr = useCallback(async () => {
     const openPr = gitStatusForActions?.pr?.state === "open" ? gitStatusForActions.pr : null;
-    // Beside the thread where it was made, the way the browser opens beside it. Checked before
-    // the shell, which opening in the app does not need.
-    if (openPr && onOpenPullRequest) {
-      onOpenPullRequest(openPr.number);
-      return;
-    }
     const api = readLocalApi();
     if (!api) {
       toastManager.add({
@@ -1258,7 +1246,7 @@ export default function GitActionsControl({
         }),
       );
     });
-  }, [gitStatusForActions, onOpenPullRequest, threadToastData]);
+  }, [gitStatusForActions, threadToastData]);
 
   runGitActionWithToast = useEffectEvent(
     async ({

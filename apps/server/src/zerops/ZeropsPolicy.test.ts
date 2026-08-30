@@ -154,16 +154,14 @@ it.layer(NodeServices.layer)("the decider is where the worktree rule is enforced
 });
 
 describe("the capabilities the client reads", () => {
-  it("hide both git pipelines on Zerops", () => {
+  it("hides the stacked git pipeline on Zerops", () => {
     const capabilities = makeServerEnvironmentCapabilities(ZEROPS_POLICY);
-    assert.strictEqual(capabilities.pullRequests, false);
     assert.strictEqual(capabilities.vcsStackedActions, false);
     assert.strictEqual(capabilities.worktreesAllowed, false);
   });
 
   it("stay on upstream everywhere else", () => {
     const capabilities = makeServerEnvironmentCapabilities(UPSTREAM_POLICY);
-    assert.strictEqual(capabilities.pullRequests, true);
     assert.strictEqual(capabilities.vcsStackedActions, true);
     assert.strictEqual(capabilities.worktreesAllowed, true);
   });

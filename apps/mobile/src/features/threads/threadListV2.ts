@@ -16,7 +16,7 @@ import {
   activeThreadAnchorTimestampMs,
   sortPinnedThreadsByOrderKey,
 } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentId, ProjectId, ThreadLinkedPullRequest } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 
@@ -33,32 +33,16 @@ export { snoozeWakeLabel };
 export type ThreadListV2Status = "approval" | "input" | "working" | "failed" | "ready";
 export type ThreadListV2SwipeAction = "archive" | "settle" | "unsettle" | "snooze" | "unsnooze";
 
-export interface ThreadListV2ChangeRequestState extends ChangeRequestSettleSource {
-  readonly linkedPullRequestKey?: string | null;
-}
+export type ThreadListV2ChangeRequestState = ChangeRequestSettleSource;
 
-function linkedPullRequestKey(
-  linkedPullRequest: ThreadLinkedPullRequest | null | undefined,
-): string | null {
-  if (linkedPullRequest == null) return null;
-  return JSON.stringify([
-    linkedPullRequest.projectId,
-    linkedPullRequest.repository.toLowerCase(),
-    linkedPullRequest.number,
-  ]);
-}
-
-/** Keep the previous linked PR state while its detail query reloads. */
 export function resolveThreadListV2ChangeRequestState(input: {
-  readonly linkedPullRequest: ThreadLinkedPullRequest | null | undefined;
   readonly state: ChangeRequestSettleSource["state"] | null;
   readonly updatedAt: string | null;
-}): ThreadListV2ChangeRequestState | null | undefined {
-  if (input.state === null) return input.linkedPullRequest == null ? null : undefined;
+}): ThreadListV2ChangeRequestState | null {
+  if (input.state === null) return null;
   return {
     state: input.state,
     updatedAt: input.updatedAt,
-    linkedPullRequestKey: linkedPullRequestKey(input.linkedPullRequest),
   };
 }
 
@@ -402,13 +386,9 @@ export function buildThreadListV2Items(input: {
     }
     const supportsSettlement = input.settlementEnvironmentIds?.has(thread.environmentId) ?? true;
     const supportsSnooze = input.snoozeEnvironmentIds?.has(thread.environmentId) ?? true;
-    const cachedChangeRequest =
-      input.changeRequestByKey?.get(`${thread.environmentId}:${thread.id}`) ?? null;
     const changeRequest =
-      cachedChangeRequest !== null &&
-      (cachedChangeRequest.linkedPullRequestKey ?? null) ===
-        linkedPullRequestKey(thread.linkedPullRequest)
-        ? cachedChangeRequest
+      thread.linkedPullRequest == null
+        ? (input.changeRequestByKey?.get(`${thread.environmentId}:${thread.id}`) ?? null)
         : null;
     // Snooze outranks settlement and pinning until the thread wakes.
     if (supportsSnooze && effectiveSnoozed(thread, { now: snoozeNow })) {

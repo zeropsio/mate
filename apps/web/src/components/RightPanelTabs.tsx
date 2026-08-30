@@ -1,11 +1,10 @@
-import type { ContextMenuItem, PreviewSessionSnapshot, PullRequestState } from "@t3tools/contracts";
+import type { ContextMenuItem, PreviewSessionSnapshot } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
   Cloud,
   FileDiff,
   Files,
-  GitPullRequest,
   Globe2,
   Plus,
   TerminalSquare,
@@ -73,28 +72,17 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
-  onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddZerops: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
-  pullRequestAvailable: boolean;
   agentsAvailable: boolean;
   zeropsAvailable: boolean;
-  pullRequestStatuses?: Readonly<Record<string, PullRequestTabStatus>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
   children: ReactNode;
-}
-
-export interface PullRequestTabStatus {
-  projectId: string;
-  repository: string;
-  number: number;
-  state: PullRequestState;
-  isDraft: boolean;
 }
 
 const SURFACE_DISABLED_REASONS = {
@@ -102,7 +90,6 @@ const SURFACE_DISABLED_REASONS = {
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
-  pullRequest: "This thread's branch has no pull request yet.",
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
 } as const;
@@ -125,7 +112,6 @@ const SURFACE_UNAVAILABLE_HINTS = {
   terminal: "Available when a project is open.",
   files: "Available when a project is open.",
   diff: "Available for Git repositories.",
-  pullRequest: "No pull request on this branch yet.",
   agents: "Available from a thread.",
   zerops: "Available in a Zerops project.",
 } as const;
@@ -255,14 +241,12 @@ function RightPanelEmptyState(props: {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
-  onAddPullRequest: () => void;
   onAddAgents: () => void;
   onAddZerops: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
-  pullRequestAvailable: boolean;
   agentsAvailable: boolean;
   zeropsAvailable: boolean;
   liveAgentCount: number;
@@ -309,16 +293,6 @@ function RightPanelEmptyState(props: {
       available: props.diffAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
       onClick: props.onAddDiff,
-      badgeCount: 0,
-    },
-    {
-      label: "Pull request",
-      description: "Open this branch's pull request.",
-      icon: GitPullRequest,
-      shortcut: "P",
-      available: props.pullRequestAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
-      onClick: props.onAddPullRequest,
       badgeCount: 0,
     },
     {
@@ -521,8 +495,6 @@ function surfaceTitle(
         terminalLabelsById.get(surface.activeTerminalId) ??
         getTerminalLabel(surface.activeTerminalId)
       );
-    case "pull-request":
-      return `#${surface.number}`;
     case "agents":
       return "Agents";
     case "zerops":
@@ -564,13 +536,11 @@ function SurfaceIcon({
   sessions,
   desktopByTabId,
   theme,
-  pullRequestStatuses,
 }: {
   surface: RightPanelSurface;
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>;
   desktopByTabId: Readonly<Record<string, DesktopPreviewOverlay>>;
   theme: "light" | "dark";
-  pullRequestStatuses: Readonly<Record<string, PullRequestTabStatus>> | undefined;
 }) {
   switch (surface.kind) {
     case "preview": {
@@ -596,20 +566,6 @@ function SurfaceIcon({
       );
     case "terminal":
       return <TerminalSquare className="size-3 shrink-0" />;
-    case "pull-request": {
-      const status = pullRequestStatuses?.[surface.id] ?? null;
-      const toneClassName =
-        status?.state === "merged"
-          ? "text-violet-600 dark:text-violet-300/90"
-          : status?.state === "closed"
-            ? "text-red-600 dark:text-red-300/90"
-            : status?.isDraft
-              ? "text-zinc-500 dark:text-zinc-400/80"
-              : status?.state === "open"
-                ? "text-emerald-600 dark:text-emerald-300/90"
-                : "text-muted-foreground";
-      return <GitPullRequest className={cn("size-3 shrink-0", toneClassName)} />;
-    }
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "zerops":
@@ -655,14 +611,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.diffAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
-    },
-    {
-      label: "Pull request",
-      icon: GitPullRequest,
-      shortcut: "P",
-      available: props.pullRequestAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequest,
-      onClick: props.onAddPullRequest,
     },
     {
       label: "Agents",
@@ -861,7 +809,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       sessions={props.previewSessions}
                       desktopByTabId={props.desktopByTabId}
                       theme={resolvedTheme}
-                      pullRequestStatuses={props.pullRequestStatuses}
                     />
                     {pending ? (
                       <span
@@ -965,14 +912,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
-            onAddPullRequest={props.onAddPullRequest}
             onAddAgents={props.onAddAgents}
             onAddZerops={props.onAddZerops}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
-            pullRequestAvailable={props.pullRequestAvailable}
             agentsAvailable={props.agentsAvailable}
             zeropsAvailable={props.zeropsAvailable}
             liveAgentCount={props.liveAgentCount}

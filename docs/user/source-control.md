@@ -27,33 +27,12 @@ T3 Code works with the platforms your team already uses:
 - Use the **Publish Repository** action to create a new hosted repository (GitHub, GitLab, Bitbucket, or Azure DevOps), add it as your origin remote, and push, in one flow
 - If the local repository has no commits yet, publishing creates the remote and wires it up but does not push. Make a commit, then push normally.
 
-### Manage Code Reviews Without Context Switching
-
-**Create pull requests while you work**
+### Create Pull Requests While You Work
 
 - Push a branch and create a pull request from the Git actions controls in the toolbar
 - T3 Code can suggest titles and descriptions based on your commits
 - Supports GitHub Pull Requests, GitLab Merge Requests, Bitbucket Pull Requests, and Azure DevOps Pull Requests
-
-**Stay on top of open reviews**
-
-- See if your current branch already has an open PR/MR
-- Open several reviews from the **Pull requests** page as tabs in the right panel
-- While working in a thread, open linked reviews in the same compact right-panel tabs without
-  leaving the conversation
-- Open the review directly in your browser with one click
-- If T3 Code cannot load a GitHub pull request, including when GitHub rate limits requests, use
-  **Open on GitHub** in the error view
-- Command-click (Control-click on Windows and Linux) a pull request number in the sidebar to open it in your browser instead of in T3 Code
 - Check out a teammate's branch to review code locally
-
-**Fix what you wrote, in place**
-
-- Rewrite a pull request's title and description from the review itself, in Markdown, with a
-  preview before you save
-- Rewrite your own comments the same way, wherever they are shown
-- Works on GitHub, GitLab, and Bitbucket. Azure DevOps takes a new title and description; its
-  comments stay read-only here, as they already were
 
 ### Know Your Setup at a Glance
 
