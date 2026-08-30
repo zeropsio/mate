@@ -8,7 +8,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isEntrypoint } from "./entrypoint.ts";
 
-const makeTempDir = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-entrypoint-test-"));
+// realpath, because macOS reaches its temp dir through a symlink (/var ->
+// /private/var). `isEntrypoint` compares a module URL against the REAL path
+// of the entry — which is what Node hands a running module — so a fixture
+// built on the unresolved path makes the symlink case fail on macOS while
+// passing on Linux, where os.tmpdir() is /tmp and no link is involved.
+const makeTempDir = () =>
+  NodeFS.realpathSync(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-entrypoint-test-")));
 
 describe("isEntrypoint", () => {
   it("uses the runtime answer when Node provides one", () => {
