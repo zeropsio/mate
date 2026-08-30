@@ -10,9 +10,9 @@ describe("mobile theme runtime variables", () => {
     const dark = getMobileThemeRuntimeVariables("zerops", "dark");
 
     expect(light).toEqual(getMobileThemeVariables("zerops", "light"));
-    expect(light).not.toEqual(readDefaultMobileThemeVariables("light"));
+    expect(light).toEqual(readDefaultMobileThemeVariables("light"));
     expect(dark).toEqual(getMobileThemeVariables("zerops", "dark"));
-    expect(dark).not.toEqual(readDefaultMobileThemeVariables("dark"));
+    expect(dark).toEqual(readDefaultMobileThemeVariables("dark"));
   });
 
   it("uses the same shared palette source as generated custom themes", () => {

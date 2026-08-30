@@ -1,6 +1,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { themeColorToNativeColor } from "@t3tools/shared/mobileThemeVariables";
+import { ZEROPS_THEME } from "@t3tools/shared/themePalettes";
 
 import {
   customThemeNames,
@@ -50,8 +52,12 @@ describe("generate mobile Uniwind themes", () => {
     const css = NodeFS.readFileSync(NodePath.resolve(import.meta.dirname, "../global.css"), "utf8");
     const variables = readDefaultThemeVariables(css);
 
-    expect(variables.light["--color-screen"]).toBe("#f2f2f7");
-    expect(variables.dark["--color-screen"]).toBe("#0a0a0a");
+    expect(variables.light["--color-screen"]).toBe(
+      themeColorToNativeColor(ZEROPS_THEME.colors.canvas),
+    );
+    expect(variables.dark["--color-screen"]).toBe(
+      themeColorToNativeColor(ZEROPS_THEME.variants!.dark!.canvas),
+    );
     expect(Object.keys(variables.light)).toEqual(Object.keys(variables.dark));
   });
 });
