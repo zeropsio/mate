@@ -9,6 +9,7 @@ import {
 } from "../exceptions.ts";
 
 const RULE_NAME = "no-legacy-vocabulary";
+const LEDGER_DIRECTORY_ENV = "T3CODE_LEGACY_VOCABULARY_LEDGER_DIRECTORY";
 const GUARDED_SOURCE_MARKERS = ["/apps/web/src/", "/apps/mobile/src/", "/apps/desktop/src/"];
 const TEST_FILE_PATTERN = /(?:^|\/)(?:__tests__\/|[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$)/u;
 
@@ -72,7 +73,8 @@ const COPY_MODULES = [
   "apps/desktop/src/window/DesktopApplicationMenu.ts",
 ] as const;
 
-const ledger = loadExceptionLedger(RULE_NAME);
+const ledgerDirectory = globalThis.process.env[LEDGER_DIRECTORY_ENV];
+const ledger = loadExceptionLedger(RULE_NAME, ledgerDirectory);
 const TECHNICAL_IDENTIFIER_PATTERN = /^(?=\S+$)\S*[-_]\S*$/u;
 
 const normalizePath = (path: string): string => `/${path.replaceAll("\\", "/")}`;

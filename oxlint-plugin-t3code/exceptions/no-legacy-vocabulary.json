@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/desktop/src/app/DesktopApp.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code failed to start\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
     "path": "apps/desktop/src/app/DesktopEnvironment.ts",
     "kind": "Literal",
     "fingerprint": "\"T3 Code (Alpha)\"",
@@ -24,54 +16,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/desktop/src/app/DesktopEnvironment.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/desktop/src/linuxSecretStorage.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code could not access GNOME Keyring to save this environment credential. Install and start GNOME Keyring, then restart T3 Code.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/desktop/src/linuxSecretStorage.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code could not access KWallet to save this environment credential. Enable the KDE wallet subsystem in System Settings, then restart T3 Code.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/desktop/src/window/DesktopApplicationMenu.ts",
-    "kind": "TemplateElement",
-    "fingerprint": "`T3 Code ${",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/mobile/src/components/BrandMark.tsx",
-    "kind": "JSXText",
-    "fingerprint": "T3 Code",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/mobile/src/components/CompactBrandTitle.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code, Threads\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
     "path": "apps/mobile/src/connection/platform.ts",
     "kind": "Literal",
     "fingerprint": "\"Sign in to T3 Connect to connect this environment.\"",
@@ -85,14 +29,6 @@
     "fingerprint": "\"The T3 Connect session is unavailable.\"",
     "owner": "karel",
     "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
     "expires": "F2"
   },
   {
@@ -150,14 +86,6 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/settings/SettingsRouteScreen.tsx",
-    "kind": "JSXText",
-    "fingerprint": "T3 Code works locally without signing in. Cloud features are optional.",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
   },
   {
     "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
@@ -264,20 +192,12 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/lib/authClientMetadata.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code Mobile\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
     "path": "apps/mobile/src/lib/mobileTheme.ts",
     "kind": "Literal",
     "fingerprint": "\"T3 Code\"",
     "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
+    "reason": "shipped theme name, not the application display name",
+    "expires": "never"
   },
   {
     "path": "apps/mobile/src/state/use-selected-thread-git-actions.ts",
@@ -286,14 +206,6 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/branding.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
   },
   {
     "path": "apps/web/src/components/BranchToolbar.logic.ts",
@@ -414,30 +326,6 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Browser previews are only available in the T3 Code desktop app.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/SplashScreen.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code splash screen\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/SplashScreen.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
   },
   {
     "path": "apps/web/src/components/auth/manualLinkCopy.ts",
@@ -605,46 +493,6 @@
     "fingerprint": "Only enter this code in a terminal session you started yourself. Anyone holding it can link their machine to your T3 Connect account while it is valid.",
     "owner": "karel",
     "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/desktopUpdate.logic.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/desktopUpdate.logic.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/desktopUpdate.logic.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/desktopUpdate.logic.ts",
-    "kind": "TemplateElement",
-    "fingerprint": "} and restart T3 Code?\\n\\nAny running tasks will be interrupted. Make sure you're ready before continuing.`",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/preview/PreviewPanel.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Preview is only available in the T3 Code desktop app.",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
     "expires": "F2"
   },
   {
@@ -840,22 +688,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Some shortcuts may be claimed by the browser before T3 Code sees them. Use the desktop app for better keybinding support.",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "T3 Code does not recognize this condition yet. It can still be saved, but it may not match unless the runtime provides it.",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
     "kind": "Literal",
     "fingerprint": "\"Creates the worktree from the latest matching branch on origin instead of your local branch.\"",
@@ -896,52 +728,12 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/ThemeImportDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Drop T3 Code or VS Code .json files\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
     "path": "apps/web/src/components/settings/ThemePreviewCircles.tsx",
     "kind": "Literal",
     "fingerprint": "\"T3 Code\"",
     "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Choose how T3 Code looks. Use a built-in theme or make your own.",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/settings/providerStatus.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This provider is installed but disabled for new sessions in T3 Code.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/connection/clientMetadata.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code Desktop\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/connection/clientMetadata.ts",
-    "kind": "Literal",
-    "fingerprint": "\"T3 Code Web\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
+    "reason": "shipped theme name, not the application display name",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/connection/platform.ts",
@@ -1021,22 +813,6 @@
     "fingerprint": "\"Sign in to T3 Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually.\"",
     "owner": "karel",
     "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Open T3 Code in the desktop app to use the in-app preview.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/versionSkew.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Version mismatch. Try syncing the client and server to the same T3 Code version.\"",
-    "owner": "karel",
-    "reason": "legacy product name — removed by the naming slice",
     "expires": "F2"
   }
 ]

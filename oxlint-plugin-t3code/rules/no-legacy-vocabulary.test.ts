@@ -1,7 +1,16 @@
-import { assert, describe } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, describe, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 
-import { FINDING_MESSAGE_MARKER } from "../exceptions.ts";
+import { type ExceptionEntry, FINDING_MESSAGE_MARKER } from "../exceptions.ts";
 import { createOxlintRuleHarness } from "../test/utils.ts";
+
+const RULE_NAME = "no-legacy-vocabulary";
+const LEDGER_DIRECTORY_ENV = "T3CODE_LEGACY_VOCABULARY_LEDGER_DIRECTORY";
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const webFile = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
   filename: "apps/web/src/components/Probe.tsx",
@@ -21,6 +30,32 @@ const ordinaryModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
 const testFile = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
   filename: "apps/web/src/components/Probe.test.tsx",
 });
+
+const withFixtureLedger = <A, E, R>(entry: ExceptionEntry, effect: Effect.Effect<A, E, R>) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "legacy-vocabulary-ledger-" });
+      yield* fs.writeFileString(
+        path.join(directory, `${RULE_NAME}.json`),
+        `${encodeUnknownJson([entry])}\n`,
+      );
+
+      const environment = globalThis.process.env;
+      const previous = environment[LEDGER_DIRECTORY_ENV];
+      environment[LEDGER_DIRECTORY_ENV] = directory;
+
+      return yield* effect.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (previous === undefined) delete environment[LEDGER_DIRECTORY_ENV];
+            else environment[LEDGER_DIRECTORY_ENV] = previous;
+          }),
+        ),
+      );
+    }),
+  );
 
 describe("t3code/no-legacy-vocabulary", () => {
   webFile.invalid("reports legacy product names in JSX text", `const view = <p>Open T3 Code</p>;`);
@@ -246,10 +281,24 @@ describe("t3code/no-legacy-vocabulary", () => {
     "const internalValue = `${name} worktree`;",
   );
 
-  copyModule.valid(
-    "suppresses a reviewed fingerprint from the exception ledger",
-    `const hint = "Version mismatch. Try syncing the client and server to the same T3 Code version.";`,
-  );
-
   testFile.valid("skips test files", `const view = <p>Pairing with T3 Code</p>;`);
+});
+
+it.layer(NodeServices.layer)("temporary legacy-vocabulary ledger", (it) => {
+  it.effect("suppresses a reviewed fingerprint from a fixture ledger", () => {
+    const fingerprint =
+      '"Version mismatch. Try syncing the client and server to the same T3 Code version."';
+
+    return withFixtureLedger(
+      {
+        path: "apps/web/src/versionSkew.ts",
+        kind: "Literal",
+        fingerprint,
+        owner: "karel",
+        reason: "fixture exception",
+        expires: "F2",
+      },
+      copyModule.run(`const hint = ${fingerprint};`),
+    );
+  });
 });

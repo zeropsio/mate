@@ -80,7 +80,7 @@ describe("client telemetry metadata", () => {
         desktopBridge: { getClientPlatform: () => "darwin" },
       }),
     ).toEqual({
-      label: "T3 Code Desktop",
+      label: "Zerops Code Desktop",
       deviceType: "desktop",
       os: "macOS",
       surface: "desktop",
@@ -108,7 +108,7 @@ describe("hosted client label", () => {
     ).toBe("Zerops Code · Chrome on macOS");
   });
 
-  it("leaves a self-hosted web client alone — it is not Zerops Code", () => {
+  it("keeps the hosted/self-hosted split under the Zerops Code brand", () => {
     expect(
       clientPresentationMetadata({
         appVersion: "1.2.3",
@@ -116,6 +116,6 @@ describe("hosted client label", () => {
         identity,
         desktopBridge: undefined,
       }).label,
-    ).toBe("T3 Code Web");
+    ).toBe("Zerops Code Web");
   });
 });
