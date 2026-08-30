@@ -9,7 +9,6 @@
 import { ExternalLinkIcon, FolderOpenIcon } from "lucide-react";
 
 import { Badge } from "~/components/ui/badge";
-import { Spinner } from "~/components/ui/spinner";
 import type {
   ZeropsServiceMapGroup,
   ZeropsServiceMapView,
@@ -37,8 +36,11 @@ function ServiceLine({ service, typeLabel }: { service: ZeropsService; typeLabel
       {typeLabel === undefined ? null : (
         <span className="truncate text-xs text-muted-foreground">{typeLabel}</span>
       )}
-      <Badge size="sm" variant={statusVariant(service)}>
-        {service.transient ? <Spinner /> : null}
+      <Badge
+        data-zerops-service-transient={service.transient ? "" : undefined}
+        size="sm"
+        variant={statusVariant(service)}
+      >
         {service.status}
       </Badge>
       {service.mounted ? (
@@ -114,9 +116,8 @@ export function ZeropsServiceMap({ view }: { view: ZeropsServiceMapView | undefi
   return (
     <div className="space-y-4" data-zerops-service-map>
       {view.runningTool === undefined ? null : (
-        <div className="flex items-center gap-2 text-muted-foreground text-xs">
-          <Spinner />
-          <span>{view.runningTool} running</span>
+        <div className="text-muted-foreground text-xs" data-zerops-running-tool={view.runningTool}>
+          {view.runningTool} running
         </div>
       )}
       {view.liveness === "polling" ? (

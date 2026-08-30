@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
+import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
 
 import { buildZeropsServiceMap } from "../../zerops/serviceMap";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
@@ -32,8 +32,11 @@ const topology = (
     ...overrides,
   }) as unknown as ZeropsTopologySnapshot;
 
-const render = (snapshot: ZeropsTopologySnapshot | undefined): string =>
-  renderToStaticMarkup(<ZeropsServiceMap view={buildZeropsServiceMap(snapshot)} />);
+const render = (
+  snapshot: ZeropsTopologySnapshot | undefined,
+  lifecycle?: ZeropsLifecycle,
+): string =>
+  renderToStaticMarkup(<ZeropsServiceMap view={buildZeropsServiceMap(snapshot, lifecycle)} />);
 
 describe("ZeropsServiceMap", () => {
   it("renders each group with its services", () => {
@@ -54,6 +57,7 @@ describe("ZeropsServiceMap", () => {
     expect(html).toContain("kanbandev");
     expect(html).toContain("nodejs@22");
     expect(html).toContain("postgresql:single@18");
+    expect(html).not.toContain("data-zerops-service-transient");
     // The mount path itself is the badge's text: where a service is mounted is
     // the useful half, and a bare "mounted" hid it behind a hover.
     expect(html).toContain("/var/www/kanbandev");
@@ -85,6 +89,33 @@ describe("ZeropsServiceMap", () => {
     expect(html).toContain("kanbandev");
     expect(html).toContain("kanbanstage");
     expect(html).toContain("CREATING");
+  });
+
+  it("marks a transient service without animating it", () => {
+    const html = render(
+      topology([service({ hostname: "kanbandev", status: "CREATING", transient: true })]),
+    );
+
+    expect(html).toContain("data-zerops-service-transient");
+    expect(html).toContain("CREATING");
+    expect(html).not.toContain("animate-spin");
+  });
+
+  it("names a running tool as a phrase, not a spinner", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), {
+      threadId: "thread-a",
+      recentTools: [
+        {
+          toolName: "zerops_deploy",
+          status: "inProgress",
+          at: new Date("2026-08-28T10:01:00Z"),
+        },
+      ],
+    } as unknown as ZeropsLifecycle);
+
+    expect(html).toContain('data-zerops-running-tool="zerops_deploy"');
+    expect(html).toContain("zerops_deploy running");
+    expect(html).not.toContain("animate-spin");
   });
 
   it("says there is nothing yet rather than showing empty groups", () => {
