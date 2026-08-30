@@ -57,6 +57,9 @@ jobs:
       - name: Reconcile no-infinite-motion exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-infinite-motion
 
+      - name: Check legacy vocabulary exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
+
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 

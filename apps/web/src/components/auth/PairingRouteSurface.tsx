@@ -10,6 +10,7 @@ import {
   submitServerAuthCredential,
 } from "../../environments/primary";
 import { readHostedPairingRequest } from "../../hostedPairing";
+import { MANUAL_LINK_COPY } from "./manualLinkCopy";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -28,10 +29,10 @@ export function PairingPendingSurface() {
           {APP_DISPLAY_NAME}
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Pairing with this environment
+          {MANUAL_LINK_COPY.pending.heading}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Validating the pairing link and preparing your session.
+          {MANUAL_LINK_COPY.pending.description}
         </p>
       </section>
     </div>
@@ -109,16 +110,16 @@ export function PairingRouteSurface({
           {APP_DISPLAY_NAME}
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Pair with this environment
+          {MANUAL_LINK_COPY.credential.heading}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {describeAuthGate(auth.bootstrapMethods)}
+          {MANUAL_LINK_COPY.describeAuthGate(auth.bootstrapMethods)}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="pairing-token">
-              Pairing token
+              {MANUAL_LINK_COPY.credential.tokenLabel}
             </label>
             <Input
               id="pairing-token"
@@ -128,7 +129,7 @@ export function PairingRouteSurface({
               disabled={isSubmitting}
               nativeInput
               onChange={(event) => setCredential(event.currentTarget.value)}
-              placeholder="Paste a one-time token or pairing secret"
+              placeholder={MANUAL_LINK_COPY.credential.tokenPlaceholder}
               spellCheck={false}
               value={credential}
             />
@@ -142,7 +143,9 @@ export function PairingRouteSurface({
 
           <div className="flex flex-wrap gap-2">
             <Button disabled={isSubmitting} size="sm" type="submit">
-              {isSubmitting ? "Pairing..." : "Continue"}
+              {isSubmitting
+                ? MANUAL_LINK_COPY.credential.submittingAction
+                : MANUAL_LINK_COPY.credential.continueAction}
             </Button>
             <Button
               disabled={isSubmitting}
@@ -150,13 +153,13 @@ export function PairingRouteSurface({
               size="sm"
               variant="outline"
             >
-              Reload app
+              {MANUAL_LINK_COPY.credential.reloadAction}
             </Button>
           </div>
         </form>
 
         <div className="mt-6 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-          {describeSupportedMethods(auth.bootstrapMethods)}
+          {MANUAL_LINK_COPY.describeSupportedMethods(auth.bootstrapMethods)}
         </div>
       </section>
     </div>
@@ -173,8 +176,8 @@ export function HostedPairingRouteSurface() {
   );
   const [message, setMessage] = useState(() =>
     hostedPairingRequestRef.current
-      ? "Connecting to this backend."
-      : "This pairing link is missing its backend host or token.",
+      ? MANUAL_LINK_COPY.hosted.connecting
+      : MANUAL_LINK_COPY.hosted.missingRequest,
   );
   const [canRetry, setCanRetry] = useState(false);
   const submitAttemptedRef = useRef(false);
@@ -185,20 +188,20 @@ export function HostedPairingRouteSurface() {
 
     if (!request) {
       setStatus("error");
-      setMessage("This pairing link is missing its backend host or token.");
+      setMessage(MANUAL_LINK_COPY.hosted.missingRequest);
       setCanRetry(false);
       return;
     }
 
     if (tokenSubmittedRef.current) {
       setStatus("error");
-      setMessage("This one-time pairing token was already submitted. Request a new pairing link.");
+      setMessage(MANUAL_LINK_COPY.hosted.submittedToken);
       setCanRetry(false);
       return;
     }
 
     setStatus("pairing");
-    setMessage("Connecting to this backend.");
+    setMessage(MANUAL_LINK_COPY.hosted.connecting);
     setCanRetry(false);
     tokenSubmittedRef.current = true;
 
@@ -208,7 +211,7 @@ export function HostedPairingRouteSurface() {
     });
     if (result._tag === "Success") {
       setStatus("paired");
-      setMessage(`${request.label || "The environment"} is saved in this browser.`);
+      setMessage(MANUAL_LINK_COPY.describeSavedEnvironment(request.label));
       return;
     }
 
@@ -216,7 +219,9 @@ export function HostedPairingRouteSurface() {
     setStatus("error");
     setCanRetry(true);
     setMessage(
-      `${errorMessageFromUnknown(squashAtomCommandFailure(result))} If the backend accepted this one-time token, request a new pairing link before retrying.`,
+      MANUAL_LINK_COPY.describeHostedFailure(
+        errorMessageFromUnknown(squashAtomCommandFailure(result)),
+      ),
     );
   }, [connectPairingEnvironment]);
 
@@ -246,39 +251,39 @@ export function HostedPairingRouteSurface() {
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
           {status === "paired"
-            ? "Backend paired"
+            ? MANUAL_LINK_COPY.hosted.pairedHeading
             : status === "error"
-              ? "Pairing failed"
-              : "Pairing backend"}
+              ? MANUAL_LINK_COPY.hosted.errorHeading
+              : MANUAL_LINK_COPY.hosted.pendingHeading}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
 
         {request ? (
           <div className="mt-5 rounded-lg border border-border/70 bg-background/55 px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-            Host: <span className="font-mono text-foreground/80">{request.host}</span>
+            {MANUAL_LINK_COPY.hosted.hostLabel}{" "}
+            <span className="font-mono text-foreground/80">{request.host}</span>
           </div>
         ) : null}
 
         {status === "error" ? (
           <div className="mt-5 rounded-lg border border-destructive/30 bg-destructive/6 px-3 py-2 text-sm text-destructive">
-            Verify the backend is reachable from this browser, supports CORS for hosted clients, and
-            is served over HTTPS when opening this page from HTTPS.
+            {MANUAL_LINK_COPY.hosted.browserRequirements}
           </div>
         ) : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
           {status === "pairing" ? (
             <Button disabled size="sm">
-              Pairing...
+              {MANUAL_LINK_COPY.hosted.submittingAction}
             </Button>
           ) : canRetry ? (
             <Button size="sm" onClick={() => void submitHostedPairingRequest()}>
-              Try again
+              {MANUAL_LINK_COPY.hosted.retryAction}
             </Button>
           ) : null}
           {status === "paired" ? (
             <Button size="sm" variant="outline" onClick={() => (window.location.href = "/")}>
-              Open app
+              {MANUAL_LINK_COPY.hosted.openAction}
             </Button>
           ) : null}
         </div>
@@ -296,28 +301,5 @@ function errorMessageFromUnknown(error: unknown): string {
     return error;
   }
 
-  return "Authentication failed.";
-}
-
-function describeAuthGate(bootstrapMethods: ReadonlyArray<string>): string {
-  if (bootstrapMethods.includes("desktop-bootstrap")) {
-    return "This environment expects a trusted pairing credential before the app can connect.";
-  }
-
-  return "Enter a pairing token to start a session with this environment.";
-}
-
-function describeSupportedMethods(bootstrapMethods: ReadonlyArray<string>): string {
-  if (
-    bootstrapMethods.includes("desktop-bootstrap") &&
-    bootstrapMethods.includes("one-time-token")
-  ) {
-    return "Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.";
-  }
-
-  if (bootstrapMethods.includes("desktop-bootstrap")) {
-    return "This environment is desktop-managed. Open it from the desktop app or paste a bootstrap credential if one was issued explicitly.";
-  }
-
-  return "This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.";
+  return MANUAL_LINK_COPY.unknownAuthenticationError;
 }
