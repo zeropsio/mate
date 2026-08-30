@@ -84,6 +84,8 @@ export class ServerConfig extends Context.Service<
     readonly staticDir: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;
+    /** A showcase scene id or absolute scene JSON path used by the four Zerops fixture feeds. */
+    readonly zeropsFixtures: string | undefined;
     /**
      * Present only inside a Zerops project container. Its presence is the
      * single rule that turns on every Zerops-specific behaviour - use
@@ -217,6 +219,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     staticDir: undefined,
     devUrl,
     devAllowedOrigins: [],
+    zeropsFixtures: undefined,
     zerops: undefined,
     noBrowser: false,
     startupPresentation: "browser",

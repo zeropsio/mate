@@ -3,6 +3,7 @@ import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeCrypto from "node:crypto";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { loadShowcaseScene } from "@t3tools/shared/showcaseScenes";
 
 import {
   AuthAccessTokenType,
@@ -129,6 +130,7 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsTopology from "./zerops/ZeropsTopology.ts";
+import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -420,6 +422,12 @@ const unavailableZeropsAgentLogin = {
 
 const buildAppUnderTest = (options?: {
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
+  fixtureZeropsLayer?: Layer.Layer<
+    | ZeropsTopology.ZeropsTopology
+    | ZeropsLifecycle.ZeropsLifecycle
+    | ZeropsAgentAuth.ZeropsAgentAuth
+    | ZeropsAgentLoginModule.ZeropsAgentLogin
+  >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
@@ -466,6 +474,18 @@ const buildAppUnderTest = (options?: {
   };
 }) =>
   Effect.gen(function* () {
+    if (
+      options?.fixtureZeropsLayer !== undefined &&
+      (options.layers?.zeropsTopology !== undefined ||
+        options.layers?.zeropsLifecycle !== undefined ||
+        options.layers?.zeropsAgentAuth !== undefined ||
+        options.layers?.zeropsAgentLogin !== undefined)
+    ) {
+      return yield* Effect.die(
+        new Error("fixtureZeropsLayer cannot be combined with per-feed Zerops layer overrides"),
+      );
+    }
+
     const fileSystem = yield* FileSystem.FileSystem;
     const tempBaseDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-router-test-" });
     const baseDir = options?.config?.baseDir ?? tempBaseDir;
@@ -492,6 +512,7 @@ const buildAppUnderTest = (options?: {
       devUrl,
       devAllowedOrigins: [],
       zerops: undefined,
+      zeropsFixtures: undefined,
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
@@ -897,77 +918,74 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        // A test machine has no `zcp`, which is exactly the shape the real feed
-        // reports there: unavailable, no errors. Mocked rather than built so the
-        // suite does not spawn a doomed child process per test.
-        Layer.mock(ZeropsTopology.ZeropsTopology)({
-          latest: Effect.succeed(unavailableZeropsTopology),
-          changes: Stream.empty,
-          subscribe: Effect.succeed({
-            latest: unavailableZeropsTopology,
-            changes: Stream.empty,
-          }),
-          refresh: Effect.succeed(unavailableZeropsTopology),
-          ...options?.layers?.zeropsTopology,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ZeropsLifecycle.ZeropsLifecycle)({
-          get: (threadId) => Effect.succeed({ threadId, recentTools: [] }),
-          subscribe: (threadId) =>
-            Effect.succeed({
-              latest: { threadId, recentTools: [] },
+        options?.fixtureZeropsLayer ??
+          Layer.mergeAll(
+            // A test machine has no `zcp`, which is exactly the shape the real feed
+            // reports there: unavailable, no errors. Mocked rather than built so the
+            // suite does not spawn a doomed child process per test.
+            Layer.mock(ZeropsTopology.ZeropsTopology)({
+              latest: Effect.succeed(unavailableZeropsTopology),
               changes: Stream.empty,
+              subscribe: Effect.succeed({
+                latest: unavailableZeropsTopology,
+                changes: Stream.empty,
+              }),
+              refresh: Effect.succeed(unavailableZeropsTopology),
+              ...options?.layers?.zeropsTopology,
             }),
-          ingest: () => Effect.void,
-          ...options?.layers?.zeropsLifecycle,
-        }),
-      ),
-      Layer.provide(
-        // A test machine is not a Zerops environment, which is exactly the
-        // shape the real feeds report there: unavailable, no errors. Mocked
-        // rather than built so the suite never touches a real credential
-        // directory or the zembed env store. `ZeropsAgentLogin` (S7
-        // follow-up F8) mirrors `ZeropsAgentAuth`'s own shape — no active
-        // session for either agent, `start`/`cancel` failing the same way
-        // the real feed would outside a Zerops environment — merged into
-        // the SAME `Layer.provide` call to keep this pipe chain's own
-        // argument count under the typed `.pipe()` overload limit.
-        Layer.mergeAll(
-          Layer.mock(ZeropsAgentAuth.ZeropsAgentAuth)({
-            latest: Effect.succeed(unavailableZeropsAgentAuth),
-            changes: Stream.empty,
-            subscribe: Effect.succeed({
-              latest: unavailableZeropsAgentAuth,
-              changes: Stream.empty,
-            }),
-            recheckNow: () => Effect.void,
-            ...options?.layers?.zeropsAgentAuth,
-          }),
-          Layer.mock(ZeropsAgentLoginModule.ZeropsAgentLogin)({
-            latest: Effect.succeed(unavailableZeropsAgentLogin),
-            changes: Stream.empty,
-            subscribe: Effect.succeed({
-              latest: unavailableZeropsAgentLogin,
-              changes: Stream.empty,
-            }),
-            start: () =>
-              Effect.fail(
-                new ZeropsAgentLoginError({
-                  reason: "unavailable",
-                  detail: "This environment does not offer a server-driven login.",
+            Layer.mock(ZeropsLifecycle.ZeropsLifecycle)({
+              get: (threadId) => Effect.succeed({ threadId, recentTools: [] }),
+              subscribe: (threadId) =>
+                Effect.succeed({
+                  latest: { threadId, recentTools: [] },
+                  changes: Stream.empty,
                 }),
-              ),
-            cancel: () =>
-              Effect.fail(
-                new ZeropsAgentLoginError({
-                  reason: "unavailable",
-                  detail: "This environment does not offer a server-driven login.",
-                }),
-              ),
-            ...options?.layers?.zeropsAgentLogin,
-          }),
-        ),
+              ingest: () => Effect.void,
+              ...options?.layers?.zeropsLifecycle,
+            }),
+            // A test machine is not a Zerops environment, which is exactly the
+            // shape the real feeds report there: unavailable, no errors. Mocked
+            // rather than built so the suite never touches a real credential
+            // directory or the zembed env store. `ZeropsAgentLogin` (S7
+            // follow-up F8) mirrors `ZeropsAgentAuth`'s own shape — no active
+            // session for either agent, with `start`/`cancel` failing the same
+            // way the real feed would outside a Zerops environment. All four
+            // mocks form one fallback layer so fixture injection replaces them
+            // atomically.
+            Layer.mock(ZeropsAgentAuth.ZeropsAgentAuth)({
+              latest: Effect.succeed(unavailableZeropsAgentAuth),
+              changes: Stream.empty,
+              subscribe: Effect.succeed({
+                latest: unavailableZeropsAgentAuth,
+                changes: Stream.empty,
+              }),
+              recheckNow: () => Effect.void,
+              ...options?.layers?.zeropsAgentAuth,
+            }),
+            Layer.mock(ZeropsAgentLoginModule.ZeropsAgentLogin)({
+              latest: Effect.succeed(unavailableZeropsAgentLogin),
+              changes: Stream.empty,
+              subscribe: Effect.succeed({
+                latest: unavailableZeropsAgentLogin,
+                changes: Stream.empty,
+              }),
+              start: () =>
+                Effect.fail(
+                  new ZeropsAgentLoginError({
+                    reason: "unavailable",
+                    detail: "This environment does not offer a server-driven login.",
+                  }),
+                ),
+              cancel: () =>
+                Effect.fail(
+                  new ZeropsAgentLoginError({
+                    reason: "unavailable",
+                    detail: "This environment does not offer a server-driven login.",
+                  }),
+                ),
+              ...options?.layers?.zeropsAgentLogin,
+            }),
+          ),
       ),
       Layer.provide(
         Layer.mock(ServerLifecycleEvents.ServerLifecycleEvents)({
@@ -5190,6 +5208,53 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(snapshot.available, false);
       assert.equal(snapshot.services.length, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("streams all four fixture feeds through the real Zerops RPC handlers", () =>
+    Effect.gen(function* () {
+      const scene = loadShowcaseScene("web:agent-auth-attention");
+      yield* buildAppUnderTest({
+        config: { zeropsFixtures: scene.id, zerops: undefined },
+        fixtureZeropsLayer: makeFixtureZeropsLayer(scene),
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const snapshots = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.all(
+            {
+              topology: client[WS_METHODS.subscribeZeropsTopology]({}).pipe(
+                Stream.runHead,
+                Effect.map(Option.getOrThrow),
+              ),
+              lifecycle: client[WS_METHODS.subscribeZeropsLifecycle]({
+                threadId: scene.lifecycle.threadId,
+              }).pipe(Stream.runHead, Effect.map(Option.getOrThrow)),
+              agentAuth: client[WS_METHODS.subscribeZeropsAgentAuth]({}).pipe(
+                Stream.runHead,
+                Effect.map(Option.getOrThrow),
+              ),
+            },
+            { concurrency: "unbounded" },
+          ),
+        ).pipe(
+          Effect.timeoutOrElse({
+            duration: "5 seconds",
+            orElse: () => Effect.die(new Error("Timed out waiting for fixture feed snapshots")),
+          }),
+        ),
+      );
+
+      assert.deepEqual(snapshots.topology, scene.topology);
+      assert.deepEqual(snapshots.lifecycle, scene.lifecycle);
+      assert.deepEqual(
+        snapshots.agentAuth,
+        ZeropsAgentLoginModule.mergeAgentAuthLogin(scene.agentAuth, {
+          "claude-code": scene.agentLogin["claude-code"],
+          codex: scene.agentLogin.codex,
+        }),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
   it.effect("pushes when the change is driven by a refresh RPC on the same socket", () =>

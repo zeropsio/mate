@@ -23,6 +23,7 @@ const makeServerConfigLayer = (overrides?: Partial<ServerConfig.ServerConfig["Se
       const config = yield* ServerConfig.ServerConfig;
       return {
         ...config,
+        zeropsFixtures: undefined,
         ...overrides,
         // Keep the test server deterministic even when the default test layer
         // changes its development port.

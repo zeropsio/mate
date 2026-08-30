@@ -63,6 +63,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     staticDir: undefined,
     devUrl: undefined,
     devAllowedOrigins: [],
+    zeropsFixtures: undefined,
     zerops: undefined,
     noBrowser: false,
     startupPresentation: "browser",
