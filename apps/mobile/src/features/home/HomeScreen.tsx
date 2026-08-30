@@ -497,8 +497,7 @@ export function HomeScreen(props: HomeScreenProps) {
         const existing = current.get(threadKey) ?? null;
         if (
           (existing?.state ?? null) === (changeRequest?.state ?? null) &&
-          (existing?.updatedAt ?? null) === (changeRequest?.updatedAt ?? null) &&
-          (existing?.linkedPullRequestKey ?? null) === (changeRequest?.linkedPullRequestKey ?? null)
+          (existing?.updatedAt ?? null) === (changeRequest?.updatedAt ?? null)
         ) {
           return current;
         }

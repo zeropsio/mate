@@ -146,7 +146,9 @@ import {
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
+  LinkedPullRequestLink,
   ThreadWorktreeIndicator,
+  linkedPullRequestIndicator,
   nextThreadChangeRequestSnapshot,
   prStatusIndicator,
   resolveDisplayedThreadPr,
@@ -157,7 +159,6 @@ import {
   threadChangeRequestSnapshotsAtom,
   type ThreadChangeRequestSnapshot,
   type TerminalStatusIndicator,
-  useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import {
   resolveSnoozePresets,
@@ -719,7 +720,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the user visits the thread.
   wokeAt: string | null;
   isActive: boolean;
-  openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
   currentEnvironmentId: string | null;
   environmentLabel: string | null;
@@ -766,7 +766,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     onUnsettle,
     onUnsnooze,
     onUnpin,
-    openPullRequestsInRightPanel,
     renamingTitle,
     thread,
     variant,
@@ -789,12 +788,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const terminalProcessCount = runningTerminalIds.length;
 
   const gitCwd = thread.worktreePath ?? props.projectCwd;
-  const linkedPullRequestStatus = useLinkedThreadPullRequest(
-    thread.environmentId,
-    thread.linkedPullRequest,
-  );
+  const linkedPullRequest =
+    thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
   const gitStatus = useEnvironmentQuery(
-    (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
+    thread.linkedPullRequest == null &&
+      (thread.branch != null || thread.worktreePath !== null) &&
+      gitCwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
           input: { cwd: gitCwd },
@@ -808,7 +807,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     snapshot: changeRequestSnapshot,
     retainTerminalOnBranchMismatch,
     linkedPullRequest: thread.linkedPullRequest,
-    linkedPullRequestStatus,
   });
 
   // Same semantics as the legacy sidebar (never-visited counts as read):
@@ -910,7 +908,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     snapshot: changeRequestSnapshot,
     retainTerminalOnBranchMismatch,
     linkedPullRequest: thread.linkedPullRequest,
-    linkedPullRequestStatus,
   });
   const prStatus = prStatusIndicator(pr, prProvider);
   const settledPrHoverClass = pr ? settledPrHoverColorClass(pr.state) : undefined;
@@ -921,14 +918,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       snapshot: changeRequestSnapshot,
       retainTerminalOnBranchMismatch,
       linkedPullRequest: thread.linkedPullRequest,
-      linkedPullRequestStatus,
     });
     if (nextSnapshot === undefined) return;
     onChangeRequestSnapshot(threadKey, nextSnapshot);
   }, [
     changeRequestSnapshot,
     gitStatus.data,
-    linkedPullRequestStatus,
     onChangeRequestSnapshot,
     retainTerminalOnBranchMismatch,
     thread.branch,
@@ -1092,17 +1087,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   }, [showSnoozeButton]);
   const handlePrClick = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
-      if (!pr?.url) return;
-      const openedInRightPanel = openPrLink(
-        event,
-        pr.url,
-        openPullRequestsInRightPanel ? threadRef : undefined,
-      );
-      if (openedInRightPanel && openPullRequestsInRightPanel && !props.isActive) {
-        onThreadActivate(threadRef);
-      }
+      const url = linkedPullRequest?.url ?? pr?.url;
+      if (!url) return;
+      openPrLink(event, url);
     },
-    [onThreadActivate, openPrLink, openPullRequestsInRightPanel, pr, props.isActive, threadRef],
+    [linkedPullRequest, openPrLink, pr],
   );
 
   // All sidebar rows share one surface model. Live threads used to look
@@ -1168,31 +1157,31 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     </span>
   );
 
-  // A real link so cmd/ctrl+click and middle-click open the host in the
-  // browser. A plain click still opens T3's pull request view.
-  const prBadge =
-    prStatus && pr ? (
-      <a
-        href={pr.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={handlePrClick}
-        className={cn(
-          // Sidebar chrome follows the interface font; tabular digits keep the
-          // number from reflowing as PR states stream in.
-          "shrink-0 text-xs tabular-nums hover:underline",
-          variant === "slim" && variantAction === "unsettle"
-            ? props.isActive
-              ? "text-secondary-label"
-              : cn("text-secondary-label transition-colors", settledPrHoverClass)
-            : prStatus.colorClass,
-        )}
-        aria-label={prStatus.tooltip}
-      >
-        #{pr.number}
-      </a>
-    ) : null;
+  // A real link keeps every activation mode on the source-control host.
+  const prBadge = linkedPullRequest ? (
+    <LinkedPullRequestLink indicator={linkedPullRequest} onClick={handlePrClick} />
+  ) : prStatus && pr ? (
+    <a
+      href={pr.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={handlePrClick}
+      className={cn(
+        // Sidebar chrome follows the interface font; tabular digits keep the
+        // number from reflowing as PR states stream in.
+        "shrink-0 text-xs tabular-nums hover:underline",
+        variant === "slim" && variantAction === "unsettle"
+          ? props.isActive
+            ? "text-secondary-label"
+            : cn("text-secondary-label transition-colors", settledPrHoverClass)
+          : prStatus.colorClass,
+      )}
+      aria-label={prStatus.tooltip}
+    >
+      #{pr.number}
+    </a>
+  ) : null;
   const terminalStatusIcon = terminalStatus ? (
     <span
       role="img"
@@ -2054,11 +2043,8 @@ export default function Sidebar() {
       const snapshot = changeRequestSnapshotByKey.get(threadKey);
       const changeRequest =
         snapshot != null &&
-        (thread.linkedPullRequest == null
-          ? thread.worktreePath === null || snapshot.branch === thread.branch
-          : snapshot.linkedPullRequest?.projectId === thread.linkedPullRequest.projectId &&
-            snapshot.linkedPullRequest.repository === thread.linkedPullRequest.repository &&
-            snapshot.linkedPullRequest.number === thread.linkedPullRequest.number)
+        thread.linkedPullRequest == null &&
+        (thread.worktreePath === null || snapshot.branch === thread.branch)
           ? snapshot.pr
           : null;
       // Snooze outranks settlement and pinning until the thread wakes.
@@ -3721,7 +3707,6 @@ export default function Sidebar() {
                         // rows resolve to null on their own.
                         wokeAt={threadWokeAt(thread, { now: snoozeNow })}
                         isActive={routeThreadKey === threadKey}
-                        openPullRequestsInRightPanel={routeThreadRef !== null}
                         jumpLabel={
                           showThreadJumpHints ? (jumpLabelByKey.get(threadKey) ?? null) : null
                         }

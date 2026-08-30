@@ -17,6 +17,7 @@ import { ControlPillMenu } from "../../components/ControlPill";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { cn } from "../../lib/cn";
 import { HOME_HORIZONTAL_INSET } from "../../lib/layoutMetrics";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { relativeTime } from "../../lib/time";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
@@ -450,11 +451,13 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   const pressedBackgroundColor = theme["--color-subtle"];
   const selectedBackgroundColor = theme["--color-user-bubble"];
   const selectedForegroundColor = theme["--color-user-bubble-foreground"];
+  const neutralPullRequestColor = theme["--color-foreground-tertiary"];
 
   const { thread, onSelectThread, onArchiveThread, onDeleteThread, onRegenerateThreadTitle } =
     props;
   const status = resolveThreadStatus(thread);
   const pr = useThreadPr(thread, props.projectCwd);
+  const prState = pr !== null && "state" in pr ? pr.state : null;
   const timestamp = relativeTime(
     thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
   );
@@ -538,13 +541,24 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
           </>
         ) : null}
         {pr !== null ? (
-          <View className="flex-row items-center gap-0.5">
+          <Pressable
+            accessibilityLabel={pr.accessibilityLabel}
+            accessibilityRole="link"
+            className="flex-row items-center gap-0.5"
+            hitSlop={8}
+            onPress={(event) => {
+              event.stopPropagation();
+              void tryOpenExternalUrl(pr.url, "pull-request");
+            }}
+          >
             <PullRequestIcon
               size={compact ? 13 : 11}
               color={
                 selected
                   ? String(selectedForegroundColor)
-                  : pullRequestTintColor(pr.state, colorScheme)
+                  : prState === null
+                    ? String(neutralPullRequestColor)
+                    : pullRequestTintColor(prState, colorScheme)
               }
             />
             <Text
@@ -552,9 +566,9 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
                 selected ? "text-user-bubble-foreground" : pr.textClassName
               }`}
             >
-              {pr.label}
+              #{pr.label}
             </Text>
-          </View>
+          </Pressable>
         ) : null}
       </View>
     ) : null;

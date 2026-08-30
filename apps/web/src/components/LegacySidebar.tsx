@@ -12,13 +12,14 @@ import {
 } from "lucide-react";
 import {
   ChangeRequestStatusIcon,
+  LinkedPullRequestLink,
+  linkedPullRequestIndicator,
   prStatusIndicator,
   PrStatusTooltipContent,
   resolveThreadPr,
   terminalStatusFromRunningIds,
   ThreadStatusLabel,
   ThreadWorktreeIndicator,
-  useLinkedThreadPullRequest,
 } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
@@ -305,7 +306,6 @@ interface SidebarThreadRowProps {
   projectCwd: string | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
-  openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
   appSettingsConfirmThreadArchive: boolean;
   renamingThreadKey: string | null;
@@ -336,18 +336,13 @@ interface SidebarThreadRowProps {
   ) => Promise<void>;
   cancelRename: () => void;
   attemptArchiveThread: (threadRef: ScopedThreadRef) => Promise<void>;
-  openPrLink: (
-    event: React.MouseEvent<HTMLElement>,
-    prUrl: string,
-    threadRef?: ScopedThreadRef,
-  ) => boolean;
+  openPrLink: (event: React.MouseEvent<HTMLElement>, prUrl: string) => void;
 }
 
 export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     orderedProjectThreadKeys,
     isActive,
-    openPullRequestsInRightPanel,
     jumpLabel,
     appSettingsConfirmThreadArchive,
     renamingThreadKey,
@@ -445,18 +440,10 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
       lastVisitedAt,
     },
   });
-  const linkedPullRequestStatus = useLinkedThreadPullRequest(
-    thread.environmentId,
-    thread.linkedPullRequest,
-  );
-  const pr =
-    thread.linkedPullRequest == null
-      ? resolveThreadPr({ threadBranch: thread.branch, gitStatus: gitStatus.data })
-      : (linkedPullRequestStatus?.pr ?? null);
-  const prStatus = prStatusIndicator(
-    pr,
-    linkedPullRequestStatus?.sourceControlProvider ?? gitStatus.data?.sourceControlProvider,
-  );
+  const linkedPullRequest =
+    thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
+  const pr = resolveThreadPr({ threadBranch: thread.branch, gitStatus: gitStatus.data });
+  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const isConfirmingArchive = confirmingArchiveThreadKey === threadKey && !isThreadRunning;
   const threadMetaClassName = isConfirmingArchive
@@ -566,17 +553,11 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
   );
   const handlePrClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
-      if (!prStatus) return;
-      const openedInRightPanel = openPrLink(
-        event,
-        prStatus.url,
-        openPullRequestsInRightPanel ? threadRef : undefined,
-      );
-      if (openedInRightPanel && openPullRequestsInRightPanel && !isActive) {
-        navigateToThread(threadRef);
-      }
+      const url = linkedPullRequest?.url ?? prStatus?.url;
+      if (!url) return;
+      openPrLink(event, url);
     },
-    [isActive, navigateToThread, openPrLink, openPullRequestsInRightPanel, prStatus, threadRef],
+    [linkedPullRequest, openPrLink, prStatus],
   );
   const handleRenameInputRef = useCallback(
     (element: HTMLInputElement | null) => {
@@ -688,25 +669,37 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThr
         onContextMenu={handleRowContextMenu}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {prStatus && (
+          {(linkedPullRequest || prStatus) && (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <a
-                    href={prStatus.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={prStatus.tooltip}
-                    className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={handlePrClick}
-                  >
-                    <ChangeRequestStatusIcon className="size-3" />
-                  </a>
+                  linkedPullRequest ? (
+                    <LinkedPullRequestLink
+                      indicator={linkedPullRequest}
+                      className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-sm text-muted-foreground text-xs tabular-nums outline-hidden focus-visible:ring-1 focus-visible:ring-ring hover:underline"
+                      onClick={handlePrClick}
+                    >
+                      <ChangeRequestStatusIcon className="size-3" />
+                      {linkedPullRequest.label}
+                    </LinkedPullRequestLink>
+                  ) : (
+                    <a
+                      href={prStatus?.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={prStatus?.tooltip}
+                      className={`inline-flex cursor-pointer items-center justify-center rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring ${prStatus?.colorClass}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={handlePrClick}
+                    >
+                      <ChangeRequestStatusIcon className="size-3" />
+                    </a>
+                  )
                 }
               />
               <TooltipPopup side="top">
-                <PrStatusTooltipContent status={prStatus} />
+                {linkedPullRequest?.tooltip ??
+                  (prStatus ? <PrStatusTooltipContent status={prStatus} /> : null)}
               </TooltipPopup>
             </Tooltip>
           )}
@@ -899,7 +892,6 @@ interface SidebarProjectThreadListProps {
   isThreadListExpanded: boolean;
   projectCwd: string;
   activeRouteThreadKey: string | null;
-  openPullRequestsInRightPanel: boolean;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
   appSettingsConfirmThreadArchive: boolean;
   renamingThreadKey: string | null;
@@ -931,11 +923,7 @@ interface SidebarProjectThreadListProps {
   ) => Promise<void>;
   cancelRename: () => void;
   attemptArchiveThread: (threadRef: ScopedThreadRef) => Promise<void>;
-  openPrLink: (
-    event: React.MouseEvent<HTMLElement>,
-    prUrl: string,
-    threadRef?: ScopedThreadRef,
-  ) => boolean;
+  openPrLink: (event: React.MouseEvent<HTMLElement>, prUrl: string) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
 }
@@ -955,7 +943,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     isThreadListExpanded,
     projectCwd,
     activeRouteThreadKey,
-    openPullRequestsInRightPanel,
     threadJumpLabelByKey,
     appSettingsConfirmThreadArchive,
     renamingThreadKey,
@@ -1008,7 +995,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
               projectCwd={projectCwd}
               orderedProjectThreadKeys={orderedProjectThreadKeys}
               isActive={activeRouteThreadKey === threadKey}
-              openPullRequestsInRightPanel={openPullRequestsInRightPanel}
               jumpLabel={threadJumpLabelByKey.get(threadKey) ?? null}
               appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
               renamingThreadKey={renamingThreadKey}
@@ -1074,7 +1060,6 @@ interface SidebarProjectItemProps {
   project: SidebarProjectSnapshot;
   isThreadListExpanded: boolean;
   activeRouteThreadKey: string | null;
-  openPullRequestsInRightPanel: boolean;
   newThreadShortcutLabel: string | null;
   handleNewThread: ReturnType<typeof useNewThreadHandler>;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
@@ -1095,7 +1080,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     project,
     isThreadListExpanded,
     activeRouteThreadKey,
-    openPullRequestsInRightPanel,
     newThreadShortcutLabel,
     handleNewThread,
     archiveThread,
@@ -2351,7 +2335,6 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         isThreadListExpanded={isThreadListExpanded}
         projectCwd={project.workspaceRoot}
         activeRouteThreadKey={activeRouteThreadKey}
-        openPullRequestsInRightPanel={openPullRequestsInRightPanel}
         threadJumpLabelByKey={threadJumpLabelByKey}
         appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
         renamingThreadKey={renamingThreadKey}
@@ -2694,7 +2677,6 @@ interface SidebarProjectsContentProps {
   expandedThreadListsByProject: ReadonlySet<string>;
   activeRouteProjectKey: string | null;
   routeThreadKey: string | null;
-  openPullRequestsInRightPanel: boolean;
   newThreadShortcutLabel: string | null;
   commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
@@ -2736,7 +2718,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     expandedThreadListsByProject,
     activeRouteProjectKey,
     routeThreadKey,
-    openPullRequestsInRightPanel,
     newThreadShortcutLabel,
     commandPaletteShortcutLabel,
     threadJumpLabelByKey,
@@ -2877,7 +2858,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                         activeRouteThreadKey={
                           activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                         }
-                        openPullRequestsInRightPanel={openPullRequestsInRightPanel}
                         newThreadShortcutLabel={newThreadShortcutLabel}
                         handleNewThread={handleNewThread}
                         archiveThread={archiveThread}
@@ -2910,7 +2890,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 activeRouteThreadKey={
                   activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                 }
-                openPullRequestsInRightPanel={openPullRequestsInRightPanel}
                 newThreadShortcutLabel={newThreadShortcutLabel}
                 handleNewThread={handleNewThread}
                 archiveThread={archiveThread}
@@ -3581,7 +3560,6 @@ export default function LegacySidebar() {
         expandedThreadListsByProject={expandedThreadListsByProject}
         activeRouteProjectKey={activeRouteProjectKey}
         routeThreadKey={routeThreadKey}
-        openPullRequestsInRightPanel={routeThreadRef !== null}
         newThreadShortcutLabel={newThreadShortcutLabel}
         commandPaletteShortcutLabel={commandPaletteShortcutLabel}
         threadJumpLabelByKey={visibleThreadJumpLabelByKey}

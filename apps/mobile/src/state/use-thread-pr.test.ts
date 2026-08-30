@@ -1,7 +1,13 @@
 import type { VcsStatusResult } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { ProjectId } from "@t3tools/contracts";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("../connection/runtime", () => ({ connectionAtomRuntime: {} }));
+vi.mock("./query", () => ({ useEnvironmentQuery: () => ({ data: null }) }));
+vi.mock("./vcs", () => ({ vcsEnvironment: { status: () => null } }));
 
 import { presentThreadPr } from "./thread-pr-presentation";
+import { presentLinkedThreadPr } from "./use-thread-pr";
 
 const pullRequest: NonNullable<VcsStatusResult["pr"]> = {
   number: 3774,
@@ -31,6 +37,26 @@ describe("presentThreadPr", () => {
     ).toMatchObject({
       label: "3774",
       accessibilityLabel: "#3774 merge request merged",
+    });
+  });
+});
+
+describe("presentLinkedThreadPr", () => {
+  it("a linked pull request presents as a link without a detail query", () => {
+    expect(
+      presentLinkedThreadPr({
+        projectId: ProjectId.make("project-1"),
+        repository: "t3tools/t3code",
+        number: 3774,
+        url: "https://github.com/t3tools/t3code/pull/3774",
+      }),
+    ).toEqual({
+      number: 3774,
+      repository: "t3tools/t3code",
+      label: "3774",
+      accessibilityLabel: "#3774 pull request",
+      url: "https://github.com/t3tools/t3code/pull/3774",
+      textClassName: "text-foreground-tertiary",
     });
   });
 });

@@ -1,17 +1,10 @@
-import {
-  ArrowLeftIcon,
-  ChartNoAxesColumnIcon,
-  CloudIcon,
-  GitPullRequestIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, CloudIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
-import { useEnvironments } from "../../state/environments";
 import {
   resolveEnvironmentIdentificationPillLabel,
   resolveSidebarStageBackdropVariant,
@@ -156,27 +149,15 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ? "project-settings"
           : location.pathname === "/usage"
             ? "usage"
-            : location.pathname === "/pull-requests"
-              ? "pull-requests"
-              : location.pathname === "/zerops"
-                ? "zerops"
-                : null,
+            : location.pathname === "/zerops"
+              ? "zerops"
+              : null,
   });
-  const { environments } = useEnvironments();
-  // The page reads every connected server, so one of them offering pull requests is enough for
-  // the link to lead somewhere.
-  const pullRequestsSupported = environments.some(
-    (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
-  );
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
   }, [isMobile, setOpenMobile]);
-  const handlePullRequestsClick = useCallback(() => {
-    closeMobileSidebar();
-    void navigate({ to: "/pull-requests", search: { involvement: "all", state: "open" } });
-  }, [closeMobileSidebar, navigate]);
   const handleSettingsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
@@ -219,13 +200,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Settings"
             onClick={handleSettingsClick}
           />
-          {pullRequestsSupported ? (
-            <SidebarUtilityItem
-              icon={<GitPullRequestIcon />}
-              label="Pull Requests"
-              onClick={handlePullRequestsClick}
-            />
-          ) : null}
           <SidebarUtilityItem icon={<CloudIcon />} label="Zerops" onClick={handleZeropsClick} />
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
