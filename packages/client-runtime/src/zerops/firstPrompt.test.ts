@@ -6,7 +6,7 @@ import {
   parseFirstPromptMarkers,
   shouldComposeFirstPrompt,
   withFirstPromptComposed,
-} from "./firstPrompt";
+} from "./firstPrompt.ts";
 
 describe("shouldComposeFirstPrompt", () => {
   it("composes once for a freshly connected Zerops environment", () => {

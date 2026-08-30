@@ -2,7 +2,7 @@
  * The Zerops cards: one reading per `zerops_*` tool result.
  *
  * Presentational only. Whether there is a card at all, and what it says, is
- * decided by `../../zerops/cards/payloads.ts` and tested there; a payload this
+ * decided by `@t3tools/client-runtime/zerops/cards/payloads` and tested there; a payload this
  * build cannot decode never reaches here, and the timeline renders its generic
  * tool block instead.
  *
@@ -12,7 +12,10 @@
 import { CheckIcon, ExternalLinkIcon, XIcon } from "lucide-react";
 
 import { Badge } from "~/components/ui/badge";
-import type { ZeropsCardPayload, ZeropsCheckLine } from "../../zerops/cards/payloads";
+import type {
+  ZeropsCardPayload,
+  ZeropsCheckLine,
+} from "@t3tools/client-runtime/zerops/cards/payloads";
 
 const PASSED = /^(pass|healthy|ok|done|finished|deployed|mounted|active)$/iu;
 const FAILED = /^(fail|failed|unhealthy|error)$/iu;

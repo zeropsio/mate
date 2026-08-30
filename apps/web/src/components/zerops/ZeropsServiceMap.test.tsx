@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
 
-import { buildZeropsServiceMap } from "../../zerops/serviceMap";
+import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 
 const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>

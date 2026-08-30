@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsStripState } from "../../zerops/strip";
+import type { ZeropsStripState } from "@t3tools/client-runtime/zerops/strip";
 import { ZeropsStripLine } from "./ZeropsLifecycleStrip";
 
 const render = (state: ZeropsStripState | undefined): string =>

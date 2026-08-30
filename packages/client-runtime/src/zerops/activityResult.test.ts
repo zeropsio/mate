@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { readZeropsActivityResult } from "./activityResult";
+import { readZeropsActivityResult } from "./activityResult.ts";
 
 describe("readZeropsActivityResult", () => {
   it("reads a completed zerops result", () => {

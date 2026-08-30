@@ -7,7 +7,7 @@
  * without mounting anything.
  */
 
-import { groupZeropsCandidates, type ZeropsCandidate } from "./candidates";
+import { groupZeropsCandidates, type ZeropsCandidate } from "./candidates.ts";
 
 /** True once sign-in has nothing usable yet, but a project is still on its way in. */
 export function shouldAutoEnterProvisioning(candidates: ReadonlyArray<ZeropsCandidate>): boolean {

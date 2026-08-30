@@ -150,6 +150,62 @@
     "./zerops": {
       "types": "./src/zerops/index.ts",
       "default": "./src/zerops/index.ts"
+    },
+    "./zerops/activityResult": {
+      "types": "./src/zerops/activityResult.ts",
+      "default": "./src/zerops/activityResult.ts"
+    },
+    "./zerops/agentLogin": {
+      "types": "./src/zerops/agentLogin.ts",
+      "default": "./src/zerops/agentLogin.ts"
+    },
+    "./zerops/autoEnterProvisioning": {
+      "types": "./src/zerops/autoEnterProvisioning.ts",
+      "default": "./src/zerops/autoEnterProvisioning.ts"
+    },
+    "./zerops/candidates": {
+      "types": "./src/zerops/candidates.ts",
+      "default": "./src/zerops/candidates.ts"
+    },
+    "./zerops/cards/decode": {
+      "types": "./src/zerops/cards/decode.ts",
+      "default": "./src/zerops/cards/decode.ts"
+    },
+    "./zerops/cards/liveFixtures": {
+      "types": "./src/zerops/cards/liveFixtures.ts",
+      "default": "./src/zerops/cards/liveFixtures.ts"
+    },
+    "./zerops/cards/payloads": {
+      "types": "./src/zerops/cards/payloads.ts",
+      "default": "./src/zerops/cards/payloads.ts"
+    },
+    "./zerops/containerHealth": {
+      "types": "./src/zerops/containerHealth.ts",
+      "default": "./src/zerops/containerHealth.ts"
+    },
+    "./zerops/firstPrompt": {
+      "types": "./src/zerops/firstPrompt.ts",
+      "default": "./src/zerops/firstPrompt.ts"
+    },
+    "./zerops/provisioning": {
+      "types": "./src/zerops/provisioning.ts",
+      "default": "./src/zerops/provisioning.ts"
+    },
+    "./zerops/quickActions": {
+      "types": "./src/zerops/quickActions.ts",
+      "default": "./src/zerops/quickActions.ts"
+    },
+    "./zerops/registrationHandoff": {
+      "types": "./src/zerops/registrationHandoff.ts",
+      "default": "./src/zerops/registrationHandoff.ts"
+    },
+    "./zerops/serviceMap": {
+      "types": "./src/zerops/serviceMap.ts",
+      "default": "./src/zerops/serviceMap.ts"
+    },
+    "./zerops/strip": {
+      "types": "./src/zerops/strip.ts",
+      "default": "./src/zerops/strip.ts"
     }
   },
   "scripts": {

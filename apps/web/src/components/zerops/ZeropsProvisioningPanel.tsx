@@ -6,7 +6,7 @@
 
 import { ExternalLinkIcon, RotateCcwIcon } from "lucide-react";
 
-import type { ProvisioningState } from "~/zerops/provisioning";
+import type { ProvisioningState } from "@t3tools/client-runtime/zerops/provisioning";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";

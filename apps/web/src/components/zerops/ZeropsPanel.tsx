@@ -9,9 +9,9 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { zeropsAgentAuthNeedsAttention } from "../../zerops/agentLogin";
-import { zeropsQuickActions } from "../../zerops/quickActions";
-import { buildZeropsServiceMap } from "../../zerops/serviceMap";
+import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
+import { zeropsQuickActions } from "@t3tools/client-runtime/zerops/quickActions";
+import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import {

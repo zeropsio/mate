@@ -185,7 +185,7 @@ const EXPECTED_SURFACE_IDS = [
 const VALID_SURFACE_FIXTURE = {
   id: "fixture-surface",
   title: "Fixture surface",
-  components: ["apps/web/src/zerops/firstPrompt.ts"],
+  components: ["packages/client-runtime/src/zerops/firstPrompt.ts"],
   entryPoints: [{ kind: "inline", value: "fixture" }],
   clients: {
     web: "yes",
@@ -200,7 +200,7 @@ const VALID_SURFACE_FIXTURE = {
     { action: "Close", reverse: "Open" },
   ],
   docs: { none: "The fixture has no user documentation." },
-  tests: ["apps/web/src/zerops/firstPrompt.test.ts"],
+  tests: ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
   captures: [],
 } as const;
 

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { probeZeropsContainerHealth } from "./containerHealth";
+import { probeZeropsContainerHealth } from "./containerHealth.ts";
 
 const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
 const HEALTHZ = `${ORIGIN}/healthz`;
@@ -53,6 +53,21 @@ function stub(routes: Record<string, () => Response>) {
 }
 
 describe("probeZeropsContainerHealth", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts fetch explicitly", async () => {
+    const globalFetch = vi.fn(() => {
+      throw new Error("the global fetch must not be used");
+    });
+    vi.stubGlobal("fetch", globalFetch);
+    const explicit = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+
+    await expect(probeZeropsContainerHealth(ORIGIN, explicit.fetch)).resolves.toBe("ready");
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
   it("treats the z3 descriptor as the authority, and asks nothing else once it answers", async () => {
     const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
 
