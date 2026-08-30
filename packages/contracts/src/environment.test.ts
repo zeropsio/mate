@@ -14,6 +14,19 @@ const descriptor = {
 } as const;
 
 describe("ExecutionEnvironmentDescriptor", () => {
+  it("treats a missing worktree capability as allowed under version skew", () => {
+    expect(decodeDescriptor(descriptor).capabilities.worktreesAllowed !== false).toBe(true);
+  });
+
+  it("preserves an advertised worktreesAllowed:false", () => {
+    expect(
+      decodeDescriptor({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, worktreesAllowed: false },
+      }).capabilities.worktreesAllowed,
+    ).toBe(false);
+  });
+
   it("treats a missing pull-request capability as unsupported under version skew", () => {
     expect(decodeDescriptor(descriptor).capabilities.pullRequests).toBeUndefined();
   });

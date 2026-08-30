@@ -77,6 +77,7 @@ import {
 } from "../home/homeThreadList";
 import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
 import { resolvePendingTaskInteractionMode } from "./legacy-plan-mode";
+import { resolveDraftWorkspaceMode, resolveWorkspaceModeSelection } from "./workspaceMode";
 import { useLegacyPlanModeState } from "./use-legacy-plan-mode-enabled";
 import {
   resolveNewTaskBranchWorktreePath,
@@ -125,6 +126,7 @@ type NewTaskFlowContextValue = {
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly selectedProjectKey: string | null;
   readonly selectedModelKey: string | null;
+  readonly worktreesAllowed: boolean;
   readonly workspaceMode: WorkspaceMode;
   readonly selectedBranchName: string | null;
   readonly selectedWorktreePath: string | null;
@@ -350,6 +352,8 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const selectedEnvironmentServerConfig = useEnvironmentServerConfig(
     selectedProject?.environmentId ?? null,
   );
+  const worktreesAllowed =
+    selectedEnvironmentServerConfig?.environment.capabilities.worktreesAllowed !== false;
   // While a queued pending task is being edited its draft lives under a key
   // scoped to the queued message, so per-project new-task drafts stay intact.
   const selectedProjectDraftKey = editingPendingTask
@@ -364,7 +368,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   // uses for new draft threads: per-project setting, then the repo's
   // checked-in t3.json, then the server's configured default.
   const t3ProjectFileQuery = useEnvironmentQuery(
-    selectedProject !== null && selectedProject.workspaceRoot !== ""
+    worktreesAllowed && selectedProject !== null && selectedProject.workspaceRoot !== ""
       ? projectEnvironment.readFile({
           environmentId: selectedProject.environmentId,
           input: { cwd: selectedProject.workspaceRoot, relativePath: T3_PROJECT_FILE_NAME },
@@ -380,6 +384,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     projectSetting: selectedProject?.defaultThreadEnvMode,
     projectFile: t3ProjectFileDefaultMode,
     globalDefault: selectedEnvironmentServerConfig?.settings.defaultThreadEnvMode ?? "local",
+    worktreesAllowed,
   });
   // While unsettled the resolved default is provisional. Nothing may write
   // it into the draft during that window (the auto-branch effect does), or
@@ -389,7 +394,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     projectSetting: selectedProject?.defaultThreadEnvMode,
     projectFilePending: t3ProjectFileQuery.isPending,
   });
-  const workspaceMode = selectedProjectDraft.workspaceSelection?.mode ?? defaultWorkspaceMode;
+  const workspaceMode = resolveDraftWorkspaceMode({
+    draftMode: selectedProjectDraft.workspaceSelection?.mode,
+    defaultMode: defaultWorkspaceMode,
+    worktreesAllowed,
+  });
   const selectedBranchName = selectedProjectDraft.workspaceSelection?.branch ?? null;
   const selectedWorktreePath = selectedProjectDraft.workspaceSelection?.worktreePath ?? null;
   // Keep the user's explicit choice separate from the resolved display value:
@@ -639,6 +648,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       if (!selectedProject) {
         return;
       }
+      if (resolveWorkspaceModeSelection(mode, worktreesAllowed) !== mode) {
+        return;
+      }
       const localSelection = resolveNewTaskLocalWorkspaceSelection({
         branches: availableBranches,
         projectCwd: selectedProject.workspaceRoot,
@@ -664,8 +676,15 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedProject,
       selectedProjectDraftKey,
       selectedWorktreePath,
+      worktreesAllowed,
     ],
   );
+
+  useEffect(() => {
+    if (!worktreesAllowed && selectedProjectDraft.workspaceSelection?.mode === "worktree") {
+      setWorkspaceMode("local");
+    }
+  }, [selectedProjectDraft.workspaceSelection?.mode, setWorkspaceMode, worktreesAllowed]);
 
   useEffect(() => {
     if (
@@ -845,7 +864,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       const workspaceSelection = draft.workspaceSelection;
       // Fall back to the resolved mode (server default) so queued tasks drain
       // with the same mode the composer displayed.
-      const mode = workspaceSelection?.mode ?? workspaceMode;
+      const mode = resolveDraftWorkspaceMode({
+        draftMode: workspaceSelection?.mode,
+        defaultMode: workspaceMode,
+        worktreesAllowed,
+      });
       // When the selection is the stand-in built from the queued snapshot,
       // persist the original (possibly absent) snapshot values — the
       // stand-in's placeholder title/workspaceRoot must never be written back
@@ -904,6 +927,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       planModePreferenceLoaded,
       startFromOrigin,
       workspaceMode,
+      worktreesAllowed,
     ],
   );
 
@@ -1003,6 +1027,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectedEnvironmentId,
       selectedProjectKey,
       selectedModelKey,
+      worktreesAllowed,
       workspaceMode,
       selectedBranchName,
       selectedWorktreePath,
@@ -1107,6 +1132,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       startFromOrigin,
       submitting,
       workspaceMode,
+      worktreesAllowed,
       appendAttachments,
       clearAttachments,
       removeAttachment,

@@ -26,6 +26,27 @@ describe("resolveDefaultThreadEnvMode", () => {
       }),
     ).toBe("worktree");
   });
+
+  it("a server that forbids worktrees resolves to local whatever the defaults say", () => {
+    expect(
+      resolveDefaultThreadEnvMode({
+        projectSetting: "worktree",
+        projectFile: "worktree",
+        globalDefault: "worktree",
+        worktreesAllowed: false,
+      }),
+    ).toBe("local");
+  });
+
+  it("an absent capability changes nothing", () => {
+    expect(
+      resolveDefaultThreadEnvMode({
+        projectSetting: "worktree",
+        projectFile: "local",
+        globalDefault: "local",
+      }),
+    ).toBe("worktree");
+  });
 });
 
 describe("isDefaultThreadEnvModeSettled", () => {

@@ -1,4 +1,5 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
+import { resolveThreadEnvModeForCapability } from "@t3tools/shared/threadEnvMode";
 import * as Schema from "effect/Schema";
 import { toSortableTimestamp } from "../lib/threadSort";
 export {
@@ -125,15 +126,22 @@ export function resolveEffectiveEnvMode(input: {
   activeWorktreePath: string | null;
   hasServerThread: boolean;
   draftThreadEnvMode: EnvMode | undefined;
+  effectiveEnvModeOverride?: EnvMode;
+  worktreesAllowed?: boolean;
 }): EnvMode {
   const { activeWorktreePath, hasServerThread, draftThreadEnvMode } = input;
-  if (!hasServerThread) {
-    if (activeWorktreePath) {
-      return "local";
-    }
-    return draftThreadEnvMode === "worktree" ? "worktree" : "local";
-  }
-  return activeWorktreePath ? "worktree" : "local";
+  const resolvedMode =
+    input.effectiveEnvModeOverride ??
+    (!hasServerThread
+      ? activeWorktreePath
+        ? "local"
+        : draftThreadEnvMode === "worktree"
+          ? "worktree"
+          : "local"
+      : activeWorktreePath
+        ? "worktree"
+        : "local");
+  return resolveThreadEnvModeForCapability(resolvedMode, input.worktreesAllowed);
 }
 
 export function resolveDraftEnvModeAfterBranchChange(input: {

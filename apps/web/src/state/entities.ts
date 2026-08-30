@@ -116,6 +116,17 @@ export function useServerConfigs(): ReadonlyMap<EnvironmentId, ServerConfig> {
   return useAtomValue(environmentServerConfigsAtom);
 }
 
+/** Whether an environment accepts worktree-backed threads. Missing retains
+    the upstream behavior for older servers and while the descriptor loads. */
+export function useEnvironmentAllowsWorktrees(environmentId: EnvironmentId | null): boolean {
+  const serverConfigs = useServerConfigs();
+  return (
+    (environmentId === null
+      ? undefined
+      : serverConfigs.get(environmentId)?.environment.capabilities.worktreesAllowed) !== false
+  );
+}
+
 export function useThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   return useAtomValue(environmentThreadShells.threadShellsAtom);
 }
@@ -220,6 +231,15 @@ export function readProject(ref: ScopedProjectRef): EnvironmentProject | null {
 
 export function readThreadShell(ref: ScopedThreadRef): EnvironmentThreadShell | null {
   return appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
+}
+
+/** Whether an environment accepts worktree-backed threads. Missing retains
+    the upstream behavior for older servers and while the descriptor loads. */
+export function readEnvironmentAllowsWorktrees(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .worktreesAllowed !== false
+  );
 }
 
 /** Whether the environment's server understands thread.settle/unsettle.

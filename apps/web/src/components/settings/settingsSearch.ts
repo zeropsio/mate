@@ -72,13 +72,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
-    id: "environment-identification",
-    title: "Environment identification",
-    to: "/settings/appearance",
-    // The setting is stage-dependent, so its parent section is the stable destination.
-    targetId: "appearance",
-  },
-  {
     id: "interface-font",
     title: "Interface font",
     to: "/settings/appearance",
@@ -193,11 +186,6 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "legacy-token-streaming",
     title: "Stream token by token (legacy)",
-    to: "/settings/general",
-  },
-  {
-    id: "legacy-sidebar",
-    title: "Sidebar (legacy)",
     to: "/settings/general",
   },
   {

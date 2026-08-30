@@ -12,7 +12,12 @@ import {
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
-import { useProject, useThread, useThreadShellsForProjectRefs } from "../state/entities";
+import {
+  useEnvironmentAllowsWorktrees,
+  useProject,
+  useThread,
+  useThreadShellsForProjectRefs,
+} from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import {
   type EnvMode,
@@ -62,6 +67,7 @@ interface BranchToolbarProps {
 interface MobileRunContextSelectorProps {
   envLocked: boolean;
   envModeLocked: boolean;
+  worktreesAllowed: boolean;
   environmentId: EnvironmentId;
   availableEnvironments: readonly EnvironmentOption[] | undefined;
   showEnvironmentPicker: boolean;
@@ -77,6 +83,7 @@ interface MobileRunContextSelectorProps {
 const MobileRunContextSelector = memo(function MobileRunContextSelector({
   envLocked,
   envModeLocked,
+  worktreesAllowed,
   environmentId,
   availableEnvironments,
   showEnvironmentPicker,
@@ -194,13 +201,15 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
                 </span>
               </span>
             </MenuRadioItem>
-            <MenuRadioItem disabled={envModeLocked} value="worktree">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <FolderGit2Icon className="size-3" />
-                <span className="min-w-0 truncate">{resolveEnvModeLabel("worktree")}</span>
-              </span>
-            </MenuRadioItem>
-            {previousWorktreeLabel ? (
+            {worktreesAllowed ? (
+              <MenuRadioItem disabled={envModeLocked} value="worktree">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <FolderGit2Icon className="size-3" />
+                  <span className="min-w-0 truncate">{resolveEnvModeLabel("worktree")}</span>
+                </span>
+              </MenuRadioItem>
+            ) : null}
+            {worktreesAllowed && previousWorktreeLabel ? (
               <MenuRadioItem disabled={envModeLocked} value="previous-worktree">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <HistoryIcon className="size-3" />
@@ -394,6 +403,7 @@ export const BranchToolbar = memo(function BranchToolbar({
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
+  const worktreesAllowed = useEnvironmentAllowsWorktrees(environmentId);
   const draftThread = useComposerDraftStore((store) =>
     draftId ? store.getDraftSession(draftId) : store.getDraftThreadByRef(threadRef),
   );
@@ -407,19 +417,39 @@ export const BranchToolbar = memo(function BranchToolbar({
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
   const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
-  const effectiveEnvMode =
-    effectiveEnvModeOverride ??
-    resolveEffectiveEnvMode({
-      activeWorktreePath,
-      hasServerThread: serverThread !== null,
-      draftThreadEnvMode: draftThread?.envMode,
-    });
+  const effectiveEnvMode = resolveEffectiveEnvMode({
+    activeWorktreePath,
+    hasServerThread: serverThread !== null,
+    draftThreadEnvMode: draftThread?.envMode,
+    ...(effectiveEnvModeOverride !== undefined ? { effectiveEnvModeOverride } : {}),
+    worktreesAllowed,
+  });
+  useEffect(() => {
+    if (worktreesAllowed) return;
+    // Keep the persisted draft and the server-thread override aligned with
+    // the capability clamp so later send paths cannot resurrect worktree mode.
+    if (draftThread?.envMode === "worktree") {
+      setDraftThreadContext(draftId ?? threadRef, { envMode: "local" });
+    }
+    if (effectiveEnvModeOverride === "worktree") {
+      onEnvModeChange("local");
+    }
+  }, [
+    draftId,
+    draftThread?.envMode,
+    effectiveEnvModeOverride,
+    onEnvModeChange,
+    setDraftThreadContext,
+    threadRef,
+    worktreesAllowed,
+  ]);
   const envModeLocked = envLocked || (serverThread !== null && activeWorktreePath !== null);
 
   // "Previous worktree" hops a draft into the most recently active worktree
   // of this project — the "keep going where I just was" follow-up flow. Only
   // drafts can hop; started server threads have their workspace pinned.
-  const canUsePreviousWorktree = draftThread !== null && serverThread === null && !envModeLocked;
+  const canUsePreviousWorktree =
+    worktreesAllowed && draftThread !== null && serverThread === null && !envModeLocked;
   const projectRefsForWorktreeLookup = useMemo(
     () => (canUsePreviousWorktree && activeProjectRef ? [activeProjectRef] : []),
     [canUsePreviousWorktree, activeProjectRef],
@@ -439,7 +469,7 @@ export const BranchToolbar = memo(function BranchToolbar({
     ? resolvePreviousWorktreeLabel(previousWorktreeSeed)
     : null;
   const onUsePreviousWorktree = useCallback(() => {
-    if (!previousWorktreeSeed || !activeProjectRef) return;
+    if (!worktreesAllowed || !previousWorktreeSeed || !activeProjectRef) return;
     // Same shape the branch selector writes when picking a branch that
     // already lives in a worktree: point the draft at the existing tree.
     setDraftThreadContext(draftId ?? threadRef, {
@@ -448,7 +478,14 @@ export const BranchToolbar = memo(function BranchToolbar({
       envMode: "worktree",
       projectRef: activeProjectRef,
     });
-  }, [activeProjectRef, draftId, previousWorktreeSeed, setDraftThreadContext, threadRef]);
+  }, [
+    activeProjectRef,
+    draftId,
+    previousWorktreeSeed,
+    setDraftThreadContext,
+    threadRef,
+    worktreesAllowed,
+  ]);
 
   const showEnvironmentPicker = Boolean(
     availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,
@@ -475,6 +512,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         <MobileRunContextSelector
           envLocked={envLocked}
           envModeLocked={envModeLocked}
+          worktreesAllowed={worktreesAllowed}
           environmentId={environmentId}
           availableEnvironments={availableEnvironments}
           showEnvironmentPicker={showEnvironmentPicker}
@@ -508,6 +546,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           {showGitControls ? (
             <BranchToolbarEnvModeSelector
               envLocked={envModeLocked}
+              worktreesAllowed={worktreesAllowed}
               effectiveEnvMode={effectiveEnvMode}
               activeWorktreePath={activeWorktreePath}
               onEnvModeChange={onEnvModeChange}

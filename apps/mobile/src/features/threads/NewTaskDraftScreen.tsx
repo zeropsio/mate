@@ -56,6 +56,7 @@ import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/re
 import { enqueueThreadOutboxMessage, removeThreadOutboxMessage } from "../../state/thread-outbox";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
 import { useNewTaskFlow } from "./new-task-flow-provider";
+import { resolveDraftWorkspaceMode } from "./workspaceMode";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
 import { useCreateProjectThread } from "./use-project-actions";
 import { resolveDraftProjectSelection } from "./new-task-project-selection";
@@ -659,7 +660,11 @@ export function NewTaskDraftScreen(props: {
         selectedEnvironmentServerConfig,
         draft.modelSelection ?? null,
       ) ?? flow.selectedModel;
-    const workspaceMode = draft.workspaceSelection?.mode ?? flow.workspaceMode;
+    const workspaceMode = resolveDraftWorkspaceMode({
+      draftMode: draft.workspaceSelection?.mode,
+      defaultMode: flow.workspaceMode,
+      worktreesAllowed: flow.worktreesAllowed,
+    });
     const selectedBranchName = draft.workspaceSelection?.branch ?? flow.selectedBranchName;
     const selectedWorktreePath =
       draft.workspaceSelection?.worktreePath ?? flow.selectedWorktreePath;
@@ -929,21 +934,25 @@ export function NewTaskDraftScreen(props: {
 
   const workspaceControls = (
     <View className="flex-row items-center gap-1 px-2">
-      <ComposerInlineControl
-        accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
-        accessibilityLabel={workspaceLabel}
-        disabled={isIncomingShareTransferPending}
-        iconNode={
-          <NewTaskWorkspaceIcon
-            workspaceMode={flow.workspaceMode}
-            worktreePath={flow.selectedWorktreePath}
-          />
-        }
-        label={workspaceLabel}
-        maxWidth={flow.workspaceMode === "local" ? 220 : 148}
-        onPress={() => flow.setWorkspaceMode(flow.workspaceMode === "local" ? "worktree" : "local")}
-        showChevron={false}
-      />
+      {flow.worktreesAllowed ? (
+        <ComposerInlineControl
+          accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
+          accessibilityLabel={workspaceLabel}
+          disabled={isIncomingShareTransferPending}
+          iconNode={
+            <NewTaskWorkspaceIcon
+              workspaceMode={flow.workspaceMode}
+              worktreePath={flow.selectedWorktreePath}
+            />
+          }
+          label={workspaceLabel}
+          maxWidth={flow.workspaceMode === "local" ? 220 : 148}
+          onPress={() =>
+            flow.setWorkspaceMode(flow.workspaceMode === "local" ? "worktree" : "local")
+          }
+          showChevron={false}
+        />
+      ) : null}
 
       <ComposerInlineControl
         accessibilityLabel={`${flow.workspaceMode === "worktree" ? "Base branch" : "Branch"}: ${selectedBranchLabel}`}

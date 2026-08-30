@@ -23,7 +23,6 @@ const clientSettings: ClientSettings = {
   confirmThreadDelete: false,
   dismissedProviderUpdateNotificationKeys: [],
   diffIgnoreWhitespace: true,
-  environmentIdentificationMode: "artwork",
   favorites: [],
   fontFamilyCode: "",
   fontFamilyComposer: "",
@@ -46,8 +45,6 @@ const clientSettings: ClientSettings = {
   },
   sidebarProjectSortOrder: "manual",
   sidebarThreadSortOrder: "created_at",
-  sidebarThreadPreviewCount: 6,
-  legacySidebarEnabled: false,
   timestampFormat: "24-hour",
   wordWrap: true,
 };

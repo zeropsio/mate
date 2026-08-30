@@ -27,7 +27,6 @@ const THEME_INTEROP_ALLOWLIST = new Set([
   "features/threads/ThreadFeed.tsx",
   "features/threads/ThreadSettingsSheet.tsx",
   "features/threads/git/GitOverviewSheet.tsx",
-  "features/threads/thread-list-items.tsx",
   "features/threads/thread-list-v2-items.tsx",
   "lib/useMobileNavigationTheme.ts",
   "native/T3ComposerEditor.ios.tsx",
