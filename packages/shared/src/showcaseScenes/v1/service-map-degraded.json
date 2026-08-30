@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "id": "web:service-map-degraded",
+  "title": "Service map degraded",
+  "synthetic": true,
+  "source": {
+    "recordedAt": "2026-08-30T12:00:00.000Z",
+    "from": "authored"
+  },
+  "topology": {
+    "available": true,
+    "degraded": true,
+    "project": {
+      "id": "showcase-project",
+      "name": "Zerops Showcase",
+      "status": "ACTIVE"
+    },
+    "services": [
+      {
+        "hostname": "apidev",
+        "serviceId": "service-api",
+        "type": "ubuntu/nodejs@22",
+        "status": "ACTIVE",
+        "group": "runtimes",
+        "adoptionState": "adopted",
+        "isManagedService": false,
+        "transient": false,
+        "mounted": false,
+        "subdomainEnabled": true,
+        "subdomainUrl": "https://apidev-showcase.prg1.zerops.app"
+      },
+      {
+        "hostname": "db",
+        "serviceId": "service-db",
+        "type": "postgresql:single@18",
+        "status": "RUNNING",
+        "group": "data",
+        "adoptionState": "managed-dep",
+        "isManagedService": true,
+        "transient": false,
+        "mounted": false
+      },
+      {
+        "hostname": "zcp",
+        "serviceId": "service-zcp",
+        "type": "ubuntu/zcp@latest",
+        "status": "ACTIVE",
+        "group": "infrastructure",
+        "adoptionState": "zcp-self",
+        "isManagedService": false,
+        "transient": false,
+        "mounted": true,
+        "mountPath": "/workspace"
+      }
+    ],
+    "warnings": ["Topology is three seconds behind.", "The doorbell is disconnected."],
+    "doorbellConnected": false,
+    "readAt": "2026-08-30T12:00:00.000Z",
+    "reason": "The latest topology read failed; showing the last good services."
+  },
+  "lifecycle": {
+    "threadId": "showcase-thread",
+    "recentTools": []
+  },
+  "agentAuth": {
+    "available": true,
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      },
+      {
+        "agentId": "codex",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      }
+    ]
+  },
+  "agentLogin": {},
+  "projects": [
+    {
+      "id": "showcase-project",
+      "title": "Zerops Showcase",
+      "workspaceRoot": "/workspace/zerops-showcase",
+      "defaultModelSelection": null,
+      "scripts": [],
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z"
+    }
+  ],
+  "threads": [
+    {
+      "id": "showcase-thread",
+      "projectId": "showcase-project",
+      "title": "Service map degraded",
+      "modelSelection": {
+        "instanceId": "codex",
+        "model": "gpt-5.4"
+      },
+      "runtimeMode": "full-access",
+      "interactionMode": "default",
+      "branch": "feat/showcase-scenes",
+      "worktreePath": "/workspace/zerops-showcase",
+      "latestTurn": null,
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z",
+      "archivedAt": null,
+      "settledOverride": null,
+      "settledAt": null,
+      "session": null,
+      "latestUserMessageAt": "2026-08-30T12:00:00.000Z",
+      "hasPendingApprovals": false,
+      "hasPendingUserInput": false,
+      "hasActionableProposedPlan": false
+    }
+  ],
+  "threadActivities": {},
+  "steps": []
+}

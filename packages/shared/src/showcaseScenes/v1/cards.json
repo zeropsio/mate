@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "id": "web:cards",
+  "title": "Zerops activity cards",
+  "synthetic": true,
+  "source": {
+    "recordedAt": "2026-08-30T12:00:00.000Z",
+    "from": "authored"
+  },
+  "topology": {
+    "available": true,
+    "degraded": false,
+    "project": {
+      "id": "showcase-project",
+      "name": "Zerops Showcase",
+      "status": "ACTIVE"
+    },
+    "services": [],
+    "warnings": [],
+    "doorbellConnected": true,
+    "readAt": "2026-08-30T12:00:00.000Z"
+  },
+  "lifecycle": {
+    "threadId": "cards-thread",
+    "recentTools": []
+  },
+  "agentAuth": {
+    "available": true,
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      },
+      {
+        "agentId": "codex",
+        "credPresent": true,
+        "flagOAuth": true,
+        "flagToken": false,
+        "providerAuth": "authenticated",
+        "state": "authorized"
+      }
+    ]
+  },
+  "agentLogin": {},
+  "projects": [
+    {
+      "id": "showcase-project",
+      "title": "Zerops Showcase",
+      "workspaceRoot": "/workspace/zerops-showcase",
+      "defaultModelSelection": null,
+      "scripts": [],
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z"
+    }
+  ],
+  "threads": [
+    {
+      "id": "cards-thread",
+      "projectId": "showcase-project",
+      "title": "Zerops activity cards",
+      "modelSelection": {
+        "instanceId": "codex",
+        "model": "gpt-5.4"
+      },
+      "runtimeMode": "full-access",
+      "interactionMode": "default",
+      "branch": "feat/showcase-scenes",
+      "worktreePath": "/workspace/zerops-showcase",
+      "latestTurn": null,
+      "createdAt": "2026-08-30T12:00:00.000Z",
+      "updatedAt": "2026-08-30T12:00:00.000Z",
+      "archivedAt": null,
+      "settledOverride": null,
+      "settledAt": null,
+      "session": null,
+      "latestUserMessageAt": "2026-08-30T12:00:00.000Z",
+      "hasPendingApprovals": false,
+      "hasPendingUserInput": false,
+      "hasActionableProposedPlan": false
+    }
+  ],
+  "threadActivities": {
+    "cards-thread": [
+      {
+        "id": "cards-deploy",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Deployed apidev",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-deploy",
+              "tool": "zerops_deploy",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"status\":\"DEPLOYED\",\"targetService\":\"apidev\",\"subdomainUrl\":\"https://apidev-showcas"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_deploy",
+              "resultText": "{\"status\":\"DEPLOYED\",\"targetService\":\"apidev\",\"subdomainUrl\":\"https://apidev-showcase.prg1.zerops.app\"}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 1,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-verify",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Verified s3git1",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-verify",
+              "tool": "zerops_verify",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"hostname\":\"s3git1\",\"type\":\"runtime\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_verify",
+              "resultText": "{\"hostname\":\"s3git1\",\"type\":\"runtime\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"worker\",\"status\":\"healthy\",\"checks\":[{\"name\":\"service_running\",\"status\":\"pass\"},{\"name\":\"error_logs\",\"status\":\"pass\"}],\"workSessionState\":{\"status\":\"none\",\"note\":\"No active develop session — deploy not tracked. Start one via zerops_workflow action=\\\"start\\\" workflow=\\\"develop\\\" intent=\\\"...\\\" scope=[...] to pick up auto-close + verify tracking.\"},\"envelope\":{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"adopt\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T17:28:27.758010723Z\"}}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 2,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-import",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Imported services",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-import",
+              "tool": "zerops_import",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"projectName\":\"Zerops Showcase\",\"processes\":[{\"service\":\"apidev\",\"status\":\"IMPORTED"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_import",
+              "resultText": "{\"projectName\":\"Zerops Showcase\",\"processes\":[{\"service\":\"apidev\",\"status\":\"IMPORTED\",\"actionName\":\"create\"},{\"service\":\"db\",\"status\":\"IMPORTED\",\"actionName\":\"attach\"}],\"serviceErrors\":[],\"summary\":\"2 services imported\"}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 3,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-mount",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Mounted apidev",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-mount",
+              "tool": "zerops_mount",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"hostname\":\"apidev\",\"status\":\"MOUNTED\",\"mountPath\":\"/workspace/apidev\",\"message\":\"M"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_mount",
+              "resultText": "{\"hostname\":\"apidev\",\"status\":\"MOUNTED\",\"mountPath\":\"/workspace/apidev\",\"message\":\"Mounted\"}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 4,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-subdomain",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Enabled subdomain",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-subdomain",
+              "tool": "zerops_subdomain",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"serviceHostname\":\"apidev\",\"action\":\"enable\",\"subdomainUrls\":[\"https://apidev-showc"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_subdomain",
+              "resultText": "{\"serviceHostname\":\"apidev\",\"action\":\"enable\",\"subdomainUrls\":[\"https://apidev-showcase.prg1.zerops.app\"]}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 5,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-plan",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Planned bootstrap",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-plan",
+              "tool": "zerops_workflow",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"intent\":\"Bootstrap a Node.js service\",\"message\":\"Review the bootstrap plan\",\"progr"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_workflow",
+              "resultText": "{\"intent\":\"Bootstrap a Node.js service\",\"message\":\"Review the bootstrap plan\",\"progress\":{\"completed\":1,\"total\":3,\"steps\":[{\"name\":\"Create services\",\"status\":\"completed\"},{\"name\":\"Import project\",\"status\":\"pending\"},{\"name\":\"Verify runtime\",\"status\":\"pending\"}]}}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 6,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-error",
+        "tone": "error",
+        "kind": "tool.completed",
+        "summary": "Deploy failed",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "failed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-error",
+              "tool": "zerops_deploy",
+              "server": "zerops",
+              "status": "failed",
+              "arguments": {},
+              "error": "Tool failed",
+              "result": {
+                "content": "{\"code\":\"SSH_DEPLOY_FAILED\",\"error\":\"SSH deploy from s3git1 to s3git1 failed:\\ntime="
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_deploy",
+              "resultText": "{\"code\":\"SSH_DEPLOY_FAILED\",\"error\":\"SSH deploy from s3git1 to s3git1 failed:\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=info msg=\\\"➤ INFO Selected service: s3git1\\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR File zerops.yml not found. Checked paths: [/var/www/zerops.yaml, /var/www/zerops.yml]. \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  Please, create a zerops.yml file in the root directory of your project. \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  Alternatively you can use the --zerops-yaml flag to specify the path to the zerops.yml file or \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  use the --working-dir flag to set the working directory to the directory where the zerops.yml file is located.\\\"\",\"suggestion\":\"Check the diagnostic field for full command output.\",\"diagnostic\":\"Using config file: /home/zerops/.config/zerops/.zcli.yml\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=info msg=\\\"✔ DONE You are logged as zcp-z3-eval <token-xxxxxxxxxxxxxxxxxxxxxx@zerops.io>\\\"\\nUsing config file: /home/zerops/.config/zerops/.zcli.yml\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=info msg=\\\"➤ INFO Selected service: s3git1\\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR File zerops.yml not found. Checked paths: [/var/www/zerops.yaml, /var/www/zerops.yml]. \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  Please, create a zerops.yml file in the root directory of your project. \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  Alternatively you can use the --zerops-yaml flag to specify the path to the zerops.yml file or \\\"\\ntime=\\\"2026-08-28T17:28:30Z\\\" level=error msg=\\\"✗ ERR  use the --working-dir flag to set the working directory to the directory where the zerops.yml file is located.\\\"\\n\",\"recovery\":{\"tool\":\"zerops_workflow\",\"action\":\"status\"},\"failureClassification\":{\"category\":\"network\",\"likelyCause\":\"Transport-layer error reaching the platform.\",\"suggestedAction\":\"Check the diagnostic field for the underlying SSH/zcli/git error.\",\"signals\":[\"phase:transport\"]}}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 7,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-delete",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Deleted gone",
+        "payload": {
+          "itemType": "file_change",
+          "status": "completed",
+          "data": {
+            "files": [
+              {
+                "path": "gone"
+              }
+            ],
+            "zerops": {
+              "toolName": "zerops_delete",
+              "resultText": "{\"status\":\"DELETED\"}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 8,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-malformed",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Unreadable verify result",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-malformed",
+              "tool": "zerops_verify",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "not json"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_verify",
+              "resultText": "not json"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 9,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-over-cap",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Deploy result exceeded projection cap",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-over-cap",
+              "tool": "zerops_deploy",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {}
+            },
+            "zerops": {
+              "toolName": "zerops_deploy",
+              "truncated": true
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 10,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-running",
+        "tone": "tool",
+        "kind": "tool.updated",
+        "summary": "Import is running",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "running",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-running",
+              "tool": "zerops_import",
+              "server": "zerops",
+              "status": "in_progress",
+              "arguments": {}
+            },
+            "zerops": {
+              "toolName": "zerops_import"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 11,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-command",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Checked repository status",
+        "payload": {
+          "itemType": "command_execution",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "commandExecution",
+              "id": "command-status",
+              "status": "completed"
+            },
+            "command": "git status --short",
+            "rawOutput": {
+              "content": "working tree clean"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 12,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      }
+    ]
+  },
+  "steps": []
+}
