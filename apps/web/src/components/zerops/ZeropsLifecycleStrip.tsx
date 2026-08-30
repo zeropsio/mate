@@ -10,8 +10,7 @@
  *
  * Clicking it opens the service map, which is the question the strip provokes.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { Spinner } from "~/components/ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -68,25 +67,26 @@ export function ZeropsStripLine({
 }
 
 export function ZeropsLifecycleStrip({
-  environmentId,
-  threadId,
+  threadRef,
   pendingUserInput,
 }: {
-  readonly environmentId: EnvironmentId | null;
-  readonly threadId: ThreadId | null;
+  readonly threadRef: ScopedThreadRef | null;
   readonly pendingUserInput: boolean;
 }) {
-  const lifecycle = useZeropsLifecycle(environmentId, threadId);
+  const lifecycle = useZeropsLifecycle(
+    threadRef?.environmentId ?? null,
+    threadRef?.threadId ?? null,
+  );
   const state = zeropsStripState(lifecycle, { pendingUserInput });
 
-  if (environmentId === null || threadId === null) {
+  if (threadRef === null) {
     return null;
   }
 
   return (
     <ZeropsStripLine
       onOpen={() => {
-        useRightPanelStore.getState().open(scopeThreadRef(environmentId, threadId), "zerops");
+        useRightPanelStore.getState().open(threadRef, "zerops");
       }}
       state={state}
     />

@@ -40,7 +40,10 @@
     {
       "id": "zerops-panel",
       "title": "Zerops right panel",
-      "components": ["apps/web/src/components/zerops/ZeropsPanel.tsx"],
+      "components": [
+        "apps/web/src/components/zerops/ZeropsPanel.tsx",
+        "apps/web/src/zerops/chatChrome.ts"
+      ],
       "entryPoints": [
         { "kind": "right-panel-tab", "value": "Zerops (shortcut Z)" },
         { "kind": "inline", "value": "ChatView Zerops panel opener" },
@@ -68,9 +71,10 @@
       "docs": { "none": "No docs/user page documents the Zerops right panel yet." },
       "tests": [
         "apps/web/src/components/zerops/ZeropsPanel.test.tsx",
+        "apps/web/src/zerops/chatChrome.test.ts",
         "apps/web/src/zerops/feeds.test.ts"
       ],
-      "untested": "ZeropsPanel.test.tsx covers only the placeholder; the populated panel body has no focused component test.",
+      "untested": "ZeropsPanel.test.tsx covers placeholder states and agent-auth card ownership, including late topology; the populated panel body has no focused component assertion.",
       "captures": []
     },
     {

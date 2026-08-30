@@ -5,58 +5,56 @@
  * Reads both feeds and renders. Nothing here mutates the project — the agent
  * owns every change, through MCP.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
 import { zeropsQuickActions } from "@t3tools/client-runtime/zerops/quickActions";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
-import {
-  useZeropsAgentAuth,
-  useZeropsLifecycle,
-  useZeropsTopology,
-} from "../../zerops/useZeropsFeeds";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 
 export function ZeropsPanel({
-  environmentId,
-  threadId,
+  threadRef,
+  agentAuthCard,
 }: {
-  readonly environmentId: EnvironmentId | null;
-  readonly threadId: ThreadId | null;
+  readonly threadRef: ScopedThreadRef | null;
+  readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
 }) {
-  const topology = useZeropsTopology(environmentId);
-  const lifecycle = useZeropsLifecycle(environmentId, threadId);
-  const agentAuth = useZeropsAgentAuth(environmentId);
-  const threadRef =
-    environmentId !== null && threadId !== null ? scopeThreadRef(environmentId, threadId) : null;
+  const topology = useZeropsTopology(threadRef?.environmentId ?? null);
+  const lifecycle = useZeropsLifecycle(
+    threadRef?.environmentId ?? null,
+    threadRef?.threadId ?? null,
+  );
   const signInToAgent = useAgentLogin(threadRef);
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
   const view = buildZeropsServiceMap(topology, lifecycle);
+  const panelSections =
+    view === undefined
+      ? {
+          body: <ZeropsPanelPlaceholder waiting={topology === undefined} />,
+          quickActions: null,
+        }
+      : {
+          body: <ZeropsServiceMap view={view} />,
+          quickActions: <ZeropsQuickActions actions={zeropsQuickActions(topology)} />,
+        };
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-4">
-        {view === undefined ? (
-          <ZeropsPanelPlaceholder waiting={topology === undefined} />
-        ) : (
-          <div className="space-y-4">
-            <ZeropsServiceMap view={view} />
-            {agentAuth !== undefined && zeropsAgentAuthNeedsAttention(agentAuth) ? (
-              <ZeropsAgentAuthCard
-                onCancel={cancelAgentLogin}
-                onSignIn={signInToAgent}
-                snapshot={agentAuth}
-              />
-            ) : null}
-            <ZeropsQuickActions actions={zeropsQuickActions(topology)} />
-          </div>
+      <div className="space-y-4 p-4">
+        {panelSections.body}
+        {agentAuthCard === null ? null : (
+          <ZeropsAgentAuthCard
+            onCancel={cancelAgentLogin}
+            onSignIn={signInToAgent}
+            snapshot={agentAuthCard}
+          />
         )}
+        {panelSections.quickActions}
       </div>
     </ScrollArea>
   );
