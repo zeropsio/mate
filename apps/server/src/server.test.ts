@@ -1497,13 +1497,24 @@ const assertBrowserApiCorsPreflightHeaders = (
 };
 const crossOriginClientOrigin = "http://remote-client.test:3773";
 
-const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = []) =>
+const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = [], publicOrigin?: string) =>
   resolveZeropsEnvironment({
     projectId: "nTV3oMB2SS634ImDJnQckg",
     apiHost: undefined,
     allowedOrigins,
     membershipTtlSeconds: undefined,
+    publicOrigin,
   });
+
+/**
+ * The link-proof endpoint only exists on a server that is running inside a
+ * Zerops project and knows its own public origin: the handler resolves both
+ * BEFORE it validates the caller's endpoint origin. A test that wants to
+ * reach the origin rules must therefore model that server — and the Zerops
+ * door issues no cookie sessions, so it authenticates with a bearer token.
+ */
+const zeropsLinkProofEnvironment = () =>
+  zeropsTestEnvironment([], "https://zcp-26a7-8080.prg1.zerops.app");
 
 const getWsServerUrl = (
   pathname = "",
@@ -2109,14 +2120,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("rejects cloud link proofs for non-loopback managed endpoint origins", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      yield* buildAppUnderTest({ config: { zerops: zeropsLinkProofEnvironment() } });
 
-      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const bearer = yield* getAuthenticatedBearerSessionToken();
       const linkProofUrl = yield* getHttpServerUrl("/api/connect/link-proof");
       const linkProofResponse = yield* fetchEffect(linkProofUrl, {
         method: "POST",
         headers: {
-          cookie: ownerCookie,
+          authorization: `Bearer ${bearer}`,
           "content-type": "application/json",
         },
         body: jsonRequestBody({
@@ -2146,15 +2157,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("rejects cloud link proofs for unsupported endpoint providers", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      yield* buildAppUnderTest({ config: { zerops: zeropsLinkProofEnvironment() } });
 
-      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const bearer = yield* getAuthenticatedBearerSessionToken();
       const linkProofUrl = yield* getHttpServerUrl("/api/connect/link-proof");
       const serverPort = Number(new URL(linkProofUrl).port);
       const linkProofResponse = yield* fetchEffect(linkProofUrl, {
         method: "POST",
         headers: {
-          cookie: ownerCookie,
+          authorization: `Bearer ${bearer}`,
           "content-type": "application/json",
         },
         body: jsonRequestBody({
@@ -2315,15 +2326,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("rejects local cloud link proofs for a different loopback port", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest();
+      yield* buildAppUnderTest({ config: { zerops: zeropsLinkProofEnvironment() } });
 
-      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const bearer = yield* getAuthenticatedBearerSessionToken();
       const linkProofUrl = yield* getHttpServerUrl("/api/connect/link-proof");
       const serverPort = Number(new URL(linkProofUrl).port);
       const linkProofResponse = yield* fetchEffect(linkProofUrl, {
         method: "POST",
         headers: {
-          cookie: ownerCookie,
+          authorization: `Bearer ${bearer}`,
           "content-type": "application/json",
         },
         body: jsonRequestBody({

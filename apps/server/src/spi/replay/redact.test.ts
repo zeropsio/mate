@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import { assert, describe, it } from "vite-plus/test";
 
 import { REDACTED_CREATED_AT, redact } from "./redact.ts";
@@ -24,53 +26,6 @@ describe("redact", () => {
     const events = [{ eventId: "e1", createdAt: "2026-08-28T12:34:56.789Z" }];
     const result = redact(events);
     assert.equal(result[0]?.createdAt, REDACTED_CREATED_AT);
-  });
-
-  it("rewrites an exact path match at the top level", () => {
-    const events = [{ eventId: "e1", cwd: "/Users/dev/project" }];
-    const result = redact(events, {
-      paths: [{ path: "/Users/dev/project", placeholder: "<CWD>" }],
-    });
-    assert.equal(result[0]?.cwd, "<CWD>");
-  });
-
-  it("rewrites a path prefix nested arbitrarily deep in the payload", () => {
-    const events = [
-      {
-        eventId: "e1",
-        payload: {
-          data: {
-            files: ["/Users/dev/project/src/index.ts", "/Users/dev/project/README.md"],
-          },
-        },
-      },
-    ];
-    const result = redact(events, {
-      paths: [{ path: "/Users/dev/project", placeholder: "<CWD>" }],
-    });
-    assert.deepEqual((result[0]?.payload as { data: { files: unknown } })?.data.files, [
-      "<CWD>/src/index.ts",
-      "<CWD>/README.md",
-    ]);
-  });
-
-  it("prefers the longest matching path rule (cwd nested under home)", () => {
-    const events = [{ eventId: "e1", path: "/Users/dev/project/file.ts" }];
-    const result = redact(events, {
-      paths: [
-        { path: "/Users/dev", placeholder: "<HOME>" },
-        { path: "/Users/dev/project", placeholder: "<CWD>" },
-      ],
-    });
-    assert.equal(result[0]?.path, "<CWD>/file.ts");
-  });
-
-  it("does not touch a string that merely contains a path as a substring, not a path segment", () => {
-    const events = [{ eventId: "e1", note: "/Users/dev/projectile" }];
-    const result = redact(events, {
-      paths: [{ path: "/Users/dev/project", placeholder: "<CWD>" }],
-    });
-    assert.equal(result[0]?.note, "/Users/dev/projectile");
   });
 
   it("rewrites a freshly generated id consistently by value, wherever the field name occurs", () => {
@@ -108,10 +63,33 @@ describe("redact", () => {
     );
   });
 
+  // Regression guard. Redaction used to rewrite any string equal to (or
+  // under) the RUNNING machine's cwd/home/tmpdir. Applied to recorded
+  // fixture content that came from another machine, that made the golden
+  // comparison depend on where it ran: the recorded
+  // "/tmp/cc-socks/<pid>.sock" survived on macOS (tmpdir /var/folders/...)
+  // and was rewritten to "<TMPDIR>/..." on every Linux host, so all four
+  // Claude goldens were red in CI and in the container while green on one
+  // laptop. Redaction must stay a pure function of its input.
+  it("leaves absolute paths untouched — redaction never consults the host environment", () => {
+    const events = [
+      {
+        eventId: "e1",
+        payload: {
+          cwd: process.cwd(),
+          home: NodeOS.homedir(),
+          socket: `${NodeOS.tmpdir()}/cc-socks/164264.sock`,
+        },
+      },
+    ];
+    const result = redact(events, { ids: [{ fields: ["turnId"], prefix: "turn" }] });
+    assert.deepEqual(result[0]?.payload, events[0]?.payload);
+  });
+
   it("is a pure function: does not mutate the input array or its objects", () => {
     const original = { eventId: "e1", createdAt: "2026-01-01T00:00:00.000Z", nested: { a: 1 } };
     const events = [original];
-    redact(events, { paths: [] });
+    redact(events, {});
     assert.equal(original.eventId, "e1");
     assert.equal(original.createdAt, "2026-01-01T00:00:00.000Z");
   });

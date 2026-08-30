@@ -12,7 +12,6 @@
  * comparing — state the reason in the commit message.
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
@@ -31,12 +30,6 @@ import { redact } from "./redact.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixturesRoot = NodePath.join(__dirname, "../fixtures");
-
-const REDACT_PATHS = [
-  { path: process.cwd(), placeholder: "<CWD>" },
-  { path: NodeOS.homedir(), placeholder: "<HOME>" },
-  { path: NodeOS.tmpdir(), placeholder: "<TMPDIR>" },
-];
 
 // turnId/itemId/requestId are freshly generated per replay run (crypto
 // UUIDs, or a driver-assigned id derived from one) — redact them by value
@@ -108,7 +101,6 @@ describe("SPI replay goldens", () => {
         // here too, not only downstream in `apps/server/src/zerops/**`.
         const enriched = events.map(applyToolCall);
         const redacted = redact(enriched as ReadonlyArray<Record<string, unknown>>, {
-          paths: REDACT_PATHS,
           ids: REDACT_IDS,
         });
 

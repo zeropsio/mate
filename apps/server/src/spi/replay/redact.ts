@@ -6,9 +6,16 @@
  * golden:
  *
  * - Non-determinism the driver itself introduces: `eventId` is a freshly
- *   generated UUID per event, `createdAt` is wall-clock time.
- * - Environment specifics: absolute paths (HOME, cwd) that differ machine
- *   to machine but carry no signal about normalization correctness.
+ *   generated UUID per event, `createdAt` is wall-clock time, and driver-
+ *   assigned ids (turnId, itemId, requestId) are fresh per replay.
+ *
+ * Deliberately NOT here: rewriting absolute paths by the paths of the
+ * machine running the comparison. A golden's content comes from a
+ * recording made somewhere else, so masking it with the comparing host's
+ * cwd/home/tmpdir makes the result depend on where the test runs — it
+ * turned all four Claude goldens red on every Linux machine while staying
+ * green on one macOS laptop, and masked nothing in any golden. If a
+ * recording ever needs a path masked, mask it when recording.
  *
  * `redact` is a pure function over already-produced events — it never talks
  * to the driver or the filesystem — so its rules are exhaustively testable
@@ -16,12 +23,6 @@
  */
 
 export const REDACTED_CREATED_AT = "1970-01-01T00:00:00.000Z";
-
-/** A path to rewrite, and what to rewrite it to. */
-export interface RedactPathRule {
-  readonly path: string;
-  readonly placeholder: string;
-}
 
 /**
  * A kind of driver-generated identifier (turnId, itemId, requestId, ...) to
@@ -39,7 +40,6 @@ export interface RedactIdRule {
 }
 
 export interface RedactOptions {
-  readonly paths?: ReadonlyArray<RedactPathRule>;
   readonly ids?: ReadonlyArray<RedactIdRule>;
 }
 
@@ -78,41 +78,21 @@ function collectIdRenames(
   return renames;
 }
 
-function redactString(
-  value: string,
-  idRenames: ReadonlyMap<string, string>,
-  pathRulesLongestFirst: ReadonlyArray<RedactPathRule>,
-): string {
-  const idRename = idRenames.get(value);
-  if (idRename) {
-    return idRename;
-  }
-  for (const rule of pathRulesLongestFirst) {
-    if (value === rule.path) {
-      return rule.placeholder;
-    }
-    if (value.startsWith(`${rule.path}/`)) {
-      return rule.placeholder + value.slice(rule.path.length);
-    }
-  }
-  return value;
+function redactString(value: string, idRenames: ReadonlyMap<string, string>): string {
+  return idRenames.get(value) ?? value;
 }
 
-function redactValue(
-  value: unknown,
-  idRenames: ReadonlyMap<string, string>,
-  pathRulesLongestFirst: ReadonlyArray<RedactPathRule>,
-): unknown {
+function redactValue(value: unknown, idRenames: ReadonlyMap<string, string>): unknown {
   if (typeof value === "string") {
-    return redactString(value, idRenames, pathRulesLongestFirst);
+    return redactString(value, idRenames);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => redactValue(item, idRenames, pathRulesLongestFirst));
+    return value.map((item) => redactValue(item, idRenames));
   }
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
-      out[key] = redactValue(entry, idRenames, pathRulesLongestFirst);
+      out[key] = redactValue(entry, idRenames);
     }
     return out;
   }
@@ -124,25 +104,17 @@ function redactValue(
  * to a stable per-array sequence id (`evt-<index>`) when the field is
  * present, `createdAt` to a fixed placeholder when present, every value of
  * an `ids`-configured field (wherever that exact value occurs, by value —
- * see `RedactIdRule`) to a stable `<prefix>-<n>` placeholder, and any
- * string value equal to (or path-prefixed by) one of `paths` to its
- * placeholder — checked longest-path-first so a `cwd` nested under `home`
- * redacts to `<CWD>`, never `<HOME>/...`. Never mutates its input.
+ * see `RedactIdRule`) to a stable `<prefix>-<n>` placeholder. Never
+ * mutates its input, and never reads the environment.
  */
 export function redact(
   events: ReadonlyArray<Record<string, unknown>>,
   options?: RedactOptions,
 ): ReadonlyArray<Record<string, unknown>> {
-  const pathRulesLongestFirst = [...(options?.paths ?? [])].sort(
-    (a, b) => b.path.length - a.path.length,
-  );
   const idRenames = collectIdRenames(events, options?.ids ?? []);
 
   return events.map((event, index) => {
-    const redacted = redactValue(event, idRenames, pathRulesLongestFirst) as Record<
-      string,
-      unknown
-    >;
+    const redacted = redactValue(event, idRenames) as Record<string, unknown>;
     return {
       ...redacted,
       ...("eventId" in event ? { eventId: `evt-${index}` } : {}),
