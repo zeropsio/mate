@@ -26,7 +26,6 @@ import {
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
   resolveDesktopProductName,
-  resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
   resourceMonitorExecutableName,
@@ -40,6 +39,7 @@ import {
   STAGE_INSTALL_ARGS,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+import { resolveDesktopUpdateChannel } from "./stage-desktop-web.ts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 function mockProcess(exitCode: number) {
@@ -83,6 +83,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
     assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.20260413.42"), "nightly");
     assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
+    assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.x"), "latest");
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
@@ -107,6 +108,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("switches the bundled splash and favicon branding for nightly versions", () => {
     assert.equal(resolveDesktopWebAssetBrand("0.0.17"), "production");
     assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
+    assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.x"), "production");
   });
 
   it.effect("resolves GitHub desktop publish config from Effect config", () =>

@@ -44,39 +44,55 @@ const { logInfo: logBootstrapInfo } = DesktopObservability.makeComponentLogger("
 const { logInfo: logStartupInfo, logError: logStartupError } =
   DesktopObservability.makeComponentLogger("desktop-startup");
 
-const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupError")(function* (
-  stage: string,
-  error: unknown,
-): Effect.fn.Return<
-  void,
-  never,
-  | DesktopShutdown.DesktopShutdown
-  | DesktopState.DesktopState
-  | ElectronApp.ElectronApp
-  | ElectronDialog.ElectronDialog
-> {
-  const shutdown = yield* DesktopShutdown.DesktopShutdown;
-  const state = yield* DesktopState.DesktopState;
-  const electronApp = yield* ElectronApp.ElectronApp;
-  const electronDialog = yield* ElectronDialog.ElectronDialog;
-  const message = error instanceof Error ? error.message : String(error);
-  const detail =
-    error instanceof Error && typeof error.stack === "string" ? `\n${error.stack}` : "";
-  yield* logStartupError("fatal startup error", {
-    stage,
-    message,
-    ...(detail.length > 0 ? { detail } : {}),
-  });
-  const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
-  if (!wasQuitting) {
-    yield* electronDialog.showErrorBox(
-      "Zerops Code failed to start",
-      `Stage: ${stage}\n${message}${detail}`,
-    );
-  }
-  yield* shutdown.request;
-  yield* electronApp.quit;
-});
+const writeFatalStartupError = (message: string) =>
+  Effect.promise(
+    () =>
+      new Promise<void>((resolve) => {
+        process.stderr.write(message, () => resolve());
+      }),
+  );
+
+export const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupError")(
+  function* (
+    stage: string,
+    error: unknown,
+  ): Effect.fn.Return<
+    void,
+    never,
+    | DesktopShutdown.DesktopShutdown
+    | DesktopState.DesktopState
+    | ElectronApp.ElectronApp
+    | ElectronDialog.ElectronDialog
+  > {
+    const shutdown = yield* DesktopShutdown.DesktopShutdown;
+    const state = yield* DesktopState.DesktopState;
+    const electronApp = yield* ElectronApp.ElectronApp;
+    const electronDialog = yield* ElectronDialog.ElectronDialog;
+    const message = error instanceof Error ? error.message : String(error);
+    const detail =
+      error instanceof Error && typeof error.stack === "string" ? `\n${error.stack}` : "";
+    yield* logStartupError("fatal startup error", {
+      stage,
+      message,
+      ...(detail.length > 0 ? { detail } : {}),
+    });
+    const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
+    if ((process.env.T3CODE_SMOKE_CAPTURE?.length ?? 0) > 0) {
+      yield* writeFatalStartupError(`fatal startup error (${stage}): ${message}${detail}\n`);
+      yield* shutdown.request;
+      yield* electronApp.exit(1);
+      return;
+    }
+    if (!wasQuitting) {
+      yield* electronDialog.showErrorBox(
+        "Zerops Code failed to start",
+        `Stage: ${stage}\n${message}${detail}`,
+      );
+    }
+    yield* shutdown.request;
+    yield* electronApp.quit;
+  },
+);
 
 const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
   handleFatalStartupError(stage, Cause.pretty(cause)).pipe(Effect.andThen(Effect.failCause(cause)));
@@ -86,7 +102,7 @@ const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
  * Vite dev server; every other run serves the staged hosted-static web
  * bundle straight off disk — the desktop no longer runs a local backend to
  * point the window at. That bundle is built by
- * `scripts/build-desktop-artifact.ts`'s `stageHostedWebBundle` with
+ * `scripts/stage-desktop-web.ts`'s `stageHostedWebBundle` with
  * `VITE_HOSTED_APP_CHANNEL` set to the desktop's own update channel
  * ("latest" or "nightly", see `resolveDesktopUpdateChannel`) and
  * `VITE_HTTP_URL`/`VITE_WS_URL` both empty, so `isHostedStaticApp()`

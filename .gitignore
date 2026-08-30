@@ -27,6 +27,7 @@ squashfs-root/
 .gstack/
 .plans/
 dist-electron/
+apps/desktop/prod-resources/web/
 .electron-runtime/
 .showcase/
 apps/mobile/.showcase/

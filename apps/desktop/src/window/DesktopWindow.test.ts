@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off - The wiring test controls the smoke-capture process env.
+import * as NodeProcess from "node:process";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -126,6 +128,7 @@ function makeFakeBrowserWindow() {
     setZoomLevel: webContents.setZoomLevel,
     setBackgroundThrottling: webContents.setBackgroundThrottling,
     setAutoHideCursor: window.setAutoHideCursor,
+    webContentsOnce: webContents.once,
     webContentsListeners,
     windowListeners,
   };
@@ -160,16 +163,19 @@ const electronThemeLayer = Layer.succeed(ElectronTheme.ElectronTheme, {
   onUpdated: () => Effect.void,
 } satisfies ElectronTheme.ElectronTheme["Service"]);
 
-const desktopEnvironmentLayer = DesktopEnvironment.layer(environmentInput).pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      NodeServices.layer,
-      DesktopConfig.layerTest({
-        VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
-      }),
+const makeDesktopEnvironmentLayer = (
+  platform: DesktopEnvironment.MakeDesktopEnvironmentInput["platform"] = environmentInput.platform,
+) =>
+  DesktopEnvironment.layer({ ...environmentInput, platform }).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        NodeServices.layer,
+        DesktopConfig.layerTest({
+          VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
+        }),
+      ),
     ),
-  ),
-);
+  );
 
 const desktopWindowBoundsEquivalence = Schema.toEquivalence(
   DesktopAppSettings.DesktopWindowBoundsSchema,
@@ -188,6 +194,7 @@ function makeTestLayer(input: {
   ) => Effect.Effect<void>;
   readonly openedExternalUrls?: unknown[];
   readonly previewZoomReapplies?: number[];
+  readonly platform?: DesktopEnvironment.MakeDesktopEnvironmentInput["platform"];
 }) {
   let desktopSettings = input.desktopSettings ?? DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS;
   const desktopAppSettingsLayer = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
@@ -239,7 +246,7 @@ function makeTestLayer(input: {
     Layer.provide(
       Layer.mergeAll(
         desktopAssetsLayer,
-        desktopEnvironmentLayer,
+        makeDesktopEnvironmentLayer(input.platform),
         desktopAppSettingsLayer,
         desktopClientSettingsLayer,
         DesktopState.layer,
@@ -339,6 +346,50 @@ describe("DesktopWindow", () => {
         yield* desktopWindow.activate;
         assert.equal(yield* Ref.get(createCount), 1);
       }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("installs smoke capture once per Linux window using the env at install time", () =>
+    Effect.gen(function* () {
+      const previousCapturePath = NodeProcess.env.T3CODE_SMOKE_CAPTURE;
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        platform: "linux",
+      });
+
+      try {
+        NodeProcess.env.T3CODE_SMOKE_CAPTURE = "/tmp/desktop-smoke.png";
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          yield* desktopWindow.createMain;
+          assert.equal(
+            fakeWindow.webContentsOnce.mock.calls.filter(
+              ([eventName]) => eventName === "did-finish-load",
+            ).length,
+            2,
+          );
+
+          delete NodeProcess.env.T3CODE_SMOKE_CAPTURE;
+          yield* desktopWindow.createMain;
+          assert.equal(
+            fakeWindow.webContentsOnce.mock.calls.filter(
+              ([eventName]) => eventName === "did-finish-load",
+            ).length,
+            3,
+          );
+        }).pipe(Effect.provide(layer));
+      } finally {
+        if (previousCapturePath === undefined) {
+          delete NodeProcess.env.T3CODE_SMOKE_CAPTURE;
+        } else {
+          NodeProcess.env.T3CODE_SMOKE_CAPTURE = previousCapturePath;
+        }
+      }
     }),
   );
 
