@@ -32,6 +32,7 @@ apps/desktop/prod-resources/web/
 .showcase/
 apps/mobile/.showcase/
 artifacts/app-store/screenshots/
+artifacts/web-showcase/
 .github/pr-assets/
 native/**/target/
 node_modules/
