@@ -12,12 +12,11 @@ import type {
   ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
 
-import type { RightPanelKind } from "../rightPanelStore";
+import type { RightPanelKind } from "../rightPanelKinds";
 
 export interface ZeropsChatChrome {
   readonly threadRef: ScopedThreadRef | null;
   readonly panel: "available" | "unavailable" | "unknown";
-  readonly launcher: boolean;
   readonly attention: {
     readonly snapshot: ZeropsAgentAuthSnapshot;
     readonly surface: "banner" | "panel";
@@ -36,14 +35,12 @@ export function resolveZeropsChatChrome(
     return {
       threadRef: null,
       panel: "unknown",
-      launcher: false,
       attention: null,
     };
   }
 
   // `available: false` is the feed's plain answer that there is no zcp here,
-  // not an error. `panel` is the tri-state W3-F5c-PANEL's right-panel launcher
-  // adapter reads; until that slice lands, its only reader is `launcher`.
+  // not an error. The right-panel launcher adapter reads this tri-state.
   const panel =
     input.topology === undefined
       ? "unknown"
@@ -55,7 +52,6 @@ export function resolveZeropsChatChrome(
   return {
     threadRef,
     panel,
-    launcher: panel === "available",
     // S7-D4 keeps provider-auth guidance beside ProviderStatusBanner unless
     // the open panel owns it, so the snapshot and its destination stay bound.
     attention:

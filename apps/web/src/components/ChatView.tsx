@@ -138,6 +138,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
+import { resolveRightPanelAvailability, type RightPanelKind } from "../rightPanelKinds";
 import {
   selectActiveRightPanel,
   selectActiveRightPanelSurface,
@@ -6666,84 +6667,133 @@ function ChatViewContent(props: ChatViewProps) {
       {panelToggleControls}
     </div>
   );
-  const rightPanelContent = activeThreadRef ? (
-    activeRightPanelSurface?.kind === "preview" ? (
-      <Suspense fallback={null}>
-        <PreviewPanel
-          mode="embedded"
-          threadRef={activeThreadRef}
-          tabId={activeRightPanelSurface.resourceId}
-          configuredUrls={configuredPreviewUrls}
-          visible
-          onSendAnnotation={(annotation, image) => {
-            void onSend(undefined, "foreground", { annotation, image });
-          }}
-        />
-      </Suspense>
-    ) : activeRightPanelSurface?.kind === "terminal" ? (
-      <PersistentThreadTerminalPanel
-        threadRef={activeThreadRef}
-        surface={activeRightPanelSurface}
-        launchContext={activeTerminalLaunchContext ?? null}
-        focusRequestId={terminalFocusRequestId}
-        keybindings={keybindings}
-        onAddTerminalContext={addTerminalContextToDraft}
-        onSplitTerminal={splitPanelTerminal}
-        onSplitTerminalVertical={splitPanelTerminalVertical}
-        onNewTerminal={addTerminalSurface}
-        onActiveTerminalChange={activatePanelTerminal}
-        onCloseTerminal={closePanelTerminal}
-        splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-        splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-        newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-        closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-      />
-    ) : activeRightPanelSurface?.kind === "diff" ? (
-      <Suspense fallback={null}>
-        <DiffPanel
-          key={`${activeThreadKey}:${diffPanelGitStatusResolutionKey}`}
-          mode="embedded"
-          composerDraftTarget={composerDraftTarget}
-          initialGitScope={initialDiffPanelGitScope}
-        />
-      </Suspense>
-    ) : activeRightPanelSurface?.kind === "agents" ? (
-      <AgentsPanel
-        model={agentPanelModel}
-        environmentId={activeThreadRef.environmentId}
-        threadId={activeThreadRef.threadId}
-      />
-    ) : activeRightPanelSurface?.kind === "zerops" ? (
-      <ZeropsPanel
-        agentAuthCard={
-          zeropsChrome.attention?.surface === "panel" ? zeropsChrome.attention.snapshot : null
-        }
-        threadRef={zeropsChrome.threadRef}
-      />
-    ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
-      activeProject &&
-      activeWorkspaceRoot ? (
-      <Suspense fallback={null}>
-        <FilePreviewPanel
-          key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
-          environmentId={activeProject.environmentId}
-          cwd={activeWorkspaceRoot}
-          projectName={activeProject.title}
-          threadRef={activeThreadRef}
-          composerDraftTarget={composerDraftTarget}
-          keybindings={keybindings}
-          availableEditors={availableEditors}
-          relativePath={
-            activeRightPanelSurface.kind === "file" ? activeRightPanelSurface.relativePath : null
+  const rightPanelAvailability = resolveRightPanelAvailability({
+    previewSupported: isPreviewSupportedInRuntime(),
+    projectOpen: activeProject !== null,
+    gitRepo: isGitRepo,
+    serverThread: isServerThread,
+    zeropsPanel: zeropsChrome.panel,
+  });
+  const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
+    switch (kind) {
+      case "preview":
+        createBrowserSurface();
+        return;
+      case "diff":
+        addDiffSurface();
+        return;
+      case "files":
+        addFilesSurface();
+        return;
+      case "agents":
+        addAgentsSurface();
+        return;
+      case "zerops":
+        addZeropsSurface();
+        return;
+    }
+    kind satisfies never;
+  };
+  const rightPanelContent =
+    activeThreadRef && activeRightPanelSurface
+      ? (() => {
+          switch (activeRightPanelSurface.kind) {
+            case "preview":
+              return (
+                <Suspense fallback={null}>
+                  <PreviewPanel
+                    mode="embedded"
+                    threadRef={activeThreadRef}
+                    tabId={activeRightPanelSurface.resourceId}
+                    configuredUrls={configuredPreviewUrls}
+                    visible
+                    onSendAnnotation={(annotation, image) => {
+                      void onSend(undefined, "foreground", { annotation, image });
+                    }}
+                  />
+                </Suspense>
+              );
+            case "terminal":
+              return (
+                <PersistentThreadTerminalPanel
+                  threadRef={activeThreadRef}
+                  surface={activeRightPanelSurface}
+                  launchContext={activeTerminalLaunchContext ?? null}
+                  focusRequestId={terminalFocusRequestId}
+                  keybindings={keybindings}
+                  onAddTerminalContext={addTerminalContextToDraft}
+                  onSplitTerminal={splitPanelTerminal}
+                  onSplitTerminalVertical={splitPanelTerminalVertical}
+                  onNewTerminal={addTerminalSurface}
+                  onActiveTerminalChange={activatePanelTerminal}
+                  onCloseTerminal={closePanelTerminal}
+                  splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+                  splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+                  newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+                  closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+                />
+              );
+            case "diff":
+              return (
+                <Suspense fallback={null}>
+                  <DiffPanel
+                    key={`${activeThreadKey}:${diffPanelGitStatusResolutionKey}`}
+                    mode="embedded"
+                    composerDraftTarget={composerDraftTarget}
+                    initialGitScope={initialDiffPanelGitScope}
+                  />
+                </Suspense>
+              );
+            case "agents":
+              return (
+                <AgentsPanel
+                  model={agentPanelModel}
+                  environmentId={activeThreadRef.environmentId}
+                  threadId={activeThreadRef.threadId}
+                />
+              );
+            case "zerops":
+              return (
+                <ZeropsPanel
+                  agentAuthCard={
+                    zeropsChrome.attention?.surface === "panel"
+                      ? zeropsChrome.attention.snapshot
+                      : null
+                  }
+                  threadRef={zeropsChrome.threadRef}
+                />
+              );
+            case "files":
+            case "file":
+              if (!activeProject || !activeWorkspaceRoot) return null;
+              return (
+                <Suspense fallback={null}>
+                  <FilePreviewPanel
+                    key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
+                    environmentId={activeProject.environmentId}
+                    cwd={activeWorkspaceRoot}
+                    projectName={activeProject.title}
+                    threadRef={activeThreadRef}
+                    composerDraftTarget={composerDraftTarget}
+                    keybindings={keybindings}
+                    availableEditors={availableEditors}
+                    relativePath={
+                      activeRightPanelSurface.kind === "file"
+                        ? activeRightPanelSurface.relativePath
+                        : null
+                    }
+                    revealLine={activeFileSurface?.revealLine ?? null}
+                    revealRequestId={activeFileSurface?.revealRequestId ?? 0}
+                    onOpenFile={openFileSurface}
+                    onPendingChange={handleFilePendingChange}
+                  />
+                </Suspense>
+              );
           }
-          revealLine={activeFileSurface?.revealLine ?? null}
-          revealRequestId={activeFileSurface?.revealRequestId ?? 0}
-          onOpenFile={openFileSurface}
-          onPendingChange={handleFilePendingChange}
-        />
-      </Suspense>
-    ) : null
-  ) : null;
+          const exhaustiveSurface: never = activeRightPanelSurface;
+          return exhaustiveSurface;
+        })()
+      : null;
 
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,
@@ -7209,18 +7259,9 @@ function ChatViewContent(props: ChatViewProps) {
           onCloseSurfacesToRight={closeRightPanelSurfacesToRight}
           onCloseAllSurfaces={closeAllRightPanelSurfaces}
           onCopyFilePath={copyRightPanelFilePath}
-          onAddBrowser={createBrowserSurface}
+          availability={rightPanelAvailability}
+          onAdd={onAddRightPanelSurface}
           onAddTerminal={addTerminalSurface}
-          onAddDiff={addDiffSurface}
-          onAddFiles={addFilesSurface}
-          onAddAgents={addAgentsSurface}
-          onAddZerops={addZeropsSurface}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          agentsAvailable
-          zeropsAvailable={zeropsChrome.launcher}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -7248,18 +7289,9 @@ function ChatViewContent(props: ChatViewProps) {
             onCloseSurfacesToRight={closeRightPanelSurfacesToRight}
             onCloseAllSurfaces={closeAllRightPanelSurfaces}
             onCopyFilePath={copyRightPanelFilePath}
-            onAddBrowser={createBrowserSurface}
+            availability={rightPanelAvailability}
+            onAdd={onAddRightPanelSurface}
             onAddTerminal={addTerminalSurface}
-            onAddDiff={addDiffSurface}
-            onAddFiles={addFilesSurface}
-            onAddAgents={addAgentsSurface}
-            onAddZerops={addZeropsSurface}
-            browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
-            diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
-            agentsAvailable
-            zeropsAvailable={zeropsChrome.launcher}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

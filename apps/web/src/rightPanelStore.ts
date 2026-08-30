@@ -13,17 +13,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "./lib/storage";
-
-export const RIGHT_PANEL_KINDS = [
-  "diff",
-  "files",
-  "file",
-  "preview",
-  "terminal",
-  "agents",
-  "zerops",
-] as const;
-export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
+import { DROPPED_RIGHT_PANEL_KINDS, type RightPanelKind } from "./rightPanelKinds";
 
 export type RightPanelSurface =
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
@@ -189,10 +179,15 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                 threadState && typeof threadState === "object" ? threadState : null;
               const surfaces = Array.isArray(validThreadState?.surfaces)
                 ? validThreadState.surfaces.flatMap<RightPanelSurface>((surface) => {
-                    // Dropped surface kind: plans now render inline in the
-                    // transcript (v9).
-                    if ((surface as { kind?: string }).kind === "plan") return [];
-                    if ((surface as { kind?: string }).kind === "pull-request") return [];
+                    const kind = (surface as { kind?: string }).kind;
+                    if (
+                      kind !== undefined &&
+                      DROPPED_RIGHT_PANEL_KINDS.includes(
+                        kind as (typeof DROPPED_RIGHT_PANEL_KINDS)[number],
+                      )
+                    ) {
+                      return [];
+                    }
                     if (surface.kind === "file") {
                       const revealLine =
                         typeof surface.revealLine === "number" &&

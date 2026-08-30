@@ -6,6 +6,7 @@ import {
   FileDiff,
   Files,
   Globe2,
+  type LucideIcon,
   Plus,
   TerminalSquare,
   Volume2,
@@ -24,6 +25,11 @@ import {
 
 import { isElectron } from "~/env";
 import type { DesktopPreviewOverlay } from "~/previewStateStore";
+import {
+  launcherActions,
+  type RightPanelAvailability,
+  type RightPanelKind,
+} from "~/rightPanelKinds";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
@@ -68,31 +74,22 @@ interface RightPanelTabsProps {
   onCloseSurfacesToRight: (surface: RightPanelSurface) => void;
   onCloseAllSurfaces: () => void;
   onCopyFilePath: (relativePath: string) => void;
-  onAddBrowser: () => void;
+  availability: Record<RightPanelKind, RightPanelAvailability>;
+  onAdd: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
   onAddTerminal: () => void;
-  onAddDiff: () => void;
-  onAddFiles: () => void;
-  onAddAgents: () => void;
-  onAddZerops: () => void;
-  browserAvailable: boolean;
-  terminalAvailable: boolean;
-  diffAvailable: boolean;
-  filesAvailable: boolean;
-  agentsAvailable: boolean;
-  zeropsAvailable: boolean;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
   children: ReactNode;
 }
 
 const SURFACE_DISABLED_REASONS = {
-  browser: "Browser previews are only available in the Zerops Code desktop app.",
+  preview: "Browser previews are only available in the Zerops Code desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
-} as const;
+} as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
 const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
@@ -105,16 +102,6 @@ const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
   '[data-slot="combobox-popup"]',
   '[data-slot="autocomplete-popup"]',
 ].join(",");
-
-/** One-line unavailability hints for the empty-state cards. */
-const SURFACE_UNAVAILABLE_HINTS = {
-  browser: "Only available in the desktop app.",
-  terminal: "Available when a project is open.",
-  files: "Available when a project is open.",
-  diff: "Available for Git repositories.",
-  agents: "Available from a thread.",
-  zerops: "Available in a Zerops project.",
-} as const;
 
 type TabContextMenuAction =
   | "copy-path"
@@ -229,97 +216,39 @@ function SurfaceMenuItem(props: {
   return <DisabledReasonTooltip reason={props.disabledReason} trigger={item} />;
 }
 
+type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
+  readonly icon: LucideIcon;
+  readonly onClick: () => void;
+  readonly badgeCount: number;
+};
+
+function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon {
+  switch (kind) {
+    case "preview":
+      return Globe2;
+    case "terminal":
+      return TerminalSquare;
+    case "files":
+      return Files;
+    case "diff":
+      return FileDiff;
+    case "agents":
+      return Bot;
+    case "zerops":
+      return Cloud;
+  }
+}
+
 /**
- * Card launcher shown when the right panel has no surfaces. Keyboard-first
- * without palette chrome: a surface's letter opens it directly from anywhere
- * outside a typing context, and arrows plus Enter work while the launcher is
- * focused. The highlight only appears on hover or arrow use. Unavailable
- * surfaces stay visible with a one-line reason.
+ * Renders the empty panel as a keyboard-first card launcher. A surface's
+ * letter opens it outside typing contexts, while unavailable surfaces remain
+ * visible with a one-line reason.
  */
-function RightPanelEmptyState(props: {
-  onAddBrowser: () => void;
-  onAddTerminal: () => void;
-  onAddDiff: () => void;
-  onAddFiles: () => void;
-  onAddAgents: () => void;
-  onAddZerops: () => void;
-  browserAvailable: boolean;
-  terminalAvailable: boolean;
-  diffAvailable: boolean;
-  filesAvailable: boolean;
-  agentsAvailable: boolean;
-  zeropsAvailable: boolean;
-  liveAgentCount: number;
-}) {
+function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
 
-  const actions = [
-    {
-      label: "Browser",
-      description: "Open a local app or URL.",
-      icon: Globe2,
-      shortcut: "B",
-      available: props.browserAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.browser,
-      onClick: props.onAddBrowser,
-      badgeCount: 0,
-    },
-    {
-      label: "Terminal",
-      description: "Start a shell in this workspace.",
-      icon: TerminalSquare,
-      shortcut: "T",
-      available: props.terminalAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.terminal,
-      onClick: props.onAddTerminal,
-      badgeCount: 0,
-    },
-    {
-      label: "Files",
-      description: "Browse and read workspace files.",
-      icon: Files,
-      shortcut: "F",
-      available: props.filesAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
-      onClick: props.onAddFiles,
-      badgeCount: 0,
-    },
-    {
-      label: "Diff",
-      description: "Review changes in this thread.",
-      icon: FileDiff,
-      shortcut: "D",
-      available: props.diffAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
-      onClick: props.onAddDiff,
-      badgeCount: 0,
-    },
-    {
-      label: "Agents",
-      description: "Follow subagents and workflows.",
-      icon: Bot,
-      shortcut: "A",
-      available: props.agentsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
-      onClick: props.onAddAgents,
-      badgeCount: props.liveAgentCount,
-    },
-    {
-      label: "Zerops",
-      description: "See the project's services.",
-      icon: Cloud,
-      shortcut: "Z",
-      available: props.zeropsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.zerops,
-      onClick: props.onAddZerops,
-      badgeCount: 0,
-    },
-  ] as const;
-
-  type SurfaceAction = (typeof actions)[number];
-
-  const availableActions = actions.filter((action) => action.available);
+  const availableActions = props.actions.filter((action) => action.available);
   const highlightIndex =
     availableActions.length === 0 ? -1 : Math.min(highlight, availableActions.length - 1);
 
@@ -426,7 +355,7 @@ function RightPanelEmptyState(props: {
           </p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          {actions.map((action) =>
+          {props.actions.map((action) =>
             action.available ? (
               <button
                 key={action.label}
@@ -467,7 +396,7 @@ function RightPanelEmptyState(props: {
                   <span className="font-medium text-sm">{action.label}</span>
                 </span>
                 <span className="mt-1.5 text-muted-foreground text-xs leading-relaxed">
-                  {action.disabledReason}
+                  {action.unavailableHint}
                 </span>
               </div>
             ),
@@ -579,56 +508,15 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const tabListRef = useRef<HTMLDivElement>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
 
-  const addSurfaceActions = [
-    {
-      label: "Browser",
-      icon: Globe2,
-      shortcut: "B",
-      available: props.browserAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.browser,
-      onClick: props.onAddBrowser,
-    },
-    {
-      label: "Terminal",
-      icon: TerminalSquare,
-      shortcut: "T",
-      available: props.terminalAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.terminal,
-      onClick: props.onAddTerminal,
-    },
-    {
-      label: "Files",
-      icon: Files,
-      shortcut: "F",
-      available: props.filesAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.files,
-      onClick: props.onAddFiles,
-    },
-    {
-      label: "Diff",
-      icon: FileDiff,
-      shortcut: "D",
-      available: props.diffAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.diff,
-      onClick: props.onAddDiff,
-    },
-    {
-      label: "Agents",
-      icon: Bot,
-      shortcut: "A",
-      available: props.agentsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.agents,
-      onClick: props.onAddAgents,
-    },
-    {
-      label: "Zerops",
-      icon: Cloud,
-      shortcut: "Z",
-      available: props.zeropsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.zerops,
-      onClick: props.onAddZerops,
-    },
-  ] as const;
+  const addSurfaceActions: SurfaceAction[] = launcherActions(props.availability).map((action) => {
+    const kind = action.kind;
+    return {
+      ...action,
+      icon: surfaceLauncherIcon(kind),
+      onClick: kind === "terminal" ? props.onAddTerminal : () => props.onAdd(kind),
+      badgeCount: kind === "agents" ? props.liveAgentCount : 0,
+    };
+  });
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = surfaceShortcutActionForKey(addSurfaceActions, event.nativeEvent);
@@ -889,7 +777,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       <SurfaceMenuItem
                         key={action.label}
                         available={action.available}
-                        disabledReason={action.disabledReason}
+                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
                         shortcut={action.shortcut}
                         onClick={action.onClick}
                       >
@@ -907,21 +795,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
         {props.activeSurfaceId === null ? (
-          <RightPanelEmptyState
-            onAddBrowser={props.onAddBrowser}
-            onAddTerminal={props.onAddTerminal}
-            onAddDiff={props.onAddDiff}
-            onAddFiles={props.onAddFiles}
-            onAddAgents={props.onAddAgents}
-            onAddZerops={props.onAddZerops}
-            browserAvailable={props.browserAvailable}
-            terminalAvailable={props.terminalAvailable}
-            diffAvailable={props.diffAvailable}
-            filesAvailable={props.filesAvailable}
-            agentsAvailable={props.agentsAvailable}
-            zeropsAvailable={props.zeropsAvailable}
-            liveAgentCount={props.liveAgentCount}
-          />
+          <RightPanelEmptyState actions={addSurfaceActions} />
         ) : (
           props.children
         )}

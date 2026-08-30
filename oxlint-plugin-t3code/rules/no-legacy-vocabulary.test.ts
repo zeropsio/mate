@@ -24,6 +24,9 @@ const copyModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
 const copyComponentModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
   filename: "apps/web/src/components/RightPanelTabs.tsx",
 });
+const rightPanelKindsCopyModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+  filename: "apps/web/src/rightPanelKinds.ts",
+});
 const ordinaryModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
   filename: "apps/web/src/copy.ts",
 });
@@ -110,6 +113,11 @@ describe("t3code/no-legacy-vocabulary", () => {
   copyModule.invalid(
     "reports string literals in registered copy modules",
     `const label = "New worktree";`,
+  );
+
+  rightPanelKindsCopyModule.invalid(
+    "reports unavailable hints in the right-panel copy module",
+    `const meta = { unavailableHint: "Available in this worktree." };`,
   );
 
   ordinaryModule.invalid(
