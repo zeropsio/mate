@@ -176,32 +176,15 @@ const normalizeArbitraryToken = (token: string): string => {
     .replace(/(^|:)!\[/u, "$1[");
 };
 
-const tailwindUtility = (token: string): string | undefined => {
-  let bracketDepth = 0;
-  let utilityStart = 0;
-  for (let index = 0; index < token.length; index += 1) {
-    const character = token[index];
-    if (character === "[") bracketDepth += 1;
-    else if (character === "]") bracketDepth = Math.max(0, bracketDepth - 1);
-    else if (character === ":" && bracketDepth === 0) {
-      if (index === utilityStart) return undefined;
-      utilityStart = index + 1;
-    }
-  }
-  return bracketDepth === 0 ? token.slice(utilityStart) : undefined;
-};
-
-const hasPaletteToken = (value: string): boolean =>
-  value.split(/\s+/u).some((token) => {
-    const utility = tailwindUtility(token);
-    return utility !== undefined && TAILWIND_PALETTE_TOKEN_PATTERN.test(utility);
-  });
-
-const closingBracket = (value: string, openingBracket: number): number | undefined => {
+const scanBracketDepth = (
+  value: string,
+  start: number,
+  visit: (character: string, index: number, bracketDepth: number) => boolean,
+): number => {
   let bracketDepth = 0;
   let quote: "'" | '"' | undefined;
-  for (let index = openingBracket; index < value.length; index += 1) {
-    const character = value[index];
+  for (let index = start; index < value.length; index += 1) {
+    const character = value.charAt(index);
     if (quote !== undefined) {
       if (character === "\\") index += 1;
       else if (character === quote) quote = undefined;
@@ -212,12 +195,46 @@ const closingBracket = (value: string, openingBracket: number): number | undefin
       continue;
     }
     if (character === "[") bracketDepth += 1;
-    else if (character === "]") {
-      bracketDepth -= 1;
-      if (bracketDepth === 0) return index;
-    }
+    else if (character === "]") bracketDepth -= 1;
+    if (!visit(character, index, bracketDepth)) return bracketDepth;
   }
-  return undefined;
+  return bracketDepth;
+};
+
+const tailwindUtility = (token: string): string | undefined => {
+  let utilityStart = 0;
+  let valid = true;
+  const bracketDepth = scanBracketDepth(token, 0, (character, index, depth) => {
+    if (depth < 0) {
+      valid = false;
+      return false;
+    }
+    if (character === ":" && depth === 0) {
+      if (index === utilityStart) {
+        valid = false;
+        return false;
+      }
+      utilityStart = index + 1;
+    }
+    return true;
+  });
+  return valid && bracketDepth === 0 ? token.slice(utilityStart) : undefined;
+};
+
+const hasPaletteToken = (value: string): boolean =>
+  value.split(/\s+/u).some((token) => {
+    const utility = tailwindUtility(token);
+    return utility !== undefined && TAILWIND_PALETTE_TOKEN_PATTERN.test(utility);
+  });
+
+const closingBracket = (value: string, openingBracket: number): number | undefined => {
+  let closing: number | undefined;
+  scanBracketDepth(value, openingBracket, (character, index, bracketDepth) => {
+    if (character !== "]" || bracketDepth !== 0) return true;
+    closing = index;
+    return false;
+  });
+  return closing;
 };
 
 const hasArbitraryColorToken = (value: string): boolean =>
