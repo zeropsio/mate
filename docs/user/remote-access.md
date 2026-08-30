@@ -14,7 +14,7 @@ npx t3 pair
 
 If the server is only bound to loopback, the printed URL is not reachable from another device. Restart it with a reachable `--host` (see below). Use `--ttl` to change the token lifetime, and `--base-dir` to target a specific data directory.
 
-If no server is running, `t3 pair` says so and points you at `npx t3 serve` or `npx t3 connect`.
+If no server is running, `t3 pair` says so and points you at `npx t3 serve`.
 
 ## Recommended Setup
 
@@ -113,17 +113,6 @@ Typical uses:
 - revoke old pairing links or sessions
 
 Use `t3 auth --help` and the nested subcommand help pages for the full reference.
-
-### Deregister a T3 Connect Environment
-
-Open your account menu and choose **T3 Connect** to see every environment registered to your
-account. On mobile, open **Settings** → **T3 Connect**. Choose **Deregister** to revoke an
-environment's T3 Connect access, remove any managed tunnel, and free its host space.
-
-Deregistration is an account action and does not need a connection to the environment, so it also
-works for a server that was wiped or is no longer reachable. Device-local connect and disconnect
-controls remain in **Settings** → **Connections** on web and desktop or **Settings** →
-**Environments** on mobile.
 
 ## Security Notes
 

@@ -1,0 +1,507 @@
+{
+  "version": 1,
+  "surfaces": [
+    {
+      "id": "zerops-session",
+      "title": "Zerops session provider",
+      "components": ["apps/web/src/zerops/ZeropsSessionProvider.tsx"],
+      "entryPoints": [{ "kind": "provider", "value": "AppRoot" }],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile only has zeropsToken connection plumbing; the Zerops session UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["@t3tools/client-runtime/zerops"],
+      "reverseStates": [
+        { "action": "Sign in", "reverse": "Sign out" },
+        { "action": "Sign out", "reverse": "Sign in" },
+        { "action": "Register", "reverse": "Sign out" },
+        {
+          "action": "Verify TOTP",
+          "reverse": "none: Verification completes the pending sign-in and has no separate reverse action."
+        },
+        {
+          "action": "Clear last registration",
+          "reverse": "none: Clearing consumed registration handoff state is intentionally one-way."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the browser-owned Zerops account session yet."
+      },
+      "tests": ["apps/web/src/AppRoot.test.tsx"],
+      "untested": "AppRoot.test.tsx pins the provider mount, but the session provider behavior has no focused test.",
+      "captures": []
+    },
+    {
+      "id": "zerops-panel",
+      "title": "Zerops right panel",
+      "components": ["apps/web/src/components/zerops/ZeropsPanel.tsx"],
+      "entryPoints": [
+        { "kind": "right-panel-tab", "value": "Zerops (shortcut Z)" },
+        { "kind": "inline", "value": "ChatView Zerops panel opener" },
+        { "kind": "inline", "value": "Zerops lifecycle strip click" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops right panel yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": [
+        "subscribeZeropsTopology",
+        "subscribeZeropsLifecycle",
+        "subscribeZeropsAgentAuth"
+      ],
+      "reverseStates": [
+        { "action": "Open", "reverse": "Close" },
+        { "action": "Close", "reverse": "Open" }
+      ],
+      "docs": { "none": "No docs/user page documents the Zerops right panel yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsPanel.test.tsx",
+        "apps/web/src/zerops/feeds.test.ts"
+      ],
+      "untested": "ZeropsPanel.test.tsx covers only the placeholder; the populated panel body has no focused component test.",
+      "captures": []
+    },
+    {
+      "id": "zerops-service-map",
+      "title": "Zerops service map",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+        "apps/web/src/zerops/serviceMap.ts"
+      ],
+      "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops service map yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["subscribeZeropsTopology", "subscribeZeropsLifecycle"],
+      "reverseStates": [
+        {
+          "action": "Open service link",
+          "reverse": "none: The action opens an external URL and does not mutate application state."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents the Zerops service map yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
+        "apps/web/src/zerops/serviceMap.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-quick-actions",
+      "title": "Zerops quick actions",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
+        "apps/web/src/zerops/quickActions.ts"
+      ],
+      "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops quick actions yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["subscribeZeropsTopology"],
+      "reverseStates": [
+        {
+          "action": "Prefill composer",
+          "reverse": "none: Quick actions only insert editable draft text and expose no dedicated undo action."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents Zerops quick actions yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
+        "apps/web/src/zerops/quickActions.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-agent-auth-card",
+      "title": "Zerops agent authorization card",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
+        "apps/web/src/zerops/agentLogin.ts",
+        "apps/web/src/zerops/useAgentLogin.ts",
+        "apps/web/src/zerops/useAgentLoginCancel.ts"
+      ],
+      "entryPoints": [
+        { "kind": "inline", "value": "ZeropsPanel" },
+        { "kind": "overlay", "value": "ChatView when agent authorization needs attention" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no agent authorization card yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": [
+        "zerops.agentLogin.start",
+        "zerops.agentLogin.cancel",
+        "subscribeZeropsAgentAuth"
+      ],
+      "reverseStates": [
+        { "action": "Sign in", "reverse": "Cancel" },
+        { "action": "Cancel", "reverse": "Sign in" },
+        { "action": "Sign in again", "reverse": "Cancel" },
+        {
+          "action": "Open sign-in link",
+          "reverse": "none: The action opens the provider's external authorization page."
+        },
+        {
+          "action": "Copy link",
+          "reverse": "none: Copying text to the system clipboard has no application-managed reverse action."
+        },
+        {
+          "action": "Copy code",
+          "reverse": "none: Copying text to the system clipboard has no application-managed reverse action."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops agent authorization yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
+        "apps/web/src/zerops/agentLogin.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-lifecycle-strip",
+      "title": "Zerops lifecycle strip",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+        "apps/web/src/zerops/strip.ts"
+      ],
+      "entryPoints": [{ "kind": "inline", "value": "ChatHeader" }],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops lifecycle strip yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["subscribeZeropsLifecycle"],
+      "reverseStates": [
+        { "action": "Open Zerops panel", "reverse": "Close Zerops panel" },
+        { "action": "Close Zerops panel", "reverse": "Open Zerops panel" }
+      ],
+      "docs": { "none": "No docs/user page documents the Zerops lifecycle strip yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
+        "apps/web/src/zerops/strip.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-tool-card",
+      "title": "Zerops tool result card",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsToolCard.tsx",
+        "apps/web/src/zerops/activityResult.ts",
+        "apps/web/src/zerops/cards/payloads.ts"
+      ],
+      "entryPoints": [{ "kind": "inline", "value": "MessagesTimeline tool result" }],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops tool result cards yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["projection:zeropsResult"],
+      "reverseStates": [
+        {
+          "action": "Open result link",
+          "reverse": "none: The action opens an external URL and does not mutate application state."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents Zerops tool result cards yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsToolCard.test.tsx",
+        "apps/web/src/zerops/cards/payloads.test.ts",
+        "apps/web/src/zerops/activityResult.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-landing",
+      "title": "Zerops hosted landing",
+      "components": [
+        "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx"
+      ],
+      "entryPoints": [
+        { "kind": "route", "value": "/" },
+        { "kind": "escape", "value": "Connect a backend manually" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no hosted Zerops landing yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["@t3tools/client-runtime/zerops"],
+      "reverseStates": [
+        { "action": "Switch to registration", "reverse": "Switch to sign in" },
+        { "action": "Switch to sign in", "reverse": "Switch to registration" },
+        {
+          "action": "Sign in",
+          "reverse": "none: Successful sign-in leaves the landing; sign-out lives in Zerops settings."
+        },
+        {
+          "action": "Register",
+          "reverse": "none: Successful registration leaves the landing; sign-out lives in Zerops settings."
+        },
+        {
+          "action": "Verify TOTP",
+          "reverse": "none: Verification completes the pending sign-in and has no separate reverse action."
+        },
+        {
+          "action": "Open Zerops registration",
+          "reverse": "none: The action opens the external Zerops registration page."
+        },
+        {
+          "action": "Open manual connection",
+          "reverse": "none: The landing has no in-component way back after selecting the manual fallback."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents the hosted Zerops landing yet." },
+      "tests": ["apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"],
+      "untested": "ZeropsLandingShell has focused markup tests, but ZeropsHostedLanding orchestration has no component test.",
+      "captures": []
+    },
+    {
+      "id": "zerops-projects",
+      "title": "Zerops projects",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectPicker.tsx",
+        "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
+        "apps/web/src/zerops/autoEnterProvisioning.ts",
+        "apps/web/src/zerops/candidates.ts",
+        "apps/web/src/zerops/containerHealth.ts",
+        "apps/web/src/zerops/provisioning.ts",
+        "apps/web/src/zerops/registrationHandoff.ts",
+        "apps/web/src/zerops/turnstile.tsx"
+      ],
+      "entryPoints": [
+        { "kind": "route", "value": "/zerops" },
+        { "kind": "inline", "value": "Signed-in ZeropsHostedLanding" },
+        { "kind": "sidebar-item", "value": "Zerops" },
+        { "kind": "settings-section", "value": "Open Zerops" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops project picker or provisioning UI yet; it is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops",
+        "apps/web/src/connection/onboarding:connectZeropsIdentity"
+      ],
+      "reverseStates": [
+        {
+          "action": "Connect",
+          "reverse": "none: The projects page exposes no explicit disconnect action."
+        },
+        { "action": "Wait", "reverse": "Stop waiting" },
+        { "action": "Stop waiting", "reverse": "Wait" },
+        { "action": "Back", "reverse": "Wait" },
+        {
+          "action": "Enable",
+          "reverse": "none: Enable restarts the service and the page exposes no inverse operation."
+        },
+        {
+          "action": "Refresh",
+          "reverse": "none: Refresh is a read-only request with no state to reverse."
+        },
+        {
+          "action": "New project",
+          "reverse": "none: Project deletion is not offered on this page."
+        },
+        {
+          "action": "Retry",
+          "reverse": "none: Retry repeats a failed operation and creates no reversible state of its own."
+        },
+        {
+          "action": "Check it in the Zerops GUI",
+          "reverse": "none: The action opens the external Zerops GUI."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents Zerops project connection yet." },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsProjectPicker.test.tsx",
+        "apps/web/src/components/zerops/ZeropsProvisioningPanel.test.tsx",
+        "apps/web/src/zerops/candidates.test.ts",
+        "apps/web/src/zerops/provisioning.test.ts",
+        "apps/web/src/zerops/autoEnterProvisioning.test.ts",
+        "apps/web/src/zerops/registrationHandoff.test.ts",
+        "apps/web/src/zerops/containerHealth.test.ts",
+        "apps/web/src/zerops/turnstile.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-settings",
+      "title": "Zerops settings",
+      "components": ["apps/web/src/components/settings/ZeropsSettings.tsx"],
+      "entryPoints": [
+        { "kind": "route", "value": "/settings/zerops" },
+        { "kind": "settings-section", "value": "Zerops" },
+        { "kind": "settings-search", "value": "zerops-account" },
+        { "kind": "settings-search", "value": "zerops-organizations" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops settings section yet; the Zerops mobile UI is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "contracts": ["@t3tools/client-runtime/zerops"],
+      "reverseStates": [
+        {
+          "action": "Sign out",
+          "reverse": "none: Signing in happens on the Zerops landing; this settings page only offers the way out."
+        },
+        {
+          "action": "Open Zerops",
+          "reverse": "none: This action navigates to the Zerops projects page and does not mutate account state."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents Zerops account settings yet." },
+      "tests": [],
+      "untested": "ZeropsSettings has no focused component test.",
+      "captures": []
+    },
+    {
+      "id": "zerops-first-prompt",
+      "title": "Zerops first prompt",
+      "components": [
+        "apps/web/src/zerops/firstPrompt.ts",
+        "apps/web/src/zerops/composeFirstPrompt.ts"
+      ],
+      "entryPoints": [
+        { "kind": "inline", "value": "First thread created after connecting an environment" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops first-prompt composition yet; that flow is planned for S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModeNote": "The Zerops door composes the opening prompt once per environment; a manual link never composes it.",
+      "contracts": [
+        "local-storage:zerops-code.first-prompt.v1",
+        "local-storage:zerops-code.zerops-environments.v1"
+      ],
+      "reverseStates": [
+        {
+          "action": "Compose opening prompt",
+          "reverse": "none: The prompt is inserted into an editable draft that the user may change or clear before sending."
+        }
+      ],
+      "docs": { "none": "No docs/user page documents the Zerops first prompt yet." },
+      "tests": ["apps/web/src/zerops/firstPrompt.test.ts"],
+      "captures": []
+    },
+    {
+      "id": "manual-link",
+      "title": "Manual pairing link",
+      "components": [
+        "apps/web/src/components/auth/PairingRouteSurface.tsx",
+        "apps/web/src/hostedPairing.ts",
+        "apps/web/src/routes/_chat.index.tsx",
+        "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
+        "apps/mobile/src/features/connection/pairing.ts",
+        "apps/mobile/src/features/connection/useConnectionController.ts"
+      ],
+      "entryPoints": [
+        { "kind": "route", "value": "/pair" },
+        { "kind": "route", "value": "/pair?token=" },
+        { "kind": "route", "value": "mobile connections/new" },
+        { "kind": "escape", "value": "Zerops landing manual-connect fallback" }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": "yes"
+      },
+      "providers": "n/a",
+      "connectionModes": ["manual-link"],
+      "contracts": [
+        "apps/web/src/connection/onboarding:connectPairing",
+        "apps/mobile/src/connection/onboarding:connectPairingUrl",
+        "auth.bootstrapMethods"
+      ],
+      "reverseStates": [
+        {
+          "action": "Continue",
+          "reverse": "none: A successful pairing leaves the connection surface; disconnect is managed from the connected environment."
+        },
+        {
+          "action": "Try again",
+          "reverse": "none: Retrying repeats a failed hosted pairing attempt and creates no reversible state of its own."
+        },
+        { "action": "Scan QR code", "reverse": "Close scanner" },
+        { "action": "Close scanner", "reverse": "Scan QR code" }
+      ],
+      "docs": { "none": "No docs/user page documents manual pairing links yet." },
+      "tests": [
+        "apps/web/src/hostedPairing.test.ts",
+        "apps/web/src/routes/-chatIndexTitlebar.test.ts",
+        "apps/mobile/src/features/connection/pairing.test.ts"
+      ],
+      "untested": "PairingRouteSurface and ConnectionsNewRouteScreen have no focused component tests; the declared tests cover pairing logic and the web manual empty state only.",
+      "captures": []
+    }
+  ]
+}

@@ -107,9 +107,20 @@ describe("ClientSettings environment identification", () => {
 });
 
 describe("ClientSettings sidebar", () => {
+  it("does not carry a legacy sidebar flag any more", () => {
+    expect(decodeClientSettings({ legacySidebarEnabled: true })).not.toHaveProperty(
+      "legacySidebarEnabled",
+    );
+  });
+
+  it("does not carry a sidebar thread preview count any more", () => {
+    expect(decodeClientSettings({ sidebarThreadPreviewCount: 7 })).not.toHaveProperty(
+      "sidebarThreadPreviewCount",
+    );
+  });
+
   it("defaults to the current sidebar with automatic merge and inactivity settling", () => {
     const settings = decodeClientSettings({});
-    expect(settings.legacySidebarEnabled).toBe(false);
     expect(settings.sidebarAutoSettleAfterDays).toBe(3);
     expect(settings.sidebarAutoSettleOnMerge).toBe(true);
   });
@@ -119,16 +130,8 @@ describe("ClientSettings sidebar", () => {
       sidebarV2Enabled: false,
       sidebarV2ConfiguredByUser: true,
     });
-    expect(decoded.legacySidebarEnabled).toBe(false);
     expect(decoded).not.toHaveProperty("sidebarV2Enabled");
     expect(decoded).not.toHaveProperty("sidebarV2ConfiguredByUser");
-  });
-
-  it("preserves an explicit legacy sidebar opt-in", () => {
-    expect(decodeClientSettings({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(true);
-    expect(decodeClientSettingsPatch({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(
-      true,
-    );
   });
 
   it("allows auto-settle by inactivity to be disabled", () => {

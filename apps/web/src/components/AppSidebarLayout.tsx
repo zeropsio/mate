@@ -14,8 +14,6 @@ import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalSt
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useLegacySidebarEnabled } from "../hooks/useSettings";
-import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
@@ -111,9 +109,7 @@ function ProjectProjectionRetention() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const legacySidebarEnabled = useLegacySidebarEnabled();
-  // Settings routes show the settings nav in place of whichever thread
-  // sidebar is active.
+  // Settings routes show the settings nav in place of the thread sidebar.
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
@@ -204,8 +200,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
             <SidebarChromeHeader isElectron={isElectron} />
             <SettingsSidebarNav pathname={pathname} />
           </>
-        ) : legacySidebarEnabled ? (
-          <LegacyThreadSidebar />
         ) : (
           <ThreadSidebar />
         )}

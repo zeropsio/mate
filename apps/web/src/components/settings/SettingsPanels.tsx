@@ -38,7 +38,7 @@ import { createModelSelection } from "@t3tools/shared/model";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
-import { APP_VERSION, HOSTED_APP_CHANNEL, HOSTED_APP_CHANNEL_LABEL } from "../../branding";
+import { APP_VERSION } from "../../branding";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -49,7 +49,6 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { buildHostedChannelSelectionUrl, type HostedAppChannel } from "../../hostedPairing";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import {
   readAppearanceModePreference,
@@ -217,7 +216,6 @@ function AboutVersionSection() {
 
   const hasDesktopBridge = typeof window !== "undefined" && Boolean(window.desktopBridge);
   const selectedUpdateChannel = updateState?.channel ?? "latest";
-  const selectedHostedAppChannel = hasDesktopBridge ? null : HOSTED_APP_CHANNEL;
 
   const handleUpdateChannelChange = useCallback(
     (channel: DesktopUpdateChannel) => {
@@ -408,34 +406,6 @@ function AboutVersionSection() {
             </Select>
           }
         />
-      ) : selectedHostedAppChannel ? (
-        <SettingsRow
-          title="Update track"
-          description="Switches the hosted app release channel."
-          control={
-            <Select
-              value={selectedHostedAppChannel}
-              onValueChange={(value) => {
-                if (value === selectedHostedAppChannel) return;
-                window.location.assign(
-                  buildHostedChannelSelectionUrl({ channel: value as HostedAppChannel }),
-                );
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Update track">
-                <SelectValue>{HOSTED_APP_CHANNEL_LABEL}</SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="latest">
-                  Latest
-                </SelectItem>
-                <SelectItem hideIndicator value="nightly">
-                  Nightly
-                </SelectItem>
-              </SelectPopup>
-            </Select>
-          }
-        />
       ) : null}
     </>
   );
@@ -471,9 +441,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
-        : []),
-      ...(settings.sidebarThreadPreviewCount !== DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount
-        ? ["Visible threads"]
         : []),
       ...(settings.sidebarProjectGroupingMode !==
       DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
@@ -558,7 +525,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
-      settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
       settings.wordWrap,
@@ -637,7 +603,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
-      sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -1669,7 +1634,6 @@ function AutoSettleDaysInput({
 const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-token-streaming",
-  "legacy-sidebar",
 ]);
 
 /**
@@ -1767,19 +1731,6 @@ function LegacyFeaturesSection() {
                     })();
                   }}
                   aria-label="Stream token by token (legacy)"
-                />
-              }
-            />
-            <SettingsRow
-              {...searchableSetting("legacy-sidebar")}
-              description="Brings back the original sidebar with per-project thread trees. The default sidebar shows one flat list: active work as rich cards, settled threads as compact rows."
-              control={
-                <Switch
-                  checked={settings.legacySidebarEnabled}
-                  onCheckedChange={(checked) =>
-                    updateSettings({ legacySidebarEnabled: Boolean(checked) })
-                  }
-                  aria-label="Sidebar (legacy)"
                 />
               }
             />
@@ -2410,7 +2361,7 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection title="About">
-        {isElectron || HOSTED_APP_CHANNEL ? (
+        {isElectron ? (
           <AboutVersionSection />
         ) : (
           <SettingsRow
