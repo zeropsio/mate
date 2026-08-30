@@ -2,7 +2,9 @@
 /**
  * Shared exception-ledger support for the design-system guards. Oxlint rules use the AST scope;
  * CSS check scripts produce `css-declaration` findings and reconcile the same rule ledger with
- * the CSS scope.
+ * the CSS scope. Rules inspect one finding at a time, so rule-time suppression is a membership
+ * check; drivers receive every finding and reconcile them as a multiset, consuming one entry per
+ * occurrence.
  */
 
 import * as Schema from "effect/Schema";
@@ -31,7 +33,6 @@ export interface ExceptionFinding {
   readonly path: string;
   readonly kind: string;
   readonly fingerprint: string;
-  readonly ledgered: boolean;
 }
 
 /** The triple a rule uses to decide whether one finding is already reviewed. */
@@ -216,9 +217,75 @@ const sameFinding = (entry: ExceptionEntry, finding: ExceptionFinding): boolean 
   entry.kind === finding.kind &&
   entry.fingerprint === finding.fingerprint;
 
+const compareText = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const compareEntries = (left: ExceptionEntry, right: ExceptionEntry): number =>
+  compareText(left.path, right.path) ||
+  compareText(left.kind, right.kind) ||
+  compareText(left.fingerprint, right.fingerprint) ||
+  compareText(left.owner, right.owner) ||
+  compareText(left.reason, right.reason) ||
+  compareText(left.expires, right.expires);
+
+const compareFindings = (left: ExceptionFinding, right: ExceptionFinding): number =>
+  compareText(left.path, right.path) ||
+  compareText(left.kind, right.kind) ||
+  compareText(left.fingerprint, right.fingerprint);
+
+const compareCandidateEntries = (
+  left: ExceptionEntry,
+  right: ExceptionEntry,
+  finding: ExceptionFinding,
+  completedPhases: ReadonlySet<string>,
+): number => {
+  const normalizedFindingPath = normalizePath(finding.path);
+  const leftIsExact = normalizedFindingPath === left.path;
+  const rightIsExact = normalizedFindingPath === right.path;
+  if (leftIsExact !== rightIsExact) return leftIsExact ? -1 : 1;
+  if (left.path.length !== right.path.length) return right.path.length - left.path.length;
+
+  const leftIsExpired = completedPhases.has(left.expires);
+  const rightIsExpired = completedPhases.has(right.expires);
+  if (leftIsExpired !== rightIsExpired) return leftIsExpired ? 1 : -1;
+
+  return compareEntries(left, right);
+};
+
+const findBestEntryIndex = ({
+  entries,
+  unmatchedEntryIndexes,
+  finding,
+  completedPhases,
+  matches,
+}: {
+  readonly entries: ReadonlyArray<ExceptionEntry>;
+  readonly unmatchedEntryIndexes: ReadonlySet<number>;
+  readonly finding: ExceptionFinding;
+  readonly completedPhases: ReadonlySet<string>;
+  readonly matches: (entry: ExceptionEntry, finding: ExceptionFinding) => boolean;
+}): number | undefined => {
+  let bestIndex: number | undefined;
+  for (const index of unmatchedEntryIndexes) {
+    const candidate = entries[index];
+    if (candidate === undefined || !matches(candidate, finding)) continue;
+    if (
+      bestIndex === undefined ||
+      compareCandidateEntries(candidate, entries[bestIndex]!, finding, completedPhases) < 0
+    ) {
+      bestIndex = index;
+    }
+  }
+  return bestIndex;
+};
+
 /**
  * Purely reconciles scanner findings with the selected portion of a rule ledger. CSS scripts pass
  * their `css-declaration` findings with `scope: "css"`; the oxlint driver passes AST findings.
+ * Findings are visited in stable path/kind/fingerprint order and consume the most-specific matching
+ * entry, preferring exact paths, then longer suffixes, then active entries. Specificity-first greedy
+ * is a maximum matching because suffix candidates form nested sets: consuming the narrower entry
+ * preserves every broader suffix for findings with fewer choices.
  */
 export const reconcileExceptions = ({
   entries,
@@ -231,19 +298,50 @@ export const reconcileExceptions = ({
   readonly completedPhases: ReadonlySet<string>;
   readonly scope: ExceptionScope;
 }): ReconcileResult => {
-  const scopedEntries = entries.filter((candidate) => isEntryInScope(candidate, scope));
-  const unlisted = findings.filter((candidate) => !candidate.ledgered);
+  const scopedEntries = entries
+    .filter((candidate) => isEntryInScope(candidate, scope))
+    .toSorted(compareEntries);
+  const sortedFindings = findings.toSorted(compareFindings);
+  const unmatchedEntryIndexes = new Set(scopedEntries.keys());
+  const unlisted: Array<ExceptionFinding> = [];
+  for (const finding of sortedFindings) {
+    const entryIndex = findBestEntryIndex({
+      entries: scopedEntries,
+      unmatchedEntryIndexes,
+      finding,
+      completedPhases,
+      matches: sameFinding,
+    });
+    if (entryIndex === undefined) {
+      unlisted.push(finding);
+      continue;
+    }
+    unmatchedEntryIndexes.delete(entryIndex);
+  }
+
   const expired = scopedEntries.filter((candidate) => completedPhases.has(candidate.expires));
-  const activeEntries = scopedEntries.filter((candidate) => !expired.includes(candidate));
-  const unmatchedEntries = activeEntries.filter(
-    (candidate) => !findings.some((item) => sameFinding(candidate, item)),
-  );
-  const changed = unmatchedEntries.filter((candidate) =>
-    unlisted.some(
-      (item) => pathMatchesEntry(item.path, candidate.path) && candidate.kind === item.kind,
+  const unmatchedActiveEntryIndexes = new Set(
+    [...unmatchedEntryIndexes].filter(
+      (index) => !completedPhases.has(scopedEntries[index]!.expires),
     ),
   );
-  const dead = unmatchedEntries.filter((candidate) => !changed.includes(candidate));
+  const changedEntryIndexes = new Set<number>();
+  for (const finding of unlisted) {
+    const entryIndex = findBestEntryIndex({
+      entries: scopedEntries,
+      unmatchedEntryIndexes: unmatchedActiveEntryIndexes,
+      finding,
+      completedPhases,
+      matches: (candidate, item) =>
+        pathMatchesEntry(item.path, candidate.path) && candidate.kind === item.kind,
+    });
+    if (entryIndex !== undefined) {
+      unmatchedActiveEntryIndexes.delete(entryIndex);
+      changedEntryIndexes.add(entryIndex);
+    }
+  }
+  const changed = scopedEntries.filter((_, index) => changedEntryIndexes.has(index));
+  const dead = scopedEntries.filter((_, index) => unmatchedActiveEntryIndexes.has(index));
 
   return {
     entryCount: scopedEntries.length,

@@ -32,7 +32,6 @@ const entry = (path: string): ExceptionEntry => ({
 const diagnostic = (options: {
   readonly path: string;
   readonly fingerprint: string;
-  readonly ledgered: boolean;
   readonly code?: string;
 }) => ({
   message: formatFindingMessage({
@@ -40,7 +39,7 @@ const diagnostic = (options: {
     summary: "Fixture guard finding.",
     kind: "Literal",
     fingerprint: options.fingerprint,
-    ledgered: options.ledgered,
+    ledgered: true,
   }),
   code: options.code ?? `t3code(${RULE_NAME})`,
   severity: "error",
@@ -97,17 +96,14 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
               diagnostic({
                 path: entries[0]!.path,
                 fingerprint: entries[0]!.fingerprint,
-                ledgered: true,
               }),
               diagnostic({
                 path: entries[1]!.path,
                 fingerprint: entries[1]!.fingerprint,
-                ledgered: true,
               }),
               diagnostic({
                 path: "apps/web/src/new.ts",
                 fingerprint: "source:new",
-                ledgered: false,
               }),
             ],
             (request) => {
@@ -161,7 +157,6 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
               diagnostic({
                 path: ledgerEntry.path,
                 fingerprint: ledgerEntry.fingerprint,
-                ledgered: true,
               }),
             ),
           ),
@@ -188,7 +183,6 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
             diagnostic({
               path: "apps/web/src/foreign.ts",
               fingerprint: "foreign",
-              ledgered: false,
               code: "t3code(foreign-rule)",
             }),
           ]),
