@@ -78,6 +78,47 @@ jobs:
       - name: Verify preload bundle output
         run: node apps/desktop/scripts/verify-preload-bundle.mjs
 
+  desktop_smoke:
+    name: Desktop Smoke
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Build desktop pipeline
+        run: vp run build:desktop
+
+      - name: Stage desktop web bundle
+        run: node scripts/stage-desktop-web.ts
+
+      - name: Smoke test desktop
+        run: xvfb-run -a -s "-screen 0 1440x900x24" vp run --filter @t3tools/desktop smoke-test
+
+      - name: Upload desktop smoke capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-capture
+          path: ${{ runner.temp }}/desktop-smoke-*/smoke.png
+          retention-days: 7
+
   # Everything except `t3` (apps/server). `--parallel` drops the package
   # dependency ordering that `vp run` applies by default: these `test` tasks
   # declare no `dependsOn` and resolve workspace deps from source, so ordering
