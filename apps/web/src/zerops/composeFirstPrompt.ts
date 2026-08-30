@@ -11,11 +11,14 @@ import { useComposerDraftStore } from "../composerDraftStore";
 
 import {
   ZEROPS_ONBOARDING_PROMPT,
+  shouldComposeFirstPrompt,
+} from "@t3tools/client-runtime/zerops/firstPrompt";
+
+import {
   connectionOriginFor,
   readFirstPromptMarkers,
   rememberFirstPromptComposed,
-  shouldComposeFirstPrompt,
-} from "./firstPrompt";
+} from "./firstPromptStorage";
 
 export function composeZeropsFirstPrompt(input: {
   readonly environmentId: string;

@@ -14,7 +14,7 @@ import {
   zeropsRegionFromPublicZone,
   type ZeropsProject,
   type ZeropsService,
-} from "@t3tools/client-runtime/zerops";
+} from "./api.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 export type ZeropsCandidateGroup = "connected" | "ready" | "provisioning" | "unavailable";

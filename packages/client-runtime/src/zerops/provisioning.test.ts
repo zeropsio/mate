@@ -1,9 +1,5 @@
-import {
-  ZeropsApiClient,
-  type ZeropsProject,
-  type ZeropsService,
-} from "@t3tools/client-runtime/zerops";
-import { describe, expect, it } from "vite-plus/test";
+import { ZeropsApiClient, type ZeropsProject, type ZeropsService } from "./api.ts";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   PROVISIONING_CAPS,
@@ -11,7 +7,7 @@ import {
   readProvisioning,
   startProvisioning,
   type ProvisioningState,
-} from "./provisioning";
+} from "./provisioning.ts";
 
 const CLIENT_ID = "org-1";
 
@@ -46,6 +42,22 @@ function reachAwaitingContainer(nowMs = 0): ProvisioningState {
 }
 
 describe("provisioning state machine", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("accepts the clock explicitly", () => {
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      throw new Error("Date.now must not be used");
+    });
+
+    const state = startProvisioning({ zcpClaimed: true, nowMs: 100 });
+    const advanced = advanceProvisioning(state, { kind: "projects", projects: [PROJECT] }, 200);
+
+    expect(advanced.phase).toBe("awaiting-container");
+    expect(advanced.phaseStartedAtMs).toBe(200);
+  });
+
   it("every waiting state says what it waits for and how long it will wait", () => {
     const awaitingProject = startProvisioning({ zcpClaimed: true, nowMs: 0 });
     expect(awaitingProject.phase).toBe("awaiting-project");

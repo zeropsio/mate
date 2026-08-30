@@ -14,7 +14,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
-import { deriveZeropsCandidates, normalizeOrigin, type ZeropsCandidate } from "./candidates";
+import {
+  deriveZeropsCandidates,
+  normalizeOrigin,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import { useZeropsSession, zeropsErrorMessage } from "./ZeropsSessionProvider";
 
 /** How many projects' service lists are read at once. */

@@ -22,10 +22,10 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import {
   newestProvisioningCandidate,
   shouldAutoEnterProvisioning,
-} from "~/zerops/autoEnterProvisioning";
-import { zeropsCodeBaseUrl, type ZeropsCandidate } from "~/zerops/candidates";
-import { rememberZeropsEnvironment } from "~/zerops/firstPrompt";
-import { deriveProvisioningStart } from "~/zerops/registrationHandoff";
+} from "@t3tools/client-runtime/zerops/autoEnterProvisioning";
+import { zeropsCodeBaseUrl, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
+import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";

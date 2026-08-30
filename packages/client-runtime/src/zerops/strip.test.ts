@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
 
-import { zeropsStripState } from "./strip";
+import { zeropsStripState } from "./strip.ts";
 
 const envelope = (overrides: Record<string, unknown>): ZeropsStateEnvelope =>
   ({
@@ -33,7 +33,7 @@ const attempt = (success: boolean) => ({
 const runningTool = (toolName: string) => ({
   toolName,
   status: "inProgress",
-  at: new Date(),
+  at: "2026-08-28T10:00:00Z",
   itemId: "item-1",
 });
 

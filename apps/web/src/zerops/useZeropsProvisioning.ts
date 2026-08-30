@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { probeZeropsContainerHealth } from "./containerHealth";
+import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import {
   advanceProvisioning,
   isProvisioningWaiting,
@@ -17,7 +17,7 @@ import {
   startProvisioningForContainer,
   type ProvisioningEvent,
   type ProvisioningState,
-} from "./provisioning";
+} from "@t3tools/client-runtime/zerops/provisioning";
 import { useZeropsSession, zeropsErrorMessage } from "./ZeropsSessionProvider";
 
 const POLL_INTERVAL_MS = 2000;

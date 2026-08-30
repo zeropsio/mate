@@ -4,7 +4,7 @@
  *
  * Absent entirely until the thread's agent has run a workflow-aware Zerops
  * tool, so a thread that never touches Zerops never grows a strip. The wording
- * is decided in `../../zerops/strip.ts` and tested there; the line below is
+ * is decided in `@t3tools/client-runtime/zerops/strip` and tested there; the line below is
  * split out from the feed-reading container so its markup can be tested
  * without a live atom registry.
  *
@@ -17,7 +17,11 @@ import { Spinner } from "~/components/ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
-import { type ZeropsStripState, type ZeropsStripTone, zeropsStripState } from "../../zerops/strip";
+import {
+  type ZeropsStripState,
+  type ZeropsStripTone,
+  zeropsStripState,
+} from "@t3tools/client-runtime/zerops/strip";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 
 const TONE_CLASS: Record<ZeropsStripTone, string> = {

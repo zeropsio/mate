@@ -1,8 +1,8 @@
-import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveZeropsCandidates, groupZeropsCandidates } from "./candidates";
+import type { ZeropsProject, ZeropsService } from "./api.ts";
+import { deriveZeropsCandidates, groupZeropsCandidates } from "./candidates.ts";
 
 const PROJECT: ZeropsProject = {
   id: "project-1",

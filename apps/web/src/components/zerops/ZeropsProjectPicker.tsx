@@ -10,8 +10,11 @@ import type { ReactNode } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { groupZeropsCandidates, type ZeropsCandidate } from "~/zerops/candidates";
-import type { ZeropsContainerHealth } from "~/zerops/provisioning";
+import {
+  groupZeropsCandidates,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
 function CandidateRow({
   candidate,

@@ -171,7 +171,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsAgentAuthCard } from "./zerops/ZeropsAgentAuthCard";
-import { zeropsAgentAuthNeedsAttention } from "../zerops/agentLogin";
+import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
 import { useAgentLogin } from "../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../zerops/useAgentLoginCancel";
 import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";

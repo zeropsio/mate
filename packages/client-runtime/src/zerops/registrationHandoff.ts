@@ -9,10 +9,7 @@
  * here, against a registration response, rather than end to end.
  */
 
-import {
-  zeropsClientsFromUser,
-  type ZeropsRegistrationResponse,
-} from "@t3tools/client-runtime/zerops";
+import { zeropsClientsFromUser, type ZeropsRegistrationResponse } from "./api.ts";
 
 export interface RegistrationProvisioningStart {
   /** The org to poll for the claimed project, or null when the response named none. */

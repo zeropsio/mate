@@ -34,8 +34,8 @@
  * and a restart is the action that helps in either case.
  */
 
-import { zeropsCodeBaseUrl } from "./candidates";
-import type { ZeropsContainerHealth } from "./provisioning";
+import { zeropsCodeBaseUrl } from "./candidates.ts";
+import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 

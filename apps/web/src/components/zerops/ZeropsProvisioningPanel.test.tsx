@@ -6,7 +6,7 @@ import {
   advanceProvisioning,
   startProvisioning,
   type ProvisioningState,
-} from "~/zerops/provisioning";
+} from "@t3tools/client-runtime/zerops/provisioning";
 
 import { ZeropsProvisioningPanel, zeropsGuiProjectUrl } from "./ZeropsProvisioningPanel";
 

@@ -2,8 +2,8 @@ import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsCandidate } from "~/zerops/candidates";
-import type { ZeropsContainerHealth } from "~/zerops/provisioning";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 

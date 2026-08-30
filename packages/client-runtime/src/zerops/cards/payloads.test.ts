@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsActivityResult } from "../activityResult";
-import { readZeropsCardSource } from "./decode";
-import { LIVE_DEPLOY_ERROR_RESULT, LIVE_VERIFY_RESULT } from "./liveFixtures";
-import { decodeZeropsCard } from "./payloads";
+import type { ZeropsActivityResult } from "../activityResult.ts";
+import { readZeropsCardSource } from "./decode.ts";
+import { LIVE_DEPLOY_ERROR_RESULT, LIVE_VERIFY_RESULT } from "./liveFixtures.ts";
+import { decodeZeropsCard } from "./payloads.ts";
 
 const result = (toolName: string, body: unknown): ZeropsActivityResult => ({
   toolName,

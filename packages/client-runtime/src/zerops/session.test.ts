@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 
 import {
   ZEROPS_SELECTION_STORAGE_KEY,
@@ -31,6 +31,23 @@ function memoryStorage(seed: Record<string, string> = {}): ZeropsStorageAdapter 
 }
 
 describe("Zerops session storage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts storage explicitly", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem() {
+        throw new Error("the global localStorage must not be used");
+      },
+    });
+    const storage = memoryStorage({
+      [ZEROPS_SESSION_STORAGE_KEY]: JSON.stringify({ accessToken: "access-1" }),
+    });
+
+    await expect(loadZeropsSession(storage)).resolves.toEqual({ accessToken: "access-1" });
+  });
+
   it("keeps the session and the selection under separate versioned keys", async () => {
     const storage = memoryStorage();
 

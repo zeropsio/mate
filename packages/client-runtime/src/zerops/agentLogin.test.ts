@@ -13,7 +13,7 @@ import {
   agentLoginTerminalToFocus,
   classifyAgentLogin,
   zeropsAgentAuthNeedsAttention,
-} from "./agentLogin";
+} from "./agentLogin.ts";
 
 const agent = (
   overrides: Partial<ZeropsAgentAuth> & { agentId: "claude-code" | "codex" },
@@ -148,7 +148,7 @@ const loginState = (
   overrides: Partial<ZeropsAgentLoginState> & { phase: ZeropsAgentLoginState["phase"] },
 ): ZeropsAgentLoginState => ({
   terminalId: "agent-login-claude-code",
-  startedAt: new Date("2026-08-29T12:00:00.000Z") as unknown as ZeropsAgentLoginState["startedAt"],
+  startedAt: "2026-08-29T12:00:00.000Z" as unknown as ZeropsAgentLoginState["startedAt"],
   ...overrides,
 });
 

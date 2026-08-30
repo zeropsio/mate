@@ -1,10 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsActivityResult } from "../../zerops/activityResult";
-import { readZeropsCardSource } from "../../zerops/cards/decode";
-import { decodeZeropsCard } from "../../zerops/cards/payloads";
-import { LIVE_DEPLOY_ERROR_RESULT } from "../../zerops/cards/liveFixtures";
+import type { ZeropsActivityResult } from "@t3tools/client-runtime/zerops/activityResult";
+import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
+import { LIVE_DEPLOY_ERROR_RESULT } from "@t3tools/client-runtime/zerops/cards/liveFixtures";
+import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
 import { ZeropsToolCard } from "./ZeropsToolCard";
 
 /** The whole path a timeline row takes: result text → payload → markup. */
