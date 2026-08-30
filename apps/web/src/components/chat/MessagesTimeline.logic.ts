@@ -9,6 +9,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
+import { isZeropsMilestone } from "@t3tools/client-runtime/zerops/cards/milestone";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -473,9 +474,8 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
 
 interface TurnFold {
   turnId: TurnId;
-  anchorEntryId: string;
   createdAt: string;
-  hiddenEntryIds: ReadonlySet<string>;
+  hiddenEntries: ReadonlySet<TimelineEntry>;
   label: string;
 }
 
@@ -531,7 +531,7 @@ function deriveTurnFolds(input: {
   terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
   unsettledTurnId: TurnId | null;
-}): ReadonlyMap<string, TurnFold> {
+}): ReadonlyMap<TimelineEntry, TurnFold> {
   interface TurnGroup {
     entries: Array<TimelineEntry>;
     terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
@@ -586,7 +586,7 @@ function deriveTurnFolds(input: {
     }
   }
 
-  const foldsByAnchorEntryId = new Map<string, TurnFold>();
+  const foldsByAnchorEntry = new Map<TimelineEntry, TurnFold>();
   for (const [turnId, group] of groupsByTurnId) {
     if (turnId === input.unsettledTurnId) {
       continue;
@@ -597,25 +597,28 @@ function deriveTurnFolds(input: {
     const firstAssistantEntry = group.entries.find(
       (entry): entry is Extract<TimelineEntry, { kind: "message" }> => entry.kind === "message",
     );
-    const hiddenEntryIds = new Set<string>();
+    const hiddenEntries = new Set<TimelineEntry>();
     for (const entry of group.entries) {
-      if (entry.id === firstAssistantEntry?.id || entry.id === group.terminalEntry?.id) {
+      if (entry === firstAssistantEntry || entry === group.terminalEntry) {
         continue;
       }
-      // Agent-spawn CTA rows never fold: workflows outlive their launching
-      // turn (dynamic spawns, background execution), and folding the CTA
-      // when the turn settles makes a still-running fleet invisible.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+      // Agent-spawn CTA rows and selected Zerops cards never fold. Workflows
+      // outlive their launching turn, while these cards are the durable
+      // outcomes a settled turn needs to leave readable.
+      if (
+        entry.kind === "work" &&
+        (entry.entry.agentSpawn !== undefined || isZeropsMilestone(entry.entry))
+      ) {
         continue;
       }
-      hiddenEntryIds.add(entry.id);
+      hiddenEntries.add(entry);
     }
-    if (hiddenEntryIds.size === 0) {
+    if (hiddenEntries.size === 0) {
       continue;
     }
 
     const firstEntry = group.entries[0];
-    const firstHiddenEntry = group.entries.find((entry) => hiddenEntryIds.has(entry.id));
+    const firstHiddenEntry = group.entries.find((entry) => hiddenEntries.has(entry));
     const lastEntry = group.entries.at(-1);
     if (!firstEntry || !firstHiddenEntry || !lastEntry) {
       continue;
@@ -646,15 +649,14 @@ function deriveTurnFolds(input: {
         ? `Worked for ${duration}`
         : "Worked";
 
-    foldsByAnchorEntryId.set(firstHiddenEntry.id, {
+    foldsByAnchorEntry.set(firstHiddenEntry, {
       turnId,
-      anchorEntryId: firstHiddenEntry.id,
       createdAt: firstHiddenEntry.createdAt,
-      hiddenEntryIds,
+      hiddenEntries,
       label,
     });
   }
-  return foldsByAnchorEntryId;
+  return foldsByAnchorEntry;
 }
 
 export function deriveMessagesTimelineRows(input: {
@@ -669,6 +671,36 @@ export function deriveMessagesTimelineRows(input: {
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
+  const workTimelineEntries = input.timelineEntries.filter(
+    (entry): entry is Extract<TimelineEntry, { kind: "work" }> => entry.kind === "work",
+  );
+  const preferredWorkRowOwnerById = new Map<string, Extract<TimelineEntry, { kind: "work" }>>();
+  for (const timelineEntry of workTimelineEntries) {
+    if (!preferredWorkRowOwnerById.has(timelineEntry.entry.id)) {
+      preferredWorkRowOwnerById.set(timelineEntry.entry.id, timelineEntry);
+    }
+  }
+  // Preserve established work-row ids when they are unique. A later entry
+  // that reuses one falls back to its timeline identity so list keys remain
+  // stable and collision-free across collapse and expansion.
+  const claimedWorkRowIds = new Set(preferredWorkRowOwnerById.keys());
+  const workRowIdByEntry = new Map<WorkLogEntry, string>();
+  for (const [entryIndex, timelineEntry] of workTimelineEntries.entries()) {
+    if (preferredWorkRowOwnerById.get(timelineEntry.entry.id) === timelineEntry) {
+      workRowIdByEntry.set(timelineEntry.entry, timelineEntry.entry.id);
+      continue;
+    }
+    let rowId = timelineEntry.id;
+    if (claimedWorkRowIds.has(rowId)) {
+      rowId = `work-row:${timelineEntry.id}:${entryIndex}`;
+    }
+    while (claimedWorkRowIds.has(rowId)) {
+      rowId = `${rowId}:duplicate`;
+    }
+    claimedWorkRowIds.add(rowId);
+    workRowIdByEntry.set(timelineEntry.entry, rowId);
+  }
+  const workRowId = (entry: WorkLogEntry) => workRowIdByEntry.get(entry) ?? entry.id;
   const durationStartByMessageId = computeMessageDurationStart(
     input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
@@ -677,17 +709,17 @@ export function deriveMessagesTimelineRows(input: {
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
-  const foldsByAnchorEntryId = deriveTurnFolds({
+  const foldsByAnchorEntry = deriveTurnFolds({
     timelineEntries: input.timelineEntries,
     terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
     unsettledTurnId,
   });
-  const collapsedEntryIds = new Set<string>();
-  for (const fold of foldsByAnchorEntryId.values()) {
+  const collapsedEntries = new Set<TimelineEntry>();
+  for (const fold of foldsByAnchorEntry.values()) {
     if (!input.expandedTurnIds?.has(fold.turnId)) {
-      for (const entryId of fold.hiddenEntryIds) {
-        collapsedEntryIds.add(entryId);
+      for (const entry of fold.hiddenEntries) {
+        collapsedEntries.add(entry);
       }
     }
   }
@@ -709,6 +741,14 @@ export function deriveMessagesTimelineRows(input: {
     input.isWorking &&
     index >= activeTurnHeaderIndex &&
     (unsettledTurnId === null || timelineEntryTurnId(entry) === unsettledTurnId);
+  const activeMilestoneEntries = new Set(
+    input.timelineEntries.filter(
+      (entry, index): entry is Extract<TimelineEntry, { kind: "work" }> =>
+        entry.kind === "work" &&
+        entryBelongsToActiveTurn(entry, index) &&
+        isZeropsMilestone(entry.entry),
+    ),
+  );
   const workEntryIsInActiveRun = (entry: WorkLogEntry) =>
     input.isWorking &&
     unsettledTurnId !== null &&
@@ -726,8 +766,9 @@ export function deriveMessagesTimelineRows(input: {
     if (entry.kind === "work") {
       return (
         entry.entry.agentSpawn === undefined &&
-        workLogEntryIsToolLike(entry.entry) &&
-        entry.entry.toolLifecycleStatus === "inProgress"
+        ((workLogEntryIsToolLike(entry.entry) &&
+          entry.entry.toolLifecycleStatus === "inProgress") ||
+          activeMilestoneEntries.has(entry))
       );
     }
     if (entry.kind === "proposed-plan" || entry.kind === "turn-plan") return true;
@@ -741,6 +782,7 @@ export function deriveMessagesTimelineRows(input: {
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
       entry.entry.agentSpawn !== undefined ||
+      activeMilestoneEntries.has(entry) ||
       entry.entry.tone === "error" ||
       !workLogEntryIsToolLike(entry.entry)
     ) {
@@ -748,14 +790,14 @@ export function deriveMessagesTimelineRows(input: {
     }
     activeToolEntries.unshift(entry);
   }
-  const activeWorkEntryIds = new Set(activeToolEntries.map((entry) => entry.id));
+  const activeWorkEntries = new Set(activeToolEntries);
   const visibleActiveToolEntries = omitSupersededLifecycleMarkers(
     activeToolEntries.filter((entry) => isVisibleActiveToolEntry(entry.entry)),
     (entry) => entry.entry,
   );
   const activeWorkAnchor = activeToolEntries[0];
   const latestActiveToolEntry = visibleActiveToolEntries.at(-1);
-  const activeWorkPlacementEntryId = latestActiveToolEntry?.id;
+  const activeWorkPlacementEntry = latestActiveToolEntry;
   const activeWorkRow =
     activeWorkAnchor && latestActiveToolEntry
       ? (() => {
@@ -786,7 +828,7 @@ export function deriveMessagesTimelineRows(input: {
     for (const [entryIndex, workEntry] of activeWorkRow.groupedEntries.entries()) {
       nextRows.push({
         kind: "work",
-        id: workEntry.id,
+        id: workRowId(workEntry),
         createdAt: workEntry.createdAt,
         groupedEntries: [workEntry],
         isExpandedToolGroupEntry: true,
@@ -805,11 +847,11 @@ export function deriveMessagesTimelineRows(input: {
       appendWorkingRow();
     }
 
-    if (timelineEntry.id === activeWorkPlacementEntryId) {
+    if (timelineEntry === activeWorkPlacementEntry) {
       appendActiveWorkRows();
     }
 
-    const anchoredTurnFold = foldsByAnchorEntryId.get(timelineEntry.id);
+    const anchoredTurnFold = foldsByAnchorEntry.get(timelineEntry);
     if (anchoredTurnFold) {
       nextRows.push({
         kind: "turn-fold",
@@ -821,25 +863,28 @@ export function deriveMessagesTimelineRows(input: {
       });
     }
 
-    if (collapsedEntryIds.has(timelineEntry.id)) {
+    if (collapsedEntries.has(timelineEntry)) {
       continue;
     }
 
-    if (activeWorkEntryIds.has(timelineEntry.id)) {
+    if (timelineEntry.kind === "work" && activeWorkEntries.has(timelineEntry)) {
       continue;
     }
 
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
+      const timelineEntryIsActiveMilestone = activeMilestoneEntries.has(timelineEntry);
       let cursor = index + 1;
       while (cursor < input.timelineEntries.length) {
         const nextEntry = input.timelineEntries[cursor];
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
-          activeWorkEntryIds.has(nextEntry.id) ||
-          collapsedEntryIds.has(nextEntry.id) ||
-          foldsByAnchorEntryId.has(nextEntry.id)
+          activeWorkEntries.has(nextEntry) ||
+          collapsedEntries.has(nextEntry) ||
+          foldsByAnchorEntry.has(nextEntry) ||
+          timelineEntryIsActiveMilestone ||
+          activeMilestoneEntries.has(nextEntry)
         ) {
           break;
         }
@@ -877,7 +922,7 @@ export function deriveMessagesTimelineRows(input: {
             for (const [entryIndex, workEntry] of visibleGroupedEntries.entries()) {
               nextRows.push({
                 kind: "work",
-                id: workEntry.id,
+                id: workRowId(workEntry),
                 createdAt: workEntry.createdAt,
                 groupedEntries: [workEntry],
                 isExpandedToolGroupEntry: true,
@@ -888,30 +933,39 @@ export function deriveMessagesTimelineRows(input: {
         } else if (onlyToolEntries) {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
           const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
-          const summaryKind = toolGroupSummaryKind(visibleGroupedEntries);
-          nextRows.push({
-            kind: "work-toggle",
-            id: `work-toggle:${timelineEntry.id}`,
-            createdAt: timelineEntry.createdAt,
-            groupId,
-            hiddenCount: visibleGroupedEntries.length,
-            expanded,
-            onlyToolEntries: true,
-            summary: summarizeToolGroup(visibleGroupedEntries),
-            summaryKind,
-            hasFailure: workEntryDisplayIndicatesToolFailure(visibleGroupedEntries.at(-1)!),
-          });
-          if (expanded) {
-            for (const [entryIndex, workEntry] of visibleGroupedEntries.entries()) {
-              nextRows.push({
-                kind: "work",
-                id: workEntry.id,
-                createdAt: workEntry.createdAt,
-                groupedEntries: [workEntry],
-                isExpandedToolGroupEntry: true,
-                isLastExpandedToolGroupEntry: entryIndex === visibleGroupedEntries.length - 1,
-              });
-            }
+          const milestoneEntries = visibleGroupedEntries.filter(isZeropsMilestone);
+          const milestoneEntrySet = new Set(milestoneEntries);
+          const summarizedEntries = visibleGroupedEntries.filter(
+            (entry) => !milestoneEntrySet.has(entry),
+          );
+          const summarizedEntrySet = new Set(summarizedEntries);
+          const lastSummarizedEntry = summarizedEntries.at(-1);
+          if (summarizedEntries.length > 0) {
+            nextRows.push({
+              kind: "work-toggle",
+              id: `work-toggle:${timelineEntry.id}`,
+              createdAt: timelineEntry.createdAt,
+              groupId,
+              hiddenCount: summarizedEntries.length,
+              expanded,
+              onlyToolEntries: true,
+              summary: summarizeToolGroup(summarizedEntries),
+              summaryKind: toolGroupSummaryKind(summarizedEntries),
+              hasFailure: workEntryDisplayIndicatesToolFailure(summarizedEntries.at(-1)!),
+            });
+          }
+          const renderedEntries = expanded ? visibleGroupedEntries : milestoneEntries;
+          for (const workEntry of renderedEntries) {
+            const isRevealedSummaryEntry = expanded && summarizedEntrySet.has(workEntry);
+            nextRows.push({
+              kind: "work",
+              id: workRowId(workEntry),
+              createdAt: workEntry.createdAt,
+              groupedEntries: [workEntry],
+              isExpandedToolGroupEntry: isRevealedSummaryEntry,
+              isLastExpandedToolGroupEntry:
+                isRevealedSummaryEntry && workEntry === lastSummarizedEntry,
+            });
           }
         } else if (visibleGroupedEntries.length <= MAX_VISIBLE_WORK_LOG_ENTRIES) {
           nextRows.push({
@@ -925,26 +979,30 @@ export function deriveMessagesTimelineRows(input: {
         } else {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
           const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
-          // Agent-spawn CTA rows are always visible: a running fleet must
-          // never hide behind a "+N tool calls" toggle. Selection is by
-          // membership (spawn OR recent-tail), preserving the group's
-          // chronological order in both collapsed and expanded states
-          // (review finding: concatenating two filtered lists moved a
+          // Agent-spawn CTA rows and selected Zerops cards are always visible:
+          // neither belongs behind a "+N tool calls" toggle. Selection is by
+          // membership (exempt OR recent-tail), preserving the group's order
+          // in both states (concatenating filtered lists once moved a
           // mid-group spawn row above earlier tool rows).
+          const alwaysVisibleEntries = new Set(
+            visibleGroupedEntries.filter(
+              (entry) => entry.agentSpawn !== undefined || isZeropsMilestone(entry),
+            ),
+          );
           const overflowCandidates = visibleGroupedEntries.filter(
-            (entry) => entry.agentSpawn === undefined,
+            (entry) => !alwaysVisibleEntries.has(entry),
           );
           const hiddenEntries = overflowCandidates.slice(0, -MAX_VISIBLE_WORK_LOG_ENTRIES);
-          const hiddenIds = new Set(hiddenEntries.map((entry) => entry.id));
+          const hiddenEntrySet = new Set(hiddenEntries);
           const visibleEntries = visibleGroupedEntries.filter(
-            (entry) => entry.agentSpawn !== undefined || !hiddenIds.has(entry.id),
+            (entry) => alwaysVisibleEntries.has(entry) || !hiddenEntrySet.has(entry),
           );
           const renderedEntries = expanded ? visibleGroupedEntries : visibleEntries;
 
           for (const workEntry of renderedEntries) {
             nextRows.push({
               kind: "work",
-              id: workEntry.id,
+              id: workRowId(workEntry),
               createdAt: workEntry.createdAt,
               groupedEntries: [workEntry],
               isExpandedToolGroupEntry: false,

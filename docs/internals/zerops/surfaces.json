@@ -243,6 +243,7 @@
       "components": [
         "apps/web/src/components/zerops/ZeropsToolCard.tsx",
         "packages/client-runtime/src/zerops/activityResult.ts",
+        "packages/client-runtime/src/zerops/cards/milestone.ts",
         "packages/client-runtime/src/zerops/cards/payloads.ts"
       ],
       "entryPoints": [{ "kind": "inline", "value": "MessagesTimeline tool result" }],
@@ -265,7 +266,10 @@
       ],
       "docs": { "none": "No docs/user page documents Zerops tool result cards yet." },
       "tests": [
+        "apps/web/src/components/chat/MessagesTimeline.logic.test.ts",
+        "apps/web/src/components/chat/MessagesTimeline.test.tsx",
         "apps/web/src/components/zerops/ZeropsToolCard.test.tsx",
+        "packages/client-runtime/src/zerops/cards/milestone.test.ts",
         "packages/client-runtime/src/zerops/cards/payloads.test.ts",
         "packages/client-runtime/src/zerops/activityResult.test.ts"
       ],

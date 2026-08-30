@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  LIVE_DEPLOY_ERROR_RESULT,
+  LIVE_VERIFY_RESULT,
+} from "@t3tools/client-runtime/zerops/cards/liveFixtures";
+import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
+import {
   computeStableMessagesTimelineRows,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
@@ -7,6 +12,95 @@ import {
   resolveAssistantMessageCopyState,
   shouldPreserveAssistantLineBreaks,
 } from "./MessagesTimeline.logic";
+
+const makeWorkTimelineEntry = (
+  id: string,
+  entry: Partial<WorkLogEntry> = {},
+): Extract<TimelineEntry, { kind: "work" }> => ({
+  id: `${id}-entry`,
+  kind: "work",
+  createdAt: `2026-01-01T00:00:${id.length.toString().padStart(2, "0")}Z`,
+  entry: {
+    id: `${id}-work`,
+    createdAt: `2026-01-01T00:00:${id.length.toString().padStart(2, "0")}Z`,
+    label: id,
+    tone: "tool",
+    itemType: "mcp_tool_call",
+    toolLifecycleStatus: "completed",
+    ...entry,
+  },
+});
+
+const makeAssistantTimelineEntry = (
+  id: string,
+  createdAt: string,
+): Extract<TimelineEntry, { kind: "message" }> => ({
+  id: `${id}-entry`,
+  kind: "message",
+  createdAt,
+  message: {
+    id: id as never,
+    role: "assistant",
+    text: id,
+    turnId: "turn-milestone" as never,
+    createdAt,
+    updatedAt: createdAt,
+    streaming: false,
+  },
+});
+
+const deriveSettledRows = (
+  timelineEntries: TimelineEntry[],
+  expandedWorkGroupIds?: ReadonlySet<string>,
+) =>
+  deriveMessagesTimelineRows({
+    timelineEntries,
+    ...(expandedWorkGroupIds === undefined ? {} : { expandedWorkGroupIds }),
+    isWorking: false,
+    activeTurnStartedAt: null,
+    turnDiffSummaryByAssistantMessageId: new Map(),
+    revertTurnCountByUserMessageId: new Map(),
+  });
+
+const deriveActiveRows = (
+  timelineEntries: TimelineEntry[],
+  expandedWorkGroupIds?: ReadonlySet<string>,
+) =>
+  deriveMessagesTimelineRows({
+    timelineEntries,
+    latestTurn: {
+      turnId: "turn-active" as never,
+      state: "running",
+      startedAt: "2026-01-01T00:00:00Z",
+      completedAt: null,
+    },
+    runningTurnId: "turn-active" as never,
+    ...(expandedWorkGroupIds === undefined ? {} : { expandedWorkGroupIds }),
+    isWorking: true,
+    activeTurnStartedAt: "2026-01-01T00:00:00Z",
+    turnDiffSummaryByAssistantMessageId: new Map(),
+    revertTurnCountByUserMessageId: new Map(),
+  });
+
+const makeDeployMilestone = (id: string, entry: Partial<WorkLogEntry> = {}) =>
+  makeWorkTimelineEntry(id, {
+    turnId: "turn-active" as never,
+    zeropsResult: {
+      toolName: "zerops_deploy",
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "api" }),
+    },
+    ...entry,
+  });
+
+const makeRunningTool = (id: string) =>
+  makeWorkTimelineEntry(id, {
+    turnId: "turn-active" as never,
+    itemType: "command_execution",
+    toolLifecycleStatus: "inProgress",
+  });
+
+const rowIdentities = (rows: ReturnType<typeof deriveMessagesTimelineRows>) =>
+  rows.map(({ id, kind }) => ({ id, kind }));
 
 describe("shouldPreserveAssistantLineBreaks", () => {
   it("preserves Claude insight formatting without changing regular markdown", () => {
@@ -273,6 +367,579 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it.each([
+    {
+      mechanism: "turn fold",
+      timelineEntries: [
+        {
+          id: "assistant-first-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:01Z",
+          message: {
+            id: "assistant-first" as never,
+            role: "assistant",
+            text: "Starting the fleet.",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:01Z",
+            updatedAt: "2026-01-01T00:00:01Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "spawn-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:02Z",
+          entry: {
+            id: "spawn-work",
+            createdAt: "2026-01-01T00:00:02Z",
+            turnId: "turn-1" as never,
+            label: "Kicked off 1 subagent",
+            tone: "info",
+            agentSpawn: { workflowId: null, agentTaskIds: ["t1"] },
+          },
+        },
+        {
+          id: "assistant-final-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:03Z",
+          message: {
+            id: "assistant-final" as never,
+            role: "assistant",
+            text: "The fleet is running.",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:03Z",
+            updatedAt: "2026-01-01T00:00:03Z",
+            streaming: false,
+          },
+        },
+      ] satisfies TimelineEntry[],
+      expectedIds: ["assistant-first-entry", "spawn-entry", "assistant-final-entry"],
+      expectedToggle: undefined,
+    },
+    {
+      mechanism: "tool-group summary",
+      timelineEntries: [
+        {
+          id: "ordinary-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:00Z",
+          entry: {
+            id: "ordinary-work",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Ran command",
+            tone: "tool",
+            itemType: "command_execution",
+            toolLifecycleStatus: "completed",
+          },
+        },
+        {
+          id: "spawn-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "spawn-work",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Kicked off 1 subagent",
+            tone: "tool",
+            itemType: "collab_agent_tool_call",
+            toolLifecycleStatus: "completed",
+            agentSpawn: { workflowId: null, agentTaskIds: ["t1"] },
+          },
+        },
+      ] satisfies TimelineEntry[],
+      expectedIds: ["ordinary-work", "spawn-work"],
+      expectedToggle: undefined,
+    },
+    {
+      mechanism: "overflow",
+      timelineEntries: [
+        {
+          id: "ordinary-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:01Z",
+          entry: {
+            id: "ordinary-work-1",
+            createdAt: "2026-01-01T00:00:01Z",
+            label: "Ran command",
+            tone: "tool",
+            itemType: "command_execution",
+            toolLifecycleStatus: "completed",
+          },
+        },
+        {
+          id: "spawn-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:02Z",
+          entry: {
+            id: "spawn-work",
+            createdAt: "2026-01-01T00:00:02Z",
+            label: "Kicked off 1 subagent",
+            tone: "info",
+            agentSpawn: { workflowId: null, agentTaskIds: ["t1"] },
+          },
+        },
+        {
+          id: "ordinary-entry-2",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:03Z",
+          entry: {
+            id: "ordinary-work-2",
+            createdAt: "2026-01-01T00:00:03Z",
+            label: "Ran command",
+            tone: "tool",
+            itemType: "command_execution",
+            toolLifecycleStatus: "completed",
+          },
+        },
+      ] satisfies TimelineEntry[],
+      expectedIds: ["spawn-work", "ordinary-work-2", "work-toggle:ordinary-entry-1"],
+      expectedToggle: { hiddenCount: 1, summary: null, hasFailure: false },
+    },
+  ])(
+    "keeps agent-spawn rows visible through the $mechanism",
+    ({ timelineEntries, expectedIds, expectedToggle }) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries,
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+
+      expect(rows.map((row) => row.id)).toEqual(expectedIds);
+      expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject(expectedToggle ?? {});
+      if (expectedToggle === undefined) {
+        expect(rows.some((row) => row.kind === "work-toggle")).toBe(false);
+      }
+      expect(rows.some((row) => row.id === "spawn-entry" || row.id === "spawn-work")).toBe(true);
+    },
+  );
+
+  it.each([
+    {
+      name: "ordinary tool",
+      entry: { itemType: "command_execution" },
+      escapes: false,
+      summary: "Ran 1 command",
+    },
+    {
+      name: "deploy",
+      entry: {
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: JSON.stringify({ status: "DEPLOYED", targetService: "kanbandev" }),
+        },
+      },
+      escapes: true,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "verify",
+      entry: {
+        zeropsResult: { toolName: "zerops_verify", resultText: LIVE_VERIFY_RESULT },
+      },
+      escapes: true,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "import",
+      entry: {
+        zeropsResult: {
+          toolName: "zerops_import",
+          resultText: JSON.stringify({
+            projectName: "z3-eval",
+            processes: [{ service: "api", status: "FINISHED" }],
+          }),
+        },
+      },
+      escapes: true,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "plan",
+      entry: {
+        zeropsResult: {
+          toolName: "zerops_workflow",
+          resultText: JSON.stringify({
+            intent: "Bootstrap the project",
+            progress: { completed: 1, total: 2, steps: [] },
+          }),
+        },
+      },
+      escapes: true,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "error",
+      entry: {
+        toolLifecycleStatus: "failed",
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: LIVE_DEPLOY_ERROR_RESULT,
+        },
+      },
+      escapes: true,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "mount",
+      entry: {
+        zeropsResult: {
+          toolName: "zerops_mount",
+          resultText: JSON.stringify({ hostname: "api", status: "MOUNTED" }),
+        },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "subdomain",
+      entry: {
+        zeropsResult: {
+          toolName: "zerops_subdomain",
+          resultText: JSON.stringify({ serviceHostname: "api", action: "enable" }),
+        },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "non-JSON result",
+      entry: {
+        zeropsResult: { toolName: "zerops_workflow", resultText: "workflow is still running" },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "truncated result",
+      entry: {
+        zeropsResult: { toolName: "zerops_deploy", truncated: true },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "JSON array",
+      entry: {
+        zeropsResult: { toolName: "zerops_deploy", resultText: "[]" },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+    {
+      name: "unknown tool",
+      entry: {
+        zeropsResult: { toolName: "zerops_future", resultText: "{}" },
+      },
+      escapes: false,
+      summary: "Used 1 tool",
+    },
+  ] satisfies ReadonlyArray<{
+    name: string;
+    entry: Partial<WorkLogEntry>;
+    escapes: boolean;
+    summary: string;
+  }>)("applies the milestone row vector to $name", ({ name, entry, escapes, summary }) => {
+    const id = `vector-${name.replaceAll(" ", "-")}`;
+    const subject = makeWorkTimelineEntry(id, {
+      turnId: "turn-milestone" as never,
+      ...entry,
+    });
+    const firstAssistant = makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z");
+    const finalAssistant = makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z");
+    const foldRows = deriveSettledRows([firstAssistant, subject, finalAssistant]);
+    const groupRows = deriveSettledRows([makeWorkTimelineEntry(id, entry)]);
+    const overflowTail: Extract<TimelineEntry, { kind: "work" }> = {
+      id: "overflow-tail-entry",
+      kind: "work",
+      createdAt: "2026-01-01T00:00:58Z",
+      entry: {
+        id: "overflow-tail-work",
+        createdAt: "2026-01-01T00:00:58Z",
+        label: "Status updated",
+        tone: "info",
+      },
+    };
+    const overflowRows = deriveSettledRows([makeWorkTimelineEntry(id, entry), overflowTail]);
+    const subjectWorkId = subject.entry.id;
+    const subjectEntryId = subject.id;
+
+    expect(rowIdentities(foldRows)).toEqual(
+      escapes
+        ? [
+            { id: "assistant-first-entry", kind: "message" },
+            { id: subjectWorkId, kind: "work" },
+            { id: "assistant-final-entry", kind: "message" },
+          ]
+        : [
+            { id: "assistant-first-entry", kind: "message" },
+            { id: "turn-fold:turn-milestone", kind: "turn-fold" },
+            { id: "assistant-final-entry", kind: "message" },
+          ],
+    );
+
+    expect(rowIdentities(groupRows)).toEqual(
+      escapes
+        ? [{ id: subjectWorkId, kind: "work" }]
+        : [{ id: `work-toggle:${subjectEntryId}`, kind: "work-toggle" }],
+    );
+    const groupToggle = groupRows.find((row) => row.kind === "work-toggle");
+    expect(groupToggle).toEqual(
+      escapes ? undefined : expect.objectContaining({ summary, hiddenCount: 1, hasFailure: false }),
+    );
+
+    expect(rowIdentities(overflowRows)).toEqual(
+      escapes
+        ? [
+            { id: subjectWorkId, kind: "work" },
+            { id: "overflow-tail-work", kind: "work" },
+          ]
+        : [
+            { id: "overflow-tail-work", kind: "work" },
+            { id: `work-toggle:${subjectEntryId}`, kind: "work-toggle" },
+          ],
+    );
+    const overflowToggle = overflowRows.find((row) => row.kind === "work-toggle");
+    expect(overflowToggle).toEqual(
+      escapes
+        ? undefined
+        : expect.objectContaining({ summary: null, hiddenCount: 1, hasFailure: false }),
+    );
+  });
+
+  it("moves a settled-turn fold anchor past a leading milestone", () => {
+    const milestone = makeWorkTimelineEntry("anchor-milestone", {
+      turnId: "turn-milestone" as never,
+      zeropsResult: {
+        toolName: "zerops_deploy",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "api" }),
+      },
+    });
+    const ordinary = makeWorkTimelineEntry("anchor-ordinary", {
+      turnId: "turn-milestone" as never,
+      itemType: "command_execution",
+    });
+
+    const rows = deriveSettledRows([
+      makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),
+      milestone,
+      ordinary,
+      makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z"),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "assistant-first-entry", kind: "message" },
+      { id: "anchor-milestone-work", kind: "work" },
+      { id: "turn-fold:turn-milestone", kind: "turn-fold" },
+      { id: "assistant-final-entry", kind: "message" },
+    ]);
+    expect(rows.find((row) => row.kind === "turn-fold")?.createdAt).toBe(ordinary.createdAt);
+  });
+
+  it("drops the fold row when a milestone was its only hidden entry", () => {
+    const rows = deriveSettledRows([
+      makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),
+      makeWorkTimelineEntry("only-hidden-milestone", {
+        turnId: "turn-milestone" as never,
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: JSON.stringify({ status: "DEPLOYED", targetService: "api" }),
+        },
+      }),
+      makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z"),
+    ]);
+
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+    expect(rows.map((row) => row.id)).toContain("only-hidden-milestone-work");
+  });
+
+  it("emits a group containing only milestones without a toggle", () => {
+    const rows = deriveSettledRows([
+      makeWorkTimelineEntry("deploy-milestone", {
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: JSON.stringify({ status: "DEPLOYED", targetService: "api" }),
+        },
+      }),
+      makeWorkTimelineEntry("verify-milestone", {
+        zeropsResult: { toolName: "zerops_verify", resultText: LIVE_VERIFY_RESULT },
+      }),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "deploy-milestone-work", kind: "work" },
+      { id: "verify-milestone-work", kind: "work" },
+    ]);
+  });
+
+  it("partitions a tool summary and expands every entry exactly once", () => {
+    const entries = [
+      makeWorkTimelineEntry("partition-deploy", {
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: JSON.stringify({ status: "DEPLOYED", targetService: "api" }),
+        },
+      }),
+      makeWorkTimelineEntry("partition-mount", {
+        zeropsResult: {
+          toolName: "zerops_mount",
+          resultText: JSON.stringify({ hostname: "api", status: "MOUNTED" }),
+        },
+      }),
+      makeWorkTimelineEntry("partition-verify", {
+        zeropsResult: { toolName: "zerops_verify", resultText: LIVE_VERIFY_RESULT },
+      }),
+    ];
+    const groupId = "work-group:partition-deploy-entry";
+    const collapsedRows = deriveSettledRows(entries);
+    const expandedRows = deriveSettledRows(entries, new Set([groupId]));
+
+    expect(rowIdentities(collapsedRows)).toEqual([
+      { id: "work-toggle:partition-deploy-entry", kind: "work-toggle" },
+      { id: "partition-deploy-work", kind: "work" },
+      { id: "partition-verify-work", kind: "work" },
+    ]);
+    expect(collapsedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
+      groupId,
+      summary: "Used 1 tool",
+      hiddenCount: 1,
+      hasFailure: false,
+    });
+    expect(rowIdentities(expandedRows)).toEqual([
+      { id: "work-toggle:partition-deploy-entry", kind: "work-toggle" },
+      { id: "partition-deploy-work", kind: "work" },
+      { id: "partition-mount-work", kind: "work" },
+      { id: "partition-verify-work", kind: "work" },
+    ]);
+    const expandedIds = expandedRows.map((row) => row.id);
+    expect(new Set(expandedIds).size).toBe(expandedIds.length);
+  });
+
+  it("keeps a settled milestone before a running tool visible in both active states", () => {
+    const milestone = makeDeployMilestone("active-leading-milestone");
+    const running = makeRunningTool("active-running");
+    const groupId = "work-group:active-running-entry";
+    const collapsedRows = deriveActiveRows([milestone, running]);
+    const expandedRows = deriveActiveRows([milestone, running], new Set([groupId]));
+
+    expect(rowIdentities(collapsedRows)).toEqual([
+      { id: "working-indicator-row", kind: "working" },
+      { id: "active-leading-milestone-work", kind: "work" },
+      { id: "work-live:active-running-entry", kind: "work-live" },
+    ]);
+    expect(rowIdentities(expandedRows)).toEqual([
+      { id: "working-indicator-row", kind: "working" },
+      { id: "active-leading-milestone-work", kind: "work" },
+      { id: "work-live:active-running-entry", kind: "work-live" },
+      { id: "active-running-work", kind: "work" },
+    ]);
+    expect(new Set(expandedRows.map((row) => row.id)).size).toBe(expandedRows.length);
+  });
+
+  it("splits an active work group around a middle milestone", () => {
+    const rows = deriveActiveRows([
+      makeRunningTool("active-running-before"),
+      makeDeployMilestone("active-middle-milestone"),
+      makeRunningTool("active-running-after"),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "working-indicator-row", kind: "working" },
+      { id: "work-live:active-running-before-entry", kind: "work-live" },
+      { id: "active-middle-milestone-work", kind: "work" },
+      { id: "work-live:active-running-after-entry", kind: "work-live" },
+    ]);
+  });
+
+  it("keeps a trailing milestone out of an active work group", () => {
+    const rows = deriveActiveRows([
+      makeRunningTool("active-running-before"),
+      makeDeployMilestone("active-trailing-milestone"),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "working-indicator-row", kind: "working" },
+      { id: "work-live:active-running-before-entry", kind: "work-live" },
+      { id: "active-trailing-milestone-work", kind: "work" },
+    ]);
+  });
+
+  it("renders an active turn whose only settled tool is a milestone", () => {
+    const rows = deriveActiveRows([makeDeployMilestone("active-only-milestone")]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "working-indicator-row", kind: "working" },
+      { id: "active-only-milestone-work", kind: "work" },
+    ]);
+  });
+
+  it("partitions duplicate work entry ids without dropping or duplicating rows", () => {
+    const milestone = makeDeployMilestone("duplicate-deploy", {
+      turnId: null,
+      id: "duplicate-work-id",
+    });
+    const ordinary = makeWorkTimelineEntry("duplicate-mount", {
+      id: "duplicate-work-id",
+      zeropsResult: {
+        toolName: "zerops_mount",
+        resultText: JSON.stringify({ hostname: "api", status: "MOUNTED" }),
+      },
+    });
+    const groupId = "work-group:duplicate-deploy-entry";
+    const collapsedRows = deriveSettledRows([milestone, ordinary]);
+    const expandedRows = deriveSettledRows([milestone, ordinary], new Set([groupId]));
+
+    expect(rowIdentities(collapsedRows)).toEqual([
+      { id: "work-toggle:duplicate-deploy-entry", kind: "work-toggle" },
+      { id: "duplicate-work-id", kind: "work" },
+    ]);
+    expect(rowIdentities(expandedRows)).toEqual([
+      { id: "work-toggle:duplicate-deploy-entry", kind: "work-toggle" },
+      { id: "duplicate-work-id", kind: "work" },
+      { id: "duplicate-mount-entry", kind: "work" },
+    ]);
+    expect(collapsedRows.filter((row) => row.kind === "work")).toHaveLength(1);
+    expect(collapsedRows.find((row) => row.kind === "work")?.groupedEntries).toEqual([
+      milestone.entry,
+    ]);
+    expect(collapsedRows.find((row) => row.kind === "work-toggle")).toMatchObject({
+      hiddenCount: 1,
+      summary: "Used 1 tool",
+    });
+    expect(
+      expandedRows.filter((row) => row.kind === "work").map((row) => row.groupedEntries[0]),
+    ).toEqual([milestone.entry, ordinary.entry]);
+    expect(new Set(expandedRows.map((row) => row.id)).size).toBe(expandedRows.length);
+  });
+
+  it("keys settled turn fold membership by timeline entry identity", () => {
+    const milestone = makeDeployMilestone("duplicate-fold-deploy", {
+      turnId: "turn-milestone" as never,
+    });
+    const ordinary = makeWorkTimelineEntry("duplicate-fold-ordinary", {
+      turnId: "turn-milestone" as never,
+      itemType: "command_execution",
+    });
+    milestone.id = "duplicate-timeline-id";
+    ordinary.id = "duplicate-timeline-id";
+
+    const rows = deriveSettledRows([
+      makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),
+      milestone,
+      ordinary,
+      makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z"),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "assistant-first-entry", kind: "message" },
+      { id: "duplicate-fold-deploy-work", kind: "work" },
+      { id: "turn-fold:turn-milestone", kind: "turn-fold" },
+      { id: "assistant-final-entry", kind: "message" },
+    ]);
+    expect(rows.filter((row) => row.kind === "turn-fold")).toHaveLength(1);
+  });
+
   it("only enables assistant copy for the terminal assistant message in a turn", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
