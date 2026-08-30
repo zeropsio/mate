@@ -75,7 +75,14 @@
         "apps/web/src/zerops/feeds.test.ts"
       ],
       "untested": "ZeropsPanel.test.tsx covers placeholder states and agent-auth card ownership, including late topology; the populated panel body has no focused component assertion.",
-      "captures": []
+      "captures": [
+        "web:service-map-live",
+        "web:service-map-degraded",
+        "web:no-zerops",
+        "web:lifecycle-active",
+        "web:agent-auth-attention",
+        "web:agent-auth-ok"
+      ]
     },
     {
       "id": "zerops-service-map",
@@ -107,7 +114,12 @@
         "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
         "packages/client-runtime/src/zerops/serviceMap.test.ts"
       ],
-      "captures": []
+      "captures": [
+        "web:service-map-live",
+        "web:service-map-degraded",
+        "web:no-zerops",
+        "web:lifecycle-active"
+      ]
     },
     {
       "id": "zerops-quick-actions",
@@ -193,7 +205,7 @@
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
         "packages/client-runtime/src/zerops/agentLogin.test.ts"
       ],
-      "captures": []
+      "captures": ["web:agent-auth-attention", "web:agent-auth-ok"]
     },
     {
       "id": "zerops-lifecycle-strip",
@@ -223,7 +235,7 @@
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
         "packages/client-runtime/src/zerops/strip.test.ts"
       ],
-      "captures": []
+      "captures": ["web:lifecycle-active", "web:lifecycle-waiting"]
     },
     {
       "id": "zerops-tool-card",
@@ -257,7 +269,7 @@
         "packages/client-runtime/src/zerops/cards/payloads.test.ts",
         "packages/client-runtime/src/zerops/activityResult.test.ts"
       ],
-      "captures": []
+      "captures": ["web:cards"]
     },
     {
       "id": "zerops-landing",
