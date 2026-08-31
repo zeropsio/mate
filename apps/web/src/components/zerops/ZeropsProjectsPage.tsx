@@ -30,6 +30,7 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
+import { appBasePath } from "~/basePath";
 
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
@@ -119,7 +120,10 @@ function ZeropsProjectsContent() {
         return;
       }
       const result = await connectZerops({
-        httpBaseUrl: zeropsCodeBaseUrl(containerOrigin),
+        httpBaseUrl: zeropsCodeBaseUrl(containerOrigin, {
+          origin: window.location.origin,
+          basePath: appBasePath(),
+        }),
         zeropsToken,
       });
       if (result._tag === "Failure") {
