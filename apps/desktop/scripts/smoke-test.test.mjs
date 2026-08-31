@@ -42,4 +42,18 @@ describe("desktop smoke capture cleanup", () => {
     assert.equal(exitCode, 0);
     assert.deepEqual(reports, ["Desktop smoke temp cleanup warning: cleanup boom"]);
   });
+
+  it("keeps successful CI evidence when runner temp is provided", async () => {
+    let removed = false;
+    const exitCode = await cleanupCaptureDirectory("/tmp/desktop-smoke-cleanup-test", {
+      runnerTemp: "/tmp/fake",
+      exitCode: 0,
+      remove: async () => {
+        removed = true;
+      },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(removed, false);
+  });
 });

@@ -153,12 +153,7 @@ async function runElectronSmoke(capturePath) {
 
 export async function cleanupCaptureDirectory(
   captureDirectory,
-  {
-    runnerTemp = NodeProcess.env.RUNNER_TEMP,
-    exitCode,
-    remove = NodeFSP.rm,
-    report = console.error,
-  },
+  { runnerTemp, exitCode, remove = NodeFSP.rm, report = console.error },
 ) {
   if (exitCode !== 0) {
     report(`Desktop smoke failure evidence kept at: ${captureDirectory}`);
@@ -186,14 +181,15 @@ export async function main() {
     return 1;
   }
 
+  const runnerTemp = NodeProcess.env.RUNNER_TEMP;
   const captureDirectory = await NodeFSP.mkdtemp(
-    NodePath.join(NodeProcess.env.RUNNER_TEMP ?? NodeOS.tmpdir(), "desktop-smoke-"),
+    NodePath.join(runnerTemp ?? NodeOS.tmpdir(), "desktop-smoke-"),
   );
   let exitCode = 1;
   try {
     exitCode = await runElectronSmoke(NodePath.join(captureDirectory, "smoke.png"));
   } finally {
-    exitCode = await cleanupCaptureDirectory(captureDirectory, { exitCode });
+    exitCode = await cleanupCaptureDirectory(captureDirectory, { runnerTemp, exitCode });
   }
   return exitCode;
 }
