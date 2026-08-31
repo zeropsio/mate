@@ -39,21 +39,38 @@ const render = (
   renderToStaticMarkup(<ZeropsServiceMap view={buildZeropsServiceMap(snapshot, lifecycle)} />);
 
 describe("ZeropsServiceMap", () => {
-  it("renders each group with its services", () => {
+  it("renders liveness and semantic groups with shared primitives", () => {
     const html = render(
-      topology([
-        service({ hostname: "kanbandev", mounted: true, mountPath: "/var/www/kanbandev" }),
-        service({
-          hostname: "db",
-          type: "postgresql:single@18",
-          group: "data",
-          isManagedService: true,
-        }),
-      ]),
+      topology(
+        [
+          service({ hostname: "kanbandev", mounted: true, mountPath: "/var/www/kanbandev" }),
+          service({
+            hostname: "db",
+            type: "postgresql:single@18",
+            group: "data",
+            isManagedService: true,
+          }),
+          service({
+            hostname: "zcp",
+            type: "ubuntu/zcp@1",
+            group: "infrastructure",
+            adoptionState: "zcp-self",
+          }),
+        ],
+        { doorbellConnected: true },
+      ),
     );
 
-    expect(html).toContain("Runtimes");
-    expect(html).toContain("Data");
+    const runtimesAt = html.indexOf("Runtimes");
+    const dataAt = html.indexOf("Data");
+    const infrastructureAt = html.indexOf("Infrastructure");
+    expect(runtimesAt).toBeGreaterThan(0);
+    expect(dataAt).toBeGreaterThan(runtimesAt);
+    expect(infrastructureAt).toBeGreaterThan(dataAt);
+    expect(html.indexOf('data-zerops-primitive="liveness-line"')).toBeLessThan(runtimesAt);
+    expect(html.match(/data-zerops-primitive="status-dot"/gu)).toHaveLength(4);
+    expect(html).toContain('data-zerops-primitive="mint-panel"');
+    expect(html).toContain("Zerops Control Plane");
     expect(html).toContain("kanbandev");
     expect(html).toContain("nodejs@22");
     expect(html).toContain("postgresql:single@18");
@@ -61,6 +78,23 @@ describe("ZeropsServiceMap", () => {
     // The mount path itself is the badge's text: where a service is mounted is
     // the useful half, and a bare "mounted" hid it behind a hover.
     expect(html).toContain("/var/www/kanbandev");
+  });
+
+  it("preserves degraded last-good rows and quiet absence copy", () => {
+    const degraded = render(
+      topology([service({ hostname: "kanbandev" })], {
+        degraded: true,
+        reason: "zcp studio topology: exit 1",
+      }),
+    );
+    const empty = render(topology([]));
+
+    expect(degraded).toContain('data-zerops-liveness="last-read-failed"');
+    expect(degraded).toContain("zcp studio topology: exit 1");
+    expect(degraded).toContain("kanbandev");
+    expect(empty).toContain("data-zerops-map-empty");
+    expect(empty).toContain("No services yet");
+    expect(empty).not.toContain("data-zerops-service-group");
   });
 
   it("offers Open for a service that has a subdomain", () => {
@@ -184,8 +218,11 @@ describe("ZeropsServiceMap — liveness", () => {
       ),
     );
 
-  it("says nothing while push updates are live", () => {
-    expect(withDoorbell(true)).not.toContain("data-zerops-map-liveness");
+  it("shows live liveness first while push updates are connected", () => {
+    const html = withDoorbell(true);
+
+    expect(html).toContain('data-zerops-map-liveness="live"');
+    expect(html).toContain('data-zerops-liveness="live"');
   });
 
   it("mentions polling quietly when push updates have dropped", () => {

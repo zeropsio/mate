@@ -16,6 +16,7 @@ import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFee
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
+import { MicroLabel } from "./primitives";
 
 export function ZeropsPanel({
   threadRef,
@@ -45,14 +46,17 @@ export function ZeropsPanel({
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-4 p-4">
+      <div className="space-y-5 p-4" data-zerops-project-panel>
         {panelSections.body}
         {agentAuthCard === null ? null : (
-          <ZeropsAgentAuthCard
-            onCancel={cancelAgentLogin}
-            onSignIn={signInToAgent}
-            snapshot={agentAuthCard}
-          />
+          <section className="space-y-2" data-zerops-agent-auth-tray>
+            <MicroLabel>Coding agents</MicroLabel>
+            <ZeropsAgentAuthCard
+              onCancel={cancelAgentLogin}
+              onSignIn={signInToAgent}
+              snapshot={agentAuthCard}
+            />
+          </section>
         )}
         {panelSections.quickActions}
       </div>

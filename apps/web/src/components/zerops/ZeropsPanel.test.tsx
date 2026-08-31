@@ -7,7 +7,11 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+const buttonState = vi.hoisted(() => ({
+  handlers: new Map<string, () => void>(),
+}));
 
 const feedState = vi.hoisted(() => ({
   topology: undefined as ZeropsTopologySnapshot | undefined,
@@ -32,6 +36,25 @@ vi.mock("../../zerops/useAgentLogin", () => ({
 
 vi.mock("../../zerops/useAgentLoginCancel", () => ({
   useAgentLoginCancel: () => actions.cancel,
+}));
+
+vi.mock("~/components/ui/button", () => ({
+  Button: ({
+    children,
+    disabled,
+    onClick,
+  }: {
+    readonly children: unknown;
+    readonly disabled?: boolean;
+    readonly onClick?: (event: never) => void;
+  }) => {
+    if (typeof children === "string" && onClick !== undefined) {
+      buttonState.handlers.set(children, () => {
+        onClick(undefined as never);
+      });
+    }
+    return <button disabled={disabled}>{children as string}</button>;
+  },
 }));
 
 import { ZeropsPanel, ZeropsPanelPlaceholder } from "./ZeropsPanel";
@@ -62,6 +85,54 @@ const AGENT_AUTH: ZeropsAgentAuthSnapshot = {
     },
   ],
 };
+
+const AUTHORIZED: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "codex",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      providerAuth: "authenticated",
+      state: "authorized",
+    },
+  ],
+};
+
+const LOGIN_IN_PROGRESS: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      ...AGENT_AUTH.agents[0]!,
+      login: {
+        phase: "menu",
+        terminalId: "agent-login-codex",
+        startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
+      },
+    },
+  ],
+};
+
+const CANCELLED: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      ...AGENT_AUTH.agents[0]!,
+      login: {
+        phase: "cancelled",
+        terminalId: "agent-login-codex",
+        startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
+      },
+    },
+  ],
+};
+
+beforeEach(() => {
+  actions.cancel.mockReset();
+  actions.signIn.mockReset();
+  buttonState.handlers.clear();
+});
 
 /**
  * The map is absent for two different reasons and they must not share a
@@ -106,12 +177,77 @@ describe("ZeropsPanel agent authorization ownership", () => {
       topology: undefined,
       rendersCard: true,
     },
-  ])("renders the card=$rendersCard with $name", ({ agentAuthCard, topology, rendersCard }) => {
-    feedState.topology = topology;
-    const html = renderToStaticMarkup(
-      <ZeropsPanel agentAuthCard={agentAuthCard} threadRef={THREAD_REF} />,
-    );
+  ])(
+    "renders authorization exactly once inside the project panel: $name",
+    ({ agentAuthCard, topology, rendersCard }) => {
+      feedState.topology = topology;
+      const html = renderToStaticMarkup(
+        <ZeropsPanel agentAuthCard={agentAuthCard} threadRef={THREAD_REF} />,
+      );
 
-    expect(html.includes("data-zerops-agent-auth-card")).toBe(rendersCard);
-  });
+      expect(html.match(/data-zerops-agent-auth-card/gu) ?? []).toHaveLength(rendersCard ? 1 : 0);
+      expect(html.includes("data-zerops-agent-auth-tray")).toBe(rendersCard);
+      if (rendersCard) {
+        expect(html.indexOf("data-zerops-project-panel")).toBeLessThan(
+          html.indexOf("data-zerops-agent-auth-tray"),
+        );
+      }
+    },
+  );
+
+  it.each([
+    {
+      name: "not authorized while topology is pending",
+      snapshot: AGENT_AUTH,
+      topology: undefined,
+      label: "Sign in to Codex",
+      expectedSignIn: true,
+      expectedCancel: false,
+    },
+    {
+      name: "login in progress while topology is degraded",
+      snapshot: LOGIN_IN_PROGRESS,
+      topology: { ...TOPOLOGY, degraded: true, reason: "last read failed" },
+      label: "Cancel",
+      expectedSignIn: false,
+      expectedCancel: true,
+    },
+    {
+      name: "authorized",
+      snapshot: AUTHORIZED,
+      topology: TOPOLOGY,
+      label: null,
+      expectedSignIn: false,
+      expectedCancel: false,
+    },
+    {
+      name: "cancelled login returns to sign in",
+      snapshot: CANCELLED,
+      topology: TOPOLOGY,
+      label: "Sign in to Codex",
+      expectedSignIn: true,
+      expectedCancel: false,
+    },
+  ] as const)(
+    "preserves not-authorized, login-in-progress, authorized and cancelled sign-in/cancel wiring: $name",
+    ({ snapshot, topology, label, expectedSignIn, expectedCancel }) => {
+      feedState.topology = topology;
+      const html = renderToStaticMarkup(
+        <ZeropsPanel agentAuthCard={snapshot} threadRef={THREAD_REF} />,
+      );
+
+      expect(html).toContain('data-zerops-primitive="flat-card"');
+      if (label !== null) {
+        buttonState.handlers.get(label)?.();
+      }
+      expect(actions.signIn).toHaveBeenCalledTimes(expectedSignIn ? 1 : 0);
+      expect(actions.cancel).toHaveBeenCalledTimes(expectedCancel ? 1 : 0);
+      if (expectedSignIn) {
+        expect(actions.signIn).toHaveBeenCalledWith("codex");
+      }
+      if (expectedCancel) {
+        expect(actions.cancel).toHaveBeenCalledWith("codex");
+      }
+    },
+  );
 });

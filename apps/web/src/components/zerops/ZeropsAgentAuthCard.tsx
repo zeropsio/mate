@@ -26,6 +26,7 @@ import {
   classifyAgentLogin,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
+import { FlatCard } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",
@@ -47,7 +48,7 @@ export function ZeropsAgentAuthCard({
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3" data-zerops-agent-auth-card>
+    <FlatCard className="flex flex-col gap-2 p-3" data-zerops-agent-auth-card>
       {snapshot.agents.map((agent) => (
         <ZeropsAgentAuthRow
           key={agent.agentId}
@@ -56,7 +57,7 @@ export function ZeropsAgentAuthCard({
           onCancel={onCancel}
         />
       ))}
-    </div>
+    </FlatCard>
   );
 }
 
