@@ -127,36 +127,7 @@ const buildCmd = Command.make(
     }),
 ).pipe(Command.withDescription("Build the server package (tsdown + bundle web client)."));
 
-// ---------------------------------------------------------------------------
-// publish subcommand
-// ---------------------------------------------------------------------------
-
-interface PublishCommandConfig {
-  readonly access: string;
-  readonly tag: string;
-  readonly provenance: boolean;
-  readonly dryRun: boolean;
-}
-
-const createVpPmPublishArgs = (config: PublishCommandConfig): ReadonlyArray<string> => {
-  const args = [
-    "publish",
-    "--filter",
-    RELEASE_WORKSPACE_SELECTOR,
-    "--access",
-    config.access,
-    "--tag",
-    config.tag,
-    "--no-git-checks",
-  ];
-
-  if (config.provenance) args.push("--provenance");
-  if (config.dryRun) args.push("--dry-run");
-
-  return args;
-};
-
-// `publish` and `pack` share one thing: while `vp pm` runs, apps/server must
+// While `vp pm` runs, apps/server must
 // carry the release package.json (catalog: → concrete versions, overrides,
 // the release version), and the original must come back afterwards, whatever
 // happened in between.
@@ -173,7 +144,7 @@ const withReleaseAssets = <A, E, R>(
     const packageJsonPath = path.join(serverDir, "package.json");
 
     // Assert build assets exist
-    for (const relPath of ["dist/bin.mjs", "dist/service-launcher.mjs", "dist/client/index.html"]) {
+    for (const relPath of ["dist/bin.mjs", "dist/client/index.html"]) {
       const abs = path.join(serverDir, relPath);
       if (!(yield* fs.exists(abs))) {
         return yield* new ServerCliBuildAssetMissingError({ assetPath: abs });
@@ -270,32 +241,8 @@ const readTarballFingerprints = Effect.fn("readTarballFingerprints")(function* (
   return tarballs;
 });
 
-const publishCmd = Command.make(
-  "publish",
-  {
-    tag: Flag.string("tag").pipe(Flag.withDefault("latest")),
-    access: Flag.string("access").pipe(Flag.withDefault("public")),
-    appVersion: Flag.string("app-version").pipe(Flag.optional),
-    provenance: Flag.boolean("provenance").pipe(Flag.withDefault(false)),
-    dryRun: Flag.boolean("dry-run").pipe(Flag.withDefault(false)),
-    verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
-  },
-  (config) =>
-    Effect.gen(function* () {
-      const repoRoot = yield* RepoRoot;
-      yield* withReleaseAssets(
-        repoRoot,
-        config.appVersion,
-        config.verbose,
-        runVpPm(repoRoot, createVpPmPublishArgs(config), config.verbose),
-      );
-    }),
-).pipe(Command.withDescription("Publish the server package to npm."));
-
 // ---------------------------------------------------------------------------
-// pack subcommand — the publish rewrite, ending in a local tarball instead of
-// a registry upload. Used by hand-delivered dev builds (a container that runs
-// the fork before it is ever published) and by any release-asset channel.
+// pack subcommand — build a local tarball for the GitHub release workflow.
 // ---------------------------------------------------------------------------
 
 const packCmd = Command.make(
@@ -347,8 +294,8 @@ const packCmd = Command.make(
 // ---------------------------------------------------------------------------
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("T3 server build & publish CLI."),
-  Command.withSubcommands([buildCmd, publishCmd, packCmd]),
+  Command.withDescription("Zerops Code server build and pack CLI."),
+  Command.withSubcommands([buildCmd, packCmd]),
 );
 
 Command.run(cli, { version: "0.0.0" }).pipe(

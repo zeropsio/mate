@@ -1,175 +1,82 @@
 # Release Tooling
 
-> For maintainers. Using T3 Code? See [docs/user](../user/).
+> For maintainers. Using Zerops Code? See [docs/user](../user/).
 
-This repository has no automated publication workflow. It keeps focused tooling for aligning release
-versions, deriving nightly metadata, publishing the CLI package, building desktop artifacts, and
-checking release-only transformations.
+Zerops Code releases are GitHub releases in
+[`zeropsio/z3`](https://github.com/zeropsio/z3/releases). The release is an npm-compatible tarball
+only because that gives zcp and standalone operators a standard local installation format. There
+is no npm publication step: nothing is published under the `zerops-code` name. The running server
+also has no in-app update path.
 
-## Version and artifact scripts
+## Server Release Path
 
-- `scripts/update-release-package-versions.ts` aligns the release package versions before building
-  or publishing.
-- `scripts/resolve-nightly-release.ts` derives the next nightly version, tag, and release name.
-- `scripts/build-desktop-artifact.ts` builds macOS DMG, Linux AppImage, and Windows NSIS artifacts;
-  the root `dist:desktop:*` scripts provide the supported platform and architecture combinations.
-- `scripts/merge-update-manifests.ts` combines per-architecture updater metadata for distribution.
+1. Set `apps/server/package.json` to the intended stable version and make sure the release commit is
+   green.
+2. Push a `v<version>` tag whose version exactly matches that package version.
+3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) builds the hosted web
+   client with `VITE_BASE_PATH=/z3`, builds the server, and packs `zerops-code-<version>.tgz`.
+4. The workflow installs that tarball into a scratch npm project and runs the installed
+   `./node_modules/.bin/z3 --version` binary. A tarball that cannot be installed and executed never
+   reaches a release.
+5. The workflow writes `SHA256SUMS`, transfers both verified assets to its release job, checks the
+   checksum again, and creates the GitHub release for that tag.
+6. A zcp release may then pin the z3 version and digest together in `internal/z3/z3.go`. In a Zerops
+   project, zcp downloads and verifies that asset and supervises it as `zerops@z3`.
 
-## Server self-update release invariant
+The zcp version and digest are one pin. Bumping either without the other makes the selected asset
+and the digest used to verify it disagree.
 
-Connected servers update to the client's exact version, not to an npm dist-tag. Every released
-desktop client version must therefore have a matching `t3@<version>` package available on npm before
-users can receive that client. Publish the exact stable or nightly CLI version before exposing the
-matching desktop artifacts. Publishing a client first would leave the **Update server** action
-targeting a package version that does not exist yet.
+`workflow_dispatch` rehearses the build and verification with an explicit version but deliberately
+does not create a GitHub release.
 
-For a release smoke test, confirm `npm view t3@<version> version` returns the expected version, then
-connect the new client to a server on the previous version and verify that the update action
-reconnects to the matching server. When the release adds database migrations, verify that the
-remote update applies them and reconnects. A failed trial must restore the database snapshot and
-restart the previous server. If the installed launcher does not support the target protocol,
-verify that the update stops before restart and run `npx t3@<version> service update` once on the
-server machine. Also test the manual pairing guidance when a headless environment is available.
+## Local Packaging Check
 
-## Desktop auto-update notes
-
-- Updater runtime: `apps/desktop/src/updates/DesktopUpdates.ts`.
-- `electron-updater` adapter: `apps/desktop/src/electron/ElectronUpdater.ts`.
-- `apps/desktop/src/main.ts` only wires the updater layers into the desktop runtime.
-- Update UX:
-  - Background checks run on startup delay + interval.
-  - No automatic download or install.
-  - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install.
-- Provider: GitHub Releases (`provider: github`) configured at build time.
-- Repository slug source:
-  - `T3CODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
-  - otherwise `GITHUB_REPOSITORY` from GitHub Actions.
-- Required release assets for updater:
-  - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)
-  - channel metadata: `latest*.yml` for stable releases, `nightly*.yml` for nightly releases
-  - `*.blockmap` files (used for differential downloads)
-- macOS metadata note:
-  - `electron-updater` reads `latest-mac.yml` on stable and `nightly-mac.yml` on nightly, for both Intel and Apple Silicon.
-  - Run `scripts/merge-update-manifests.ts` to combine per-architecture manifests before distribution.
-
-### Packaged web bundle topology
-
-The desktop app has no embedded server. `scripts/stage-desktop-web.ts`'s
-`stageHostedWebBundle` builds `apps/web` in hosted-static mode
-(`VITE_HOSTED_APP_CHANNEL` set to the desktop's own update channel,
-`VITE_HTTP_URL`/`VITE_WS_URL` both scrubbed) and stages the resulting dist as an
-unconditional `extraResources` entry, landing at `resources/web` in every
-packaged build (mac, Windows, Linux alike — there is no more Windows-only
-sidecar path). At runtime `DesktopEnvironment.resolveResourcePathCandidates`
-finds `resources/web/index.html`, and `ElectronProtocol` serves the rest of
-that directory from disk with an `index.html` SPA fallback.
-
-For a development-tree smoke run, stage that same bundle with
-`node scripts/stage-desktop-web.ts`.
-
-The staging script rejects a package when the hosted web build is missing
-(`DesktopWebBuildMissingError`) or references missing assets
-(`DesktopWebBuildAssetsMissingError`).
-
-NSIS differential packaging remains enabled.
-
-## npm publication
-
-Publish the aligned server package from the repository root:
+Build the web and server before packing when reproducing the workflow locally. The pack command is:
 
 ```sh
-node apps/server/scripts/cli.ts publish --app-version <version> --tag latest --provenance
+node apps/server/scripts/cli.ts pack --out <release-directory> --app-version <version>
 ```
 
-Use `--tag nightly` for a nightly version and `--dry-run` to exercise package preparation without
-uploading. The helper temporarily applies publish metadata and icons, runs `vp pm publish --filter t3`
-with workspace configuration, and restores the source files even when publication fails.
+Verify the resulting archive the same way a standalone installation does: write or check its
+SHA-256 digest, install the local tarball in an empty directory, and run the installed
+`./node_modules/.bin/z3 --version`. There is intentionally no `publish` subcommand.
 
-## Release script smoke test
-
-Run the release-only transformation checks without publishing anything:
+The release-only transformation smoke test remains available for shared build tooling:
 
 ```sh
 node scripts/release-smoke.ts
 ```
 
-The smoke test copies the workspace manifests into a temporary directory, exercises release version
-alignment and nightly metadata, regenerates a lockfile, and verifies merged macOS and Windows updater
-manifests. CI runs the same script after installing the workspace.
+It exercises release-version alignment, nightly metadata, lockfile regeneration, and desktop
+update-manifest merging in a temporary directory. It does not upload an artifact.
 
-## Apple signing and notarization setup (macOS)
+## Surviving Release Scripts
 
-Set these environment variables for signed builds:
+The repository retains desktop source and artifact builders, but this fork does not currently
+publish desktop clients. These scripts remain build inputs and must continue to work:
 
-- `CSC_LINK`
-- `CSC_KEY_PASSWORD`
-- `APPLE_API_KEY`
-- `APPLE_API_KEY_ID`
-- `APPLE_API_ISSUER`
-- `APPLE_TEAM_ID`
+- `scripts/update-release-package-versions.ts` writes one release version to the server, desktop,
+  web, and contracts package manifests.
+- `scripts/resolve-nightly-release.ts` derives nightly desktop release metadata from the desktop
+  base version, date, workflow run number, and commit SHA.
+- `scripts/build-desktop-artifact.ts` builds macOS DMG, Linux AppImage, and Windows NSIS artifacts;
+  the root `dist:desktop:*` scripts select platform and architecture.
+- `scripts/merge-update-manifests.ts` combines two per-architecture Electron updater manifests into
+  one multi-architecture manifest.
+- `scripts/stage-desktop-web.ts` builds the hosted-static web bundle and stages it at
+  `resources/web` for packaged desktop artifacts.
 
-Checklist:
+The desktop updater source uses GitHub Releases when a downstream build enables distribution. Its
+repository slug comes from `T3CODE_DESKTOP_UPDATE_REPOSITORY`, falling back to
+`GITHUB_REPOSITORY`. This is separate from the z3 server release and is not an installation path
+published by this fork.
 
-1. Apple Developer account access:
-   - Team has rights to create Developer ID certificates.
-2. Create an explicit App ID for `com.t3tools.t3code`.
-3. Create a `Developer ID Application` certificate for that App ID.
-4. Export the certificate + private key as `.p12` from Keychain.
-5. Base64-encode the `.p12` and store as `CSC_LINK`.
-6. Store the `.p12` export password as `CSC_KEY_PASSWORD`, and set `APPLE_TEAM_ID` to the
-   10-character Apple Developer Team ID.
-7. In App Store Connect, create an API key (Team key).
-8. Add API key values:
-   - `APPLE_API_KEY`: contents of the downloaded `.p8`
-   - `APPLE_API_KEY_ID`: Key ID
-   - `APPLE_API_ISSUER`: Issuer ID
-9. Re-run a tag release and confirm macOS artifacts are signed and notarized.
+## Release Checklist
 
-Notes:
-
-- `APPLE_API_KEY` is stored as raw key text in secrets.
-
-## Azure Trusted Signing setup (Windows)
-
-Set these environment variables for signed builds:
-
-- `AZURE_TENANT_ID`
-- `AZURE_CLIENT_ID`
-- `AZURE_CLIENT_SECRET`
-- `AZURE_TRUSTED_SIGNING_ENDPOINT`
-- `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME`
-- `AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`
-- `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME`
-
-Checklist:
-
-1. Create Azure Trusted Signing account and certificate profile.
-2. Record ATS values:
-   - Endpoint
-   - Account name
-   - Certificate profile name
-   - Publisher name
-3. Create/choose an Entra app registration (service principal).
-4. Grant service principal permissions required by Trusted Signing.
-5. Create a client secret for the service principal.
-6. Export the Azure variables listed above.
-7. Build an installer and confirm it is signed.
-
-## Manual release checklist
-
-1. Ensure `main` is green in CI.
-2. Align package versions with `scripts/update-release-package-versions.ts`.
-3. Run `node scripts/release-smoke.ts`.
-4. Publish the exact CLI version before distributing matching desktop artifacts.
-5. Build the required desktop artifacts with the root `dist:desktop:*` scripts.
-6. Smoke test the artifacts selected for distribution.
-
-## Troubleshooting
-
-- macOS build unsigned when expected signed:
-  - Check all Apple signing variables are populated and non-empty.
-- Windows build unsigned when expected signed:
-  - Check all Azure ATS and auth secrets are populated and non-empty.
-- Build fails with signing error:
-  - Retry with secrets removed to confirm unsigned path still works.
-  - Re-check certificate/profile names and tenant/client credentials.
+1. Confirm the intended commit is green and `apps/server/package.json` has the release version.
+2. Run focused release tests and `node scripts/release-smoke.ts`.
+3. Create and push the matching `v<version>` tag.
+4. Confirm the workflow's tarball-install check and both checksum checks pass.
+5. Confirm the GitHub release contains exactly the expected `zerops-code-<version>.tgz` and
+   `SHA256SUMS` assets.
+6. Hand the release version and digest to the zcp maintainers for an explicit pin.

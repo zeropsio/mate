@@ -27,6 +27,8 @@ it("seed prompt names the context file and embeds the playbook", () => {
   const prompt = buildTriageSeedPrompt("/tmp/triage-run/context.md");
   assert.include(prompt, "/tmp/triage-run/context.md");
   assert.include(prompt, TRIAGE_PLAYBOOK);
+  assert.include(prompt, "A Zerops Code user");
+  assert.notInclude(prompt, "T3 Code");
 });
 
 it("launch prompt stays a single argv-safe line naming the prompt file", () => {
@@ -45,7 +47,7 @@ it("context file carries every path the playbook depends on", () => {
     releaseTag: "v0.0.33",
     os: "linux x64 (7.0.0)",
     nodeVersion: "v24.0.0",
-    launchedAs: "npx zerops-code triage",
+    launchedAs: "./node_modules/.bin/z3 triage",
     server: "running (pid 42, http://127.0.0.1:4501)",
     paths: {
       stateDir: "/home/u/.t3/userdata",
@@ -66,6 +68,8 @@ it("context file carries every path the playbook depends on", () => {
   assert.include(context, "/home/u/.t3/userdata/logs/provider/events.log");
   assert.include(context, "/home/u/.t3/userdata/secrets");
   assert.include(context, "/home/u/.t3/source");
-  assert.include(context, "npx zerops-code triage");
+  assert.include(context, "./node_modules/.bin/z3 triage");
+  assert.include(context, "https://github.com/zeropsio/z3");
+  assert.notInclude(context, "pingdotgg/t3code");
   assert.include(context, "v0.0.33");
 });

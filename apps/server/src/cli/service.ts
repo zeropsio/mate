@@ -49,17 +49,21 @@ export function formatServiceStatus(
   cliVersion: string,
 ): string {
   if (!status.supported) {
-    return "T3 Code service\n  Status: unavailable on this machine\n  Supported on: Linux with systemd, macOS with launchd";
+    return "Zerops Code service\n  Status: unavailable on this machine\n  Supported on: Linux with systemd, macOS with launchd";
   }
   if (!status.installed) {
-    return "T3 Code service\n  Status: not installed\n  Next: Run `z3 service install`.";
+    return "Zerops Code service\n  Status: not installed\n  Next: Run `z3 service install`.";
   }
   return [
-    "T3 Code service",
-    `  Status: ${status.current ? `installed · zerops-code@${cliVersion}` : "needs an update or repair"}`,
+    "Zerops Code service",
+    `  Status: ${status.current ? `installed · v${cliVersion}` : "needs an update or repair"}`,
     `  Unit: ${status.unitPath}`,
     `  Logs: ${status.logPath}`,
-    ...(status.current ? [] : ["  Next: Run `npx zerops-code@latest service update`."]),
+    ...(status.current
+      ? []
+      : [
+          "  Next: Install the matching zeropsio/z3 release tarball, then run its `z3 service update`.",
+        ]),
   ].join("\n");
 }
 
@@ -73,7 +77,7 @@ const runServiceCommand = Effect.fn("cli.service.run")(function* <A, E>(
 });
 
 const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe(
-  Command.withDescription("Install T3 Code as a background service for this user."),
+  Command.withDescription("Install Zerops Code as a background service for this user."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -81,12 +85,12 @@ const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe
         const result = yield* reconcileService();
         if (!result.changed) {
           yield* Console.log(
-            `T3 Code service is already installed with zerops-code@${packageJson.version}.`,
+            `Zerops Code service is already installed at v${packageJson.version}.`,
           );
           return;
         }
         yield* Console.log(
-          `${result.previouslyInstalled ? "Updated" : "Installed"} T3 Code service with zerops-code@${packageJson.version}.\nLogs: ${result.plan.logPath}`,
+          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Code service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
         );
       }),
     ),
@@ -95,7 +99,7 @@ const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe
 
 const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
   Command.withDescription(
-    "Update or repair the background service using this CLI version. Use `npx zerops-code@latest service update` for the latest release.",
+    "Update or repair the background service using this installed release. Install a newer zeropsio/z3 release tarball first when changing versions.",
   ),
   Command.withHandler((flags) =>
     runServiceCommand(
@@ -103,13 +107,11 @@ const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
       Effect.gen(function* () {
         const result = yield* reconcileService();
         if (!result.changed) {
-          yield* Console.log(
-            `T3 Code service is already using zerops-code@${packageJson.version}.`,
-          );
+          yield* Console.log(`Zerops Code service is already using v${packageJson.version}.`);
           return;
         }
         yield* Console.log(
-          `${result.previouslyInstalled ? "Updated" : "Installed"} T3 Code service with zerops-code@${packageJson.version}.\nLogs: ${result.plan.logPath}`,
+          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Code service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
         );
       }),
     ),
@@ -117,7 +119,7 @@ const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
 );
 
 const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).pipe(
-  Command.withDescription("Stop and remove the T3 Code background service."),
+  Command.withDescription("Stop and remove the Zerops Code background service."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -125,7 +127,7 @@ const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).
         const service = yield* BootService.BootService;
         const removed = yield* service.uninstall;
         yield* Console.log(
-          removed ? "Removed the T3 Code service." : "T3 Code service is not installed.",
+          removed ? "Removed the Zerops Code service." : "Zerops Code service is not installed.",
         );
       }),
     ),
@@ -133,7 +135,7 @@ const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).
 );
 
 const serviceStatusCommand = Command.make("status", projectLocationFlags).pipe(
-  Command.withDescription("Show whether the T3 Code background service is installed."),
+  Command.withDescription("Show whether the Zerops Code background service is installed."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -152,7 +154,7 @@ export const offerServiceDuringOnboarding = Effect.gen(function* () {
     return false;
   }
   if (installed && current) {
-    yield* Console.log("T3 Code is already set up to run in the background on this machine.");
+    yield* Console.log("Zerops Code is already set up to run in the background on this machine.");
     return true;
   }
   // A LaunchAgent starts at login and dies at logout; there is no
@@ -163,10 +165,8 @@ export const offerServiceDuringOnboarding = Effect.gen(function* () {
       message: installed
         ? "The installed T3 Code service needs an update or repair. Update it now?"
         : platform === "darwin"
-          ? "Run T3 Code in the background whenever you log in to this Mac? " +
-            "It stays reachable through T3 Connect while you are logged in."
-          : "Run T3 Code in the background whenever this machine boots? " +
-            "It stays reachable through T3 Connect even after you log out.",
+          ? "Run Zerops Code in the background whenever you log in to this Mac?"
+          : "Run Zerops Code in the background whenever this machine boots?",
       initial: true,
     }),
   );
@@ -194,13 +194,11 @@ export const recoverServiceOnboardingOffer = <R>(
         Console.warn(`Background setup did not finish: ${error.message}`).pipe(Effect.as(false)),
       BootServiceInstallError: (error) =>
         Console.warn(`Background setup did not finish: ${error.message}`).pipe(Effect.as(false)),
-      BootServiceUpdatePendingError: (error) =>
-        Console.warn(`Background setup did not finish: ${error.message}`).pipe(Effect.as(false)),
     }),
   );
 
 export const serviceCommand = Command.make("service").pipe(
-  Command.withDescription("Manage the T3 Code background service."),
+  Command.withDescription("Manage the Zerops Code background service."),
   Command.withSubcommands([
     serviceInstallCommand,
     serviceUninstallCommand,

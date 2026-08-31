@@ -1,4 +1,4 @@
-import type { EnvironmentId, ServerConfig, ServerSelfUpdateCapability } from "@t3tools/contracts";
+import type { EnvironmentId, ServerConfig } from "@t3tools/contracts";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 
@@ -77,34 +77,9 @@ export function resolveServerConfigVersionMismatch(
   return resolveVersionMismatch(serverConfig?.environment.serverVersion);
 }
 
-/** The update path the connected server offers, or null when it only
-    supports a manual relaunch (older servers, dev checkouts, Windows). */
-export function resolveServerSelfUpdateCapability(
-  serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
-): ServerSelfUpdateCapability | null {
-  return serverConfig?.environment.capabilities.serverSelfUpdate ?? null;
-}
-
-/** The command to hand users whose server cannot update itself. */
-export function manualServerUpdateCommand(targetVersion: string): string {
-  return `npx t3@${targetVersion}`;
-}
-
-/** One sentence telling the user how to resolve version skew for a server,
-    matched to the update path it offers. */
-export function serverUpdateGuidance(
-  capability: ServerSelfUpdateCapability | null,
-  serverLabel: string,
-): string {
-  switch (capability) {
-    case "boot-service":
-    case "respawn":
-      return `Update the ${serverLabel} so they stay in sync.`;
-    case "desktop-managed":
-      return `Update the desktop app that runs the ${serverLabel}.`;
-    default:
-      return `Relaunch the ${serverLabel} with the copied command to sync them.`;
-  }
+/** One sentence naming the two release paths that can resolve version skew. */
+export function serverUpdateGuidance(serverLabel: string): string {
+  return `On Zerops, the ${serverLabel} follows the release pinned by zcp. For a standalone server, install the matching zeropsio/z3 release tarball.`;
 }
 
 export function buildVersionMismatchDismissalKey(

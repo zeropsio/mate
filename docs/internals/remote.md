@@ -1,11 +1,11 @@
 # Remote Architecture
 
-> For maintainers. Using T3 Code? See [docs/user](../user/).
+> For maintainers. Using Zerops Code? See [docs/user](../user/).
 
-Remote environments are shipped, not planned. Direct, bearer-paired, and desktop-managed SSH access
-all exist today. This document describes the model they share and where each piece lives. For the
-user-facing setup guide see
-[remote access](../user/remote-access.md).
+The released hosted web client reaches Zerops environments directly through the identity door and
+standalone environments through bearer pairing. Shared client source still retains other connection
+target shapes for compatibility, but this fork does not publish a client that provisions SSH
+tunnels. For the user-facing setup guide see [remote access](../user/remote-access.md).
 
 ## The model
 
@@ -21,7 +21,7 @@ the connection layer, never by splitting the runtime.
                 │ resolves one access endpoint
 ┌───────────────▼──────────────────────────────┐
 │ Access method                                │
-│  direct ws/wss, desktop-managed ssh          │
+│  direct authenticated HTTP and WebSocket     │
 └───────────────┬──────────────────────────────┘
                 │ connects to one T3 server
 ┌───────────────▼──────────────────────────────┐
@@ -49,11 +49,12 @@ control plane or a copy of session state.
 
 [`connection/model.ts`][model] defines four target tags, which are the real access taxonomy:
 
-| Target                    | Used for                                                                 |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `PrimaryConnectionTarget` | The platform-managed local server (desktop backend, CLI-served web app). |
-| `BearerConnectionTarget`  | Any manually paired endpoint reached over direct HTTP/WebSocket.         |
-| `SshConnectionTarget`     | Desktop-managed SSH environments.                                        |
+| Target                    | Used for                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `PrimaryConnectionTarget` | The environment selected by the current platform.                            |
+| `BearerConnectionTarget`  | Any manually paired endpoint reached over direct HTTP/WebSocket.             |
+| `RelayConnectionTarget`   | Persisted compatibility records; relay resolution is unsupported.            |
+| `SshConnectionTarget`     | Persisted compatibility records; the released web client has no SSH gateway. |
 
 Bearer and SSH are persisted; primary is platform-managed. Any manually paired endpoint,
 regardless of what private network it is reached over, is paired through the ordinary bearer path in
@@ -129,39 +130,22 @@ how the server got started or who manages the process.
 It works for desktop, mobile, and web with no client-side process management. Browser security rules
 are part of it: a hosted HTTPS client cannot connect to plain `ws://` or `http://` LAN backends.
 
-### Desktop-managed SSH access
+### Retained SSH target shape
 
-SSH is an access and launch helper, not a separate environment type. `DesktopSshEnvironment`
-([apps/desktop/src/ssh/DesktopSshEnvironment.ts][sshenv]) exposes `discoverHosts`,
-`ensureEnvironment`, and `disconnectEnvironment`. It discovers targets from SSH config and known
-hosts, owns password/askpass prompts, and delegates lifecycle to `SshEnvironmentManager` in
-[packages/ssh/src/tunnel.ts][sshtunnel], which resolves the target, launches or reuses the remote T3
-server, opens a local tunnel, checks HTTP readiness, optionally issues a remote pairing token, and
-returns local HTTP/WS endpoints. Disconnect closes the tunnel and stops the remote server if the
-launcher started it; a server that was already running (marked `external`) is left running.
-
-The desktop main process owns this because it can spawn SSH, manage prompts, write launch scripts,
-and clean up forwards. The renderer connects through the forwarded URL like any other environment and
-needs no SSH-specific RPC path.
-
-Failure handling is explicit: SSH auth failure surfaces before an environment is saved, remote launch
-failure includes launcher output where available, forwarded-port failure leaves the environment
-disconnected rather than falling back to an unrelated endpoint, and reconnect restores the SSH bridge
-before reconnecting the WebSocket client.
+The shared runtime retains `SshConnectionTarget` and the `SshEnvironmentGateway` capability so
+client surfaces can decode persisted profiles without changing the connection model. The broker in
+[`connection/resolver.ts`][resolver] delegates preparation through that capability. The released web
+client supplies an unsupported gateway, so it neither launches a remote server nor opens a tunnel.
+The deleted desktop SSH implementation has no live documentation link.
 
 ## Launch methods
 
 Launch answers a different question: how does a T3 server come to exist on the target machine? Keep
 it separate from access.
 
-- **Pre-existing server.** The operator already runs T3 and the client connects directly or through a
-  tunnel.
-- **Desktop-managed remote launch over SSH.** Desktop probes the machine, launches or reuses a remote
-  server, forwards a port, and the renderer connects normally. The saved environment records that it
-  came from SSH launch for reconnect and lifecycle UX only; that metadata never changes the protocol
-  or the identity model.
-  The same `ExecutionEnvironment` can be reached several of these ways. Only the launch and access
-  paths differ.
+- **Zerops environment.** zcp installs and supervises the pinned release in the project container.
+- **Standalone server.** The operator installs a GitHub release tarball and starts `z3 serve`; the
+  client connects to that pre-existing server through its reachable endpoint.
 
 ## Security model
 
@@ -200,5 +184,4 @@ These remain unbuilt and are listed to keep the model honest:
 [model]: ../../packages/client-runtime/src/connection/model.ts
 [onboarding]: ../../packages/client-runtime/src/connection/onboarding.ts
 [authremote]: ../../packages/client-runtime/src/authorization/remote.ts
-[sshenv]: ../../apps/desktop/src/ssh/DesktopSshEnvironment.ts
-[sshtunnel]: ../../packages/ssh/src/tunnel.ts
+[resolver]: ../../packages/client-runtime/src/connection/resolver.ts

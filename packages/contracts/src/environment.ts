@@ -28,22 +28,9 @@ export const ThreadEnvMode = Schema.Literals(["local", "worktree"]);
 export type ThreadEnvMode = typeof ThreadEnvMode.Type;
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
 
-/** How a server can replace itself with another version when asked over RPC.
-    New servers only advertise the stable launcher-backed "boot-service" path;
-    "respawn" remains decodable for compatibility with older servers. */
+/** Legacy server-update methods remain decodable for older wire peers. */
 export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn"]);
 export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
-
-/** What update path a client should offer for a server: one of the RPC
-    self-update methods above, or "desktop-managed" when the backend's
-    version belongs to the T3 Code desktop app supervising it — updating the
-    app on that machine is the only way to update the server. */
-export const ServerSelfUpdateCapability = Schema.Literals([
-  "boot-service",
-  "respawn",
-  "desktop-managed",
-]);
-export type ServerSelfUpdateCapability = typeof ServerSelfUpdateCapability.Type;
 
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -82,13 +69,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
   /** Server persists a pull request reference on thread.meta.update. */
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),
-  /** The update path clients should offer for this server. Absent on
-      servers that must be relaunched manually (dev checkouts, Windows
-      foreground runs, pre-update servers). */
-  serverSelfUpdate: Schema.optionalKey(ServerSelfUpdateCapability),
-  /** Server can stream self-update progress before acknowledging the
-      restart. Clients fall back to server.updateServer when absent. */
-  serverSelfUpdateProgress: Schema.optionalKey(Schema.Boolean),
   /** Agent-activity publishes (push notifications and Live Activities)
       currently leave this environment: the publish opt-in is enabled and the
       relay link credentials exist. Clients skip seeding a Live Activity when

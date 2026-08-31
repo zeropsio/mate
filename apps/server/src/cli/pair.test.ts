@@ -156,7 +156,7 @@ describe("z3 pair", () => {
     ).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("directs to z3 serve or z3 connect when no server is running", () =>
+  it.effect("directs to z3 serve when no server is running", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-none-test-"));
 
@@ -167,9 +167,9 @@ describe("z3 pair", () => {
       const rendered = String(
         typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
       );
-      assert.include(rendered, "No running T3 Code server found.");
-      assert.include(rendered, "npx zerops-code serve");
-      assert.include(rendered, "npx zerops-code connect");
+      assert.include(rendered, "No running Zerops Code server found.");
+      assert.include(rendered, "Start the standalone server with `z3 serve`");
+      assert.notInclude(rendered, "connect");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -198,7 +198,7 @@ describe("z3 pair", () => {
         const rendered = String(
           typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
         );
-        assert.include(rendered, "No running T3 Code server found.");
+        assert.include(rendered, "No running Zerops Code server found.");
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
   );
@@ -224,7 +224,7 @@ describe("z3 pair", () => {
       const rendered = String(
         typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
       );
-      assert.include(rendered, "No running T3 Code server found.");
+      assert.include(rendered, "No running Zerops Code server found.");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });

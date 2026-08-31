@@ -262,6 +262,9 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  // Retained only for clients shipped at v0.1.0, before self-update was removed. No
+  // capability advertises these methods and no current client path calls them. Remove
+  // after one release cycle, once no released client offers the update action.
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverUpsertKeybinding: "server.upsertKeybinding",

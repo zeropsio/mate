@@ -24,11 +24,14 @@ Use this path only when you are running the server yourself outside Zerops.
 - Node.js `^22.16 || ^23.11 || >=24.10`
 - At least one provider CLI installed and authenticated on the server machine
 
-Download `zerops-code-0.1.0.tgz` and `SHA256SUMS` from the
-[v0.1.0 GitHub release](https://github.com/zeropsio/z3/releases/tag/v0.1.0), then verify the
-tarball against `SHA256SUMS`.
+Download `zerops-code-<version>.tgz` and `SHA256SUMS` from the
+[latest GitHub release](https://github.com/zeropsio/z3/releases/latest), then verify the tarball
+against `SHA256SUMS`. For one concrete verified example, the
+[v0.1.0 release](https://github.com/zeropsio/z3/releases/tag/v0.1.0) contains
+`zerops-code-0.1.0.tgz` and its checksum file.
 
-In a directory where you want to keep the standalone installation, place the tarball and run:
+In a directory where you want to keep the standalone installation, place the tarball and run the
+following commands, substituting the downloaded version for `0.1.0`:
 
 ```bash
 npm init -y
