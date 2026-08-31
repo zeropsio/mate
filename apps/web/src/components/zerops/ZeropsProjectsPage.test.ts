@@ -1,9 +1,11 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { autoConnectServedZeropsEnvironment } from "./ZeropsProjectsPage";
+import { autoConnectServedZeropsEnvironment, ZeropsProjectScopeHeader } from "./ZeropsProjectsPage";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
@@ -22,6 +24,30 @@ const SAME_ORIGIN_CANDIDATE = {
 };
 
 describe("same-origin Zerops identity bootstrap", () => {
+  it("exposes a compact project-scope header and preserves selection behavior", () => {
+    const markup = renderToStaticMarkup(createElement(ZeropsProjectScopeHeader));
+    const attempted = { current: false };
+    const connect = vi.fn();
+    const input = {
+      attempted,
+      status: "signed-in" as const,
+      zeropsToken: "zerops-account-token",
+      appOrigin: APP_ORIGIN,
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [SAME_ORIGIN_CANDIDATE],
+      connect,
+    };
+
+    autoConnectServedZeropsEnvironment(input);
+    autoConnectServedZeropsEnvironment(input);
+
+    expect(markup).toContain('data-zerops-project-scope="true"');
+    expect(markup).toContain('data-zerops-primitive="micro-label"');
+    expect(markup).toContain("Project scope");
+    expect(markup).toContain("Projects");
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
   it("fires exactly once for the unauthenticated container that served the app", () => {
     const attempted = { current: false };
     const connect = vi.fn();

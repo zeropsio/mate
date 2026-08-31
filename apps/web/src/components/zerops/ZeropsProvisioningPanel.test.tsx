@@ -1,5 +1,6 @@
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   PROVISIONING_CAPS,
@@ -11,6 +12,28 @@ import {
 import { ZeropsProvisioningPanel, zeropsGuiProjectUrl } from "./ZeropsProvisioningPanel";
 
 const noop = () => undefined;
+
+type ActionProps = {
+  readonly "aria-busy"?: boolean;
+  readonly children?: ReactNode;
+  readonly disabled?: boolean;
+  readonly label?: string;
+  readonly onClick?: () => void;
+};
+
+function findAction(node: ReactNode, label: string): ReactElement<ActionProps> {
+  if (isValidElement<ActionProps>(node)) {
+    if (node.props.label === label && node.props.onClick !== undefined) return node;
+    for (const child of Children.toArray(node.props.children)) {
+      try {
+        return findAction(child, label);
+      } catch {
+        // Keep searching sibling nodes.
+      }
+    }
+  }
+  throw new Error(`Action not found: ${label}`);
+}
 
 const PROJECT = {
   id: "project-1",
@@ -53,6 +76,55 @@ const awaitingHealth = advanceProvisioning(
 );
 
 describe("ZeropsProvisioningPanel", () => {
+  it("explains waiting, failure and retry states with an explicit next action", () => {
+    const waitingMarkup = render(awaitingContainer);
+    const failureMarkup = render(awaitingHealth, "Network error contacting Zerops.");
+    const timedOut = advanceProvisioning(
+      awaitingContainer,
+      { kind: "tick" },
+      PROVISIONING_CAPS["awaiting-container"] + 1,
+    );
+    const timedOutMarkup = render(timedOut);
+
+    expect(waitingMarkup).toContain('data-zerops-provisioning-phase="awaiting-container"');
+    expect(waitingMarkup).toContain('data-zerops-primitive="flat-card"');
+    expect(waitingMarkup).toContain('data-zerops-primitive="status-dot"');
+    expect(waitingMarkup).toContain("Preparing your project");
+    expect(failureMarkup).toContain('role="alert"');
+    expect(failureMarkup).toContain("Try again");
+    expect(timedOutMarkup).toContain("Keep waiting");
+    expect(timedOutMarkup).toContain("Check it in the Zerops GUI");
+  });
+
+  it("invokes Retry exactly once after user action and keeps it disabled while busy", () => {
+    const timedOut = advanceProvisioning(
+      awaitingContainer,
+      { kind: "tick" },
+      PROVISIONING_CAPS["awaiting-container"] + 1,
+    );
+    const onRetry = vi.fn();
+    const panel = ZeropsProvisioningPanel({
+      state: timedOut,
+      busy: false,
+      error: null,
+      onRetry,
+      onEnable: noop,
+    });
+
+    findAction(panel, "Keep waiting").props.onClick?.();
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    const busyPanel = ZeropsProvisioningPanel({
+      state: timedOut,
+      busy: true,
+      error: null,
+      onRetry,
+      onEnable: noop,
+    });
+    expect(findAction(busyPanel, "Keep waiting").props.disabled).toBe(true);
+    expect(busyPanel.props["aria-busy"]).toBe(true);
+  });
+
   it("names what every wait is waiting for, and its cap", () => {
     expect(render(startProvisioning({ zcpClaimed: true, nowMs: 0 }))).toContain(
       "Waiting for your project to appear",

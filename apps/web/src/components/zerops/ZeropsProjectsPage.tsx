@@ -36,6 +36,7 @@ import {
 } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
 
+import { MicroLabel } from "./primitives";
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 
@@ -82,6 +83,20 @@ export function autoConnectServedZeropsEnvironment(input: {
 
 function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
+}
+
+export function ZeropsProjectScopeHeader() {
+  return (
+    <div className="space-y-1" data-zerops-project-scope="true">
+      <MicroLabel className="text-muted-foreground">Project scope</MicroLabel>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h1 className="text-xl font-medium text-foreground">Projects</h1>
+        <p className="text-xs text-muted-foreground">
+          Choose the Zerops project this workspace should open.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function NewProjectForm({
@@ -151,6 +166,7 @@ function ZeropsProjectsContent() {
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const provisioning = useZeropsProvisioning(creatingIn);
   const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
@@ -296,6 +312,9 @@ function ZeropsProjectsContent() {
   return (
     <div className="space-y-8">
       <ZeropsProjectPicker
+        busyCandidateKeys={
+          enablingCandidateKey === null ? undefined : new Set([enablingCandidateKey])
+        }
         candidates={candidates}
         isLoading={isLoading}
         error={connectError ?? error}
@@ -321,6 +340,7 @@ function ZeropsProjectsContent() {
           const serviceId = candidate.service?.id;
           if (!serviceId) return;
           setConnectError(null);
+          setEnablingCandidateKey(candidate.key);
           // Write the flag, then restart: the install step re-runs on boot and
           // comes back with the current zcp, which only installs Zerops Code
           // when it finds ZCP_Z3_ENABLED set. A restart on its own returns the
@@ -332,6 +352,9 @@ function ZeropsProjectsContent() {
             })
             .catch((cause: unknown) => {
               setConnectError(zeropsErrorMessage(cause));
+            })
+            .finally(() => {
+              setEnablingCandidateKey(null);
             });
         }}
       />
@@ -371,6 +394,7 @@ export function ZeropsProjectsPage() {
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
+            <ZeropsProjectScopeHeader />
             <ZeropsProjectsContent />
           </WorkspacePageContainer>
         </ScrollArea>
