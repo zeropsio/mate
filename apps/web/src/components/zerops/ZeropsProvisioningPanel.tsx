@@ -4,12 +4,12 @@
  * error. Presentational: the states come from `provisioning.ts`.
  */
 
-import { ExternalLinkIcon, RotateCcwIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 
 import type { ProvisioningState } from "@t3tools/client-runtime/zerops/provisioning";
 
 import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
+import { FlatCard, MicroLabel, Pill, StatusDot } from "./primitives";
 
 /** The platform GUI's own project page — traced from its route table. */
 export function zeropsGuiProjectUrl(projectId: string | null): string {
@@ -20,6 +20,27 @@ function capLabel(capMs: number): string {
   const seconds = Math.round(capMs / 1000);
   // A minute still reads better in seconds; past that, minutes.
   return seconds > 60 ? `up to ${Math.round(seconds / 60)} min` : `up to ${seconds}s`;
+}
+
+function provisioningStatus(state: ProvisioningState): {
+  readonly label: string;
+  readonly pulse?: boolean;
+  readonly tone: "ok" | "busy" | "attention" | "failed";
+} {
+  switch (state.phase) {
+    case "ready":
+      return { label: "Ready", tone: "ok" };
+    case "needs-enable":
+      return { label: "Needs Zerops Code", tone: "attention" };
+    case "not-yet-available":
+      return { label: "Not available", tone: "attention" };
+    case "timed-out":
+      return { label: "Taking longer", tone: "attention" };
+    case "pool-exhausted":
+      return { label: "Project required", tone: "attention" };
+    default:
+      return { label: "Preparing", pulse: true, tone: "busy" };
+  }
 }
 
 export function ZeropsProvisioningPanel({
@@ -65,14 +86,34 @@ export function ZeropsProvisioningPanel({
       }
     />
   );
+  const status = provisioningStatus(state);
 
   return (
-    <div className="space-y-4">
+    <FlatCard
+      aria-busy={busy}
+      className="space-y-5 p-5 sm:p-6"
+      data-zerops-provisioning-phase={state.phase}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <MicroLabel className="text-muted-foreground">Project setup</MicroLabel>
+          <h2 className="text-lg font-medium text-foreground">
+            {state.phase === "ready" ? "Project ready" : "Preparing your project"}
+          </h2>
+        </div>
+        <StatusDot
+          label={status.label}
+          tone={status.tone}
+          {...(status.pulse === undefined ? {} : { pulse: status.pulse })}
+        />
+      </div>
+
       {state.capMs === null ? null : (
-        <div className="flex items-center gap-2 text-sm text-foreground">
-          <Spinner className="size-4" />
-          <span>{state.waitingFor}</span>
-          <span className="text-xs text-muted-foreground">({capLabel(state.capMs)})</span>
+        <div className="rounded-[var(--zerops-card-radius)] bg-muted/55 px-4 py-3">
+          <p className="text-sm text-foreground">{state.waitingFor}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            This step can take {capLabel(state.capMs)}.
+          </p>
         </div>
       )}
 
@@ -85,10 +126,12 @@ export function ZeropsProvisioningPanel({
               ? "This container is not serving Zerops Code. Enabling turns it on for the container and restarts it, which installs the current version. Your files, history and services are untouched."
               : "This container has not answered. Restarting it installs the current version and brings it back — your files, history and services are untouched."}
           </p>
-          <Button className="w-full" disabled={busy} onClick={onEnable}>
-            {busy ? <Spinner className="size-4" /> : null}
-            Enable Zerops Code
-          </Button>
+          <Pill
+            className="w-full"
+            disabled={busy}
+            label={busy ? "Enabling…" : "Enable Zerops Code"}
+            onClick={onEnable}
+          />
         </div>
       ) : null}
 
@@ -105,11 +148,8 @@ export function ZeropsProvisioningPanel({
           <p className="text-sm text-foreground">
             Still {state.waitingFor.toLowerCase()}. It may simply be taking longer than usual.
           </p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={onRetry}>
-              <RotateCcwIcon className="size-4" />
-              Keep waiting
-            </Button>
+          <div className="flex flex-wrap gap-2">
+            <Pill disabled={busy} label="Keep waiting" onClick={onRetry} tone="secondary" />
             {guiLink}
           </div>
         </div>
@@ -126,10 +166,14 @@ export function ZeropsProvisioningPanel({
       ) : null}
 
       {error ? (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
-          {error}
-        </p>
+        <div
+          className="space-y-3 rounded-[var(--zerops-card-radius)] bg-destructive/8 px-4 py-3 text-destructive-foreground"
+          role="alert"
+        >
+          <p className="text-sm">{error}</p>
+          <Pill disabled={busy} label="Try again" onClick={onRetry} tone="secondary" />
+        </div>
       ) : null}
-    </div>
+    </FlatCard>
   );
 }

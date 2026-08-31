@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { FlatCard, MicroLabel, Pill, StatusDot } from "./primitives";
 import {
   connectionStatusText,
   type EnvironmentConnectionPresentation,
@@ -22,6 +23,12 @@ import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provi
 
 type PresentedZeropsCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
+};
+
+type CandidateStatus = {
+  readonly label: string;
+  readonly pulse?: boolean;
+  readonly tone: "ok" | "busy" | "attention" | "failed" | "off";
 };
 
 function candidateDetail(candidate: PresentedZeropsCandidate): string {
@@ -40,28 +47,46 @@ function isConnectionInFlight(candidate: PresentedZeropsCandidate): boolean {
 function CandidateRow({
   candidate,
   action,
+  busy,
+  detail,
+  status,
 }: {
   readonly candidate: PresentedZeropsCandidate;
   readonly action?: ReactNode | undefined;
+  readonly busy: boolean;
+  readonly detail?: string | undefined;
+  readonly status: CandidateStatus;
 }) {
   return (
-    <li className="flex items-center justify-between gap-4 rounded-xl border border-border/55 bg-card/20 px-4 py-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {candidate.project.name}
-          </span>
+    <li className="min-w-0">
+      <FlatCard
+        aria-busy={busy}
+        className="flex h-full min-w-0 flex-col gap-4 p-4"
+        data-zerops-project-card="true"
+      >
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <StatusDot
+            label={status.label}
+            tone={status.tone}
+            {...(status.pulse === undefined ? {} : { pulse: status.pulse })}
+          />
           {candidate.service ? (
             <Badge size="sm" variant="outline">
               {candidate.service.name}
             </Badge>
           ) : null}
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {candidateDetail(candidate)}
-        </p>
-      </div>
-      {action}
+        <div className="min-w-0 flex-1">
+          <MicroLabel className="text-muted-foreground">Project</MicroLabel>
+          <h3 className="mt-1 truncate text-base font-medium text-foreground">
+            {candidate.project.name}
+          </h3>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+            {detail ?? candidateDetail(candidate)}
+          </p>
+        </div>
+        {action ? <div className="mt-auto">{action}</div> : null}
+      </FlatCard>
     </li>
   );
 }
@@ -70,31 +95,103 @@ function CandidateGroup({
   title,
   description,
   candidates,
+  busyCandidateKeys,
   renderAction,
+  renderPresentation,
+  status,
 }: {
   readonly title: string;
   readonly description: string;
   readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
+  readonly busyCandidateKeys?: ReadonlySet<string> | undefined;
   readonly renderAction?: ((candidate: PresentedZeropsCandidate) => ReactNode) | undefined;
+  readonly renderPresentation?:
+    | ((candidate: PresentedZeropsCandidate) => {
+        readonly detail?: string;
+        readonly status: CandidateStatus;
+      })
+    | undefined;
+  readonly status: CandidateStatus;
 }) {
   if (candidates.length === 0) return null;
+  const labelId = `zerops-project-group-${title.toLowerCase().replaceAll(" ", "-")}`;
   return (
-    <section className="space-y-2">
+    <section aria-labelledby={labelId} className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <h2 id={labelId} className="text-sm font-semibold text-foreground">
+          {title}
+        </h2>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <ul className="space-y-2">
-        {candidates.map((candidate) => (
-          <CandidateRow
-            key={candidate.key}
-            candidate={candidate}
-            action={renderAction?.(candidate)}
-          />
-        ))}
+      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {candidates.map((candidate) => {
+          const presentation = renderPresentation?.(candidate);
+          return (
+            <CandidateRow
+              key={candidate.key}
+              candidate={candidate}
+              action={renderAction?.(candidate)}
+              busy={busyCandidateKeys?.has(candidate.key) ?? false}
+              detail={presentation?.detail}
+              status={presentation?.status ?? status}
+            />
+          );
+        })}
       </ul>
     </section>
   );
+}
+
+function readyCandidatePresentation(
+  candidate: PresentedZeropsCandidate,
+  health: ZeropsContainerHealth | undefined,
+): { readonly detail?: string; readonly status: CandidateStatus } {
+  if (candidate.connection?.error) {
+    return {
+      detail: candidateDetail(candidate),
+      status:
+        candidate.connection.phase === "error"
+          ? { label: "Connection failed", tone: "failed" }
+          : { label: "Reconnecting", tone: "attention" },
+    };
+  }
+  if (candidate.connection?.phase === "error") {
+    return {
+      detail: candidateDetail(candidate),
+      status: { label: "Connection failed", tone: "failed" },
+    };
+  }
+  if (isConnectionInFlight(candidate)) {
+    return {
+      detail: candidateDetail(candidate),
+      status: {
+        label: candidate.connection?.phase === "reconnecting" ? "Reconnecting" : "Connecting",
+        pulse: true,
+        tone: "busy",
+      },
+    };
+  }
+  switch (health) {
+    case "predates-z3":
+      return {
+        detail: "Zerops Code is not enabled yet.",
+        status: { label: "Needs Zerops Code", tone: "attention" },
+      };
+    case "unreachable":
+      return {
+        detail: "Container is not answering.",
+        status: { label: "Not answering", tone: "attention" },
+      };
+    case "initializing":
+      return {
+        detail: "Zerops Code is starting.",
+        status: { label: "Starting", pulse: true, tone: "busy" },
+      };
+    case "ready":
+      return { status: { label: "Ready", tone: "ok" } };
+    default:
+      return { status: { label: "Checking", pulse: true, tone: "busy" } };
+  }
 }
 
 /** What a row says and offers, given what its container answered. */
@@ -103,8 +200,9 @@ function readyRowAction(input: {
   readonly health: ZeropsContainerHealth | undefined;
   readonly onConnect: ((candidate: ZeropsCandidate) => void) | undefined;
   readonly onEnable: ((candidate: ZeropsCandidate) => void) | undefined;
+  readonly busy: boolean;
 }): ReactNode {
-  const { candidate, health, onConnect, onEnable } = input;
+  const { busy, candidate, health, onConnect, onEnable } = input;
   if (health === undefined) {
     return <Spinner className="size-4 text-muted-foreground" />;
   }
@@ -114,29 +212,30 @@ function readyRowAction(input: {
   // the action that helps in either case, so it is what the row offers.
   if (health === "predates-z3" || health === "unreachable") {
     return onEnable ? (
-      <Button
-        size="sm"
-        variant="outline"
+      <Pill
+        className="w-full"
+        data-zerops-primary-action="Enable Zerops Code"
+        disabled={busy}
+        label="Enable Zerops Code"
         onClick={() => {
           onEnable(candidate);
         }}
-      >
-        Enable Zerops Code
-      </Button>
+      />
     ) : null;
   }
   if (health !== "ready") {
     return <span className="text-xs text-muted-foreground">Starting…</span>;
   }
   return onConnect ? (
-    <Button
-      size="sm"
+    <Pill
+      className="w-full"
+      data-zerops-primary-action="Connect"
+      disabled={busy}
+      label="Connect"
       onClick={() => {
         onConnect(candidate);
       }}
-    >
-      Connect
-    </Button>
+    />
   ) : null;
 }
 
@@ -146,6 +245,7 @@ function readyRowAction(input: {
  */
 export function ZeropsProjectPicker({
   candidates,
+  busyCandidateKeys,
   isLoading,
   error,
   health,
@@ -156,6 +256,7 @@ export function ZeropsProjectPicker({
   onWait,
 }: {
   readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
+  readonly busyCandidateKeys?: ReadonlySet<string> | undefined;
   readonly isLoading: boolean;
   readonly error: string | null;
   /** What each container answered, by candidate key; absent means still asking. */
@@ -203,19 +304,21 @@ export function ZeropsProjectPicker({
       <CandidateGroup
         title="Connected"
         description="Already available in this app."
+        busyCandidateKeys={busyCandidateKeys}
         candidates={grouped.connected}
+        status={{ label: "Connected", tone: "ok" }}
         renderAction={
           onOpen
             ? (candidate) => (
-                <Button
-                  size="sm"
-                  variant="outline"
+                <Pill
+                  className="w-full"
+                  data-zerops-primary-action="Open"
+                  disabled={busyCandidateKeys?.has(candidate.key) ?? false}
+                  label="Open"
                   onClick={() => {
                     onOpen(candidate);
                   }}
-                >
-                  Open
-                </Button>
+                />
               )
             : undefined
         }
@@ -223,12 +326,18 @@ export function ZeropsProjectPicker({
       <CandidateGroup
         title="Connecting"
         description="Establishing a session with this container."
+        busyCandidateKeys={busyCandidateKeys}
         candidates={connecting}
+        status={{ label: "Connecting", pulse: true, tone: "busy" }}
+        renderPresentation={(candidate) =>
+          readyCandidatePresentation(candidate, health?.get(candidate.key))
+        }
         renderAction={(candidate) => {
           const candidateHealth = health?.get(candidate.key);
           return candidateHealth === "predates-z3" || candidateHealth === "unreachable" ? (
             readyRowAction({
               candidate,
+              busy: busyCandidateKeys?.has(candidate.key) ?? false,
               health: candidateHealth,
               onConnect: undefined,
               onEnable,
@@ -241,10 +350,16 @@ export function ZeropsProjectPicker({
       <CandidateGroup
         title="Ready to connect"
         description="A Zerops Code container is running and reachable."
+        busyCandidateKeys={busyCandidateKeys}
         candidates={ready}
+        status={{ label: "Ready", tone: "ok" }}
+        renderPresentation={(candidate) =>
+          readyCandidatePresentation(candidate, health?.get(candidate.key))
+        }
         renderAction={(candidate) =>
           readyRowAction({
             candidate,
+            busy: busyCandidateKeys?.has(candidate.key) ?? false,
             health: health?.get(candidate.key),
             onConnect,
             onEnable,
@@ -254,19 +369,21 @@ export function ZeropsProjectPicker({
       <CandidateGroup
         title="Preparing"
         description="Getting your project ready."
+        busyCandidateKeys={busyCandidateKeys}
         candidates={grouped.provisioning}
+        status={{ label: "Preparing", pulse: true, tone: "busy" }}
         renderAction={
           onWait
             ? (candidate) => (
-                <Button
-                  size="sm"
-                  variant="outline"
+                <Pill
+                  className="w-full"
+                  data-zerops-primary-action="Wait for it"
+                  disabled={busyCandidateKeys?.has(candidate.key) ?? false}
+                  label="Wait for it"
                   onClick={() => {
                     onWait(candidate);
                   }}
-                >
-                  Wait for it
-                </Button>
+                />
               )
             : undefined
         }
@@ -274,7 +391,9 @@ export function ZeropsProjectPicker({
       <CandidateGroup
         title="Not available"
         description="Each row says what is in the way."
+        busyCandidateKeys={busyCandidateKeys}
         candidates={grouped.unavailable}
+        status={{ label: "Not available", tone: "off" }}
       />
 
       {empty ? (
