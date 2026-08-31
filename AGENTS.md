@@ -5,157 +5,193 @@
 > contracts) keep edits minimal so future ports stay cheap. Where the two disagree about product
 > name or scope, the rules above win.
 
-# T3 Code
+# z3 — Zerops Code
 
-T3 Code is a minimal GUI for coding agents. A Node WebSocket server wraps provider CLIs (Codex, Claude Code, Cursor, Grok, OpenCode) and serves web, desktop, and mobile clients.
+z3 is a control surface for coding agents that live inside Zerops project containers. A Node
+WebSocket server wraps provider CLIs and serves the hosted web bundle at `/z3/` on the container's
+public origin. Zerops users sign in with their Zerops account; they do not install or pair the
+container by hand.
 
-You can think of T3 Code as an open source "bring-your-own-subscription" alternative to apps like Claude Desktop, Codex App, Cursor Glass and Conductor.
+The server release is pinned and installed by zcp, then supervised as `zerops@z3`. Standalone
+server releases are GitHub tarballs whose package is `zerops-code` and executable is `z3`; there is
+no npm-registry release. The fork does not currently publish desktop or mobile clients.
 
-## What makes T3 Code special?
+## Product constraints
 
-We have over 200,000 users who love T3 Code. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
+### 1. Container first
 
-### 1. Open at the core
-
-T3 Code is truly open. We share our roadmap, we share how we think about things, and of course we share all our code. A large number of our users run forks. We work in the open, and should strive to stay that way.
+The Zerops container is the product environment: it owns the code, provider credentials, zcp MCP
+tools, server process, and durable work. Do not design the primary path around a local server, a
+tunnel, a shared container secret, or a desktop sidecar.
 
 ### 2. Performance without compromise
 
-Lots of apps have gotten bogged down with bad tech decisions and "slop". We have not, and we're proud of the performance of T3 Code. We regularly audit for performance regressions, often caused by sending too much data over websockets, css animations causing gpu spikes, lists being hard to render, and more. Make sure all changes are considerate of performance impact.
+Users drive agents all day and notice dropped frames, lying spinners, and stale labels. Watch for
+websocket payload growth, unnecessary list rerenders, CSS animation GPU cost, and continuously
+repainting effects, especially on high-refresh displays.
 
-### 3. Remote ready
+### 3. Account-backed remote access
 
-The server runs inside a Zerops container and every client reaches it over the container's public origin through the Zerops-identity door, or through a one-time link as the manual fallback. There is no local-network mode and no tunnel — T3 Connect and Tailscale left with the fork. A feature is done when it works through that door from every client.
+Every released web client reaches the server on the container's public origin through the
+Zerops-identity door. A standalone server run outside Zerops can use one-time pairing. A Zerops
+container never bootstraps a browser session from a pairing credential.
 
-### 4. Multi-surface
+### 4. Multi-surface codebase
 
-z3 has 3 app surfaces: **web**, **desktop**, and **mobile** — one hosted-static web bundle, reached three ways.
+The repository retains web, desktop, and mobile source. Only the hosted-static web bundle is
+released by this fork today. Changes to shared client behavior still need a decision for desktop
+and mobile source so those surfaces do not silently diverge, but user documentation must not direct
+people to upstream desktop or mobile packages.
 
-**Web** is that bundle served by the container itself under `/z3/`, on the same origin as the rest of `zcp`. It is the surface a Zerops user signs into first.
+## Working stance
 
-**Desktop** is an Electron shell around the same hosted-static bundle: keychain, dialogs, updater, preview webview, window/menu/theme. It hosts nothing — no local backend, no server sidecar — and connects to a container like any other client.
+Prefer the smallest model that makes the correct behavior unsurprising. Do not preserve complexity
+because it already exists, and do not introduce machinery without a concrete constraint. Most work
+is performed through z3 itself, often remotely, so be careful with live data, processes, and dev
+servers that may belong to the person directing you.
 
-**Mobile** is a React Native app for iOS and Android that connects to a container to control work remotely.
+## Glossary
 
-## A note from Theo
+Use this language when communicating:
 
-I like ambitious ideas, simple systems, and software that feels obvious. Do not preserve complexity just because it already exists. Do not introduce machinery because it looks architecturally impressive. Understand the real constraint, then fight for the smallest model that makes the correct behavior unsurprising.
-
-Channel both "measure twice, cut once" and "yagni". Fight scope creep. Try to honor the dev's intent in both a minimal and realistic fashion.
-
-The rest of this document is meant to help you navigate the codebase and make changes effectively. Think of these instructions less as "hard rules", more as "good defaults". The developer's preferences should be able to override anything here.
-
-Of note: Most T3 Code contributions will come from T3 Code itself, often controlled remotely. This means you should be careful about accessing data, killing dev servers, and other things that may damage the T3 Code instance that the contributor is using.
-
-## A small glossary
-
-We need to be on the same page with terminology. When communicating, use this language:
-
-- **you** means the agent reading this file and changing T3 Code.
-- **we, us, and maintainers** mean Theo, Julius and the people building T3 Code. These are who you are talking to now.
-- **user** means the person using T3 Code to direct coding agents.
-- **agent** means the coding agent a user runs inside T3 Code. Depending on context, that may also include you.
-- **provider** means the agent runtime or harness T3 Code talks to, such as Codex, Claude, Cursor, or OpenCode.
-- **client** means the web, desktop, or mobile UI.
-- **environment** means one running T3 server and the machine, filesystem, provider credentials, and state it owns.
+- **you** means the agent reading this file and changing z3.
+- **we, us, and maintainers** mean the people maintaining this fork.
+- **user** means the person using z3 to direct coding agents.
+- **agent** means the coding agent a user runs inside z3. Depending on context, that may also
+  include you.
+- **provider** means the agent runtime or harness z3 talks to, such as Codex, Claude, Cursor, Grok,
+  or OpenCode.
+- **client** means the web, desktop, or mobile UI source; the released fork client is the hosted
+  web bundle.
+- **environment** means one running z3 server and the machine, filesystem, provider credentials,
+  and state it owns.
 - **project** means an environment-local workspace record rooted at a directory.
 - **thread** means the durable conversation and work history for a project.
 - **turn** means one user-to-agent cycle, including follow-up work such as checkpointing.
-- **T3 home** means the base data directory. Runtime state normally lives below its userdata directory.
+- **z3 home** means the base data directory. Runtime state normally lives below its `userdata`
+  directory; internal names still use `.t3` and `T3CODE_HOME` where the code does.
 
 ## The three ways to hurt yourself
 
-1. **Killing by pattern.** Never `pkill -f`, `pgrep | kill`, or `kill` a PID you found by matching a name, path, or worktree string. Your own agent process has this worktree's path in its argv, and this machine runs several other dev servers at once. Kill only a PID you captured at spawn, or the owner of your port from `ss -H -ltnp` after confirming `/proc/<pid>/cwd` is your worktree.
-2. **Writing to the live install.** `~/.t3/userdata` is the developer's real T3 Code database, in use while you work. Reading it and copying from it are fine, and a good way to get real test data (see Test data). Never start a server against it, never open it read-write, never clean it up.
-3. **Baking in origins.** Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev. Dev is single-origin and Vite proxies `/api`, `/ws`, `/oauth`, and `/.well-known`. Setting them bakes localhost into the bundle and silently breaks every remote browser.
+1. **Killing by pattern.** Never `pkill -f`, `pgrep | kill`, or kill a PID found by matching a name,
+   path, or worktree string. Your own agent process has this worktree's path in its arguments, and
+   this machine runs several dev servers. Kill only a PID captured at spawn, or the owner of your
+   port from `ss -H -ltnp` after confirming `/proc/<pid>/cwd` is this worktree.
+2. **Writing to the live install.** `~/.t3/userdata` is the developer's real database, in use while
+   you work. Reading it and copying from it are fine. Never start a server against it, open it
+   read-write, or clean it up.
+3. **Baking in origins.** Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev. Dev is single-origin
+   and Vite proxies `/api`, `/ws`, `/oauth`, and `/.well-known`. Setting them bakes localhost into
+   the bundle and breaks remote browsers.
 
 ## Hit every surface
 
-The most common defect in this repo is a change that works on the path you tested and is missing everywhere else. Before calling frontend work done, walk this list and say which entries applied:
+Before calling frontend work done, decide which entries apply:
 
-- **Entry points.** A behavior reachable from the chat view is usually also reachable from Settings, the command palette, and a keybinding. Fixing one is not fixing the feature.
-- **Clients.** Web, desktop (wraps web, adds Electron shell/IPC), and mobile (React Native, separate navigation). Shared logic lives in `packages/client-runtime`
-- **Providers.** Codex, Claude, Cursor, Grok, and OpenCode each have an adapter. Provider-shaped features need a decision per adapter, even if the decision is "not supported here".
-- **Contracts.** Anything crossing the wire is typed in `packages/contracts`. Change the schema and the server, web, mobile, and desktop all follow.
-- **Reverse states.** If you added a way in, add the way out and the way to see it. Snooze needs unsnooze. Close needs reopen. A one-way door is a bug.
-- **Connection modes.** The Zerops door and the manual one-time link behave differently. Multi-device and multi-project cases are real.
-- **Docs.** `docs/` splits by audience. Behavior changes that a user would notice belong in `docs/user/` (shipped-product voice, no repo tooling or source paths); architecture and contributor changes in `docs/internals/`; runbooks in `docs/operations/`; new vocabulary in `docs/internals/glossary.md`.
+- **Entry points.** Behavior reachable from chat is often also reachable from Settings, the command
+  palette, and a keybinding.
+- **Clients.** Web, desktop, and mobile source may have separate navigation and presentation.
+  Shared logic lives in `packages/client-runtime`.
+- **Providers.** Codex, Claude, Cursor, Grok, and OpenCode each have an adapter. Provider-shaped
+  features need a decision per adapter, even when the product catalog hides one.
+- **Contracts.** Anything crossing the wire is typed in `packages/contracts`. Schema changes must
+  be followed through server, web, mobile, and desktop.
+- **Reverse states.** If you add a way in, add the way out and the way to see it.
+- **Connection modes.** The Zerops identity door and standalone one-time pairing have different
+  rules. Multi-device and multi-project cases are real.
+- **Docs.** User-visible behavior belongs in `docs/user/`; architecture and contributor changes in
+  `docs/internals/`; runbooks in `docs/operations/`; new vocabulary in
+  `docs/internals/glossary.md`.
 
 ## Dev servers
 
-- `vp i` installs. Worktrees get this from the t3.json setup script; if module resolution looks broken, it probably did not run.
-- `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored `.t3`, which deliberately outranks an ambient `T3CODE_HOME` so you cannot land on shared state by accident. An explicit `--home-dir` still wins.
-- Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
-- The web app requires pairing. Hand over the pairing URL, not the bare origin. A URL without its token is useless to whoever you gave it to. If the token got consumed, mint a fresh one with `node apps/server/src/bin.ts pair` — note it carries standard scopes, while the startup URL carries admin scopes (needed for Settings → Connections management).
-- Stop what you started, by the PID you tracked. See rule 1.
+- `vp i` installs dependencies. Worktrees get this from the `t3.json` setup script; if module
+  resolution looks broken, it probably did not run.
+- `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored
+  `.t3`, which deliberately outranks an ambient `T3CODE_HOME`. An explicit `--home-dir` still wins.
+- Ports derive from the worktree path and are stable across restarts, but read the real ones from
+  the `[dev-runner]` line because occupied ports shift.
+- Local dev web requires pairing. Hand over the pairing URL, not the bare origin. If its token was
+  consumed, mint a fresh one with `node apps/server/src/bin.ts pair`; the startup URL carries admin
+  scopes needed for Connections management while `pair` carries standard scopes.
+- Stop only what you started, by the PID you tracked.
 
 ## Test data
 
-An empty database is a bad test. Seed your worktree's `.t3` with a copy of real data instead of pointing at live state:
+An empty database is a poor test. Seed the worktree's `.t3` with a snapshot instead of pointing a
+server at live state:
 
-- Copy from `~/.t3/userdata` (the developer's real data, the most realistic test set) or `~/.t3/dev`. Worktree state lives at `<worktree>/.t3/userdata`.
-- Snapshot the database with `VACUUM INTO`, which is safe even while a server has the source open and yields one consistent file:
-
-  ```bash
-  mkdir -p .t3/userdata
-  rm -f .t3/userdata/state.sqlite*  # VACUUM INTO refuses to overwrite
-  bun -e "new (require('bun:sqlite').Database)(process.env.HOME + '/.t3/userdata/state.sqlite', { readonly: true }).run(\"VACUUM INTO '.t3/userdata/state.sqlite'\")"
-  ```
-
-  A plain `cp` is only safe when no server has the source open, and must bring the `-wal` and `-shm` siblings along. A live file copy is a corrupt copy.
-
-- Bring `secrets` and `settings.json` only if the flow under test needs them.
-- Copy in, never symlink. Data flows one way: into your sandbox, never back out.
+- Copy from `~/.t3/userdata` or `~/.t3/dev`. Worktree state lives at
+  `<worktree>/.t3/userdata`.
+- Snapshot a live SQLite database with `VACUUM INTO`; it yields one consistent file while the source
+  stays open. A plain copy is safe only when no server has the source open and must include its WAL
+  and SHM siblings.
+- Bring `secrets` and `settings.json` only when the flow under test needs them.
+- Copy in, never symlink. Data flows into the sandbox, never back out.
 
 ## Verifying
 
-- Smallest proof that the change works. `vp test run <files>` for the tests you touched, targeted lint and typecheck for the scope you changed.
-- **Do not run repo-wide checks.** No `vp check`, no `vp run -r test`, no `vp run -r typecheck` unless I ask. CI owns the full suite.
-- Backend behavior changes ship with focused tests for that behavior.
-- The server is event-sourced and its async flows emit typed receipts. Wait on receipts and worker drains, never on sleeps or polling. A test that needs a timeout to pass is wrong.
-- Upon request, user-visible frontend changes should get one integrated pass in a real client: `test-t3-app` for web, `test-t3-mobile` for mobile. The primary agent does this once after integrating. Subagents do not launch their own dev servers. Ask permission before doing computer use or spinning up browsers.
+- Use the smallest proof that the change works: `vp test run <files>` for touched tests, plus
+  targeted lint and package typecheck.
+- Do not run repo-wide checks such as `vp check`, `vp run -r test`, or `vp run -r typecheck` unless
+  asked. CI owns the full suite.
+- Backend behavior changes ship with focused tests.
+- The server is event-sourced and async flows emit typed receipts. Wait on receipts and worker
+  drains, never sleeps or polling.
+- Upon request, run one integrated pass in a real client after integration: `test-t3-app` for web,
+  `test-t3-mobile` for mobile. Ask permission before computer use or opening browsers.
 
 ## Pull requests
 
-- Never make a PR unless the developer explicitly asks you to do so.
-- Conventional commit titles, plain language: `fix(web): new threads no longer spike CPU`.
-- Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
-- UI changes need before/after images. Motion or timing needs a short video.
-- Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
-- One concern per PR. If the description says "also", split it.
-- When babysitting: poll checks and comments newer than the last push, verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
+- Never make a PR unless explicitly asked.
+- Use a conventional commit title in plain language.
+- State the problem, then the fix. End the body with the model and harness used.
+- UI changes need before/after images; motion or timing needs a short video.
+- Upload PR evidence to GitHub. Do not commit PR-only screenshots or assets.
+- Keep one concern per PR.
+- When babysitting, review checks and comments newer than the last push, verify findings against the
+  source, fix real ones, and explain dismissed false positives. Stop when bots are green on the
+  latest commit.
 
 ## Plans and work artifacts
 
-- Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree. `.plans/` is gitignored only as a safety net for legacy tooling.
-- Track active maintainer work in the GitHub issue or project item that owns it. External proposals follow `CONTRIBUTING.md` and belong in Ideas discussions.
-- Put durable architecture, constraints, and decisions in `docs/internals/`. Update those docs when the product changes so agents find current facts instead of abandoned intentions.
-- A merged PR is the implementation record. Close or update its tracking item when the work lands; do not preserve a second checklist in the repository.
+- Do not commit implementation plans, research notes, or scratch files. `.plans/` is gitignored only
+  as a safety net for legacy tooling.
+- Track active maintainer work in its GitHub issue or project item. External proposals follow
+  `CONTRIBUTING.md` and belong in Ideas discussions.
+- Put durable architecture, constraints, and decisions in `docs/internals/`.
+- A merged PR is the implementation record. Close or update its tracking item when the work lands.
 
 ## How it works
 
-Clients send typed WebSocket requests. The server turns them into _commands_, a pure _decider_ turns commands into persisted _events_, and a _projector_ derives the read model the UI renders. Provider CLIs run as subprocesses; per-provider _adapters_ translate their native protocols into orchestration events. Side effects run in queue-backed _reactors_ that emit _receipts_ when milestones land. Each turn ends with a _checkpoint_, a hidden git ref, so the app can diff and restore.
+Clients send typed WebSocket requests. The server turns them into commands, a pure decider turns
+commands into persisted events, and a projector derives the read model. Provider adapters translate
+native CLI protocols into orchestration events. Queue-backed reactors perform side effects and emit
+receipts. Each turn ends with a checkpoint, stored as a hidden git ref, so the app can diff and
+restore.
 
-Full glossary with file links: `docs/internals/glossary.md`
+Full glossary with file links: `docs/internals/glossary.md`.
 
 ## Where code lives
 
-- `apps/server` - WebSocket, orchestration, providers, checkpointing. Effect-heavy: read `.repos/effect-smol/LLMS.md` before writing Effect code.
-- `apps/web` - React/Vite UI. `apps/desktop` wraps it, `apps/mobile` is React Native.
-- `packages/contracts` - Effect/Schema contracts plus small derived helpers. No heavy runtime logic.
-- `packages/shared` - shared runtime utils, subpath exports, no barrel.
-- `packages/client-runtime` - client code shared by web and mobile.
-- `.repos/` - vendored read-only references. Prefer their patterns over invented ones. Never edit or import from them. Sync with `vpr sync:repos` when bumping the matching dependency.
+- `apps/server` — WebSocket, orchestration, providers, checkpointing. Read
+  `.repos/effect-smol/LLMS.md` before writing Effect code.
+- `apps/web` — the React/Vite client; `apps/desktop` wraps it and `apps/mobile` is React Native.
+- `packages/contracts` — Effect Schema contracts and small derived helpers; no heavy runtime logic.
+- `packages/shared` — shared runtime utilities, subpath exports, no barrel.
+- `packages/client-runtime` — client logic shared by web and mobile.
+- `.repos/` — vendored read-only references. Prefer their patterns, never edit or import from them,
+  and use `vpr sync:repos` when bumping a matching dependency.
 
 ## Taste
 
-- Complexity belongs at the adapter boundary. Orchestration stays pure, UI stays dumb.
-- Inferred types over annotations. `any` is the enemy.
-- Comments describe how a thing is used, and move when the code moves. To be used mostly to describe functions, not to annotate every line of behavior.
-- Our users drive agents all day and notice a dropped frame, a lying spinner, and a stale label. No continuously repainting animations; they peg the GPU on high-refresh displays.
-- If a rule here fights the task in front of you, say so loudly and get a human sign-off before breaking it.
+- Complexity belongs at the adapter boundary. Keep orchestration pure and UI dumb.
+- Prefer inferred types. Do not use `any`.
+- Comments describe how something is used and move when the code moves.
+- Avoid continuously repainting animations.
+- If a rule fights the task, state the conflict and get maintainer sign-off before breaking it.
 
 ## Additional tips
 
-- Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
-- Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+- Do not verify with browsers or computer use unless the user explicitly agrees or requests it.
+- Security matters, but do not over-index on it for dev-mode or maintainer-only features.
