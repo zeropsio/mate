@@ -3,10 +3,8 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import {
-  autoConnectServedZeropsEnvironment,
-  exchangeZeropsContainerIdentity,
-} from "./ZeropsProjectsPage";
+import { autoConnectServedZeropsEnvironment } from "./ZeropsProjectsPage";
+import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 const ZEROPS_DOOR_GATE = {
@@ -122,7 +120,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
-  it("lets an existing attempt settle before refreshing a failed session", () => {
+  it("leaves a registered environment's settled failure to the shell repair", () => {
     const attempted = { current: false };
     const connect = vi.fn();
     const input = {
@@ -153,8 +151,8 @@ describe("same-origin Zerops identity bootstrap", () => {
       ],
     });
 
-    expect(connect).toHaveBeenCalledTimes(1);
-    expect(connect).toHaveBeenCalledWith(APP_ORIGIN);
+    expect(connect).not.toHaveBeenCalled();
+    expect(attempted.current).toBe(false);
   });
 
   it("surfaces the identity exchange failure reason", async () => {

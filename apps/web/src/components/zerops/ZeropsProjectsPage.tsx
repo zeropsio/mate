@@ -6,16 +6,9 @@
 
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import {
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { connectZeropsIdentity as connectZeropsIdentityAtom } from "../../connection/onboarding";
 import { isElectron } from "../../env";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -29,13 +22,10 @@ import {
   newestProvisioningCandidate,
   shouldAutoEnterProvisioning,
 } from "@t3tools/client-runtime/zerops/autoEnterProvisioning";
-import {
-  normalizeOrigin,
-  zeropsCodeBaseUrl,
-  type ZeropsCandidate,
-} from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
+import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
@@ -44,48 +34,10 @@ import {
   zeropsErrorMessage,
   type ZeropsSessionStatus,
 } from "~/zerops/ZeropsSessionProvider";
-import { appBasePath } from "~/basePath";
 import type { AuthGateState } from "~/environments/primary/auth";
 
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
-
-type ZeropsIdentityExchangeResult =
-  | { readonly _tag: "Success"; readonly environmentId: EnvironmentId }
-  | { readonly _tag: "Failure"; readonly error: string };
-
-export async function exchangeZeropsContainerIdentity<E>(input: {
-  readonly containerOrigin: string;
-  readonly appOrigin: string;
-  readonly basePath: string;
-  readonly zeropsToken: string | null;
-  readonly connect: (input: {
-    readonly httpBaseUrl: string;
-    readonly zeropsToken: string;
-  }) => Promise<AtomCommandResult<EnvironmentId, E>>;
-}): Promise<ZeropsIdentityExchangeResult> {
-  if (!input.zeropsToken) {
-    return {
-      _tag: "Failure",
-      error: "Sign in to Zerops again to connect this container.",
-    };
-  }
-  const result = await input.connect({
-    httpBaseUrl: zeropsCodeBaseUrl(input.containerOrigin, {
-      origin: input.appOrigin,
-      basePath: input.basePath,
-    }),
-    zeropsToken: input.zeropsToken,
-  });
-  if (result._tag === "Failure") {
-    const reason = zeropsErrorMessage(squashAtomCommandFailure(result));
-    return {
-      _tag: "Failure",
-      error: `Could not connect to this container. ${reason}`,
-    };
-  }
-  return { _tag: "Success", environmentId: result.value };
-}
 
 export function autoConnectServedZeropsEnvironment(input: {
   readonly attempted: { current: boolean };
@@ -119,7 +71,7 @@ export function autoConnectServedZeropsEnvironment(input: {
     appOrigin === null ||
     servedCandidate === undefined ||
     servedCandidate.group === "connected" ||
-    (servedCandidate.connection !== undefined && servedCandidate.connection.phase !== "error")
+    servedCandidate.connection !== undefined
   ) {
     return;
   }
@@ -200,7 +152,7 @@ function ZeropsProjectsContent() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const provisioning = useZeropsProvisioning(creatingIn);
-  const connectZerops = useAtomCommand(connectZeropsIdentityAtom, { reportFailure: false });
+  const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
   const [connectError, setConnectError] = useState<string | null>(null);
   // One connect per settled provisioning wait, however many renders that takes.
@@ -215,25 +167,16 @@ function ZeropsProjectsContent() {
   const connectContainer = useCallback(
     async (containerOrigin: string) => {
       setConnectError(null);
-      const result = await exchangeZeropsContainerIdentity({
-        containerOrigin,
-        appOrigin: window.location.origin,
-        basePath: appBasePath(),
-        zeropsToken: client.session?.accessToken ?? null,
-        connect: connectZerops,
-      });
+      const result = await exchangeZeropsIdentity(containerOrigin);
       if (result._tag === "Failure") {
         setConnectError(result.error);
         return;
       }
-      // The landing composes the opening message on the draft it creates; it
-      // only needs to know this environment came through the Zerops door.
-      rememberZeropsEnvironment(String(result.environmentId));
       provisioning.cancel();
       setCreatingIn(null);
       await navigate({ to: "/" });
     },
-    [client, connectZerops, navigate, provisioning],
+    [exchangeZeropsIdentity, navigate, provisioning],
   );
 
   const startWaitFor = useCallback(
