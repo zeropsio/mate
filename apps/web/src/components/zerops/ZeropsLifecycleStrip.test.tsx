@@ -66,12 +66,15 @@ const render = (state: ZeropsStripState | undefined): string =>
   renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} state={state} />);
 
 describe("ZeropsStripLine", () => {
-  it("renders the phrase and marks its tone", () => {
+  it("renders a full-width lifecycle band with the canonical label", () => {
     const html = render({ tone: "active", label: "developing kanbandev" });
 
     expect(html).toContain("developing kanbandev");
     expect(html).toContain('data-zerops-strip-tone="active"');
-    expect(html).toContain("data-zerops-lifecycle-strip");
+    expect(html).toContain('data-zerops-lifecycle-band="true"');
+    expect(html).toContain('data-zerops-primitive="status-dot"');
+    expect(html).toContain("h-7");
+    expect(html).toContain("w-full");
   });
 
   it("renders nothing when the thread has no Zerops state", () => {
@@ -127,6 +130,56 @@ describe("ZeropsLifecycleStrip", () => {
 
     expect(testState.useZeropsLifecycle).toHaveBeenCalledWith(...expectedIds);
   });
+
+  it.each([
+    {
+      name: "with the panel closed and attention present",
+      agentAuthNeedsAttention: true,
+      zeropsPanelOpen: false,
+      showsEntry: true,
+    },
+    {
+      name: "with the panel open and attention present",
+      agentAuthNeedsAttention: true,
+      zeropsPanelOpen: true,
+      showsEntry: false,
+    },
+    {
+      name: "with the panel closed after attention clears",
+      agentAuthNeedsAttention: false,
+      zeropsPanelOpen: false,
+      showsEntry: false,
+    },
+    {
+      name: "with the panel open after attention clears",
+      agentAuthNeedsAttention: false,
+      zeropsPanelOpen: true,
+      showsEntry: false,
+    },
+  ] as const)(
+    "keeps panel entry visible when authorization needs attention: $name",
+    ({ agentAuthNeedsAttention, zeropsPanelOpen, showsEntry }) => {
+      testState.useZeropsLifecycle.mockReturnValueOnce(undefined);
+
+      const html = renderToStaticMarkup(
+        <ZeropsLifecycleStrip
+          agentAuthNeedsAttention={agentAuthNeedsAttention}
+          pendingUserInput={false}
+          threadRef={THREAD_REF}
+          zeropsPanelOpen={zeropsPanelOpen}
+        />,
+      );
+
+      expect(html.includes('data-zerops-agent-auth-attention="true"')).toBe(showsEntry);
+      expect(testState.onOpen !== null).toBe(showsEntry);
+
+      testState.onOpen?.();
+      expect(testState.open).toHaveBeenCalledTimes(showsEntry ? 1 : 0);
+      if (showsEntry) {
+        expect(testState.open).toHaveBeenCalledWith(THREAD_REF, "zerops");
+      }
+    },
+  );
 
   it("opens the panel with the same scoped thread ref object", () => {
     testState.useZeropsLifecycle.mockReturnValueOnce(LIFECYCLE);
