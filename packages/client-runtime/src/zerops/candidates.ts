@@ -1,7 +1,7 @@
 /**
  * The model behind the Zerops project picker: every zcp container the signed-in
- * account can reach, across every org, sorted into `connected` (already
- * registered as an environment), `ready` (reachable, one click away) and
+ * account can reach, across every org, sorted into `connected` (a registered
+ * environment with a live session), `ready` (reachable, one click away) and
  * `unavailable` (with a reason the user can act on).
  *
  * This file is pure — it takes already-fetched projects and services and does

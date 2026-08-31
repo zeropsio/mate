@@ -327,6 +327,23 @@ describe("resolveInitialServerAuthGateState", () => {
     expect(testApi.calls.session).toBe(1);
   });
 
+  it("memoizes the requires-auth gate state after the first successful read", async () => {
+    const testApi = await installAuthApi({
+      session: sequence(unauthenticatedSession(LOOPBACK_AUTH), authenticatedSession(LOOPBACK_AUTH)),
+    });
+    const { resolveInitialServerAuthGateState } = await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "requires-auth",
+      auth: LOOPBACK_AUTH,
+    });
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "requires-auth",
+      auth: LOOPBACK_AUTH,
+    });
+    expect(testApi.calls.session).toBe(1);
+  });
+
   it("creates a pairing credential from the authenticated auth endpoint", async () => {
     const testApi = await installAuthApi({
       pairingCredential: (payload) =>
