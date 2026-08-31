@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   getProviderStatusBannerKey,
   ProviderStatusBanner,
+  ProviderStatusBannerRegion,
   shouldShowProviderStatusBanner,
 } from "./ProviderStatusBanner";
 
@@ -27,6 +28,24 @@ function warningProvider(): ServerProvider {
 }
 
 describe("ProviderStatusBanner", () => {
+  it("participates in ChatView layout instead of covering the timeline", () => {
+    const markup = renderToStaticMarkup(
+      <ProviderStatusBannerRegion status={warningProvider()} onDismiss={() => {}} />,
+    );
+    const layoutMatch = markup.match(
+      /^<div class="([^"]+)" data-chat-provider-status-layout="([^"]+)">/,
+    );
+
+    expect(layoutMatch).not.toBeNull();
+    expect(layoutMatch?.[2]).toBe("flow");
+
+    const layoutClasses = layoutMatch?.[1]?.split(/\s+/) ?? [];
+    expect(layoutClasses).toContain("shrink-0");
+    expect(layoutClasses).not.toContain("absolute");
+    expect(layoutClasses).not.toContain("top-0");
+    expect(layoutClasses).not.toContain("z-20");
+  });
+
   it("stays hidden after its current warning is dismissed", () => {
     const status = warningProvider();
 

@@ -80,3 +80,20 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     </div>
   );
 });
+
+export const ProviderStatusBannerRegion = memo(function ProviderStatusBannerRegion({
+  onDismiss,
+  status,
+}: {
+  onDismiss: () => void;
+  status: ServerProvider | null;
+}) {
+  return (
+    <div
+      className="pointer-events-none flex shrink-0 flex-col items-center"
+      data-chat-provider-status-layout="flow"
+    >
+      <ProviderStatusBanner status={status} onDismiss={onDismiss} />
+    </div>
+  );
+});
