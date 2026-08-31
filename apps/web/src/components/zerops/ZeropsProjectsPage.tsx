@@ -81,6 +81,19 @@ export function autoConnectServedZeropsEnvironment(input: {
   input.connect(appOrigin);
 }
 
+export function retryZeropsProjectConnection(input: {
+  readonly connectError: string | null;
+  readonly readyOrigin: string | null;
+  readonly retryIdentity: (containerOrigin: string) => void;
+  readonly retryProvisioning: () => void;
+}): void {
+  if (input.connectError !== null && input.readyOrigin !== null) {
+    input.retryIdentity(input.readyOrigin);
+    return;
+  }
+  input.retryProvisioning();
+}
+
 function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
 }
@@ -171,6 +184,7 @@ function ZeropsProjectsContent() {
   const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectingOrigin, setConnectingOrigin] = useState<string | null>(null);
   // One connect per settled provisioning wait, however many renders that takes.
   const connectingRef = useRef<string | null>(null);
   // The server that served this page gets one automatic identity exchange.
@@ -183,14 +197,19 @@ function ZeropsProjectsContent() {
   const connectContainer = useCallback(
     async (containerOrigin: string) => {
       setConnectError(null);
-      const result = await exchangeZeropsIdentity(containerOrigin);
-      if (result._tag === "Failure") {
-        setConnectError(result.error);
-        return;
+      setConnectingOrigin(containerOrigin);
+      try {
+        const result = await exchangeZeropsIdentity(containerOrigin);
+        if (result._tag === "Failure") {
+          setConnectError(result.error);
+          return;
+        }
+        provisioning.cancel();
+        setCreatingIn(null);
+        await navigate({ to: "/" });
+      } finally {
+        setConnectingOrigin(null);
       }
-      provisioning.cancel();
-      setCreatingIn(null);
-      await navigate({ to: "/" });
     },
     [exchangeZeropsIdentity, navigate, provisioning],
   );
@@ -212,6 +231,17 @@ function ZeropsProjectsContent() {
 
   const readyOrigin =
     provisioning.state?.phase === "ready" ? provisioning.state.containerOrigin : null;
+
+  const retryProjectConnection = useCallback(() => {
+    retryZeropsProjectConnection({
+      connectError,
+      readyOrigin,
+      retryIdentity: (containerOrigin) => {
+        void connectContainer(containerOrigin);
+      },
+      retryProvisioning: provisioning.retry,
+    });
+  }, [connectContainer, connectError, provisioning.retry, readyOrigin]);
 
   useEffect(() => {
     if (!readyOrigin || connectingRef.current === readyOrigin) return;
@@ -283,9 +313,9 @@ function ZeropsProjectsContent() {
       <div className="space-y-4">
         <ZeropsProvisioningPanel
           state={provisioning.state}
-          busy={provisioning.busy}
+          busy={provisioning.busy || connectingOrigin !== null}
           error={connectError ?? provisioning.error}
-          onRetry={provisioning.retry}
+          onRetry={retryProjectConnection}
           onEnable={provisioning.enable}
         />
         <Button

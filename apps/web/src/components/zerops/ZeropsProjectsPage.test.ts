@@ -5,7 +5,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { autoConnectServedZeropsEnvironment, ZeropsProjectScopeHeader } from "./ZeropsProjectsPage";
+import {
+  autoConnectServedZeropsEnvironment,
+  retryZeropsProjectConnection,
+  ZeropsProjectScopeHeader,
+} from "./ZeropsProjectsPage";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
@@ -24,6 +28,35 @@ const SAME_ORIGIN_CANDIDATE = {
 };
 
 describe("same-origin Zerops identity bootstrap", () => {
+  it("retries the failed ready-container identity exchange instead of restarting provisioning", () => {
+    const retryIdentity = vi.fn();
+    const retryProvisioning = vi.fn();
+
+    retryZeropsProjectConnection({
+      connectError: "Could not connect to this container.",
+      readyOrigin: APP_ORIGIN,
+      retryIdentity,
+      retryProvisioning,
+    });
+
+    expect(retryIdentity).toHaveBeenCalledTimes(1);
+    expect(retryIdentity).toHaveBeenCalledWith(APP_ORIGIN);
+    expect(retryProvisioning).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { connectError: null, readyOrigin: APP_ORIGIN },
+    { connectError: "Project lookup failed.", readyOrigin: null },
+  ])("keeps non-identity failures on the provisioning retry path", (input) => {
+    const retryIdentity = vi.fn();
+    const retryProvisioning = vi.fn();
+
+    retryZeropsProjectConnection({ ...input, retryIdentity, retryProvisioning });
+
+    expect(retryProvisioning).toHaveBeenCalledTimes(1);
+    expect(retryIdentity).not.toHaveBeenCalled();
+  });
+
   it("exposes a compact project-scope header and preserves selection behavior", () => {
     const markup = renderToStaticMarkup(createElement(ZeropsProjectScopeHeader));
     const attempted = { current: false };
