@@ -2,7 +2,6 @@ import {
   EnvironmentId,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
-  type ServerSelfUpdateCapability,
 } from "@t3tools/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Context from "effect/Context";
@@ -16,8 +15,6 @@ import * as Schema from "effect/Schema";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { readAgentActivityPublishingActive } from "../cloud/config.ts";
-import { resolveServerSelfUpdateCapability } from "../cloud/selfUpdate.ts";
-import { resolveServiceLauncherMode } from "../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
@@ -79,9 +76,7 @@ function platformArch(
  */
 export const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
-  options?: { readonly serverSelfUpdate?: ServerSelfUpdateCapability | null },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
-  const serverSelfUpdate = options?.serverSelfUpdate ?? null;
   return {
     repositoryIdentity: true,
     connectionProbe: true,
@@ -95,8 +90,6 @@ export const makeServerEnvironmentCapabilities = (
     threadPinReorder: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
-    ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
-    ...(serverSelfUpdate === "boot-service" ? { serverSelfUpdateProgress: true } : {}),
   };
 };
 
@@ -165,12 +158,6 @@ export const make = Effect.gen(function* () {
   const environmentId = EnvironmentId.make(environmentIdRaw);
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
-  const launcher = yield* resolveServiceLauncherMode();
-  const serverSelfUpdate = resolveServerSelfUpdateCapability({
-    desktopManaged: serverConfig.mode === "desktop",
-    launcherManaged: launcher.managed,
-  });
-
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
     label,
@@ -180,7 +167,7 @@ export const make = Effect.gen(function* () {
     },
     serverVersion: packageJson.version,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
-    capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy, { serverSelfUpdate }),
+    capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy),
   };
 
   return ServerEnvironment.of({

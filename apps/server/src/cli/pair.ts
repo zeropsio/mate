@@ -61,9 +61,9 @@ export class NoRunningServerError extends Schema.TaggedErrorClass<NoRunningServe
 ) {
   override get message(): string {
     return [
-      "No running T3 Code server found.",
+      "No running Zerops Code server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx zerops-code serve`, or connect this machine with T3 Connect: `npx zerops-code connect`.",
+      "Start the standalone server with `z3 serve` from an installed zeropsio/z3 release tarball.",
     ].join("\n");
   }
 }
@@ -297,7 +297,7 @@ export const pairCommand = Command.make("pair", {
   label: labelFlag,
 }).pipe(
   Command.withDescription(
-    "Mint a pairing token for a running T3 Code server and print it as a QR code.",
+    "Mint a pairing token for a running Zerops Code server and print it as a QR code.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {

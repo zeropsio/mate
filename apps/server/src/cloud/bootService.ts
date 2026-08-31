@@ -1,4 +1,5 @@
 import {
+  HostProcessArguments,
   HostProcessExecutablePath,
   HostProcessPlatform,
   HostProcessUserId,
@@ -10,24 +11,10 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as ProcessRunner from "../processRunner.ts";
-import {
-  ensurePinnedRuntimeInstalled,
-  pinnedRuntimePaths,
-  PinnedRuntimeInstallError,
-} from "./pinnedRuntime.ts";
-import {
-  SERVICE_LAUNCHER_FILE,
-  SERVICE_LAUNCHER_PROTOCOL,
-  SERVICE_STATE_FILE,
-  parseServiceState,
-  serviceStateHasPendingUpdate,
-  type ServiceState,
-} from "./serviceProtocol.ts";
 
 const BOOT_SERVICE_NAME = "t3code";
 export const BOOT_SERVICE_UNIT_FILE = `${BOOT_SERVICE_NAME}.service`;
@@ -35,7 +22,6 @@ export const BOOT_SERVICE_UNIT_FILE = `${BOOT_SERVICE_NAME}.service`;
 // (com.t3tools.t3code), so launchd and TCC records never collide.
 export const BOOT_SERVICE_LAUNCHD_LABEL = "com.t3tools.t3code.service";
 export const BOOT_SERVICE_PLIST_FILE = `${BOOT_SERVICE_LAUNCHD_LABEL}.plist`;
-export const BOOT_SERVICE_UNIT_ENV = "T3_BOOT_SERVICE_UNIT";
 
 /** systemd expands `%` specifiers, including in unquoted append-log paths. */
 export function escapeSystemdSpecifiers(value: string): string {
@@ -51,7 +37,7 @@ export function quoteSystemdValue(value: string): string {
 
 export interface BootServicePlan {
   readonly nodePath: string;
-  readonly launcherPath: string;
+  readonly entryPath: string;
   readonly baseDir: string;
   readonly logPath: string;
   readonly unitPath: string;
@@ -62,7 +48,7 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
   // The user manager has no reliable network-online target; server networking retries itself.
   return [
     "[Unit]",
-    "Description=T3 Code server",
+    "Description=Zerops Code server",
     "StartLimitIntervalSec=300",
     "StartLimitBurst=5",
     "",
@@ -70,9 +56,7 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
     "Type=simple",
     "WorkingDirectory=%h",
     `Environment=T3CODE_HOME=${quoteSystemdValue(plan.baseDir)}`,
-    `Environment=${BOOT_SERVICE_UNIT_ENV}=${BOOT_SERVICE_UNIT_FILE}`,
-    `ExecStart=${quoteSystemdValue(plan.nodePath)} ${quoteSystemdValue(plan.launcherPath)}`,
-    // Let the launcher mark an explicit stop before it signals the server.
+    `ExecStart=${quoteSystemdValue(plan.nodePath)} ${quoteSystemdValue(plan.entryPath)} serve`,
     // systemd still SIGKILLs the whole cgroup if graceful shutdown times out.
     "KillMode=mixed",
     // Agent tool calls run as children of the server, so they share this cgroup.
@@ -123,7 +107,8 @@ export function renderBootServicePlist(
     `  <key>ProgramArguments</key>`,
     `  <array>`,
     `    <string>${escapeXmlText(plan.nodePath)}</string>`,
-    `    <string>${escapeXmlText(plan.launcherPath)}</string>`,
+    `    <string>${escapeXmlText(plan.entryPath)}</string>`,
+    `    <string>serve</string>`,
     `  </array>`,
     `  <key>EnvironmentVariables</key>`,
     `  <dict>`,
@@ -131,8 +116,6 @@ export function renderBootServicePlist(
     `    <string>${escapeXmlText(options.environmentPath)}</string>`,
     `    <key>T3CODE_HOME</key>`,
     `    <string>${escapeXmlText(plan.baseDir)}</string>`,
-    `    <key>${BOOT_SERVICE_UNIT_ENV}</key>`,
-    `    <string>${BOOT_SERVICE_PLIST_FILE}</string>`,
     `  </dict>`,
     `  <key>WorkingDirectory</key>`,
     `  <string>${escapeXmlText(options.homeDir)}</string>`,
@@ -403,24 +386,14 @@ export class BootServiceInstallError extends Schema.TaggedErrorClass<BootService
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not set up the T3 Code background service.";
-  }
-}
-
-export class BootServiceUpdatePendingError extends Schema.TaggedErrorClass<BootServiceUpdatePendingError>()(
-  "BootServiceUpdatePendingError",
-  {},
-) {
-  override get message(): string {
-    return "A remote server update is still pending. Wait for it to finish, then retry.";
+    return "Could not set up the Zerops Code background service.";
   }
 }
 
 export type BootServiceError =
   | BootServiceUnsupportedError
   | BootServiceCommandError
-  | BootServiceInstallError
-  | BootServiceUpdatePendingError;
+  | BootServiceInstallError;
 
 export interface BootServiceStatus {
   readonly supported: boolean;
@@ -441,7 +414,7 @@ export class BootService extends Context.Service<
 
 export interface BootServiceHost {
   readonly execPath: string;
-  readonly launcherSourcePath?: string;
+  readonly entryPath: string;
 }
 
 export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
@@ -451,6 +424,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   readonly host?: BootServiceHost;
 }) {
   const hostExecPath = yield* HostProcessExecutablePath;
+  const hostArguments = yield* HostProcessArguments;
   const platform = yield* HostProcessPlatform;
   const uid = yield* HostProcessUserId;
   const homeDir = yield* Config.string("HOME").pipe(Config.withDefault(""));
@@ -458,7 +432,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const runner = yield* ProcessRunner.ProcessRunner;
-  const host = input.host ?? { execPath: hostExecPath };
+  const host = input.host ?? { execPath: hostExecPath, entryPath: hostArguments[1] ?? "" };
   const xmlSafeInstallerDirectories = installerPath.split(":").filter(
     (directory) =>
       directory.length > 0 &&
@@ -489,12 +463,6 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   });
   const unitPath = detectedManager?.unitPath ?? "";
   const logPath = path.join(input.logsDir, "boot-service.log");
-  const launcherPath = path.join(input.baseDir, "runtime", SERVICE_LAUNCHER_FILE);
-  const statePath = path.join(input.baseDir, "runtime", SERVICE_STATE_FILE);
-  const runtimePaths = pinnedRuntimePaths(path, input.baseDir, input.cliVersion);
-  const launcherSourcePath =
-    host.launcherSourcePath ??
-    path.join(path.dirname(runtimePaths.entryPath), SERVICE_LAUNCHER_FILE);
   const writeDurably = (filePath: string, contents: string) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -509,7 +477,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     ).pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
   const plan: BootServicePlan = {
     nodePath: host.execPath,
-    launcherPath,
+    entryPath: host.entryPath,
     baseDir: input.baseDir,
     logPath,
     unitPath,
@@ -575,58 +543,38 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       .makeDirectory(input.logsDir, { recursive: true })
       .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
 
-    // Prepare every immutable artifact before stopping the installed unit.
-    yield* ensurePinnedRuntimeInstalled({
-      baseDir: input.baseDir,
-      version: input.cliVersion,
-      fs,
-      path,
-      runner,
-      validate: (runtime) =>
-        runner
-          .run({
-            command: host.execPath,
-            args: [runtime.entryPath, "--version"],
-            timeout: Duration.seconds(30),
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new PinnedRuntimeInstallError({
-                  step: "verifying the pinned zerops-code runtime",
-                  cause,
-                }),
-            ),
-            Effect.flatMap((result) => {
-              const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
-              return result.code === 0 && reportedVersion === input.cliVersion
-                ? Effect.void
-                : Effect.fail(
-                    new PinnedRuntimeInstallError({
-                      step: "verifying the pinned zerops-code runtime",
-                      exitCode: Number(result.code),
-                      stdoutLength: result.stdout.length,
-                      stderrLength: result.stderr.length,
-                    }),
-                  );
-            }),
-          ),
-    }).pipe(
-      Effect.mapError((error) =>
-        error._tag === "PinnedRuntimeInstallError"
-          ? new BootServiceCommandError({
-              step: error.step,
-              exitCode: error.exitCode,
-              stdoutLength: error.stdoutLength,
-              stderrLength: error.stderrLength,
-              cause: error,
-            })
-          : new BootServiceInstallError({ cause: error }),
-      ),
-    );
-    const launcherSource = yield* fs
-      .readFileString(launcherSourcePath)
+    const entryExists = yield* fs
+      .exists(host.entryPath)
       .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
+    if (host.entryPath === "" || !entryExists) {
+      return yield* new BootServiceInstallError({
+        cause: new Error("The running z3 entrypoint is unavailable."),
+      });
+    }
+    yield* runner
+      .run({
+        command: host.execPath,
+        args: [host.entryPath, "--version"],
+        timeout: Duration.seconds(30),
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) => new BootServiceCommandError({ step: "verifying this z3 release", cause }),
+        ),
+        Effect.flatMap((result) => {
+          const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
+          return result.code === 0 && reportedVersion === input.cliVersion
+            ? Effect.void
+            : Effect.fail(
+                new BootServiceCommandError({
+                  step: "verifying this z3 release",
+                  exitCode: Number(result.code),
+                  stdoutLength: result.stdout.length,
+                  stderrLength: result.stderr.length,
+                }),
+              );
+        }),
+      );
 
     const installed = yield* fs
       .exists(unitPath)
@@ -636,31 +584,9 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     }
 
     yield* Effect.gen(function* () {
-      if (installed) {
-        const previousStateText = yield* fs.readFileString(statePath).pipe(Effect.option);
-        if (
-          Option.isSome(previousStateText) &&
-          serviceStateHasPendingUpdate(previousStateText.value)
-        ) {
-          return yield* new BootServiceUpdatePendingError();
-        }
-      }
       yield* fs
         .makeDirectory(path.dirname(unitPath), { recursive: true })
         .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
-      yield* writeDurably(launcherPath, launcherSource);
-      yield* writeDurably(
-        statePath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off - fixed launcher-owned document.
-        `${JSON.stringify(
-          {
-            protocol: SERVICE_LAUNCHER_PROTOCOL,
-            activeVersion: input.cliVersion,
-          } satisfies ServiceState,
-          null,
-          2,
-        )}\n`,
-      );
       yield* writeDurably(unitPath, manager.render(plan));
 
       yield* runSteps(manager.activate);
@@ -695,15 +621,10 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     if (!(yield* fs.exists(unitPath))) {
       return { supported: true, installed: false, current: false, unitPath, logPath };
     }
-    const [unit, launcherExists, runtimeEntryExists, runtimeSentinel, stateText] =
-      yield* Effect.all([
-        fs.readFileString(unitPath),
-        fs.exists(launcherPath),
-        fs.exists(runtimePaths.entryPath),
-        fs.readFileString(runtimePaths.sentinelPath).pipe(Effect.option),
-        fs.readFileString(statePath).pipe(Effect.option),
-      ]);
-    const state = Option.isSome(stateText) ? parseServiceState(stateText.value) : undefined;
+    const [unit, entryExists] = yield* Effect.all([
+      fs.readFileString(unitPath),
+      fs.exists(host.entryPath),
+    ]);
     const normalizeUnit = (contents: string) =>
       detectedManager.kind === "launchd"
         ? contents.replace(/(<key>PATH<\/key>\n\s*<string>)[^<]*(<\/string>)/, "$1$2")
@@ -711,14 +632,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     return {
       supported: true,
       installed: true,
-      current:
-        normalizeUnit(unit) === normalizeUnit(detectedManager.render(plan)) &&
-        launcherExists &&
-        runtimeEntryExists &&
-        Option.isSome(runtimeSentinel) &&
-        runtimeSentinel.value.trim() === input.cliVersion &&
-        state?.activeVersion === input.cliVersion &&
-        state?.update?.status !== "pending",
+      current: normalizeUnit(unit) === normalizeUnit(detectedManager.render(plan)) && entryExists,
       unitPath,
       logPath,
     };

@@ -13,7 +13,6 @@ import {
   dismissVersionMismatch,
   isVersionMismatchDismissed,
   resolveServerConfigVersionMismatch,
-  resolveServerSelfUpdateCapability,
   resolveVersionMismatch,
   serverUpdateGuidance,
 } from "./versionSkew";
@@ -147,33 +146,9 @@ describe("versionSkew", () => {
     );
   });
 
-  it("reads desktop-managed update capabilities from config descriptors", () => {
-    expect(
-      resolveServerSelfUpdateCapability({
-        environment: {
-          environmentId: EnvironmentId.make("environment-desktop"),
-          label: "Desktop",
-          platform: { os: "darwin", arch: "arm64" },
-          serverVersion: "9.9.9",
-          capabilities: {
-            repositoryIdentity: true,
-            serverSelfUpdate: "desktop-managed",
-          },
-        },
-      }),
-    ).toBe("desktop-managed");
-    expect(resolveServerSelfUpdateCapability(null)).toBeNull();
-  });
-
-  it("matches version-drift guidance to the advertised update path", () => {
-    expect(serverUpdateGuidance("respawn", "Remote server")).toBe(
-      "Update the Remote server so they stay in sync.",
-    );
-    expect(serverUpdateGuidance("desktop-managed", "Desktop server")).toBe(
-      "Update the desktop app that runs the Desktop server.",
-    );
-    expect(serverUpdateGuidance(null, "Local server")).toBe(
-      "Relaunch the Local server with the copied command to sync them.",
+  it("names the real update owner for Zerops and standalone servers", () => {
+    expect(serverUpdateGuidance("Remote server")).toBe(
+      "On Zerops, the Remote server follows the release pinned by zcp. For a standalone server, install the matching zeropsio/z3 release tarball.",
     );
   });
 });

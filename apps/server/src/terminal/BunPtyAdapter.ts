@@ -14,7 +14,7 @@ export class BunPtyUnsupportedPlatformError extends Schema.TaggedErrorClass<BunP
   },
 ) {
   override get message(): string {
-    return `Bun PTY terminal support is unavailable on ${this.platform}. Please use Node.js (e.g. by running \`npx zerops-code\`) instead.`;
+    return `Bun PTY terminal support is unavailable on ${this.platform}. Start this installed Zerops Code release with Node.js instead.`;
   }
 }
 
