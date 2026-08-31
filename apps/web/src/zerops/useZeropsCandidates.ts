@@ -9,6 +9,10 @@
  */
 
 import type { EnvironmentId } from "@t3tools/contracts";
+import type {
+  EnvironmentConnectionPhase,
+  EnvironmentConnectionPresentation,
+} from "@t3tools/client-runtime/connection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -28,18 +32,40 @@ type ServicesOutcome =
   | { readonly status: "resolved"; readonly services: ReadonlyArray<ZeropsService> }
   | { readonly status: "failed" };
 
-/** Registered environments keyed by origin, so a derived container origin can be matched. */
-export function useConnectedZeropsOrigins(): ReadonlyMap<string, EnvironmentId> {
-  const { environments } = useEnvironments();
-  return useMemo(() => {
-    const byOrigin = new Map<string, EnvironmentId>();
-    for (const environment of environments) {
-      if (!environment.displayUrl) continue;
-      const origin = normalizeOrigin(environment.displayUrl);
-      if (origin) byOrigin.set(origin, environment.environmentId);
-    }
-    return byOrigin;
-  }, [environments]);
+export interface ZeropsCandidatePresentation extends ZeropsCandidate {
+  readonly connection?: EnvironmentConnectionPresentation;
+}
+
+/** Authenticated environments keyed by origin, so a derived container origin can be matched. */
+export function authenticatedZeropsOrigins(
+  environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly displayUrl: string | null;
+    readonly connection: { readonly phase: EnvironmentConnectionPhase };
+  }>,
+): ReadonlyMap<string, EnvironmentId> {
+  const byOrigin = new Map<string, EnvironmentId>();
+  for (const environment of environments) {
+    if (environment.connection.phase !== "connected" || !environment.displayUrl) continue;
+    const origin = normalizeOrigin(environment.displayUrl);
+    if (origin) byOrigin.set(origin, environment.environmentId);
+  }
+  return byOrigin;
+}
+
+function zeropsConnectionsByOrigin(
+  environments: ReadonlyArray<{
+    readonly displayUrl: string | null;
+    readonly connection: EnvironmentConnectionPresentation;
+  }>,
+): ReadonlyMap<string, EnvironmentConnectionPresentation> {
+  const byOrigin = new Map<string, EnvironmentConnectionPresentation>();
+  for (const environment of environments) {
+    if (!environment.displayUrl) continue;
+    const origin = normalizeOrigin(environment.displayUrl);
+    if (origin) byOrigin.set(origin, environment.connection);
+  }
+  return byOrigin;
 }
 
 async function resolveWithConcurrency<T>(
@@ -63,12 +89,13 @@ async function resolveWithConcurrency<T>(
 }
 
 export function useZeropsCandidates(): {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
   readonly isLoading: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
 } {
   const { client, status, organizations } = useZeropsSession();
+  const { environments } = useEnvironments();
   const [projects, setProjects] = useState<ReadonlyArray<ZeropsProject>>([]);
   const [services, setServices] = useState<ReadonlyMap<string, ServicesOutcome>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -135,7 +162,11 @@ export function useZeropsCandidates(): {
     };
   }, [client, status, organizationIds, reloadCount]);
 
-  const connectedOrigins = useConnectedZeropsOrigins();
+  const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
+  const connectionsByOrigin = useMemo(
+    () => zeropsConnectionsByOrigin(environments),
+    [environments],
+  );
 
   const candidates = useMemo(() => {
     const derived: ZeropsCandidate[] = [];
@@ -158,8 +189,12 @@ export function useZeropsCandidates(): {
         ),
       );
     }
-    return derived;
-  }, [projects, services, connectedOrigins]);
+    return derived.map((candidate): ZeropsCandidatePresentation => {
+      const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;
+      const connection = origin === null ? undefined : connectionsByOrigin.get(origin);
+      return connection === undefined ? candidate : { ...candidate, connection };
+    });
+  }, [projects, services, connectedOrigins, connectionsByOrigin]);
 
   const refresh = useCallback(() => {
     setReloadCount((count) => count + 1);

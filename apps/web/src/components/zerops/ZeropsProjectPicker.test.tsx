@@ -57,6 +57,87 @@ describe("ZeropsProjectPicker rows", () => {
     expect(markup).toContain("Starting");
     expect(markup).not.toContain("Enable Zerops Code");
   });
+
+  it("renders the identity exchange failure reason beside the manual action", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsProjectPicker
+        candidates={[CANDIDATE]}
+        isLoading={false}
+        error="Could not connect to this container. Session token expired."
+        health={new Map([[CANDIDATE.key, "ready"]])}
+        onRefresh={noop}
+        onConnect={noop}
+      />,
+    );
+
+    expect(markup).toContain("Session token expired.");
+    expect(markup).toContain(">Connect<");
+  });
+
+  it("offers Open for an authenticated container", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsProjectPicker
+        candidates={[{ ...CANDIDATE, group: "connected" }]}
+        isLoading={false}
+        error={null}
+        onRefresh={noop}
+        onOpen={noop}
+      />,
+    );
+
+    expect(markup).toContain(">Open<");
+  });
+
+  it.each(["available", "connecting", "reconnecting"] as const)(
+    "shows an environment in %s as connecting without offering an action",
+    (phase) => {
+      const markup = renderToStaticMarkup(
+        <ZeropsProjectPicker
+          candidates={[
+            {
+              ...CANDIDATE,
+              connection: { phase, error: null, traceId: null },
+            },
+          ]}
+          isLoading={false}
+          error={null}
+          health={new Map([[CANDIDATE.key, "ready"]])}
+          onRefresh={noop}
+          onConnect={noop}
+        />,
+      );
+
+      expect(markup).toContain("Connecting");
+      expect(markup).not.toContain(">Connect<");
+      expect(markup).not.toContain("Connected");
+    },
+  );
+
+  it("shows a settled socket failure reason beside the manual action", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsProjectPicker
+        candidates={[
+          {
+            ...CANDIDATE,
+            connection: {
+              phase: "error",
+              error: "The WebSocket upgrade was rejected.",
+              traceId: null,
+            },
+          },
+        ]}
+        isLoading={false}
+        error={null}
+        health={new Map([[CANDIDATE.key, "ready"]])}
+        onRefresh={noop}
+        onConnect={noop}
+      />,
+    );
+
+    expect(markup).toContain("The WebSocket upgrade was rejected.");
+    expect(markup).toContain(">Connect<");
+    expect(markup).not.toContain("Connected");
+  });
 });
 
 describe("ZeropsProjectPicker preparing section", () => {

@@ -11,16 +11,37 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import {
+  connectionStatusText,
+  type EnvironmentConnectionPresentation,
+} from "@t3tools/client-runtime/connection";
+import {
   groupZeropsCandidates,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
+type PresentedZeropsCandidate = ZeropsCandidate & {
+  readonly connection?: EnvironmentConnectionPresentation;
+};
+
+function candidateDetail(candidate: PresentedZeropsCandidate): string {
+  const connection = candidate.connection;
+  if (connection !== undefined && connection.phase !== "connected") {
+    return connection.phase === "available" ? "Connecting..." : connectionStatusText(connection);
+  }
+  return candidate.reason ?? candidate.containerOrigin ?? candidate.project.id;
+}
+
+function isConnectionInFlight(candidate: PresentedZeropsCandidate): boolean {
+  const phase = candidate.connection?.phase;
+  return phase === "available" || phase === "connecting" || phase === "reconnecting";
+}
+
 function CandidateRow({
   candidate,
   action,
 }: {
-  readonly candidate: ZeropsCandidate;
+  readonly candidate: PresentedZeropsCandidate;
   readonly action?: ReactNode | undefined;
 }) {
   return (
@@ -37,7 +58,7 @@ function CandidateRow({
           ) : null}
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {candidate.reason ?? candidate.containerOrigin ?? candidate.project.id}
+          {candidateDetail(candidate)}
         </p>
       </div>
       {action}
@@ -53,8 +74,8 @@ function CandidateGroup({
 }: {
   readonly title: string;
   readonly description: string;
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly renderAction?: ((candidate: ZeropsCandidate) => ReactNode) | undefined;
+  readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
+  readonly renderAction?: ((candidate: PresentedZeropsCandidate) => ReactNode) | undefined;
 }) {
   if (candidates.length === 0) return null;
   return (
@@ -78,7 +99,7 @@ function CandidateGroup({
 
 /** What a row says and offers, given what its container answered. */
 function readyRowAction(input: {
-  readonly candidate: ZeropsCandidate;
+  readonly candidate: PresentedZeropsCandidate;
   readonly health: ZeropsContainerHealth | undefined;
   readonly onConnect: ((candidate: ZeropsCandidate) => void) | undefined;
   readonly onEnable: ((candidate: ZeropsCandidate) => void) | undefined;
@@ -134,19 +155,21 @@ export function ZeropsProjectPicker({
   onOpen,
   onWait,
 }: {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
   readonly isLoading: boolean;
   readonly error: string | null;
   /** What each container answered, by candidate key; absent means still asking. */
   readonly health?: ReadonlyMap<string, ZeropsContainerHealth> | undefined;
   readonly onRefresh: () => void;
-  readonly onConnect?: ((candidate: ZeropsCandidate) => void) | undefined;
-  readonly onEnable?: ((candidate: ZeropsCandidate) => void) | undefined;
-  readonly onOpen?: ((candidate: ZeropsCandidate) => void) | undefined;
+  readonly onConnect?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
+  readonly onEnable?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
+  readonly onOpen?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
   /** A project or container that is still on its way in — nothing to connect to yet. */
-  readonly onWait?: ((candidate: ZeropsCandidate) => void) | undefined;
+  readonly onWait?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
 }) {
   const grouped = groupZeropsCandidates(candidates);
+  const connecting = grouped.ready.filter(isConnectionInFlight);
+  const ready = grouped.ready.filter((candidate) => !isConnectionInFlight(candidate));
   const empty = !isLoading && candidates.length === 0;
 
   return (
@@ -198,9 +221,15 @@ export function ZeropsProjectPicker({
         }
       />
       <CandidateGroup
+        title="Connecting"
+        description="Establishing a session with this container."
+        candidates={connecting}
+        renderAction={() => <Spinner className="size-4 text-muted-foreground" />}
+      />
+      <CandidateGroup
         title="Ready to connect"
         description="A Zerops Code container is running and reachable."
-        candidates={grouped.ready}
+        candidates={ready}
         renderAction={(candidate) =>
           readyRowAction({
             candidate,
