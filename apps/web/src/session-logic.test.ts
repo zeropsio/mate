@@ -2232,63 +2232,53 @@ describe("session activity performance", () => {
     expect(appendedEntries[1]).toBe(initialEntries[1]);
   });
 
-  it("scales linearly when appending to large ordered tool activity lists", () => {
-    const measureMedianAppendMs = (activityCount: number) => {
-      const activities = Array.from({ length: activityCount }, (_, index) =>
-        makeActivity({
-          id: `benchmark-tool-${activityCount}-${index}`,
-          createdAt: new Date(1_700_000_000_000 + index).toISOString(),
-          kind: "tool.completed",
-          summary: "Ran command",
-          sequence: index,
-          payload: {
-            itemType: "command_execution",
-            title: "Ran command",
-            data: {
-              toolCallId: `benchmark-tool-${activityCount}-${index}`,
-              item: { command: ["git", "status"] },
-            },
+  it("derives only the appended entry in a large ordered tool activity list", () => {
+    let cachedActivityDataReads = 0;
+    const activityCount = 20_000;
+    const activities = Array.from({ length: activityCount }, (_, index) => {
+      const data = {
+        toolCallId: `benchmark-tool-${index}`,
+        item: { command: ["git", "status"] },
+      };
+      return makeActivity({
+        id: `benchmark-tool-${index}`,
+        createdAt: new Date(1_700_000_000_000 + index).toISOString(),
+        kind: "tool.completed",
+        summary: "Ran command",
+        sequence: index,
+        payload: {
+          itemType: "command_execution",
+          title: "Ran command",
+          get data() {
+            cachedActivityDataReads += 1;
+            return data;
           },
-        }),
-      );
-      deriveWorkLogEntries(activities);
+        },
+      });
+    });
+    deriveWorkLogEntries(activities);
+    cachedActivityDataReads = 0;
 
-      const samples = Array.from({ length: 5 }, (_, repetition) => {
-        const updatedActivities = [
-          ...activities,
-          makeActivity({
-            id: `benchmark-tool-appended-${activityCount}-${repetition}`,
-            createdAt: new Date(1_700_000_000_000 + activityCount).toISOString(),
-            kind: "tool.completed",
-            summary: "Ran command",
-            sequence: activityCount,
-            payload: {
-              itemType: "command_execution",
-              title: "Ran command",
-              data: {
-                toolCallId: `benchmark-tool-appended-${activityCount}-${repetition}`,
-                item: { command: ["git", "diff"] },
-              },
-            },
-          }),
-        ];
+    const entries = deriveWorkLogEntries([
+      ...activities,
+      makeActivity({
+        id: "benchmark-tool-appended",
+        createdAt: new Date(1_700_000_000_000 + activityCount).toISOString(),
+        kind: "tool.completed",
+        summary: "Ran command",
+        sequence: activityCount,
+        payload: {
+          itemType: "command_execution",
+          title: "Ran command",
+          data: {
+            toolCallId: "benchmark-tool-appended",
+            item: { command: ["git", "diff"] },
+          },
+        },
+      }),
+    ]);
 
-        const startedAt = performance.now();
-        const entries = deriveWorkLogEntries(updatedActivities);
-        const elapsedMs = performance.now() - startedAt;
-        expect(entries).toHaveLength(activityCount + 1);
-        return elapsedMs;
-      }).toSorted((left, right) => left - right);
-
-      return samples[Math.floor(samples.length / 2)]!;
-    };
-
-    const tenThousandMedianMs = measureMedianAppendMs(10_000);
-    const twentyThousandMedianMs = measureMedianAppendMs(20_000);
-
-    // Doubling a linear scan should roughly double its cost. The extra margin
-    // absorbs runner noise while still rejecting quadratic growth near 4x.
-    expect(twentyThousandMedianMs).toBeLessThanOrEqual(tenThousandMedianMs * 3);
-    expect(twentyThousandMedianMs).toBeLessThan(2_000);
+    expect(entries).toHaveLength(activityCount + 1);
+    expect(cachedActivityDataReads).toBe(0);
   });
 });
