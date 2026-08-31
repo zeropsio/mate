@@ -137,7 +137,8 @@ type ServerAuthGateState = Extract<
 >;
 
 let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
-let resolvedAuthenticatedGateState: ServerAuthGateState | null = null;
+/** Cached until a local credential exchange or reload; pairing in another tab requires a reload. */
+let resolvedServerAuthGateState: ServerAuthGateState | null = null;
 
 export function peekPairingTokenFromUrl(): string | null {
   return getPairingTokenFromUrl(new URL(window.location.href));
@@ -291,7 +292,7 @@ export async function submitServerAuthCredential(credential: string): Promise<vo
     });
   }
 
-  resolvedAuthenticatedGateState = null;
+  resolvedServerAuthGateState = null;
   await exchangeBootstrapCredential(trimmedCredential);
   bootstrapPromise = null;
   stripPairingTokenFromUrl();
@@ -447,8 +448,8 @@ export async function revokeOtherServerClientSessions(): Promise<number> {
 }
 
 export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {
-  if (resolvedAuthenticatedGateState?.status === "authenticated") {
-    return resolvedAuthenticatedGateState;
+  if (resolvedServerAuthGateState !== null) {
+    return resolvedServerAuthGateState;
   }
 
   if (bootstrapPromise) {
@@ -459,9 +460,7 @@ export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGat
   bootstrapPromise = nextPromise;
   return nextPromise
     .then((result) => {
-      if (result.status === "authenticated") {
-        resolvedAuthenticatedGateState = result;
-      }
+      resolvedServerAuthGateState = result;
       return result;
     })
     .finally(() => {
@@ -473,5 +472,5 @@ export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGat
 
 export function __resetServerAuthBootstrapForTests() {
   bootstrapPromise = null;
-  resolvedAuthenticatedGateState = null;
+  resolvedServerAuthGateState = null;
 }

@@ -23,6 +23,7 @@ import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
 import { AuthStandardClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -244,12 +245,39 @@ export function canReuseCachedPlatformRegistration(
 
 /** A Zerops door authenticates its own origin with the bearer registration it mints. */
 export function primaryPlatformRegistrationStream(
-  gate: AuthGateState,
+  gate: AuthGateState | null,
   registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,
 ): Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>> {
-  return gate.status === "requires-auth" && gate.auth.bootstrapMethods.includes("zerops-identity")
-    ? Stream.empty
+  return gate !== null &&
+    gate.status === "requires-auth" &&
+    gate.auth.bootstrapMethods.includes("zerops-identity")
+    ? registrations.pipe(
+        Stream.map((current) =>
+          current.filter((registration) => registration._tag !== "PrimaryConnectionRegistration"),
+        ),
+      )
     : registrations;
+}
+
+class PrimaryPlatformAuthGateReadError extends Data.TaggedError(
+  "PrimaryPlatformAuthGateReadError",
+)<{
+  readonly cause: unknown;
+}> {}
+
+export function readPrimaryPlatformAuthGate(
+  readGate: () => Promise<AuthGateState> = resolveInitialServerAuthGateState,
+): Effect.Effect<AuthGateState | null> {
+  return Effect.tryPromise({
+    try: readGate,
+    catch: (cause) => new PrimaryPlatformAuthGateReadError({ cause }),
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not read the primary environment auth gate.", {
+        cause: error.cause,
+      }).pipe(Effect.as(null)),
+    ),
+  );
 }
 
 const platformConnectionSourceLayer = Layer.effect(
@@ -260,7 +288,7 @@ const platformConnectionSourceLayer = Layer.effect(
         registrations: Stream.empty,
       });
     }
-    const authGate = yield* Effect.promise(resolveInitialServerAuthGateState);
+    const authGate = yield* readPrimaryPlatformAuthGate();
     const cacheRef = yield* Ref.make(new Map<string, CachedPlatformRegistration>());
 
     // Resolve the primary (same-origin cookie auth) environment. The cached

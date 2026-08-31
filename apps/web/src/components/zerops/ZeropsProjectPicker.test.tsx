@@ -113,6 +113,32 @@ describe("ZeropsProjectPicker rows", () => {
     },
   );
 
+  it("keeps the reason and restart action while a failed container is retrying", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsProjectPicker
+        candidates={[
+          {
+            ...CANDIDATE,
+            connection: {
+              phase: "reconnecting",
+              error: "The container is unreachable.",
+              traceId: null,
+            },
+          },
+        ]}
+        isLoading={false}
+        error={null}
+        health={new Map([[CANDIDATE.key, "unreachable"]])}
+        onRefresh={noop}
+        onConnect={noop}
+        onEnable={noop}
+      />,
+    );
+
+    expect(markup).toContain("The container is unreachable.");
+    expect(markup).toContain("Enable Zerops Code");
+  });
+
   it("shows a settled socket failure reason beside the manual action", () => {
     const markup = renderToStaticMarkup(
       <ZeropsProjectPicker

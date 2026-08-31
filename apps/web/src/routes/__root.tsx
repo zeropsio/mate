@@ -56,6 +56,7 @@ import {
   type KeybindingsUpdateToastController,
 } from "../components/KeybindingsUpdateToast.logic";
 import { resolveDoor } from "./-door";
+import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -135,6 +136,7 @@ function RootRouteView() {
         <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
+        <ZeropsIdentityRepair />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
         {primaryEnvironmentAuthenticated ? <PlanAgentSelectionHeal /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdatePrimaryNotification /> : null}
