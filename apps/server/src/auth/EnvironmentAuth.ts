@@ -36,6 +36,7 @@ import * as SessionStore from "./SessionStore.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 import * as ServerConfig from "../config.ts";
 import { layerConfig as SqlitePersistenceLayer } from "../persistence/Layers/Sqlite.ts";
+import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { withBasePath } from "@t3tools/shared/basePath";
 
 export const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
@@ -585,6 +586,7 @@ export const make = Effect.gen(function* () {
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const crypto = yield* Crypto.Crypto;
   const descriptor = yield* policy.getDescriptor();
+  const acceptsSessionCookie = !isZeropsEnvironment(serverConfig);
 
   const authenticateToken = (
     token: string,
@@ -616,7 +618,9 @@ export const make = Effect.gen(function* () {
   const authenticateRequest = (
     request: HttpServerRequest.HttpServerRequest,
   ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
-    const cookieToken = request.cookies[sessions.cookieName];
+    // Zerops never issues a browser session cookie, so it must not accept one
+    // left on the public hostname by another deployment or older server.
+    const cookieToken = acceptsSessionCookie ? request.cookies[sessions.cookieName] : undefined;
     const bearerToken = parseBearerToken(request);
     const dpopToken = parseDpopToken(request);
     const credential = cookieToken ?? bearerToken ?? dpopToken;
