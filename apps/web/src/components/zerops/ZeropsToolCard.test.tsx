@@ -17,6 +17,18 @@ const render = (toolName: string, body: unknown, failed = false): string => {
   return payload === undefined ? "" : renderToStaticMarkup(<ZeropsToolCard payload={payload} />);
 };
 
+/** Direct deploy receipt returned before the asynchronous build/deploy settles. */
+const BUILD_TRIGGERED_DEPLOY_RESULT = {
+  status: "BUILD_TRIGGERED",
+  mode: "ssh",
+  sourceService: "kanbandev",
+  targetService: "kanbanstage",
+  targetServiceId: "svc-stage",
+  targetServiceType: "nodejs@22",
+  message: "Build triggered from kanbandev to kanbanstage via SSH",
+  monitorHint: "Build runs asynchronously. Poll zerops_events for build/deploy FINISHED status.",
+};
+
 describe("ZeropsToolCard", () => {
   it.each([
     {
@@ -75,6 +87,17 @@ describe("ZeropsToolCard", () => {
       tone: "attention",
       outcome: "1 of 2 services mounted",
       stepState: "failed",
+    },
+    {
+      name: "triggered asynchronous deploy",
+      toolName: "zerops_deploy",
+      body: BUILD_TRIGGERED_DEPLOY_RESULT,
+      kind: "deploy",
+      title: "Deploy kanbanstage",
+      status: "Build triggered",
+      tone: "busy",
+      outcome: "Build triggered from kanbandev to kanbanstage via SSH",
+      stepState: "running",
     },
     {
       name: "successful deploy",
