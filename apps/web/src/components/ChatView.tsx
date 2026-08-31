@@ -166,10 +166,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
-import { ZeropsAgentAuthCard } from "./zerops/ZeropsAgentAuthCard";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
-import { useAgentLogin } from "../zerops/useAgentLogin";
-import { useAgentLoginCancel } from "../zerops/useAgentLoginCancel";
 import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";
 import {
   deriveAgentPanelModel,
@@ -3382,10 +3379,7 @@ function ChatViewContent(props: ChatViewProps) {
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
-    activeRightPanelKind,
   });
-  const signInToZeropsAgent = useAgentLogin(activeThreadRef);
-  const cancelZeropsAgentLogin = useAgentLoginCancel(activeThreadRef);
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;
@@ -6675,11 +6669,7 @@ function ChatViewContent(props: ChatViewProps) {
             case "zerops":
               return (
                 <ZeropsPanel
-                  agentAuthCard={
-                    zeropsChrome.attention?.surface === "panel"
-                      ? zeropsChrome.attention.snapshot
-                      : null
-                  }
+                  agentAuthCard={zeropsChrome.agentAuthCard}
                   threadRef={zeropsChrome.threadRef}
                 />
               );
@@ -6765,23 +6755,13 @@ function ChatViewContent(props: ChatViewProps) {
             onUpdateProjectScript={updateProjectScript}
             onDeleteProjectScript={deleteProjectScript}
           />
-          {/*
-            The Zerops strip sits beside ChatHeader rather than inside it: the
-            header takes props, and the strip needs the pending-question state
-            that only lives out here. This keeps ChatHeader untouched.
-
-            The panel-layout controls above are absolutely positioned at the
-            header's right edge, so the strip — an ordinary flex child — would
-            run underneath them. It reserves their width exactly when they are
-            on screen, which is the same condition that renders them.
-          */}
-          <div className={cn("flex min-w-0 shrink", !rightPanelOpen && "mr-16")}>
-            <ZeropsLifecycleStrip
-              pendingUserInput={activePendingUserInput !== null}
-              threadRef={zeropsChrome.threadRef}
-            />
-          </div>
         </WorkspacePageHeader>
+        <ZeropsLifecycleStrip
+          agentAuthNeedsAttention={zeropsChrome.agentAuthCard !== null}
+          pendingUserInput={activePendingUserInput !== null}
+          threadRef={zeropsChrome.threadRef}
+          zeropsPanelOpen={activeRightPanelKind === "zerops"}
+        />
 
         <ThreadErrorBanner
           error={visibleThreadError}
@@ -6822,15 +6802,6 @@ function ChatViewContent(props: ChatViewProps) {
                 status={visibleProviderStatus}
                 onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
               />
-              {zeropsChrome.attention?.surface === "banner" ? (
-                <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">
-                  <ZeropsAgentAuthCard
-                    onCancel={cancelZeropsAgentLogin}
-                    onSignIn={signInToZeropsAgent}
-                    snapshot={zeropsChrome.attention.snapshot}
-                  />
-                </div>
-              ) : null}
             </div>
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">

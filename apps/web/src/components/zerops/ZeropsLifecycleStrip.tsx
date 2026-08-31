@@ -1,12 +1,12 @@
 /**
- * The lifecycle strip: one line in the thread header saying where the agent is
- * in the Zerops workflow.
+ * The lifecycle strip: one band below the thread header saying where the agent
+ * is in the Zerops workflow.
  *
- * Absent entirely until the thread's agent has run a workflow-aware Zerops
- * tool, so a thread that never touches Zerops never grows a strip. The wording
- * is decided in `@t3tools/client-runtime/zerops/strip` and tested there; the line below is
- * split out from the feed-reading container so its markup can be tested
- * without a live atom registry.
+ * Absent until the thread's agent has run a workflow-aware Zerops tool, except
+ * when the closed service map needs an in-flow authorization entry. Lifecycle
+ * wording is decided in `@t3tools/client-runtime/zerops/strip` and tested
+ * there; the line below is split out from the feed-reading container so its
+ * markup can be tested without a live atom registry.
  *
  * Clicking it opens the service map, which is the question the strip provokes.
  */
@@ -15,6 +15,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
+import { StatusDot } from "./primitives";
 import {
   type ZeropsStripState,
   type ZeropsStripTone,
@@ -23,47 +24,75 @@ import {
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 
 const TONE_CLASS: Record<ZeropsStripTone, string> = {
-  active: "text-foreground",
-  done: "text-success-foreground",
-  idle: "text-muted-foreground",
-  waiting: "text-warning-foreground",
+  active: "bg-[var(--zerops-status-busy-surface)] text-foreground",
+  done: "bg-[var(--zerops-status-ok-surface)] text-success-foreground",
+  idle: "bg-[var(--zerops-status-off-surface)] text-muted-foreground",
+  waiting: "bg-[var(--zerops-status-attention-surface)] text-warning-foreground",
 };
+
+const STATUS_TONE: Record<ZeropsStripTone, "attention" | "busy" | "off" | "ok"> = {
+  active: "busy",
+  done: "ok",
+  idle: "off",
+  waiting: "attention",
+};
+const AGENT_AUTH_ATTENTION_LABEL = "Coding agent sign-in required";
 
 export function ZeropsStripLine({
   state,
   onOpen,
+  agentAuthNeedsAttention = false,
 }: {
   readonly state: ZeropsStripState | undefined;
   readonly onOpen: () => void;
+  readonly agentAuthNeedsAttention?: boolean;
 }) {
-  if (state === undefined) {
+  if (state === undefined && !agentAuthNeedsAttention) {
     return null;
   }
+  const visibleState =
+    state ??
+    ({
+      tone: "waiting",
+      label: AGENT_AUTH_ATTENTION_LABEL,
+    } satisfies ZeropsStripState);
+  const ariaLabel = `Zerops: ${visibleState.label}${
+    state !== undefined && agentAuthNeedsAttention ? ` · ${AGENT_AUTH_ATTENTION_LABEL}` : ""
+  }`;
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
-            aria-label={`Zerops: ${state.label}`}
+            aria-label={ariaLabel}
             className={cn(
-              "flex min-w-0 shrink cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors hover:bg-accent/50",
-              TONE_CLASS[state.tone],
+              "flex h-7 w-full min-w-0 cursor-pointer items-center overflow-hidden px-3 text-xs font-medium transition-colors hover:brightness-95",
+              TONE_CLASS[visibleState.tone],
             )}
-            data-zerops-lifecycle-strip
-            data-zerops-strip-tone={state.tone}
+            data-zerops-lifecycle-band="true"
+            data-zerops-strip-tone={visibleState.tone}
             onClick={onOpen}
             type="button"
           />
         }
       >
-        {state.tone === "active" ? (
-          <span
-            aria-hidden="true"
-            className="size-2 shrink-0 animate-status-pulse rounded-full bg-current motion-reduce:animate-none"
+        <StatusDot
+          className="overflow-hidden"
+          data-zerops-agent-auth-attention={state === undefined ? "true" : undefined}
+          label={visibleState.label}
+          pulse={visibleState.tone === "active"}
+          tone={STATUS_TONE[visibleState.tone]}
+        />
+        {state !== undefined && agentAuthNeedsAttention ? (
+          <StatusDot
+            className="ml-auto shrink-0 pl-3"
+            data-zerops-agent-auth-attention="true"
+            label={AGENT_AUTH_ATTENTION_LABEL}
+            pulse={false}
+            tone="attention"
           />
         ) : null}
-        <span className="truncate">{state.label}</span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">Open the Zerops service map</TooltipPopup>
     </Tooltip>
@@ -73,9 +102,13 @@ export function ZeropsStripLine({
 export function ZeropsLifecycleStrip({
   threadRef,
   pendingUserInput,
+  agentAuthNeedsAttention = false,
+  zeropsPanelOpen = false,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly pendingUserInput: boolean;
+  readonly agentAuthNeedsAttention?: boolean;
+  readonly zeropsPanelOpen?: boolean;
 }) {
   const lifecycle = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
@@ -89,6 +122,7 @@ export function ZeropsLifecycleStrip({
 
   return (
     <ZeropsStripLine
+      agentAuthNeedsAttention={agentAuthNeedsAttention && !zeropsPanelOpen}
       onOpen={() => {
         useRightPanelStore.getState().open(threadRef, "zerops");
       }}

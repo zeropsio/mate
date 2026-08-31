@@ -12,15 +12,10 @@ import type {
   ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
 
-import type { RightPanelKind } from "../rightPanelKinds";
-
 export interface ZeropsChatChrome {
   readonly threadRef: ScopedThreadRef | null;
   readonly panel: "available" | "unavailable" | "unknown";
-  readonly attention: {
-    readonly snapshot: ZeropsAgentAuthSnapshot;
-    readonly surface: "banner" | "panel";
-  } | null;
+  readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
 }
 
 export function resolveZeropsChatChrome(
@@ -28,14 +23,13 @@ export function resolveZeropsChatChrome(
   input: {
     readonly topology: ZeropsTopologySnapshot | undefined;
     readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
-    readonly activeRightPanelKind: RightPanelKind | null;
   },
 ): ZeropsChatChrome {
   if (threadRef === null) {
     return {
       threadRef: null,
       panel: "unknown",
-      attention: null,
+      agentAuthCard: null,
     };
   }
 
@@ -52,14 +46,9 @@ export function resolveZeropsChatChrome(
   return {
     threadRef,
     panel,
-    // S7-D4 keeps provider-auth guidance beside ProviderStatusBanner unless
-    // the open panel owns it, so the snapshot and its destination stay bound.
-    attention:
-      agentAuth !== undefined && zeropsAgentAuthNeedsAttention(agentAuth)
-        ? {
-            snapshot: agentAuth,
-            surface: input.activeRightPanelKind === "zerops" ? "panel" : "banner",
-          }
-        : null,
+    // The panel owns the snapshot even while closed. Chat chrome may expose an
+    // in-flow entry to that panel, but never render the card over the timeline.
+    agentAuthCard:
+      agentAuth !== undefined && zeropsAgentAuthNeedsAttention(agentAuth) ? agentAuth : null,
   };
 }

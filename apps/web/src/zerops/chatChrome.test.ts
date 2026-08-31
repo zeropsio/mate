@@ -72,44 +72,33 @@ const AUTH_STATES = [
   { label: "when agent auth needs attention", value: ATTENTION, needsAttention: true },
 ] as const;
 
-const PANEL_KINDS = [
-  { label: "with the panel closed", value: null, surface: "banner" },
-  { label: "with the Zerops panel active", value: "zerops", surface: "panel" },
-  { label: "with another panel active", value: "files", surface: "banner" },
-] as const;
-
 const CASES = THREADS.flatMap((thread) =>
   TOPOLOGIES.flatMap((topologyState) =>
-    AUTH_STATES.flatMap((authState) =>
-      PANEL_KINDS.map((panelKind) => ({
-        name: `${thread.label}, ${topologyState.label}, ${authState.label}, ${panelKind.label}`,
-        threadRef: thread.value,
-        input: {
-          topology: topologyState.value,
-          agentAuth: authState.value,
-          activeRightPanelKind: panelKind.value,
-        },
-        expected:
-          thread.value === null
-            ? {
-                threadRef: null,
-                panel: "unknown" as const,
-                attention: null,
-              }
-            : {
-                threadRef: thread.value,
-                panel: topologyState.panel,
-                attention: authState.needsAttention
-                  ? { snapshot: ATTENTION, surface: panelKind.surface }
-                  : null,
-              },
-      })),
-    ),
+    AUTH_STATES.map((authState) => ({
+      name: `${thread.label}, ${topologyState.label}, ${authState.label}`,
+      threadRef: thread.value,
+      input: {
+        topology: topologyState.value,
+        agentAuth: authState.value,
+      },
+      expected:
+        thread.value === null
+          ? {
+              threadRef: null,
+              panel: "unknown" as const,
+              agentAuthCard: null,
+            }
+          : {
+              threadRef: thread.value,
+              panel: topologyState.panel,
+              agentAuthCard: authState.needsAttention ? ATTENTION : null,
+            },
+    })),
   ),
 );
 
 describe("resolveZeropsChatChrome", () => {
-  it.each(CASES)("$name", ({ threadRef, input, expected }) => {
+  it.each(CASES)("keeps attention panel-owned: $name", ({ threadRef, input, expected }) => {
     expect(resolveZeropsChatChrome(threadRef, input)).toEqual(expected);
   });
 });
