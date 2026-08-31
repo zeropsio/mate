@@ -1,0 +1,67 @@
+# Zerops build/run spec for this repository.
+#
+# `buildFromGit` and `zcli push` both read this file from the repository
+# root — an inline `zeropsYaml` in an import document does not substitute
+# for it. One `setup:` per deployable; the import (or the push) selects one
+# by service hostname, or by an explicit `zeropsSetup`.
+zerops:
+  # The z3 web client, served at an origin root by its own nginx: the
+  # delivery shape the hosted client needs (spec-z3 §4 — "hosted separately,
+  # not built into the container"). Same bundle the container serves under
+  # /z3/, built without the prefix.
+  - setup: z3web
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        # `packageManager` pins pnpm 11.10.0. The build container runs as an
+        # unprivileged user, so a plain `npm install -g` cannot write to
+        # /usr/lib/node_modules — install into $HOME and call the binary by
+        # path, since each build command gets its own shell and an exported
+        # PATH would not survive to the next one.
+        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
+        # `--filter @t3tools/web...` takes the web app and its workspace
+        # dependencies only, leaving the desktop (Electron) and mobile (Expo)
+        # halves of the monorepo uninstalled.
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
+        - $HOME/.local/bin/pnpm --filter @t3tools/web build
+        # msw's dev worker ships in apps/web/public and would otherwise be
+        # served publicly. Nothing registers it; it still has no business on
+        # a public origin.
+        - rm -f apps/web/dist/mockServiceWorker.js
+      # `~` shortens the deployed path: apps/web/dist lands at /var/www/dist,
+      # which documentRoot below points nginx at.
+      deployFiles:
+        - apps/web/~dist
+      envVariables:
+        # Hosted-static mode. Any value other than latest/nightly is silently
+        # ignored and the app falls through to the /pair screen instead of
+        # the Zerops flow.
+        VITE_HOSTED_APP_CHANNEL: latest
+        # Where this client believes it is published. Only the settings
+        # "pair another device" link reads it, but left unset it defaults to
+        # upstream's app.t3.codes — a Zerops user handed a live pairing
+        # credential on somebody else's hosted app.
+        VITE_HOSTED_APP_URL: https://z3.krls.cz
+        # `--filter` already leaves Electron out; this makes a stray install
+        # of it cheap rather than a 100 MB download.
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+        CI: "1"
+        # VITE_BASE_PATH stays unset: this bundle is served at an origin
+        # root, not under the container's /z3/ prefix.
+        #
+        # VITE_HTTP_URL / VITE_WS_URL stay unset too — either one makes the
+        # app non-hosted and pins it to that backend. The repository `.env`
+        # is gitignored, so a clone carries neither.
+        #
+        # VITE_ZEROPS_TURNSTILE_SITE_KEY stays unset, so the sign-up widget
+        # is off and registration refuses to send. Turnstile's site key is
+        # bound to app.zerops.io; a second hostname has to be added to it
+        # before in-app sign-up works anywhere else.
+    run:
+      base: alpine/static@1.0
+      routing:
+        # A Static service takes its document root from `routing`, not from
+        # `documentRoot` — that one is for webserver runtimes and is silently
+        # ignored here, leaving nginx on /var/www and every request a 404.
+        root: dist

@@ -1,0 +1,28 @@
+# The z3 web client as a standalone static service.
+#
+# This is the delivery shape the hosted client needs (spec-z3 §4: "hosted
+# separately, not built into the container"): the same bundle the container
+# serves under /z3/, built for an origin root and served by its own nginx.
+# The container-served copy stays where it is; this one is reached
+# cross-origin and therefore exercises the CORS half of the door (§3.4),
+# which same-origin /z3/ never touches.
+#
+# Import into an EXISTING project (no `project:` key):
+#
+#   zcli project service-import infra/web/zerops-import.yml --project-id <id>
+#
+# The build spec lives in the repository root `zerops.yml` under
+# `setup: z3web`, NOT here: `buildFromGit` clones the repository and reads
+# that file from the clone's root. An inline `zeropsYaml` in this document
+# does not substitute for it — the build ends "zerops.yml file not found at
+# the root of your project". So the root file has to be on the branch this
+# clones (`main`) before the import can build.
+services:
+  - hostname: z3web
+    type: alpine/static@1.0
+    enableSubdomainAccess: true
+    # Public repository, plain URL: a trailing `.git` fails clone-preflight
+    # in ~0.3s with no build log. Clones the default branch (`main`).
+    buildFromGit: https://github.com/zeropsio/z3
+    verticalAutoscaling:
+      minRam: 0.25
