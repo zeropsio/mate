@@ -122,7 +122,7 @@ export function resolveDoor(
     };
   }
 
-  if (profile.zeropsDoor && (pathname === "/" || isPairPath)) {
+  if (profile.zeropsDoor && (isPairPath || (pathname === "/" && input.environmentCount === 0))) {
     return {
       session: profile.session,
       shell,
