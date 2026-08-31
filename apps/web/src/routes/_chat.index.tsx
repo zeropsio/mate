@@ -18,7 +18,7 @@ import {
 } from "../state/entities";
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
-import { resolveDoor } from "./-door";
+import { countDoorEnvironments, resolveDoor } from "./-door";
 import { composeZeropsFirstPrompt } from "~/zerops/composeFirstPrompt";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 
@@ -28,7 +28,7 @@ function ChatIndexRouteView() {
 
   const door = resolveDoor(authGateState, {
     pathname: "/",
-    environmentCount: environments.length,
+    environmentCount: countDoorEnvironments(environments),
   });
 
   if (door.surface === "zerops-onboarding") {

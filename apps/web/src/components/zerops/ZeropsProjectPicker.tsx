@@ -224,7 +224,19 @@ export function ZeropsProjectPicker({
         title="Connecting"
         description="Establishing a session with this container."
         candidates={connecting}
-        renderAction={() => <Spinner className="size-4 text-muted-foreground" />}
+        renderAction={(candidate) => {
+          const candidateHealth = health?.get(candidate.key);
+          return candidateHealth === "predates-z3" || candidateHealth === "unreachable" ? (
+            readyRowAction({
+              candidate,
+              health: candidateHealth,
+              onConnect: undefined,
+              onEnable,
+            })
+          ) : (
+            <Spinner className="size-4 text-muted-foreground" />
+          );
+        }}
       />
       <CandidateGroup
         title="Ready to connect"

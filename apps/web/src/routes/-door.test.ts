@@ -3,7 +3,7 @@ import { isRedirect } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { AuthGateState } from "../environments/primary/auth";
-import { type DoorDecision, resolveDoor } from "./-door";
+import { countDoorEnvironments, type DoorDecision, resolveDoor } from "./-door";
 import { Route as PairRoute } from "./pair";
 
 const BOTH_COUNTS = [0, 1] as const;
@@ -1044,4 +1044,28 @@ describe("resolveDoor", () => {
       });
     },
   );
+});
+
+describe("countDoorEnvironments", () => {
+  it.each([
+    {
+      label: "only a settled-error environment",
+      phases: ["error"],
+      expected: 0,
+    },
+    {
+      label: "a reconnecting environment",
+      phases: ["reconnecting"],
+      expected: 1,
+    },
+    {
+      label: "one settled-error and one connected environment",
+      phases: ["error", "connected"],
+      expected: 1,
+    },
+  ] as const)("counts $label as $expected for the door matrix", ({ phases, expected }) => {
+    expect(countDoorEnvironments(phases.map((phase) => ({ connection: { phase } })))).toBe(
+      expected,
+    );
+  });
 });

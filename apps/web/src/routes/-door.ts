@@ -6,6 +6,7 @@
  * the router.
  */
 import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 
 import type { AuthGateState } from "../environments/primary/auth";
 
@@ -86,6 +87,15 @@ function profileForGate(gate: AuthGateState): GateProfile {
     }
   }
   return unreachable(status);
+}
+
+/** A settled failure is unusable; transient connection phases keep the user inside the shell. */
+export function countDoorEnvironments(
+  environments: ReadonlyArray<{
+    readonly connection: { readonly phase: EnvironmentConnectionPhase };
+  }>,
+): number {
+  return environments.filter((environment) => environment.connection.phase !== "error").length;
 }
 
 export function resolveDoor(
