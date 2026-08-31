@@ -1,99 +1,70 @@
-# Install T3 Code
+# Install Zerops Code
 
-T3 Code is a web and desktop GUI for running coding agents on your machine.
+Zerops Code runs in a Zerops project by default. A standalone server can also be installed from a
+GitHub release tarball.
 
-## Requirements
+## Zerops
 
-Node.js `^22.16 || ^23.11 || >=24.10` on the machine that runs the T3 Code server.
+There is nothing to install by hand. Every project's `zcp` container installs the z3 release pinned
+by its version of zcp, verifies the release digest, and supervises the server as `zerops@z3`. Nginx
+publishes the bundled web app at `/z3/` on the container's public subdomain.
 
-At least one provider CLI, installed and authenticated. See [Providers](#providers) below.
+Open that URL and sign in with your Zerops account. Project membership grants access; a Zerops
+container does not use a pairing code or shared container secret.
 
-## Run Without Installing
+The container provides the coding-agent environment. Provider status and configuration are
+available in **Settings** after sign-in.
 
-```bash
-npx t3@latest
-```
+## Standalone Server
 
-This starts the T3 Code server on your machine and opens the local web app. Use
-`npx t3@latest --help` for the full CLI reference.
+Use this path only when you are running the server yourself outside Zerops.
 
-## Desktop App
+### Requirements
 
-Download the latest release from
-[GitHub Releases](https://github.com/pingdotgg/t3code/releases), or install from a package
-registry.
+- Node.js `^22.16 || ^23.11 || >=24.10`
+- At least one provider CLI installed and authenticated on the server machine
 
-Windows:
+Download `zerops-code-0.1.0.tgz` and `SHA256SUMS` from the
+[v0.1.0 GitHub release](https://github.com/zeropsio/z3/releases/tag/v0.1.0), then verify the
+tarball against `SHA256SUMS`.
 
-```bash
-winget install T3Tools.T3Code
-```
-
-macOS:
-
-```bash
-brew install --cask t3-code
-```
-
-Arch Linux:
-
-Stable:
+In a directory where you want to keep the standalone installation, place the tarball and run:
 
 ```bash
-yay -S t3code-bin
+npm init -y
+npm install ./zerops-code-0.1.0.tgz
+./node_modules/.bin/z3 --version
+./node_modules/.bin/z3 serve
 ```
 
-Nightly:
+The version command prints `z3 v0.1.0`. `z3 serve` starts the bundled web server and prints the
+pairing details for this standalone installation.
+
+The release package is named `zerops-code`, but its executable is `z3`. It is not published to the
+npm registry, so install the downloaded tarball rather than a registry package name.
+
+Use the installed executable's help for the full CLI reference:
 
 ```bash
-yay -S t3code-nightly-bin
+./node_modules/.bin/z3 serve --help
 ```
 
-## Providers
+The standalone server supports `--port`, `--base-path`, and `--base-dir`. Use `--base-path` when a
+reverse proxy publishes the server below a path prefix, and keep using the same `--base-dir` when
+you restart or update an installation whose state is stored outside the default directory.
 
-T3 Code drives provider CLIs; it does not ship them. Install the CLI for each provider you want
-to use, then authenticate it.
+Install and authenticate each provider CLI on the standalone server machine, not on the device
+running the browser. See [Codex](./providers-codex.md) and [Claude](./providers-claude.md) for
+provider-specific setup.
 
-| Provider   | CLI                                                   | Default binary | Log in with           |
-| ---------- | ----------------------------------------------------- | -------------- | --------------------- |
-| Codex      | [Codex CLI](https://developers.openai.com/codex/cli)  | `codex`        | `codex login`         |
-| Claude     | [Claude Code](https://claude.com/product/claude-code) | `claude`       | `claude auth login`   |
-| Cursor     | [Cursor CLI](https://cursor.com/cli)                  | `cursor-agent` | `agent login`         |
-| Grok Build | [Grok Build CLI](https://x.ai/cli)                    | `grok`         | `grok login`          |
-| OpenCode   | [OpenCode](https://opencode.ai)                       | `opencode`     | `opencode auth login` |
+## Desktop and Mobile
 
-Codex and Claude are on by default. Cursor, Grok Build, and OpenCode are off by default; turn
-them on in **Settings** → the provider's card when you want to use them.
-
-Cursor is the one to watch: install Cursor CLI, which provides the `cursor-agent` binary that
-T3 Code looks for, but authenticate with `agent login`, not `cursor-agent login`.
-
-Grok models that support adjustable reasoning show a **Reasoning** control beside the model picker.
-The available levels and default come from the installed Grok Build CLI, so they can vary by model
-and CLI version.
-
-Run the login command on the machine running the T3 Code server, not on the device you browse
-from.
-
-### Binary Discovery
-
-Each provider CLI must be on the server's `PATH`, or have an explicit binary path set in
-**Settings** → the provider instance → **Binary path**. Use the explicit path when a version
-manager or a non-standard install location keeps the CLI off the `PATH` of the shell that
-started T3 Code.
-
-### When Auth Is Needed
-
-Provider auth is required before you start a session with that provider, not before you start
-T3 Code. You can install T3 Code, open it, and add providers afterwards. A provider that is not
-authenticated shows its status in **Settings** and fails at session start with the login command
-to run.
-
-For multi-account setups, see [Codex](./providers-codex.md) and [Claude](./providers-claude.md).
+This fork does not publish desktop or mobile clients. The `winget`, Homebrew, and AUR packages for
+T3 Code are upstream packages and do not install Zerops Code.
 
 ## Next Steps
 
-- [Permission modes](./permission-modes.md): how much T3 Code asks before acting
-- [Remote access](./remote-access.md): connect from a phone, tablet, or another desktop
-- [Keeping T3 Code in sync](./updating.md): client and server version skew
-- [Running in the background](./background-service.md): Linux background service
+- [Permission modes](./permission-modes.md): how much Zerops Code asks before acting
+- [Remote access](./remote-access.md): Zerops account access and standalone pairing
+- [Keeping Zerops Code current](./updating.md): Zerops pins and standalone release updates
+- [Running in the background](./background-service.md): the service zcp manages on Zerops

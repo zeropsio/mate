@@ -1,81 +1,44 @@
-# Keeping T3 Code in Sync
+# Keeping Zerops Code Current
 
-The T3 Code web or desktop app and the server it connects to work best when they use the same
-version. If they do not match, T3 Code shows a warning with the right update option for that server.
+## Zerops
 
-## Where to Find the Update
+The server version in a Zerops project is the GitHub release pinned by the container's version of
+zcp. When that zcp pin moves, `zcp init` downloads the pinned release, verifies its digest, installs
+it, and the `zerops@z3` unit runs that version.
 
-You may see the warning in either of these places:
+Do not install or update z3 by hand inside the container. The next container initialization would
+restore the release selected by zcp.
 
-- above the message box in the current conversation
-- **Settings** → **Connections**, beside the affected connection
+The web bundle at `/z3/` ships with that server release, so the normal Zerops web path keeps the
+client and server together.
 
-Dismissing the conversation warning only hides that reminder for those two versions. It does not
-update the server, and the version difference remains visible in Connections.
+## Standalone Server
 
-## Before You Update
+For a server you installed yourself, download the newer `zerops-code-<version>.tgz` and
+`SHA256SUMS` from [zeropsio/z3 releases](https://github.com/zeropsio/z3/releases), then verify the
+tarball against `SHA256SUMS`.
 
-Let active agent work and terminal commands finish first. Updating restarts the server, so the
-connection will disappear briefly and work that is still running may be interrupted.
+Let active agent work and terminal commands finish, stop the standalone server, and install the
+downloaded tarball in the same installation directory:
 
-The update does not remove saved threads, settings, or project files.
-
-## Choose the Action You See
-
-| Action                     | What to do                                                                                                                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Available for the T3 Code Linux background service. Select the button and leave T3 Code open while it prepares, tests, restarts, and reconnects.                            |
-| **Update the desktop app** | Open the T3 Code desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                     |
-| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current T3 Code server, and relaunch it with the copied command and any startup options you normally use. |
-
-The available action depends on how that server was started. T3 Code does not update connected
-servers silently in the background.
-
-An older background-service launcher may ask you to run the exact
-`npx t3@<version> service update` command on the server machine. That one local update installs the
-rollback support needed for later remote updates, including versions that change the database.
-
-After selecting **Update**, the notice becomes a live status line: **Downloading…** while the new
-version is fetched and verified, then **Restarting…** while the server restarts into it. The same
-status appears in the conversation and in Connections, so navigating between them does not lose the
-update. A failure remains visible with its error and an option to retry.
-
-**Copy update command** gives you `npx t3@<client-version>`, which relaunches the server directly
-at the matching version. Add whatever startup options you normally use.
-
-If the server instead runs as the T3 Code background service, update the service on the host and
-pin the same version:
-
-```sh
-npx t3@<client-version> service update
+```bash
+npm install /path/to/the/downloaded-tarball.tgz
+./node_modules/.bin/z3 --version
+./node_modules/.bin/z3 serve
 ```
 
-`service update` installs the version of the CLI that invoked it, so `npx t3@latest service update`
-only resolves the skew when your client happens to be on the latest release. The exact version from
-the warning always works.
+Restart it with the same `--port`, `--base-path`, and `--base-dir` options used by the previous
+version.
 
-See [Running T3 Code in the Background](./background-service.md) for install, status, and removal
-commands.
+## Version Mismatch Warnings
 
-## After the Update
+A separately built client can warn when it is newer than the connected server. The warning appears
+above the conversation composer and in **Settings** → **Connections**. Dismissing the conversation
+warning hides only that client/server version pair; it does not update either side.
 
-Keep the web or desktop app open while the server restarts. The update completes only after the
-service launcher reports that exact update committed and the replacement server is ready to accept
-commands. A rollback is reported immediately instead of waiting for a generic reconnect timeout.
+On Zerops, refresh the `/z3/` page first because its client bundle comes from the same release as
+the server. For a standalone server, install the matching GitHub release tarball as described
+above. This fork has no npm-registry update command, and the zcp-managed `zerops@z3` service does
+not offer the repository's in-app background-service updater.
 
-If a step fails:
-
-1. Retry the offered action once.
-2. Make sure you updated the machine named in the warning, not only the device you are using.
-3. For a command-line server, relaunch it with `npx t3@<client-version>`, replacing
-   `<client-version>` with the client version shown in the warning.
-
-## The Mobile App
-
-The mobile app keeps itself current on its own. When it finds a new version, it downloads it in the
-background and installs it automatically the next time you leave the app. Unsent drafts and queued
-messages are saved before the restart. Only if the app stays open long enough that the update never
-gets that chance does it ask whether to install right away; choosing **Later** is safe and keeps the
-automatic install armed.
-
-For remote connection setup and access troubleshooting, see [Remote Access](./remote-access.md).
+For remote connection setup, see [Remote Access](./remote-access.md).
