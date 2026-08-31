@@ -10,24 +10,12 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import {
-  DEVELOPMENT_ICON_OVERRIDES,
-  resolveWebAssetBrandForPackageVersion,
-  resolveWebIconOverrides,
-} from "../../../scripts/lib/brand-assets.ts";
 import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog.ts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import serverPackageJson from "../package.json" with { type: "json" };
-import {
-  ServerCliBuildAssetMissingError,
-  ServerCliCommandExitError,
-  ServerCliDevelopmentIconSourceMissingError,
-  ServerCliDevelopmentIconTargetMissingError,
-  ServerCliPublishIconSourceMissingError,
-  ServerCliPublishIconTargetMissingError,
-} from "./cliErrors.ts";
+import { ServerCliBuildAssetMissingError, ServerCliCommandExitError } from "./cliErrors.ts";
 
 interface PackageJson {
   name: string;
@@ -82,60 +70,6 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Stan
   }
 });
 
-const preparePublishIcons = Effect.fn("preparePublishIcons")(function* (
-  repoRoot: string,
-  serverDir: string,
-  version: string,
-) {
-  const path = yield* Path.Path;
-  const fs = yield* FileSystem.FileSystem;
-  const brand = resolveWebAssetBrandForPackageVersion(version);
-  const icons = resolveWebIconOverrides(brand, "dist/client").map((override) => ({
-    sourcePath: path.join(repoRoot, override.sourceRelativePath),
-    targetPath: path.join(serverDir, override.targetRelativePath),
-  }));
-
-  for (const icon of icons) {
-    if (!(yield* fs.exists(icon.sourcePath))) {
-      return yield* new ServerCliPublishIconSourceMissingError({ sourcePath: icon.sourcePath });
-    }
-    if (!(yield* fs.exists(icon.targetPath))) {
-      return yield* new ServerCliPublishIconTargetMissingError({ targetPath: icon.targetPath });
-    }
-  }
-
-  return yield* Effect.forEach(icons, (icon) =>
-    Effect.all({
-      original: fs.readFile(icon.targetPath),
-      publish: fs.readFile(icon.sourcePath),
-    }).pipe(Effect.map((contents) => ({ ...icon, ...contents }))),
-  );
-});
-
-const applyDevelopmentIconOverrides = Effect.fn("applyDevelopmentIconOverrides")(function* (
-  repoRoot: string,
-  serverDir: string,
-) {
-  const path = yield* Path.Path;
-  const fs = yield* FileSystem.FileSystem;
-
-  for (const override of DEVELOPMENT_ICON_OVERRIDES) {
-    const sourcePath = path.join(repoRoot, override.sourceRelativePath);
-    const targetPath = path.join(serverDir, override.targetRelativePath);
-
-    if (!(yield* fs.exists(sourcePath))) {
-      return yield* new ServerCliDevelopmentIconSourceMissingError({ sourcePath });
-    }
-    if (!(yield* fs.exists(targetPath))) {
-      return yield* new ServerCliDevelopmentIconTargetMissingError({ targetPath });
-    }
-
-    yield* fs.copyFile(sourcePath, targetPath);
-  }
-
-  yield* Effect.log("[cli] Applied development icon overrides to dist/client");
-});
-
 // ---------------------------------------------------------------------------
 // build subcommand
 // ---------------------------------------------------------------------------
@@ -167,7 +101,6 @@ const buildCmd = Command.make(
 
       if (yield* fs.exists(webDist)) {
         yield* fs.copy(webDist, clientTarget);
-        yield* applyDevelopmentIconOverrides(repoRoot, serverDir);
         yield* Effect.log("[cli] Bundled web app into dist/client");
       } else {
         yield* Effect.logWarning("[cli] Web dist not found — skipping client bundle.");
@@ -206,8 +139,8 @@ const createVpPmPublishArgs = (config: PublishCommandConfig): ReadonlyArray<stri
 
 // `publish` and `pack` share one thing: while `vp pm` runs, apps/server must
 // carry the release package.json (catalog: → concrete versions, overrides,
-// the release version) and the publish icons — and every original must come
-// back afterwards, whatever happened in between.
+// the release version), and the original must come back afterwards, whatever
+// happened in between.
 const withReleaseAssets = <A, E, R>(
   repoRoot: string,
   appVersion: Option.Option<string>,
@@ -258,27 +191,20 @@ const withReleaseAssets = <A, E, R>(
         return {
           packageJsonString: yield* encodePackageJson(pkg),
           originalPackageJson: yield* fs.readFile(packageJsonPath),
-          icons: yield* preparePublishIcons(repoRoot, serverDir, version),
         };
       }),
-      // Use: apply the release assets, then run the caller's vp pm step.
+      // Use: apply the release package metadata, then run the caller's vp pm step.
       (resource) =>
         Effect.gen(function* () {
           yield* fs.writeFileString(packageJsonPath, `${resource.packageJsonString}\n`);
-          for (const icon of resource.icons) {
-            yield* fs.writeFile(icon.targetPath, icon.publish);
-          }
-          yield* Effect.log("[cli] Applied package metadata and publish icon overrides");
+          yield* Effect.log("[cli] Applied package metadata");
           return yield* use;
         }),
-      // Release: restore every file even if applying overrides or the step fails.
+      // Release: restore package.json even if the step fails.
       (resource) =>
         Effect.gen(function* () {
           yield* fs.writeFile(packageJsonPath, resource.originalPackageJson);
-          for (const icon of resource.icons) {
-            yield* fs.writeFile(icon.targetPath, icon.original);
-          }
-          if (verbose) yield* Effect.log("[cli] Restored original publish assets");
+          if (verbose) yield* Effect.log("[cli] Restored original package metadata");
         }),
     );
   });

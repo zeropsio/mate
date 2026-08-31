@@ -74,7 +74,9 @@ describe("branding", () => {
   it("brands the pre-React boot shell as Zerops Code", () => {
     expect(indexHtml).toContain("<title>Zerops Code (Alpha)</title>");
     expect(indexHtml).toContain('aria-label="Zerops Code splash screen"');
-    expect(indexHtml).toContain('alt="Zerops Code"');
+    expect(indexHtml).toContain(
+      '<svg id="boot-shell-logo" viewBox="0 0 42.27 50.48" role="img" aria-label="Zerops Code">',
+    );
   });
 });
 

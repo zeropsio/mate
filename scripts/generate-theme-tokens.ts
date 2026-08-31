@@ -16,6 +16,7 @@ import {
   type ThemeColors,
   type ThemeDefinition,
 } from "@t3tools/shared/themePalettes";
+import { ZEROPS_MARK } from "@t3tools/shared/brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
@@ -30,6 +31,11 @@ export const WEB_THEME_TOKEN_MARKERS = {
   end: "// generated:theme-tokens end",
 } as const;
 
+export const WEB_BOOT_MARK_MARKERS = {
+  start: "<!-- generated:boot-mark start -->",
+  end: "<!-- generated:boot-mark end -->",
+} as const;
+
 export const MOBILE_THEME_TOKEN_MARKERS = {
   start: "/* generated:theme-tokens start */",
   end: "/* generated:theme-tokens end */",
@@ -41,7 +47,7 @@ export interface GeneratedRegionMarkers {
 }
 
 export interface ThemeTokenProjectionOutput {
-  readonly target: "apps/web/index.html" | "apps/mobile/global.css";
+  readonly target: "apps/web/index.html" | "apps/web/public/favicon.svg" | "apps/mobile/global.css";
   readonly path: string;
   readonly contents: string;
 }
@@ -209,8 +215,7 @@ const renderBuiltInThemePalettes = (): string => {
 const renderWebThemeTokens = (): string =>
   [
     `    <meta name="theme-color" content="${themeColorToNativeColor(ZEROPS_THEME.variants!.dark!.chrome)}" />`,
-    '    <link rel="icon" href="%BASE_URL%favicon.ico" sizes="48x48" />',
-    '    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />',
+    '    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />',
     '    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />',
     "    <script>",
     "      (() => {",
@@ -231,9 +236,34 @@ const renderWebThemeTokens = (): string =>
     renderBuiltInThemePalettes(),
   ].join("\n");
 
+const renderWebBootMark = (): string =>
+  [
+    `          <svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Code">`,
+    ...ZEROPS_MARK.paths.flatMap((path) => [
+      "            <path",
+      `              d="${path.d}"`,
+      `              fill="${path.fill}"`,
+      "            />",
+    ]),
+    "          </svg>",
+  ].join("\n");
+
+const renderZeropsFaviconSvg = (): string =>
+  [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ZEROPS_MARK.viewBox}">`,
+    ...ZEROPS_MARK.paths.map((path) => `  <path d="${path.d}" fill="${path.fill}" />`),
+    "</svg>",
+    "",
+  ].join("\n");
+
 const projectWebThemeTokens = (source: string): string =>
   replaceGeneratedRegion(
-    source,
+    replaceGeneratedRegion(
+      source,
+      renderWebBootMark(),
+      "apps/web/index.html",
+      WEB_BOOT_MARK_MARKERS,
+    ),
     renderWebThemeTokens(),
     "apps/web/index.html",
     WEB_THEME_TOKEN_MARKERS,
@@ -263,12 +293,18 @@ export function getThemeTokenProjectionOutputs(
   repositoryRoot = DEFAULT_REPOSITORY_ROOT,
 ): ReadonlyArray<ThemeTokenProjectionOutput> {
   const webPath = NodePath.join(repositoryRoot, "apps/web/index.html");
+  const webFaviconPath = NodePath.join(repositoryRoot, "apps/web/public/favicon.svg");
   const mobilePath = NodePath.join(repositoryRoot, "apps/mobile/global.css");
   return [
     {
       target: "apps/web/index.html",
       path: webPath,
       contents: projectWebThemeTokens(NodeFS.readFileSync(webPath, "utf8")),
+    },
+    {
+      target: "apps/web/public/favicon.svg",
+      path: webFaviconPath,
+      contents: renderZeropsFaviconSvg(),
     },
     {
       target: "apps/mobile/global.css",
@@ -341,9 +377,7 @@ export const generateThemeTokensCommand = Command.make(
         });
       }
     }),
-).pipe(
-  Command.withDescription("Project shared theme roles into the web boot and mobile defaults."),
-);
+).pipe(Command.withDescription("Project shared theme roles and brand marks into client defaults."));
 
 if (import.meta.main) {
   Command.run(generateThemeTokensCommand, { version: "0.0.0" }).pipe(
