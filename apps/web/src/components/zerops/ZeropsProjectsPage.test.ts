@@ -1,0 +1,215 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  autoConnectServedZeropsEnvironment,
+  exchangeZeropsContainerIdentity,
+} from "./ZeropsProjectsPage";
+
+const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
+const ZEROPS_DOOR_GATE = {
+  status: "requires-auth",
+  auth: {
+    policy: "remote-reachable",
+    bootstrapMethods: ["zerops-identity", "one-time-token"],
+    sessionMethods: ["bearer-access-token", "dpop-access-token"],
+    sessionCookieName: "t3_session",
+  },
+} as const;
+const SAME_ORIGIN_CANDIDATE = {
+  group: "ready" as const,
+  containerOrigin: APP_ORIGIN,
+};
+
+describe("same-origin Zerops identity bootstrap", () => {
+  it("fires exactly once for the unauthenticated container that served the app", () => {
+    const attempted = { current: false };
+    const connect = vi.fn();
+    const input = {
+      attempted,
+      status: "signed-in" as const,
+      zeropsToken: "zerops-account-token",
+      appOrigin: APP_ORIGIN,
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [SAME_ORIGIN_CANDIDATE],
+      connect,
+    };
+
+    autoConnectServedZeropsEnvironment(input);
+    autoConnectServedZeropsEnvironment(input);
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledWith(APP_ORIGIN);
+  });
+
+  it.each([
+    {
+      name: "the served container already has a session",
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [{ ...SAME_ORIGIN_CANDIDATE, group: "connected" as const }],
+      zeropsToken: "zerops-account-token",
+    },
+    {
+      name: "the served container is already establishing its session",
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [
+        {
+          ...SAME_ORIGIN_CANDIDATE,
+          connection: { phase: "connecting" as const },
+        },
+      ],
+      zeropsToken: "zerops-account-token",
+    },
+    {
+      name: "the candidate belongs to another origin",
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [
+        { group: "ready" as const, containerOrigin: "https://another-container.example" },
+      ],
+      zeropsToken: "zerops-account-token",
+    },
+    {
+      name: "the Zerops account token is absent",
+      authGate: ZEROPS_DOOR_GATE,
+      candidates: [SAME_ORIGIN_CANDIDATE],
+      zeropsToken: null,
+    },
+    {
+      name: "the server does not offer the Zerops identity door",
+      authGate: {
+        ...ZEROPS_DOOR_GATE,
+        auth: { ...ZEROPS_DOOR_GATE.auth, bootstrapMethods: ["one-time-token"] as const },
+      },
+      candidates: [SAME_ORIGIN_CANDIDATE],
+      zeropsToken: "zerops-account-token",
+    },
+  ])("does not fire when $name", ({ authGate, candidates, zeropsToken }) => {
+    const connect = vi.fn();
+
+    autoConnectServedZeropsEnvironment({
+      attempted: { current: false },
+      status: "signed-in",
+      zeropsToken,
+      appOrigin: APP_ORIGIN,
+      authGate,
+      candidates,
+      connect,
+    });
+
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("waits for the candidate catalog without spending its one attempt", () => {
+    const attempted = { current: false };
+    const connect = vi.fn();
+    const input = {
+      attempted,
+      status: "signed-in" as const,
+      zeropsToken: "zerops-account-token",
+      appOrigin: APP_ORIGIN,
+      authGate: ZEROPS_DOOR_GATE,
+      connect,
+    };
+
+    autoConnectServedZeropsEnvironment({ ...input, candidates: [] });
+    autoConnectServedZeropsEnvironment({
+      ...input,
+      candidates: [SAME_ORIGIN_CANDIDATE],
+    });
+
+    expect(connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets an existing attempt settle before refreshing a failed session", () => {
+    const attempted = { current: false };
+    const connect = vi.fn();
+    const input = {
+      attempted,
+      status: "signed-in" as const,
+      zeropsToken: "zerops-account-token",
+      appOrigin: APP_ORIGIN,
+      authGate: ZEROPS_DOOR_GATE,
+      connect,
+    };
+
+    autoConnectServedZeropsEnvironment({
+      ...input,
+      candidates: [
+        {
+          ...SAME_ORIGIN_CANDIDATE,
+          connection: { phase: "connecting" },
+        },
+      ],
+    });
+    autoConnectServedZeropsEnvironment({
+      ...input,
+      candidates: [
+        {
+          ...SAME_ORIGIN_CANDIDATE,
+          connection: { phase: "error" },
+        },
+      ],
+    });
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledWith(APP_ORIGIN);
+  });
+
+  it("surfaces the identity exchange failure reason", async () => {
+    const connect = vi
+      .fn()
+      .mockResolvedValue(AsyncResult.failure(Cause.fail(new Error("Session token expired."))));
+
+    const result = await exchangeZeropsContainerIdentity({
+      containerOrigin: APP_ORIGIN,
+      appOrigin: APP_ORIGIN,
+      basePath: "/z3/",
+      zeropsToken: "zerops-account-token",
+      connect,
+    });
+
+    expect(connect).toHaveBeenCalledWith({
+      httpBaseUrl: `${APP_ORIGIN}/z3`,
+      zeropsToken: "zerops-account-token",
+    });
+    expect(result).toEqual({
+      _tag: "Failure",
+      error: "Could not connect to this container. Session token expired.",
+    });
+  });
+
+  it("does not attempt an exchange without the Zerops account token", async () => {
+    const connect = vi.fn();
+
+    const result = await exchangeZeropsContainerIdentity({
+      containerOrigin: APP_ORIGIN,
+      appOrigin: APP_ORIGIN,
+      basePath: "/z3/",
+      zeropsToken: null,
+      connect,
+    });
+
+    expect(connect).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      _tag: "Failure",
+      error: "Sign in to Zerops again to connect this container.",
+    });
+  });
+
+  it("returns the authenticated environment", async () => {
+    const environmentId = EnvironmentId.make("environment-1");
+    const connect = vi.fn().mockResolvedValue(AsyncResult.success(environmentId));
+
+    const result = await exchangeZeropsContainerIdentity({
+      containerOrigin: APP_ORIGIN,
+      appOrigin: APP_ORIGIN,
+      basePath: "/z3/",
+      zeropsToken: "zerops-account-token",
+      connect,
+    });
+
+    expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+});

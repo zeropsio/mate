@@ -32,6 +32,8 @@ import * as Stream from "effect/Stream";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { APP_VERSION } from "../branding";
+import { resolveInitialServerAuthGateState } from "../environments/primary";
+import type { AuthGateState } from "../environments/primary/auth";
 import { primaryEnvironmentHttpLayer } from "../environments/primary/httpLayer";
 import {
   readPrimaryEnvironmentTarget,
@@ -240,6 +242,16 @@ export function canReuseCachedPlatformRegistration(
   );
 }
 
+/** A Zerops door authenticates its own origin with the bearer registration it mints. */
+export function primaryPlatformRegistrationStream(
+  gate: AuthGateState,
+  registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,
+): Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>> {
+  return gate.status === "requires-auth" && gate.auth.bootstrapMethods.includes("zerops-identity")
+    ? Stream.empty
+    : registrations;
+}
+
 const platformConnectionSourceLayer = Layer.effect(
   PlatformConnectionSource,
   Effect.gen(function* () {
@@ -248,6 +260,7 @@ const platformConnectionSourceLayer = Layer.effect(
         registrations: Stream.empty,
       });
     }
+    const authGate = yield* Effect.promise(resolveInitialServerAuthGateState);
     const cacheRef = yield* Ref.make(new Map<string, CachedPlatformRegistration>());
 
     // Resolve the primary (same-origin cookie auth) environment. The cached
@@ -303,8 +316,11 @@ const platformConnectionSourceLayer = Layer.effect(
     }).pipe(Effect.provide(FetchHttpClient.layer));
 
     return PlatformConnectionSource.of({
-      registrations: Stream.tick(PLATFORM_POLL_INTERVAL).pipe(
-        Stream.mapEffect(() => buildPlatformRegistrations),
+      registrations: primaryPlatformRegistrationStream(
+        authGate,
+        Stream.tick(PLATFORM_POLL_INTERVAL).pipe(
+          Stream.mapEffect(() => buildPlatformRegistrations),
+        ),
       ),
     });
   }),

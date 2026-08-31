@@ -439,13 +439,24 @@ const GATE_EXPECTATIONS = [
     rows: [
       {
         pathname: "/",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "app",
           redirect: null,
           surface: "zerops-onboarding",
           manualLink: { methods: ["zerops-identity", "one-time-token"] },
+        },
+      },
+      {
+        pathname: "/",
+        environmentCounts: [1],
+        expected: {
+          session: "none",
+          shell: "app",
+          redirect: null,
+          surface: "draft-landing",
+          manualLink: null,
         },
       },
       {
