@@ -19,6 +19,7 @@ import type {
 const DONE = /^(active|deployed|done|finished|healthy|mounted|ok|pass|passed|success)$/iu;
 const FAILED = /^(build_failed|degraded|error|fail|failed|unhealthy)$/iu;
 const RUNNING = /^(building|current|deploying|in.?progress|running)$/iu;
+const BUILD_TRIGGERED = /^build_triggered$/iu;
 
 const HEADER_TONE_CLASS: Record<ServiceStatusToneId, string> = {
   ok: "bg-[var(--zerops-status-ok-surface)]",
@@ -274,15 +275,24 @@ export function ZeropsToolCard({ payload }: { readonly payload: ZeropsCardPayloa
     }
 
     case "deploy": {
+      const buildTriggered = BUILD_TRIGGERED.test(payload.status);
       const didFail = payload.failedPhase !== undefined || failed(payload.status);
-      const state = didFail ? "failed" : stepState(payload.status);
+      const state = didFail ? "failed" : buildTriggered ? "running" : stepState(payload.status);
       const tone = didFail ? "failed" : state === "running" ? "busy" : "ok";
-      const status = didFail ? "Deploy failed" : state === "running" ? "Deploying" : "Deployed";
+      const status = didFail
+        ? "Deploy failed"
+        : buildTriggered
+          ? "Build triggered"
+          : state === "running"
+            ? "Deploying"
+            : "Deployed";
       const outcome = didFail
         ? `Failed${payload.failedPhase === undefined ? "" : ` during ${payload.failedPhase}`}${payload.failureCause === undefined ? "" : `: ${payload.failureCause}`}`
-        : payload.buildDuration === undefined
-          ? (payload.message ?? "Deployment completed")
-          : `Deployment completed in ${payload.buildDuration}`;
+        : buildTriggered
+          ? (payload.message ?? "Build and deploy continue asynchronously")
+          : payload.buildDuration === undefined
+            ? (payload.message ?? "Deployment completed")
+            : `Deployment completed in ${payload.buildDuration}`;
       const steps: ReadonlyArray<ProcessStep> = [
         ...(payload.buildStatus === undefined
           ? []
