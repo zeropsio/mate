@@ -6,7 +6,13 @@
  * The import document is emitted verbatim rather than through a YAML library:
  * it must match what the platform GUI produces for the same configuration,
  * traced from its `ZeropsYamlBuilder` on 2026-08-28, and a serializer's
- * quoting choices would drift from that.
+ * quoting choices would drift from that — plus `ZCP_Z3_ENABLED`, the one key
+ * this client adds to the GUI's document. zcp keys every z3-shaped effect off
+ * that flag: without it `zcp init` installs no bundle, registers no unit and
+ * publishes no `/z3/` location, so a container created here would come up
+ * unable to serve the very product that created it. The GUI has no reason to
+ * set it and the platform recipe does not carry it yet, which leaves this the
+ * only place on the "New project" path that can.
  *
  * `VSCODE_PASSWORD` is mandatory here. A `zcp@1` with a public subdomain and no
  * password answers code-server to anyone who finds the URL. The password is
@@ -87,6 +93,7 @@ export function buildZcpServiceImportYaml(input: {
       VSCODE_PASSWORD: "${input.vscodePassword}"
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
+      ZCP_Z3_ENABLED: "1"
     zeropsYaml:
       zerops:
         - setup: ${input.serviceName}

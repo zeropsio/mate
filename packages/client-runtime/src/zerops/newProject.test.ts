@@ -12,7 +12,9 @@ import {
 /**
  * Traced from the platform GUI's own `ZeropsYamlBuilder` on 2026-08-28 for the
  * config the pool claim uses: one zcp, VS Code on, public access on, no agents,
- * no sshfs hostnames. Byte-for-byte, including the absent trailing newline.
+ * no sshfs hostnames. Byte-for-byte, including the absent trailing newline —
+ * plus `ZCP_Z3_ENABLED`, the one key this client adds to that document so the
+ * container it creates comes up serving Zerops Code.
  */
 const GOLDEN = `services:
   - hostname: zcp
@@ -25,6 +27,7 @@ const GOLDEN = `services:
       VSCODE_PASSWORD: "PASSWORD0PASSWORD"
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
+      ZCP_Z3_ENABLED: "1"
     zeropsYaml:
       zerops:
         - setup: zcp
@@ -44,7 +47,7 @@ const GOLDEN = `services:
                 name: vscode`;
 
 describe("buildZcpServiceImportYaml", () => {
-  it("emits the platform's own import document, byte for byte", () => {
+  it("emits the platform's own import document, byte for byte, plus the z3 flag", () => {
     expect(
       buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "PASSWORD0PASSWORD" }),
     ).toBe(GOLDEN);
@@ -59,6 +62,9 @@ describe("buildZcpServiceImportYaml", () => {
     expect(yaml).toContain("enableSubdomainAccess: true");
     expect(yaml).toMatch(/VSCODE_PASSWORD: "[^"]+"/);
     expect(yaml).toContain('ZCP_VSCODE_AUTH_ENABLED: "true"');
+    // Without this the container installs no z3 at all, so a "New project"
+    // would hand the user a container that cannot serve Zerops Code.
+    expect(yaml).toContain('ZCP_Z3_ENABLED: "1"');
     expect(() =>
       buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "" }),
     ).toThrowError(/password/i);
