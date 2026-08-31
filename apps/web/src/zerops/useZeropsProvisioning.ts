@@ -112,8 +112,10 @@ export function useZeropsProvisioning(clientId: string | null): {
       if (!serviceId) return;
       setBusy(true);
       setError(null);
+      // Writes ZCP_Z3_ENABLED and then restarts. The restart alone cannot
+      // turn Zerops Code on: zcp installs nothing z3-shaped without the flag.
       void client
-        .restartService(serviceId)
+        .enableZeropsCode(serviceId)
         .then(() => {
           dispatch({ kind: "enable" });
         })

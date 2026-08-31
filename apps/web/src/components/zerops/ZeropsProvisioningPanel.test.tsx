@@ -141,11 +141,12 @@ describe("ZeropsProvisioningPanel", () => {
 
     const markup = render(stillOld);
     expect(stillOld.phase).toBe("not-yet-available");
-    // The button itself is gone; the copy is still allowed to name it, so it
-    // says what to press once the release does carry Zerops Code.
+    // The button is gone and so is the old advice to go set a flag by hand:
+    // enabling now writes it, so the only thing left to name is the release.
     expect(markup).not.toContain(">Enable Zerops Code<");
     expect(markup).toContain("this container");
-    expect(markup).toContain("zcp release yet");
+    expect(markup).toContain("zcp release does not carry Zerops Code");
+    expect(markup).not.toContain("ZCP_Z3_ENABLED");
     expect(markup).not.toMatch(/failed|error/i);
   });
 
@@ -166,6 +167,7 @@ describe("ZeropsProvisioningPanel", () => {
     expect(expired.phase).toBe("timed-out");
     expect(markup).not.toContain(">Enable Zerops Code<");
     expect(markup).toContain("this container");
-    expect(markup).toContain("zcp release yet");
+    expect(markup).toContain("zcp release does not carry Zerops Code");
+    expect(markup).not.toContain("ZCP_Z3_ENABLED");
   });
 });

@@ -321,10 +321,12 @@ function ZeropsProjectsContent() {
           const serviceId = candidate.service?.id;
           if (!serviceId) return;
           setConnectError(null);
-          // The restart is the whole of "enable": the container's install step
-          // re-runs on boot and comes back with the current zcp.
+          // Write the flag, then restart: the install step re-runs on boot and
+          // comes back with the current zcp, which only installs Zerops Code
+          // when it finds ZCP_Z3_ENABLED set. A restart on its own returns the
+          // container to the identical state.
           void client
-            .restartService(serviceId)
+            .enableZeropsCode(serviceId)
             .then(() => {
               startWaitFor(candidate);
             })

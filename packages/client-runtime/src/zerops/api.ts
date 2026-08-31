@@ -104,6 +104,32 @@ export interface ZeropsService {
   };
 }
 
+/** One record from `GET /service-stack/{id}/env`. */
+export interface ZeropsServiceEnvVar {
+  readonly id: string;
+  readonly key: string;
+  readonly content: string;
+}
+
+/**
+ * The service env key zcp keys every z3-shaped effect off. Nothing about
+ * Zerops Code happens in a container without it: no bundle, no unit, no
+ * `/z3/` location. Spelled here once because it is a contract with zcp, not
+ * a value this client is free to choose.
+ */
+export const ZEROPS_CODE_ENV_KEY = "ZCP_Z3_ENABLED";
+
+/**
+ * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
+ * space tolerated. Deliberately forgiving, because it is a value a person
+ * types into a service's env in the Zerops GUI, where a silently ignored
+ * spelling is indistinguishable from a broken feature.
+ */
+function readsAsEnabled(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
 export interface ZeropsRegistrationResponse {
   readonly auth: ZeropsSession;
   readonly user: ZeropsUser | null;
@@ -489,11 +515,62 @@ export class ZeropsApiClient {
 
   /**
    * `PUT /service-stack/{id}/restart` with the user's own token. On a zcp
-   * container a restart re-runs the platform recipe's install step, which is
-   * what "Enable Zerops Code" means.
+   * container a restart re-runs the platform recipe's install step, which
+   * picks up the current zcp release.
    */
   async restartService(serviceId: string): Promise<void> {
     await this.#request(`/service-stack/${serviceId}/restart`, { method: "PUT" });
+  }
+
+  /** `GET /service-stack/{id}/env` — the service's own env records. */
+  async #serviceEnv(serviceId: string): Promise<ReadonlyArray<ZeropsServiceEnvVar>> {
+    const body = await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
+      `/service-stack/${serviceId}/env`,
+    );
+    return body.items ?? [];
+  }
+
+  /**
+   * Turns Zerops Code on for a container that is not serving it: write the
+   * flag, then restart.
+   *
+   * Both halves are needed and neither is enough. `ZCP_Z3_ENABLED` is the one
+   * input zcp keys every z3-shaped effect off — without it `zcp init` does not
+   * register the z3 step at all, so no bundle is installed, no `zerops@z3` unit
+   * is created and nginx publishes no `/z3/` location. And a service env change
+   * reaches a container's process environment only at boot, which is the same
+   * boot `zcp init` reads it on. So a restart without the write comes back in
+   * the identical state, and a write without the restart changes nothing yet.
+   *
+   * The write is an upsert done as delete-then-create, because the platform
+   * exposes create and delete for a single key and no update. The bulk
+   * env-file PUT is deliberately not used: it replaces the entire file and
+   * silently drops every other var the user set.
+   *
+   * A flag that already reads as on is left completely alone — not rewritten
+   * to the same value. That is what makes this safe to offer for a container
+   * that is merely away (from a browser the two are indistinguishable): a
+   * yaml-baked key cannot be deleted at all, so a needless delete-then-create
+   * would turn a working container into an error.
+   */
+  async enableZeropsCode(serviceId: string): Promise<void> {
+    const current = (await this.#serviceEnv(serviceId)).find(
+      (entry) => entry.key === ZEROPS_CODE_ENV_KEY,
+    );
+
+    if (!current || !readsAsEnabled(current.content)) {
+      if (current) {
+        await this.#request(`/user-data/${current.id}`, { method: "DELETE" });
+      }
+      await this.#request(`/service-stack/${serviceId}/user-data`, {
+        method: "POST",
+        // `sensitive` is required on every service userData write — the
+        // platform rejects a body without it as "field is required".
+        body: JSON.stringify({ key: ZEROPS_CODE_ENV_KEY, content: "1", sensitive: true }),
+      });
+    }
+
+    await this.restartService(serviceId);
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {

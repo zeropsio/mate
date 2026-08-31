@@ -310,6 +310,79 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests[0]?.authorization).toBe("Bearer access-1");
   });
 
+  it("writes the Zerops Code flag before restarting a container that lacks it", async () => {
+    // The restart alone was the whole of "enable" and could not work: zcp
+    // registers no z3 step at all without this key, so the container came back
+    // in the identical state it was restarted out of.
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/env")
+        ? jsonResponse(200, { items: [{ id: "e1", key: "VSCODE_PASSWORD", content: "x" }] })
+        : jsonResponse(200, { id: "process-1" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.enableZeropsCode("service-1");
+
+    expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
+      `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
+      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
+    ]);
+    // `sensitive` is required on every service userData write — the platform
+    // rejects the POST outright with "field is required" when it is absent.
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      key: "ZCP_Z3_ENABLED",
+      content: "1",
+      sensitive: true,
+    });
+  });
+
+  it("replaces a Zerops Code flag that is present but switched off", async () => {
+    // The platform exposes create and delete for a single key, no update, so an
+    // upsert is delete-then-create. The bulk env-file PUT is not an option: it
+    // replaces the whole file and drops every other var the user set.
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/env")
+        ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_Z3_ENABLED", content: "0" }] })
+        : jsonResponse(200, { id: "process-1" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.enableZeropsCode("service-1");
+
+    expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
+      `DELETE ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user-data/e9`,
+      `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
+      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
+    ]);
+  });
+
+  it("writes nothing when the flag already reads as on, and still restarts", async () => {
+    // zcp's own reading of the flag: 1 or true, case-insensitive, surrounding
+    // space tolerated. A container that is merely away must not have its env
+    // rewritten — and a yaml-baked key cannot be deleted at all, so a needless
+    // delete-then-create would turn a working container into an error.
+    for (const content of ["1", "true", " TRUE "]) {
+      const stub = recordingFetch((request) =>
+        request.url.endsWith("/env")
+          ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_Z3_ENABLED", content }] })
+          : jsonResponse(200, { id: "process-1" }),
+      );
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+
+      await client.enableZeropsCode("service-1");
+
+      expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+        `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
+        `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
+      ]);
+    }
+  });
+
   it("sends the Zerops token to the configured API base and nowhere else", async () => {
     const stub = recordingFetch(() => jsonResponse(200, { list: [], totalCount: 0 }));
     const client = new ZeropsApiClient({

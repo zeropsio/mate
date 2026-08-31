@@ -35,9 +35,10 @@ export function ZeropsProvisioningPanel({
   readonly onRetry: () => void;
   readonly onEnable: () => void;
 }) {
-  // A restart was already tried this wait, and the container still predates
-  // Zerops Code: it is not stale, it is a zcp release that does not carry z3
-  // yet, and offering Enable again would only restart it into the same state.
+  // Enable was already tried this wait — the flag was written and the container
+  // restarted — and it still is not serving Zerops Code. With the flag no
+  // longer in question, what is left is a zcp release that does not carry z3
+  // yet, and pressing Enable again would change nothing.
   const notYetAvailable =
     state.phase === "not-yet-available" ||
     (state.phase === "timed-out" && state.expiredPhase === "awaiting-health" && state.enabled);
@@ -81,7 +82,7 @@ export function ZeropsProvisioningPanel({
         <div className="space-y-3">
           <p className="text-sm text-foreground">
             {state.phase === "needs-enable"
-              ? "This container is not serving Zerops Code: either its zcp predates it, or ZCP_Z3_ENABLED is not set on the service. Restarting installs the current zcp — set that flag first if it is missing. Your files, history and services are untouched."
+              ? "This container is not serving Zerops Code. Enabling turns it on for the container and restarts it, which installs the current version. Your files, history and services are untouched."
               : "This container has not answered. Restarting it installs the current version and brings it back — your files, history and services are untouched."}
           </p>
           <Button className="w-full" disabled={busy} onClick={onEnable}>
@@ -93,9 +94,9 @@ export function ZeropsProvisioningPanel({
 
       {notYetAvailable ? (
         <p className="text-sm text-foreground">
-          Restarting did not bring Zerops Code up. Either it is not in this container&apos;s zcp
-          release yet, or ZCP_Z3_ENABLED is not set on the service — check that flag, then press
-          Enable Zerops Code again.
+          Zerops Code was turned on for this container and it was restarted, and it still is not
+          serving it — so this container&apos;s zcp release does not carry Zerops Code yet.
+          Restarting again will not change that.
         </p>
       ) : null}
 
