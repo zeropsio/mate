@@ -24,7 +24,13 @@ export type DoorDecision = {
       };
     }
   | {
-      readonly surface: "hosted-pairing" | "zerops-onboarding" | "draft-landing" | "app";
+      readonly surface: "zerops-onboarding";
+      readonly manualLink: {
+        readonly methods: ReadonlyArray<ServerAuthBootstrapMethod>;
+      } | null;
+    }
+  | {
+      readonly surface: "hosted-pairing" | "draft-landing" | "app";
       readonly manualLink: null;
     }
 );
@@ -34,7 +40,7 @@ type GateProfile = {
   readonly hasAppGate: boolean;
   readonly hostedPairing: boolean;
   readonly hostedStatic: boolean;
-  readonly manualLinkMethods: ReadonlyArray<ServerAuthBootstrapMethod> | null;
+  readonly zeropsDoor: boolean;
 };
 
 function unreachable(status: never): never {
@@ -50,7 +56,7 @@ function profileForGate(gate: AuthGateState): GateProfile {
         hasAppGate: false,
         hostedPairing: true,
         hostedStatic: false,
-        manualLinkMethods: null,
+        zeropsDoor: false,
       };
     case "hosted-static":
       return {
@@ -58,7 +64,7 @@ function profileForGate(gate: AuthGateState): GateProfile {
         hasAppGate: true,
         hostedPairing: false,
         hostedStatic: true,
-        manualLinkMethods: null,
+        zeropsDoor: false,
       };
     case "authenticated":
       return {
@@ -66,16 +72,18 @@ function profileForGate(gate: AuthGateState): GateProfile {
         hasAppGate: true,
         hostedPairing: false,
         hostedStatic: false,
-        manualLinkMethods: null,
+        zeropsDoor: false,
       };
-    case "requires-auth":
+    case "requires-auth": {
+      const zeropsDoor = gate.auth.bootstrapMethods.includes("zerops-identity");
       return {
         session: "none",
-        hasAppGate: false,
+        hasAppGate: zeropsDoor,
         hostedPairing: false,
         hostedStatic: false,
-        manualLinkMethods: gate.auth.bootstrapMethods,
+        zeropsDoor,
       };
+    }
   }
   return unreachable(status);
 }
@@ -88,14 +96,18 @@ export function resolveDoor(
   },
 ): DoorDecision {
   const profile = profileForGate(gate);
+  const bootstrapMethods =
+    gate.status === "requires-auth" ? gate.auth.bootstrapMethods : ([] as const);
   const pathname = input.pathname.replace(/\/+$/u, "") || "/";
   const isPairPath = PAIR_PATH_PATTERN.test(pathname);
   const isConnectionPath = CONNECTION_PATH_PATTERN.test(pathname);
   const shell = isPairPath || isConnectionPath || !profile.hasAppGate ? "bare" : "app";
   const redirect = isPairPath
-    ? profile.hasAppGate
-      ? "/"
-      : null
+    ? profile.zeropsDoor
+      ? null
+      : profile.hasAppGate
+        ? "/"
+        : null
     : !profile.hasAppGate
       ? "/pair"
       : null;
@@ -110,13 +122,23 @@ export function resolveDoor(
     };
   }
 
-  if (isPairPath && profile.manualLinkMethods !== null) {
+  if (profile.zeropsDoor && (pathname === "/" || isPairPath)) {
+    return {
+      session: profile.session,
+      shell,
+      redirect,
+      surface: "zerops-onboarding",
+      manualLink: { methods: bootstrapMethods },
+    };
+  }
+
+  if (isPairPath && gate.status === "requires-auth") {
     return {
       session: profile.session,
       shell,
       redirect,
       surface: "manual-link",
-      manualLink: { methods: profile.manualLinkMethods },
+      manualLink: { methods: bootstrapMethods },
     };
   }
 
