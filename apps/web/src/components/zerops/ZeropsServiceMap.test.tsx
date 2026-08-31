@@ -109,6 +109,7 @@ describe("ZeropsServiceMap", () => {
     );
 
     expect(html).toContain('href="https://kanbandev-26a7-3000.prg1.zerops.app"');
+    expect(html).toContain('class="lucide lucide-external-link size-3"');
     expect(html).toContain("Open");
   });
 

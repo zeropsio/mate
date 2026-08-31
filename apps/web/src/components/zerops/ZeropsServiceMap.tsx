@@ -64,7 +64,7 @@ function ServiceLine({
           rel="noreferrer"
           target="_blank"
         >
-          <ExternalLinkIcon />
+          <ExternalLinkIcon className="size-3" />
           Open
         </a>
       )}
