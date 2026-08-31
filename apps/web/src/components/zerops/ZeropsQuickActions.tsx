@@ -6,9 +6,9 @@
  * browser's "add to chat" uses (`FileBrowserPanel`). Which actions make sense
  * is decided in `@t3tools/client-runtime/zerops/quickActions`.
  */
-import { Button } from "~/components/ui/button";
 import { useComposerHandleContext } from "../../composerHandleContext";
 import type { ZeropsQuickAction } from "@t3tools/client-runtime/zerops/quickActions";
+import { Pill } from "./primitives";
 
 export function ZeropsQuickActions({
   actions,
@@ -39,16 +39,15 @@ export function ZeropsQuickActions({
   return (
     <div className="flex flex-wrap gap-1.5" data-zerops-quick-actions>
       {actions.map((action) => (
-        <Button
+        <Pill
+          className="min-h-8 px-3 py-1.5 text-xs"
           key={action.id}
+          label={action.label}
           onClick={() => {
             insert(action.prompt);
           }}
-          size="compact"
-          variant="outline"
-        >
-          {action.label}
-        </Button>
+          tone="secondary"
+        />
       ))}
     </div>
   );
