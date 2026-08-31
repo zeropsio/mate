@@ -1,10 +1,10 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { fileURLToPath } from "node:url";
+import * as NodeURL from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const repoRoot = NodePath.resolve(NodePath.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const read = (relativePath: string) =>
   NodeFS.readFileSync(NodePath.join(repoRoot, relativePath), "utf8");
 const exists = (relativePath: string) => NodeFS.existsSync(NodePath.join(repoRoot, relativePath));
