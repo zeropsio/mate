@@ -1,9 +1,7 @@
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Terminal from "effect/Terminal";
-import { Command, GlobalFlag, Prompt } from "effect/unstable/cli";
+import { Command, GlobalFlag } from "effect/unstable/cli";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as BootService from "../cloud/bootService.ts";
@@ -146,56 +144,6 @@ const serviceStatusCommand = Command.make("status", projectLocationFlags).pipe(
     ),
   ),
 );
-
-export const offerServiceDuringOnboarding = Effect.gen(function* () {
-  const service = yield* BootService.BootService;
-  const { supported, installed, current } = yield* service.status;
-  if (!supported) {
-    return false;
-  }
-  if (installed && current) {
-    yield* Console.log("Zerops Code is already set up to run in the background on this machine.");
-    return true;
-  }
-  // A LaunchAgent starts at login and dies at logout; there is no
-  // enable-linger equivalent on macOS. Do not promise more than that.
-  const platform = yield* HostProcessPlatform;
-  const wanted = yield* Prompt.run(
-    Prompt.confirm({
-      message: installed
-        ? "The installed T3 Code service needs an update or repair. Update it now?"
-        : platform === "darwin"
-          ? "Run Zerops Code in the background whenever you log in to this Mac?"
-          : "Run Zerops Code in the background whenever this machine boots?",
-      initial: true,
-    }),
-  );
-  if (!wanted) {
-    return false;
-  }
-  const result = yield* reconcileService();
-  if (result.changed) {
-    yield* Console.log(
-      `Background service ${result.previouslyInstalled ? "updated" : "installed"}. Logs: ${result.plan.logPath}`,
-    );
-  }
-  return true;
-});
-
-export const recoverServiceOnboardingOffer = <R>(
-  offer: Effect.Effect<boolean, BootService.BootServiceError | Terminal.QuitError, R>,
-) =>
-  offer.pipe(
-    Effect.catchTags({
-      QuitError: () => Effect.succeed(false),
-      BootServiceUnsupportedError: (error) =>
-        Console.log(`Skipping background setup: ${error.message}`).pipe(Effect.as(false)),
-      BootServiceCommandError: (error) =>
-        Console.warn(`Background setup did not finish: ${error.message}`).pipe(Effect.as(false)),
-      BootServiceInstallError: (error) =>
-        Console.warn(`Background setup did not finish: ${error.message}`).pipe(Effect.as(false)),
-    }),
-  );
 
 export const serviceCommand = Command.make("service").pipe(
   Command.withDescription("Manage the Zerops Code background service."),
