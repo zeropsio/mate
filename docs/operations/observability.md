@@ -78,8 +78,10 @@ You do not need any extra env vars. Just run the app normally and inspect `serve
 
 Examples:
 
+Run the executable from an installed release tarball:
+
 ```bash
-npx zerops-code
+./node_modules/.bin/z3 serve
 ```
 
 ```bash
@@ -130,7 +132,7 @@ export T3CODE_TRACE_TIMING_ENABLED=true
 CLI:
 
 ```bash
-npx zerops-code
+./node_modules/.bin/z3 serve
 ```
 
 Monorepo web/server dev:
