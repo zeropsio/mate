@@ -7,14 +7,14 @@ Use this when you want to connect to a T3 Code server from another device such a
 If a server is already running on this machine, mint a fresh pairing token and QR code without restarting anything:
 
 ```bash
-npx t3 pair
+npx zerops-code pair
 ```
 
-`t3 pair` finds the running server (the shared `~/.t3` install, or the current worktree's dev server when run inside one), issues a one-time pairing token, and prints the pairing URL as a QR code you can scan from your phone.
+`z3 pair` finds the running server (the shared `~/.t3` install, or the current worktree's dev server when run inside one), issues a one-time pairing token, and prints the pairing URL as a QR code you can scan from your phone.
 
 If the server is only bound to loopback, the printed URL is not reachable from another device. Restart it with a reachable `--host` (see below). Use `--ttl` to change the token lifetime, and `--base-dir` to target a specific data directory.
 
-If no server is running, `t3 pair` says so and points you at `npx t3 serve`.
+If no server is running, `z3 pair` says so and points you at `npx zerops-code serve`.
 
 ## Recommended Setup
 
@@ -36,13 +36,13 @@ device, run a headless server from the CLI.
 
 Use this when you want to run the server without a GUI, for example on a remote machine over SSH.
 
-Run the server with `t3 serve`.
+Run the server with `z3 serve`.
 
 ```bash
-npx t3 serve --host 192.168.1.42
+npx zerops-code serve --host 192.168.1.42
 ```
 
-`t3 serve` starts the server without opening a browser and prints:
+`z3 serve` starts the server without opening a browser and prints:
 
 - a connection string
 - a pairing token
@@ -56,7 +56,7 @@ From there, connect from another device in either of these ways:
 - in the desktop app, enter the host and token separately
 - in the hosted web app, open a hosted pairing URL when the backend is reachable over HTTPS
 
-Use `t3 serve --help` for the full flag reference. It supports the same general startup options as the normal server command, including an optional `cwd` argument.
+Use `z3 serve --help` for the full flag reference. It supports the same general startup options as the normal server command, including an optional `cwd` argument.
 
 For hosted web pairing, the backend needs to be reachable over HTTPS — put it behind a trusted HTTPS tunnel or reverse proxy of your own.
 
@@ -82,7 +82,7 @@ The remote device does not need a long-lived secret up front.
 
 Instead:
 
-1. `t3 serve` issues a one-time owner pairing token.
+1. `z3 serve` issues a one-time owner pairing token.
 2. The remote device exchanges that token with the server.
 3. The server creates an authenticated session for that device.
 
@@ -104,7 +104,7 @@ Hosted pairing does not proxy traffic through T3 Code. The browser still connect
 
 ## Managing Access Later
 
-Use `t3 auth` to manage access after the initial pairing flow.
+Use `z3 auth` to manage access after the initial pairing flow.
 
 Typical uses:
 
@@ -112,7 +112,7 @@ Typical uses:
 - inspect active sessions
 - revoke old pairing links or sessions
 
-Use `t3 auth --help` and the nested subcommand help pages for the full reference.
+Use `z3 auth --help` and the nested subcommand help pages for the full reference.
 
 ## Security Notes
 
@@ -120,4 +120,4 @@ Use `t3 auth --help` and the nested subcommand help pages for the full reference
 - Prefer binding `--host` to a trusted private address, such as a VPN IP, instead of exposing the server broadly.
 - Anyone with a valid pairing credential can create a session until that credential expires or is revoked.
 - Hosted pairing links keep the credential in the URL hash so it is not sent to the hosted app server, but it can still be exposed through browser history, screenshots, logs, or copy/paste.
-- Use `t3 auth` to revoke credentials or sessions you no longer trust.
+- Use `z3 auth` to revoke credentials or sessions you no longer trust.

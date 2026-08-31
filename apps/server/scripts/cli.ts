@@ -33,6 +33,25 @@ interface PackageJson {
   overrides: Record<string, string>;
 }
 
+// The workspace keeps upstream's `t3` name because 124 Effect service-tag keys
+// in the ported server zone derive from it. The installed artifact carries the
+// Zerops Code identity instead.
+const RELEASE_PACKAGE_NAME = "zerops-code";
+const RELEASE_WORKSPACE_SELECTOR = "./apps/server";
+
+class ServerCliPackOutputError extends Schema.TaggedErrorClass<ServerCliPackOutputError>()(
+  "ServerCliPackOutputError",
+  {
+    outputDir: Schema.String,
+    selector: Schema.String,
+    tarballCount: Schema.Int,
+  },
+) {
+  override get message(): string {
+    return `Expected vp pm pack to produce exactly one tarball in ${this.outputDir} for selector ${this.selector}; found ${this.tarballCount}.`;
+  }
+}
+
 const PackageJsonPrettyJson = fromJsonStringPretty(Schema.Unknown);
 const encodePackageJson = Schema.encodeEffect(PackageJsonPrettyJson);
 
@@ -123,7 +142,7 @@ const createVpPmPublishArgs = (config: PublishCommandConfig): ReadonlyArray<stri
   const args = [
     "publish",
     "--filter",
-    "t3",
+    RELEASE_WORKSPACE_SELECTOR,
     "--access",
     config.access,
     "--tag",
@@ -169,7 +188,7 @@ const withReleaseAssets = <A, E, R>(
         const workspaceCatalog = workspaceConfig.catalog ?? {};
         const workspaceOverrides = workspaceConfig.overrides ?? {};
         const pkg: PackageJson = {
-          name: serverPackageJson.name,
+          name: RELEASE_PACKAGE_NAME,
           repository: serverPackageJson.repository,
           bin: serverPackageJson.bin,
           type: serverPackageJson.type,
@@ -228,6 +247,29 @@ const runVpPm = Effect.fn("runVpPm")(function* (
   );
 });
 
+const readTarballFingerprints = Effect.fn("readTarballFingerprints")(function* (outputDir: string) {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+  const tarballs = new Map<string, string>();
+
+  for (const entry of yield* fs.readDirectory(outputDir)) {
+    if (path.extname(entry) !== ".tgz") continue;
+    const info = yield* fs.stat(path.join(outputDir, entry));
+    if (info.type !== "File") continue;
+    const mtime = Option.match(info.mtime, {
+      onNone: () => "unknown",
+      onSome: (value) => String(value.getTime()),
+    });
+    const inode = Option.match(info.ino, {
+      onNone: () => "unknown",
+      onSome: String,
+    });
+    tarballs.set(entry, `${info.size}:${mtime}:${inode}`);
+  }
+
+  return tarballs;
+});
+
 const publishCmd = Command.make(
   "publish",
   {
@@ -270,13 +312,29 @@ const packCmd = Command.make(
       const repoRoot = yield* RepoRoot;
       const outDir = path.resolve(config.out);
       yield* fs.makeDirectory(outDir, { recursive: true });
+      const tarballsBefore = yield* readTarballFingerprints(outDir);
       yield* withReleaseAssets(
         repoRoot,
         config.appVersion,
         config.verbose,
-        runVpPm(repoRoot, ["pack", "--filter", "t3", "--pack-destination", outDir], config.verbose),
+        runVpPm(
+          repoRoot,
+          ["pack", "--filter", RELEASE_WORKSPACE_SELECTOR, "--pack-destination", outDir],
+          config.verbose,
+        ),
       );
-      yield* Effect.log(`[cli] Packed t3 into ${outDir}`);
+      const tarballsAfter = yield* readTarballFingerprints(outDir);
+      const producedTarballCount = Array.from(tarballsAfter).filter(
+        ([entry, fingerprint]) => tarballsBefore.get(entry) !== fingerprint,
+      ).length;
+      if (producedTarballCount !== 1) {
+        return yield* new ServerCliPackOutputError({
+          outputDir: outDir,
+          selector: RELEASE_WORKSPACE_SELECTOR,
+          tarballCount: producedTarballCount,
+        });
+      }
+      yield* Effect.log(`[cli] Packed ${RELEASE_PACKAGE_NAME} into ${outDir}`);
     }),
 ).pipe(
   Command.withDescription(

@@ -1,5 +1,5 @@
 /**
- * `t3 pair` - mint a pairing token for an already-running server and print it
+ * `z3 pair` - mint a pairing token for an already-running server and print it
  * as a QR code, without restarting anything.
  *
  * Discovery reads the `server-runtime.json` a live server persists next to its
@@ -63,7 +63,7 @@ export class NoRunningServerError extends Schema.TaggedErrorClass<NoRunningServe
     return [
       "No running T3 Code server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx t3 serve`, or connect this machine with T3 Connect: `npx t3 connect`.",
+      "Start one with `npx zerops-code serve`, or connect this machine with T3 Connect: `npx zerops-code connect`.",
     ].join("\n");
   }
 }
@@ -153,7 +153,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
     bases.push(yield* resolveBaseDir(explicitBaseDir));
   } else {
     // Same precedence as dev-runner: inside a linked worktree its own `.t3`
-    // outranks the shared home, so `t3 pair` in a worktree pairs with the dev
+    // outranks the shared home, so `z3 pair` in a worktree pairs with the dev
     // server under test rather than the daily-driver install.
     const worktreeHome = yield* resolveWorktreeT3Home(process.cwd());
     if (worktreeHome !== undefined) {
@@ -233,7 +233,7 @@ const makePairServerConfig = Effect.fn(function* (input: {
     mode: "web",
     port: state.port,
     host: state.host,
-    // `t3 pair` only mints into the running server's database; it emits no
+    // `z3 pair` only mints into the running server's database; it emits no
     // URL through this config, so it needs no prefix of its own.
     basePath: "",
     cwd: process.cwd(),
@@ -265,7 +265,7 @@ const mintPairingLink = Effect.fn("pair.mintPairingLink")(function* (input: {
     return yield* environmentAuth.createPairingLink({
       scopes: AuthStandardClientScopes,
       subject: "one-time-token",
-      label: Option.getOrElse(input.label, () => "t3 pair"),
+      label: Option.getOrElse(input.label, () => "z3 pair"),
       ...(Option.isSome(input.ttl) ? { ttl: input.ttl.value } : {}),
     });
   }).pipe(
