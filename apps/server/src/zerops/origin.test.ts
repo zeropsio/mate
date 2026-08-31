@@ -5,6 +5,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
 const CONTAINER_ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
 const CONTAINER_HOST = "zcp-26a7-8080.prg1.zerops.app";
+const SIBLING_ORIGIN = "https://zcp-2338-8080.prg1.zerops.app";
 
 const allowlist = (allowedOrigins: ReadonlyArray<string> = []) =>
   makeZeropsOriginAllowlist(
@@ -50,11 +51,32 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
     assert.isTrue(allowsOrigin("t3code-dev://app"));
   });
 
+  it("allows Zerops-issued HTTPS origins", () => {
+    const { allowsOrigin } = allowlist();
+    for (const origin of [SIBLING_ORIGIN, "https://app.zerops.io"]) {
+      assert.isTrue(allowsOrigin(origin), origin);
+    }
+  });
+
+  it("rejects Zerops look-alikes, bare apexes and plain HTTP", () => {
+    const { allowsOrigin } = allowlist();
+    for (const origin of [
+      "https://evilzerops.app",
+      "https://zerops.app.evil.example",
+      "https://zerops.app",
+      "https://.zerops.app",
+      "https://..zerops.app",
+      "http://sub.zerops.app",
+    ]) {
+      assert.isFalse(allowsOrigin(origin), origin);
+    }
+  });
+
   it("allows a configured extra origin, exactly", () => {
-    const { allowsOrigin } = allowlist(["https://app.zerops.io"]);
-    assert.isTrue(allowsOrigin("https://app.zerops.io"));
-    assert.isFalse(allowsOrigin("https://app.zerops.io.evil.example"));
-    assert.isFalse(allowsOrigin("http://app.zerops.io"));
+    const { allowsOrigin } = allowlist(["https://console.example.com"]);
+    assert.isTrue(allowsOrigin("https://console.example.com"));
+    assert.isFalse(allowsOrigin("https://console.example.com.evil.example"));
+    assert.isFalse(allowsOrigin("http://console.example.com"));
   });
 
   it("rejects a missing origin — the CORS middleware asks about every request", () => {
@@ -64,12 +86,12 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
     assert.isFalse(allowsOrigin(undefined));
   });
 
-  it("rejects everything else, including the container's own origin", () => {
-    // Its own origin needs no CORS entry: a client served under /z3/ is
-    // same-origin with this API, and same-origin requests are not subject to
-    // CORS at all. The upgrade path is where that case is handled.
+  it("rejects every other origin", () => {
+    // A client served under /z3/ is same-origin with this API and does not need
+    // CORS; the Zerops-domain rule still accepts that serialized origin when a
+    // proxy arrangement makes the request cross-origin.
     const { allowsOrigin } = allowlist();
-    for (const origin of ["https://evil.example", CONTAINER_ORIGIN, "null", ""]) {
+    for (const origin of ["https://evil.example", "null", ""]) {
       assert.isFalse(allowsOrigin(origin), origin);
     }
   });
@@ -100,6 +122,11 @@ describe("allowsUpgrade — what may open the websocket", () => {
     );
   });
 
+  it("allows a sibling Zerops container origin", () => {
+    const { allowsUpgrade } = allowlist();
+    assert.isTrue(allowsUpgrade({ origin: SIBLING_ORIGIN, host: CONTAINER_HOST }));
+  });
+
   it("rejects a foreign origin even when the host matches nothing", () => {
     const { allowsUpgrade } = allowlist();
     assert.isFalse(allowsUpgrade({ origin: "https://evil.example", host: CONTAINER_HOST }));
@@ -108,14 +135,17 @@ describe("allowsUpgrade — what may open the websocket", () => {
   it("rejects a foreign origin that only shares a suffix with the host", () => {
     const { allowsUpgrade } = allowlist();
     assert.isFalse(
-      allowsUpgrade({ origin: `https://evil.${CONTAINER_HOST}`, host: CONTAINER_HOST }),
+      allowsUpgrade({
+        origin: "https://evil.environment.example.com",
+        host: "environment.example.com",
+      }),
     );
   });
 
   it("still allows localhost and configured origins", () => {
-    const { allowsUpgrade } = allowlist(["https://app.zerops.io"]);
+    const { allowsUpgrade } = allowlist(["https://console.example.com"]);
     assert.isTrue(allowsUpgrade({ origin: "http://localhost:5733", host: CONTAINER_HOST }));
-    assert.isTrue(allowsUpgrade({ origin: "https://app.zerops.io", host: CONTAINER_HOST }));
+    assert.isTrue(allowsUpgrade({ origin: "https://console.example.com", host: CONTAINER_HOST }));
   });
 
   it("rejects a malformed origin rather than trying to make sense of it", () => {

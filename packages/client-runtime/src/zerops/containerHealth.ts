@@ -13,12 +13,10 @@
  *   descriptor does not answer, to tell "still starting" from "this container
  *   predates Zerops Code".
  *
- * The descriptor comes first because it is the one a browser can always read:
- * measured 2026-08-28, `/healthz` carries no `Access-Control-Allow-Origin`, so
- * a cross-origin read of it fails outright, while the z3 descriptor answers
- * `access-control-allow-origin: *`. Ordering it this way means the flow works
- * today and simply gets a sharper "starting" signal once nginx sends the
- * header.
+ * The descriptor comes first because it is the authority. A current z3 server
+ * echoes a Zerops-issued browser origin (and localhost) on that response, while
+ * nginx answers `/healthz` with `Access-Control-Allow-Origin: *`. A container
+ * that predates Zerops Code answers neither probe with usable CORS headers.
  *
  * Nothing is concluded from a status code alone. A container that predates
  * Zerops Code has neither route, so the cookie gate answers a redirect to
