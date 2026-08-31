@@ -135,7 +135,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
         commands.push(command);
         timeouts.set(command, input.timeout);
         return {
-          stdout: input.args[1] === "--version" ? "t3 v1.2.3\n" : "",
+          stdout: input.args[1] === "--version" ? "z3 v1.2.3\n" : "",
           stderr: "",
           code: ChildProcessSpawner.ExitCode(command === control.failCommand ? 1 : 0),
           timedOut: false,

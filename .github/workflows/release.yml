@@ -55,7 +55,7 @@ jobs:
             version="$package_version"
           else
             version="$DISPATCH_VERSION"
-            echo "Rehearsal version '$version' deliberately overrides apps/server/package.json version '$package_version'; t3 --version will report 't3 v$package_version'."
+            echo "Rehearsal version '$version' deliberately overrides apps/server/package.json version '$package_version'; z3 --version will report 'z3 v$package_version'."
           fi
 
           if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
@@ -112,7 +112,7 @@ jobs:
           npm init -y
           npm install "./$TARBALL_NAME"
 
-          installed_version="$(./node_modules/.bin/t3 --version)"
+          installed_version="$(./node_modules/.bin/z3 --version)"
           echo "Installed binary version: $installed_version"
 
       - name: Write checksum
