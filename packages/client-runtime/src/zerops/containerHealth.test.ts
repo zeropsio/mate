@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { probeZeropsContainerHealth } from "./containerHealth.ts";
 
 const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
-const HEALTHZ = `${ORIGIN}/healthz`;
+const HEALTHZ = `${ORIGIN}/z3/healthz`;
 const DESCRIPTOR = `${ORIGIN}/z3/.well-known/t3/environment`;
 
 function json(body: unknown, status = 200): Response {
@@ -73,6 +73,20 @@ describe("probeZeropsContainerHealth", () => {
 
     await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
     expect(spy.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+  });
+
+  it("reads readiness under the /z3/ prefix, which is the only place zcp publishes it", () => {
+    // The route moved out of the container root when z3 became opt-in: zcp
+    // renders it only with ZCP_Z3_ENABLED set, and the root /healthz is
+    // code-server's own again. Probing the root would read a booting container
+    // as one that cannot run Zerops Code at all, and offer a restart that
+    // changes nothing. Pinned as an exact URL because the coupling is to a
+    // path in another repository's nginx template, which no type can check.
+    const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+
+    void probeZeropsContainerHealth(ORIGIN, spy.fetch);
+
+    expect(HEALTHZ).toBe(`${ORIGIN}/z3/healthz`);
   });
 
   it("is ready even when /healthz cannot be read cross-origin", async () => {

@@ -8,24 +8,32 @@
  * - `GET /z3/.well-known/t3/environment` — the z3 server's own environment
  *   document, and the **authority**: if it answers, Zerops Code is up and
  *   reachable, which is the whole question.
- * - `GET /healthz` — `{"initComplete": bool, "initAt": "…"}`, served statically
+ * - `GET /z3/healthz` — `{"initComplete": bool, "initAt": "…"}`, served statically
  *   by nginx outside the code-server cookie gate. Consulted only when the
  *   descriptor does not answer, to tell "still starting" from "this container
- *   predates Zerops Code".
+ *   is not serving Zerops Code at all".
+ *
+ * The readiness path lives under the `/z3/` prefix, not at the container root:
+ * zcp publishes it only when `ZCP_Z3_ENABLED` is set, and the root `/healthz`
+ * is code-server's own. So the route ANSWERING is itself the signal that this
+ * container has Zerops Code turned on — which is why a container with the flag
+ * off reads the same as one whose zcp predates z3. Both need an operator, not a
+ * wait; neither is distinguishable from the browser, and both are covered by
+ * the same phase.
  *
  * The descriptor comes first because it is the authority. A current z3 server
  * echoes a Zerops-issued browser origin (and localhost) on that response, while
- * nginx answers `/healthz` with `Access-Control-Allow-Origin: *`. A container
- * that predates Zerops Code answers neither probe with usable CORS headers.
+ * nginx answers `/z3/healthz` with `Access-Control-Allow-Origin: *`. A container
+ * not serving Zerops Code answers neither probe with usable CORS headers.
  *
- * Nothing is concluded from a status code alone. A container that predates
+ * Nothing is concluded from a status code alone. A container not serving
  * Zerops Code has neither route, so the cookie gate answers a redirect to
  * `/zcp-login` (measured on two live containers); and under a mis-prefixed
  * proxy the z3 SPA's catch-all turns any path into a valid `200 index.html`.
  * Parse first, then decide.
  *
  * One limit worth knowing, measured from a browser 2026-08-28: a container
- * that predates Zerops Code sends no CORS headers on ANY route, so every read
+ * not serving Zerops Code sends no CORS headers on ANY route, so every read
  * of it throws and it is indistinguishable here from a container that is
  * simply away — both come back `unreachable`. The picker resolves that where
  * it has more to go on: the platform has already said the service is ACTIVE,
@@ -101,7 +109,7 @@ export async function probeZeropsContainerHealth(
     return "ready";
   }
 
-  const health = await read(`${base}/healthz`, fetchImpl);
+  const health = await read(`${zeropsCodeBaseUrl(base)}/healthz`, fetchImpl);
 
   // A server error anywhere means the container is on its way up, so it can
   // never be read as an old container needing a restart — that would restart
@@ -111,19 +119,22 @@ export async function probeZeropsContainerHealth(
   }
 
   if (health.kind === "json") {
-    // zcp is new enough to serve `/healthz`, so a missing z3 is z3 still coming
-    // up — never an old container, whatever `initComplete` says.
+    // zcp publishes this route only with z3 turned on, so its answering means
+    // a missing descriptor is z3 still coming up — never a container that is
+    // not serving it, whatever `initComplete` says.
     return "initializing";
   }
   if (health.kind === "redirect" || health.kind === "not-json") {
-    // No `/healthz` either: an older zcp, where a restart is the fix. This must
-    // not read as "still starting" — that would poll to a timeout and never
-    // offer the one action that works.
+    // Neither route: this container is not serving Zerops Code — an older zcp,
+    // or one with ZCP_Z3_ENABLED off. Either way an operator has to act, so
+    // this must not read as "still starting", which would poll to a timeout
+    // and never offer an action at all.
     return "predates-z3";
   }
 
-  // `/healthz` gave no answer at all. If the descriptor gave none either, the
-  // container itself is away; otherwise nginx is answering something that is
-  // neither route, which is an older zcp.
+  // The readiness route gave no answer at all. If the descriptor gave none
+  // either, the container itself is away; otherwise nginx is answering
+  // something that is neither route, which is again a container not serving
+  // Zerops Code.
   return descriptor.kind === "blocked" ? "unreachable" : "predates-z3";
 }

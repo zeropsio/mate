@@ -261,7 +261,7 @@ export function advanceProvisioning(
           nowMs,
         );
       }
-      return settled(state, "needs-enable", "This container predates Zerops Code", nowMs);
+      return settled(state, "needs-enable", "This container is not serving Zerops Code", nowMs);
     }
     // `initializing` and `unreachable` both mean "not yet" — an unreachable
     // container mid-restart answers 502 through the platform balancer.

@@ -81,7 +81,7 @@ export function ZeropsProvisioningPanel({
         <div className="space-y-3">
           <p className="text-sm text-foreground">
             {state.phase === "needs-enable"
-              ? "This container was created before Zerops Code. Restarting it installs the current version — your files, history and services are untouched."
+              ? "This container is not serving Zerops Code: either its zcp predates it, or ZCP_Z3_ENABLED is not set on the service. Restarting installs the current zcp — set that flag first if it is missing. Your files, history and services are untouched."
               : "This container has not answered. Restarting it installs the current version and brings it back — your files, history and services are untouched."}
           </p>
           <Button className="w-full" disabled={busy} onClick={onEnable}>
@@ -93,8 +93,9 @@ export function ZeropsProvisioningPanel({
 
       {notYetAvailable ? (
         <p className="text-sm text-foreground">
-          Zerops Code is not part of this container&apos;s zcp release yet. It arrives with the next
-          zcp release — come back and press Enable Zerops Code again later.
+          Restarting did not bring Zerops Code up. Either it is not in this container&apos;s zcp
+          release yet, or ZCP_Z3_ENABLED is not set on the service — check that flag, then press
+          Enable Zerops Code again.
         </p>
       ) : null}
 
