@@ -23,6 +23,14 @@
  *   ambient authority only because a Zerops server refuses the browser cookie
  *   it never issues and this CORS policy is uncredentialed.
  * - the two desktop shell origins.
+ * - `https://z3.krls.cz`, the hosted web client's current home. TEMPORARY:
+ *   it is a personal domain standing in until the hosted client moves to a
+ *   Zerops-issued one, which the `.zerops.app`/`.dev`/`.io` rule above already
+ *   covers. It is built in rather than configured because the client has to
+ *   reach EVERY user's container, and `T3CODE_ZEROPS_ALLOWED_ORIGINS` is
+ *   per-container — only an operator who has typed it into that one service's
+ *   env would be reachable, which is not a product. Delete this entry the day
+ *   the client is served from a Zerops domain.
  * - anything named in `T3CODE_ZEROPS_ALLOWED_ORIGINS`, matched exactly.
  *
  * A request that carries no `Origin` is allowed to upgrade: a caller that is
@@ -35,6 +43,12 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
 /** The custom schemes the packaged desktop renderer is served from. */
 const DESKTOP_SHELL_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+/**
+ * TEMPORARY — the hosted web client's current home, a personal domain standing
+ * in until it moves to a Zerops-issued one. Remove this constant and its entry
+ * below once that move happens; the Zerops suffix rule covers it from then on.
+ */
+const HOSTED_CLIENT_ORIGINS = ["https://z3.krls.cz"] as const;
 const ZEROPS_BROWSER_ORIGIN_SUFFIXES = [".zerops.app", ".zerops.dev", ".zerops.io"] as const;
 
 const parseOrigin = (origin: string): URL | undefined => {
@@ -64,7 +78,11 @@ export interface ZeropsOriginAllowlist {
 export const makeZeropsOriginAllowlist = (
   environment: ZeropsEnvironment,
 ): ZeropsOriginAllowlist => {
-  const configured = new Set<string>([...environment.allowedOrigins, ...DESKTOP_SHELL_ORIGINS]);
+  const configured = new Set<string>([
+    ...environment.allowedOrigins,
+    ...DESKTOP_SHELL_ORIGINS,
+    ...HOSTED_CLIENT_ORIGINS,
+  ]);
 
   const allowsOrigin = (origin: string | undefined): boolean => {
     if (origin === undefined || origin.length === 0) {

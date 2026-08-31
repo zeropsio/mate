@@ -79,6 +79,17 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
     assert.isFalse(allowsOrigin("http://console.example.com"));
   });
 
+  it("allows the hosted web client's own origin without any per-container config", () => {
+    // TEMPORARY, with the constant it pins: the hosted client has to reach
+    // EVERY user's container, so its origin cannot live in the per-container
+    // T3CODE_ZEROPS_ALLOWED_ORIGINS. Delete this case together with
+    // HOSTED_CLIENT_ORIGINS once the client moves to a Zerops-issued domain.
+    const { allowsOrigin } = allowlist();
+    assert.isTrue(allowsOrigin("https://z3.krls.cz"));
+    assert.isFalse(allowsOrigin("http://z3.krls.cz"));
+    assert.isFalse(allowsOrigin("https://z3.krls.cz.evil.example"));
+  });
+
   it("rejects a missing origin — the CORS middleware asks about every request", () => {
     // `allowsOrigin` is handed `request.headers["origin"]` verbatim on every
     // response, not only preflights, so an absent header arrives as undefined.
