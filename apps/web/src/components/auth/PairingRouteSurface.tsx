@@ -15,6 +15,7 @@ import { MANUAL_LINK_COPY } from "./manualLinkCopy";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { ZeropsHostedLanding } from "../zerops/landing/ZeropsHostedLanding";
 
 export function PairingPendingSurface() {
   return (
@@ -46,6 +47,26 @@ export function PairingRouteSurface({
 }: {
   methods: ReadonlyArray<ServerAuthBootstrapMethod>;
   onAuthenticated: () => void;
+}) {
+  if (methods.includes("zerops-identity")) {
+    return (
+      <ZeropsHostedLanding
+        manualFallback={
+          <ManualPairingRouteSurface methods={[]} onAuthenticated={onAuthenticated} />
+        }
+      />
+    );
+  }
+
+  return <ManualPairingRouteSurface methods={methods} onAuthenticated={onAuthenticated} />;
+}
+
+function ManualPairingRouteSurface({
+  methods,
+  onAuthenticated,
+}: {
+  readonly methods: ReadonlyArray<ServerAuthBootstrapMethod>;
+  readonly onAuthenticated: () => void;
 }) {
   const autoPairTokenRef = useRef<string | null>(peekPairingTokenFromUrl());
   const [credential, setCredential] = useState(() => autoPairTokenRef.current ?? "");

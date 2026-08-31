@@ -27,6 +27,9 @@ export const Route = createFileRoute("/pair")({
 function PairRouteView() {
   const { door } = Route.useRouteContext();
   const navigate = useNavigate();
+  const onAuthenticated = () => {
+    void navigate({ to: "/", replace: true });
+  };
 
   if (door.redirect !== null) {
     // `beforeLoad` throws this same decision's redirect; this is the exhaustive fallback.
@@ -39,16 +42,15 @@ function PairRouteView() {
 
     case "manual-link":
       return (
-        <PairingRouteSurface
-          methods={door.manualLink.methods}
-          onAuthenticated={() => {
-            void navigate({ to: "/", replace: true });
-          }}
-        />
+        <PairingRouteSurface methods={door.manualLink.methods} onAuthenticated={onAuthenticated} />
+      );
+
+    case "zerops-onboarding":
+      return (
+        <PairingRouteSurface methods={door.manualLink!.methods} onAuthenticated={onAuthenticated} />
       );
 
     case "app":
-    case "zerops-onboarding":
     case "draft-landing":
       return <Navigate to="/" replace />;
   }

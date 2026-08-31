@@ -5,10 +5,6 @@ function describeAuthGate(bootstrapMethods: ReadonlyArray<ServerAuthBootstrapMet
     return "This environment offers no sign-in from here; ask an operator for a one-time link.";
   }
 
-  if (bootstrapMethods.includes("zerops-identity")) {
-    return "This environment signs you in through Zerops.";
-  }
-
   if (bootstrapMethods.includes("desktop-bootstrap")) {
     return "This environment expects a trusted pairing credential before the app can connect.";
   }
@@ -21,12 +17,6 @@ function describeSupportedMethods(
 ): string {
   if (bootstrapMethods.length === 0) {
     return describeAuthGate(bootstrapMethods);
-  }
-
-  if (bootstrapMethods.includes("zerops-identity")) {
-    return bootstrapMethods.includes("one-time-token")
-      ? "Sign in through Zerops, or paste a one-time link."
-      : describeAuthGate(bootstrapMethods);
   }
 
   if (

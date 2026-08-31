@@ -17,12 +17,14 @@ import {
   themeColorToNativeColor,
   type MobileThemeVariables,
 } from "@t3tools/shared/mobileThemeVariables";
+import { ZEROPS_MARK } from "@t3tools/shared/brand";
 
 import {
   getThemeTokenProjectionOutputs,
   MOBILE_THEME_TOKEN_MARKERS,
   replaceGeneratedRegion,
   runThemeTokenProjector,
+  WEB_BOOT_MARK_MARKERS,
   WEB_THEME_TOKEN_MARKERS,
   type ThemeTokenProjectionOutput,
 } from "./generate-theme-tokens.ts";
@@ -216,6 +218,50 @@ describe("generate theme tokens", () => {
     );
   });
 
+  it("projects the Zerops favicon and boot splash from the shared mark", () => {
+    const outputs = getThemeTokenProjectionOutputs();
+    const web = outputs.find((output) => output.target === "apps/web/index.html")!;
+
+    expect(web.contents).toContain(
+      '<link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />',
+    );
+    expect(web.contents).toContain('<link rel="manifest" href="%BASE_URL%manifest.webmanifest" />');
+    expect(web.contents).not.toContain("apple-touch-icon");
+    expect(web.contents).toContain(
+      `<svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Code">`,
+    );
+    const bootMark = web.contents.slice(
+      web.contents.indexOf(WEB_BOOT_MARK_MARKERS.start),
+      web.contents.indexOf(WEB_BOOT_MARK_MARKERS.end),
+    );
+    for (const path of ZEROPS_MARK.paths) {
+      expect(bootMark).toContain(`d="${path.d}"`);
+      expect(bootMark).toContain(`fill="${path.fill}"`);
+    }
+
+    const favicon = outputs.find((output) => output.target === "apps/web/public/favicon.svg");
+    expect(favicon?.contents).toContain(`<svg xmlns="http://www.w3.org/2000/svg"`);
+    for (const path of ZEROPS_MARK.paths) {
+      expect(favicon?.contents).toContain(`d="${path.d}"`);
+      expect(favicon?.contents).toContain(`fill="${path.fill}"`);
+    }
+
+    const manifest = JSON.parse(
+      NodeFS.readFileSync(
+        new URL("../apps/web/public/manifest.webmanifest", import.meta.url),
+        "utf8",
+      ),
+    ) as { readonly icons: unknown };
+    expect(manifest.icons).toEqual([
+      {
+        src: "./favicon.svg",
+        sizes: "any",
+        type: "image/svg+xml",
+        purpose: "any",
+      },
+    ]);
+  });
+
   it("uses a JavaScript line-comment end marker inside the web boot script", () => {
     const web = getThemeTokenProjectionOutputs().find(
       (output) => output.target === "apps/web/index.html",
@@ -239,6 +285,8 @@ describe("generate theme tokens", () => {
   it.each([
     ["web start", WEB_THEME_TOKEN_MARKERS, "start"],
     ["web end", WEB_THEME_TOKEN_MARKERS, "end"],
+    ["web boot mark start", WEB_BOOT_MARK_MARKERS, "start"],
+    ["web boot mark end", WEB_BOOT_MARK_MARKERS, "end"],
     ["mobile start", MOBILE_THEME_TOKEN_MARKERS, "start"],
     ["mobile end", MOBILE_THEME_TOKEN_MARKERS, "end"],
   ] as const)("fails safely when the %s marker is absent", (_name, markers, missing) => {

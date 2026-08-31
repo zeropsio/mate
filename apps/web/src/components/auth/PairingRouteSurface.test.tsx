@@ -3,12 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { PairingRouteSurface } from "./PairingRouteSurface";
 
+vi.mock("../zerops/landing/ZeropsHostedLanding", () => ({
+  ZeropsHostedLanding: () => <div>Zerops sign-in surface</div>,
+}));
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("PairingRouteSurface", () => {
-  it("renders the Zerops sign-in and one-time-link fallback from the door methods", () => {
+  it("renders the Zerops sign-in instead of the rejected credential form", () => {
     vi.stubGlobal("window", {
       location: new URL("https://example.com/pair"),
     });
@@ -20,8 +24,9 @@ describe("PairingRouteSurface", () => {
       />,
     );
 
-    expect(markup).toContain("This environment signs you in through Zerops.");
-    expect(markup).toContain("Sign in through Zerops, or paste a one-time link.");
+    expect(markup).toContain("Zerops sign-in surface");
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain("pairing-token");
   });
 
   it("renders a phrase without a credential form when no method is offered", () => {

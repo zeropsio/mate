@@ -16,6 +16,7 @@ import {
   type ZeropsService,
 } from "./api.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { normalizeBasePath } from "@t3tools/shared/basePath";
 
 export type ZeropsCandidateGroup = "connected" | "ready" | "provisioning" | "unavailable";
 
@@ -56,8 +57,21 @@ export const ZCP_HTTP_PORT = 8080;
 export const ZEROPS_CODE_BASE_PATH = "/z3";
 
 /** The z3 server's base URL for a container origin, prefix included. */
-export function zeropsCodeBaseUrl(containerOrigin: string): string {
-  return `${containerOrigin.replace(/\/+$/, "")}${ZEROPS_CODE_BASE_PATH}`;
+export function zeropsCodeBaseUrl(
+  containerOrigin: string,
+  servedApp?: {
+    readonly origin: string;
+    readonly basePath: string;
+  },
+): string {
+  const normalizedContainerOrigin = containerOrigin.replace(/\/+$/, "");
+  const candidateOrigin = normalizeOrigin(normalizedContainerOrigin);
+  const servedAppOrigin = servedApp === undefined ? null : normalizeOrigin(servedApp.origin);
+  const basePath =
+    servedApp !== undefined && candidateOrigin !== null && candidateOrigin === servedAppOrigin
+      ? normalizeBasePath(servedApp.basePath)
+      : ZEROPS_CODE_BASE_PATH;
+  return `${normalizedContainerOrigin}${basePath}`;
 }
 
 function isZcpService(service: ZeropsService): boolean {
