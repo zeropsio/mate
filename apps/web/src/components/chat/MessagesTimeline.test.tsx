@@ -1324,6 +1324,54 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("data-zerops-card");
   });
 
+  it("keeps undecodable, absent and oversize results in the ordinary generic tool block", () => {
+    const cases = [
+      {
+        name: "undecodable",
+        label: "Deploy with unreadable result",
+        zeropsResult: { toolName: "zerops_deploy", resultText: "not json" },
+      },
+      {
+        name: "absent",
+        label: "Deploy with absent result",
+        zeropsResult: { toolName: "zerops_deploy" },
+      },
+      {
+        name: "oversize",
+        label: "Deploy with oversized result",
+        zeropsResult: { toolName: "zerops_deploy", truncated: true },
+      },
+    ] as const;
+
+    for (const fallbackCase of cases) {
+      const markup = renderToStaticMarkup(
+        <MessagesTimeline
+          {...buildProps()}
+          timelineEntries={[
+            {
+              id: `fallback-${fallbackCase.name}`,
+              kind: "work",
+              createdAt: MESSAGE_CREATED_AT,
+              entry: {
+                id: `fallback-work-${fallbackCase.name}`,
+                createdAt: MESSAGE_CREATED_AT,
+                label: fallbackCase.label,
+                tone: "tool",
+                itemType: "mcp_tool_call",
+                toolLifecycleStatus: "completed",
+                zeropsResult: fallbackCase.zeropsResult,
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(markup, fallbackCase.name).toContain("Used 1 tool");
+      expect(markup, fallbackCase.name).toContain("lucide-wrench");
+      expect(markup, fallbackCase.name).not.toContain("data-zerops-card");
+    }
+  });
+
   it("keeps a standalone tool section around a milestone beside a remainder toggle", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

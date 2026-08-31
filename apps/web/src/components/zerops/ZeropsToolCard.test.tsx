@@ -18,7 +18,149 @@ const render = (toolName: string, body: unknown, failed = false): string => {
 };
 
 describe("ZeropsToolCard", () => {
-  it("shows a deploy with its URL chip", () => {
+  it.each([
+    {
+      name: "plan in progress",
+      toolName: "zerops_workflow",
+      body: {
+        intent: "Build a kanban",
+        message: "Confirm these services",
+        progress: {
+          total: 3,
+          completed: 1,
+          steps: [
+            { name: "Discover services", status: "done" },
+            { name: "Provision services", status: "current" },
+            { name: "Close workflow", status: "pending" },
+          ],
+        },
+      },
+      kind: "plan",
+      title: "Build a kanban",
+      status: "In progress",
+      tone: "busy",
+      outcome: "1 of 3 steps complete",
+      stepState: "running",
+    },
+    {
+      name: "partial import",
+      toolName: "zerops_import",
+      body: {
+        projectName: "z3-eval",
+        processes: [
+          { service: "kanbandev", status: "FINISHED", actionName: "stack.create" },
+          { service: "kanbanstage", status: "RUNNING", actionName: "stack.create" },
+        ],
+        serviceErrors: [{ service: "db", code: "INVALID", message: "unknown type" }],
+      },
+      kind: "import",
+      title: "Import z3-eval",
+      status: "Partially imported",
+      tone: "attention",
+      outcome: "1 of 3 services imported",
+      stepState: "failed",
+    },
+    {
+      name: "partial mount",
+      toolName: "zerops_mount",
+      body: {
+        mounts: [
+          { hostname: "kanbandev", mountPath: "/var/www/kanbandev", mounted: true },
+          { hostname: "kanbanstage", mounted: false, message: "not mounted" },
+        ],
+      },
+      kind: "mount",
+      title: "Mount services",
+      status: "Partially mounted",
+      tone: "attention",
+      outcome: "1 of 2 services mounted",
+      stepState: "failed",
+    },
+    {
+      name: "successful deploy",
+      toolName: "zerops_deploy",
+      body: {
+        status: "DEPLOYED",
+        targetService: "kanbandev",
+        buildStatus: "ACTIVE",
+        buildDuration: "48s",
+        subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
+      },
+      kind: "deploy",
+      title: "Deploy kanbandev",
+      status: "Deployed",
+      tone: "ok",
+      outcome: "Deployment completed in 48s",
+      stepState: "done",
+    },
+    {
+      name: "failed verification",
+      toolName: "zerops_verify",
+      body: {
+        hostname: "kanbandev",
+        status: "degraded",
+        checks: [
+          { name: "service_running", status: "pass" },
+          { name: "http_root", status: "fail", httpStatus: 503 },
+        ],
+      },
+      kind: "verify",
+      title: "Verify kanbandev",
+      status: "Checks failed",
+      tone: "failed",
+      outcome: "1 of 2 checks passed",
+      stepState: "failed",
+    },
+    {
+      name: "enabled subdomain",
+      toolName: "zerops_subdomain",
+      body: {
+        serviceHostname: "kanbandev",
+        action: "enable",
+        subdomainUrls: ["https://kanbandev-26a7-3000.prg1.zerops.app"],
+      },
+      kind: "subdomain",
+      title: "Enable subdomain for kanbandev",
+      status: "Enabled",
+      tone: "ok",
+      outcome: "Subdomain enabled",
+      stepState: "done",
+    },
+    {
+      name: "structured error",
+      toolName: "zerops_deploy",
+      body: {
+        code: "GIT_TOKEN_INVALID",
+        error: "the git token was rejected",
+        suggestion: "ask the user for a fresh token",
+      },
+      failed: true,
+      kind: "error",
+      title: "Operation failed",
+      status: "Failed",
+      tone: "failed",
+      outcome: "the git token was rejected",
+      stepState: "failed",
+    },
+  ])(
+    "renders plan/import/mount/deploy/verify/subdomain/error as semantic process shells: $name",
+    ({ body, failed, kind, outcome, status, stepState, title, tone, toolName }) => {
+      const html = render(toolName, body, failed);
+
+      expect(html).toContain(`data-zerops-card-kind="${kind}"`);
+      expect(html).toContain(`data-zerops-card-tone="${tone}"`);
+      expect(html).toContain('data-zerops-primitive="flat-card"');
+      expect(html).toContain('data-zerops-primitive="micro-label"');
+      expect(html).toContain('data-zerops-primitive="status-dot"');
+      expect(html).toContain('data-zerops-primitive="process-steps"');
+      expect(html).toContain(`data-zerops-process-state="${stepState}"`);
+      expect(html).toContain(`<h3>${title}</h3>`);
+      expect(html).toContain(`>${status}</span>`);
+      expect(html).toContain(`data-zerops-card-outcome="true">${outcome}</p>`);
+    },
+  );
+
+  it("separates URLs from technical detail and exposes a status word", () => {
     const html = render("zerops_deploy", {
       status: "DEPLOYED",
       targetService: "kanbandev",
@@ -27,108 +169,20 @@ describe("ZeropsToolCard", () => {
       subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
     });
 
-    expect(html).toContain("kanbandev · DEPLOYED");
-    expect(html).toContain("build ACTIVE");
-    expect(html).toContain("48s");
-    expect(html).toContain('href="https://kanbandev-26a7-3000.prg1.zerops.app"');
-    expect(html).toContain("data-zerops-card");
-  });
+    const technicalDetails = html.match(/<div aria-label="Technical details".*?<\/div>/su)?.[0];
+    const urls = html.match(/<div aria-label="URLs".*?<\/div>/su)?.[0];
 
-  it("shows a failed deploy as a failure, with the phase and the cause", () => {
-    const html = render("zerops_deploy", {
-      status: "BUILD_FAILED",
-      targetService: "kanbandev",
-      failedPhase: "build",
-      failureClassification: { category: "build", likelyCause: "missing dependency" },
-    });
-
-    expect(html).toContain("failed during build");
-    expect(html).toContain("missing dependency");
-    expect(html).toContain("border-destructive/40");
-  });
-
-  it("shows a verify as HTTP 200 with a tick", () => {
-    const html = render("zerops_verify", {
-      hostname: "kanbandev",
-      status: "healthy",
-      checks: [{ name: "http_root", status: "pass", httpStatus: 200 }],
-    });
-
-    expect(html).toContain("kanbandev · healthy");
-    expect(html).toContain("HTTP 200");
-    expect(html).toContain('aria-label="passed"');
-  });
-
-  it("shows import progress per service", () => {
-    const html = render("zerops_import", {
-      projectName: "z3-eval",
-      processes: [
-        { service: "kanbandev", status: "FINISHED", actionName: "stack.create" },
-        { service: "kanbanstage", status: "RUNNING", actionName: "stack.create" },
-      ],
-      serviceErrors: [{ service: "db", code: "INVALID", message: "unknown type" }],
-    });
-
-    expect(html).toContain("kanbandev");
-    expect(html).toContain("RUNNING");
-    expect(html).toContain("db: unknown type");
-  });
-
-  it("shows a mount with its path", () => {
-    const html = render("zerops_mount", {
-      status: "MOUNTED",
-      hostname: "kanbandev",
-      mountPath: "/var/www/kanbandev",
-      message: "Mounted",
-    });
-
-    expect(html).toContain("/var/www/kanbandev");
-  });
-
-  it("shows a subdomain's URLs as chips", () => {
-    const html = render("zerops_subdomain", {
-      serviceHostname: "kanbandev",
-      action: "enable",
-      subdomainUrls: ["https://kanbandev-26a7-3000.prg1.zerops.app"],
-    });
-
-    expect(html).toContain("Subdomain enable · kanbandev");
-    expect(html).toContain("kanbandev-26a7-3000.prg1.zerops.app");
-  });
-
-  it("shows a plan with its steps", () => {
-    const html = render("zerops_workflow", {
-      intent: "build a kanban",
-      message: "Confirm these services",
-      progress: {
-        total: 3,
-        completed: 1,
-        steps: [
-          { name: "discover", status: "done" },
-          { name: "provision", status: "current" },
-        ],
-      },
-    });
-
-    expect(html).toContain("build a kanban");
-    expect(html).toContain("step 1 of 3");
-    expect(html).toContain("provision");
-  });
-
-  it("shows a structured error with its code and suggestion", () => {
-    const html = render(
-      "zerops_deploy",
-      {
-        code: "GIT_TOKEN_INVALID",
-        error: "the git token was rejected",
-        suggestion: "ask the user for a fresh token",
-      },
-      true,
-    );
-
-    expect(html).toContain("GIT_TOKEN_INVALID");
-    expect(html).toContain("the git token was rejected");
-    expect(html).toContain("ask the user for a fresh token");
+    expect(html).toContain('aria-label="Result status"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('data-zerops-primitive="status-dot"');
+    expect(html).toContain(">Deployed</span>");
+    expect(technicalDetails).toContain('data-zerops-chip-kind="info"');
+    expect(technicalDetails).toContain("Build ACTIVE");
+    expect(technicalDetails).toContain("48s");
+    expect(technicalDetails).not.toContain('data-zerops-chip-kind="url"');
+    expect(urls).toContain('data-zerops-chip-kind="url"');
+    expect(urls).toContain('href="https://kanbandev-26a7-3000.prg1.zerops.app"');
+    expect(urls).not.toContain('data-zerops-chip-kind="info"');
   });
 
   /**
