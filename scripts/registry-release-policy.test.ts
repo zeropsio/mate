@@ -1,8 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off - reads repository files as bytes to assert deleted paths stay deleted.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
 
 const repoRoot = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const read = (relativePath: string) =>
