@@ -1,236 +1,432 @@
-/**
- * The Zerops cards: one reading per `zerops_*` tool result.
- *
- * Presentational only. Whether there is a card at all, and what it says, is
- * decided by `@t3tools/client-runtime/zerops/cards/payloads` and tested there; a payload this
- * build cannot decode never reaches here, and the timeline renders its generic
- * tool block instead.
- *
- * Nothing here calls Zerops. The only actions are links to URLs the result
- * already carried.
- */
-import { CheckIcon, ExternalLinkIcon, XIcon } from "lucide-react";
+/** Presentational process shells for decoded `zerops_*` results. */
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 
-import { Badge } from "~/components/ui/badge";
+import {
+  Chip,
+  FlatCard,
+  MicroLabel,
+  ProcessSteps,
+  StatusDot,
+  type ProcessStep,
+  type ProcessStepState,
+} from "~/components/zerops/primitives";
 import type {
   ZeropsCardPayload,
   ZeropsCheckLine,
 } from "@t3tools/client-runtime/zerops/cards/payloads";
 
-const PASSED = /^(pass|healthy|ok|done|finished|deployed|mounted|active)$/iu;
-const FAILED = /^(fail|failed|unhealthy|error)$/iu;
+const DONE = /^(active|deployed|done|finished|healthy|mounted|ok|pass|passed|success)$/iu;
+const FAILED = /^(build_failed|degraded|error|fail|failed|unhealthy)$/iu;
+const RUNNING = /^(building|current|deploying|in.?progress|running)$/iu;
 
-function Verdict({ status }: { status: string }) {
-  if (PASSED.test(status)) {
-    return <CheckIcon aria-label="passed" className="size-3 shrink-0 text-success-foreground" />;
-  }
-  if (FAILED.test(status)) {
-    return <XIcon aria-label="failed" className="size-3 shrink-0 text-destructive-foreground" />;
-  }
-  return null;
-}
+const HEADER_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "bg-[var(--zerops-status-ok-surface)]",
+  busy: "bg-[var(--zerops-status-busy-surface)]",
+  attention: "bg-[var(--zerops-status-attention-surface)]",
+  failed: "bg-[var(--zerops-status-failed-surface)]",
+  off: "bg-[var(--zerops-status-off-surface)]",
+};
 
-function CheckRow({ check }: { check: ZeropsCheckLine }) {
-  return (
-    <li className="flex items-center gap-1.5 text-xs">
-      <Verdict status={check.status} />
-      <span className="text-foreground">{check.name}</span>
-      {check.httpStatus === undefined ? null : (
-        <span className="text-muted-foreground">HTTP {check.httpStatus}</span>
-      )}
-      {check.detail === undefined ? null : (
-        <span className="truncate text-muted-foreground">{check.detail}</span>
-      )}
-    </li>
-  );
-}
+const stepState = (status: string): ProcessStepState => {
+  if (FAILED.test(status)) return "failed";
+  if (RUNNING.test(status)) return "running";
+  if (DONE.test(status)) return "done";
+  return "queued";
+};
 
-function UrlChip({ url }: { url: string }) {
+const passed = (status: string) => DONE.test(status);
+const failed = (status: string) => FAILED.test(status);
+const sentenceCase = (value: string) =>
+  value.length === 0 ? value : `${value[0]!.toUpperCase()}${value.slice(1).toLowerCase()}`;
+
+function UrlChip({ url }: { readonly url: string }) {
   return (
     <a
-      className="inline-flex items-center gap-1 rounded-md bg-info/8 px-2 py-0.5 font-medium text-info-foreground text-xs hover:underline"
+      aria-label={`Open ${url}`}
+      className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
+      data-zerops-chip-kind="url"
       href={url}
       rel="noreferrer"
       target="_blank"
     >
-      <ExternalLinkIcon className="size-3" />
-      {url.replace(/^https?:\/\//u, "")}
+      <GlobeIcon aria-hidden="true" className="size-3 text-success-foreground" />
+      <span>{url.replace(/^https?:\/\//u, "")}</span>
+      <ExternalLinkIcon aria-hidden="true" className="size-3" />
     </a>
   );
 }
 
-function CardFrame({
+function InfoChip({
+  label,
+  tone = "off",
+}: {
+  readonly label: string;
+  readonly tone?: ServiceStatusToneId;
+}) {
+  return <Chip data-zerops-chip-kind="info" label={label} tone={tone} />;
+}
+
+function CardShell({
+  children,
+  kicker,
+  kind,
+  outcome,
+  status,
+  steps,
   title,
   tone,
-  children,
 }: {
-  readonly title: string;
-  readonly tone?: "error";
   readonly children?: React.ReactNode;
+  readonly kicker: string;
+  readonly kind: ZeropsCardPayload["kind"];
+  readonly outcome: string;
+  readonly status: string;
+  readonly steps: ReadonlyArray<ProcessStep>;
+  readonly title: string;
+  readonly tone: ServiceStatusToneId;
 }) {
   return (
-    <div
-      className={
-        tone === "error"
-          ? "rounded-xl border border-destructive/40 bg-destructive/8 px-3 py-2"
-          : "rounded-xl border border-border/55 bg-card/20 px-3 py-2"
-      }
+    <FlatCard
+      className="overflow-hidden"
       data-zerops-card
+      data-zerops-card-kind={kind}
+      data-zerops-card-tone={tone}
     >
-      <div className="font-medium text-foreground text-sm">{title}</div>
-      {children}
+      <header className={`${HEADER_TONE_CLASS[tone]} px-3 py-2.5`}>
+        <div className="flex items-center justify-between gap-3">
+          <MicroLabel>{kicker}</MicroLabel>
+          <span aria-label="Result status" role="status">
+            <StatusDot label={status} pulse={tone === "busy"} tone={tone} />
+          </span>
+        </div>
+        <div className="mt-1 font-medium text-foreground text-sm">
+          <h3>{title}</h3>
+        </div>
+      </header>
+      <div className="space-y-3 px-3 py-3 text-xs leading-relaxed">
+        <ProcessSteps aria-label={`${title} progress`} steps={steps} />
+        <div className="font-medium text-foreground text-sm">
+          <p data-zerops-card-outcome="true">{outcome}</p>
+        </div>
+        {children}
+      </div>
+    </FlatCard>
+  );
+}
+
+const checkStep = (check: ZeropsCheckLine, index: number): ProcessStep => ({
+  id: `${check.name}:${index}`,
+  label: check.name,
+  state: stepState(check.status),
+  stateLabel: check.status,
+});
+
+function CheckInfo({ checks }: { readonly checks: ReadonlyArray<ZeropsCheckLine> }) {
+  const details = checks.flatMap((check) => [
+    ...(check.httpStatus === undefined ? [] : [`${check.name} · HTTP ${check.httpStatus}`]),
+    ...(check.detail === undefined ? [] : [`${check.name} · ${check.detail}`]),
+  ]);
+  return details.length === 0 ? null : (
+    <div aria-label="Technical details" className="flex flex-wrap gap-1.5">
+      {details.map((detail) => (
+        <InfoChip key={detail} label={detail} />
+      ))}
     </div>
   );
 }
 
-export function ZeropsToolCard({ payload }: { payload: ZeropsCardPayload }) {
+export function ZeropsToolCard({ payload }: { readonly payload: ZeropsCardPayload }) {
   switch (payload.kind) {
-    case "error":
+    case "plan": {
+      const steps = payload.steps.map((step, index) => ({
+        id: `${step.name}:${index}`,
+        label: step.name,
+        state: stepState(step.status),
+        stateLabel: step.status,
+      }));
+      const hasFailure = steps.some((step) => step.state === "failed");
+      const complete = payload.total > 0 && payload.completed >= payload.total;
+      const tone = hasFailure ? "failed" : complete ? "ok" : "busy";
+      const status = hasFailure ? "Failed" : complete ? "Complete" : "In progress";
       return (
-        <CardFrame title={payload.code} tone="error">
-          {/*
-            A real zcp error message is multi-line — zcli's own log output is
-            embedded in it (captured live: five log lines in one `error`).
-            Collapsing those newlines, which is what HTML does by default, runs
-            them into one unreadable sentence; and they can be long, so the
-            block scrolls rather than pushing the rest of the card off screen.
-          */}
-          <p className="mt-0.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-destructive-foreground text-xs">
+        <CardShell
+          kicker="Plan"
+          kind={payload.kind}
+          outcome={`${payload.completed} of ${payload.total} steps complete`}
+          status={status}
+          steps={steps}
+          title={payload.intent ?? "Project plan"}
+          tone={tone}
+        >
+          {payload.message === undefined ? null : (
+            <p className="text-muted-foreground">{payload.message}</p>
+          )}
+        </CardShell>
+      );
+    }
+
+    case "import": {
+      const serviceSteps = payload.services.map((service, index) => ({
+        id: `${service.hostname}:${index}`,
+        label: service.hostname,
+        state: stepState(service.status),
+        stateLabel: service.status,
+      }));
+      const errorSteps = payload.errors.map((error, index) => ({
+        id: `${error.hostname}:error:${index}`,
+        label: error.hostname,
+        state: "failed" as const,
+        stateLabel: "Import failed",
+      }));
+      const steps = [...serviceSteps, ...errorSteps];
+      const done = serviceSteps.filter((step) => step.state === "done").length;
+      const hasFailure = steps.some((step) => step.state === "failed");
+      const hasProgress = steps.some((step) => step.state === "running");
+      const tone = hasFailure ? (done > 0 ? "attention" : "failed") : hasProgress ? "busy" : "ok";
+      const status = hasFailure
+        ? done > 0
+          ? "Partially imported"
+          : "Import failed"
+        : hasProgress
+          ? "Importing"
+          : "Imported";
+      return (
+        <CardShell
+          kicker="Import"
+          kind={payload.kind}
+          outcome={`${done} of ${steps.length} services imported`}
+          status={status}
+          steps={steps}
+          title={`Import ${payload.projectName ?? "project"}`}
+          tone={tone}
+        >
+          <div aria-label="Technical details" className="flex flex-wrap gap-1.5">
+            {payload.services.flatMap((service) => [
+              ...(service.action === undefined
+                ? []
+                : [
+                    <InfoChip
+                      key={`${service.hostname}:action`}
+                      label={`${service.hostname} · ${service.action}`}
+                    />,
+                  ]),
+              ...(service.failReason === undefined
+                ? []
+                : [
+                    <InfoChip
+                      key={`${service.hostname}:reason`}
+                      label={`${service.hostname} · ${service.failReason}`}
+                      tone="failed"
+                    />,
+                  ]),
+            ])}
+            {payload.errors.map((error) => (
+              <InfoChip
+                key={`${error.hostname}:error`}
+                label={`${error.hostname} · ${error.message}`}
+                tone="failed"
+              />
+            ))}
+          </div>
+        </CardShell>
+      );
+    }
+
+    case "mount": {
+      const steps = payload.mounts.map((mount, index) => ({
+        id: `${mount.hostname}:${index}`,
+        label: mount.hostname,
+        state: mount.mounted ? ("done" as const) : ("failed" as const),
+        stateLabel: mount.mounted ? "Mounted" : "Not mounted",
+      }));
+      const mounted = payload.mounts.filter((mount) => mount.mounted).length;
+      const tone =
+        mounted === payload.mounts.length ? "ok" : mounted === 0 ? "failed" : "attention";
+      const status =
+        tone === "ok" ? "Mounted" : tone === "failed" ? "Mount failed" : "Partially mounted";
+      return (
+        <CardShell
+          kicker="Mount"
+          kind={payload.kind}
+          outcome={`${mounted} of ${payload.mounts.length} services mounted`}
+          status={status}
+          steps={steps}
+          title={
+            payload.mounts.length === 1 ? `Mount ${payload.mounts[0]!.hostname}` : "Mount services"
+          }
+          tone={tone}
+        >
+          <div aria-label="Technical details" className="flex flex-wrap gap-1.5">
+            {payload.mounts.map((mount) => {
+              const detail = mount.mountPath ?? mount.message;
+              return detail === undefined ? null : (
+                <InfoChip
+                  key={mount.hostname}
+                  label={`${mount.hostname} · ${detail}`}
+                  tone={mount.mounted ? "off" : "failed"}
+                />
+              );
+            })}
+          </div>
+        </CardShell>
+      );
+    }
+
+    case "deploy": {
+      const didFail = payload.failedPhase !== undefined || failed(payload.status);
+      const state = didFail ? "failed" : stepState(payload.status);
+      const tone = didFail ? "failed" : state === "running" ? "busy" : "ok";
+      const status = didFail ? "Deploy failed" : state === "running" ? "Deploying" : "Deployed";
+      const outcome = didFail
+        ? `Failed${payload.failedPhase === undefined ? "" : ` during ${payload.failedPhase}`}${payload.failureCause === undefined ? "" : `: ${payload.failureCause}`}`
+        : payload.buildDuration === undefined
+          ? (payload.message ?? "Deployment completed")
+          : `Deployment completed in ${payload.buildDuration}`;
+      const steps: ReadonlyArray<ProcessStep> = [
+        ...(payload.buildStatus === undefined
+          ? []
+          : [
+              {
+                id: "build",
+                label: "Build",
+                state: stepState(payload.buildStatus),
+                stateLabel: payload.buildStatus,
+              },
+            ]),
+        { id: "deploy", label: payload.target, state, stateLabel: payload.status },
+      ];
+      return (
+        <CardShell
+          kicker={`Deploy · ${payload.target}`}
+          kind={payload.kind}
+          outcome={outcome}
+          status={status}
+          steps={steps}
+          title={`Deploy ${payload.target}`}
+          tone={tone}
+        >
+          <div aria-label="Technical details" className="flex flex-wrap gap-1.5">
+            {payload.buildStatus === undefined ? null : (
+              <InfoChip label={`Build ${payload.buildStatus}`} tone={tone} />
+            )}
+            {payload.buildDuration === undefined ? null : (
+              <InfoChip label={payload.buildDuration} />
+            )}
+            {payload.failureAction === undefined ? null : (
+              <InfoChip label={payload.failureAction} tone="failed" />
+            )}
+            {payload.warnings.map((warning) => (
+              <InfoChip key={warning} label={warning} tone="attention" />
+            ))}
+          </div>
+          {payload.subdomainUrl === undefined ? null : (
+            <div aria-label="URLs" className="flex flex-wrap gap-1.5">
+              <UrlChip url={payload.subdomainUrl} />
+            </div>
+          )}
+        </CardShell>
+      );
+    }
+
+    case "verify": {
+      const steps =
+        payload.checks.length === 0
+          ? [
+              {
+                id: "verify",
+                label: payload.hostname,
+                state: stepState(payload.status),
+                stateLabel: payload.status,
+              },
+            ]
+          : payload.checks.map(checkStep);
+      const passedChecks = payload.checks.filter((check) => passed(check.status)).length;
+      const didFail = failed(payload.status) || steps.some((step) => step.state === "failed");
+      const tone = didFail
+        ? "failed"
+        : steps.some((step) => step.state === "running")
+          ? "busy"
+          : "ok";
+      return (
+        <CardShell
+          kicker={`Verify · ${payload.hostname}`}
+          kind={payload.kind}
+          outcome={
+            payload.checks.length === 0
+              ? sentenceCase(payload.status)
+              : `${passedChecks} of ${payload.checks.length} checks passed`
+          }
+          status={didFail ? "Checks failed" : tone === "busy" ? "Checking" : "Healthy"}
+          steps={steps}
+          title={`Verify ${payload.hostname}`}
+          tone={tone}
+        >
+          <CheckInfo checks={payload.checks} />
+        </CardShell>
+      );
+    }
+
+    case "subdomain": {
+      const action = sentenceCase(payload.action);
+      const completed = payload.urls.length > 0 || /^(disable|disabled)$/iu.test(payload.action);
+      return (
+        <CardShell
+          kicker={`Subdomain · ${payload.hostname}`}
+          kind={payload.kind}
+          outcome={`Subdomain ${payload.action.toLowerCase()}d`}
+          status={completed ? `${action}d` : "Pending"}
+          steps={[
+            {
+              id: "subdomain",
+              label: payload.hostname,
+              state: completed ? "done" : "queued",
+              stateLabel: completed ? `${action}d` : "Pending",
+            },
+          ]}
+          title={`${action} subdomain for ${payload.hostname}`}
+          tone={completed ? "ok" : "attention"}
+        >
+          {payload.urls.length === 0 ? null : (
+            <div aria-label="URLs" className="flex flex-wrap gap-1.5">
+              {payload.urls.map((url) => (
+                <UrlChip key={url} url={url} />
+              ))}
+            </div>
+          )}
+        </CardShell>
+      );
+    }
+
+    case "error": {
+      const steps: ReadonlyArray<ProcessStep> = [
+        ...payload.checks.map(checkStep),
+        { id: "operation-error", label: payload.code, state: "failed", stateLabel: "Failed" },
+      ];
+      return (
+        <CardShell
+          kicker={`Error · ${payload.code}`}
+          kind={payload.kind}
+          outcome={payload.message}
+          status="Failed"
+          steps={steps}
+          title="Operation failed"
+          tone="failed"
+        >
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-destructive-foreground">
             {payload.message}
           </p>
           {payload.suggestion === undefined ? null : (
-            <p className="mt-1 text-muted-foreground text-xs">{payload.suggestion}</p>
+            <p className="text-muted-foreground">{payload.suggestion}</p>
           )}
-          {payload.failureClass === undefined ? null : (
-            <Badge className="mt-1.5" size="sm" variant="error">
-              {payload.failureClass}
-            </Badge>
-          )}
-          {payload.checks.length === 0 ? null : (
-            <ul className="mt-1.5 space-y-0.5">
-              {payload.checks.map((check) => (
-                <CheckRow check={check} key={check.name} />
-              ))}
-            </ul>
-          )}
-        </CardFrame>
-      );
-
-    case "deploy":
-      return (
-        <CardFrame
-          title={`${payload.target} · ${payload.status}`}
-          {...(payload.failedPhase === undefined ? {} : { tone: "error" as const })}
-        >
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-            {payload.buildStatus === undefined ? null : (
-              <Badge size="sm" variant="outline">
-                build {payload.buildStatus}
-              </Badge>
+          <div aria-label="Technical details" className="flex flex-wrap gap-1.5">
+            {payload.failureClass === undefined ? null : (
+              <InfoChip label={payload.failureClass} tone="failed" />
             )}
-            {payload.buildDuration === undefined ? null : (
-              <span className="text-muted-foreground">{payload.buildDuration}</span>
-            )}
-            {payload.subdomainUrl === undefined ? null : <UrlChip url={payload.subdomainUrl} />}
           </div>
-          {payload.failedPhase === undefined ? null : (
-            <p className="mt-1 text-destructive-foreground text-xs">
-              failed during {payload.failedPhase}
-              {payload.failureCause === undefined ? "" : ` — ${payload.failureCause}`}
-            </p>
-          )}
-          {payload.failureAction === undefined ? null : (
-            <p className="mt-0.5 text-muted-foreground text-xs">{payload.failureAction}</p>
-          )}
-          {payload.warnings.map((warning) => (
-            <p className="mt-0.5 text-muted-foreground text-xs" key={warning}>
-              {warning}
-            </p>
-          ))}
-        </CardFrame>
+          <CheckInfo checks={payload.checks} />
+        </CardShell>
       );
-
-    case "verify":
-      return (
-        <CardFrame title={`${payload.hostname} · ${payload.status}`}>
-          <ul className="mt-1 space-y-0.5">
-            {payload.checks.map((check) => (
-              <CheckRow check={check} key={check.name} />
-            ))}
-          </ul>
-        </CardFrame>
-      );
-
-    case "import":
-      return (
-        <CardFrame title={payload.summary ?? `Importing into ${payload.projectName ?? "project"}`}>
-          <ul className="mt-1 space-y-0.5">
-            {payload.services.map((entry) => (
-              <li className="flex items-center gap-1.5 text-xs" key={entry.hostname}>
-                <Verdict status={entry.status} />
-                <span className="text-foreground">{entry.hostname}</span>
-                <span className="text-muted-foreground">{entry.status}</span>
-                {entry.failReason === undefined ? null : (
-                  <span className="truncate text-destructive-foreground">{entry.failReason}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {payload.errors.map((entry) => (
-            <p className="mt-0.5 text-destructive-foreground text-xs" key={entry.hostname}>
-              {entry.hostname}: {entry.message}
-            </p>
-          ))}
-        </CardFrame>
-      );
-
-    case "mount":
-      return (
-        <CardFrame title={payload.mounts.length === 1 ? "Mount" : "Mounts"}>
-          <ul className="mt-1 space-y-0.5">
-            {payload.mounts.map((entry) => (
-              <li className="flex items-center gap-1.5 text-xs" key={entry.hostname}>
-                <Verdict status={entry.mounted ? "mounted" : "failed"} />
-                <span className="text-foreground">{entry.hostname}</span>
-                <span className="truncate text-muted-foreground">
-                  {entry.mountPath ?? entry.message ?? (entry.mounted ? "mounted" : "not mounted")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CardFrame>
-      );
-
-    case "subdomain":
-      return (
-        <CardFrame title={`Subdomain ${payload.action} · ${payload.hostname}`}>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {payload.urls.map((url) => (
-              <UrlChip key={url} url={url} />
-            ))}
-          </div>
-        </CardFrame>
-      );
-
-    case "plan":
-      return (
-        <CardFrame title={payload.intent ?? "Plan"}>
-          {payload.message === undefined ? null : (
-            <p className="mt-0.5 text-muted-foreground text-xs">{payload.message}</p>
-          )}
-          <p className="mt-1 text-muted-foreground text-xs">
-            step {payload.completed} of {payload.total}
-          </p>
-          <ul className="mt-1 space-y-0.5">
-            {payload.steps.map((step) => (
-              <li className="flex items-center gap-1.5 text-xs" key={step.name}>
-                <Verdict status={step.status} />
-                <span className="text-foreground">{step.name}</span>
-                <span className="text-muted-foreground">{step.status}</span>
-              </li>
-            ))}
-          </ul>
-        </CardFrame>
-      );
+    }
   }
 }
