@@ -1,0 +1,164 @@
+name: Release z3 bundle
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer to bake into the rehearsal bundle
+        required: true
+        default: 0.0.0-rehearsal
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: false
+
+      - name: Resolve bundle version
+        id: version
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          package_version="$(node -p "require('./apps/server/package.json').version")"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "$package_version" != "$tag_version" ]]; then
+              echo "Release tag version '$tag_version' does not match apps/server/package.json version '$package_version' (tag '$GITHUB_REF_NAME')." >&2
+              echo "Bump apps/server/package.json before creating the release tag." >&2
+              exit 1
+            fi
+            version="$package_version"
+          else
+            version="$DISPATCH_VERSION"
+            echo "Rehearsal version '$version' deliberately overrides apps/server/package.json version '$package_version'; t3 --version will report 't3 v$package_version'."
+          fi
+
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid SemVer: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      # /z3 is deliberately baked in: it is the only supported Zerops mount,
+      # and Vite's client base path cannot be supplied by the server at runtime.
+      - name: Build web client
+        env:
+          VITE_BASE_PATH: /z3
+        run: vp run --filter @t3tools/web build
+
+      - name: Build server bundle
+        run: node apps/server/scripts/cli.ts build
+
+      - name: Pack bundle
+        id: pack
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          release_dir="${RUNNER_TEMP}/release-assets"
+          mkdir -p "$release_dir"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            node apps/server/scripts/cli.ts pack --out "$release_dir"
+          else
+            node apps/server/scripts/cli.ts pack --out "$release_dir" --app-version "$APP_VERSION"
+          fi
+
+          mapfile -d '' tarballs < <(find "$release_dir" -maxdepth 1 -type f -name '*.tgz' -print0)
+          if [[ "${#tarballs[@]}" -ne 1 ]]; then
+            echo "Expected pack to write exactly one tarball, found ${#tarballs[@]}" >&2
+            exit 1
+          fi
+
+          echo "tarball=${tarballs[0]}" >> "$GITHUB_OUTPUT"
+          echo "tarball_name=$(basename "${tarballs[0]}")" >> "$GITHUB_OUTPUT"
+          ls -lh "${tarballs[0]}"
+
+      - name: Verify tarball installation
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
+        run: |
+          install_prefix="$(mktemp -d "${RUNNER_TEMP}/z3-install.XXXXXX")"
+          cp "$TARBALL" "$install_prefix/$TARBALL_NAME"
+          cd "$install_prefix"
+          npm init -y
+          npm install "./$TARBALL_NAME"
+
+          installed_version="$(./node_modules/.bin/t3 --version)"
+          echo "Installed binary version: $installed_version"
+
+      - name: Write checksum
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          release_dir="$(dirname "$TARBALL")"
+          tarball_name="$(basename "$TARBALL")"
+          cd "$release_dir"
+          sha256sum "$tarball_name" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Stage verified release assets
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: z3-release-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            ${{ runner.temp }}/release-assets/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish GitHub release
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: z3-release-${{ needs.build.outputs.version }}
+          path: release-assets
+
+      - name: Verify downloaded release assets
+        run: |
+          cd release-assets
+          sha256sum -c SHA256SUMS
+
+      - name: Create GitHub release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --generate-notes --verify-tag
