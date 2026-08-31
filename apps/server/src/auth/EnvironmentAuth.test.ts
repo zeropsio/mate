@@ -130,6 +130,46 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
+  it.effect("accepts session cookies for HTTP and websocket auth outside Zerops", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* serverAuth.issueSession();
+      const request = makeCookieRequest(sessions.cookieName, issued.token);
+
+      const [httpSession, websocketSession] = yield* Effect.all([
+        serverAuth.authenticateHttpRequest(request),
+        serverAuth.authenticateWebSocketUpgrade(request),
+      ]);
+
+      expect(httpSession.sessionId).toBe(issued.sessionId);
+      expect(websocketSession.sessionId).toBe(issued.sessionId);
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("ignores session cookies for HTTP and websocket auth inside Zerops", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* serverAuth.issueSession();
+      const request = makeCookieRequest(sessions.cookieName, issued.token);
+
+      const [httpResult, websocketResult] = yield* Effect.all([
+        serverAuth.authenticateHttpRequest(request).pipe(Effect.result),
+        serverAuth.authenticateWebSocketUpgrade(request).pipe(Effect.result),
+      ]);
+
+      expect(httpResult._tag).toBe("Failure");
+      expect(websocketResult._tag).toBe("Failure");
+      if (httpResult._tag === "Failure") {
+        expect(httpResult.failure._tag).toBe("ServerAuthMissingCredentialError");
+      }
+      if (websocketResult._tag === "Failure") {
+        expect(websocketResult.failure._tag).toBe("ServerAuthMissingCredentialError");
+      }
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
+  );
+
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

@@ -3840,6 +3840,38 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("ignores a session cookie on Zerops HTTP and websocket routes", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const sessionStateResponse = yield* fetchEffect(sessionUrl);
+      const sessionState = yield* responseJsonEffect<{
+        readonly auth: { readonly sessionCookieName: string };
+      }>(sessionStateResponse);
+      const token = yield* getAuthenticatedBearerSessionToken();
+      const cookie = `${sessionState.auth.sessionCookieName}=${token}`;
+
+      const ticketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
+      const ticketResponse = yield* fetchEffect(ticketUrl, {
+        method: "POST",
+        headers: { cookie },
+      });
+      const ticketBody = yield* responseJsonEffect<{ readonly reason?: string }>(ticketResponse);
+
+      const websocketUrl = yield* getHttpServerUrl("/ws");
+      const websocketResponse = yield* fetchEffect(websocketUrl, { headers: { cookie } });
+      const websocketBody = yield* responseJsonEffect<{ readonly reason?: string }>(
+        websocketResponse,
+      );
+
+      assert.equal(ticketResponse.status, 401);
+      assert.equal(ticketBody.reason, "missing_credential");
+      assert.equal(websocketResponse.status, 401);
+      assert.equal(websocketBody.reason, "missing_credential");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("stops answering a foreign origin with a wildcard inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
@@ -3856,17 +3888,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       // No wildcard, no echo: the browser has nothing to accept.
       assert.equal(response.headers["access-control-allow-origin"], undefined);
+      assert.equal(response.headers["access-control-allow-credentials"], undefined);
+      assert.equal(response.headers.vary, undefined);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("keeps localhost and configured origins working inside a Zerops project", () =>
+  it.effect("allows localhost, configured and Zerops-issued origins without credentials", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({
-        config: { zerops: zeropsTestEnvironment(["https://app.zerops.io"]) },
+        config: { zerops: zeropsTestEnvironment(["https://console.example.com"]) },
       });
 
       const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
-      for (const origin of ["http://localhost:5733", "https://app.zerops.io"]) {
+      for (const origin of [
+        "http://localhost:5733",
+        "https://console.example.com",
+        "https://zcp-2338-8080.prg1.zerops.app",
+        "https://app.zerops.io",
+      ]) {
         const response = yield* fetchEffect(sessionUrl, {
           method: "OPTIONS",
           headers: {
@@ -3876,7 +3915,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         });
         assert.equal(response.status, 204);
-        assert.equal(response.headers["access-control-allow-origin"], origin);
+        assertBrowserApiCorsPreflightHeaders(response.headers, { origin });
+        assert.equal(response.headers.vary, "Origin");
       }
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -3899,6 +3939,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 403);
       assert.equal(body.code, "operation_forbidden");
       assert.equal(body.reason, "origin_not_allowed");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("allows a websocket upgrade from a sibling Zerops origin", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+
+      const wsUrl = yield* getHttpServerUrl("/ws");
+      const response = yield* fetchEffect(wsUrl, {
+        headers: { origin: "https://zcp-2338-8080.prg1.zerops.app" },
+      });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
+
+      // 401, not 403: the origin passed and the request reached authentication.
+      assert.equal(response.status, 401);
+      assert.equal(body.reason, "missing_credential");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

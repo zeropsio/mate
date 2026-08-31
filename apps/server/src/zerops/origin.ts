@@ -16,6 +16,12 @@
  *   can drive a real container. This is a product-level convenience, not a
  *   temporary hack, and it deliberately does NOT extend to `127.0.0.1`: the
  *   trust is on the hostname, the same rule the zcp welcome bridge uses.
+ * - an HTTPS subdomain of `zerops.app`, `zerops.dev` or `zerops.io`. This
+ *   Zerops-issued domain set mirrors the container nginx's `frame-ancestors`
+ *   boundary. It trusts every Zerops tenant, not only Zerops the vendor:
+ *   `https://evil.<some-container-host>.zerops.app` is allowed, and gains no
+ *   ambient authority only because a Zerops server refuses the browser cookie
+ *   it never issues and this CORS policy is uncredentialed.
  * - the two desktop shell origins.
  * - anything named in `T3CODE_ZEROPS_ALLOWED_ORIGINS`, matched exactly.
  *
@@ -29,6 +35,7 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
 /** The custom schemes the packaged desktop renderer is served from. */
 const DESKTOP_SHELL_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+const ZEROPS_BROWSER_ORIGIN_SUFFIXES = [".zerops.app", ".zerops.dev", ".zerops.io"] as const;
 
 const parseOrigin = (origin: string): URL | undefined => {
   try {
@@ -67,11 +74,19 @@ export const makeZeropsOriginAllowlist = (
       return true;
     }
     const parsed = parseOrigin(origin);
-    // `hostname`, never a suffix test: `localhost.evil.example` must not pass.
+    // The leading dot anchors every Zerops suffix below its apex:
+    // `evilzerops.app` and the bare `zerops.app` cannot pass.
     return (
       parsed !== undefined &&
-      parsed.hostname === "localhost" &&
-      (parsed.protocol === "http:" || parsed.protocol === "https:")
+      ((parsed.hostname === "localhost" &&
+        (parsed.protocol === "http:" || parsed.protocol === "https:")) ||
+        (parsed.protocol === "https:" &&
+          ZEROPS_BROWSER_ORIGIN_SUFFIXES.some(
+            (suffix) =>
+              parsed.hostname.endsWith(suffix) &&
+              parsed.hostname.length > suffix.length &&
+              !parsed.hostname.slice(0, -suffix.length).endsWith("."),
+          )))
     );
   };
 
