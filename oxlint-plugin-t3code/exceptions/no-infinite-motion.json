@@ -8,14 +8,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/clerk/ClerkUserProfilePage.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"animate-spin\"",
-    "owner": "karel",
-    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/files/FileBrowserPanel.tsx",
     "kind": "Literal",
     "fingerprint": "\"animate-spin\"",

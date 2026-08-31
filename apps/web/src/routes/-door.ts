@@ -1,9 +1,6 @@
 /**
- * `redirect` is the protected-route decision and deliberately points `/connect*` to `/pair`
- * under `requires-auth`; the real connect routes (`connect.tsx` and `/connect/callback`) must never
- * consume it. `shell` is the only home of the `/connect` carve-out. Trailing slashes and case are
- * normalized for pathname classification only; the classified pathname is never handed back to
- * the router.
+ * Trailing slashes and case are normalized for pathname classification only; the classified
+ * pathname is never handed back to the router.
  */
 import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -11,7 +8,6 @@ import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connect
 import type { AuthGateState } from "../environments/primary/auth";
 
 const PAIR_PATH_PATTERN = /^\/pair$/iu;
-const CONNECTION_PATH_PATTERN = /^\/connect(?:\/|$)/iu;
 
 export type DoorDecision = {
   readonly session: "authenticated" | "none";
@@ -110,8 +106,7 @@ export function resolveDoor(
     gate.status === "requires-auth" ? gate.auth.bootstrapMethods : ([] as const);
   const pathname = input.pathname.replace(/\/+$/u, "") || "/";
   const isPairPath = PAIR_PATH_PATTERN.test(pathname);
-  const isConnectionPath = CONNECTION_PATH_PATTERN.test(pathname);
-  const shell = isPairPath || isConnectionPath || !profile.hasAppGate ? "bare" : "app";
+  const shell = isPairPath || !profile.hasAppGate ? "bare" : "app";
   const redirect = isPairPath
     ? profile.zeropsDoor
       ? null

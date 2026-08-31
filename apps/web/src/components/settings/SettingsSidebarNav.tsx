@@ -34,7 +34,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "../ui/sidebar";
-import { T3ConnectSidebarAvatar, T3ConnectSidebarSignIn } from "../clerk/T3ConnectSidebarSignIn";
 import { SidebarUtilityMenu } from "../sidebar/SidebarChrome";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
@@ -286,13 +285,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-[var(--sidebar-content-inset)]">
-        <T3ConnectSidebarSignIn />
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <SidebarUtilityMenu />
-          </div>
-          <T3ConnectSidebarAvatar />
-        </div>
+        <SidebarUtilityMenu />
       </SidebarFooter>
     </>
   );
