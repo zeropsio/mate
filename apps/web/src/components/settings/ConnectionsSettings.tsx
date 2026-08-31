@@ -149,7 +149,7 @@ const PAIRING_SCOPE_OPTIONS: ReadonlyArray<{
   {
     scope: AuthRelayWriteScope,
     title: "Manage relay",
-    description: "Change managed tunnel connectivity.",
+    description: "Change relay connectivity and activity publication.",
   },
 ];
 
@@ -1031,7 +1031,7 @@ function SavedBackendListRow({
       : null;
   const metadataBits = [
     sshTarget ? `SSH ${formatDesktopSshTarget(sshTarget)}` : null,
-    environment.relayManaged ? "T3 Connect" : null,
+    environment.relayManaged ? "Legacy relay" : null,
   ].filter((value): value is string => value !== null);
 
   return (
@@ -1131,10 +1131,7 @@ function EmptyRemoteEnvironments() {
   );
 }
 
-// The T3 Connect relay-discovered environment list (managed tunnel +
-// account-wide device list) has no product path since the relay stopped
-// discovering environments — only the locally saved/paired list remains.
-function CloudRemoteEnvironmentRows({
+function SavedEnvironmentEmptyState({
   savedEnvironments,
 }: {
   readonly savedEnvironments: ReadonlyArray<EnvironmentPresentation>;
@@ -1775,7 +1772,7 @@ export function ConnectionsSettings() {
             onRemove={handleRemoveSavedBackend}
           />
         ))}
-        <CloudRemoteEnvironmentRows savedEnvironments={savedEnvironments} />
+        <SavedEnvironmentEmptyState savedEnvironments={savedEnvironments} />
       </SettingsSection>
     </SettingsPageContainer>
   );

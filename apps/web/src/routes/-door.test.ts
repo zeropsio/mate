@@ -223,7 +223,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "none",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -234,7 +234,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "none",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -317,7 +317,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "authenticated",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -328,7 +328,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "authenticated",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -519,7 +519,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "none",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -530,7 +530,7 @@ const GATE_EXPECTATIONS = [
         environmentCounts: BOTH_COUNTS,
         expected: {
           session: "none",
-          shell: "bare",
+          shell: "app",
           redirect: null,
           surface: "app",
           manualLink: null,
@@ -904,7 +904,7 @@ const NORMALIZED_PATH_ROWS = [
     pathname: "/connect/",
     expected: {
       session: "none",
-      shell: "bare",
+      shell: "app",
       redirect: null,
       surface: "app",
       manualLink: null,

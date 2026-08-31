@@ -157,7 +157,7 @@ function providerEnvironmentIcon(environment: EnvironmentPresentation) {
 
 function providerEnvironmentDetail(environment: EnvironmentPresentation): string {
   if (environment.entry.target._tag === "PrimaryConnectionTarget") return "Primary device";
-  if (environment.relayManaged) return "T3 Connect";
+  if (environment.relayManaged) return "Legacy relay";
   if (environment.entry.target._tag === "SshConnectionTarget") return "SSH";
   return environment.displayUrl ?? "Remote device";
 }

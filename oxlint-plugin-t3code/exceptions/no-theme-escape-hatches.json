@@ -792,14 +792,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-[10px] font-semibold tracking-[0.18em] text-blue-600 uppercase dark:text-blue-400\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ConnectCliAuthSurface awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/CommandPaletteResults.tsx",
     "kind": "Literal",
     "fingerprint": "\"text-blue-400\"",

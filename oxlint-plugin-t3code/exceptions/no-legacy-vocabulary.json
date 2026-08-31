@@ -456,38 +456,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/clerk/T3ConnectSidebarSignIn.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Sign in to T3 Connect",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Redirecting to authorize T3 Connect for your CLI…\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Sign in to continue authorizing T3 Connect for your CLI.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/components/cloud/ConnectCliAuthSurface.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Only enter this code in a terminal session you started yourself. Anyone holding it can link their machine to your T3 Connect account while it is valid.",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
     "path": "apps/web/src/components/projectScriptEditor.tsx",
     "kind": "JSXText",
     "fingerprint": "Run automatically on worktree creation",
@@ -720,22 +688,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/connection/platform.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Sign in to T3 Connect to connect this environment.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/web/src/connection/platform.ts",
-    "kind": "Literal",
-    "fingerprint": "\"The T3 Connect session is unavailable.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
     "path": "apps/web/src/environments/primary/auth.ts",
     "kind": "Literal",
     "fingerprint": "\"Enter a pairing token to continue.\"",
@@ -790,13 +742,5 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Sign in to T3 Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
   }
 ]
