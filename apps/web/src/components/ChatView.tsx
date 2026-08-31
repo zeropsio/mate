@@ -297,7 +297,7 @@ import {
 } from "./BranchToolbar.logic";
 import {
   getProviderStatusBannerKey,
-  ProviderStatusBanner,
+  ProviderStatusBannerRegion,
   shouldShowProviderStatusBanner,
 } from "./chat/ProviderStatusBanner";
 import {
@@ -6796,13 +6796,10 @@ function ChatViewContent(props: ChatViewProps) {
                 </div>
               </div>
             ) : null}
-            {/* Provider status overlays the timeline without changing its content height. */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col items-center">
-              <ProviderStatusBanner
-                status={visibleProviderStatus}
-                onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
-              />
-            </div>
+            <ProviderStatusBannerRegion
+              status={visibleProviderStatus}
+              onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
+            />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
