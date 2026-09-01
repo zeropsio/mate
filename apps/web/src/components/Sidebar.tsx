@@ -132,6 +132,7 @@ import {
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
+  openAddProjectFromSidebar,
   planPinnedReorder,
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
@@ -1756,8 +1757,13 @@ export default function Sidebar() {
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
   const newThreadContext = useHandleNewThread();
   const openAddProjectCommandPalette = useCallback(
-    () => openCommandPalette({ open: "add-project" }),
-    [],
+    () =>
+      openAddProjectFromSidebar({
+        isMobile,
+        closeMobile: () => setOpenMobile(false),
+        openPalette: () => openCommandPalette({ open: "add-project" }),
+      }),
+    [isMobile, setOpenMobile],
   );
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();

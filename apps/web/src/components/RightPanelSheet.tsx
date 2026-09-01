@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 
 import { RIGHT_PANEL_SHEET_CLASS_NAME } from "../rightPanelLayout";
-import { Sheet, SheetPopup } from "./ui/sheet";
+import { Sheet, SheetDescription, SheetHeader, SheetPopup, SheetTitle } from "./ui/sheet";
 
 export function RightPanelSheet(props: {
   children: ReactNode;
@@ -23,6 +23,10 @@ export function RightPanelSheet(props: {
         keepMounted
         className={RIGHT_PANEL_SHEET_CLASS_NAME}
       >
+        <SheetHeader className="sr-only">
+          <SheetTitle>Right panel</SheetTitle>
+          <SheetDescription>Displays project tools and details.</SheetDescription>
+        </SheetHeader>
         {props.children}
       </SheetPopup>
     </Sheet>

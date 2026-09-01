@@ -16,6 +16,7 @@ import {
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
+  openAddProjectFromSidebar,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveWorkingStartedAt,
@@ -55,6 +56,23 @@ import {
 } from "../types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("openAddProjectFromSidebar", () => {
+  it.each([
+    { isMobile: true, expected: ["close", "open"] },
+    { isMobile: false, expected: ["open"] },
+  ])("isMobile=$isMobile", ({ isMobile, expected }) => {
+    const events: string[] = [];
+
+    openAddProjectFromSidebar({
+      isMobile,
+      closeMobile: () => events.push("close"),
+      openPalette: () => events.push("open"),
+    });
+
+    expect(events).toEqual(expected);
+  });
+});
 
 describe("shouldShowProjectIdentityInSidebarSection", () => {
   it("does not repeat project identity inside nested live-work rows", () => {

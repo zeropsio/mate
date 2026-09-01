@@ -26,6 +26,15 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 // it small; cold opens still render instantly from the cached snapshot.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 3;
 
+export function openAddProjectFromSidebar(input: {
+  readonly isMobile: boolean;
+  readonly closeMobile: () => void;
+  readonly openPalette: () => void;
+}): void {
+  if (input.isMobile) input.closeMobile();
+  input.openPalette();
+}
+
 export type SidebarThreadSection = "pinned" | "active" | "snoozed" | "settled";
 
 /** Live-work rows already sit inside project/workspace branches; repeating the
