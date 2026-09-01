@@ -12,7 +12,9 @@ const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 
 const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+const personalTeamId = repoEnv.T3CODE_IOS_PERSONAL_TEAM_ID?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
 // Universal exports already contain their own rounded-square silhouette. Using one as an adaptive
@@ -27,6 +29,10 @@ if (
   throw new Error(
     "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
   );
+}
+
+if (isIosPersonalTeamBuild && personalTeamId && !APPLE_TEAM_ID_PATTERN.test(personalTeamId)) {
+  throw new Error("T3CODE_IOS_PERSONAL_TEAM_ID must be a 10-character Apple Team ID.");
 }
 
 const DEVELOPMENT_ASSETS = {
@@ -176,7 +182,9 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: true,
+    // Personal Team installs are short-lived local builds and cannot rely on
+    // the upstream-owned EAS project. Keep their JS bundle inside the binary.
+    enabled: !isIosPersonalTeamBuild,
     url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
@@ -188,10 +196,14 @@ const config: ExpoConfig = {
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
-    // does not fall back to a personal team (which cannot sign app groups,
-    // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
+    // Release automation retains its configured team. A sanctioned local
+    // Personal Team build supplies its own team through the gitignored env so
+    // clean prebuilds stay non-interactive.
+    ...(isIosPersonalTeamBuild
+      ? personalTeamId
+        ? { appleTeamId: personalTeamId }
+        : {}
+      : { appleTeamId: "ARK85ZXQ4Z" }),
     associatedDomains: [
       `applinks:${variant.relyingParty}`,
       `webcredentials:${variant.relyingParty}`,
@@ -237,6 +249,9 @@ const config: ExpoConfig = {
     favicon: variant.assets.appIcon,
   },
   plugins: [
+    // Entitlement mods run in reverse registration order. Register this first
+    // so its mod strips unsupported capabilities after every other plugin.
+    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
     "expo-asset",
     [
       "expo-font",
@@ -343,7 +358,6 @@ const config: ExpoConfig = {
     "./plugins/withAndroidModernAlertDialog.cjs",
     "./plugins/withAndroidPredictiveBackCompat.cjs",
     "./plugins/withAndroidTabletOrientation.cjs",
-    ...(isIosPersonalTeamBuild ? ["./plugins/withoutIosPersonalTeamCapabilities.cjs"] : []),
   ],
   extra: {
     appVariant: APP_VARIANT,
