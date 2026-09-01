@@ -15,6 +15,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as ZeropsAuthorizedRouteImport } from './routes/zerops_.authorized'
 import { Route as SettingsZeropsRouteImport } from './routes/settings.zerops'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
@@ -57,6 +58,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ChatRoute,
+} as any)
+const ZeropsAuthorizedRoute = ZeropsAuthorizedRouteImport.update({
+  id: '/zerops_/authorized',
+  path: '/zerops/authorized',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsZeropsRoute = SettingsZeropsRouteImport.update({
   id: '/zerops',
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops_/authorized': typeof ZeropsAuthorizedRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops/authorized'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops/authorized'
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -246,6 +257,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops_/authorized'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
@@ -258,6 +270,7 @@ export interface RootRouteChildren {
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
+  ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -303,6 +316,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/zerops_/authorized': {
+      id: '/zerops_/authorized'
+      path: '/zerops/authorized'
+      fullPath: '/zerops/authorized'
+      preLoaderRoute: typeof ZeropsAuthorizedRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/settings/zerops': {
       id: '/settings/zerops'
@@ -449,6 +469,7 @@ const rootRouteChildren: RootRouteChildren = {
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
+  ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

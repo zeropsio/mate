@@ -52,6 +52,10 @@ function PairRouteView() {
 
     case "app":
     case "draft-landing":
+    // Unreachable: the door decides the hand-over callback by pathname, and
+    // this route is not it. Named rather than left to fall through, so the
+    // switch stays total if either path ever moves.
+    case "zerops-handover":
       return <Navigate to="/" replace />;
   }
 }

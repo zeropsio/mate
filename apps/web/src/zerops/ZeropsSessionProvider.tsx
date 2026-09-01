@@ -36,6 +36,17 @@ export interface ZeropsSessionValue {
   readonly user: ZeropsUser | null;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
   readonly signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Adopts a refresh token handed back by `app.zerops.io` after the user
+   * signed in there — the end of the hand-over (`zerops/handover.ts`). Signing
+   * up and signing in with GitHub only work on that origin, so this is how a
+   * session arrives without a password ever being typed here.
+   */
+  readonly adoptHandover: (input: {
+    readonly refreshToken: string;
+    /** True when the account just claimed a pool project, so the picker is skipped. */
+    readonly zcpClaimed: boolean;
+  }) => Promise<void>;
   readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
   readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
@@ -119,6 +130,20 @@ export function ZeropsSessionProvider({
       status,
       user,
       organizations: user ? zeropsClientsFromUser(user) : [],
+      adoptHandover: async ({ refreshToken, zcpClaimed }) => {
+        const session = await client.adoptHandedOverSession(refreshToken);
+        const adopted = await client.fetchUser();
+        setUser(adopted);
+        setStatus("signed-in");
+        if (zcpClaimed) {
+          // The picker reads this to enter the provisioning wait for the
+          // project the claim handed over, instead of waiting for a candidate
+          // list to say so. It is a registration response in every way that
+          // consumer looks at: the org comes from `user`, the claim from the
+          // flag.
+          setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
+        }
+      },
       signIn: async (email, password) => {
         const response = await client.login(email, password);
         if (requiresZeropsTwoFactor(response.auth)) {

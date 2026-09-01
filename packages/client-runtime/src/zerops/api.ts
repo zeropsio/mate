@@ -343,6 +343,42 @@ export class ZeropsApiClient {
     this.#session = session;
   }
 
+  /**
+   * Turns a refresh token handed over by `app.zerops.io` into a stored
+   * session — the client end of the sign-in hand-over (`zerops/handover.ts`).
+   *
+   * The hand-over delivers one string and nothing else, which is enough: the
+   * platform's own `/authorize` route performs this exchange immediately after
+   * logging out, so it is proven to need no bearer. Unlike `#refreshSession`
+   * this never clears on failure: there was no session to lose, and a failed
+   * hand-over must leave a signed-out client signed out rather than looking
+   * like an expiry.
+   */
+  async adoptHandedOverSession(refreshToken: string): Promise<ZeropsSession> {
+    const refreshTokenId = refreshToken.trim();
+    if (!refreshTokenId) {
+      throw new ZeropsApiError(
+        "That Zerops sign-in carried no credential. Start again.",
+        "invalid-input",
+      );
+    }
+    const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshTokenId }),
+    });
+    if (!response.ok) {
+      throw await apiErrorFromResponse(response);
+    }
+    // Top level, not wrapped in `auth` the way `/auth/login` answers.
+    const session = (await response.json()) as ZeropsSession;
+    if (!isUsableZeropsSession(session)) {
+      throw new ZeropsApiError("Zerops returned an invalid sign-in session.", "unexpected");
+    }
+    await this.#setSession(session);
+    return session;
+  }
+
   async signOutLocally(): Promise<void> {
     await this.#setSession(null);
   }

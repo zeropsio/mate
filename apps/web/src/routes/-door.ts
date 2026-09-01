@@ -4,10 +4,17 @@
  */
 import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 
 import type { AuthGateState } from "../environments/primary/auth";
 
 const PAIR_PATH_PATTERN = /^\/pair$/iu;
+
+/**
+ * The Zerops sign-in callback, built from the contract both halves share so the
+ * two cannot drift.
+ */
+const HANDOVER_PATH_PATTERN = new RegExp(`^${ZEROPS_HANDOVER_CALLBACK_PATH}$`, "iu");
 
 export type DoorDecision = {
   readonly session: "authenticated" | "none";
@@ -27,7 +34,7 @@ export type DoorDecision = {
       } | null;
     }
   | {
-      readonly surface: "hosted-pairing" | "draft-landing" | "app";
+      readonly surface: "hosted-pairing" | "draft-landing" | "app" | "zerops-handover";
       readonly manualLink: null;
     }
 );
@@ -105,6 +112,23 @@ export function resolveDoor(
   const bootstrapMethods =
     gate.status === "requires-auth" ? gate.auth.bootstrapMethods : ([] as const);
   const pathname = input.pathname.replace(/\/+$/u, "") || "/";
+
+  // Decided before any gate is consulted, and never redirected. This route runs
+  // at the door: the user arrives from app.zerops.io with the credential in the
+  // fragment, and every other unauthenticated path is sent to /pair — which a
+  // fragment does not survive, leaving them on a sign-in form holding a
+  // credential nobody read. The gate it produces is the ordinary one, a moment
+  // later, once the exchange has run.
+  if (HANDOVER_PATH_PATTERN.test(pathname)) {
+    return {
+      session: profile.session,
+      shell: "bare",
+      redirect: null,
+      surface: "zerops-handover",
+      manualLink: null,
+    };
+  }
+
   const isPairPath = PAIR_PATH_PATTERN.test(pathname);
   const shell = isPairPath || !profile.hasAppGate ? "bare" : "app";
   const redirect = isPairPath
