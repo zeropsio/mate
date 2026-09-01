@@ -130,6 +130,138 @@ export const mergeCheckpointFiles = (
     )
     .toSorted((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 
+const prefixMetadataPath = (path: string, prefix: string): string => {
+  if (path === "/dev/null") {
+    return path;
+  }
+  if (path.startsWith('"') && path.endsWith('"')) {
+    return `"${prefix}${path.slice(1)}`;
+  }
+  return `${prefix}${path}`;
+};
+
+const prefixFileHeaderPath = (path: string, prefix: string): string => {
+  if (path === "/dev/null") {
+    return path;
+  }
+  if (path.startsWith('"a/') || path.startsWith('"b/')) {
+    return `${path.slice(0, 3)}${prefix}${path.slice(3)}`;
+  }
+  if (path.startsWith("a/") || path.startsWith("b/")) {
+    return `${path.slice(0, 2)}${prefix}${path.slice(2)}`;
+  }
+  return path;
+};
+
+const prefixDiffHeader = (line: string, prefix: string): string => {
+  const quoted = /^diff --git "a\/(.*)" "b\/(.*)"$/.exec(line);
+  if (quoted) {
+    return `diff --git "a/${prefix}${quoted[1]}" "b/${prefix}${quoted[2]}"`;
+  }
+
+  const plain = /^diff --git a\/(.*?) b\/(.*)$/.exec(line);
+  return plain ? `diff --git a/${prefix}${plain[1]} b/${prefix}${plain[2]}` : line;
+};
+
+const prefixBinaryHeader = (line: string, prefix: string): string => {
+  const quoted = /^Binary files "a\/(.*)" and "b\/(.*)" differ$/.exec(line);
+  if (quoted) {
+    return `Binary files "a/${prefix}${quoted[1]}" and "b/${prefix}${quoted[2]}" differ`;
+  }
+
+  const plain = /^Binary files a\/(.*?) and b\/(.*) differ$/.exec(line);
+  return plain ? `Binary files a/${prefix}${plain[1]} and b/${prefix}${plain[2]} differ` : line;
+};
+
+/** Prefixes Git patch metadata while leaving hunk bodies byte-for-byte intact. */
+const prefixUnifiedPatch = (patch: string, prefix: string): string => {
+  if (prefix.length === 0 || patch.length === 0) {
+    return patch;
+  }
+
+  let inFileMetadata = false;
+  return patch
+    .split("\n")
+    .map((rawLine) => {
+      const carriageReturn = rawLine.endsWith("\r") ? "\r" : "";
+      const line = carriageReturn.length > 0 ? rawLine.slice(0, -1) : rawLine;
+
+      if (line.startsWith("diff --git ")) {
+        inFileMetadata = true;
+        return `${prefixDiffHeader(line, prefix)}${carriageReturn}`;
+      }
+      if (!inFileMetadata) {
+        return rawLine;
+      }
+      if (line.startsWith("@@")) {
+        inFileMetadata = false;
+        return rawLine;
+      }
+      if (line === "GIT binary patch") {
+        inFileMetadata = false;
+        return rawLine;
+      }
+      if (line.startsWith("Binary files ")) {
+        inFileMetadata = false;
+        return `${prefixBinaryHeader(line, prefix)}${carriageReturn}`;
+      }
+      if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+        const marker = line.slice(0, 4);
+        const pathWithTimestamp = line.slice(4);
+        const timestampIndex = pathWithTimestamp.indexOf("\t");
+        const path =
+          timestampIndex === -1 ? pathWithTimestamp : pathWithTimestamp.slice(0, timestampIndex);
+        const timestamp = timestampIndex === -1 ? "" : pathWithTimestamp.slice(timestampIndex);
+        return `${marker}${prefixFileHeaderPath(path, prefix)}${timestamp}${carriageReturn}`;
+      }
+      for (const marker of ["rename from ", "rename to ", "copy from ", "copy to "] as const) {
+        if (line.startsWith(marker)) {
+          return `${marker}${prefixMetadataPath(line.slice(marker.length), prefix)}${carriageReturn}`;
+        }
+      }
+      return rawLine;
+    })
+    .join("\n");
+};
+
+/** Reads and joins the same checkpoint range from every repository it covers. */
+export const diffAcrossTargets = (
+  store: CheckpointStore.CheckpointStore["Service"],
+  input: {
+    readonly targets: ReadonlyArray<CheckpointTarget>;
+    readonly fromCheckpointRef: CheckpointRef;
+    readonly toCheckpointRef: CheckpointRef;
+    readonly fallbackFromToHead: boolean;
+    readonly ignoreWhitespace: boolean;
+  },
+) =>
+  Effect.forEach(
+    input.targets,
+    (target) =>
+      store
+        .diffCheckpoints({
+          cwd: target.cwd,
+          fromCheckpointRef: input.fromCheckpointRef,
+          toCheckpointRef: input.toCheckpointRef,
+          fallbackFromToHead: input.fallbackFromToHead,
+          ignoreWhitespace: input.ignoreWhitespace,
+        })
+        .pipe(Effect.map((patch) => prefixUnifiedPatch(patch, target.prefix))),
+    { concurrency: "unbounded" },
+  ).pipe(
+    Effect.map((patches) =>
+      patches.reduce(
+        (merged, patch) =>
+          patch.length === 0
+            ? merged
+            : merged.length === 0
+              ? patch
+              : `${merged}${merged.endsWith("\n") || patch.startsWith("\n") ? "" : "\n"}${patch}`,
+        "",
+      ),
+    ),
+  );
+
 export interface CaptureAcrossTargetsResult {
   /** The merged, prefixed, sorted turn diff. */
   readonly files: ReadonlyArray<CheckpointDiffFile>;

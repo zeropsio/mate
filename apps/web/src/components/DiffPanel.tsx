@@ -44,6 +44,7 @@ import { resolveThreadRouteRef } from "../threadRoutes";
 import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
+import { resolveCheckpointDiffAvailability } from "./DiffPanel.logic";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -233,6 +234,12 @@ export default function DiffPanel({
         : null,
     [selectedCheckpointTurnCount],
   );
+  const checkpointDiffAvailability = resolveCheckpointDiffAvailability({
+    hasActiveThread: activeThread !== null && activeThread !== undefined,
+    hasSelectedTurn: selectedTurn !== undefined,
+    isTurnScope: selectedTurnId !== null,
+    isGitRepo,
+  });
   const activeCheckpointDiff = useCheckpointDiff(
     {
       environmentId: activeThread?.environmentId ?? null,
@@ -242,7 +249,7 @@ export default function DiffPanel({
       ignoreWhitespace: diffIgnoreWhitespace,
       cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : null,
     },
-    { enabled: isGitRepo && selectedTurn !== undefined },
+    { enabled: checkpointDiffAvailability.enabled },
   );
   const primaryBranchDiffPreview = useEnvironmentQuery(
     selectedTurnId === null && activeThread && activeCwd
@@ -835,9 +842,10 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
-      ) : !isGitRepo ? (
+      ) : checkpointDiffAvailability.showNotRepository ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Turn diffs are unavailable because this project is not a git repository.
+          Working tree and branch changes are unavailable because this workspace is not one Git
+          repository. Saved turn diffs remain available.
         </div>
       ) : selectedTurnId !== null && orderedTurnDiffSummaries.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">

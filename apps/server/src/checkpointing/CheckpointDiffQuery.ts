@@ -22,6 +22,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { diffAcrossTargets, resolveCheckpointTargets } from "../zerops/ZeropsCheckpointTargets.ts";
+import { ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
 import {
   CheckpointDiffResultInvalidError,
   CheckpointRefUnavailableError,
@@ -78,6 +80,27 @@ function buildTurnDiffResult(
 export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const repositorySource = yield* Effect.serviceOption(ZeropsRepositorySource);
+
+  const diffCheckpointRange = Effect.fn("CheckpointDiffQuery.diffCheckpointRange")(
+    function* (input: {
+      readonly cwd: string;
+      readonly fromCheckpointRef: CheckpointRef;
+      readonly toCheckpointRef: CheckpointRef;
+      readonly ignoreWhitespace: boolean;
+    }) {
+      const repositories = Option.isNone(repositorySource)
+        ? ({ _tag: "disabled" } as const)
+        : yield* repositorySource.value.list;
+      return yield* diffAcrossTargets(checkpointStore, {
+        targets: resolveCheckpointTargets(input.cwd, repositories),
+        fromCheckpointRef: input.fromCheckpointRef,
+        toCheckpointRef: input.toCheckpointRef,
+        fallbackFromToHead: false,
+        ignoreWhitespace: input.ignoreWhitespace,
+      });
+    },
+  );
 
   const getTurnDiff: CheckpointDiffQuery["Service"]["getTurnDiff"] = Effect.fn("getTurnDiff")(
     function* (input) {
@@ -164,15 +187,12 @@ export const make = Effect.gen(function* () {
         });
       }
 
-      const diff = yield* checkpointStore
-        .diffCheckpoints({
-          cwd: workspaceCwd,
-          fromCheckpointRef,
-          toCheckpointRef,
-          fallbackFromToHead: false,
-          ignoreWhitespace,
-        })
-        .pipe(Effect.withSpan("checkpoint.turnDiff.diffCheckpoints"));
+      const diff = yield* diffCheckpointRange({
+        cwd: workspaceCwd,
+        fromCheckpointRef,
+        toCheckpointRef,
+        ignoreWhitespace,
+      }).pipe(Effect.withSpan("checkpoint.turnDiff.diffCheckpoints"));
 
       const turnDiff = buildTurnDiffResult(input, diff);
       if (!isTurnDiffResult(turnDiff)) {
@@ -254,15 +274,12 @@ export const make = Effect.gen(function* () {
       });
     }
 
-    const diff = yield* checkpointStore
-      .diffCheckpoints({
-        cwd: workspaceCwd,
-        fromCheckpointRef: checkpointRefForThreadTurn(input.threadId, 0),
-        toCheckpointRef: threadContext.value.toCheckpointRef as CheckpointRef,
-        fallbackFromToHead: false,
-        ignoreWhitespace,
-      })
-      .pipe(Effect.withSpan("checkpoint.fullThread.diffCheckpoints"));
+    const diff = yield* diffCheckpointRange({
+      cwd: workspaceCwd,
+      fromCheckpointRef: checkpointRefForThreadTurn(input.threadId, 0),
+      toCheckpointRef: threadContext.value.toCheckpointRef as CheckpointRef,
+      ignoreWhitespace,
+    }).pipe(Effect.withSpan("checkpoint.fullThread.diffCheckpoints"));
 
     const turnDiff = buildTurnDiffResult(
       {

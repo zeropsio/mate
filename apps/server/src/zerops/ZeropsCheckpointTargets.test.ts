@@ -16,6 +16,7 @@ import {
   UNTRACKED_PROBE_MAX_BYTES,
   captureAcrossTargets,
   captureBaselineAcrossTargets,
+  diffAcrossTargets,
   mergeCheckpointFiles,
   resolveCheckpointTargets,
   pruneThreadRefsAcrossTargets,
@@ -213,6 +214,64 @@ const fanOut = (
   store: { readonly service: CheckpointStore.CheckpointStore["Service"] },
   vcs: { readonly service: VcsProcess.VcsProcess["Service"] },
 ) => ({ store: store.service, vcsProcess: vcs.service });
+
+describe("diffAcrossTargets", () => {
+  it("merges two repositories into one host-prefixed patch without rewriting hunk content", () =>
+    Effect.gen(function* () {
+      const store = yield* makeStore({
+        diffByCwd: {
+          "/var/www/kanbandev": [
+            "diff --git a/src/old.ts b/src/new.ts",
+            "similarity index 90%",
+            "rename from src/old.ts",
+            "rename to src/new.ts",
+            "--- a/src/old.ts",
+            "+++ b/src/new.ts",
+            "@@ -1 +1 @@",
+            "--- a/header-looking-hunk-content.ts",
+            "+++ b/header-looking-hunk-content.ts",
+            "",
+          ].join("\n"),
+          "/var/www/apidev": diffFor("main.go"),
+        },
+      });
+
+      const result = yield* diffAcrossTargets(store.service, {
+        targets,
+        fromCheckpointRef: ref("refs/t3/checkpoints/x/turn/0"),
+        toCheckpointRef: ref("refs/t3/checkpoints/x/turn/1"),
+        fallbackFromToHead: false,
+        ignoreWhitespace: true,
+      });
+
+      assert.strictEqual(
+        result,
+        [
+          "diff --git a/kanbandev/src/old.ts b/kanbandev/src/new.ts",
+          "similarity index 90%",
+          "rename from kanbandev/src/old.ts",
+          "rename to kanbandev/src/new.ts",
+          "--- a/kanbandev/src/old.ts",
+          "+++ b/kanbandev/src/new.ts",
+          "@@ -1 +1 @@",
+          "--- a/header-looking-hunk-content.ts",
+          "+++ b/header-looking-hunk-content.ts",
+          "diff --git a/apidev/main.go b/apidev/main.go",
+          "--- a/apidev/main.go",
+          "+++ b/apidev/main.go",
+          "@@ -0,0 +1 @@",
+          "+one",
+          "",
+        ].join("\n"),
+      );
+      assert.deepStrictEqual(
+        (yield* Ref.get(store.calls))
+          .filter((call) => call.op === "diffCheckpoints")
+          .map((call) => call.cwd),
+        ["/var/www/kanbandev", "/var/www/apidev"],
+      );
+    }).pipe(Effect.runPromise));
+});
 
 describe("captureAcrossTargets", () => {
   it("captures once per repository and merges the diffs into one grouped list", () =>

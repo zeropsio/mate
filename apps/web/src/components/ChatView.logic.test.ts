@@ -13,6 +13,7 @@ import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
+  buildCheckpointRevertConfirmation,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
   buildThreadTurnInterruptInput,
@@ -43,6 +44,19 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+describe("checkpoint restore confirmation", () => {
+  it("warns about tracked and staged working changes before restore", () => {
+    expect(buildCheckpointRevertConfirmation(4)).toBe(
+      [
+        "Revert this thread to checkpoint 4?",
+        "This will discard newer messages and turn diffs in this thread.",
+        "Tracked and staged working changes in this thread's repositories will be restored to that checkpoint.",
+        "This action cannot be undone.",
+      ].join("\n"),
+    );
+  });
+});
 
 describe("draft hero submission transition", () => {
   it("does not dock the composer before a background submission", () => {

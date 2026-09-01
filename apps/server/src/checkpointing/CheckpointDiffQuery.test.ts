@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import { describe, expect } from "vite-plus/test";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
 import { checkpointRefForThreadTurn } from "./Utils.ts";
 import * as CheckpointDiffQuery from "./CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
@@ -232,6 +233,147 @@ describe("CheckpointDiffQuery.layer", () => {
         toTurnCount: 1,
         diff: "diff patch",
       });
+    }),
+  );
+
+  it.effect("fans out Zerops turn and full-thread diffs across mounted repositories", () =>
+    Effect.gen(function* () {
+      const projectId = ProjectId.make("project-zerops-fan-out");
+      const threadId = ThreadId.make("thread-zerops-fan-out");
+      const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+      const calls: Array<{
+        readonly cwd: string;
+        readonly fromCheckpointRef: CheckpointRef;
+        readonly toCheckpointRef: CheckpointRef;
+        readonly ignoreWhitespace: boolean;
+      }> = [];
+      const patchFor = (path: string) =>
+        `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+one\n`;
+      const threadCheckpointContext = makeThreadCheckpointContext({
+        projectId,
+        threadId,
+        workspaceRoot: "/var/www",
+        worktreePath: null,
+        checkpointTurnCount: 1,
+        checkpointRef: toCheckpointRef,
+      });
+
+      const checkpointStore: CheckpointStore.CheckpointStore["Service"] = {
+        isGitRepository: () => Effect.succeed(true),
+        captureCheckpoint: () => Effect.void,
+        hasCheckpointRef: () => Effect.succeed(true),
+        restoreCheckpoint: () => Effect.succeed(true),
+        diffCheckpoints: ({ cwd, fromCheckpointRef, toCheckpointRef, ignoreWhitespace }) =>
+          Effect.sync(() => {
+            calls.push({ cwd, fromCheckpointRef, toCheckpointRef, ignoreWhitespace });
+            return cwd.endsWith("kanbandev") ? patchFor("src/board.ts") : patchFor("main.go");
+          }),
+        deleteCheckpointRefs: () => Effect.void,
+      };
+
+      const layer = CheckpointDiffQuery.layer.pipe(
+        Layer.provideMerge(Layer.succeed(CheckpointStore.CheckpointStore, checkpointStore)),
+        Layer.provideMerge(
+          Layer.succeed(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+            getCommandReadModel: () =>
+              Effect.die("CheckpointDiffQuery should not request the command read model"),
+            getSnapshot: () =>
+              Effect.die("CheckpointDiffQuery should not request the full orchestration snapshot"),
+            getShellSnapshot: () =>
+              Effect.die("CheckpointDiffQuery should not request the orchestration shell snapshot"),
+            getArchivedShellSnapshot: () =>
+              Effect.die("CheckpointDiffQuery should not request archived shell snapshots"),
+            getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+            getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
+            getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+            getProjectShellById: () => Effect.succeed(Option.none()),
+            getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+            getThreadCheckpointContext: () => Effect.succeed(Option.some(threadCheckpointContext)),
+            getFullThreadDiffContext: () =>
+              Effect.succeed(
+                Option.some({
+                  threadId,
+                  projectId,
+                  workspaceRoot: "/var/www",
+                  worktreePath: null,
+                  latestCheckpointTurnCount: 1,
+                  toCheckpointRef,
+                }),
+              ),
+            getThreadShellById: () => Effect.succeed(Option.none()),
+            getThreadDetailById: () => Effect.succeed(Option.none()),
+            getThreadDetailSnapshot: () => Effect.succeed(Option.none()),
+            searchThreads: () => Effect.succeed({ matches: [] }),
+          }),
+        ),
+        Layer.provideMerge(
+          Layer.succeed(
+            ZeropsRepositorySource,
+            ZeropsRepositorySource.of({
+              list: Effect.succeed({
+                _tag: "available",
+                repositories: [
+                  {
+                    host: "kanbandev",
+                    mountPath: "/var/www/kanbandev",
+                    remotePath: "/var/www",
+                  },
+                  {
+                    host: "apidev",
+                    mountPath: "/var/www/apidev",
+                    remotePath: "/var/www",
+                  },
+                ],
+              }),
+              refresh: Effect.die("CheckpointDiffQuery must use the cached repository list"),
+            }),
+          ),
+        ),
+      );
+
+      const [turn, fullThread] = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* Effect.all([
+          query.getTurnDiff({
+            threadId,
+            fromTurnCount: 0,
+            toTurnCount: 1,
+            ignoreWhitespace: false,
+          }),
+          query.getFullThreadDiff({
+            threadId,
+            toTurnCount: 1,
+            ignoreWhitespace: false,
+          }),
+        ]);
+      }).pipe(Effect.provide(layer));
+
+      const expectedDiff = [
+        "diff --git a/kanbandev/src/board.ts b/kanbandev/src/board.ts",
+        "--- a/kanbandev/src/board.ts",
+        "+++ b/kanbandev/src/board.ts",
+        "@@ -0,0 +1 @@",
+        "+one",
+        "diff --git a/apidev/main.go b/apidev/main.go",
+        "--- a/apidev/main.go",
+        "+++ b/apidev/main.go",
+        "@@ -0,0 +1 @@",
+        "+one",
+        "",
+      ].join("\n");
+      expect(turn.diff).toBe(expectedDiff);
+      expect(fullThread.diff).toBe(expectedDiff);
+      expect(calls.map((call) => call.cwd).toSorted()).toEqual([
+        "/var/www/apidev",
+        "/var/www/apidev",
+        "/var/www/kanbandev",
+        "/var/www/kanbandev",
+      ]);
+      expect(calls.every((call) => call.ignoreWhitespace === false)).toBe(true);
+      expect(
+        calls.every((call) => call.fromCheckpointRef === checkpointRefForThreadTurn(threadId, 0)),
+      ).toBe(true);
+      expect(calls.every((call) => call.toCheckpointRef === toCheckpointRef)).toBe(true);
     }),
   );
 
