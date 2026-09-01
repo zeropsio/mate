@@ -94,6 +94,7 @@ import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
+  buildSidebarProjectThreadBranches,
   buildSidebarProjectSnapshots,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
@@ -181,6 +182,7 @@ import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1881,6 +1883,28 @@ export default function Sidebar() {
   // Project scope: one menu above the list. Scoping filters the list without
   // making the header width depend on the number or length of project names.
   const [projectScopeKey, setProjectScopeKey] = useState<string | null>(null);
+  const [collapsedProjectKeys, setCollapsedProjectKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [collapsedProjectMemberKeys, setCollapsedProjectMemberKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleProjectBranch = useCallback((projectKey: string) => {
+    setCollapsedProjectKeys((current) => {
+      const next = new Set(current);
+      if (next.has(projectKey)) next.delete(projectKey);
+      else next.add(projectKey);
+      return next;
+    });
+  }, []);
+  const toggleProjectMemberBranch = useCallback((memberKey: string) => {
+    setCollapsedProjectMemberKeys((current) => {
+      const next = new Set(current);
+      if (next.has(memberKey)) next.delete(memberKey);
+      else next.add(memberKey);
+      return next;
+    });
+  }, []);
   const scopedProjectGroup = useMemo(
     () =>
       projectScopeKey === null
@@ -2530,6 +2554,35 @@ export default function Sidebar() {
       getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     });
   }, [optimisticPinnedOrder, pinnedThreads]);
+  const projectHierarchyGroups = useMemo(
+    () => (scopedProjectGroup ? [scopedProjectGroup] : projectGroups),
+    [projectGroups, scopedProjectGroup],
+  );
+  const projectHierarchyThreads = useMemo(
+    () => [
+      ...orderedPinnedThreads.map((thread) => ({
+        thread,
+        environmentId: thread.environmentId,
+        projectId: thread.projectId,
+        sidebarSection: "pinned" as const,
+      })),
+      ...activeThreads.map((thread) => ({
+        thread,
+        environmentId: thread.environmentId,
+        projectId: thread.projectId,
+        sidebarSection: "active" as const,
+      })),
+    ],
+    [activeThreads, orderedPinnedThreads],
+  );
+  const projectThreadBranches = useMemo(
+    () =>
+      buildSidebarProjectThreadBranches({
+        projectGroups: projectHierarchyGroups,
+        threads: projectHierarchyThreads,
+      }),
+    [projectHierarchyGroups, projectHierarchyThreads],
+  );
   useEffect(() => {
     if (optimisticPinnedOrder === null) return;
     const canonical = pinnedThreads.filter((thread) =>
@@ -3535,13 +3588,19 @@ export default function Sidebar() {
                 closeDelay={0}
                 timeout={400}
               >
-                <ul
-                  id="sidebar-thread-search-results"
-                  role="listbox"
-                  aria-label="Thread search results"
-                  className="flex flex-col gap-px"
-                >
-                  {threadSearchResults.map((thread, index) => {
+                <SidebarProjectTree
+                  branches={[]}
+                  searchResults={threadSearchResults}
+                  activeThreadKey={routeThreadKey}
+                  collapsedProjectKeys={collapsedProjectKeys}
+                  collapsedMemberKeys={collapsedProjectMemberKeys}
+                  getThreadKey={(thread) =>
+                    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
+                  }
+                  onToggleProject={toggleProjectBranch}
+                  onToggleMember={toggleProjectMemberBranch}
+                  renderThread={() => null}
+                  renderSearchResult={(thread, index) => {
                     const threadKey = scopedThreadKey(
                       scopeThreadRef(thread.environmentId, thread.id),
                     );
@@ -3574,8 +3633,8 @@ export default function Sidebar() {
                         onSelect={() => selectThreadSearchResult(thread)}
                       />
                     );
-                  })}
-                </ul>
+                  }}
+                />
               </TooltipProvider>
             ) : (
               <p
@@ -3701,13 +3760,11 @@ export default function Sidebar() {
                       />
                     );
                   };
-                  // Draft block above everything, then the pinned block:
-                  // full cards above the inbox, closed by a thin divider (the
-                  // pin glyphs carry the meaning, so no header text). Both
-                  // vanish entirely at count 0.
-                  // Pinned rows render in the one shared pinned order; only
-                  // reorder-capable rows register as sortable (legacy-server
-                  // pins render in place as plain rows).
+                  // Drafts remain global. Live work is grouped by the hierarchy
+                  // the shell can prove: logical project, then its physical
+                  // environment/workspace member, then that member's threads.
+                  // Pinned rows retain their existing sortable behavior inside
+                  // the branch they belong to.
                   const items: ReactNode[] = [
                     <SidebarDraftBlock
                       key="draft-sessions"
@@ -3718,59 +3775,52 @@ export default function Sidebar() {
                       routeDraftId={routeDraftIdForRows}
                       onNavigateToDraft={navigateToDraft}
                     />,
-                    pinnedThreads.length > 0 ? (
-                      <li key="pinned-dnd" className="list-none">
-                        <DndContext
-                          sensors={pinnedDndSensors}
-                          collisionDetection={closestCenter}
-                          modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-                          onDragEnd={handlePinnedDragEnd}
-                        >
-                          <SortableContext
-                            items={orderedPinnedThreads
-                              .map((thread) =>
-                                scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-                              )
-                              .filter((threadKey) => reorderablePinnedKeys.has(threadKey))}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            <ul
-                              role="list"
-                              aria-label="Pinned threads"
-                              className="flex flex-col gap-px"
-                            >
-                              {orderedPinnedThreads.map((thread) => {
-                                const threadKey = scopedThreadKey(
-                                  scopeThreadRef(thread.environmentId, thread.id),
-                                );
-                                if (!reorderablePinnedKeys.has(threadKey)) {
-                                  return renderThreadRow(thread, "pinned");
-                                }
-                                return (
-                                  <SortablePinnedThreadRow key={threadKey} id={threadKey}>
-                                    {(bag) => renderThreadRow(thread, "pinned", bag)}
-                                  </SortablePinnedThreadRow>
-                                );
-                              })}
-                            </ul>
-                          </SortableContext>
-                        </DndContext>
-                      </li>
-                    ) : null,
+                    <DndContext
+                      key="project-thread-tree"
+                      sensors={pinnedDndSensors}
+                      collisionDetection={closestCenter}
+                      modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                      onDragEnd={handlePinnedDragEnd}
+                    >
+                      <SortableContext
+                        items={orderedPinnedThreads
+                          .map((thread) =>
+                            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                          )
+                          .filter((threadKey) => reorderablePinnedKeys.has(threadKey))}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <SidebarProjectTree
+                          branches={projectThreadBranches}
+                          searchResults={null}
+                          activeThreadKey={routeThreadKey}
+                          collapsedProjectKeys={collapsedProjectKeys}
+                          collapsedMemberKeys={collapsedProjectMemberKeys}
+                          getThreadKey={({ thread }) =>
+                            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))
+                          }
+                          onToggleProject={toggleProjectBranch}
+                          onToggleMember={toggleProjectMemberBranch}
+                          renderThread={({ thread, sidebarSection }) => {
+                            const threadKey = scopedThreadKey(
+                              scopeThreadRef(thread.environmentId, thread.id),
+                            );
+                            if (
+                              sidebarSection === "pinned" &&
+                              reorderablePinnedKeys.has(threadKey)
+                            ) {
+                              return (
+                                <SortablePinnedThreadRow key={threadKey} id={threadKey}>
+                                  {(bag) => renderThreadRow(thread, sidebarSection, bag)}
+                                </SortablePinnedThreadRow>
+                              );
+                            }
+                            return renderThreadRow(thread, sidebarSection);
+                          }}
+                        />
+                      </SortableContext>
+                    </DndContext>,
                   ];
-                  if (pinnedThreads.length > 0) {
-                    items.push(
-                      <li
-                        key="pinned-divider"
-                        aria-hidden
-                        data-testid="sidebar-pinned-divider"
-                        className="mx-2.5 my-1.5 h-px list-none bg-sidebar-border/60"
-                      />,
-                    );
-                  }
-                  for (const thread of activeThreads) {
-                    items.push(renderThreadRow(thread, "active"));
-                  }
                   // Snoozed shelf: between the inbox and Settled — out of the
                   // way, never gone. The header always renders while anything
                   // is snoozed (the count is the whole footprint when

@@ -1,4 +1,4 @@
-import type { EnvironmentId, ScopedProjectRef } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ScopedProjectRef } from "@t3tools/contracts";
 import { buildProjectGroups, type ProjectGroupingSettings } from "./logicalProject";
 import type { Project } from "./types";
 
@@ -23,6 +23,95 @@ export interface SidebarProjectPickerEntry {
   group: SidebarProjectSnapshot;
   targetProject: SidebarProjectGroupMember;
   isPreferred: boolean;
+}
+
+interface SidebarProjectThreadBranchSource {
+  readonly projectKey: string;
+  readonly displayName: string;
+  readonly memberProjects: ReadonlyArray<{
+    readonly id: ProjectId;
+    readonly environmentId: EnvironmentId;
+    readonly environmentLabel: string | null;
+    readonly workspaceRoot: string;
+    readonly title: string;
+  }>;
+}
+
+interface SidebarThreadBranchSource {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+}
+
+export interface SidebarProjectThreadMember<TThread extends SidebarThreadBranchSource> {
+  readonly key: string;
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly displayName: string;
+  readonly workspaceLabel: string;
+  readonly threads: ReadonlyArray<TThread>;
+}
+
+export interface SidebarProjectThreadBranch<TThread extends SidebarThreadBranchSource> {
+  readonly key: string;
+  readonly displayName: string;
+  readonly members: ReadonlyArray<SidebarProjectThreadMember<TThread>>;
+}
+
+function nonEmptyLabel(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function workspaceBasename(workspaceRoot: string): string | null {
+  const normalized = workspaceRoot.replaceAll("\\", "/").replace(/\/+$/, "");
+  return nonEmptyLabel(normalized.split("/").at(-1));
+}
+
+/**
+ * Builds only the hierarchy that the shell can prove. Platform project names
+ * are an optional presentation input; absent one, the environment descriptor
+ * label remains authoritative and the workspace basename is the final
+ * truthful fallback.
+ */
+export function buildSidebarProjectThreadBranches<
+  TThread extends SidebarThreadBranchSource,
+>(input: {
+  readonly projectGroups: ReadonlyArray<SidebarProjectThreadBranchSource>;
+  readonly threads: ReadonlyArray<TThread>;
+  readonly zeropsProjectNameByEnvironment?: ReadonlyMap<EnvironmentId, string>;
+}): ReadonlyArray<SidebarProjectThreadBranch<TThread>> {
+  const threadsByProject = new Map<string, TThread[]>();
+  for (const thread of input.threads) {
+    const key = `${thread.environmentId}:${thread.projectId}`;
+    const existing = threadsByProject.get(key);
+    if (existing) {
+      existing.push(thread);
+    } else {
+      threadsByProject.set(key, [thread]);
+    }
+  }
+
+  return input.projectGroups.map((group) => ({
+    key: group.projectKey,
+    displayName: group.displayName,
+    members: group.memberProjects.map((member) => {
+      const key = `${member.environmentId}:${member.id}`;
+      const workspaceLabel = workspaceBasename(member.workspaceRoot) ?? member.title;
+      const displayName =
+        nonEmptyLabel(input.zeropsProjectNameByEnvironment?.get(member.environmentId)) ??
+        nonEmptyLabel(member.environmentLabel) ??
+        nonEmptyLabel(workspaceLabel) ??
+        member.title;
+      return {
+        key,
+        environmentId: member.environmentId,
+        projectId: member.id,
+        displayName,
+        workspaceLabel,
+        threads: threadsByProject.get(key) ?? [],
+      };
+    }),
+  }));
 }
 
 export function buildPhysicalToLogicalProjectKeyMap(input: {
