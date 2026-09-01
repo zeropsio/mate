@@ -36,7 +36,7 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
         const actionTone =
           option.decision === "accept"
             ? "primary"
-            : option.decision === "acceptForSession"
+            : option.decision === "acceptForSession" || option.decision === "acceptAlways"
               ? "secondary"
               : "quiet";
         const variant =

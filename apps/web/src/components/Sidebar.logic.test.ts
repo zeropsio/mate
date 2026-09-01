@@ -32,6 +32,7 @@ import {
   sortProjectsForSidebar,
   sortScopedProjectsForSidebar,
   shouldCreateNewThreadInCurrentProject,
+  shouldShowProjectIdentityInSidebarSection,
   threadStatusPill,
   threadStatusRowPresentation,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
@@ -54,6 +55,15 @@ import {
 } from "../types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("shouldShowProjectIdentityInSidebarSection", () => {
+  it("does not repeat project identity inside nested live-work rows", () => {
+    expect(shouldShowProjectIdentityInSidebarSection("pinned")).toBe(false);
+    expect(shouldShowProjectIdentityInSidebarSection("active")).toBe(false);
+    expect(shouldShowProjectIdentityInSidebarSection("snoozed")).toBe(true);
+    expect(shouldShowProjectIdentityInSidebarSection("settled")).toBe(true);
+  });
+});
 
 describe("animatePinnedLayoutChanges", () => {
   const baseArgs: Parameters<AnimateLayoutChanges>[0] = {

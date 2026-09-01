@@ -26,6 +26,15 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 // it small; cold opens still render instantly from the cached snapshot.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 3;
 
+export type SidebarThreadSection = "pinned" | "active" | "snoozed" | "settled";
+
+/** Live-work rows already sit inside project/workspace branches; repeating the
+ * same project label in every card wastes the strongest line of hierarchy.
+ * Global shelves remain outside that tree and keep their identity context. */
+export function shouldShowProjectIdentityInSidebarSection(section: SidebarThreadSection): boolean {
+  return section === "snoozed" || section === "settled";
+}
+
 // The list already reaches its destination through sortable transforms while
 // the pointer is down. dnd-kit's default also animates the committed DOM order
 // after release, replaying the same movement across every affected row.

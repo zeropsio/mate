@@ -128,6 +128,10 @@ describe("ComposerPendingApprovalActions", () => {
     expect(markup).toContain("Always allow Safari");
     expect(markup).toContain(">Approve<");
     expect(markup).not.toContain("Always allow this session");
+    expect(buttonState.actions.find(({ decision }) => decision === "acceptAlways")).toMatchObject({
+      tone: "secondary",
+      variant: "secondary",
+    });
   });
 
   it("wraps provider-supplied approval labels without hiding their text", () => {
