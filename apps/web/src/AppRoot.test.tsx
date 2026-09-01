@@ -8,7 +8,7 @@ import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
 import { ZeropsSessionProvider } from "./zerops/ZeropsSessionProvider";
-import { AppRoot } from "./AppRoot";
+import { AppRoot, ZeropsProductHosts } from "./AppRoot";
 
 function childrenOf(node: unknown): ReadonlyArray<ReactNode> {
   return isValidElement(node)
@@ -17,25 +17,35 @@ function childrenOf(node: unknown): ReadonlyArray<ReactNode> {
 }
 
 describe("AppRoot", () => {
-  it("shares the application atom registry with routed UI and renderer-wide desktop hosts", () => {
+  it("keeps the Zerops account session around routed UI and renderer-wide hosts", () => {
     const root = AppRoot({ router: {} as AppRouter });
 
     expect(root.type).toBe(AppAtomRegistryProvider);
     const children = childrenOf(root);
-    expect(children).toHaveLength(4);
+    expect(children).toHaveLength(1);
     expect(isValidElement(children[0]) && children[0].type).toBe(ZeropsSessionProvider);
-    expect(isValidElement(children[1]) && children[1].type).toBe(PreviewAutomationHosts);
-    expect(isValidElement(children[2]) && children[2].type).toBe(ElectronBrowserHost);
-    expect(isValidElement(children[3]) && children[3].type).toBe(QuitHoldOverlay);
   });
 
-  it("keeps the Zerops session around the router and out of the desktop hosts", () => {
-    // Zerops identity is independent of the environment auth gate, so it must
-    // outlive route transitions — but the preview and Electron hosts have no
-    // use for it and must not end up inside it.
+  it("keeps the router and the signed-in host gate inside the session boundary", () => {
     const routed = childrenOf(childrenOf(AppRoot({ router: {} as AppRouter }))[0]);
 
-    expect(routed).toHaveLength(1);
+    expect(routed).toHaveLength(2);
     expect(isValidElement(routed[0]) && routed[0].type).toBe(RouterProvider);
+  });
+
+  it.each(["loading", "signed-out", "totp-required"] as const)(
+    "mounts no renderer-wide product host while the account is %s",
+    (status) => {
+      expect(ZeropsProductHosts({ status })).toBeNull();
+    },
+  );
+
+  it("mounts every renderer-wide product host only after account sign-in", () => {
+    const hosts = childrenOf(ZeropsProductHosts({ status: "signed-in" }));
+
+    expect(hosts).toHaveLength(3);
+    expect(isValidElement(hosts[0]) && hosts[0].type).toBe(PreviewAutomationHosts);
+    expect(isValidElement(hosts[1]) && hosts[1].type).toBe(ElectronBrowserHost);
+    expect(isValidElement(hosts[2]) && hosts[2].type).toBe(QuitHoldOverlay);
   });
 });

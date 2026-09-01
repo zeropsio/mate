@@ -188,7 +188,12 @@ export const Route = createFileRoute("/_chat")({
       environmentCount: 0,
     });
     if (door.redirect !== null) {
-      throw redirect({ to: door.redirect, replace: true });
+      // The product entry is Zerops account sign-in. Standalone pairing stays
+      // available at `/pair`, but it must not replace the login just because a
+      // fresh browser opened the bare localhost origin.
+      const destination =
+        location.pathname === "/" && door.redirect === "/pair" ? "/zerops" : door.redirect;
+      throw redirect({ to: destination, replace: true });
     }
   },
   component: ChatRouteLayout,

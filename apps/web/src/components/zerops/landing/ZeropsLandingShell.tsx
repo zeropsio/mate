@@ -3,8 +3,9 @@
  * it can hold (sign in, sign up, two-factor). Every decision arrives as a
  * prop, so this file renders without a session, a router or a network.
  *
- * The frame always keeps a way out to upstream's manual connect flow — a
- * non-Zerops user must never be locked out of their own client.
+ * The reusable frame may keep a way out to upstream's manual connect flow.
+ * The outer z3 account gate deliberately omits it: signed-out users see one
+ * product and one next action, while the legacy pairing route stays separate.
  */
 
 import { ExternalLinkIcon } from "lucide-react";
@@ -26,7 +27,7 @@ export function ZeropsLandingShell({
   readonly title: string;
   readonly description: string;
   readonly children: ReactNode;
-  readonly onManualConnect: () => void;
+  readonly onManualConnect?: (() => void) | undefined;
 }) {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
@@ -46,16 +47,18 @@ export function ZeropsLandingShell({
               {children}
             </div>
 
-            <p className="text-center text-xs text-muted-foreground">
-              Not using Zerops?{" "}
-              <button
-                type="button"
-                className="underline underline-offset-2 hover:text-foreground"
-                onClick={onManualConnect}
-              >
-                Connect a backend manually
-              </button>
-            </p>
+            {onManualConnect === undefined ? null : (
+              <p className="text-center text-xs text-muted-foreground">
+                Not using Zerops?{" "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={onManualConnect}
+                >
+                  Connect a backend manually
+                </button>
+              </p>
+            )}
           </div>
         </div>
       </div>

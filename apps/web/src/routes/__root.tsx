@@ -18,6 +18,7 @@ import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
+import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -56,7 +57,9 @@ import {
   type KeybindingsUpdateToastController,
 } from "../components/KeybindingsUpdateToast.logic";
 import { resolveDoor } from "./-door";
+import { resolveZeropsAccountGate } from "./-accountGate";
 import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -93,9 +96,15 @@ export const Route = createRootRoute({
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
+  const { status: zeropsSessionStatus } = useZeropsSession();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: 0,
+  });
+  const accountGate = resolveZeropsAccountGate({
+    accountRequired: authGateState.status === "hosted-static",
+    pathname,
+    status: zeropsSessionStatus,
   });
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
 
@@ -107,6 +116,19 @@ function RootRouteView() {
       window.cancelAnimationFrame(frame);
     };
   }, [pathname]);
+
+  // The identity callback must consume its URL fragment before any account
+  // gate can redirect or replace it.
+  if (accountGate === "handover") {
+    return <Outlet />;
+  }
+
+  // Fail closed before the route outlet, sidebar, environment bootstrap and
+  // every other product coordinator mounts. Deep links therefore expose the
+  // same one-purpose login surface as `/`.
+  if (accountGate === "auth-only") {
+    return <ZeropsHostedLanding exclusive manualFallback={null} />;
+  }
 
   if (door.shell === "bare") {
     return (

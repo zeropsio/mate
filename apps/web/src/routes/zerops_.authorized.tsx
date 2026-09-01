@@ -59,13 +59,13 @@ function ZeropsHandoverCallback() {
   const started = useRef(false);
 
   useEffect(() => {
-    // Strict mode mounts twice, and the exchange must not run twice: the
-    // platform's refresh token may be single-use.
+    // Strict mode mounts twice; a personal token must still only be adopted
+    // once during this callback.
     if (started.current) return;
     started.current = true;
 
     if (outcome.kind === "absent") {
-      void navigate({ to: "/", replace: true });
+      void navigate({ to: "/zerops", replace: true });
       return;
     }
     if (outcome.kind === "mismatched") {
@@ -91,7 +91,7 @@ function ZeropsHandoverCallback() {
       clientId: outcome.clientId,
       zcpClaimed: outcome.zcpClaimed,
     })
-      .then(() => navigate({ to: "/", replace: true }))
+      .then(() => navigate({ to: "/zerops", replace: true }))
       .catch((cause: unknown) => {
         setState({ kind: "failed", message: zeropsErrorMessage(cause) });
       });
@@ -120,7 +120,7 @@ function ZeropsHandoverCallback() {
               type="button"
               className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
               onClick={() => {
-                void navigate({ to: "/", replace: true });
+                void navigate({ to: "/zerops", replace: true });
               }}
             >
               Back to Zerops Code

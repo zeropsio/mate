@@ -1,17 +1,11 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { ZeropsProjectsPage } from "../components/zerops/ZeropsProjectsPage";
-import { resolveDoor } from "./-door";
+import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 
 export const Route = createFileRoute("/zerops")({
-  beforeLoad: async ({ context, location }) => {
-    const door = resolveDoor(context.authGateState, {
-      pathname: location.pathname,
-      environmentCount: 0,
-    });
-    if (door.redirect !== null) {
-      throw redirect({ to: door.redirect, replace: true });
-    }
-  },
-  component: ZeropsProjectsPage,
+  component: ZeropsRoute,
 });
+
+function ZeropsRoute() {
+  return <ZeropsHostedLanding exclusive manualFallback={null} />;
+}

@@ -25,7 +25,7 @@
  * 2. **The token comes back in the fragment, and only against a nonce this
  *    browser issued.** A fragment never reaches a server, so it stays out
  *    of access logs and `Referer`. The nonce is what stops a crafted
- *    `#refreshToken=…` link signing this browser into someone else's account —
+ *    `#token=…` link signing this browser into someone else's account —
  *    which is why `readZeropsHandover` takes the expected nonce as a parameter
  *    rather than leaving the check to its callers.
  *

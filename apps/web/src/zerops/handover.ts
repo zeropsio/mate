@@ -6,7 +6,7 @@
  * and somewhere to keep it while the tab navigates to `app.zerops.io` and
  * back.
  *
- * **Why the nonce is stored at all.** Without it, `…/zerops/authorized#refreshToken=<attacker's>`
+ * **Why the nonce is stored at all.** Without it, `…/zerops/authorized#token=<attacker's>`
  * is a working link: whoever opens it signs this browser into the attacker's
  * account and then works inside it. The nonce makes the callback answerable
  * only to a request this tab actually started.

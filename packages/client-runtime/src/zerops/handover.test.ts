@@ -83,7 +83,7 @@ describe("readZeropsHandover", () => {
 
   describe("refuses anything it did not ask for", () => {
     // Every row must come back `mismatched` and must NOT surface the token: a
-    // crafted `#refreshToken=…` link would otherwise sign this browser into
+    // crafted `#token=…` link would otherwise sign this browser into
     // the attacker's account, and the victim would work inside it.
     const rows: ReadonlyArray<{
       readonly name: string;

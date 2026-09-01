@@ -24,6 +24,17 @@ describe("ZeropsLandingShell", () => {
     expect(markup).toContain("Connect a backend manually");
   });
 
+  it("hides manual backend onboarding in the exclusive Zerops account gate", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsLandingShell title="Sign in to Zerops" description="Sign in">
+        <ZeropsSignInForm busy={false} error={null} onSubmit={noop} onSwitchToRegister={noop} />
+      </ZeropsLandingShell>,
+    );
+
+    expect(markup).toContain("Sign in to Zerops");
+    expect(markup).not.toContain("Connect a backend manually");
+  });
+
   it("asks for an email and a password, and offers sign-up", () => {
     const markup = renderToStaticMarkup(
       <ZeropsSignInForm busy={false} error={null} onSubmit={noop} onSwitchToRegister={noop} />,

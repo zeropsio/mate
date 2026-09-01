@@ -8,6 +8,7 @@ import { isZeropsCaptchaRejection } from "@t3tools/client-runtime/zerops";
 import { useState, type ReactNode } from "react";
 
 import { Spinner } from "../../ui/spinner";
+import { isElectron } from "~/env";
 import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsTurnstile } from "~/zerops/turnstile";
 
@@ -33,7 +34,13 @@ function openZeropsSignUpTab(): void {
   window.open(ZEROPS_GUI_REGISTRATION_URL, "_blank", "noopener,noreferrer");
 }
 
-export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallback: ReactNode }) {
+export function ZeropsHostedLanding({
+  exclusive = false,
+  manualFallback,
+}: {
+  readonly exclusive?: boolean;
+  readonly manualFallback: ReactNode;
+}) {
   const { status, signIn, register, verifyTotp } = useZeropsSession();
   const [mode, setMode] = useState<LandingMode>("sign-in");
   const [showManual, setShowManual] = useState(false);
@@ -45,7 +52,7 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
   const [captchaRefusal, setCaptchaRefusal] = useState<string | null>(null);
   const turnstile = useZeropsTurnstile();
 
-  if (showManual) {
+  if (showManual && !exclusive) {
     return <>{manualFallback}</>;
   }
 
@@ -79,13 +86,14 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
   const openManual = () => {
     setShowManual(true);
   };
+  const manualConnect = exclusive ? undefined : openManual;
 
   if (status === "loading") {
     return (
       <ZeropsLandingShell
         title="Zerops Code"
         description="Checking your Zerops session…"
-        onManualConnect={openManual}
+        onManualConnect={manualConnect}
       >
         <div className="flex justify-center py-4">
           <Spinner className="size-5" />
@@ -99,7 +107,7 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
       <ZeropsLandingShell
         title="One more step"
         description="Enter the code from your authenticator app."
-        onManualConnect={openManual}
+        onManualConnect={manualConnect}
       >
         <ZeropsTotpForm
           busy={busy}
@@ -122,7 +130,7 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
       <ZeropsLandingShell
         title="Create a Zerops account"
         description="Your agent runs inside your own Zerops project."
-        onManualConnect={openManual}
+        onManualConnect={manualConnect}
       >
         {unavailable === null ? (
           <ZeropsRegisterForm
@@ -156,7 +164,7 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
       <ZeropsLandingShell
         title="Sign in to Zerops"
         description="Pick a project and start talking to the agent inside it."
-        onManualConnect={openManual}
+        onManualConnect={manualConnect}
       >
         <ZeropsHandedOffBanner onOpenSignUpAgain={openZeropsSignUpTab} />
         <ZeropsSignInForm
@@ -178,25 +186,9 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
     <ZeropsLandingShell
       title="Sign in to Zerops"
       description="Pick a project and start talking to the agent inside it."
-      onManualConnect={openManual}
+      onManualConnect={manualConnect}
     >
-      <ZeropsHandoverActions
-        onContinue={() => {
-          // A full-page navigation in this tab, never a new one: the callback
-          // reads the nonce back out of this tab's storage.
-          window.location.href = startZeropsHandover();
-        }}
-        onCreateAccount={() => {
-          window.location.href = startZeropsHandover({ intent: "register" });
-        }}
-      />
-      <ZeropsPasswordDisclosure
-        open={showPasswordForm}
-        onToggle={() => {
-          setError(null);
-          setShowPasswordForm((open) => !open);
-        }}
-      >
+      {isElectron ? (
         <ZeropsSignInForm
           busy={busy}
           error={error}
@@ -208,7 +200,39 @@ export function ZeropsHostedLanding({ manualFallback }: { readonly manualFallbac
             setMode("register");
           }}
         />
-      </ZeropsPasswordDisclosure>
+      ) : (
+        <>
+          <ZeropsHandoverActions
+            onContinue={() => {
+              // A full-page navigation in this tab, never a new one: the callback
+              // reads the nonce back out of this tab's storage.
+              window.location.href = startZeropsHandover();
+            }}
+            onCreateAccount={() => {
+              window.location.href = startZeropsHandover({ intent: "register" });
+            }}
+          />
+          <ZeropsPasswordDisclosure
+            open={showPasswordForm}
+            onToggle={() => {
+              setError(null);
+              setShowPasswordForm((open) => !open);
+            }}
+          >
+            <ZeropsSignInForm
+              busy={busy}
+              error={error}
+              onSubmit={({ email, password }) => {
+                run(() => signIn(email, password));
+              }}
+              onSwitchToRegister={() => {
+                setError(null);
+                setMode("register");
+              }}
+            />
+          </ZeropsPasswordDisclosure>
+        </>
+      )}
     </ZeropsLandingShell>
   );
 }
