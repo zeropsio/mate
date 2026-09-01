@@ -30,6 +30,7 @@ dist-electron/
 apps/desktop/prod-resources/web/
 .electron-runtime/
 .showcase/
+apps/mobile/.build/
 apps/mobile/.showcase/
 artifacts/app-store/screenshots/
 artifacts/web-showcase/
