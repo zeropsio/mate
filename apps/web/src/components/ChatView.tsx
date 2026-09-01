@@ -3380,6 +3380,13 @@ function ChatViewContent(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
+  useEffect(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().ensureZeropsDefault(activeThreadRef, {
+      topology: zeropsChrome.panel,
+      usesSheet: shouldUseRightPanelSheet,
+    });
+  }, [activeThreadRef, shouldUseRightPanelSheet, zeropsChrome.panel]);
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;

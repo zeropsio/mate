@@ -16,10 +16,153 @@ const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"))
 const refB = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-B"));
 
 beforeEach(() => {
-  useRightPanelStore.setState({ byThreadKey: {} });
+  useRightPanelStore.setState({
+    byThreadKey: {},
+    zeropsDefaultHandledByThreadKey: {},
+  });
 });
 
 describe("rightPanelStore", () => {
+  it("defaults Zerops once per untouched scoped thread", () => {
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "zerops",
+      surfaces: [{ id: "zerops", kind: "zerops" }],
+    });
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
+      "env-1:thread-A": true,
+    });
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+  });
+
+  it("does not replace an existing surface and remembers that choice", () => {
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "files",
+      surfaces: [{ id: "files", kind: "files" }],
+    });
+
+    useRightPanelStore.getState().closeSurface(refA, "files");
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+  });
+
+  it("remembers explicit close and Zerops tab removal", () => {
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+    useRightPanelStore.getState().close(refA);
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).isOpen,
+    ).toBe(false);
+
+    useRightPanelStore.getState().closeSurface(refA, "zerops");
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
+      "env-1:thread-A": true,
+    });
+  });
+
+  it("remembers a tab removal that happens before topology resolves", () => {
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().closeSurface(refA, "files");
+
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
+      "env-1:thread-A": true,
+    });
+  });
+
+  it.each([
+    { topology: "available" as const, usesSheet: true },
+    { topology: "unknown" as const, usesSheet: false },
+    { topology: "unavailable" as const, usesSheet: false },
+  ])("does not auto-open for $topology with usesSheet=$usesSheet", (input) => {
+    useRightPanelStore.getState().ensureZeropsDefault(refA, input);
+
+    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({});
+  });
+
+  it("migrates prior panel choices as already handled and preserves persisted markers", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: false,
+            activeSurfaceId: "files",
+            surfaces: [{ id: "files", kind: "files" }],
+          },
+        },
+        zeropsDefaultHandledByThreadKey: {
+          "env-1:thread-B": true,
+          invalid: false,
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: false,
+          activeSurfaceId: "files",
+          surfaces: [{ id: "files", kind: "files" }],
+        },
+      },
+      zeropsDefaultHandledByThreadKey: {
+        "env-1:thread-A": true,
+        "env-1:thread-B": true,
+      },
+    });
+  });
+
   it("drops the legacy singleton terminal surface during migration", () => {
     expect(
       migratePersistedRightPanelState({
@@ -41,6 +184,7 @@ describe("rightPanelStore", () => {
           surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
         },
       },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
     });
   });
 
@@ -71,6 +215,7 @@ describe("rightPanelStore", () => {
           ],
         },
       },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
     });
   });
 
@@ -101,6 +246,7 @@ describe("rightPanelStore", () => {
           ],
         },
       },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
     });
   });
 
@@ -135,6 +281,10 @@ describe("rightPanelStore", () => {
           activeSurfaceId: "diff",
           surfaces: [{ id: "diff", kind: "diff" }],
         },
+      },
+      zeropsDefaultHandledByThreadKey: {
+        "env-1:thread-A": true,
+        "env-1:thread-B": true,
       },
     });
   });
@@ -200,6 +350,11 @@ describe("rightPanelStore", () => {
           surfaces: [{ id: "zerops", kind: "zerops" }],
         },
       },
+      zeropsDefaultHandledByThreadKey: {
+        "env-1:thread-A": true,
+        "env-1:thread-B": true,
+        "env-1:thread-C": true,
+      },
     });
   });
 
@@ -224,6 +379,7 @@ describe("rightPanelStore", () => {
           surfaces: [{ id: "zerops", kind: "zerops" }],
         },
       },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
     });
   });
 
