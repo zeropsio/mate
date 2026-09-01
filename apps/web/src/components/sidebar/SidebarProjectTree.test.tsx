@@ -174,16 +174,49 @@ describe("SidebarProjectTree", () => {
     },
   );
 
-  it("keeps non-Zerops fallbacks and non-generic logical project names", () => {
-    feedState.topologies.set(environmentId, {
-      ...topology("Ignored project", 0),
-      available: false,
-      project: undefined,
-    });
+  it("coalesces generic Zerops branches into one truthful Projects section", () => {
+    const secondEnvironmentId = EnvironmentId.make("environment-two");
+    const secondProjectId = ProjectId.make("project-two");
+    const secondThread: FixtureThread = {
+      id: ThreadId.make("thread-second"),
+      environmentId: secondEnvironmentId,
+      projectId: secondProjectId,
+      title: "Second project thread",
+    };
+    feedState.topologies.set(environmentId, topology("zerops-xyz", 2));
+    feedState.topologies.set(secondEnvironmentId, topology("zerops-code", 2));
+    const genericBranches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
+      {
+        key: "logical-project-one",
+        displayName: "www",
+        members: [
+          {
+            ...branches[0]!.members[0]!,
+            displayName: "node-id-1.runtime.zcp.zerops",
+            workspaceLabel: "www",
+            threads: [activeThread],
+          },
+        ],
+      },
+      {
+        key: "logical-project-two",
+        displayName: "www",
+        members: [
+          {
+            key: "environment-two:project-two",
+            environmentId: secondEnvironmentId,
+            projectId: secondProjectId,
+            displayName: "node-id-2.runtime.zcp.zerops",
+            workspaceLabel: "www",
+            threads: [secondThread],
+          },
+        ],
+      },
+    ];
 
-    const fallbackMarkup = renderToStaticMarkup(
+    const markup = renderToStaticMarkup(
       <SidebarProjectTree
-        branches={branches}
+        branches={genericBranches}
         searchResults={null}
         activeThreadKey={null}
         collapsedProjectKeys={new Set()}
@@ -195,10 +228,47 @@ describe("SidebarProjectTree", () => {
       />,
     );
 
-    expect(fallbackMarkup).toContain(">Logical project</span>");
+    expect(markup.match(/>Projects<\/span>/gu)).toHaveLength(1);
+    expect(markup).toContain("2 workspaces");
+    expect(markup).toContain("zerops-xyz");
+    expect(markup).toContain("zerops-code");
+    expect(markup.match(/2 services · zcp/gu)).toHaveLength(2);
+    expect(markup).toContain("Active thread");
+    expect(markup).toContain("Second project thread");
+    expect(markup).not.toContain("node-id-1.runtime.zcp.zerops");
+    expect(markup).not.toContain("node-id-2.runtime.zcp.zerops");
+    expect(markup).not.toContain("1 workspace");
+  });
+
+  it("keeps non-Zerops fallbacks and non-generic logical project names", () => {
+    feedState.topologies.set(environmentId, {
+      ...topology("Ignored project", 0),
+      available: false,
+      project: undefined,
+    });
+    const genericFallbackBranches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
+      { ...branches[0]!, displayName: "www" },
+    ];
+
+    const fallbackMarkup = renderToStaticMarkup(
+      <SidebarProjectTree
+        branches={genericFallbackBranches}
+        searchResults={null}
+        activeThreadKey={null}
+        collapsedProjectKeys={new Set()}
+        collapsedMemberKeys={new Set()}
+        getThreadKey={threadKey}
+        onToggleProject={vi.fn()}
+        onToggleMember={vi.fn()}
+        renderThread={renderThread}
+      />,
+    );
+
+    expect(fallbackMarkup).toContain(">www</span>");
     expect(fallbackMarkup).toContain(">Development</span>");
     expect(fallbackMarkup).toContain("2 threads");
     expect(fallbackMarkup).not.toContain("· zcp");
+    expect(fallbackMarkup).not.toContain(">Projects</span>");
 
     feedState.topologies.set(environmentId, topology("Todo dev", 0));
     const namedProjectMarkup = renderToStaticMarkup(

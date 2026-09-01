@@ -24,6 +24,8 @@ interface SidebarProjectTreeProps<TThread extends SidebarProjectTreeThread> {
   readonly renderSearchResult?: (thread: TThread, index: number) => ReactNode;
 }
 
+const GENERIC_ZEROPS_PROJECTS_KEY = "sidebar:generic-zerops-projects";
+
 export function SidebarProjectTree<TThread extends SidebarProjectTreeThread>(
   props: SidebarProjectTreeProps<TThread>,
 ) {
@@ -43,18 +45,18 @@ export function SidebarProjectTree<TThread extends SidebarProjectTreeThread>(
     );
   }
 
+  const members = props.branches.flatMap((project) => project.members);
+
   return (
     <li className="list-none">
       <ul role="list" aria-label="Projects and threads" className="flex flex-col gap-1">
-        {props.branches.map((project) => (
-          <SidebarProjectTopologyMembers
-            key={project.key}
-            project={project}
-            memberIndex={0}
-            topologyByMember={new Map()}
-            treeProps={props}
-          />
-        ))}
+        <SidebarProjectTopologyMembers
+          projects={props.branches}
+          members={members}
+          memberIndex={0}
+          topologyByMember={new Map()}
+          treeProps={props}
+        />
       </ul>
     </li>
   );
@@ -68,20 +70,23 @@ function SidebarProjectMemberTopology(props: {
 }
 
 function SidebarProjectTopologyMembers<TThread extends SidebarProjectTreeThread>(props: {
-  readonly project: SidebarProjectThreadBranch<TThread>;
+  readonly projects: ReadonlyArray<SidebarProjectThreadBranch<TThread>>;
+  readonly members: ReadonlyArray<SidebarProjectThreadBranch<TThread>["members"][number]>;
   readonly memberIndex: number;
   readonly topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>;
   readonly treeProps: SidebarProjectTreeProps<TThread>;
 }): ReactNode {
-  const member = props.project.members[props.memberIndex];
+  const member = props.members[props.memberIndex];
   if (member === undefined) {
-    return (
+    const projects = coalesceGenericZeropsProjects(props.projects, props.topologyByMember);
+    return projects.map((project) => (
       <SidebarProjectBranch
-        project={props.project}
+        key={project.key}
+        project={project}
         topologyByMember={props.topologyByMember}
         treeProps={props.treeProps}
       />
-    );
+    ));
   }
 
   return (
@@ -91,7 +96,8 @@ function SidebarProjectTopologyMembers<TThread extends SidebarProjectTreeThread>
         nextTopologyByMember.set(member.key, topology);
         return (
           <SidebarProjectTopologyMembers
-            project={props.project}
+            projects={props.projects}
+            members={props.members}
             memberIndex={props.memberIndex + 1}
             topologyByMember={nextTopologyByMember}
             treeProps={props.treeProps}
@@ -111,6 +117,38 @@ function isGenericWorkspaceLabel(label: string): boolean {
   return label.trim().toLowerCase() === "www";
 }
 
+function hasAvailableZeropsTopology<TThread extends SidebarProjectTreeThread>(
+  project: SidebarProjectThreadBranch<TThread>,
+  topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>,
+): boolean {
+  return project.members.some((member) => topologyByMember.get(member.key)?.available === true);
+}
+
+function coalesceGenericZeropsProjects<TThread extends SidebarProjectTreeThread>(
+  projects: ReadonlyArray<SidebarProjectThreadBranch<TThread>>,
+  topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>,
+): ReadonlyArray<SidebarProjectThreadBranch<TThread>> {
+  const genericProjects = projects.filter(
+    (project) =>
+      isGenericWorkspaceLabel(project.displayName) &&
+      hasAvailableZeropsTopology(project, topologyByMember),
+  );
+  if (genericProjects.length < 2) return projects;
+
+  const firstGenericProject = genericProjects[0];
+  return projects.flatMap((project) => {
+    if (!genericProjects.includes(project)) return [project];
+    if (project !== firstGenericProject) return [];
+    return [
+      {
+        key: GENERIC_ZEROPS_PROJECTS_KEY,
+        displayName: project.displayName,
+        members: genericProjects.flatMap((genericProject) => genericProject.members),
+      },
+    ];
+  });
+}
+
 function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
   readonly project: SidebarProjectThreadBranch<TThread>;
   readonly topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>;
@@ -121,9 +159,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
     member.threads.some((thread) => treeProps.getThreadKey(thread) === treeProps.activeThreadKey),
   );
   const projectExpanded = containsActiveThread || !treeProps.collapsedProjectKeys.has(project.key);
-  const hasZeropsTopology = [...topologyByMember.values()].some(
-    (topology) => topology?.available === true,
-  );
+  const hasZeropsTopology = hasAvailableZeropsTopology(project, topologyByMember);
   const projectDisplayName =
     hasZeropsTopology && isGenericWorkspaceLabel(project.displayName)
       ? "Projects"
