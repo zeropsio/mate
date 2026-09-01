@@ -16,6 +16,7 @@ export interface ZeropsChatChrome {
   readonly threadRef: ScopedThreadRef | null;
   readonly panel: "available" | "unavailable" | "unknown";
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
+  readonly projectName: string | null;
 }
 
 export function resolveZeropsChatChrome(
@@ -30,6 +31,7 @@ export function resolveZeropsChatChrome(
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
+      projectName: null,
     };
   }
 
@@ -42,10 +44,12 @@ export function resolveZeropsChatChrome(
         ? "available"
         : "unavailable";
   const agentAuth = input.agentAuth;
+  const topologyProjectName = input.topology?.project?.name.trim();
 
   return {
     threadRef,
     panel,
+    projectName: panel === "available" && topologyProjectName ? topologyProjectName : null,
     // The panel owns the snapshot even while closed. Chat chrome may expose an
     // in-flow entry to that panel, but never render the card over the timeline.
     agentAuthCard:

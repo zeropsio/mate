@@ -15,12 +15,16 @@ const THREAD_REF: ScopedThreadRef = {
   threadId: ThreadId.make("thread-1"),
 };
 
-const topology = (available: boolean): ZeropsTopologySnapshot => ({
+const topology = (
+  available: boolean,
+  overrides: Partial<ZeropsTopologySnapshot> = {},
+): ZeropsTopologySnapshot => ({
   available,
   degraded: false,
   services: [],
   warnings: [],
   readAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
+  ...overrides,
 });
 
 const NO_ATTENTION: ZeropsAgentAuthSnapshot = {
@@ -87,11 +91,13 @@ const CASES = THREADS.flatMap((thread) =>
               threadRef: null,
               panel: "unknown" as const,
               agentAuthCard: null,
+              projectName: null,
             }
           : {
               threadRef: thread.value,
               panel: topologyState.panel,
               agentAuthCard: authState.needsAttention ? ATTENTION : null,
+              projectName: null,
             },
     })),
   ),
@@ -100,5 +106,21 @@ const CASES = THREADS.flatMap((thread) =>
 describe("resolveZeropsChatChrome", () => {
   it.each(CASES)("keeps attention panel-owned: $name", ({ threadRef, input, expected }) => {
     expect(resolveZeropsChatChrome(threadRef, input)).toEqual(expected);
+  });
+
+  it("uses the trimmed Zerops project name only when topology is available", () => {
+    expect(
+      resolveZeropsChatChrome(THREAD_REF, {
+        topology: topology(true, { project: { id: "project-1", name: "  zerops-xyz  " } }),
+        agentAuth: NO_ATTENTION,
+      }).projectName,
+    ).toBe("zerops-xyz");
+
+    expect(
+      resolveZeropsChatChrome(THREAD_REF, {
+        topology: topology(false, { project: { id: "project-1", name: "stale-name" } }),
+        agentAuth: NO_ATTENTION,
+      }).projectName,
+    ).toBeNull();
   });
 });

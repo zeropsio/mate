@@ -2,7 +2,10 @@ import { ChevronDownIcon, FolderIcon, ServerIcon } from "lucide-react";
 import type { EnvironmentId, ProjectId, ZeropsTopologySnapshot } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
-import type { SidebarProjectThreadBranch } from "../../sidebarProjectGrouping";
+import type {
+  SidebarProjectThreadBranch,
+  SidebarProjectThreadMember,
+} from "../../sidebarProjectGrouping";
 import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
 
 interface SidebarProjectTreeThread {
@@ -22,7 +25,12 @@ interface SidebarProjectTreeProps<TThread extends SidebarProjectTreeThread> {
   readonly onToggleMember: (memberKey: string) => void;
   /** Selects at most one existing thread to present as the workspace shortcut. */
   readonly getCompactThreadShortcut?: (threads: ReadonlyArray<TThread>) => TThread | null;
-  readonly renderCompactThreadShortcut?: (thread: TThread, workspaceName: string) => ReactNode;
+  /** Renders the persistent workspace-level new-thread action. */
+  readonly renderWorkspaceThreadAction?: (input: {
+    readonly compactThread: TThread | null;
+    readonly member: SidebarProjectThreadMember<TThread>;
+    readonly workspaceName: string;
+  }) => ReactNode;
   readonly renderThread: (thread: TThread) => ReactNode;
   readonly renderSearchResult?: (thread: TThread, index: number) => ReactNode;
 }
@@ -210,7 +218,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                 ? `${topology.services.length} ${topology.services.length === 1 ? "service" : "services"} · zcp`
                 : `${member.threads.length} ${member.threads.length === 1 ? "thread" : "threads"}`;
             const compactThread =
-              treeProps.renderCompactThreadShortcut === undefined
+              treeProps.renderWorkspaceThreadAction === undefined
                 ? null
                 : (treeProps.getCompactThreadShortcut?.(member.threads) ?? null);
             const visibleThreads =
@@ -252,9 +260,11 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                       {meta}
                     </span>
                   </button>
-                  {compactThread === null
-                    ? null
-                    : treeProps.renderCompactThreadShortcut?.(compactThread, memberDisplayName)}
+                  {treeProps.renderWorkspaceThreadAction?.({
+                    compactThread,
+                    member,
+                    workspaceName: memberDisplayName,
+                  })}
                 </div>
 
                 {memberExpanded && visibleThreads.length > 0 ? (

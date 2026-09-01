@@ -167,6 +167,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
+import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";
 import {
   deriveAgentPanelModel,
@@ -3379,6 +3380,20 @@ function ChatViewContent(props: ChatViewProps) {
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
+  });
+  const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
+  const chromeLogicalProjectEnvironments = useMemo(
+    () =>
+      logicalProjectEnvironments.map((environment) =>
+        zeropsChrome.projectName !== null &&
+        environment.environmentId === activeThread?.environmentId
+          ? { ...environment, label: zeropsChrome.projectName }
+          : environment,
+      ),
+    [activeThread?.environmentId, logicalProjectEnvironments, zeropsChrome.projectName],
+  );
+  const connectedComposerPlaceholder = resolveConnectedComposerPlaceholder({
+    zeropsAvailable: zeropsChrome.panel === "available",
   });
   useEffect(() => {
     if (!activeThreadRef) return;
@@ -6689,7 +6704,7 @@ function ChatViewContent(props: ChatViewProps) {
                     key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
                     environmentId={activeProject.environmentId}
                     cwd={activeWorkspaceRoot}
-                    projectName={activeProject.title}
+                    projectName={activeProjectDisplayName ?? activeProject.title}
                     threadRef={activeThreadRef}
                     composerDraftTarget={composerDraftTarget}
                     keybindings={keybindings}
@@ -6744,7 +6759,7 @@ function ChatViewContent(props: ChatViewProps) {
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
             changeRequest={activeThreadChangeRequest}
-            activeProjectName={activeProject?.title}
+            activeProjectName={activeProjectDisplayName}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}
             activeProjectFaviconPath={activeProject?.faviconPath ?? null}
             openInCwd={gitCwd}
@@ -6894,7 +6909,7 @@ function ChatViewContent(props: ChatViewProps) {
                       >
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
-                          activeProjectTitle={activeProject?.title ?? null}
+                          activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
@@ -6938,6 +6953,7 @@ function ChatViewContent(props: ChatViewProps) {
                             isLocalDraftThread={isLocalDraftThread}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
                             projectSelectionRequired={isLocalDraftThread && activeProject === null}
+                            connectedPlaceholder={connectedComposerPlaceholder}
                             phase={phase}
                             isConnecting={isConnecting}
                             isSendBusy={isSendBusy}
@@ -7041,7 +7057,7 @@ function ChatViewContent(props: ChatViewProps) {
                                   ? { onCheckoutPullRequestRequest: openPullRequestDialog }
                                   : {})}
                                 {...(hasMultipleEnvironments ? { onEnvironmentChange } : {})}
-                                availableEnvironments={logicalProjectEnvironments}
+                                availableEnvironments={chromeLogicalProjectEnvironments}
                               />
                             </div>
                           )}

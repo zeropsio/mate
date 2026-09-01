@@ -48,6 +48,16 @@ export function isUntouchedSidebarThread<TThread extends UntouchedSidebarThreadI
   return thread.latestTurn === null && thread.latestUserMessageAt === null;
 }
 
+export function resolveWorkspaceNewThreadAction<TThread>(
+  threads: ReadonlyArray<TThread>,
+  isUntouched: (thread: TThread) => boolean,
+): { readonly kind: "open-existing"; readonly thread: TThread } | { readonly kind: "create" } {
+  const untouchedThread = threads.find(isUntouched);
+  return untouchedThread === undefined
+    ? { kind: "create" }
+    : { kind: "open-existing", thread: untouchedThread };
+}
+
 export function resolveThreadRowLayoutPresentation(variant: "card" | "slim"): {
   readonly contentClassName: string;
   readonly titleClassName: string;
@@ -59,6 +69,10 @@ export function resolveThreadRowLayoutPresentation(variant: "card" | "slim"): {
         titleClassName: "line-clamp-2 break-words leading-[1.125rem]",
       }
     : { contentClassName: "", titleClassName: "truncate" };
+}
+
+export function resolveThreadProviderIconClassName(): string {
+  return "size-3.5 grayscale opacity-40 transition-[filter,opacity] group-hover/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-70";
 }
 
 /** Live-work rows already sit inside project/workspace branches; repeating the

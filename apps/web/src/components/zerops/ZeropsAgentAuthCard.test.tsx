@@ -49,6 +49,7 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain("Not signed in");
     expect(html).toContain("Authorized");
     expect(html).toContain("data-zerops-agent-auth-card");
+    expect(html).toContain("sm:flex-row");
   });
 
   it("shows a sign-in button for a not-authorized agent", () => {
@@ -257,6 +258,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain("Open sign-in link");
     expect(html).toContain("Copy link");
+    expect(html).toContain("flex-wrap");
   });
 
   it("also shows a Copy code button for codex's device code, but not for claude", () => {
@@ -276,7 +278,9 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
         onCancel={noop}
       />,
     );
-    expect(codexHtml).toContain("Copy code ABCD-12345");
+    expect(codexHtml).toContain("<code");
+    expect(codexHtml).toContain("ABCD-12345</code>");
+    expect(codexHtml).toContain(">Copy code<");
 
     const claudeHtml = renderToStaticMarkup(
       <ZeropsAgentAuthCard

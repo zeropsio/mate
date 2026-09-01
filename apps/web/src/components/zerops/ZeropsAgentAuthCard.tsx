@@ -75,7 +75,7 @@ function ZeropsAgentAuthRow({
 
   return (
     <div
-      className="flex items-center justify-between gap-3 text-sm"
+      className="flex flex-col items-stretch gap-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
       data-agent-id={agent.agentId}
       data-agent-state={agent.state}
       data-agent-login-phase={login.kind}
@@ -83,7 +83,7 @@ function ZeropsAgentAuthRow({
     >
       <div className="flex min-w-0 flex-col">
         <span className="font-medium">{AGENT_NAMES[agent.agentId]}</span>
-        <span className="text-muted-foreground text-xs">{label}</span>
+        <span className="text-muted-foreground text-xs leading-5">{label}</span>
       </div>
       <ZeropsAgentAuthActionSlot
         agent={agent}
@@ -114,7 +114,7 @@ function ZeropsAgentAuthActionSlot({
       // The server is running/navigating the CLI's own login flow — nothing
       // for the user to click until it needs them, other than giving up.
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Button disabled size="compact" variant="outline">
             Signing in…
           </Button>
@@ -123,7 +123,7 @@ function ZeropsAgentAuthActionSlot({
       );
     case "awaiting-browser":
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <ZeropsAgentLoginAwaitingBrowser
             agentId={agent.agentId}
             url={login.url}
@@ -184,7 +184,10 @@ function ZeropsAgentLoginAwaitingBrowser({
   readonly code: string | undefined;
 }) {
   return (
-    <div className="flex items-center gap-2" data-zerops-agent-login-awaiting-browser>
+    <div
+      className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:justify-end"
+      data-zerops-agent-login-awaiting-browser
+    >
       {url !== undefined && (
         <a
           className="text-primary text-xs underline underline-offset-2"
@@ -197,7 +200,10 @@ function ZeropsAgentLoginAwaitingBrowser({
       )}
       {url !== undefined && <CopyButton label="Copy link" value={url} />}
       {agentId === "codex" && code !== undefined && (
-        <CopyButton label={`Copy code ${code}`} value={code} />
+        <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pl-2 pr-0.5">
+          <code className="select-all font-mono text-xs text-foreground">{code}</code>
+          <CopyButton label="Copy code" value={code} />
+        </span>
       )}
     </div>
   );

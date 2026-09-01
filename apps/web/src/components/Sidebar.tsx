@@ -138,6 +138,8 @@ import {
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
   resolveThreadRowLayoutPresentation,
+  resolveThreadProviderIconClassName,
+  resolveWorkspaceNewThreadAction,
   searchSidebarThreadsByTitle,
   shouldCreateNewThreadInCurrentProject,
   resolveWorkingStartedAt,
@@ -1544,7 +1546,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                       accentColor={providerEntry?.accentColor}
                       showBadge={showInstanceBadge}
                       // Glyph dims, badge stays saturated; offset matches the composer trigger.
-                      iconClassName="size-3.5 opacity-60"
+                      iconClassName={resolveThreadProviderIconClassName()}
                       badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-[7px]"
                     />
                   </span>
@@ -3830,13 +3832,47 @@ export default function Sidebar() {
                               );
                             }) ?? null
                           }
-                          renderCompactThreadShortcut={(
-                            { thread, sidebarSection },
+                          renderWorkspaceThreadAction={({
+                            compactThread,
+                            member,
                             workspaceName,
-                          ) => {
+                          }) => {
+                            const action = resolveWorkspaceNewThreadAction(
+                              member.threads,
+                              ({ thread }) => isUntouchedSidebarThread(thread),
+                            );
+                            if (action.kind === "create") {
+                              const label = `New thread in ${workspaceName}`;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <Button
+                                        type="button"
+                                        size="icon-xs"
+                                        variant="ghost"
+                                        aria-label={label}
+                                        className="mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
+                                        onClick={() => {
+                                          if (isMobile) setOpenMobile(false);
+                                          void newThreadContext.handleNewThread(
+                                            scopeProjectRef(member.environmentId, member.projectId),
+                                          );
+                                        }}
+                                      />
+                                    }
+                                  >
+                                    <SquarePenIcon aria-hidden />
+                                  </TooltipTrigger>
+                                  <TooltipPopup side="right">{label}</TooltipPopup>
+                                </Tooltip>
+                              );
+                            }
+
+                            const { thread, sidebarSection } = action.thread;
                             const threadRef = scopeThreadRef(thread.environmentId, thread.id);
                             const threadKey = scopedThreadKey(threadRef);
-                            const label = `Open new thread in ${workspaceName}`;
+                            const label = `New thread in ${workspaceName}`;
                             const renderShortcut = (sortable?: SortablePinnedRowBag) => (
                               <Tooltip key={`compact-thread:${threadKey}`}>
                                 <TooltipTrigger
@@ -3897,6 +3933,7 @@ export default function Sidebar() {
                             );
 
                             if (
+                              compactThread === action.thread &&
                               sidebarSection === "pinned" &&
                               reorderablePinnedKeys.has(threadKey)
                             ) {

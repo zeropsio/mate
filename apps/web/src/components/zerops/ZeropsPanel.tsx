@@ -46,7 +46,7 @@ export function ZeropsPanel({
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-5 p-4" data-zerops-project-panel>
+      <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
         {panelSections.body}
         {agentAuthCard === null ? null : (
           <section className="space-y-2" data-zerops-agent-auth-tray>

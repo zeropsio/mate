@@ -184,16 +184,16 @@ describe("SidebarProjectTree", () => {
         getCompactThreadShortcut={(threads) =>
           threads.find((thread) => thread.untouched === true) ?? null
         }
-        renderCompactThreadShortcut={(thread, workspaceName) => (
-          <button type="button" aria-label={`Open new thread in ${workspaceName}`}>
-            {thread.id}
+        renderWorkspaceThreadAction={({ compactThread, workspaceName }) => (
+          <button type="button" aria-label={`New thread in ${workspaceName}`}>
+            {compactThread?.id ?? "create"}
           </button>
         )}
         renderThread={renderThread}
       />,
     );
 
-    expect(markup).toContain('aria-label="Open new thread in Development"');
+    expect(markup).toContain('aria-label="New thread in Development"');
     expect(markup).toContain("thread-first-untouched");
     expect(markup).not.toContain("First untouched card");
     expect(markup).toContain("Second untouched card");
@@ -215,9 +215,9 @@ describe("SidebarProjectTree", () => {
         getCompactThreadShortcut={(threads) =>
           threads.find((thread) => thread.untouched === true) ?? null
         }
-        renderCompactThreadShortcut={(thread, workspaceName) => (
-          <button type="button" aria-label={`Open new thread in ${workspaceName}`}>
-            {thread.id}
+        renderWorkspaceThreadAction={({ compactThread, workspaceName }) => (
+          <button type="button" aria-label={`New thread in ${workspaceName}`}>
+            {compactThread?.id ?? "create"}
           </button>
         )}
         renderThread={renderThread}
@@ -225,9 +225,37 @@ describe("SidebarProjectTree", () => {
     );
 
     expect(collapsedMarkup).toContain('aria-label="Expand workspace Development"');
-    expect(collapsedMarkup).toContain('aria-label="Open new thread in Development"');
+    expect(collapsedMarkup).toContain('aria-label="New thread in Development"');
     expect(collapsedMarkup).not.toContain("Second untouched card");
     expect(maxNestedButtonDepth(collapsedMarkup)).toBe(1);
+  });
+
+  it("renders the workspace action even when there is no untouched shell to compact", () => {
+    const markup = renderToStaticMarkup(
+      <SidebarProjectTree
+        branches={branches}
+        searchResults={null}
+        activeThreadKey={null}
+        collapsedProjectKeys={new Set()}
+        collapsedMemberKeys={new Set()}
+        getThreadKey={threadKey}
+        onToggleProject={vi.fn()}
+        onToggleMember={vi.fn()}
+        getCompactThreadShortcut={() => null}
+        renderWorkspaceThreadAction={({ compactThread, member, workspaceName }) => (
+          <button type="button" aria-label={`New thread in ${workspaceName}`}>
+            {compactThread?.id ?? `${member.environmentId}:${member.projectId}`}
+          </button>
+        )}
+        renderThread={renderThread}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="New thread in Development"');
+    expect(markup).toContain("environment-one:project-one");
+    expect(markup).toContain("Active thread");
+    expect(markup).toContain("Quiet thread");
+    expect(maxNestedButtonDepth(markup)).toBe(1);
   });
 
   it.each([

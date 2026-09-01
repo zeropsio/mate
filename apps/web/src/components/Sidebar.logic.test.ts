@@ -21,6 +21,8 @@ import {
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveThreadRowLayoutPresentation,
+  resolveThreadProviderIconClassName,
+  resolveWorkspaceNewThreadAction,
   resolveWorkingStartedAt,
   searchSidebarThreadsByTitle,
   formatWorkingDurationLabel,
@@ -111,6 +113,32 @@ describe("isUntouchedSidebarThread", () => {
   });
 });
 
+describe("resolveWorkspaceNewThreadAction", () => {
+  const active = {
+    id: "active",
+    latestTurn: makeLatestTurn({ completedAt: "2026-03-09T10:30:00.000Z" }),
+    latestUserMessageAt: "2026-03-09T10:00:00.000Z",
+  };
+  const untouched = {
+    id: "untouched",
+    latestTurn: null,
+    latestUserMessageAt: null,
+  };
+
+  it("opens the first existing untouched shell instead of creating a duplicate", () => {
+    expect(resolveWorkspaceNewThreadAction([active, untouched], isUntouchedSidebarThread)).toEqual({
+      kind: "open-existing",
+      thread: untouched,
+    });
+  });
+
+  it("creates in the workspace only when no untouched shell exists", () => {
+    expect(resolveWorkspaceNewThreadAction([active], isUntouchedSidebarThread)).toEqual({
+      kind: "create",
+    });
+  });
+});
+
 describe("resolveThreadRowLayoutPresentation", () => {
   it("lets cards grow to two title lines without reserving fixed-height emptiness", () => {
     const card = resolveThreadRowLayoutPresentation("card");
@@ -124,6 +152,17 @@ describe("resolveThreadRowLayoutPresentation", () => {
 
   it("keeps settled and snoozed rows single-line", () => {
     expect(resolveThreadRowLayoutPresentation("slim").titleClassName).toContain("truncate");
+  });
+});
+
+describe("resolveThreadProviderIconClassName", () => {
+  it("keeps provider identity quieter than status until the row is explored", () => {
+    const className = resolveThreadProviderIconClassName();
+
+    expect(className).toContain("grayscale");
+    expect(className).toContain("opacity-40");
+    expect(className).toContain("group-hover/sidebar-row:grayscale-0");
+    expect(className).toContain("group-hover/sidebar-row:opacity-70");
   });
 });
 
