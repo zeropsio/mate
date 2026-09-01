@@ -9,7 +9,7 @@ zerops:
   # delivery shape the hosted client needs (spec-z3 §4 — "hosted separately,
   # not built into the container"). Same bundle the container serves under
   # /z3/, built without the prefix.
-  - setup: z3web
+  - setup: prod
     build:
       base: ubuntu/nodejs@24
       buildCommands:
