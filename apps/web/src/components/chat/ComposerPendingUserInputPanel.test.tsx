@@ -6,6 +6,7 @@ import {
   ComposerPendingUserInputPanel,
   pendingUserInputKeyAction,
 } from "./ComposerPendingUserInputPanel";
+import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import type { PendingUserInput } from "../../session-logic";
 
 const prompt: PendingUserInput = {
@@ -39,6 +40,31 @@ function renderPanel() {
 }
 
 describe("ComposerPendingUserInputPanel", () => {
+  it("renders visible waiting state and human kind for question and approval", () => {
+    const questionMarkup = renderPanel();
+    const approvalMarkup = renderToStaticMarkup(
+      <ComposerPendingApprovalPanel
+        approval={{
+          requestId: ApprovalRequestId.make("approval-1"),
+          requestKind: "command",
+          createdAt: "2026-09-01T00:00:00.000Z",
+          detail: "vp test run question.test.tsx",
+        }}
+        pendingCount={2}
+      />,
+    );
+
+    for (const markup of [questionMarkup, approvalMarkup]) {
+      expect(markup).toContain('data-zerops-primitive="status-dot"');
+      expect(markup).toContain('data-zerops-status-tone="attention"');
+      expect(markup).toContain("WAITING FOR YOU");
+    }
+    expect(questionMarkup).toContain('data-pending-request-kind="question"');
+    expect(questionMarkup).toContain(">Question<");
+    expect(approvalMarkup).toContain('data-pending-request-kind="command-approval"');
+    expect(approvalMarkup).toContain(">Command approval<");
+  });
+
   it("renders the header as a disclosure control for the question body", () => {
     const markup = renderPanel();
 
@@ -89,7 +115,7 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
     const html = render({});
 
     expect(html).toContain("data-pending-user-input-waiting");
-    expect(html).toContain("waiting for you");
+    expect(html).toContain("WAITING FOR YOU");
   });
 
   /**
@@ -128,6 +154,55 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
    * highlight would read as a choice already made. */
   it("highlights nothing before the user moves the cursor", () => {
     expect(render({})).not.toContain('aria-current="true"');
+  });
+
+  it("keeps complete detail, progress, Other, multi-select and keyboard behavior", () => {
+    const completeQuestion = `Choose every service that should deploy. ${"detail ".repeat(80)}`;
+    const multiQuestionPrompt: PendingUserInput = {
+      ...prompt,
+      questions: [
+        {
+          id: "question-multi",
+          header: "Services",
+          question: completeQuestion,
+          options: [
+            { label: "API", description: "Deploy the API service" },
+            { label: "Worker", description: "Deploy the worker service" },
+          ],
+          multiSelect: true,
+        },
+        {
+          id: "question-follow-up",
+          header: "Timing",
+          question: "When should the deploy begin?",
+          options: [{ label: "Now", description: "Deploy immediately" }],
+          multiSelect: false,
+        },
+      ],
+    };
+    const markup = renderToStaticMarkup(
+      <ComposerPendingUserInputPanel
+        pendingUserInputs={[multiQuestionPrompt]}
+        respondingRequestIds={[]}
+        answers={{
+          "question-multi": { selectedOptionLabels: ["API"], customAnswer: "" },
+        }}
+        questionIndex={0}
+        onToggleOption={() => {}}
+        onAdvance={() => {}}
+      />,
+    );
+
+    expect(markup).toContain(completeQuestion);
+    expect(markup).toContain('data-pending-request-progress="1/2"');
+    expect(markup).toContain("Select one or more options.");
+    expect(markup).toContain('data-pending-user-input-other="empty"');
+    expect(markup).toContain("Other");
+    expect(markup).toContain('data-pending-user-input-toggle="expanded"');
+    expect(pendingUserInputKeyAction("1", 2, -1)).toEqual({ type: "select", index: 0 });
+    expect(pendingUserInputKeyAction("ArrowDown", 2, -1)).toEqual({ type: "move", index: 0 });
+    expect(pendingUserInputKeyAction("ArrowUp", 2, 0)).toEqual({ type: "move", index: 1 });
+    expect(pendingUserInputKeyAction("Enter", 2, 1)).toEqual({ type: "select", index: 1 });
   });
 });
 

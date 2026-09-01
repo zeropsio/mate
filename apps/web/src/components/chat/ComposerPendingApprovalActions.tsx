@@ -32,24 +32,37 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
 }: ComposerPendingApprovalActionsProps) {
   return (
     <>
-      {options.map((option) => (
-        <Button
-          key={option.decision}
-          size="micro"
-          variant="ghost-muted"
-          className={`${APPROVAL_ACTION_CLASS_NAME}${
-            option.decision === "decline"
-              ? " text-destructive-foreground [:hover,[data-pressed]]:text-destructive-foreground"
-              : option.decision === "accept"
-                ? " text-foreground"
-                : ""
-          }`}
-          disabled={isResponding}
-          onClick={() => void onRespondToApproval(requestId, option.decision)}
-        >
-          <span className="max-w-40 truncate">{option.label}</span>
-        </Button>
-      ))}
+      {options.map((option) => {
+        const actionTone =
+          option.decision === "accept"
+            ? "primary"
+            : option.decision === "acceptForSession"
+              ? "secondary"
+              : "quiet";
+        const variant =
+          actionTone === "primary"
+            ? "pill"
+            : actionTone === "secondary"
+              ? "secondary"
+              : "ghost-muted";
+
+        return (
+          <Button
+            key={option.decision}
+            size="sm"
+            variant={variant}
+            className={`${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5`}
+            data-approval-decision={option.decision}
+            data-approval-action-tone={actionTone}
+            disabled={isResponding}
+            onClick={() => void onRespondToApproval(requestId, option.decision)}
+          >
+            <span className="max-w-48 whitespace-normal break-words text-center">
+              {option.label}
+            </span>
+          </Button>
+        );
+      })}
     </>
   );
 });

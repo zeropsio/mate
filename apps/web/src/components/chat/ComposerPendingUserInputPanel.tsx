@@ -7,6 +7,7 @@ import {
 } from "../../pendingUserInput";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
+import { StatusDot } from "../zerops/primitives";
 import { cn } from "~/lib/utils";
 
 /**
@@ -239,22 +240,28 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             isCollapsed ? "Show the question and its options" : "Hide the question and its options"
           }
           data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
-          className="group -my-1 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-primary/25"
+          className="group -my-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-primary/25"
         >
-          <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground/85">
+          <StatusDot
+            data-pending-user-input-waiting
+            label="WAITING FOR YOU"
+            pulse={false}
+            tone="attention"
+          />
+          <span
+            className="text-xs font-medium text-foreground/85"
+            data-pending-request-kind="question"
+          >
+            Question
+          </span>
+          <span className="text-xs text-muted-foreground group-hover:text-foreground/85">
             {activeQuestion.header}
           </span>
-          {/* The agent is blocked until this is answered. Saying so in the card
-              matches what the lifecycle strip says in the header, so the two
-              never disagree about whose turn it is. */}
-          <span
-            className="font-medium text-[10px] text-warning-foreground"
-            data-pending-user-input-waiting
-          >
-            waiting for you
-          </span>
           {prompt.questions.length > 1 ? (
-            <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+            <span
+              className="text-[10px] font-medium text-muted-foreground tabular-nums"
+              data-pending-request-progress={`${questionIndex + 1}/${prompt.questions.length}`}
+            >
               {questionIndex + 1}/{prompt.questions.length}
             </span>
           ) : null}
