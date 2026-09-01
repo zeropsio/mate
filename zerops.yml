@@ -41,7 +41,7 @@ zerops:
         # "pair another device" link reads it, but left unset it defaults to
         # upstream's app.t3.codes — a Zerops user handed a live pairing
         # credential on somebody else's hosted app.
-        VITE_HOSTED_APP_URL: https://z3.krls.cz
+        VITE_HOSTED_APP_URL: https://mate.zerops.io
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"

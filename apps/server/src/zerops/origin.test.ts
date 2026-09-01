@@ -85,9 +85,11 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
     // T3CODE_ZEROPS_ALLOWED_ORIGINS. Delete this case together with
     // HOSTED_CLIENT_ORIGINS once the client moves to a Zerops-issued domain.
     const { allowsOrigin } = allowlist();
-    assert.isTrue(allowsOrigin("https://z3.krls.cz"));
-    assert.isFalse(allowsOrigin("http://z3.krls.cz"));
-    assert.isFalse(allowsOrigin("https://z3.krls.cz.evil.example"));
+    // The hosted client now lives on a Zerops domain, so the suffix rule above
+    // covers it and no host is hardcoded here any more.
+    assert.isTrue(allowsOrigin("https://mate.zerops.io"));
+    assert.isFalse(allowsOrigin("http://mate.zerops.io"));
+    assert.isFalse(allowsOrigin("https://mate.zerops.io.evil.example"));
   });
 
   it("rejects a missing origin — the CORS middleware asks about every request", () => {

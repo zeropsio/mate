@@ -133,7 +133,7 @@ describe("startZeropsHandover from a dev server", () => {
     // `127.0.0.1`; the destination rule follows the same line, and a lookalike
     // hostname must not slip through it.
     for (const origin of [
-      "https://z3.krls.cz",
+      "https://mate.zerops.io",
       "http://127.0.0.1:5173",
       "https://localhost.evil.example",
       "https://zcp-2333-8080.prg1.zerops.app",
