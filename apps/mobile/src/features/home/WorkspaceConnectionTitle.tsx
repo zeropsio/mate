@@ -1,7 +1,4 @@
-import type {
-  NativeStackHeaderItem,
-  NativeStackNavigationOptions,
-} from "@react-navigation/native-stack";
+import type { NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Animated, Platform, Pressable, View } from "react-native";
 
@@ -156,25 +153,24 @@ export function WorkspaceConnectionTitle(props: {
 export function getConnectionAwareBrandHeaderOptions(opts: {
   readonly onOpenEnvironments: () => void;
   readonly fallbackTitleStyle?: NativeStackNavigationOptions["headerTitleStyle"];
-}): NativeStackNavigationOptions {
+  readonly navigationItemStyle?: "navigator" | "editor";
+}): NativeStackNavigationOptions & {
+  readonly unstable_navigationItemStyle?: "navigator" | "editor";
+} {
   if (Platform.OS === "ios" && NATIVE_LIQUID_GLASS_SUPPORTED) {
     return {
-      headerTitle: "Threads",
-      headerTitleStyle: { color: "transparent", fontSize: 18, fontWeight: "800" },
+      headerTitle: () => (
+        <WorkspaceConnectionTitle
+          brand={<CompactBrandTitle allowFontScaling />}
+          onPress={opts.onOpenEnvironments}
+          statusOffset={brandTitleOffset()}
+        />
+      ),
+      headerTitleStyle: opts.fallbackTitleStyle,
       title: "Threads",
-      unstable_headerLeftItems: (): NativeStackHeaderItem[] => [
-        {
-          element: (
-            <WorkspaceConnectionTitle
-              brand={<CompactBrandTitle nativeLeadingItem />}
-              onPress={opts.onOpenEnvironments}
-              statusOffset={brandTitleOffset(true)}
-            />
-          ),
-          hidesSharedBackground: true,
-          type: "custom",
-        },
-      ],
+      // See CompactBrandTitle: use the stable title slot because iOS 26 drops
+      // React views supplied through unstable_headerLeftItems on this screen.
+      unstable_navigationItemStyle: opts.navigationItemStyle ?? "navigator",
     };
   }
 
@@ -183,7 +179,7 @@ export function getConnectionAwareBrandHeaderOptions(opts: {
       <WorkspaceConnectionTitle
         brand={<CompactBrandTitle />}
         onPress={opts.onOpenEnvironments}
-        statusOffset={brandTitleOffset(false)}
+        statusOffset={brandTitleOffset()}
       />
     ),
     headerTitleStyle: opts.fallbackTitleStyle,

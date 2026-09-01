@@ -899,6 +899,7 @@ function ThreadNavigationSidebarPane(
             ...getConnectionAwareBrandHeaderOptions({
               onOpenEnvironments: props.onOpenEnvironmentSettings,
               fallbackTitleStyle: { fontSize: 18, fontWeight: "800" },
+              navigationItemStyle: "editor",
             }),
             headerSearchBarOptions: {
               ref: searchBarRef,

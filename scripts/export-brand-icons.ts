@@ -14,7 +14,14 @@ import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import { BRAND_ASSET_PATHS, DEVELOPMENT_PUBLIC_ICON_OVERRIDES } from "./lib/brand-assets.ts";
-import { encodePngIco, readPngDimensions, WINDOWS_ICON_SIZES } from "./lib/icon-export.ts";
+import {
+  createMacOsActoolArguments,
+  encodePngIco,
+  hasClassicMacOsSafeArea,
+  MACOS_ICON_SIZE,
+  readPngDimensions,
+  WINDOWS_ICON_SIZES,
+} from "./lib/icon-export.ts";
 
 const DESIGN_GENERATION = 26;
 const ICON_COMPOSER_EXECUTABLE_PARTS = [
@@ -191,6 +198,18 @@ export class IconExportEncodingError extends Schema.TaggedErrorClass<IconExportE
   }
 }
 
+export class IconExportMacOsSafeAreaError extends Schema.TaggedErrorClass<IconExportMacOsSafeAreaError>()(
+  "IconExportMacOsSafeAreaError",
+  {
+    sourcePath: Schema.String,
+    outputPath: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Xcode produced a macOS icon without the required ${MACOS_ICON_SIZE}px classic safe area for ${this.sourcePath}.`;
+  }
+}
+
 export class IconExportAssetsStaleError extends Schema.TaggedErrorClass<IconExportAssetsStaleError>()(
   "IconExportAssetsStaleError",
   {
@@ -246,14 +265,6 @@ const ICON_VARIANTS = [
     },
   },
 ] as const satisfies ReadonlyArray<IconVariant>;
-
-const MACOS_EXPORT_CODEX_PROMPT = [
-  "Use [@Computer](plugin://computer-use@openai-bundled) and the Icon Composer app to export the three macOS app icons in this repository.",
-  "For each project below, use Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, and Scale: 1×, then save the PNG to the exact destination:",
-  ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
-  "Do not resize, composite, or otherwise post-process the exported PNGs.",
-  "Verify every result is 1024×1024 and has the classic macOS safe area: an 824×824 opaque body inset 100px on every side, with only Icon Composer's native shadow extending beyond it.",
-];
 
 const RepositoryRoot = Effect.service(Path.Path).pipe(
   Effect.flatMap((path) => path.fromFileUrl(new URL("..", import.meta.url))),
@@ -607,23 +618,94 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
   ]);
 });
 
-const logManualMacOsExportInstructions = Effect.fn("iconExport.logManualMacOsExportInstructions")(
-  function* () {
-    yield* Console.warn(
-      [
-        "macOS icons require Icon Composer's GUI-only pre-Tahoe preset and were not changed.",
-        "Export each source with Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, Scale: 1×:",
-        ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
-        "See assets/README.md for the complete workflow.",
-        "",
-        "Copy/paste this prompt into Codex to perform the native exports:",
-        "---",
-        ...MACOS_EXPORT_CODEX_PROMPT,
-        "---",
-      ].join("\n"),
-    );
-  },
-);
+const renderMacOsVariant = Effect.fn("iconExport.renderMacOsVariant")(function* (
+  repositoryRoot: string,
+  temporaryDirectory: string,
+  variant: IconVariant,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const sourcePath = path.join(repositoryRoot, variant.source);
+  const sourceExists = yield* fs.exists(sourcePath).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IconExportFileSystemError({
+          operation: "check-path",
+          path: sourcePath,
+          cause,
+        }),
+    ),
+  );
+  if (!sourceExists) {
+    return yield* new IconExportSourceMissingError({ sourcePath: variant.source });
+  }
+
+  const outputDirectory = path.join(temporaryDirectory, `${variant.label}-macos`);
+  const partialInfoPlistPath = path.join(outputDirectory, "partial-info.plist");
+  const icnsPath = path.join(outputDirectory, "app-icon.icns");
+  const pngPath = path.join(outputDirectory, "app-icon.png");
+  yield* fs.makeDirectory(outputDirectory, { recursive: true }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IconExportFileSystemError({
+          operation: "make-directory",
+          path: outputDirectory,
+          cause,
+        }),
+    ),
+  );
+
+  const actoolArguments = createMacOsActoolArguments({
+    sourcePath,
+    outputDirectory,
+    partialInfoPlistPath,
+  });
+  const actoolResult = yield* runCommand("xcrun", actoolArguments);
+  if (actoolResult.exitCode !== 0) {
+    return yield* new IconExportCommandFailedError({
+      command: "xcrun",
+      argumentCount: actoolArguments.length,
+      exitCode: actoolResult.exitCode,
+      sourcePath,
+      size: MACOS_ICON_SIZE,
+      ...(actoolResult.stdout.trim() ? { stdout: actoolResult.stdout.trim() } : {}),
+      ...(actoolResult.stderr.trim() ? { stderr: actoolResult.stderr.trim() } : {}),
+    });
+  }
+
+  const sipsArguments = ["-s", "format", "png", icnsPath, "--out", pngPath];
+  const sipsResult = yield* runCommand("sips", sipsArguments);
+  if (sipsResult.exitCode !== 0) {
+    return yield* new IconExportCommandFailedError({
+      command: "sips",
+      argumentCount: sipsArguments.length,
+      exitCode: sipsResult.exitCode,
+      sourcePath,
+      size: MACOS_ICON_SIZE,
+      ...(sipsResult.stdout.trim() ? { stdout: sipsResult.stdout.trim() } : {}),
+      ...(sipsResult.stderr.trim() ? { stderr: sipsResult.stderr.trim() } : {}),
+    });
+  }
+
+  const contents = yield* fs.readFile(pngPath).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IconExportFileSystemError({
+          operation: "read-file",
+          path: pngPath,
+          cause,
+        }),
+    ),
+    Effect.map(Buffer.from),
+  );
+  if (!hasClassicMacOsSafeArea(contents)) {
+    return yield* new IconExportMacOsSafeAreaError({
+      sourcePath: variant.source,
+      outputPath: variant.outputs.macos,
+    });
+  }
+  return contents;
+});
 
 const writeAtomically = Effect.fn("iconExport.writeAtomically")(function* (
   repositoryRoot: string,
@@ -715,10 +797,13 @@ const isCurrent = Effect.fn("iconExport.isCurrent")(function* (
   return Buffer.from(actual).equals(expected);
 });
 
-export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOnly: boolean) {
+export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (
+  checkOnly: boolean,
+  macosOnly = false,
+) {
   const fs = yield* FileSystem.FileSystem;
   const repositoryRoot = yield* RepositoryRoot;
-  const tool = yield* resolveIconComposerTool();
+  const tool = macosOnly ? undefined : yield* resolveIconComposerTool();
   const temporaryDirectory = yield* fs
     .makeTempDirectoryScoped({
       prefix: "t3-icon-export-",
@@ -733,25 +818,34 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
           }),
       ),
     );
-  yield* Console.log(
-    `Exporting icons with Icon Composer ${tool.version}, design generation ${DESIGN_GENERATION}.`,
-  );
+  if (tool !== undefined) {
+    yield* Console.log(
+      `Exporting cross-platform icons with Icon Composer ${tool.version}, design generation ${DESIGN_GENERATION}.`,
+    );
+  }
+  yield* Console.log("Exporting macOS icons with Xcode actool.");
 
   const generated = new Map<string, Buffer>();
   for (const variant of ICON_VARIANTS) {
     yield* Console.log(`Rendering ${variant.label} from ${variant.source}...`);
-    const variantAssets = yield* renderVariant(
-      tool.path,
-      repositoryRoot,
-      temporaryDirectory,
-      variant,
-    );
-    for (const [relativePath, contents] of variantAssets) {
-      generated.set(relativePath, contents);
+    if (tool !== undefined) {
+      const variantAssets = yield* renderVariant(
+        tool.path,
+        repositoryRoot,
+        temporaryDirectory,
+        variant,
+      );
+      for (const [relativePath, contents] of variantAssets) {
+        generated.set(relativePath, contents);
+      }
     }
+    generated.set(
+      variant.outputs.macos,
+      yield* renderMacOsVariant(repositoryRoot, temporaryDirectory, variant),
+    );
   }
 
-  for (const override of DEVELOPMENT_PUBLIC_ICON_OVERRIDES) {
+  for (const override of macosOnly ? [] : DEVELOPMENT_PUBLIC_ICON_OVERRIDES) {
     const sourceContents = generated.get(override.sourceRelativePath);
     if (sourceContents === undefined) {
       return yield* Effect.die(
@@ -774,7 +868,6 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
       });
     }
     yield* Console.log(`All ${generated.size} generated icon assets are current.`);
-    yield* logManualMacOsExportInstructions();
     return;
   }
 
@@ -784,7 +877,6 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
     { concurrency: 1, discard: true },
   );
   yield* Console.log(`Updated ${generated.size} generated icon assets.`);
-  yield* logManualMacOsExportInstructions();
 });
 
 export const exportBrandIconsCommand = Command.make(
@@ -794,8 +886,12 @@ export const exportBrandIconsCommand = Command.make(
       Flag.withDescription("Verify generated icon assets without modifying files."),
       Flag.withDefault(false),
     ),
+    macosOnly: Flag.boolean("macos-only").pipe(
+      Flag.withDescription("Export or verify only the three macOS desktop PNGs."),
+      Flag.withDefault(false),
+    ),
   },
-  ({ check }) => exportBrandIcons(check).pipe(Effect.scoped),
+  ({ check, macosOnly }) => exportBrandIcons(check, macosOnly).pipe(Effect.scoped),
 ).pipe(
   Command.withDescription(
     "Export development, preview, and production assets from Icon Composer projects.",

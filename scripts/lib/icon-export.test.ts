@@ -1,6 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
+import { PNG } from "pngjs";
 
-import { encodePngIco, readPngDimensions } from "./icon-export.ts";
+import {
+  createMacOsActoolArguments,
+  encodePngIco,
+  hasClassicMacOsSafeArea,
+  readPngDimensions,
+} from "./icon-export.ts";
 
 const pngHeader = (width: number, height: number) => {
   const contents = Buffer.alloc(24);
@@ -43,5 +49,53 @@ describe("icon export", () => {
         ]),
       /provided more than once/,
     );
+  });
+
+  it("builds the macOS actool invocation from the canonical Icon Composer source", () => {
+    assert.deepEqual(
+      createMacOsActoolArguments({
+        sourcePath: "/repo/assets/prod/app-icon.icon",
+        outputDirectory: "/tmp/prod",
+        partialInfoPlistPath: "/tmp/prod-info.plist",
+      }),
+      [
+        "actool",
+        "/repo/assets/prod/app-icon.icon",
+        "--compile",
+        "/tmp/prod",
+        "--platform",
+        "macosx",
+        "--minimum-deployment-target",
+        "13.4",
+        "--target-device",
+        "mac",
+        "--app-icon",
+        "app-icon",
+        "--standalone-icon-behavior",
+        "all",
+        "--output-partial-info-plist",
+        "/tmp/prod-info.plist",
+        "--output-format",
+        "human-readable-text",
+        "--warnings",
+        "--errors",
+      ],
+    );
+  });
+
+  it("accepts only a 1024px macOS icon with the classic 824px opaque body", () => {
+    const render = (inset: number) => {
+      const png = new PNG({ width: 1024, height: 1024 });
+      for (let y = inset; y < 1024 - inset; y += 1) {
+        for (let x = inset; x < 1024 - inset; x += 1) {
+          png.data[(y * png.width + x) * 4 + 3] = 255;
+        }
+      }
+      return PNG.sync.write(png);
+    };
+
+    assert.equal(hasClassicMacOsSafeArea(render(100)), true);
+    assert.equal(hasClassicMacOsSafeArea(render(99)), false);
+    assert.equal(hasClassicMacOsSafeArea(pngHeader(1024, 1024)), false);
   });
 });

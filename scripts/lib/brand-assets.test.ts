@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Source-integrity checks read authored SVG files.
+import * as NodeFS from "node:fs";
+
+import { ZEROPS_MARK } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -8,6 +12,9 @@ import {
   resolveWebAssetBrandForPackageVersion,
   resolveWebIconOverrides,
 } from "./brand-assets.ts";
+
+const readRepositoryFile = (relativePath: string) =>
+  NodeFS.readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
 
 describe("brand-assets", () => {
   it("maps production web assets into the server package", () => {
@@ -79,5 +86,30 @@ describe("brand-assets", () => {
     expect(BRAND_ASSET_PATHS.developmentDesktopIconPng).toMatch(/^assets\/dev\/blueprint-/);
     expect(BRAND_ASSET_PATHS.nightlyMacIconPng).toMatch(/^assets\/nightly\/nightly-/);
     expect(BRAND_ASSET_PATHS.productionMacIconPng).toMatch(/^assets\/prod\/black-/);
+  });
+
+  it("uses the canonical Zerops mark across authored application icon sources", () => {
+    const markSources = [
+      "assets/dev/app-icon.icon/Assets/mark.svg",
+      "assets/nightly/app-icon.icon/Assets/mark.svg",
+      "assets/prod/app-icon.icon/Assets/mark.svg",
+      "assets/prod/logo.svg",
+      "apps/mobile/assets/android-icon-foreground.svg",
+      "apps/mobile/assets/widget/T3Mark.svg",
+    ];
+
+    for (const source of markSources) {
+      const svg = readRepositoryFile(source);
+      for (const path of ZEROPS_MARK.paths) {
+        expect(svg, source).toContain(`d="${path.d}"`);
+        expect(svg, source).toContain(`fill="${path.fill}"`);
+      }
+    }
+
+    for (const project of ["dev", "nightly", "prod"]) {
+      const manifest = readRepositoryFile(`assets/${project}/app-icon.icon/icon.json`);
+      expect(manifest, project).toContain('"image-name": "mark.svg"');
+      expect(manifest, project).toContain('"name": "Zerops Mark"');
+    }
   });
 });

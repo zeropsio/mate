@@ -40,6 +40,7 @@ import {
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { resolveDesktopUpdateChannel } from "./stage-desktop-web.ts";
+import { ZEROPS_MARK } from "@t3tools/shared/brand";
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 function mockProcess(exitCode: number) {
@@ -368,6 +369,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       // unconditional list on every platform — no Windows-only sidecar split.
       for (const config of [mac, linux, win]) {
         assert.deepStrictEqual(config.extraResources, [...DESKTOP_EXTRA_RESOURCES]);
+        assert.equal(config.artifactName, "Zerops-Code-${version}-${arch}.${ext}");
       }
       assert.deepStrictEqual(win.nsis, { differentialPackage: true });
       assert.deepStrictEqual(mac.dmg, {
@@ -528,6 +530,27 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         );
       }),
     ),
+  );
+
+  it.effect("brands every DMG background with Zerops Code and the canonical Zerops mark", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const repoRoot = yield* path.fromFileUrl(new URL("..", import.meta.url));
+
+      for (const channel of ["latest", "nightly"] as const) {
+        const source = yield* fs.readFileString(
+          path.join(repoRoot, "apps/desktop/resources/dmg", `dmg-background-${channel}.svg`),
+        );
+
+        assert.include(source, "ZEROPS CODE");
+        assert.notInclude(source, "T3 CODE");
+        for (const markPath of ZEROPS_MARK.paths) {
+          assert.include(source, `d="${markPath.d}"`);
+          assert.include(source, `fill="${markPath.fill}"`);
+        }
+      }
+    }),
   );
 
   it.effect("fails clearly when the selected DMG background source is missing", () =>

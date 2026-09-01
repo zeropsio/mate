@@ -38,9 +38,15 @@ const APP_SCHEME = "t3code";
 const IOS_READY_FILENAME = "T3ShowcaseReadyScene";
 const SERVER_HOST = "0.0.0.0";
 const IOS_SIMULATOR_ARCH = NodeProcess.arch === "arm64" ? "arm64" : "x86_64";
+export const IOS_NATIVE_PRODUCT = {
+  appFileName: "ZeropsCode.app",
+  scheme: "ZeropsCode",
+  workspace: "ZeropsCode.xcworkspace",
+} as const;
 const IOS_APP_PATH = NodePath.join(
   MOBILE_ROOT,
-  ".showcase/ios-derived-data/Build/Products/Debug-iphonesimulator/T3Code.app",
+  ".showcase/ios-derived-data/Build/Products/Debug-iphonesimulator",
+  IOS_NATIVE_PRODUCT.appFileName,
 );
 const ANDROID_APK_PATH = NodePath.join(
   MOBILE_ROOT,
@@ -715,9 +721,9 @@ async function buildIos(): Promise<string> {
     "xcodebuild",
     [
       "-workspace",
-      NodePath.join(MOBILE_ROOT, "ios/T3Code.xcworkspace"),
+      NodePath.join(MOBILE_ROOT, "ios", IOS_NATIVE_PRODUCT.workspace),
       "-scheme",
-      "T3Code",
+      IOS_NATIVE_PRODUCT.scheme,
       "-configuration",
       "Debug",
       "-sdk",

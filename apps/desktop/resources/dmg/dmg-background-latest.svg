@@ -14,10 +14,16 @@
   <rect width="540" height="112" fill="#EFEFED"/>
   <rect width="540" height="112" fill="url(#latest-light)"/>
   <path d="M0 111.5H540" stroke="#18181B" stroke-opacity="0.08"/>
-  <path d="M32 28H64" stroke="#18181B" stroke-width="2"/>
+
+  <g transform="translate(32 24) scale(0.48)">
+    <path d="M20.19.7L3 7.27A4 4 0 0 0 .46 11v16.54L8.36 23v-9.3L21.6 8.62V.44a4 4 0 0 0-1.41.26z" fill="#3cbdb2"/>
+    <path d="M8.5 37.74l13.1-7.55v-9.12L1.36 32.74a1.82 1.82 0 0 0-.9 1.56v6.11A4 4 0 0 0 3 44.1l17.19 6.57a4 4 0 0 0 1.41.26v-8.18z" fill="#3cbdb2"/>
+    <path d="M41.9 18.47a1.67 1.67 0 0 0 .84-1.47v-6a4 4 0 0 0-2.54-3.73L23 .7a4 4 0 0 0-1.4-.26v8.18l13 5-13 7.49v9.12z" fill="#00b1a3"/>
+    <path d="M23 50.67l17.2-6.57a4 4 0 0 0 2.54-3.69V23.7l-7.9 4.56v9.43L21.6 42.75v8.18a4 4 0 0 0 1.4-.26z" fill="#00b1a3"/>
+  </g>
 
   <g font-family="-apple-system, BlinkMacSystemFont, sans-serif" fill="#18181B">
-    <text x="32" y="50" font-size="12" font-weight="600" letter-spacing="1.4">T3 CODE</text>
+    <text x="60" y="50" font-size="12" font-weight="600" letter-spacing="1.15">ZEROPS CODE</text>
     <text x="32" y="82" font-size="22" font-weight="600" letter-spacing="-0.45">Desktop</text>
     <text x="508" y="50" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8.5" font-weight="600" letter-spacing="1.2" fill="#71717A">LATEST RELEASE</text>
   </g>

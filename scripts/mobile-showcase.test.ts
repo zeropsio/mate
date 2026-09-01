@@ -15,6 +15,7 @@ import {
 } from "./mobile-showcase-environment.ts";
 import {
   encodeAndroidPairingUrls,
+  IOS_NATIVE_PRODUCT,
   normalizeStorePng,
   parseShowcaseCliArgs,
   parsePairingCredentialOutput,
@@ -27,6 +28,14 @@ import {
   validateStoreAsset,
   validateStoreAssetCount,
 } from "./mobile-showcase.ts";
+
+it("targets the renamed ZeropsCode iOS native product", () => {
+  assert.deepStrictEqual(IOS_NATIVE_PRODUCT, {
+    appFileName: "ZeropsCode.app",
+    scheme: "ZeropsCode",
+    workspace: "ZeropsCode.xcworkspace",
+  });
+});
 
 const appleSpec: ShowcaseStoreAssetSpec = {
   store: "apple",
