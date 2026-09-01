@@ -20,6 +20,7 @@ import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
+import { FileBrowserPanelState } from "./FileBrowserPanelState";
 import { useProjectEntriesQuery } from "./projectFilesQueryState";
 
 interface FileBrowserPanelProps {
@@ -369,9 +370,12 @@ export default function FileBrowserPanel({
           onClose={search.close}
         />
       </div>
-      {entriesQuery.error && entriesQuery.data === null ? (
-        <div className="p-4 text-xs leading-relaxed text-destructive">{entriesQuery.error}</div>
-      ) : (
+      <FileBrowserPanelState
+        hasData={entriesQuery.data !== null}
+        error={entriesQuery.error}
+        isPending={entriesQuery.isPending}
+        onRetry={handleRefresh}
+      >
         <FileTree
           model={model}
           aria-label={`${projectName} files`}
@@ -381,7 +385,7 @@ export default function FileBrowserPanel({
             ["--trees-fg-override" as string]: "var(--contrast-foreground)",
           }}
         />
-      )}
+      </FileBrowserPanelState>
     </div>
   );
 }
