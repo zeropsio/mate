@@ -13,12 +13,14 @@ import {
   getVisibleThreadsForProject,
   getProjectSortTimestamp,
   isContextMenuPointerDown,
+  isUntouchedSidebarThread,
   isSidebarNestedLinkClick,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   openAddProjectFromSidebar,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
+  resolveThreadRowLayoutPresentation,
   resolveWorkingStartedAt,
   searchSidebarThreadsByTitle,
   formatWorkingDurationLabel,
@@ -80,6 +82,48 @@ describe("shouldShowProjectIdentityInSidebarSection", () => {
     expect(shouldShowProjectIdentityInSidebarSection("active")).toBe(false);
     expect(shouldShowProjectIdentityInSidebarSection("snoozed")).toBe(true);
     expect(shouldShowProjectIdentityInSidebarSection("settled")).toBe(true);
+  });
+});
+
+describe("isUntouchedSidebarThread", () => {
+  it("uses activity signals instead of the title", () => {
+    expect(
+      isUntouchedSidebarThread({
+        title: "A deliberately custom title",
+        latestTurn: null,
+        latestUserMessageAt: null,
+      }),
+    ).toBe(true);
+    expect(
+      isUntouchedSidebarThread({
+        title: "New thread",
+        latestTurn: makeLatestTurn({ completedAt: "2026-03-09T10:30:00.000Z" }),
+        latestUserMessageAt: null,
+      }),
+    ).toBe(false);
+    expect(
+      isUntouchedSidebarThread({
+        title: "New thread",
+        latestTurn: null,
+        latestUserMessageAt: "2026-03-09T10:00:00.000Z",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveThreadRowLayoutPresentation", () => {
+  it("lets cards grow to two title lines without reserving fixed-height emptiness", () => {
+    const card = resolveThreadRowLayoutPresentation("card");
+
+    expect(card.titleClassName).toContain("line-clamp-2");
+    expect(card.titleClassName).toContain("leading-");
+    expect(card.titleClassName).not.toContain("truncate");
+    expect(card.contentClassName).toContain("min-h-");
+    expect(card.contentClassName.split(/\s+/u)).not.toContain("h-[4.875rem]");
+  });
+
+  it("keeps settled and snoozed rows single-line", () => {
+    expect(resolveThreadRowLayoutPresentation("slim").titleClassName).toContain("truncate");
   });
 });
 

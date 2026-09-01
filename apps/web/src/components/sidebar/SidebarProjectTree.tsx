@@ -20,6 +20,9 @@ interface SidebarProjectTreeProps<TThread extends SidebarProjectTreeThread> {
   readonly getThreadKey: (thread: TThread) => string;
   readonly onToggleProject: (projectKey: string) => void;
   readonly onToggleMember: (memberKey: string) => void;
+  /** Selects at most one existing thread to present as the workspace shortcut. */
+  readonly getCompactThreadShortcut?: (threads: ReadonlyArray<TThread>) => TThread | null;
+  readonly renderCompactThreadShortcut?: (thread: TThread, workspaceName: string) => ReactNode;
   readonly renderThread: (thread: TThread) => ReactNode;
   readonly renderSearchResult?: (thread: TThread, index: number) => ReactNode;
 }
@@ -206,42 +209,57 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
               topology?.available === true
                 ? `${topology.services.length} ${topology.services.length === 1 ? "service" : "services"} · zcp`
                 : `${member.threads.length} ${member.threads.length === 1 ? "thread" : "threads"}`;
+            const compactThread =
+              treeProps.renderCompactThreadShortcut === undefined
+                ? null
+                : (treeProps.getCompactThreadShortcut?.(member.threads) ?? null);
+            const visibleThreads =
+              compactThread === null
+                ? member.threads
+                : member.threads.filter((thread) => thread !== compactThread);
 
             return (
               <li key={member.key} className="list-none">
-                <button
-                  type="button"
-                  aria-expanded={memberExpanded}
-                  aria-label={`${memberExpanded ? "Collapse" : "Expand"} workspace ${memberDisplayName}`}
-                  onClick={() => treeProps.onToggleMember(member.key)}
-                  className="group flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ChevronDownIcon
-                    aria-hidden
-                    className={`size-3 shrink-0 text-sidebar-muted-foreground transition-transform ${
-                      memberExpanded ? "" : "-rotate-90"
-                    }`}
-                  />
-                  <ServerIcon
-                    aria-hidden
-                    className="size-3.5 shrink-0 text-sidebar-muted-foreground"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{memberDisplayName}</span>
-                    {workspaceIsDistinct ? (
-                      <span className="block truncate text-[10px] text-sidebar-muted-foreground">
-                        {member.workspaceLabel}
+                <div className="group flex min-h-8 w-full items-center rounded-md text-sidebar-foreground hover:bg-sidebar-row-hover">
+                  <button
+                    type="button"
+                    aria-expanded={memberExpanded}
+                    aria-label={`${memberExpanded ? "Collapse" : "Expand"} workspace ${memberDisplayName}`}
+                    onClick={() => treeProps.onToggleMember(member.key)}
+                    className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronDownIcon
+                      aria-hidden
+                      className={`size-3 shrink-0 text-sidebar-muted-foreground transition-transform ${
+                        memberExpanded ? "" : "-rotate-90"
+                      }`}
+                    />
+                    <ServerIcon
+                      aria-hidden
+                      className="size-3.5 shrink-0 text-sidebar-muted-foreground"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {memberDisplayName}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
-                    {meta}
-                  </span>
-                </button>
+                      {workspaceIsDistinct ? (
+                        <span className="block truncate text-[10px] text-sidebar-muted-foreground">
+                          {member.workspaceLabel}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
+                      {meta}
+                    </span>
+                  </button>
+                  {compactThread === null
+                    ? null
+                    : treeProps.renderCompactThreadShortcut?.(compactThread, memberDisplayName)}
+                </div>
 
-                {memberExpanded && member.threads.length > 0 ? (
+                {memberExpanded && visibleThreads.length > 0 ? (
                   <ul role="list" className="ml-2 border-l border-sidebar-border/50 pl-1">
-                    {member.threads.map(treeProps.renderThread)}
+                    {visibleThreads.map(treeProps.renderThread)}
                   </ul>
                 ) : null}
               </li>

@@ -130,12 +130,14 @@ import {
   formatWorkingDurationLabel,
   firstValidTimestampMs,
   isSidebarNestedLinkClick,
+  isUntouchedSidebarThread,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   openAddProjectFromSidebar,
   planPinnedReorder,
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
+  resolveThreadRowLayoutPresentation,
   searchSidebarThreadsByTitle,
   shouldCreateNewThreadInCurrentProject,
   resolveWorkingStartedAt,
@@ -1068,6 +1070,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       !isSelected &&
       "opacity-70 transition-opacity hover:opacity-100",
   );
+  const rowLayout = resolveThreadRowLayoutPresentation(variant);
 
   const title = isRenaming ? (
     <input
@@ -1089,7 +1092,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         shouldRecede ? "font-normal" : "font-medium",
         variant === "card"
           ? cn(
-              "truncate",
+              rowLayout.titleClassName,
               isUnread || isWoke
                 ? "text-foreground"
                 : shouldRecede
@@ -1099,7 +1102,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     : "text-foreground/90",
             )
           : cn(
-              "truncate group-hover/sidebar-row:text-foreground",
+              rowLayout.titleClassName,
+              "group-hover/sidebar-row:text-foreground",
               props.isActive || isWoke
                 ? "text-foreground"
                 : isUnread
@@ -1357,7 +1361,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
-          <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
+          <div className={rowLayout.contentClassName}>
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {props.showProjectIdentity ? (
                 <>
@@ -3816,6 +3820,97 @@ export default function Sidebar() {
                           }
                           onToggleProject={toggleProjectBranch}
                           onToggleMember={toggleProjectMemberBranch}
+                          getCompactThreadShortcut={(threads) =>
+                            threads.find(({ thread }) => {
+                              const threadKey = scopedThreadKey(
+                                scopeThreadRef(thread.environmentId, thread.id),
+                              );
+                              return (
+                                isUntouchedSidebarThread(thread) && renamingThreadKey !== threadKey
+                              );
+                            }) ?? null
+                          }
+                          renderCompactThreadShortcut={(
+                            { thread, sidebarSection },
+                            workspaceName,
+                          ) => {
+                            const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+                            const threadKey = scopedThreadKey(threadRef);
+                            const label = `Open new thread in ${workspaceName}`;
+                            const renderShortcut = (sortable?: SortablePinnedRowBag) => (
+                              <Tooltip key={`compact-thread:${threadKey}`}>
+                                <TooltipTrigger
+                                  render={
+                                    <Button
+                                      ref={sortable?.setNodeRef}
+                                      style={
+                                        sortable
+                                          ? {
+                                              transform: CSS.Translate.toString(sortable.transform),
+                                              transition: sortable.transition,
+                                            }
+                                          : undefined
+                                      }
+                                      {...(sortable?.listeners ?? {})}
+                                      type="button"
+                                      size="icon-xs"
+                                      variant="ghost"
+                                      aria-label={label}
+                                      aria-current={
+                                        routeThreadKey === threadKey ? "page" : undefined
+                                      }
+                                      className={cn(
+                                        "mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground",
+                                        routeThreadKey === threadKey &&
+                                          "bg-sidebar-row-active text-sidebar-foreground",
+                                        sortable?.isDragging && "z-20 opacity-80",
+                                      )}
+                                      onClick={(event) => handleThreadClick(event, threadRef)}
+                                      onDoubleClick={(event) => {
+                                        if (
+                                          event.metaKey ||
+                                          event.ctrlKey ||
+                                          event.shiftKey ||
+                                          event.altKey
+                                        ) {
+                                          return;
+                                        }
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        startThreadRename(threadRef, thread.title);
+                                      }}
+                                      onContextMenu={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        handleThreadContextMenu(threadRef, {
+                                          x: event.clientX,
+                                          y: event.clientY,
+                                        });
+                                      }}
+                                    />
+                                  }
+                                >
+                                  <SquarePenIcon aria-hidden />
+                                </TooltipTrigger>
+                                <TooltipPopup side="right">{label}</TooltipPopup>
+                              </Tooltip>
+                            );
+
+                            if (
+                              sidebarSection === "pinned" &&
+                              reorderablePinnedKeys.has(threadKey)
+                            ) {
+                              return (
+                                <SortablePinnedThreadRow
+                                  key={`compact-thread:${threadKey}`}
+                                  id={threadKey}
+                                >
+                                  {renderShortcut}
+                                </SortablePinnedThreadRow>
+                              );
+                            }
+                            return renderShortcut();
+                          }}
                           renderThread={({ thread, sidebarSection }) => {
                             const threadKey = scopedThreadKey(
                               scopeThreadRef(thread.environmentId, thread.id),

@@ -25,6 +25,7 @@ interface FixtureThread {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly title: string;
+  readonly untouched?: boolean;
 }
 
 const environmentId = EnvironmentId.make("environment-one");
@@ -60,6 +61,20 @@ const branches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
 
 const threadKey = (thread: FixtureThread) => `${thread.environmentId}:${thread.id}`;
 const renderThread = (thread: FixtureThread) => <li key={thread.id}>{thread.title}</li>;
+
+function maxNestedButtonDepth(markup: string): number {
+  let depth = 0;
+  let maxDepth = 0;
+  for (const token of markup.matchAll(/<\/?button\b/gu)) {
+    if (token[0] === "<button") {
+      depth += 1;
+      maxDepth = Math.max(maxDepth, depth);
+    } else {
+      depth -= 1;
+    }
+  }
+  return maxDepth;
+}
 
 const service = (hostname: string): ZeropsService =>
   ({
@@ -129,6 +144,90 @@ describe("SidebarProjectTree", () => {
     expect(searchMarkup).toContain("Active thread");
     expect(searchMarkup).not.toContain("Logical project");
     expect(searchMarkup).not.toContain("Development");
+  });
+
+  it("moves only the first untouched thread into an accessible workspace shortcut", () => {
+    const firstUntouched: FixtureThread = {
+      ...activeThread,
+      id: ThreadId.make("thread-first-untouched"),
+      title: "First untouched card",
+      untouched: true,
+    };
+    const secondUntouched: FixtureThread = {
+      ...quietThread,
+      id: ThreadId.make("thread-second-untouched"),
+      title: "Second untouched card",
+      untouched: true,
+    };
+    const shortcutBranches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
+      {
+        ...branches[0]!,
+        members: [
+          {
+            ...branches[0]!.members[0]!,
+            threads: [firstUntouched, secondUntouched, quietThread],
+          },
+        ],
+      },
+    ];
+
+    const markup = renderToStaticMarkup(
+      <SidebarProjectTree
+        branches={shortcutBranches}
+        searchResults={null}
+        activeThreadKey={threadKey(firstUntouched)}
+        collapsedProjectKeys={new Set()}
+        collapsedMemberKeys={new Set(["environment-one:project-one"])}
+        getThreadKey={threadKey}
+        onToggleProject={vi.fn()}
+        onToggleMember={vi.fn()}
+        getCompactThreadShortcut={(threads) =>
+          threads.find((thread) => thread.untouched === true) ?? null
+        }
+        renderCompactThreadShortcut={(thread, workspaceName) => (
+          <button type="button" aria-label={`Open new thread in ${workspaceName}`}>
+            {thread.id}
+          </button>
+        )}
+        renderThread={renderThread}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Open new thread in Development"');
+    expect(markup).toContain("thread-first-untouched");
+    expect(markup).not.toContain("First untouched card");
+    expect(markup).toContain("Second untouched card");
+    expect(markup).toContain("Quiet thread");
+    expect(markup).toContain('aria-label="Collapse workspace Development"');
+    expect(markup).toContain('aria-expanded="true"');
+    expect(maxNestedButtonDepth(markup)).toBe(1);
+
+    const collapsedMarkup = renderToStaticMarkup(
+      <SidebarProjectTree
+        branches={shortcutBranches}
+        searchResults={null}
+        activeThreadKey={null}
+        collapsedProjectKeys={new Set()}
+        collapsedMemberKeys={new Set(["environment-one:project-one"])}
+        getThreadKey={threadKey}
+        onToggleProject={vi.fn()}
+        onToggleMember={vi.fn()}
+        getCompactThreadShortcut={(threads) =>
+          threads.find((thread) => thread.untouched === true) ?? null
+        }
+        renderCompactThreadShortcut={(thread, workspaceName) => (
+          <button type="button" aria-label={`Open new thread in ${workspaceName}`}>
+            {thread.id}
+          </button>
+        )}
+        renderThread={renderThread}
+      />,
+    );
+
+    expect(collapsedMarkup).toContain('aria-label="Expand workspace Development"');
+    expect(collapsedMarkup).toContain('aria-label="Open new thread in Development"');
+    expect(collapsedMarkup).not.toContain("Second untouched card");
+    expect(maxNestedButtonDepth(collapsedMarkup)).toBe(1);
   });
 
   it.each([

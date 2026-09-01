@@ -37,6 +37,30 @@ export function openAddProjectFromSidebar(input: {
 
 export type SidebarThreadSection = "pinned" | "active" | "snoozed" | "settled";
 
+type UntouchedSidebarThreadInput = Pick<SidebarThreadSummary, "latestTurn" | "latestUserMessageAt">;
+
+/** A shell with neither a user message nor a turn has never contained work.
+ * The title is deliberately irrelevant: users can rename a blank shell and
+ * providers can localize or change their default title. */
+export function isUntouchedSidebarThread<TThread extends UntouchedSidebarThreadInput>(
+  thread: TThread,
+): boolean {
+  return thread.latestTurn === null && thread.latestUserMessageAt === null;
+}
+
+export function resolveThreadRowLayoutPresentation(variant: "card" | "slim"): {
+  readonly contentClassName: string;
+  readonly titleClassName: string;
+} {
+  return variant === "card"
+    ? {
+        contentClassName:
+          "relative z-10 min-h-[4.25rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
+        titleClassName: "line-clamp-2 break-words leading-[1.125rem]",
+      }
+    : { contentClassName: "", titleClassName: "truncate" };
+}
+
 /** Live-work rows already sit inside project/workspace branches; repeating the
  * same project label in every card wastes the strongest line of hierarchy.
  * Global shelves remain outside that tree and keep their identity context. */
