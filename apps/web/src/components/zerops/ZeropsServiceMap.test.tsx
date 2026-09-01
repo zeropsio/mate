@@ -38,6 +38,13 @@ const render = (
 ): string =>
   renderToStaticMarkup(<ZeropsServiceMap view={buildZeropsServiceMap(snapshot, lifecycle)} />);
 
+const classNamesForText = (html: string, text: string): ReadonlyArray<string> => {
+  const escapedText = text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const match = new RegExp(`<span class="([^"]*)"[^>]*>${escapedText}</span>`, "u").exec(html);
+  expect(match).not.toBeNull();
+  return match?.[1]?.split(" ") ?? [];
+};
+
 describe("ZeropsServiceMap", () => {
   it("renders liveness and semantic groups with shared primitives", () => {
     const html = render(
@@ -78,6 +85,40 @@ describe("ZeropsServiceMap", () => {
     // The mount path itself is the badge's text: where a service is mounted is
     // the useful half, and a bare "mounted" hid it behind a hover.
     expect(html).toContain("/var/www/kanbandev");
+  });
+
+  it("wraps long service identity and mount paths without hiding status or links", () => {
+    const hostname = "application-runtime-with-a-hostname-too-long-for-the-right-panel";
+    const typeLabel = "nodejs-with-an-unusually-long-runtime-type@2026.09.01";
+    const mountPath =
+      "/var/www/application-runtime/storage/a-mount-path-too-long-for-the-right-panel";
+    const subdomainUrl = "https://application-runtime.prg1.zerops.app";
+    const html = render(
+      topology([
+        service({
+          hostname,
+          type: `ubuntu/${typeLabel}`,
+          mounted: true,
+          mountPath,
+          subdomainEnabled: true,
+          subdomainUrl,
+        }),
+      ]),
+    );
+
+    expect(classNamesForText(html, hostname)).toEqual(
+      expect.arrayContaining(["min-w-0", "max-w-full", "break-all"]),
+    );
+    expect(classNamesForText(html, typeLabel)).toEqual(
+      expect.arrayContaining(["min-w-0", "max-w-full", "break-words"]),
+    );
+    expect(classNamesForText(html, mountPath)).toEqual(
+      expect.arrayContaining(["min-w-0", "max-w-full", "break-all"]),
+    );
+    expect(html).not.toContain("truncate");
+    expect(html).toContain("ACTIVE");
+    expect(html).toContain(`href="${subdomainUrl}"`);
+    expect(html).toContain("Open");
   });
 
   it("preserves degraded last-good rows and quiet absence copy", () => {

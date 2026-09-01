@@ -35,13 +35,15 @@ function ServiceLine({
   nameLabel?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-foreground">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1.5">
+      <div className="flex min-w-0 max-w-full flex-1 flex-col">
+        <span className="min-w-0 max-w-full break-all text-sm font-medium text-foreground">
           {nameLabel ?? service.hostname}
         </span>
         {typeLabel === undefined ? null : (
-          <span className="truncate text-xs text-muted-foreground">{typeLabel}</span>
+          <span className="min-w-0 max-w-full break-words text-xs text-muted-foreground">
+            {typeLabel}
+          </span>
         )}
       </div>
       <StatusDot
@@ -52,9 +54,13 @@ function ServiceLine({
         tone={STATUS_TONE[tone]}
       />
       {service.mounted ? (
-        <span className="inline-flex items-center gap-1 text-muted-foreground">
-          <FolderOpenIcon className="size-3" aria-hidden="true" />
-          <Chip label={service.mountPath ?? "mounted"} tone="off" />
+        <span className="inline-flex min-w-0 max-w-full items-start gap-1 text-muted-foreground">
+          <FolderOpenIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+          <Chip
+            className="min-w-0 max-w-full whitespace-normal break-all"
+            label={service.mountPath ?? "mounted"}
+            tone="off"
+          />
         </span>
       ) : null}
       {service.subdomainUrl === undefined ? null : (
