@@ -3,9 +3,15 @@
  *
  * Sign-up and third-party sign-in can only run on `app.zerops.io`: Turnstile's
  * site key is bound to that hostname, and the GitHub OAuth callback is a fixed
- * URL registered on Zerops' own OAuth App. So the user authenticates there and
- * the platform redirects their refresh token back here, which this client
- * exchanges for a session the way it exchanges any other.
+ * URL registered on Zerops' own OAuth App. So the user authenticates there, the
+ * platform mints them a **personal access token** for this client, and
+ * redirects it back here.
+ *
+ * A personal token rather than the account's own session: it is minted for this
+ * client alone, it is revocable on its own from Settings without touching the
+ * browser session, and nothing durable belonging to the account's own sign-in
+ * ever crosses. It is user-scoped, so it still spans every organization the
+ * account belongs to — which the picker needs.
  *
  * Two rules shape the contract, and both live in this file so neither side can
  * drift from them:
@@ -16,8 +22,8 @@
  *    to get wrong. The single exception is a dev server's loopback port, which
  *    is a number on a hostname the platform fixes — see
  *    `ZEROPS_HANDOVER_DEV_APP_MODE`.
- * 2. **The credential comes back in the fragment, and only against a nonce
- *    this browser issued.** A fragment never reaches a server, so it stays out
+ * 2. **The token comes back in the fragment, and only against a nonce this
+ *    browser issued.** A fragment never reaches a server, so it stays out
  *    of access logs and `Referer`. The nonce is what stops a crafted
  *    `#refreshToken=…` link signing this browser into someone else's account —
  *    which is why `readZeropsHandover` takes the expected nonce as a parameter
@@ -97,7 +103,8 @@ export type ZeropsHandoverOutcome =
   /** Verified: a credential addressed to a request this browser made. */
   | {
       readonly kind: "session";
-      readonly refreshToken: string;
+      /** A personal access token, usable directly as the session's bearer. */
+      readonly token: string;
       /** The organization the platform signed in, or null when it named none. */
       readonly clientId: string | null;
       /** True when a pool project was claimed, so the picker can be skipped. */
@@ -125,13 +132,13 @@ export function readZeropsHandover(
   expectedState: string | null,
 ): ZeropsHandoverOutcome {
   const params = new URLSearchParams(fragment.startsWith("#") ? fragment.slice(1) : fragment);
-  const refreshToken = params.get("refreshToken")?.trim() ?? "";
+  const token = params.get("token")?.trim() ?? "";
   const error = params.get("error")?.trim() ?? "";
   const echoedState = params.get("state")?.trim() ?? "";
 
   // Anything carrying none of the three is somebody else's fragment, or none
   // at all — a plain visit to the route, not a failed hand-over.
-  if (!refreshToken && !error && !echoedState) {
+  if (!token && !error && !echoedState) {
     return { kind: "absent" };
   }
 
@@ -143,14 +150,14 @@ export function readZeropsHandover(
   if (error) {
     return { kind: "declined", code: error };
   }
-  if (!refreshToken) {
+  if (!token) {
     return { kind: "declined", code: ZEROPS_HANDOVER_INVALID_CODE };
   }
 
   const clientId = params.get("clientId")?.trim() ?? "";
   return {
     kind: "session",
-    refreshToken,
+    token,
     clientId: clientId || null,
     zcpClaimed: params.get("zcpClaimed") === "true",
   };

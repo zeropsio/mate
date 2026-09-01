@@ -43,7 +43,8 @@ export interface ZeropsSessionValue {
    * session arrives without a password ever being typed here.
    */
   readonly adoptHandover: (input: {
-    readonly refreshToken: string;
+    /** A personal access token minted for this client by app.zerops.io. */
+    readonly token: string;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
@@ -130,8 +131,8 @@ export function ZeropsSessionProvider({
       status,
       user,
       organizations: user ? zeropsClientsFromUser(user) : [],
-      adoptHandover: async ({ refreshToken, zcpClaimed }) => {
-        const session = await client.adoptHandedOverSession(refreshToken);
+      adoptHandover: async ({ token, zcpClaimed }) => {
+        const session = await client.adoptPersonalToken(token);
         const adopted = await client.fetchUser();
         setUser(adopted);
         setStatus("signed-in");

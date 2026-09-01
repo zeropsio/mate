@@ -44,7 +44,7 @@ describe("buildZeropsAuthorizeUrl", () => {
 describe("readZeropsHandover", () => {
   const session = (over: Record<string, string> = {}) =>
     new URLSearchParams({
-      refreshToken: "rt-abc",
+      token: "rt-abc",
       state: "nonce-1",
       clientId: "org-1",
       ...over,
@@ -55,7 +55,7 @@ describe("readZeropsHandover", () => {
 
     expect(outcome).toEqual({
       kind: "session",
-      refreshToken: "rt-abc",
+      token: "rt-abc",
       clientId: "org-1",
       zcpClaimed: false,
     });
@@ -71,7 +71,7 @@ describe("readZeropsHandover", () => {
 
   it("reports no organization rather than an empty one when the platform named none", () => {
     const outcome = readZeropsHandover(
-      `#${new URLSearchParams({ refreshToken: "rt", state: "n" }).toString()}`,
+      `#${new URLSearchParams({ token: "rt", state: "n" }).toString()}`,
       "n",
     );
     expect(outcome).toMatchObject({ kind: "session", clientId: null });
@@ -92,7 +92,7 @@ describe("readZeropsHandover", () => {
     }> = [
       { name: "a nonce this tab never issued", fragment: `#${session()}`, expected: "other-nonce" },
       { name: "no nonce stored at all", fragment: `#${session()}`, expected: null },
-      { name: "no nonce echoed back", fragment: "#refreshToken=rt-abc", expected: "nonce-1" },
+      { name: "no nonce echoed back", fragment: "#token=rt-abc", expected: "nonce-1" },
       {
         name: "an empty echoed nonce",
         fragment: `#${session({ state: "" })}`,
