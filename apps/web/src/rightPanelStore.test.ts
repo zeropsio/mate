@@ -122,15 +122,45 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("remembers close-all before topology resolves", () => {
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().closeAllSurfaces(refA);
+
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "available",
+      usesSheet: false,
+    });
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
+      "env-1:thread-A": true,
+    });
+  });
+
   it.each([
     { topology: "available" as const, usesSheet: true },
     { topology: "unknown" as const, usesSheet: false },
-    { topology: "unavailable" as const, usesSheet: false },
   ])("does not auto-open for $topology with usesSheet=$usesSheet", (input) => {
     useRightPanelStore.getState().ensureZeropsDefault(refA, input);
 
     expect(useRightPanelStore.getState().byThreadKey).toEqual({});
     expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({});
+  });
+
+  it("remembers unavailable topology without opening a panel", () => {
+    useRightPanelStore.getState().ensureZeropsDefault(refA, {
+      topology: "unavailable",
+      usesSheet: false,
+    });
+
+    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
+    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
+      "env-1:thread-A": true,
+    });
   });
 
   it("migrates prior panel choices as already handled and preserves persisted markers", () => {

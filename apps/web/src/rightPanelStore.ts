@@ -509,13 +509,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           }),
         })),
       closeAllSurfaces: (ref) =>
-        set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const byThreadKey = updateThread(state.byThreadKey, threadKey, (current) =>
             current.surfaces.length === 0
               ? current
               : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null },
-          ),
-        })),
+          );
+          if (byThreadKey === state.byThreadKey) return state;
+          return {
+            byThreadKey,
+            zeropsDefaultHandledByThreadKey: {
+              ...state.zeropsDefaultHandledByThreadKey,
+              [threadKey]: true,
+            },
+          };
+        }),
       reconcileBrowserSurfaces: (ref, tabIds) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
