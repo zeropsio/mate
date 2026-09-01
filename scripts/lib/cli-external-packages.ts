@@ -1,3 +1,5 @@
+import * as NodeModule from "node:module";
+
 /**
  * The single source of truth for packages the server CLI bundle must NOT inline.
  *
@@ -143,4 +145,51 @@ export function findInlinedExternalPackages(source: string): {
     inlined: [...inlined].sort(),
     inlinedPackages: [...inlinedPackages].sort(),
   };
+}
+
+/**
+ * Package roots the emitted bundle imports STATICALLY, read off the artifact.
+ *
+ * The release manifest declares only what the bundle still resolves from disk
+ * (see `selectCliRuntimeExternalDependencies`); everything else is inlined and
+ * would be downloaded for nothing. Pruning against the bundler's config would
+ * check the intent — this checks the output, the same reason
+ * `findInlinedExternalPackages` exists.
+ *
+ * Static only. A static import must resolve or the process dies at load; every
+ * dynamic one the bundle emits sits behind a runtime branch or a try/catch
+ * (ws's optional accelerators, the bun entry points Node never takes), so
+ * demanding those be installed would undo the prune.
+ *
+ * Line-anchored on purpose: docblocks quote import statements — effect's own
+ * carry `import { ConfigProvider } from "effect"` — and a scan that reads a
+ * comment as an import keeps 47 MB of already-inlined code in the manifest.
+ * The word boundary earns its place the same way: effect's Schema codegen holds
+ * `importDeclarations: [\`import * as Option from "effect/Option"\`]` as data,
+ * and `import` is a prefix of that identifier.
+ */
+export function findStaticImportedPackages(source: string): ReadonlyArray<string> {
+  const roots = new Set<string>();
+
+  const record = (specifier: string) => {
+    if (specifier.startsWith(".") || specifier.startsWith("/")) return;
+    const segments = specifier.split("/");
+    const root = specifier.startsWith("@") ? segments.slice(0, 2).join("/") : (segments[0] ?? "");
+    if (root.length === 0 || NodeModule.isBuiltin(root)) return;
+    roots.add(root);
+  };
+
+  // `import … from "x"` / `export … from "x"`, then the side-effect
+  // `import "x"` form. Split in two so `export default "x"` — a string, not a
+  // specifier — cannot match.
+  for (const match of source.matchAll(
+    /^[ \t]*(?:import|export)\b[^;\n]*?\bfrom\s*["']([^"']+)["']/gm,
+  )) {
+    if (match[1] !== undefined) record(match[1]);
+  }
+  for (const match of source.matchAll(/^[ \t]*import\b\s*["']([^"']+)["']/gm)) {
+    if (match[1] !== undefined) record(match[1]);
+  }
+
+  return [...roots].sort();
 }

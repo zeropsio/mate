@@ -12,6 +12,7 @@ import serverPackageJson from "../../apps/server/package.json" with { type: "jso
 import {
   CLI_RUNTIME_EXTERNAL_PREFIXES,
   findInlinedExternalPackages,
+  findStaticImportedPackages,
   selectCliRuntimeExternalDependencies,
   shouldBundleCliDependency,
 } from "./cli-external-packages.ts";
@@ -273,5 +274,84 @@ var x = 1;
     const result = findInlinedExternalPackages("var x = 1; // node_modules/detect-libc/lib.js");
     assert.strictEqual(result.regionCount, 0);
     assert.deepStrictEqual(result.inlined, []);
+  });
+});
+
+// The prune that removes inlined packages from the release manifest is only
+// safe if what the emitted bundle still imports is what the manifest declares.
+// That has to be read off the artifact: the bundler's `neverBundle` list says
+// what was asked for, not what came out.
+describe("findStaticImportedPackages", () => {
+  it("reports the package root of a bare import", () => {
+    assert.deepStrictEqual(
+      findStaticImportedPackages(`import { spawn } from "@ff-labs/fff-node";\n`),
+      ["@ff-labs/fff-node"],
+    );
+  });
+
+  it("collapses a subpath import onto its package root", () => {
+    assert.deepStrictEqual(
+      findStaticImportedPackages(`import { UrlParams } from "effect/unstable/http/UrlParams";\n`),
+      ["effect"],
+    );
+  });
+
+  it("reads side-effect and re-export forms", () => {
+    assert.deepStrictEqual(
+      findStaticImportedPackages(`import "node-pty";\nexport { x } from "msgpackr-extract";\n`),
+      ["msgpackr-extract", "node-pty"],
+    );
+  });
+
+  it("ignores relative specifiers and node builtins in both spellings", () => {
+    const source = `import { a } from "./chunk-A1B2.mjs";
+import { b } from "node:fs";
+import { c } from "fs/promises";
+import { d } from "child_process";
+`;
+    assert.deepStrictEqual(findStaticImportedPackages(source), []);
+  });
+
+  // A JSDoc block quoting an import is not an import. This is not theoretical:
+  // effect's own docblocks carry `import { ConfigProvider } from "effect"`, and
+  // reading them as real imports would keep 47 MB of already-inlined code in
+  // the manifest forever.
+  it("ignores import statements quoted inside comments", () => {
+    const source = `/**
+ * @example
+ * import { ConfigProvider } from "effect"
+ */
+const x = 1;
+`;
+    assert.deepStrictEqual(findStaticImportedPackages(source), []);
+  });
+
+  // Dynamic imports are deliberately out of scope: every one the bundle emits
+  // sits behind a runtime branch or a try/catch (ws's optional accelerators,
+  // the bun-only entry points Node never reaches), so requiring them to be
+  // declared would put back exactly what this prune removes.
+  it("ignores dynamic imports", () => {
+    assert.deepStrictEqual(
+      findStaticImportedPackages(`const m = await import("@effect/platform-bun/BunServices");\n`),
+      [],
+    );
+  });
+
+  // Found by running this scanner over the real 0.1.7 bundle: effect's Schema
+  // codegen carries `importDeclarations: [`import * as Option from
+  // "effect/Option"`]` as DATA. Without a word boundary the scan reads the
+  // identifier `importDeclarations` as the keyword `import` and reports effect
+  // — putting 47 MB back into the manifest to satisfy a string literal.
+  it("does not read an identifier that merely starts with import", () => {
+    const source = `\t\t\timportDeclarations: [\`import * as Option from "effect/Option"\`],\n`;
+    assert.deepStrictEqual(findStaticImportedPackages(source), []);
+  });
+
+  it("reports each package once, sorted", () => {
+    const source = `import { a } from "node-pty";
+import { b } from "@ff-labs/fff-node";
+import { c } from "node-pty/lib/terminal";
+`;
+    assert.deepStrictEqual(findStaticImportedPackages(source), ["@ff-labs/fff-node", "node-pty"]);
   });
 });

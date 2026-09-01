@@ -10,33 +10,21 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog.ts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import serverPackageJson from "../package.json" with { type: "json" };
-import { ServerCliBuildAssetMissingError, ServerCliCommandExitError } from "./cliErrors.ts";
+import {
+  ServerCliBuildAssetMissingError,
+  ServerCliCommandExitError,
+  ServerCliUndeclaredRuntimeImportError,
+} from "./cliErrors.ts";
+import {
+  buildReleaseManifest,
+  findUndeclaredStaticImports,
+  RELEASE_PACKAGE_NAME,
+} from "./releaseManifest.ts";
 
-interface PackageJson {
-  name: string;
-  repository: {
-    type: string;
-    url: string;
-    directory: string;
-  };
-  bin: Record<string, string>;
-  type: string;
-  version: string;
-  engines: Record<string, string>;
-  files: string[];
-  dependencies: Record<string, string>;
-  overrides: Record<string, string>;
-}
-
-// The workspace keeps upstream's `t3` name because 124 Effect service-tag keys
-// in the ported server zone derive from it. The installed artifact carries the
-// Zerops Code identity instead.
-const RELEASE_PACKAGE_NAME = "zerops-code";
 const RELEASE_WORKSPACE_SELECTOR = "./apps/server";
 
 class ServerCliPackOutputError extends Schema.TaggedErrorClass<ServerCliPackOutputError>()(
@@ -57,7 +45,6 @@ const encodePackageJson = Schema.encodeEffect(PackageJsonPrettyJson);
 
 const WorkspaceConfig = Schema.Struct({
   catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  overrides: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 type WorkspaceConfig = typeof WorkspaceConfig.Type;
 const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
@@ -127,10 +114,40 @@ const buildCmd = Command.make(
     }),
 ).pipe(Command.withDescription("Build the server package (tsdown + bundle web client)."));
 
-// While `vp pm` runs, apps/server must
-// carry the release package.json (catalog: → concrete versions, overrides,
-// the release version), and the original must come back afterwards, whatever
-// happened in between.
+/**
+ * Fail the pack when the emitted bundle statically imports something the pruned
+ * manifest does not declare.
+ *
+ * Reads the chunks that were just built rather than the bundler's `neverBundle`
+ * list: configuring a bundler is not the same as checking what it produced, and
+ * this prune is what stands between the container and 342 MB of dependencies it
+ * would download and never load.
+ */
+const assertBundleResolvesAgainst = Effect.fn("assertBundleResolvesAgainst")(function* (
+  dependencies: Readonly<Record<string, string>>,
+  bundleDir: string,
+) {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+
+  const chunks = (yield* fs.readDirectory(bundleDir)).filter((entry) => entry.endsWith(".mjs"));
+  const sources = yield* Effect.forEach(chunks, (chunk) =>
+    fs.readFileString(path.join(bundleDir, chunk)),
+  );
+
+  const undeclared = findUndeclaredStaticImports(dependencies, sources);
+  if (undeclared.length > 0) {
+    return yield* new ServerCliUndeclaredRuntimeImportError({ packages: undeclared, bundleDir });
+  }
+  yield* Effect.log(
+    `[cli] Bundle resolves against ${Object.keys(dependencies).length} declared dependencies (${chunks.length} chunks scanned)`,
+  );
+});
+
+// While `vp pm` runs, apps/server must carry the release package.json (the
+// release name and version, catalog: → concrete versions, dependencies pruned
+// to what the bundle still loads from disk), and the original must come back
+// afterwards, whatever happened in between.
 const withReleaseAssets = <A, E, R>(
   repoRoot: string,
   appVersion: Option.Option<string>,
@@ -156,27 +173,12 @@ const withReleaseAssets = <A, E, R>(
       Effect.gen(function* () {
         const version = Option.getOrElse(appVersion, () => serverPackageJson.version);
         const workspaceConfig = yield* readWorkspaceConfig();
-        const workspaceCatalog = workspaceConfig.catalog ?? {};
-        const workspaceOverrides = workspaceConfig.overrides ?? {};
-        const pkg: PackageJson = {
-          name: RELEASE_PACKAGE_NAME,
-          repository: serverPackageJson.repository,
-          bin: serverPackageJson.bin,
-          type: serverPackageJson.type,
+        const pkg = buildReleaseManifest({
+          serverPackageJson,
+          catalog: workspaceConfig.catalog ?? {},
           version,
-          engines: serverPackageJson.engines,
-          files: serverPackageJson.files,
-          dependencies: resolveCatalogDependencies(
-            serverPackageJson.dependencies,
-            workspaceCatalog,
-            "apps/server",
-          ),
-          overrides: resolveCatalogDependencies(
-            workspaceOverrides,
-            workspaceCatalog,
-            "apps/server",
-          ),
-        };
+        });
+        yield* assertBundleResolvesAgainst(pkg.dependencies, path.join(serverDir, "dist"));
 
         return {
           packageJsonString: yield* encodePackageJson(pkg),
