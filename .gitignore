@@ -19,6 +19,9 @@ release-mock/
 apps/web/.playwright
 apps/web/playwright-report
 apps/web/src/components/__screenshots__
+# written by a local `msw init`, and vite copies public/ into dist — untracked
+# but unignored it rode along in a `zcli service push --workspace-state all`
+apps/web/public/mockServiceWorker.js
 .vitest-*
 __screenshots__/
 .tanstack

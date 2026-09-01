@@ -1,0 +1,138 @@
+# Publishes the hosted web client (apps/web) to Zerops.
+#
+# Two channels, one trigger each, and no path filters: apps/web shares
+# packages/* with the server, so a path filter would either match nearly
+# every commit or silently leave production on a stale bundle when a shared
+# package changed. The channel is the trigger.
+#
+#   main   -> nightly, z3-eval/z3web    (the dogfood surface)
+#   v0.0.0 -> latest,  mate-prod/web    (the published product)
+#
+# Deliberately independent of "Release z3 bundle": the hosted client and the
+# server tarball are two artifacts for two different consumers, and the
+# client is written to tolerate older servers (ExecutionEnvironmentCapabilities
+# is optional-key by design), so neither release has to gate the other.
+name: Deploy hosted web
+
+on:
+  push:
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Which published channel to deploy to
+        required: true
+        type: choice
+        options: [nightly, latest]
+      ref:
+        description: Tag, branch or SHA to build from (a v0.0.0 tag names its own version)
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web-${{ inputs.channel || (github.ref_type == 'tag' && 'latest' || 'nightly') }}
+  # A superseded nightly is just an older commit; a superseded release deploy
+  # is a version somebody tagged, so let it finish.
+  cancel-in-progress: ${{ (inputs.channel || (github.ref_type == 'tag' && 'latest' || 'nightly')) == 'nightly' }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.channel || (github.ref_type == 'tag' && 'latest' || 'nightly') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve channel and version
+        id: target
+        env:
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+          DISPATCH_REF: ${{ inputs.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$DISPATCH_CHANNEL" ]]; then
+            channel="$DISPATCH_CHANNEL"
+            candidate_tag="$DISPATCH_REF"
+          elif [[ "$REF_TYPE" == "tag" ]]; then
+            channel="latest"
+            candidate_tag="$REF_NAME"
+          else
+            channel="nightly"
+            candidate_tag=""
+          fi
+
+          # Read from the checkout, not from github.sha: on a workflow_dispatch
+          # that one is the SHA of the branch the run was started from, not of
+          # the ref being deployed, and the deploy check compares against it.
+          sha="$(git rev-parse HEAD)"
+
+          # A release tag names its own version; anything else is a build off
+          # the release line it sits on, identified by its commit. Without an
+          # APP_VERSION the client falls back to apps/web/package.json, which
+          # is pinned at 0.1.0 and would label every deploy identically.
+          if [[ "$candidate_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            version="${candidate_tag#v}"
+          else
+            line="$(node -p "require('./apps/server/package.json').version")"
+            version="${line}+${channel}.${sha:0:7}"
+          fi
+
+          case "$channel" in
+            nightly) secret=EVAL ;;
+            latest)  secret=PROD ;;
+            *) echo "unknown channel: $channel" >&2; exit 1 ;;
+          esac
+
+          {
+            echo "channel=$channel"
+            echo "version=$version"
+            echo "secret=$secret"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Deploying $version ($sha) to the $channel channel."
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/web...
+
+      - name: Install zcli
+        run: |
+          curl -sSL https://zerops.io/zcli/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build and deploy
+        env:
+          ZEROPS_TOKEN: ${{ secrets[format('ZEROPS_TOKEN_{0}', steps.target.outputs.secret)] }}
+          APP_VERSION: ${{ steps.target.outputs.version }}
+          GIT_SHA: ${{ steps.target.outputs.sha }}
+          CHANNEL: ${{ steps.target.outputs.channel }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ZEROPS_TOKEN}" ]]; then
+            echo "Repository secret ZEROPS_TOKEN_${{ steps.target.outputs.secret }} is not set." >&2
+            echo "Create a Zerops integration token scoped to that project and add it under" >&2
+            echo "Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          scripts/deploy-web.sh "$CHANNEL"
