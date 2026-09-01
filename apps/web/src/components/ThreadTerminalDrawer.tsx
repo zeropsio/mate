@@ -21,6 +21,7 @@ import {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as Schema from "effect/Schema";
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type SetStateAction,
@@ -78,6 +79,7 @@ import {
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
+const DRAWER_KEYBOARD_RESIZE_STEP = 16;
 const MULTI_CLICK_SELECTION_ACTION_DELAY_MS = 260;
 
 function maxDrawerHeight(): number {
@@ -85,10 +87,44 @@ function maxDrawerHeight(): number {
   return Math.max(MIN_DRAWER_HEIGHT, Math.floor(window.innerHeight * MAX_DRAWER_HEIGHT_RATIO));
 }
 
-function clampDrawerHeight(height: number): number {
+function clampDrawerHeightToBounds(
+  height: number,
+  bounds: { minHeight: number; maxHeight: number },
+): number {
   const safeHeight = Number.isFinite(height) ? height : DEFAULT_THREAD_TERMINAL_HEIGHT;
-  const maxHeight = maxDrawerHeight();
-  return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
+  return Math.min(
+    Math.max(Math.round(safeHeight), bounds.minHeight),
+    Math.max(bounds.minHeight, bounds.maxHeight),
+  );
+}
+
+function clampDrawerHeight(height: number): number {
+  return clampDrawerHeightToBounds(height, {
+    minHeight: MIN_DRAWER_HEIGHT,
+    maxHeight: maxDrawerHeight(),
+  });
+}
+
+export function terminalDrawerHeightForKey(
+  key: string,
+  currentHeight: number,
+  bounds: { minHeight: number; maxHeight: number } = {
+    minHeight: MIN_DRAWER_HEIGHT,
+    maxHeight: maxDrawerHeight(),
+  },
+): number | null {
+  const nextHeight =
+    key === "ArrowUp"
+      ? currentHeight + DRAWER_KEYBOARD_RESIZE_STEP
+      : key === "ArrowDown"
+        ? currentHeight - DRAWER_KEYBOARD_RESIZE_STEP
+        : key === "Home"
+          ? bounds.minHeight
+          : key === "End"
+            ? bounds.maxHeight
+            : null;
+
+  return nextHeight === null ? null : clampDrawerHeightToBounds(nextHeight, bounds);
 }
 
 function writeSystemMessage(terminal: GhosttyTerminalSurface, message: string): void {
@@ -1023,6 +1059,44 @@ interface TerminalActionButtonProps {
   children: ReactNode;
 }
 
+interface TerminalDrawerResizeHandleProps {
+  height: number;
+  minHeight: number;
+  maxHeight: number;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onPointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
+}
+
+export function TerminalDrawerResizeHandle({
+  height,
+  minHeight,
+  maxHeight,
+  onKeyDown,
+  onPointerDown,
+  onPointerMove,
+  onPointerEnd,
+}: TerminalDrawerResizeHandleProps) {
+  return (
+    <div
+      role="separator"
+      tabIndex={0}
+      aria-label="Resize terminal drawer"
+      aria-orientation="horizontal"
+      aria-valuemin={minHeight}
+      aria-valuemax={maxHeight}
+      aria-valuenow={height}
+      className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+    />
+  );
+}
+
 function TerminalActionButton({ label, className, onClick, children }: TerminalActionButtonProps) {
   return (
     <Popover>
@@ -1351,6 +1425,22 @@ export default function ThreadTerminalDrawer({
     [syncHeight],
   );
 
+  const handleResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const nextHeight = terminalDrawerHeightForKey(event.key, drawerHeightRef.current);
+      if (nextHeight === null) return;
+
+      event.preventDefault();
+      if (nextHeight === drawerHeightRef.current) return;
+
+      drawerHeightRef.current = nextHeight;
+      setDrawerHeight(nextHeight);
+      syncHeight(nextHeight);
+      setResizeEpoch((value) => value + 1);
+    },
+    [setDrawerHeight, syncHeight],
+  );
+
   useEffect(() => {
     if (!visible) {
       return;
@@ -1387,6 +1477,18 @@ export default function ThreadTerminalDrawer({
     };
   }, [syncHeight]);
 
+  const resizeHandle = isPanel ? null : (
+    <TerminalDrawerResizeHandle
+      height={drawerHeight}
+      minHeight={MIN_DRAWER_HEIGHT}
+      maxHeight={maxDrawerHeight()}
+      onKeyDown={handleResizeKeyDown}
+      onPointerDown={handleResizePointerDown}
+      onPointerMove={handleResizePointerMove}
+      onPointerEnd={handleResizePointerEnd}
+    />
+  );
+
   if (normalizedTerminalIds.length === 0) {
     return (
       <aside
@@ -1397,15 +1499,7 @@ export default function ThreadTerminalDrawer({
         )}
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
-        {!isPanel ? (
-          <div
-            className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
-            onPointerDown={handleResizePointerDown}
-            onPointerMove={handleResizePointerMove}
-            onPointerUp={handleResizePointerEnd}
-            onPointerCancel={handleResizePointerEnd}
-          />
-        ) : null}
+        {resizeHandle}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
           <p>No terminal sessions for this thread yet.</p>
           <Button size="xs" variant="outline" onClick={onNewTerminalAction}>
@@ -1427,15 +1521,7 @@ export default function ThreadTerminalDrawer({
       )}
       style={isPanel ? undefined : { height: `${drawerHeight}px` }}
     >
-      {!isPanel ? (
-        <div
-          className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerEnd}
-          onPointerCancel={handleResizePointerEnd}
-        />
-      ) : null}
+      {resizeHandle}
 
       {!hasTerminalSidebar && (
         <div className="pointer-events-none absolute right-2 top-2 z-20">

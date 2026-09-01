@@ -4,9 +4,29 @@ import {
   resolveTerminalSelectionActionPosition,
   shouldHandleTerminalExit,
   shouldHandleTerminalSelectionMouseUp,
+  terminalDrawerHeightForKey,
   terminalSelectionActionDelayForClickCount,
   terminalSelectionLineRange,
 } from "./ThreadTerminalDrawer";
+
+describe("terminalDrawerHeightForKey", () => {
+  const bounds = { minHeight: 180, maxHeight: 600 };
+
+  it.each([
+    ["ArrowUp", 300, 316],
+    ["ArrowDown", 300, 284],
+    ["Home", 300, 180],
+    ["End", 300, 600],
+  ])("maps %s to the next clamped drawer height", (key, currentHeight, expectedHeight) => {
+    expect(terminalDrawerHeightForKey(key, currentHeight, bounds)).toBe(expectedHeight);
+  });
+
+  it("clamps arrow resizing and ignores unrelated keys", () => {
+    expect(terminalDrawerHeightForKey("ArrowUp", 596, bounds)).toBe(600);
+    expect(terminalDrawerHeightForKey("ArrowDown", 184, bounds)).toBe(180);
+    expect(terminalDrawerHeightForKey("PageUp", 300, bounds)).toBeNull();
+  });
+});
 
 describe("resolveTerminalSelectionActionPosition", () => {
   it("prefers the selection rect over the last pointer position", () => {
