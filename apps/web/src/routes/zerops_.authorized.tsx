@@ -13,15 +13,17 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
-import { completeZeropsHandover, startZeropsHandover } from "../zerops/handover";
+import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
 import { useZeropsSession, zeropsErrorMessage } from "../zerops/ZeropsSessionProvider";
 
 export const Route = createFileRoute("/zerops_/authorized")({
   // Read in `beforeLoad`, not in the component: this runs before anything
-  // renders and before the router can normalize the URL, so the fragment
-  // cannot be gone by the time we look for it. It is also where the nonce is
-  // spent, so a re-render can never spend it twice.
-  beforeLoad: () => ({ handover: takeZeropsHandoverFromLocation() }),
+  // renders, so the fragment cannot be gone by the time we look for it. It
+  // runs more than once per navigation though, and the read is destructive —
+  // hence `readHandoverOnce`, without which run 2 sees the scrubbed URL,
+  // reports `absent`, and silently returns the user to the landing holding a
+  // credential that has already been spent.
+  beforeLoad: () => ({ handover: takeHandover() }),
   component: ZeropsHandoverCallback,
 });
 
@@ -42,6 +44,12 @@ function takeZeropsHandoverFromLocation(): ZeropsHandoverOutcome {
   }
   return outcome;
 }
+
+/**
+ * `beforeLoad` runs more than once per navigation and the read above is
+ * destructive, so it is read once and every later run gets that same answer.
+ */
+const takeHandover = readHandoverOnce(takeZeropsHandoverFromLocation);
 
 function ZeropsHandoverCallback() {
   const { handover: outcome } = Route.useRouteContext();

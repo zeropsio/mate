@@ -143,3 +143,26 @@ export function completeZeropsHandover(input: {
   }
   return readZeropsHandover(input.fragment, store.take());
 }
+
+/**
+ * Wraps a destructive callback read so it happens exactly once, and every later
+ * caller gets the same answer.
+ *
+ * TanStack's `beforeLoad` runs more than once for a single navigation, and the
+ * read it performs cannot be repeated: the first one spends the nonce and
+ * scrubs the fragment out of the URL. Measured against a live dev server, run 1
+ * returned the session and run 2 — looking at the now-empty fragment —
+ * returned `absent`. The component receives the LAST run's value, so the user
+ * was silently returned to the landing holding no session, with the credential
+ * already consumed and unrecoverable.
+ *
+ * A module-level cache is the right scope: one page load handles one callback,
+ * and a second hand-over always arrives as a fresh document.
+ */
+export function readHandoverOnce(read: () => ZeropsHandoverOutcome): () => ZeropsHandoverOutcome {
+  let captured: ZeropsHandoverOutcome | null = null;
+  return () => {
+    captured ??= read();
+    return captured;
+  };
+}

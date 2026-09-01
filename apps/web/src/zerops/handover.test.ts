@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
+
 import {
   ZEROPS_HANDOVER_NONCE_KEY,
   completeZeropsHandover,
+  readHandoverOnce,
   startZeropsHandover,
   type ZeropsHandoverNonceStore,
 } from "./handover";
@@ -140,5 +143,42 @@ describe("startZeropsHandover from a dev server", () => {
         expect(url.searchParams.get("port")).toBeNull();
       });
     }
+  });
+});
+
+describe("reading the callback exactly once", () => {
+  // `beforeLoad` runs more than once per navigation, and the first read is
+  // destructive: it spends the nonce and scrubs the fragment out of the URL.
+  // Without this, run 2 sees an empty fragment, reports `absent`, and the
+  // component — which receives the LAST run's value — silently sends the user
+  // back to the landing holding no session. Measured against a live dev
+  // server: run 1 `session`, run 2 `absent`.
+  it("returns the first outcome to every later caller, and reads only once", () => {
+    const outcomes: ZeropsHandoverOutcome[] = [
+      { kind: "session", refreshToken: "rt-1", clientId: null, zcpClaimed: false },
+      { kind: "absent" },
+    ];
+    let reads = 0;
+    const read = readHandoverOnce(() => {
+      reads += 1;
+      return outcomes[reads - 1] ?? { kind: "absent" };
+    });
+
+    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
+    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
+    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
+    expect(reads).toBe(1);
+  });
+
+  it("caches an absent read too, so a plain visit stays cheap and stable", () => {
+    let reads = 0;
+    const read = readHandoverOnce(() => {
+      reads += 1;
+      return { kind: "absent" };
+    });
+
+    expect(read()).toEqual({ kind: "absent" });
+    expect(read()).toEqual({ kind: "absent" });
+    expect(reads).toBe(1);
   });
 });
