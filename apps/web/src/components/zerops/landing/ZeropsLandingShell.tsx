@@ -353,3 +353,64 @@ export function ZeropsTotpForm({
     </form>
   );
 }
+
+/**
+ * The way in, and the primary one: the account lives on Zerops, and signing up
+ * or signing in with GitHub only works there — Turnstile's site key is bound to
+ * that hostname and the OAuth callback is fixed on Zerops' own OAuth App. The
+ * password form stays underneath for anyone who wants it, and for the origins
+ * the hand-over is not registered for.
+ */
+export function ZeropsHandoverActions({
+  onContinue,
+  onCreateAccount,
+}: {
+  readonly onContinue: () => void;
+  readonly onCreateAccount: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <Button className="w-full" onClick={onContinue}>
+        Continue with Zerops
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        No account yet?{" "}
+        <button
+          type="button"
+          className="underline underline-offset-2 hover:text-foreground"
+          onClick={onCreateAccount}
+        >
+          Create one on Zerops
+        </button>
+      </p>
+    </div>
+  );
+}
+
+/** Collapses the password form behind the hand-over without hiding it. */
+export function ZeropsPasswordDisclosure({
+  open,
+  onToggle,
+  children,
+}: {
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-border/60" />
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          onClick={onToggle}
+        >
+          {open ? "Hide the password form" : "Sign in with a password instead"}
+        </button>
+        <span className="h-px flex-1 bg-border/60" />
+      </div>
+      {open ? children : null}
+    </div>
+  );
+}

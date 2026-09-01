@@ -1069,3 +1069,41 @@ describe("countDoorEnvironments", () => {
     );
   });
 });
+
+describe("the Zerops hand-over callback is reachable from every gate", () => {
+  // This route runs *before* there is anything to authenticate with: the user
+  // arrives from app.zerops.io carrying the credential in the fragment. Every
+  // other unauthenticated path is sent to /pair, which would drop the
+  // credential on the floor and strand the sign-in, so the callback is a
+  // deliberate carve-out — the one route whose job is to run at the door.
+  const CALLBACK_PATHS = ["/zerops/authorized", "/zerops/authorized/", "/Zerops/Authorized"];
+
+  it.each(
+    GATE_EXPECTATIONS.flatMap(({ label, gate }) =>
+      CALLBACK_PATHS.flatMap((pathname) =>
+        BOTH_COUNTS.map((environmentCount) => ({ label, gate, pathname, environmentCount })),
+      ),
+    ),
+  )(
+    "$label at $pathname with $environmentCount connected projects renders the callback",
+    ({ gate, pathname, environmentCount }) => {
+      const decision = resolveDoor(gate, { pathname, environmentCount });
+
+      expect(decision.surface).toBe("zerops-handover");
+      // Never a redirect: the fragment does not survive one, and the user
+      // would land on a sign-in form holding a credential nobody read.
+      expect(decision.redirect).toBeNull();
+      expect(decision.shell).toBe("bare");
+      expect(decision.manualLink).toBeNull();
+    },
+  );
+
+  it("does not swallow the rest of the /zerops surface", () => {
+    const gate = { status: "authenticated" } as const satisfies AuthGateState;
+    for (const pathname of ["/zerops", "/zerops/authorized-elsewhere", "/zerops/projects"]) {
+      expect(resolveDoor(gate, { pathname, environmentCount: 1 }).surface).not.toBe(
+        "zerops-handover",
+      );
+    }
+  });
+});

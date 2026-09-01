@@ -191,6 +191,10 @@
       "types": "./src/zerops/firstPrompt.ts",
       "default": "./src/zerops/firstPrompt.ts"
     },
+    "./zerops/handover": {
+      "types": "./src/zerops/handover.ts",
+      "default": "./src/zerops/handover.ts"
+    },
     "./zerops/provisioning": {
       "types": "./src/zerops/provisioning.ts",
       "default": "./src/zerops/provisioning.ts"
