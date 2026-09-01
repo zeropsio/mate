@@ -16,30 +16,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/connection/platform.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Sign in to T3 Connect to connect this environment.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/mobile/src/connection/platform.ts",
-    "kind": "Literal",
-    "fingerprint": "\"The T3 Connect session is unavailable.\"",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
-    "path": "apps/mobile/src/features/connection/ConnectionEnvironmentRow.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Managed by T3 Connect. Tunnel details update automatically.",
-    "owner": "karel",
-    "reason": "legacy connection brand — removed by the Connect/Clerk deletion stream",
-    "expires": "F2"
-  },
-  {
     "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
     "kind": "Literal",
     "fingerprint": "\"Pairing...\"",

@@ -43,4 +43,16 @@ describe("mobile native branding", () => {
     expect(workspaceTitle).not.toContain("unstable_headerLeftItems:");
     expect(threadSidebar).toContain('navigationItemStyle: "editor"');
   });
+
+  it("does not expose the retired T3 Connect name on connection and settings surfaces", () => {
+    const source = [
+      "src/connection/platform.ts",
+      "src/features/connection/ConnectionEnvironmentRow.tsx",
+      "src/features/settings/SettingsRouteScreen.tsx",
+    ]
+      .map(readSource)
+      .join("\n");
+
+    expect(source).not.toContain("T3 Connect");
+  });
 });

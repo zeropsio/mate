@@ -14,7 +14,7 @@ import {
 
 import type { HomeProjectSortOrder } from "./homeThreadList";
 
-interface HomeListOptions {
+export interface HomeListOptions {
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly projectSortOrder: HomeProjectSortOrder;
 }
@@ -40,6 +40,13 @@ interface HomeListOptionsContextValue {
 }
 
 const HomeListOptionsContext = createContext<HomeListOptionsContextValue | null>(null);
+
+export function withSelectedHomeEnvironment(
+  options: HomeListOptions,
+  environmentId: EnvironmentId,
+): HomeListOptions {
+  return { ...options, selectedEnvironmentId: environmentId };
+}
 
 /** Keeps list preferences stable while the app moves between compact and split shells. */
 export function HomeListOptionsProvider({
@@ -75,11 +82,26 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
     projectGroupingMode: shared?.projectGroupingMode ?? "repository",
   };
 
-  const setSelectedEnvironmentId = useCallback((value: EnvironmentId | null) => {
-    setOptions((current) => ({ ...current, selectedEnvironmentId: value }));
-  }, []);
+  const setSelectedEnvironmentId = useCallback(
+    (value: EnvironmentId | null) => {
+      setOptions((current) => ({ ...current, selectedEnvironmentId: value }));
+    },
+    [setOptions],
+  );
   return {
     options: resolvedOptions,
     setSelectedEnvironmentId,
   } as const;
+}
+
+/** Selects a just-connected environment before its sheet navigates back to Home. */
+export function useSetHomeEnvironmentId(): (environmentId: EnvironmentId) => void {
+  const shared = useContext(HomeListOptionsContext);
+  return useCallback(
+    (environmentId: EnvironmentId) => {
+      if (!shared) throw new Error("Home environment selection requires HomeListOptionsProvider.");
+      shared.setOptions((current) => withSelectedHomeEnvironment(current, environmentId));
+    },
+    [shared],
+  );
 }

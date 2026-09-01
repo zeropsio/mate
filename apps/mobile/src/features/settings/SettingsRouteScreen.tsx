@@ -1,4 +1,4 @@
-import { useAuth, useUser } from "@clerk/expo";
+import { useAuth } from "@clerk/expo";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -44,6 +44,7 @@ import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { resolveAgentAwarenessPlatformPresentation } from "./SettingsRouteScreen.logic";
+import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
 type NotificationStatus = "checking" | "enabled" | "disabled" | "unsupported";
 type LiveActivityStatus = "checking" | "enabled" | "disabled" | "signed-out" | "linking";
@@ -113,6 +114,8 @@ function LocalSettingsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
+        <ZeropsAccountSettingsSection />
+
         <SettingsSection title="Configuration">
           <SettingsRow
             icon="desktopcomputer"
@@ -146,7 +149,6 @@ function ConfiguredSettingsRouteScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { getToken, isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
-  const { user } = useUser();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const [notificationStatus, setNotificationStatus] = useState<NotificationStatus>("checking");
   const [liveActivityStatus, setLiveActivityStatus] = useState<LiveActivityStatus>("checking");
@@ -157,11 +159,6 @@ function ConfiguredSettingsRouteScreen() {
 
   const connections = useMemo(() => Object.values(savedConnectionsById), [savedConnectionsById]);
   const environmentCount = connections.length;
-  const accountLabel = useMemo(() => {
-    if (!isLoaded) return "Checking";
-    if (!isSignedIn) return "Sign in";
-    return user?.primaryEmailAddress?.emailAddress ?? "Signed in";
-  }, [isLoaded, isSignedIn, user?.primaryEmailAddress?.emailAddress]);
 
   const refreshNotifications = useCallback(async () => {
     if (process.env.EXPO_OS !== "ios") {
@@ -236,7 +233,7 @@ function ConfiguredSettingsRouteScreen() {
       } else {
         Alert.alert(
           "Couldn't finish enabling notifications",
-          "Notification access was granted, but this device could not be registered with T3 Connect. Notifications will start once registration succeeds.",
+          "Notification access was granted, but this device could not be registered with Zerops Code. Notifications will start once registration succeeds.",
         );
       }
       return;
@@ -266,8 +263,8 @@ function ConfiguredSettingsRouteScreen() {
 
   const promptSignIn = useCallback(() => {
     Alert.alert(
-      "Sign in to T3 Connect",
-      "Live Activity updates require T3 Connect so relay can deliver updates to this device.",
+      "Sign in to Zerops",
+      "Live Activity updates require a Zerops sign-in so Zerops Code can deliver updates to this device.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -338,7 +335,7 @@ function ConfiguredSettingsRouteScreen() {
     } else {
       Alert.alert(
         "Couldn't finish enabling Live Activities",
-        "This device could not be registered with T3 Connect, so Live Activities won't appear yet. They'll start once registration succeeds.",
+        "This device could not be registered with Zerops Code, so Live Activities won't appear yet. They'll start once registration succeeds.",
       );
     }
   }, [
@@ -429,11 +426,6 @@ function ConfiguredSettingsRouteScreen() {
     ],
   );
 
-  const openAccount = useCallback(() => {
-    if (!isLoaded) return;
-    navigation.navigate("SettingsSheet", { screen: "SettingsAuth" });
-  }, [isLoaded, navigation]);
-
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       <ScrollView
@@ -445,19 +437,7 @@ function ConfiguredSettingsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
-        <View className="gap-3">
-          <SettingsSection title="Account">
-            <SettingsRow
-              icon="person.crop.circle"
-              label="Zerops Account"
-              value={accountLabel}
-              onPress={openAccount}
-            />
-          </SettingsSection>
-          <Text className="px-2 text-sm text-foreground-muted">
-            Zerops Code works locally without signing in. Cloud features are optional.
-          </Text>
-        </View>
+        <ZeropsAccountSettingsSection />
 
         <SettingsSection title="Configuration">
           <SettingsRow
@@ -518,6 +498,40 @@ function ConfiguredSettingsRouteScreen() {
 
         <AppSettingsSection />
       </ScrollView>
+    </View>
+  );
+}
+
+function ZeropsAccountSettingsSection() {
+  const navigation = useNavigation();
+  const { status, user } = useZeropsSession();
+  const accountLabel =
+    status === "loading"
+      ? "Checking"
+      : status === "signed-in"
+        ? (user?.email ?? "Signed in")
+        : status === "totp-required"
+          ? "Verification needed"
+          : "Sign in";
+
+  return (
+    <View className="gap-3">
+      <SettingsSection title="Account">
+        <SettingsRow
+          icon="person.crop.circle"
+          label="Zerops Account"
+          value={accountLabel}
+          onPress={() =>
+            navigation.navigate("SettingsSheet", {
+              screen: "SettingsContent",
+              params: { screen: "SettingsEnvironmentNew" },
+            })
+          }
+        />
+      </SettingsSection>
+      <Text className="px-2 text-sm text-foreground-muted">
+        Your Zerops account finds projects you can connect to on this device.
+      </Text>
     </View>
   );
 }

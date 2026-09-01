@@ -20,6 +20,24 @@ export const connectPairingUrl = createRuntimeCommand(connectionAtomRuntime, {
     ),
 });
 
+/**
+ * Connects a Zerops container through the account-backed identity door. The
+ * access token is spent by the onboarding runtime and is never stored with
+ * the resulting environment connection.
+ */
+export const connectZeropsIdentity = createRuntimeCommand(connectionAtomRuntime, {
+  label: "mobile:connection:connect-zerops-identity",
+  scheduler: onboardingScheduler,
+  concurrency: {
+    mode: "singleFlight",
+    key: (input: { readonly httpBaseUrl: string }) => input.httpBaseUrl,
+  },
+  execute: (input: { readonly httpBaseUrl: string; readonly zeropsToken: string }) =>
+    ConnectionOnboarding.pipe(
+      Effect.flatMap((onboarding) => onboarding.registerZeropsIdentity(input)),
+    ),
+});
+
 export const updateBearerConnection = createRuntimeCommand(connectionAtomRuntime, {
   label: "mobile:connection:update-bearer",
   scheduler: onboardingScheduler,

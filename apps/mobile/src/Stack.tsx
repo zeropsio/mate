@@ -31,6 +31,10 @@ import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
+import {
+  SettingsZeropsConnectRouteScreen,
+  ZeropsConnectRouteScreen,
+} from "./features/zerops/ZeropsConnectRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
@@ -155,10 +159,17 @@ const SettingsContentStack = createNativeStackNavigator({
       },
     }),
     SettingsEnvironmentNew: createNativeStackScreen({
-      screen: ConnectionsNewRouteScreen,
+      screen: SettingsZeropsConnectRouteScreen,
       linking: "environment-new",
       options: {
-        title: "Add Environment",
+        title: "Connect with Zerops",
+      },
+    }),
+    SettingsEnvironmentPairing: createNativeStackScreen({
+      screen: ConnectionsNewRouteScreen,
+      linking: "environment-pairing",
+      options: {
+        title: "One-time link",
       },
     }),
     SettingsArchive: createNativeStackScreen({
@@ -321,6 +332,7 @@ const NewTaskSheetStack = createNativeStackNavigator({
 const WORKSPACE_OVERLAY_ROUTES = new Set([
   "Connections",
   "ConnectionsNew",
+  "ConnectionsPairing",
   "GitBranches",
   "GitCommit",
   "GitConfirm",
@@ -588,8 +600,17 @@ export const RootStack = createNativeStackNavigator({
       },
     }),
     ConnectionsNew: createNativeStackScreen({
-      screen: ConnectionsNewRouteScreen,
+      screen: ZeropsConnectRouteScreen,
       linking: "connections/new",
+      options: {
+        ...FORM_SHEET_PRESENTATION_OPTIONS,
+        sheetAllowedDetents: [0.7, 0.92],
+        sheetGrabberVisible: true,
+      },
+    }),
+    ConnectionsPairing: createNativeStackScreen({
+      screen: ConnectionsNewRouteScreen,
+      linking: "connections/pairing",
       options: {
         ...FORM_SHEET_PRESENTATION_OPTIONS,
         sheetAllowedDetents: [0.55, 0.7],
