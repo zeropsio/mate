@@ -161,6 +161,7 @@
       "title": "Zerops agent authorization card",
       "components": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
         "packages/client-runtime/src/zerops/agentLogin.ts",
         "apps/web/src/zerops/useAgentLogin.ts",
         "apps/web/src/zerops/useAgentLoginCancel.ts"
@@ -206,6 +207,8 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.logic.test.ts",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
         "packages/client-runtime/src/zerops/agentLogin.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"

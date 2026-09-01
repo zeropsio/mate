@@ -199,7 +199,10 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
     document.body;
   const drawerStyles = getComputedStyle(drawerSurface);
   const bodyStyles = getComputedStyle(document.body);
-  const themeStyles = getComputedStyle(document.documentElement);
+  // Read variables from the mount when available. They inherit the global
+  // theme by default, while focused surfaces (for example provider auth)
+  // can deliberately scope their own terminal palette.
+  const themeStyles = getComputedStyle(mountElement ?? document.documentElement);
   const background = normalizeComputedColor(
     drawerStyles.backgroundColor,
     normalizeComputedColor(bodyStyles.backgroundColor, fallbackBackground),

@@ -15,9 +15,9 @@
  * `zeropsAgentAuthNeedsAttention` (`@t3tools/client-runtime/zerops/agentLogin`), left to the
  * caller so this stays pure.
  */
-import { useState } from "react";
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 
+import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Button } from "~/components/ui/button";
 import {
   agentAuthAction,
@@ -26,7 +26,7 @@ import {
   classifyAgentLogin,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { FlatCard } from "./primitives";
+import { FlatCard, StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
   "claude-code": "Claude Code",
@@ -48,15 +48,23 @@ export function ZeropsAgentAuthCard({
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
   return (
-    <FlatCard className="flex flex-col gap-2 p-3" data-zerops-agent-auth-card>
-      {snapshot.agents.map((agent) => (
-        <ZeropsAgentAuthRow
-          key={agent.agentId}
-          agent={agent}
-          onSignIn={onSignIn}
-          onCancel={onCancel}
-        />
-      ))}
+    <FlatCard className="overflow-hidden" data-zerops-agent-auth-card>
+      <header className="border-b border-border/60 px-4 py-3">
+        <h3 className="text-sm font-semibold text-foreground">Authorize coding agents</h3>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+          Sign in inside this Zerops Control Plane. Access is shared by this project.
+        </p>
+      </header>
+      <div className="divide-y divide-border/60">
+        {snapshot.agents.map((agent) => (
+          <ZeropsAgentAuthRow
+            key={agent.agentId}
+            agent={agent}
+            onSignIn={onSignIn}
+            onCancel={onCancel}
+          />
+        ))}
+      </div>
     </FlatCard>
   );
 }
@@ -72,18 +80,25 @@ function ZeropsAgentAuthRow({
 }) {
   const login = classifyAgentLogin(agent.login);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
+  const status = agentStatusPresentation(agent, login);
 
   return (
     <div
-      className="flex flex-col items-stretch gap-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+      className="flex flex-col items-stretch gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
       data-agent-id={agent.agentId}
       data-agent-state={agent.state}
       data-agent-login-phase={login.kind}
       data-zerops-agent-auth-row
     >
-      <div className="flex min-w-0 flex-col">
-        <span className="font-medium">{AGENT_NAMES[agent.agentId]}</span>
-        <span className="text-muted-foreground text-xs leading-5">{label}</span>
+      <div className="flex min-w-0 items-start gap-3" data-zerops-agent-identity>
+        <AgentLogo agentId={agent.agentId} />
+        <div className="min-w-0">
+          <span className="block font-medium text-foreground">{AGENT_NAMES[agent.agentId]}</span>
+          <StatusDot className="mt-1" label={status.label} tone={status.tone} />
+          {label === status.label ? null : (
+            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{label}</span>
+          )}
+        </div>
       </div>
       <ZeropsAgentAuthActionSlot
         agent={agent}
@@ -93,6 +108,50 @@ function ZeropsAgentAuthRow({
       />
     </div>
   );
+}
+
+function AgentLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
+  const logoClassName = "size-5";
+
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-xs"
+      data-zerops-agent-logo={agentId}
+    >
+      {agentId === "claude-code" ? (
+        <ClaudeAI className={logoClassName} />
+      ) : (
+        <OpenAI className={logoClassName} />
+      )}
+    </span>
+  );
+}
+
+function agentStatusPresentation(
+  agent: ZeropsAgentAuth,
+  login: ZeropsAgentLoginPresentation,
+): { readonly label: string; readonly tone: "attention" | "busy" | "failed" | "off" | "ok" } {
+  switch (login.kind) {
+    case "starting":
+    case "menu":
+      return { label: "Signing in", tone: "busy" };
+    case "awaiting-browser":
+    case "awaiting-code":
+      return { label: "Action required", tone: "attention" };
+    case "succeeded":
+      return { label: "Authorized", tone: "ok" };
+    case "failed":
+      return { label: "Sign-in failed", tone: "failed" };
+    case "none": {
+      const action = agentAuthAction(agent);
+      if (action === "sign-in") return { label: "Action required", tone: "attention" };
+      if (action === "registering" || action === "checking") {
+        return { label: action === "registering" ? "Registering" : "Checking", tone: "busy" };
+      }
+      return { label: agentAuthLabel(agent), tone: "ok" };
+    }
+  }
 }
 
 function ZeropsAgentAuthActionSlot({
@@ -111,32 +170,23 @@ function ZeropsAgentAuthActionSlot({
       return <ZeropsAgentAuthActionButton agent={agent} onSignIn={onSignIn} />;
     case "starting":
     case "menu":
-      // The server is running/navigating the CLI's own login flow — nothing
-      // for the user to click until it needs them, other than giving up.
+    case "awaiting-browser":
+    case "awaiting-code":
       return (
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <Button disabled size="compact" variant="outline">
-            Signing in…
+          <Button
+            data-zerops-agent-primary-action
+            onClick={() => {
+              onSignIn(agent.agentId);
+            }}
+            size="compact"
+            variant="pill"
+          >
+            Continue authorization
           </Button>
           <CancelLoginButton agentId={agent.agentId} onCancel={onCancel} />
         </div>
       );
-    case "awaiting-browser":
-      return (
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <ZeropsAgentLoginAwaitingBrowser
-            agentId={agent.agentId}
-            url={login.url}
-            code={login.code}
-          />
-          <CancelLoginButton agentId={agent.agentId} onCancel={onCancel} />
-        </div>
-      );
-    case "awaiting-code":
-      // The label above already says to paste into the terminal; the
-      // terminal pane is what the user acts on next — Cancel is still
-      // offered, for a code the user decides not to paste after all.
-      return <CancelLoginButton agentId={agent.agentId} onCancel={onCancel} />;
     case "succeeded":
       return null;
     case "failed":
@@ -146,9 +196,9 @@ function ZeropsAgentAuthActionSlot({
             onSignIn(agent.agentId);
           }}
           size="compact"
-          variant="outline"
+          variant="pill"
         >
-          Sign in again
+          Review authorization
         </Button>
       );
   }
@@ -174,72 +224,6 @@ function CancelLoginButton({
   );
 }
 
-function ZeropsAgentLoginAwaitingBrowser({
-  agentId,
-  url,
-  code,
-}: {
-  readonly agentId: ZeropsAgentId;
-  readonly url: string | undefined;
-  readonly code: string | undefined;
-}) {
-  return (
-    <div
-      className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:justify-end"
-      data-zerops-agent-login-awaiting-browser
-    >
-      {url !== undefined && (
-        <a
-          className="text-primary text-xs underline underline-offset-2"
-          href={url}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Open sign-in link
-        </a>
-      )}
-      {url !== undefined && <CopyButton label="Copy link" value={url} />}
-      {agentId === "codex" && code !== undefined && (
-        <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pl-2 pr-0.5">
-          <code className="select-all font-mono text-xs text-foreground">{code}</code>
-          <CopyButton label="Copy code" value={code} />
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** How long the "Copied!" feedback stays on screen — mirrors the GUI walker's own `COPY_FEEDBACK_DURATION_MS`. */
-const COPY_FEEDBACK_DURATION_MS = 2000;
-
-function CopyButton({ label, value }: { readonly label: string; readonly value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <Button
-      onClick={() => {
-        void navigator.clipboard
-          .writeText(value)
-          .then(() => {
-            setCopied(true);
-            setTimeout(() => {
-              setCopied(false);
-            }, COPY_FEEDBACK_DURATION_MS);
-          })
-          .catch(() => {
-            // Clipboard access can be denied (permissions, insecure
-            // context); the sign-in link/code is still visible/openable
-            // even if copying silently fails.
-          });
-      }}
-      size="compact"
-      variant="outline"
-    >
-      {copied ? "Copied!" : label}
-    </Button>
-  );
-}
-
 function ZeropsAgentAuthActionButton({
   agent,
   onSignIn,
@@ -251,11 +235,12 @@ function ZeropsAgentAuthActionButton({
   if (action === "sign-in") {
     return (
       <Button
+        data-zerops-agent-primary-action
         onClick={() => {
           onSignIn(agent.agentId);
         }}
         size="compact"
-        variant="outline"
+        variant="pill"
       >
         {AGENT_SIGN_IN_LABELS[agent.agentId]}
       </Button>

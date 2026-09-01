@@ -1233,6 +1233,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-key-chip-radius: 3px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
+  /* Provider authorization keeps a console-like surface in both app themes;
+     naming the palette here prevents one-off dark colors in components. */
+  --zerops-auth-terminal-surface: #0b0c14;
+  --zerops-auth-terminal-header: #12131c;
+  --zerops-auth-terminal-border: rgb(255 255 255 / 8%);
+  --zerops-auth-terminal-text: #d4d4d8;
+  --zerops-auth-terminal-muted: #a1a1aa;
+  --zerops-auth-terminal-faint: #71717a;
   --zerops-process-step-column: 30px;
   --zerops-process-step-glyph-size: 17px;
   --zerops-process-step-border-width: 2px;

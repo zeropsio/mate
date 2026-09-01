@@ -20,6 +20,7 @@ const feedState = vi.hoisted(() => ({
 const actions = vi.hoisted(() => ({
   cancel: vi.fn(),
   signIn: vi.fn(),
+  terminalSurface: null as string | null,
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
@@ -31,7 +32,13 @@ vi.mock("../../zerops/useZeropsFeeds", () => ({
 }));
 
 vi.mock("../../zerops/useAgentLogin", () => ({
-  useAgentLogin: () => actions.signIn,
+  useAgentLogin: (
+    _threadRef: unknown,
+    options?: { readonly terminalSurface?: "drawer" | "embedded" },
+  ) => {
+    actions.terminalSurface = options?.terminalSurface ?? null;
+    return actions.signIn;
+  },
 }));
 
 vi.mock("../../zerops/useAgentLoginCancel", () => ({
@@ -131,6 +138,7 @@ const CANCELLED: ZeropsAgentAuthSnapshot = {
 beforeEach(() => {
   actions.cancel.mockReset();
   actions.signIn.mockReset();
+  actions.terminalSurface = null;
   buttonState.handlers.clear();
 });
 
@@ -209,7 +217,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
       snapshot: AGENT_AUTH,
       topology: undefined,
       label: "Sign in to Codex",
-      expectedSignIn: true,
+      expectedSignIn: false,
       expectedCancel: false,
     },
     {
@@ -233,7 +241,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
       snapshot: CANCELLED,
       topology: TOPOLOGY,
       label: "Sign in to Codex",
-      expectedSignIn: true,
+      expectedSignIn: false,
       expectedCancel: false,
     },
   ] as const)(
@@ -250,6 +258,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
       }
       expect(actions.signIn).toHaveBeenCalledTimes(expectedSignIn ? 1 : 0);
       expect(actions.cancel).toHaveBeenCalledTimes(expectedCancel ? 1 : 0);
+      expect(actions.terminalSurface).toBe("embedded");
       if (expectedSignIn) {
         expect(actions.signIn).toHaveBeenCalledWith("codex");
       }

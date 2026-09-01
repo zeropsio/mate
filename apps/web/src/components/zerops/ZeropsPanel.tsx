@@ -6,6 +6,7 @@
  * owns every change, through MCP.
  */
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import { useState } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { zeropsQuickActions } from "@t3tools/client-runtime/zerops/quickActions";
@@ -14,6 +15,7 @@ import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
+import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
@@ -21,18 +23,27 @@ import { MicroLabel } from "./primitives";
 export function ZeropsPanel({
   threadRef,
   agentAuthCard,
+  agentAuthSnapshot,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
+  readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | undefined;
 }) {
   const topology = useZeropsTopology(threadRef?.environmentId ?? null);
   const lifecycle = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
     threadRef?.threadId ?? null,
   );
-  const signInToAgent = useAgentLogin(threadRef);
+  const [authorizationAgentId, setAuthorizationAgentId] = useState<
+    ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
+  >(null);
+  const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
   const view = buildZeropsServiceMap(topology, lifecycle);
+  const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
+  const authorizationAgent = authorizationSnapshot?.agents.find(
+    (agent) => agent.agentId === authorizationAgentId,
+  );
   const panelSections =
     view === undefined
       ? {
@@ -45,22 +56,37 @@ export function ZeropsPanel({
         };
 
   return (
-    <ScrollArea className="h-full">
-      <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
-        {panelSections.body}
-        {agentAuthCard === null ? null : (
-          <section className="space-y-2" data-zerops-agent-auth-tray>
-            <MicroLabel>Coding agents</MicroLabel>
-            <ZeropsAgentAuthCard
-              onCancel={cancelAgentLogin}
-              onSignIn={signInToAgent}
-              snapshot={agentAuthCard}
-            />
-          </section>
-        )}
-        {panelSections.quickActions}
-      </div>
-    </ScrollArea>
+    <>
+      <ScrollArea className="h-full">
+        <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
+          {panelSections.body}
+          {agentAuthCard === null ? null : (
+            <section className="space-y-2" data-zerops-agent-auth-tray>
+              <MicroLabel>Coding agents</MicroLabel>
+              <ZeropsAgentAuthCard
+                onCancel={cancelAgentLogin}
+                onSignIn={setAuthorizationAgentId}
+                snapshot={agentAuthCard}
+              />
+            </section>
+          )}
+          {panelSections.quickActions}
+        </div>
+      </ScrollArea>
+      {authorizationAgent === undefined ? null : (
+        <ZeropsAgentAuthorizationDialog
+          agent={authorizationAgent}
+          onCancel={cancelAgentLogin}
+          onOpenChange={(open) => {
+            if (!open) setAuthorizationAgentId(null);
+          }}
+          onStart={startAgentLogin}
+          open
+          projectName={view?.project?.name ?? null}
+          threadRef={threadRef}
+        />
+      )}
+    </>
   );
 }
 

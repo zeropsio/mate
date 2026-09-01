@@ -6689,6 +6689,7 @@ function ChatViewContent(props: ChatViewProps) {
               return (
                 <ZeropsPanel
                   agentAuthCard={zeropsChrome.agentAuthCard}
+                  agentAuthSnapshot={zeropsAgentAuth}
                   threadRef={zeropsChrome.threadRef}
                 />
               );
