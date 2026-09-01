@@ -113,15 +113,21 @@ Reviving this means turning the branch integration off, or both paths deploy
 over each other. The infrastructure `main` already has — the service, the L7
 balancer, the `mate.zerops.io` domain — is orthogonal and would be kept.
 
-## Residue left behind
+## Nothing is left running
 
-- **`mate-prod` holds a second static service, `web`** (`KT6aygSdQHiIvMTsEPRpjg`,
-  2 containers, subdomain `https://web-257.ny1.zerops.app`), imported while this
-  was being verified and now serving only a holding page. It duplicates `app`
-  and is safe to delete.
-- **`zeropsio/z3` has a repository secret `ZEROPS_TOKEN_PROD`**, a Zerops
-  integration token scoped to the `mate-prod` project alone (client-level
-  `NO_ACCESS`, `canCreateProjects: false`, ADMIN on that one project). No
-  workflow on `main` reads it.
-- A companion `ZEROPS_TOKEN_EVAL`, scoped to `z3-eval`, was never created, so
-  the nightly leg has never run.
+Everything this created outside git was removed the same day, so `main` and
+`mate-prod` carry no trace of it. What that means for anyone reviving this:
+
+- **The `latest` target no longer exists.** The verification ran against a
+  second static service in `mate-prod`, imported with `minContainers` /
+  `maxContainers: 2` and `startWithoutCode: true`, subdomain enabled afterwards
+  (fact 9 above). It was deleted; `main`'s own `app`, behind the L7 balancer at
+  `mate.zerops.io`, is the service that matters now.
+- **`scripts/deploy-web.sh` therefore names a dead service id** in its `latest`
+  row, and a `nightly` row pointing at `z3-eval/z3web` that was never exercised.
+  Both have to be repointed before the script is run again.
+- **Neither repository secret exists.** `ZEROPS_TOKEN_PROD` was created and then
+  removed; `ZEROPS_TOKEN_EVAL` was never created, so the nightly leg has never
+  run. The right shape for both is a Zerops integration token scoped to the one
+  project: client-level `NO_ACCESS`, `canCreateProjects: false`, ADMIN on that
+  project alone.
