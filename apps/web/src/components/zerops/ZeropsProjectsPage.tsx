@@ -8,11 +8,18 @@ import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  canCreateProjectsInOrganization,
+  type ZeropsLocation,
+  type ZeropsOrganization,
+} from "@t3tools/client-runtime/zerops";
+
 import { isElectron } from "../../env";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { ScrollArea } from "../ui/scroll-area";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
@@ -38,6 +45,7 @@ import type { AuthGateState } from "~/environments/primary/auth";
 
 import { MicroLabel } from "./primitives";
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
+import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -113,18 +121,95 @@ export function ZeropsProjectScopeHeader() {
 }
 
 function NewProjectForm({
+  organization,
   onCreate,
   busy,
   error,
 }: {
-  readonly onCreate: (input: { readonly clientId: string; readonly name: string }) => void;
+  readonly organization: ZeropsOrganization;
+  readonly onCreate: (input: {
+    readonly clientId: string;
+    readonly name: string;
+    readonly location?: string;
+  }) => void;
   readonly busy: boolean;
   readonly error: string | null;
 }) {
-  const { organizations } = useZeropsSession();
+  const { client } = useZeropsSession();
   const [name, setName] = useState("zerops-code");
+  const [locations, setLocations] = useState<ReadonlyArray<ZeropsLocation>>([]);
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const canCreate = canCreateProjectsInOrganization(organization);
 
-  if (organizations.length === 0) return null;
+  useEffect(() => {
+    if (!canCreate) {
+      setLocations([]);
+      setLocationId(null);
+      setLocationError(null);
+      setLocationStatus("ready");
+      return;
+    }
+    let cancelled = false;
+    setLocations([]);
+    setLocationId(null);
+    setLocationError(null);
+    setLocationStatus("loading");
+    void client
+      .listClientLocations(organization.id)
+      .then((available) => {
+        if (cancelled) return;
+        setLocations(available);
+        setLocationId(available[0]?.id ?? null);
+        setLocationStatus("ready");
+
+        if (available.length <= 1) return;
+        // Match the Zerops GUI's default: measure all locations in parallel
+        // and preselect the lowest observed latency. The choice remains
+        // explicit and editable; failed probes keep the first API location.
+        void Promise.all(
+          available.map(async (location) => {
+            const startedAt = performance.now();
+            try {
+              const response = await fetch(location.pingUrl, { cache: "no-store" });
+              if (!response.ok) return null;
+              return { id: location.id, latency: performance.now() - startedAt };
+            } catch {
+              return null;
+            }
+          }),
+        ).then((results) => {
+          if (cancelled) return;
+          const fastest = results
+            .filter((result): result is { readonly id: string; readonly latency: number } =>
+              Boolean(result),
+            )
+            .sort((left, right) => left.latency - right.latency)[0];
+          if (fastest) setLocationId(fastest.id);
+        });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setLocationStatus("failed");
+        setLocationError(zeropsErrorMessage(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCreate, client, organization.id]);
+
+  if (!canCreate) {
+    return (
+      <section className="rounded-xl border border-border/55 bg-card/20 px-4 py-4">
+        <h2 className="text-sm font-semibold text-foreground">Project creation is unavailable</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          This membership can open assigned projects but cannot create a new one in{" "}
+          {organization.name}.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4">
@@ -144,21 +229,62 @@ function NewProjectForm({
           }}
         />
       </div>
-      <div className="flex flex-wrap gap-2">
-        {organizations.map((organization) => (
-          <Button
-            key={organization.id}
-            size="sm"
-            disabled={busy || name.trim().length === 0}
-            onClick={() => {
-              onCreate({ clientId: organization.id, name });
+      {locations.length > 1 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="zerops-new-project-location">Location</Label>
+          <Select
+            value={locationId}
+            onValueChange={(value) => {
+              setLocationId(value);
             }}
           >
-            {busy ? <Spinner className="size-4" /> : null}
-            {organizations.length === 1 ? "Create project" : `Create in ${organization.name}`}
-          </Button>
-        ))}
+            <SelectTrigger id="zerops-new-project-location" aria-label="Project location">
+              <SelectValue placeholder="Choose a location">
+                {locations.find((location) => location.id === locationId)?.name ??
+                  "Choose a location"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {locations.map((location) => (
+                <SelectItem key={location.id} value={location.id}>
+                  {location.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            The lowest-latency location is preselected. You can choose another region.
+          </p>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={
+            busy ||
+            name.trim().length === 0 ||
+            locationStatus === "loading" ||
+            locationStatus === "failed" ||
+            (locations.length > 0 && !locationId)
+          }
+          onClick={() => {
+            onCreate({
+              clientId: organization.id,
+              name,
+              ...(locationId ? { location: locationId } : {}),
+            });
+          }}
+        >
+          {busy || locationStatus === "loading" ? <Spinner className="size-4" /> : null}
+          Create project
+        </Button>
+        <span className="text-xs text-muted-foreground">in {organization.name}</span>
       </div>
+      {locationError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
+          Could not load project locations. {locationError}
+        </p>
+      ) : null}
       {error ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
           {error}
@@ -173,7 +299,16 @@ function ZeropsProjectsContent() {
     from: "__root__",
     select: (context) => context.authGateState,
   });
-  const { status, client, lastRegistration, clearLastRegistration } = useZeropsSession();
+  const {
+    activeOrganization,
+    client,
+    clearLastRegistration,
+    lastRegistration,
+    organizations,
+    organizationStatus,
+    selectOrganization,
+    status,
+  } = useZeropsSession();
   const { candidates, isLoading, error, refresh } = useZeropsCandidates();
   const candidateHealth = useZeropsCandidateHealth(candidates);
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
@@ -308,6 +443,19 @@ function ZeropsProjectsContent() {
     return <SignedOutNotice message="Finish signing in with your two-factor code." />;
   }
 
+  if (organizationStatus !== "selected" || !activeOrganization) {
+    return (
+      <ZeropsOrganizationScope
+        activeOrganization={activeOrganization}
+        organizations={organizations}
+        status={organizationStatus}
+        onSelect={(membershipId) => {
+          void selectOrganization(membershipId);
+        }}
+      />
+    );
+  }
+
   if (provisioning.state) {
     return (
       <div className="space-y-4">
@@ -341,11 +489,20 @@ function ZeropsProjectsContent() {
 
   return (
     <div className="space-y-8">
+      <ZeropsOrganizationScope
+        activeOrganization={activeOrganization}
+        organizations={organizations}
+        status={organizationStatus}
+        onSelect={(membershipId) => {
+          void selectOrganization(membershipId);
+        }}
+      />
       <ZeropsProjectPicker
         busyCandidateKeys={
           enablingCandidateKey === null ? undefined : new Set([enablingCandidateKey])
         }
         candidates={candidates}
+        scopeName={activeOrganization.name}
         isLoading={isLoading}
         error={connectError ?? error}
         onRefresh={refresh}
@@ -389,13 +546,14 @@ function ZeropsProjectsContent() {
         }}
       />
       <NewProjectForm
+        organization={activeOrganization}
         busy={creating}
         error={createError}
-        onCreate={({ clientId, name }) => {
+        onCreate={({ clientId, location, name }) => {
           setCreating(true);
           setCreateError(null);
           void client
-            .createProjectWithZeropsCode({ clientId, name })
+            .createProjectWithZeropsCode({ clientId, name, ...(location ? { location } : {}) })
             .then(() => {
               setCreatingIn(clientId);
               provisioning.start({ zcpClaimed: true });

@@ -91,6 +91,9 @@ describe("zeropsClientsFromUser", () => {
           id: "cu-2",
           clientId: "org-2",
           status: "ACTIVE",
+          roleCode: "NO_ACCESS",
+          canCreateProjects: true,
+          canViewFinances: false,
           client: { id: "org-2", accountName: "Second" },
         },
         {
@@ -110,6 +113,12 @@ describe("zeropsClientsFromUser", () => {
     expect(clients.map((client) => client.id)).toEqual(["org-1", "org-2"]);
     expect(clients[0]?.name).toBe("KRLS");
     expect(clients[0]?.roleCode).toBe("OWNER");
+    expect(clients[1]).toMatchObject({
+      membershipId: "cu-2",
+      roleCode: "NO_ACCESS",
+      canCreateProjects: true,
+      canViewFinances: false,
+    });
   });
 });
 
@@ -200,6 +209,81 @@ describe("ZeropsApiClient authentication", () => {
     expect(cleared).toEqual([null]);
   });
 
+  it.each([
+    [403, "forbidden"],
+    [503, "server"],
+  ] as const)(
+    "keeps the current session when refresh fails with %s",
+    async (refreshStatus, expectedKind) => {
+      const changes: Array<ZeropsSession | null> = [];
+      const stub = recordingFetch((request) =>
+        request.url.endsWith("/auth/refresh")
+          ? jsonResponse(refreshStatus, { error: { code: "refreshUnavailable" } })
+          : jsonResponse(401, { error: { code: "notAuthorized" } }),
+      );
+      const client = new ZeropsApiClient({
+        fetch: stub.fetch,
+        onSessionChange: (session) => {
+          changes.push(session);
+        },
+      });
+      client.restoreSession(SESSION);
+
+      const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+      expect(error).toBeInstanceOf(ZeropsApiError);
+      expect((error as ZeropsApiError).kind).toBe(expectedKind);
+      expect(client.session).toEqual(SESSION);
+      expect(changes).toEqual([]);
+    },
+  );
+
+  it("keeps the current session when the refresh request cannot reach Zerops", async () => {
+    const changes: Array<ZeropsSession | null> = [];
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/auth/refresh")) throw new TypeError("offline");
+      return jsonResponse(401, { error: { code: "notAuthorized" } });
+    });
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        changes.push(session);
+      },
+    });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("network");
+    expect(client.session).toEqual(SESSION);
+    expect(changes).toEqual([]);
+  });
+
+  it.each([
+    ["an explicit refresh 401", jsonResponse(401, { error: { code: "notAuthorized" } })],
+    ["an invalid refresh response", jsonResponse(200, { refreshToken: "missing-access" })],
+  ])("clears the current session after %s", async (_case, refreshResponse) => {
+    const changes: Array<ZeropsSession | null> = [];
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/auth/refresh")
+        ? refreshResponse.clone()
+        : jsonResponse(401, { error: { code: "notAuthorized" } }),
+    );
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        changes.push(session);
+      },
+    });
+    client.restoreSession(SESSION);
+
+    await expect(client.fetchUser()).rejects.toBeInstanceOf(ZeropsApiError);
+
+    expect(client.session).toBeNull();
+    expect(changes).toEqual([null]);
+  });
+
   it("surfaces the platform's own message for a rejected sign-in", async () => {
     // Live shape, 2026-08-28: a bad sign-in is 400 `userNotFound`, never a 401,
     // so the client must not dress it up as an expired session.
@@ -279,6 +363,67 @@ describe("ZeropsApiClient project reads", () => {
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/project?limit=500&statuses=ACTIVE`,
     );
     expect(stub.requests.every((request) => !request.url.includes("/search"))).toBe(true);
+  });
+
+  it("falls back to the permission-filtered project search for a restricted membership", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/client/org-dev/project")
+        ? jsonResponse(403, {
+            error: { code: "insufficientPermissions", message: "Insufficient permissions" },
+          })
+        : jsonResponse(200, {
+            items: [{ id: "assigned", name: "Assigned", status: "ACTIVE", clientId: "org-dev" }],
+            totalHits: 1,
+          }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const projects = await client.listAccessibleClientProjects("org-dev");
+
+    expect(projects.map((project) => project.id)).toEqual(["assigned"]);
+    expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-dev/project?limit=500`,
+      `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/search`,
+    ]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      limit: 500,
+      search: [{ name: "clientId", operator: "eq", value: "org-dev" }],
+    });
+  });
+
+  it("does not hide a non-permission failure behind the project search fallback", async () => {
+    const stub = recordingFetch(() => jsonResponse(503, { error: { code: "unavailable" } }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const error = await client
+      .listAccessibleClientProjects("org-1")
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("server");
+    expect(stub.requests).toHaveLength(1);
+  });
+
+  it("loads the locations available to the selected organization", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        locationList: [
+          { id: "prg1", name: "Prague", pingUrl: "https://ping.prg1.example" },
+          { id: "ny1", name: "New York", pingUrl: "https://ping.ny1.example" },
+        ],
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const locations = await client.listClientLocations("org-1");
+
+    expect(locations.map((location) => location.id)).toEqual(["prg1", "ny1"]);
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/client/org-1/settings`,
+    );
   });
 
   it("reads a project's services from the project-scoped direct read", async () => {

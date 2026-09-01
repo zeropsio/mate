@@ -10,11 +10,15 @@
  */
 
 import {
+  ZEROPS_SELECTION_STORAGE_KEY,
   ZeropsApiClient,
   ZeropsApiError,
   clearZeropsSession,
+  loadZeropsSelection,
   loadZeropsSession,
   requiresZeropsTwoFactor,
+  resolveActiveZeropsOrganization,
+  saveZeropsSelection,
   saveZeropsSession,
   zeropsClientsFromUser,
   type ZeropsOrganization,
@@ -24,27 +28,42 @@ import {
   type ZeropsStorageAdapter,
   type ZeropsUser,
 } from "@t3tools/client-runtime/zerops";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { browserZeropsStorage } from "./storage";
 
 export type ZeropsSessionStatus = "loading" | "signed-out" | "totp-required" | "signed-in";
+export type ZeropsOrganizationStatus = "idle" | "loading" | "needs-selection" | "selected";
 
 export interface ZeropsSessionValue {
   readonly client: ZeropsApiClient;
   readonly status: ZeropsSessionStatus;
   readonly user: ZeropsUser | null;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
+  /** Exact active clientUser scope, matching the Zerops GUI. */
+  readonly activeOrganization: ZeropsOrganization | null;
+  readonly organizationStatus: ZeropsOrganizationStatus;
+  readonly selectOrganization: (membershipId: string) => Promise<void>;
   readonly signIn: (email: string, password: string) => Promise<void>;
   /**
-   * Adopts a refresh token handed back by `app.zerops.io` after the user
-   * signed in there — the end of the hand-over (`zerops/handover.ts`). Signing
-   * up and signing in with GitHub only work on that origin, so this is how a
-   * session arrives without a password ever being typed here.
+   * Adopts a revocable personal token handed back by `app.zerops.io` after the
+   * user signed in there. It is proven before persistence, so an invalid token
+   * cannot leave this client looking signed in.
    */
   readonly adoptHandover: (input: {
     /** A personal access token minted for this client by app.zerops.io. */
     readonly token: string;
+    /** Organization selected on app.zerops.io, when the hand-over named one. */
+    readonly clientId: string | null;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
@@ -79,6 +98,9 @@ export function ZeropsSessionProvider({
   const [status, setStatus] = useState<ZeropsSessionStatus>("loading");
   const [user, setUser] = useState<ZeropsUser | null>(null);
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
+  const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
+  const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
+  const preferredClientIdRef = useRef<string | null>(null);
 
   const client = useMemo(
     () =>
@@ -125,24 +147,124 @@ export function ZeropsSessionProvider({
     };
   }, [client, storage]);
 
+  const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
+  const activeOrganization = useMemo(
+    () =>
+      organizations.find((organization) => organization.membershipId === selectedMembershipId) ??
+      null,
+    [organizations, selectedMembershipId],
+  );
+
+  // The platform GUI persists the exact clientUser membership. Restore it per
+  // Zerops user, while letting an explicit hand-over clientId override stale
+  // local state. Multiple new memberships deliberately require a choice.
+  useEffect(() => {
+    if (!user) {
+      setSelectedMembershipId(null);
+      setOrganizationStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setOrganizationStatus("loading");
+    const preferredClientId = preferredClientIdRef.current;
+    preferredClientIdRef.current = null;
+    void loadZeropsSelection(storage, user.id).then(async (selection) => {
+      if (cancelled) return;
+      const selected = resolveActiveZeropsOrganization(organizations, {
+        preferredClientId,
+        storedClientUserId: selection.clientUserId,
+        storedClientId: selection.clientId,
+      });
+      setSelectedMembershipId(selected?.membershipId ?? null);
+      setOrganizationStatus(selected ? "selected" : "needs-selection");
+      if (selected) {
+        await saveZeropsSelection(storage, {
+          userId: user.id,
+          clientUserId: selected.membershipId,
+          clientId: selected.id,
+          projectId: selection.projectId,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizations, storage, user]);
+
+  // Keep tabs on one account scope. Unlike the legacy GUI we can update the
+  // inactive tab in place because all scoped queries are cancellable React
+  // effects, so a hard invalidation dialog is unnecessary.
+  useEffect(() => {
+    if (!user || typeof window === "undefined") return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== ZEROPS_SELECTION_STORAGE_KEY) return;
+      void loadZeropsSelection(storage, user.id).then((selection) => {
+        const selected = resolveActiveZeropsOrganization(organizations, {
+          preferredClientId: null,
+          storedClientUserId: selection.clientUserId,
+          storedClientId: selection.clientId,
+        });
+        setSelectedMembershipId(selected?.membershipId ?? null);
+        setOrganizationStatus(selected ? "selected" : "needs-selection");
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [organizations, storage, user]);
+
+  const selectOrganization = useCallback(
+    async (membershipId: string) => {
+      if (!user) return;
+      const selected = organizations.find(
+        (organization) => organization.membershipId === membershipId,
+      );
+      if (!selected) return;
+      setSelectedMembershipId(selected.membershipId);
+      setOrganizationStatus("selected");
+      await saveZeropsSelection(storage, {
+        userId: user.id,
+        clientUserId: selected.membershipId,
+        clientId: selected.id,
+        projectId: null,
+      });
+    },
+    [organizations, storage, user],
+  );
+
   const value = useMemo<ZeropsSessionValue>(
     () => ({
       client,
       status,
       user,
-      organizations: user ? zeropsClientsFromUser(user) : [],
-      adoptHandover: async ({ token, zcpClaimed }) => {
-        const session = await client.adoptPersonalToken(token);
-        const adopted = await client.fetchUser();
-        setUser(adopted);
-        setStatus("signed-in");
-        if (zcpClaimed) {
-          // The picker reads this to enter the provisioning wait for the
-          // project the claim handed over, instead of waiting for a candidate
-          // list to say so. It is a registration response in every way that
-          // consumer looks at: the org comes from `user`, the claim from the
-          // flag.
-          setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
+      organizations,
+      activeOrganization,
+      organizationStatus,
+      selectOrganization,
+      adoptHandover: async ({ token, clientId, zcpClaimed }) => {
+        preferredClientIdRef.current = clientId;
+        try {
+          const session = await client.adoptPersonalToken(token);
+          const adopted = await client.fetchUser();
+          setUser(adopted);
+          setStatus("signed-in");
+          if (zcpClaimed) {
+            // The picker reads this to enter the provisioning wait for the
+            // project the claim handed over, instead of waiting for a candidate
+            // list to say so. It is a registration response in every way that
+            // consumer looks at: the org comes from `user`, the claim from the
+            // flag.
+            setLastRegistration({
+              auth: session,
+              user: adopted,
+              ...(clientId ? { clientId } : {}),
+              zcpClaimed: true,
+            });
+          }
+        } catch (cause) {
+          preferredClientIdRef.current = null;
+          throw cause;
         }
       },
       signIn: async (email, password) => {
@@ -156,6 +278,7 @@ export function ZeropsSessionProvider({
       },
       register: async (input) => {
         const response = await client.register(input);
+        preferredClientIdRef.current = response.clientId ?? null;
         setUser(response.user ?? (await client.fetchUser()));
         setStatus("signed-in");
         setLastRegistration(response);
@@ -175,7 +298,16 @@ export function ZeropsSessionProvider({
         setLastRegistration(null);
       },
     }),
-    [client, status, user, lastRegistration],
+    [
+      activeOrganization,
+      client,
+      lastRegistration,
+      organizationStatus,
+      organizations,
+      selectOrganization,
+      status,
+      user,
+    ],
   );
 
   return <ZeropsSessionContext value={value}>{children}</ZeropsSessionContext>;

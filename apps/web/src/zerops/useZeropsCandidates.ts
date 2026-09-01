@@ -1,11 +1,11 @@
 /**
- * The fetching shell around `deriveZeropsCandidates`: fans out over every org
- * the account belongs to, caps concurrency, and re-renders as each project's
- * services arrive so a slow org does not hold up the rest of the list.
+ * The fetching shell around `deriveZeropsCandidates`: reads the active
+ * clientUser scope, caps concurrency, and re-renders as each project's
+ * services arrive.
  *
- * Every read here is a direct read (`GET /client/{id}/project`,
- * `GET /project/{id}/service-stack`) — never `POST /project/search`, which is
- * Elasticsearch-backed and trails a fresh write by about half a second.
+ * `listAccessibleClientProjects` prefers the lag-free direct organization
+ * read and falls back to the GUI's permission-filtered project search only
+ * for restricted memberships (Developer/Guest).
  */
 
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -94,7 +94,7 @@ export function useZeropsCandidates(): {
   readonly error: string | null;
   readonly refresh: () => void;
 } {
-  const { client, status, organizations } = useZeropsSession();
+  const { activeOrganization, client, organizationStatus, status } = useZeropsSession();
   const { environments } = useEnvironments();
   const [projects, setProjects] = useState<ReadonlyArray<ZeropsProject>>([]);
   const [services, setServices] = useState<ReadonlyMap<string, ServicesOutcome>>(new Map());
@@ -104,10 +104,10 @@ export function useZeropsCandidates(): {
 
   // Bumped per load so a superseded run's callbacks become no-ops.
   const generationRef = useRef(0);
-  const organizationIds = organizations.map((organization) => organization.id).join(",");
+  const organizationId = activeOrganization?.id ?? null;
 
   useEffect(() => {
-    if (status !== "signed-in") {
+    if (status !== "signed-in" || organizationStatus !== "selected" || !organizationId) {
       setProjects([]);
       setServices(new Map());
       setIsLoading(false);
@@ -125,14 +125,8 @@ export function useZeropsCandidates(): {
 
     void (async () => {
       try {
-        const perOrganization = await Promise.all(
-          organizationIds
-            .split(",")
-            .filter(Boolean)
-            .map((organizationId) => client.listClientProjects(organizationId)),
-        );
+        const list = await client.listAccessibleClientProjects(organizationId);
         if (isCancelled()) return;
-        const list = perOrganization.flat();
         setProjects(list);
 
         await resolveWithConcurrency(
@@ -160,7 +154,7 @@ export function useZeropsCandidates(): {
     return () => {
       generationRef.current += 1;
     };
-  }, [client, status, organizationIds, reloadCount]);
+  }, [client, status, organizationStatus, organizationId, reloadCount]);
 
   const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
   const connectionsByOrigin = useMemo(

@@ -50,6 +50,10 @@ export interface ZeropsClientMembership {
   readonly userId?: string;
   readonly status?: string;
   readonly roleCode?: string;
+  /** Independent capability flags; never infer these from NO_ACCESS. */
+  readonly canCreateProjects?: boolean;
+  readonly canViewFinances?: boolean;
+  readonly canEditFinances?: boolean;
   readonly client?: {
     readonly id?: string;
     readonly accountName?: string;
@@ -70,6 +74,15 @@ export interface ZeropsOrganization {
   readonly name: string;
   readonly membershipId: string;
   readonly roleCode?: string;
+  readonly canCreateProjects?: boolean;
+  readonly canViewFinances?: boolean;
+  readonly canEditFinances?: boolean;
+}
+
+export interface ZeropsLocation {
+  readonly id: string;
+  readonly name: string;
+  readonly pingUrl: string;
 }
 
 export interface ZeropsProject {
@@ -133,6 +146,8 @@ function readsAsEnabled(value: string): boolean {
 export interface ZeropsRegistrationResponse {
   readonly auth: ZeropsSession;
   readonly user: ZeropsUser | null;
+  /** Organization selected by a platform hand-over, when it named one. */
+  readonly clientId?: string;
   /**
    * Whether the pool handed this account a ready project. `false` means the
    * pool is exhausted and the account has to create one — a fact about the
@@ -224,8 +239,7 @@ export function buildZeropsContainerUrl(
 
 /**
  * Every org the account is an active member of. An account can belong to
- * several, so callers fan out over all of them — "the first org" is a bug the
- * POC shipped once already.
+ * several; callers select one exact membership before loading scoped data.
  */
 export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrganization> {
   const seen = new Set<string>();
@@ -240,6 +254,15 @@ export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrg
       membershipId: membership.id,
       name: membership.client?.accountName ?? membership.client?.companyName ?? "Organization",
       ...(membership.roleCode ? { roleCode: membership.roleCode } : {}),
+      ...(membership.canCreateProjects !== undefined
+        ? { canCreateProjects: membership.canCreateProjects }
+        : {}),
+      ...(membership.canViewFinances !== undefined
+        ? { canViewFinances: membership.canViewFinances }
+        : {}),
+      ...(membership.canEditFinances !== undefined
+        ? { canEditFinances: membership.canEditFinances }
+        : {}),
     });
   }
   return organizations;
@@ -487,6 +510,49 @@ export class ZeropsApiClient {
     return response.list ?? [];
   }
 
+  /**
+   * Lists the projects this membership may actually see.
+   *
+   * OWNER/ADMIN-style memberships use the lag-free client read. Zerops
+   * intentionally rejects that endpoint for Developer/Guest memberships,
+   * whose access is expressed by per-project roles; the same `/project/search`
+   * query used by the platform GUI applies those permissions server-side.
+   */
+  async listAccessibleClientProjects(
+    clientId: string,
+    options: ListProjectsOptions = {},
+  ): Promise<ReadonlyArray<ZeropsProject>> {
+    try {
+      return await this.listClientProjects(clientId, options);
+    } catch (cause) {
+      if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+    }
+
+    const limit = options.limit ?? 500;
+    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsProject> }>(
+      "/project/search",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          limit,
+          search: [{ name: "clientId", operator: "eq", value: clientId }],
+        }),
+      },
+    );
+    const projects = response.items ?? [];
+    if (!options.statuses?.length) return projects;
+    const statuses = new Set(options.statuses);
+    return projects.filter((project) => statuses.has(project.status));
+  }
+
+  /** Locations the selected organization may place a new project in. */
+  async listClientLocations(clientId: string): Promise<ReadonlyArray<ZeropsLocation>> {
+    const response = await this.#request<{
+      readonly locationList?: ReadonlyArray<ZeropsLocation>;
+    }>(`/client/${clientId}/settings`);
+    return response.locationList ?? [];
+  }
+
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`);
@@ -636,7 +702,7 @@ export class ZeropsApiClient {
       });
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
-        await this.#setSession(null);
+        if (error.kind === "expired-session") await this.#setSession(null);
         throw error;
       }
       // `/auth/refresh` answers with the session fields at the top level, not

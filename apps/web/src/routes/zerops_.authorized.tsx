@@ -86,7 +86,11 @@ function ZeropsHandoverCallback() {
       return;
     }
 
-    void adoptHandover({ token: outcome.token, zcpClaimed: outcome.zcpClaimed })
+    void adoptHandover({
+      token: outcome.token,
+      clientId: outcome.clientId,
+      zcpClaimed: outcome.zcpClaimed,
+    })
       .then(() => navigate({ to: "/", replace: true }))
       .catch((cause: unknown) => {
         setState({ kind: "failed", message: zeropsErrorMessage(cause) });

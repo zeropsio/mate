@@ -245,6 +245,7 @@ function readyRowAction(input: {
  */
 export function ZeropsProjectPicker({
   candidates,
+  scopeName,
   busyCandidateKeys,
   isLoading,
   error,
@@ -256,6 +257,8 @@ export function ZeropsProjectPicker({
   onWait,
 }: {
   readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
+  /** The currently selected Zerops organization, shown beside the result count. */
+  readonly scopeName?: string | undefined;
   readonly busyCandidateKeys?: ReadonlySet<string> | undefined;
   readonly isLoading: boolean;
   readonly error: string | null;
@@ -284,8 +287,8 @@ export function ZeropsProjectPicker({
             </>
           ) : (
             <span>
-              {candidates.length} container{candidates.length === 1 ? "" : "s"} across your
-              organizations
+              {candidates.length} container{candidates.length === 1 ? "" : "s"}
+              {scopeName ? ` in ${scopeName}` : ""}
             </span>
           )}
         </div>

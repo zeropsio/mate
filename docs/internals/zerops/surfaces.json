@@ -382,8 +382,10 @@
       "title": "Zerops projects",
       "components": [
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",
         "apps/web/src/components/zerops/ZeropsProjectPicker.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
+        "packages/client-runtime/src/zerops/accountScope.ts",
         "packages/client-runtime/src/zerops/autoEnterProvisioning.ts",
         "packages/client-runtime/src/zerops/candidates.ts",
         "packages/client-runtime/src/zerops/containerHealth.ts",
@@ -419,6 +421,7 @@
         { "action": "Wait", "reverse": "Stop waiting" },
         { "action": "Stop waiting", "reverse": "Wait" },
         { "action": "Back", "reverse": "Wait" },
+        { "action": "Switch organization", "reverse": "Switch organization" },
         {
           "action": "Enable",
           "reverse": "none: Enable restarts the service and the page exposes no inverse operation."
@@ -442,8 +445,10 @@
       ],
       "docs": { "none": "No docs/user page documents Zerops project connection yet." },
       "tests": [
+        "apps/web/src/components/zerops/ZeropsOrganizationScope.test.tsx",
         "apps/web/src/components/zerops/ZeropsProjectPicker.test.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.test.tsx",
+        "packages/client-runtime/src/zerops/accountScope.test.ts",
         "packages/client-runtime/src/zerops/candidates.test.ts",
         "packages/client-runtime/src/zerops/provisioning.test.ts",
         "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",

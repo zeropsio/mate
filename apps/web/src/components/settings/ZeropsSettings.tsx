@@ -6,15 +6,25 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { Badge } from "../ui/badge";
+import { zeropsOrganizationRoleLabel } from "@t3tools/client-runtime/zerops";
+
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
 export function ZeropsSettings() {
-  const { status, user, organizations, signOut } = useZeropsSession();
+  const {
+    activeOrganization,
+    organizationStatus,
+    organizations,
+    selectOrganization,
+    signOut,
+    status,
+    user,
+  } = useZeropsSession();
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -60,15 +70,42 @@ export function ZeropsSettings() {
         {organizations.length > 0 ? (
           <SettingsRow
             {...searchableSetting("zerops-organizations")}
-            description="Projects from every one of these are offered in the picker."
+            description="Projects and permissions are scoped to this Zerops membership."
+            status={
+              activeOrganization
+                ? zeropsOrganizationRoleLabel(activeOrganization)
+                : "Choose an organization to continue"
+            }
             control={
-              <div className="flex flex-wrap justify-end gap-1">
-                {organizations.map((organization) => (
-                  <Badge key={organization.id} size="sm" variant="outline">
-                    {organization.name}
-                  </Badge>
-                ))}
-              </div>
+              <Select
+                value={activeOrganization?.membershipId ?? null}
+                onValueChange={(membershipId) => {
+                  if (membershipId) void selectOrganization(membershipId);
+                }}
+              >
+                <SelectTrigger
+                  aria-label="Active Zerops organization"
+                  className="min-w-56"
+                  disabled={organizationStatus === "loading"}
+                  size="sm"
+                >
+                  <SelectValue placeholder="Choose organization">
+                    {activeOrganization?.name}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {organizations.map((organization) => (
+                    <SelectItem key={organization.membershipId} value={organization.membershipId}>
+                      <span className="flex min-w-0 items-baseline justify-between gap-4">
+                        <span className="truncate">{organization.name}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {zeropsOrganizationRoleLabel(organization)}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             }
           />
         ) : null}

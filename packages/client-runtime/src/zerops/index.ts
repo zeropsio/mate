@@ -13,6 +13,7 @@ export {
   type ZeropsApiErrorKind,
   type ZeropsClientMembership,
   type ZeropsLoginResponse,
+  type ZeropsLocation,
   type ZeropsOrganization,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
@@ -21,6 +22,13 @@ export {
   type ZeropsSession,
   type ZeropsUser,
 } from "./api.ts";
+
+export {
+  canCreateProjectsInOrganization,
+  resolveActiveZeropsOrganization,
+  zeropsOrganizationRoleLabel,
+  type ZeropsOrganizationSelectionInput,
+} from "./accountScope.ts";
 
 export {
   ZEROPS_SELECTION_STORAGE_KEY,

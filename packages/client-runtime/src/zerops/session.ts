@@ -21,6 +21,8 @@ export const ZEROPS_SELECTION_STORAGE_KEY = "zerops-code.zerops-selection.v1";
 
 export interface ZeropsSelection {
   readonly userId: string;
+  /** Exact `clientUser` membership, matching the platform GUI's active scope. */
+  readonly clientUserId: string | null;
   readonly clientId: string | null;
   readonly projectId: string | null;
 }
@@ -80,10 +82,17 @@ function parseSelection(value: unknown): ZeropsSelection | null {
   if (!value || typeof value !== "object") return null;
   const selection = value as Partial<ZeropsSelection>;
   if (typeof selection.userId !== "string" || !selection.userId) return null;
+  if (
+    selection.clientUserId !== undefined &&
+    selection.clientUserId !== null &&
+    typeof selection.clientUserId !== "string"
+  )
+    return null;
   if (selection.clientId !== null && typeof selection.clientId !== "string") return null;
   if (selection.projectId !== null && typeof selection.projectId !== "string") return null;
   return {
     userId: selection.userId,
+    clientUserId: selection.clientUserId ?? null,
     clientId: selection.clientId ?? null,
     projectId: selection.projectId ?? null,
   };
@@ -93,7 +102,12 @@ export async function loadZeropsSelection(
   storage: ZeropsStorageAdapter,
   userId: string,
 ): Promise<ZeropsSelection> {
-  const fallback: ZeropsSelection = { userId, clientId: null, projectId: null };
+  const fallback: ZeropsSelection = {
+    userId,
+    clientUserId: null,
+    clientId: null,
+    projectId: null,
+  };
   const raw = await storage.get(ZEROPS_SELECTION_STORAGE_KEY);
   if (!raw) return fallback;
   try {

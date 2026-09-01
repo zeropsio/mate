@@ -52,7 +52,12 @@ describe("Zerops session storage", () => {
     const storage = memoryStorage();
 
     await saveZeropsSession(storage, { accessToken: "access-1", refreshToken: "refresh-1" });
-    await saveZeropsSelection(storage, { userId: "user-1", clientId: "org-1", projectId: "p1" });
+    await saveZeropsSelection(storage, {
+      userId: "user-1",
+      clientUserId: "cu-1",
+      clientId: "org-1",
+      projectId: "p1",
+    });
 
     expect([...storage.entries.keys()].sort()).toEqual(
       [ZEROPS_SELECTION_STORAGE_KEY, ZEROPS_SESSION_STORAGE_KEY].sort(),
@@ -108,7 +113,12 @@ describe("Zerops session storage", () => {
   it("clears the session without touching the selection", async () => {
     const storage = memoryStorage();
     await saveZeropsSession(storage, { accessToken: "access-1" });
-    await saveZeropsSelection(storage, { userId: "user-1", clientId: "org-1", projectId: "p1" });
+    await saveZeropsSelection(storage, {
+      userId: "user-1",
+      clientUserId: "cu-1",
+      clientId: "org-1",
+      projectId: "p1",
+    });
 
     await clearZeropsSession(storage);
 
@@ -118,17 +128,41 @@ describe("Zerops session storage", () => {
 
   it("ignores a selection remembered for a different account", async () => {
     const storage = memoryStorage();
-    await saveZeropsSelection(storage, { userId: "user-1", clientId: "org-1", projectId: "p1" });
+    await saveZeropsSelection(storage, {
+      userId: "user-1",
+      clientUserId: "cu-1",
+      clientId: "org-1",
+      projectId: "p1",
+    });
 
     await expect(loadZeropsSelection(storage, "user-1")).resolves.toEqual({
       userId: "user-1",
+      clientUserId: "cu-1",
       clientId: "org-1",
       projectId: "p1",
     });
     await expect(loadZeropsSelection(storage, "user-2")).resolves.toEqual({
       userId: "user-2",
+      clientUserId: null,
       clientId: null,
       projectId: null,
+    });
+  });
+
+  it("migrates a remembered v1 selection that predates clientUserId", async () => {
+    const storage = memoryStorage({
+      [ZEROPS_SELECTION_STORAGE_KEY]: JSON.stringify({
+        userId: "user-1",
+        clientId: "org-1",
+        projectId: "p1",
+      }),
+    });
+
+    await expect(loadZeropsSelection(storage, "user-1")).resolves.toEqual({
+      userId: "user-1",
+      clientUserId: null,
+      clientId: "org-1",
+      projectId: "p1",
     });
   });
 });

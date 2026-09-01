@@ -35,6 +35,32 @@ describe("deriveProvisioningStart", () => {
     expect(start.zcpClaimed).toBe(true);
   });
 
+  it("follows the client explicitly selected by a multi-organization hand-over", () => {
+    const start = deriveProvisioningStart(
+      response({
+        clientId: "org-2",
+        user: user({
+          clientUserList: [
+            {
+              id: "membership-1",
+              clientId: "org-1",
+              status: "ACTIVE",
+              client: { accountName: "First" },
+            },
+            {
+              id: "membership-2",
+              clientId: "org-2",
+              status: "ACTIVE",
+              client: { accountName: "Selected" },
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(start.clientId).toBe("org-2");
+  });
+
   it("carries zcpClaimed through exactly as the platform reported it", () => {
     expect(deriveProvisioningStart(response({ zcpClaimed: false })).zcpClaimed).toBe(false);
     expect(deriveProvisioningStart(responseWithoutZcpClaimed()).zcpClaimed).toBeUndefined();

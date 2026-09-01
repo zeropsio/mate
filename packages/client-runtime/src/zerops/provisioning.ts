@@ -5,10 +5,11 @@
  * A pure state machine plus one read function, so the whole wait is testable
  * against a fake clock. Three rules it exists to enforce:
  *
- * 1. Only direct reads. `GET /client/{id}/project` and
- *    `GET /project/{id}/service-stack` are lag-free; `POST /project/search` is
- *    Elasticsearch-backed and trails a fresh write, so a search here would
- *    report "no project" for a project that already exists.
+ * 1. Prefer direct reads. `GET /client/{id}/project` and
+ *    `GET /project/{id}/service-stack` are lag-free. A restricted
+ *    Developer/Guest membership cannot call the client-wide read, so
+ *    `listAccessibleClientProjects` falls back to the GUI's permission-filtered
+ *    search and the poll naturally absorbs its short indexing delay.
  * 2. Absence is never a verdict. A just-claimed project's service list is
  *    briefly empty; that is a reason to keep waiting, not "there is no
  *    container".
@@ -288,7 +289,7 @@ export async function readProvisioning(input: {
   const { client, clientId, state, probeHealth } = input;
 
   if (state.phase === "awaiting-project") {
-    return { kind: "projects", projects: await client.listClientProjects(clientId) };
+    return { kind: "projects", projects: await client.listAccessibleClientProjects(clientId) };
   }
 
   if (state.phase === "awaiting-container" && state.projectId) {

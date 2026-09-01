@@ -21,8 +21,11 @@ export function deriveProvisioningStart(
   response: ZeropsRegistrationResponse,
 ): RegistrationProvisioningStart {
   const organizations = response.user ? zeropsClientsFromUser(response.user) : [];
+  const selected = response.clientId
+    ? organizations.find((organization) => organization.id === response.clientId)
+    : undefined;
   return {
-    clientId: organizations[0]?.id ?? null,
+    clientId: selected?.id ?? organizations[0]?.id ?? null,
     zcpClaimed: response.zcpClaimed,
   };
 }
