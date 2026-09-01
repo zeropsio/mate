@@ -344,36 +344,34 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Turns a refresh token handed over by `app.zerops.io` into a stored
-   * session — the client end of the sign-in hand-over (`zerops/handover.ts`).
+   * Adopts a personal access token handed over by `app.zerops.io` — the client
+   * end of the sign-in hand-over (`zerops/handover.ts`).
    *
-   * The hand-over delivers one string and nothing else, which is enough: the
-   * platform's own `/authorize` route performs this exchange immediately after
-   * logging out, so it is proven to need no bearer. Unlike `#refreshSession`
-   * this never clears on failure: there was no session to lose, and a failed
-   * hand-over must leave a signed-out client signed out rather than looking
-   * like an expiry.
+   * A personal token is already a bearer, so there is nothing to exchange. What
+   * matters is that it is **proven before it is stored**: a dead or revoked
+   * token that reached storage would render a signed-in-looking UI that fails
+   * on its first real call. So it is held in memory, spent on one read, and
+   * only persisted once that read comes back.
+   *
+   * It carries no refresh token, which is correct rather than a gap: on a 401
+   * the request path clears the session instead of trying to refresh, which is
+   * exactly what should happen to a token the user revoked.
    */
-  async adoptHandedOverSession(refreshToken: string): Promise<ZeropsSession> {
-    const refreshTokenId = refreshToken.trim();
-    if (!refreshTokenId) {
+  async adoptPersonalToken(token: string): Promise<ZeropsSession> {
+    const accessToken = token.trim();
+    if (!accessToken) {
       throw new ZeropsApiError(
         "That Zerops sign-in carried no credential. Start again.",
         "invalid-input",
       );
     }
-    const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshTokenId }),
-    });
-    if (!response.ok) {
-      throw await apiErrorFromResponse(response);
-    }
-    // Top level, not wrapped in `auth` the way `/auth/login` answers.
-    const session = (await response.json()) as ZeropsSession;
-    if (!isUsableZeropsSession(session)) {
-      throw new ZeropsApiError("Zerops returned an invalid sign-in session.", "unexpected");
+    const session: ZeropsSession = { accessToken };
+    this.#session = session;
+    try {
+      await this.fetchUser();
+    } catch (cause) {
+      this.#session = null;
+      throw cause;
     }
     await this.#setSession(session);
     return session;

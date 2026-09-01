@@ -63,13 +63,13 @@ describe("completeZeropsHandover", () => {
   it("accepts a callback answering the nonce this browser stored", () => {
     const store = fakeStore("nonce-1");
     const outcome = completeZeropsHandover({
-      fragment: "#refreshToken=rt-1&state=nonce-1&clientId=org-1&zcpClaimed=true",
+      fragment: "#token=rt-1&state=nonce-1&clientId=org-1&zcpClaimed=true",
       store,
     });
 
     expect(outcome).toEqual({
       kind: "session",
-      refreshToken: "rt-1",
+      token: "rt-1",
       clientId: "org-1",
       zcpClaimed: true,
     });
@@ -79,7 +79,7 @@ describe("completeZeropsHandover", () => {
     // A back button, a restored tab or a copied link must not sign anyone in
     // a second time off one authorization.
     const store = fakeStore("nonce-1");
-    const fragment = "#refreshToken=rt-1&state=nonce-1";
+    const fragment = "#token=rt-1&state=nonce-1";
 
     expect(completeZeropsHandover({ fragment, store })).toMatchObject({ kind: "session" });
     expect(completeZeropsHandover({ fragment, store })).toEqual({ kind: "mismatched" });
@@ -88,7 +88,7 @@ describe("completeZeropsHandover", () => {
   it("refuses a credential this browser never asked for, and reads nothing out of it", () => {
     const store = fakeStore(null);
     const outcome = completeZeropsHandover({
-      fragment: "#refreshToken=attacker-token&state=whatever",
+      fragment: "#token=attacker-token&state=whatever",
       store,
     });
 
@@ -155,7 +155,7 @@ describe("reading the callback exactly once", () => {
   // server: run 1 `session`, run 2 `absent`.
   it("returns the first outcome to every later caller, and reads only once", () => {
     const outcomes: ZeropsHandoverOutcome[] = [
-      { kind: "session", refreshToken: "rt-1", clientId: null, zcpClaimed: false },
+      { kind: "session", token: "rt-1", clientId: null, zcpClaimed: false },
       { kind: "absent" },
     ];
     let reads = 0;
@@ -164,9 +164,9 @@ describe("reading the callback exactly once", () => {
       return outcomes[reads - 1] ?? { kind: "absent" };
     });
 
-    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
-    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
-    expect(read()).toMatchObject({ kind: "session", refreshToken: "rt-1" });
+    expect(read()).toMatchObject({ kind: "session", token: "rt-1" });
+    expect(read()).toMatchObject({ kind: "session", token: "rt-1" });
+    expect(read()).toMatchObject({ kind: "session", token: "rt-1" });
     expect(reads).toBe(1);
   });
 

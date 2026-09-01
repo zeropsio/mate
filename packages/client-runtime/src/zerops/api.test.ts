@@ -415,19 +415,14 @@ describe("ZeropsApiClient project reads", () => {
   });
 });
 
-describe("ZeropsApiClient.adoptHandedOverSession", () => {
-  // The hand-over from app.zerops.io delivers one string. Everything else the
-  // session needs comes back from the exchange.
-  it("exchanges a bare refresh token with no bearer, and stores what comes back", async () => {
+describe("ZeropsApiClient.adoptPersonalToken", () => {
+  // The hand-over from app.zerops.io delivers a personal access token, which is
+  // already a bearer — there is nothing to exchange. What there is to do is
+  // prove it works before storing it, so a dead token never becomes a
+  // signed-in-looking UI.
+  it("proves the token before storing it, and stores exactly it", async () => {
     const stored: Array<ZeropsSession | null> = [];
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        accessToken: "access-9",
-        refreshToken: "refresh-9",
-        userId: "user-9",
-        expiresIn: 900,
-      }),
-    );
+    const stub = recordingFetch(() => jsonResponse(200, { id: "user-9", email: "a@b.c" }));
     const client = new ZeropsApiClient({
       fetch: stub.fetch,
       onSessionChange: (session) => {
@@ -435,25 +430,20 @@ describe("ZeropsApiClient.adoptHandedOverSession", () => {
       },
     });
 
-    const session = await client.adoptHandedOverSession("handed-over-1");
+    const session = await client.adoptPersonalToken("pt-abc");
 
+    // One call, and it carried the token as the bearer.
     expect(stub.requests).toHaveLength(1);
-    expect(stub.requests[0]?.url).toBe(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/auth/refresh`);
-    expect(stub.requests[0]?.method).toBe("POST");
-    // `/authorize` in the platform's own GUI performs this exchange straight
-    // after logging out, so the call is proven not to need one.
-    expect(stub.requests[0]?.authorization).toBeNull();
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      refreshTokenId: "handed-over-1",
-    });
-    // `/auth/refresh` answers with the session fields at the top level, unlike
-    // `/auth/login`, which wraps them in `auth`.
-    expect(session.accessToken).toBe("access-9");
-    expect(client.session?.accessToken).toBe("access-9");
+    expect(stub.requests[0]?.url).toBe(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user/info`);
+    expect(stub.requests[0]?.authorization).toBe("Bearer pt-abc");
+    expect(session.accessToken).toBe("pt-abc");
+    // No refresh token: a personal token does not have one, and the 401 path
+    // must clear the session rather than try to refresh it.
+    expect(session.refreshToken).toBeUndefined();
     expect(stored).toEqual([session]);
   });
 
-  it("refuses a token the platform will not exchange, and stores nothing", async () => {
+  it("stores nothing when the token is refused", async () => {
     const stored: Array<ZeropsSession | null> = [];
     const stub = recordingFetch(() => jsonResponse(401, { error: { code: "notAuthorized" } }));
     const client = new ZeropsApiClient({
@@ -463,24 +453,16 @@ describe("ZeropsApiClient.adoptHandedOverSession", () => {
       },
     });
 
-    await expect(client.adoptHandedOverSession("stale")).rejects.toBeInstanceOf(ZeropsApiError);
+    await expect(client.adoptPersonalToken("dead")).rejects.toBeInstanceOf(ZeropsApiError);
     expect(client.session).toBeNull();
-    expect(stored).toEqual([]);
-  });
-
-  it("refuses a response that is not a usable session rather than half-signing in", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { accessToken: "" }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-
-    await expect(client.adoptHandedOverSession("rt")).rejects.toBeInstanceOf(ZeropsApiError);
-    expect(client.session).toBeNull();
+    expect(stored.filter((s) => s !== null)).toEqual([]);
   });
 
   it("will not spend a request on an empty hand-over", async () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
 
-    await expect(client.adoptHandedOverSession("  ")).rejects.toBeInstanceOf(ZeropsApiError);
+    await expect(client.adoptPersonalToken("  ")).rejects.toBeInstanceOf(ZeropsApiError);
     expect(stub.requests).toHaveLength(0);
   });
 });
