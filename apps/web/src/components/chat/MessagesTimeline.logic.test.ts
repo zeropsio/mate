@@ -2185,6 +2185,175 @@ describe("deriveMessagesTimelineRows", () => {
       });
     },
   );
+
+  describe("zerops plan card merge", () => {
+    const bootstrapEntry = (
+      id: string,
+      sessionId: string,
+      step: string,
+      entry: Partial<WorkLogEntry> = {},
+    ) =>
+      makeWorkTimelineEntry(id, {
+        turnId: "turn-bootstrap" as never,
+        itemType: "mcp_tool_call",
+        zeropsResult: {
+          toolName: "zerops_workflow",
+          resultText: JSON.stringify({
+            sessionId,
+            progress: {
+              total: 3,
+              completed: 1,
+              steps: [
+                { name: "discover", status: step === "discover" ? "current" : "done" },
+                {
+                  name: "provision",
+                  status: step === "provision" ? "current" : step === "close" ? "done" : "pending",
+                },
+                { name: "close", status: step === "close" ? "current" : "pending" },
+              ],
+            },
+          }),
+        },
+        ...entry,
+      });
+
+    const findPlanCardRow = (rows: ReturnType<typeof deriveMessagesTimelineRows>, workId: string) =>
+      rows.find(
+        (row): row is Extract<typeof row, { kind: "work" }> =>
+          row.kind === "work" && row.groupedEntries.some((entry) => entry.id === workId),
+      );
+
+    it("folds three bootstrap calls sharing a sessionId into one card at the first position", () => {
+      const discover = bootstrapEntry("bootstrap-discover", "sess-1", "discover");
+      const provision = bootstrapEntry("bootstrap-provision", "sess-1", "provision");
+      const close = bootstrapEntry("bootstrap-close", "sess-1", "close");
+
+      const rows = deriveSettledRows([
+        makeAssistantTimelineEntry("assistant-a", "2026-01-01T00:00:01Z"),
+        discover,
+        makeAssistantTimelineEntry("assistant-b", "2026-01-01T00:00:02Z"),
+        provision,
+        makeAssistantTimelineEntry("assistant-c", "2026-01-01T00:00:03Z"),
+        close,
+        makeAssistantTimelineEntry("assistant-d", "2026-01-01T00:00:04Z"),
+      ]);
+
+      const planRows = rows.filter(
+        (row) =>
+          row.kind === "work" &&
+          row.groupedEntries.some((entry) =>
+            [discover.entry.id, provision.entry.id, close.entry.id].includes(entry.id),
+          ),
+      );
+      expect(planRows).toHaveLength(1);
+      const planRow = planRows[0]!;
+      expect(planRow.kind).toBe("work");
+      if (planRow.kind !== "work") throw new Error("expected work row");
+      expect(planRow.groupedEntries).toHaveLength(1);
+      expect(planRow.groupedEntries[0]!.id).toBe(discover.entry.id);
+      expect(planRow.groupedEntries[0]!.zeropsResult).toEqual(close.entry.zeropsResult);
+
+      // Anchored at the first position: it renders right after the first
+      // assistant message, before the assistant messages that separated the
+      // later two calls.
+      const rowIds = rows.map((row) => row.id);
+      expect(rowIds.indexOf(planRow.id)).toBe(rowIds.indexOf("assistant-a-entry") + 1);
+      expect(rowIds).not.toContain(provision.id);
+      expect(rowIds).not.toContain(close.id);
+    });
+
+    it("keeps a card from a different sessionId separate", () => {
+      const first = bootstrapEntry("bootstrap-sess1", "sess-1", "discover");
+      const second = bootstrapEntry("bootstrap-sess2", "sess-2", "discover");
+
+      const rows = deriveSettledRows([first, second]);
+
+      const firstRow = findPlanCardRow(rows, first.entry.id);
+      const secondRow = findPlanCardRow(rows, second.entry.id);
+      expect(firstRow).toBeDefined();
+      expect(secondRow).toBeDefined();
+      expect(firstRow).not.toBe(secondRow);
+    });
+
+    it("renders the last resolved result while a later call on the same session is still pending", () => {
+      const discover = bootstrapEntry("bootstrap-pending-discover", "sess-pending", "discover", {
+        turnId: "turn-active" as never,
+      });
+      const provision = bootstrapEntry("bootstrap-pending-provision", "sess-pending", "provision", {
+        turnId: "turn-active" as never,
+      });
+      const pending = makeRunningTool("bootstrap-pending-inflight");
+
+      // Same shape as "keeps a settled milestone before a running tool visible
+      // in both active states": the merged plan card is a settled milestone,
+      // the still-running call trails it in its own work-live row.
+      const rows = deriveActiveRows([discover, provision, pending]);
+
+      expect(rowIdentities(rows)).toEqual([
+        { id: "working-indicator-row", kind: "working" },
+        { id: discover.entry.id, kind: "work" },
+        { id: "work-live:bootstrap-pending-inflight-entry", kind: "work-live" },
+      ]);
+      const planRow = findPlanCardRow(rows, discover.entry.id);
+      if (planRow?.kind !== "work") throw new Error("expected work row");
+      expect(planRow.groupedEntries[0]!.zeropsResult).toEqual(provision.entry.zeropsResult);
+    });
+
+    it("does not merge an error result between two plan results", () => {
+      const discover = bootstrapEntry("bootstrap-error-discover", "sess-error", "discover");
+      const failed = makeWorkTimelineEntry("bootstrap-error-failed", {
+        toolLifecycleStatus: "failed",
+        zeropsResult: {
+          toolName: "zerops_workflow",
+          resultText: JSON.stringify({ code: "SOME_ERROR", error: "boom" }),
+        },
+      });
+      const close = bootstrapEntry("bootstrap-error-close", "sess-error", "close");
+
+      const rows = deriveSettledRows([
+        discover,
+        makeAssistantTimelineEntry("assistant-mid", "2026-01-01T00:00:02Z"),
+        failed,
+        makeAssistantTimelineEntry("assistant-mid-2", "2026-01-01T00:00:03Z"),
+        close,
+      ]);
+
+      const rowIds = rows.map((row) => row.id);
+      expect(rowIds).toContain(failed.entry.id);
+      const planRow = findPlanCardRow(rows, discover.entry.id);
+      expect(planRow).toBeDefined();
+      if (planRow?.kind !== "work") throw new Error("expected work row");
+      expect(planRow.groupedEntries[0]!.zeropsResult).toEqual(close.entry.zeropsResult);
+    });
+
+    it("is unaffected by a non-zerops tool between two bootstrap calls", () => {
+      const discover = bootstrapEntry("bootstrap-other-discover", "sess-other", "discover");
+      const other = makeWorkTimelineEntry("bootstrap-other-tool", {
+        itemType: "command_execution",
+      });
+      const close = bootstrapEntry("bootstrap-other-close", "sess-other", "close");
+
+      const rows = deriveSettledRows([
+        discover,
+        makeAssistantTimelineEntry("assistant-mid", "2026-01-01T00:00:02Z"),
+        other,
+        makeAssistantTimelineEntry("assistant-mid-2", "2026-01-01T00:00:03Z"),
+        close,
+      ]);
+
+      // A single ordinary tool call renders behind its own summary toggle,
+      // same as it would without any bootstrap calls nearby — the merge
+      // logic neither drops it nor folds it into the plan card.
+      expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
+        hiddenCount: 1,
+        summary: "Ran 1 command",
+      });
+      const planRow = findPlanCardRow(rows, discover.entry.id);
+      expect(planRow).toBeDefined();
+      if (planRow?.kind !== "work") throw new Error("expected work row");
+      expect(planRow.groupedEntries[0]!.zeropsResult).toEqual(close.entry.zeropsResult);
+    });
+  });
 });
 
 describe("computeStableMessagesTimelineRows", () => {

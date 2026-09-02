@@ -9,6 +9,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
+import { zeropsCardIdentity } from "@t3tools/client-runtime/zerops/cards/identity";
 import { isZeropsMilestone } from "@t3tools/client-runtime/zerops/cards/milestone";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
@@ -659,6 +660,80 @@ function deriveTurnFolds(input: {
   return foldsByAnchorEntry;
 }
 
+/**
+ * Folds a lifecycle object's repeated tool calls (e.g. every `zerops_workflow`
+ * bootstrap call advancing one session) into a single card.
+ *
+ * The first entry carrying a given identity (see `zeropsCardIdentity`) is the
+ * anchor: it keeps its position and its own `id`, so the card never jumps or
+ * re-keys, but is replaced with a new entry object (never a mutation of the
+ * original) whose `zeropsResult` / `toolLifecycleStatus` come from the LATEST
+ * entry sharing that identity. Every later entry with the same identity is
+ * dropped outright — it renders nothing, not a stub. An entry with no
+ * identity (a different tool, a pending call, a plan from another session, an
+ * error) passes through untouched.
+ */
+function mergeZeropsCardEntries(
+  timelineEntries: ReadonlyArray<TimelineEntry>,
+): ReadonlyArray<TimelineEntry> {
+  const anchorByIdentity = new Map<string, WorkLogEntry>();
+  const latestByIdentity = new Map<string, WorkLogEntry>();
+  for (const timelineEntry of timelineEntries) {
+    if (timelineEntry.kind !== "work") {
+      continue;
+    }
+    const identity = zeropsCardIdentity(timelineEntry.entry);
+    if (identity === undefined) {
+      continue;
+    }
+    if (!anchorByIdentity.has(identity)) {
+      anchorByIdentity.set(identity, timelineEntry.entry);
+    }
+    latestByIdentity.set(identity, timelineEntry.entry);
+  }
+  if (anchorByIdentity.size === 0) {
+    return timelineEntries;
+  }
+
+  const merged: TimelineEntry[] = [];
+  for (const timelineEntry of timelineEntries) {
+    if (timelineEntry.kind !== "work") {
+      merged.push(timelineEntry);
+      continue;
+    }
+    const identity = zeropsCardIdentity(timelineEntry.entry);
+    if (identity === undefined) {
+      merged.push(timelineEntry);
+      continue;
+    }
+    if (timelineEntry.entry !== anchorByIdentity.get(identity)) {
+      // A later call sharing this identity folds into the anchor; drop it.
+      continue;
+    }
+    const latest = latestByIdentity.get(identity)!;
+    if (latest === timelineEntry.entry) {
+      merged.push(timelineEntry);
+      continue;
+    }
+    const {
+      zeropsResult: _anchorZeropsResult,
+      toolLifecycleStatus: _anchorStatus,
+      ...rest
+    } = timelineEntry.entry;
+    merged.push({
+      ...timelineEntry,
+      entry: {
+        ...rest,
+        ...(latest.zeropsResult === undefined ? {} : { zeropsResult: latest.zeropsResult }),
+        ...(latest.toolLifecycleStatus === undefined
+          ? {}
+          : { toolLifecycleStatus: latest.toolLifecycleStatus }),
+      },
+    });
+  }
+  return merged;
+}
+
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
@@ -671,7 +746,8 @@ export function deriveMessagesTimelineRows(input: {
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
-  const workTimelineEntries = input.timelineEntries.filter(
+  const timelineEntries = mergeZeropsCardEntries(input.timelineEntries);
+  const workTimelineEntries = timelineEntries.filter(
     (entry): entry is Extract<TimelineEntry, { kind: "work" }> => entry.kind === "work",
   );
   const preferredWorkRowOwnerById = new Map<string, Extract<TimelineEntry, { kind: "work" }>>();
@@ -702,15 +778,15 @@ export function deriveMessagesTimelineRows(input: {
   }
   const workRowId = (entry: WorkLogEntry) => workRowIdByEntry.get(entry) ?? entry.id;
   const durationStartByMessageId = computeMessageDurationStart(
-    input.timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
+    timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
   );
-  const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(input.timelineEntries);
+  const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(timelineEntries);
   const unsettledTurnId = deriveUnsettledTurnId(
     input.latestTurn ?? null,
     input.runningTurnId ?? null,
   );
   const foldsByAnchorEntry = deriveTurnFolds({
-    timelineEntries: input.timelineEntries,
+    timelineEntries,
     terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
     unsettledTurnId,
@@ -724,13 +800,13 @@ export function deriveMessagesTimelineRows(input: {
     }
   }
 
-  let activeTurnHeaderIndex = input.timelineEntries.length;
+  let activeTurnHeaderIndex = timelineEntries.length;
   if (input.isWorking) {
-    const latestUserMessageIndex = lastUserMessageIndex(input.timelineEntries);
+    const latestUserMessageIndex = lastUserMessageIndex(timelineEntries);
     const firstOwnedAfterUser =
       unsettledTurnId === null
         ? -1
-        : input.timelineEntries.findIndex(
+        : timelineEntries.findIndex(
             (entry, index) =>
               index > latestUserMessageIndex && timelineEntryTurnId(entry) === unsettledTurnId,
           );
@@ -742,7 +818,7 @@ export function deriveMessagesTimelineRows(input: {
     index >= activeTurnHeaderIndex &&
     (unsettledTurnId === null || timelineEntryTurnId(entry) === unsettledTurnId);
   const activeMilestoneEntries = new Set(
-    input.timelineEntries.filter(
+    timelineEntries.filter(
       (entry, index): entry is Extract<TimelineEntry, { kind: "work" }> =>
         entry.kind === "work" &&
         entryBelongsToActiveTurn(entry, index) &&
@@ -757,7 +833,7 @@ export function deriveMessagesTimelineRows(input: {
   const isVisibleActiveToolEntry = (entry: WorkLogEntry) =>
     workLogEntryIsToolLike(entry) && workEntryIsVisibleInGroup(entry, true);
   const activeEntries = input.isWorking
-    ? input.timelineEntries.filter((entry, index) => entryBelongsToActiveTurn(entry, index))
+    ? timelineEntries.filter((entry, index) => entryBelongsToActiveTurn(entry, index))
     : [];
   const activeTurnHasVisibleContent = activeEntries.some((entry) => {
     if (entry.kind === "message") {
@@ -776,8 +852,8 @@ export function deriveMessagesTimelineRows(input: {
   });
 
   const activeToolEntries: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
-  for (let index = input.timelineEntries.length - 1; index >= activeTurnHeaderIndex; index -= 1) {
-    const entry = input.timelineEntries[index]!;
+  for (let index = timelineEntries.length - 1; index >= activeTurnHeaderIndex; index -= 1) {
+    const entry = timelineEntries[index]!;
     if (
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
@@ -837,8 +913,8 @@ export function deriveMessagesTimelineRows(input: {
     }
   };
 
-  for (let index = 0; index < input.timelineEntries.length; index += 1) {
-    const timelineEntry = input.timelineEntries[index];
+  for (let index = 0; index < timelineEntries.length; index += 1) {
+    const timelineEntry = timelineEntries[index];
     if (!timelineEntry) {
       continue;
     }
@@ -875,8 +951,8 @@ export function deriveMessagesTimelineRows(input: {
       const groupedEntries = [timelineEntry.entry];
       const timelineEntryIsActiveMilestone = activeMilestoneEntries.has(timelineEntry);
       let cursor = index + 1;
-      while (cursor < input.timelineEntries.length) {
-        const nextEntry = input.timelineEntries[cursor];
+      while (cursor < timelineEntries.length) {
+        const nextEntry = timelineEntries[cursor];
         if (
           !nextEntry ||
           nextEntry.kind !== "work" ||
@@ -1091,7 +1167,7 @@ export function deriveMessagesTimelineRows(input: {
     });
   }
 
-  if (input.isWorking && activeTurnHeaderIndex === input.timelineEntries.length) {
+  if (input.isWorking && activeTurnHeaderIndex === timelineEntries.length) {
     appendWorkingRow();
   }
 

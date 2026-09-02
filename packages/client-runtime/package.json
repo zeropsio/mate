@@ -171,6 +171,10 @@
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
     },
+    "./zerops/cards/identity": {
+      "types": "./src/zerops/cards/identity.ts",
+      "default": "./src/zerops/cards/identity.ts"
+    },
     "./zerops/cards/liveFixtures": {
       "types": "./src/zerops/cards/liveFixtures.ts",
       "default": "./src/zerops/cards/liveFixtures.ts"

@@ -83,6 +83,12 @@ export type ZeropsCardPayload =
     }
   | {
       readonly kind: "plan";
+      /**
+       * Stable for the life of one bootstrap session (a `reset` or a later new
+       * bootstrap gets a new one). The merge key the timeline uses to fold
+       * repeated bootstrap calls into one card — see `cards/identity.ts`.
+       */
+      readonly sessionId?: string;
       readonly intent?: string;
       readonly message?: string;
       readonly completed: number;
@@ -275,6 +281,7 @@ function decodePlan(document: Record<string, unknown>): ZeropsCardPayload | unde
   }
   return {
     kind: "plan",
+    ...optional("sessionId", readString(document.sessionId)),
     ...optional("intent", readString(document.intent)),
     ...optional("message", readString(document.message)),
     completed,

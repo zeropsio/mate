@@ -239,6 +239,7 @@ describe("decodeZeropsCard — import, mount, subdomain, plan", () => {
       }),
     ).toEqual({
       kind: "plan",
+      sessionId: "s1",
       intent: "build a kanban",
       message: "Confirm these services",
       completed: 1,
@@ -248,6 +249,19 @@ describe("decodeZeropsCard — import, mount, subdomain, plan", () => {
         { name: "provision", status: "current" },
         { name: "close", status: "pending" },
       ],
+    });
+  });
+
+  it("reads a bootstrap plan with no sessionId (route-discovery has none)", () => {
+    expect(
+      card("zerops_workflow", {
+        progress: { total: 1, completed: 0, steps: [{ name: "discover", status: "current" }] },
+      }),
+    ).toEqual({
+      kind: "plan",
+      completed: 0,
+      total: 1,
+      steps: [{ name: "discover", status: "current" }],
     });
   });
 });
