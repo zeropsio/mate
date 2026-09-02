@@ -8,7 +8,6 @@ import { isZeropsCaptchaRejection } from "@t3tools/client-runtime/zerops";
 import { useState, type ReactNode } from "react";
 
 import { Spinner } from "../../ui/spinner";
-import { isElectron } from "~/env";
 import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsTurnstile } from "~/zerops/turnstile";
 
@@ -188,7 +187,23 @@ export function ZeropsHostedLanding({
       description="Pick a project and start talking to the agent inside it."
       onManualConnect={manualConnect}
     >
-      {isElectron ? (
+      <ZeropsHandoverActions
+        onContinue={() => {
+          // A full-page navigation in this tab, never a new one: the callback
+          // reads the nonce back out of this tab's storage.
+          window.location.href = startZeropsHandover();
+        }}
+        onCreateAccount={() => {
+          window.location.href = startZeropsHandover({ intent: "register" });
+        }}
+      />
+      <ZeropsPasswordDisclosure
+        open={showPasswordForm}
+        onToggle={() => {
+          setError(null);
+          setShowPasswordForm((open) => !open);
+        }}
+      >
         <ZeropsSignInForm
           busy={busy}
           error={error}
@@ -200,39 +215,7 @@ export function ZeropsHostedLanding({
             setMode("register");
           }}
         />
-      ) : (
-        <>
-          <ZeropsHandoverActions
-            onContinue={() => {
-              // A full-page navigation in this tab, never a new one: the callback
-              // reads the nonce back out of this tab's storage.
-              window.location.href = startZeropsHandover();
-            }}
-            onCreateAccount={() => {
-              window.location.href = startZeropsHandover({ intent: "register" });
-            }}
-          />
-          <ZeropsPasswordDisclosure
-            open={showPasswordForm}
-            onToggle={() => {
-              setError(null);
-              setShowPasswordForm((open) => !open);
-            }}
-          >
-            <ZeropsSignInForm
-              busy={busy}
-              error={error}
-              onSubmit={({ email, password }) => {
-                run(() => signIn(email, password));
-              }}
-              onSwitchToRegister={() => {
-                setError(null);
-                setMode("register");
-              }}
-            />
-          </ZeropsPasswordDisclosure>
-        </>
-      )}
+      </ZeropsPasswordDisclosure>
     </ZeropsLandingShell>
   );
 }
