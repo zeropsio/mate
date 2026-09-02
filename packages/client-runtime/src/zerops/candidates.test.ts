@@ -2,7 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { deriveZeropsCandidates, groupZeropsCandidates, zeropsCodeBaseUrl } from "./candidates.ts";
+import { deriveZeropsCandidates, groupZeropsCandidates, zeropsMateBaseUrl } from "./candidates.ts";
 
 const PROJECT: ZeropsProject = {
   id: "project-1",
@@ -26,18 +26,18 @@ function service(overrides: Partial<ZeropsService> & { readonly id: string }): Z
 
 const NO_CONNECTIONS = new Map<string, EnvironmentId>();
 
-describe("zeropsCodeBaseUrl", () => {
+describe("zeropsMateBaseUrl", () => {
   it("defers to the served prefix only for the container that serves this bundle", () => {
     const app = {
       origin: "https://zcp-current-8080.prg1.zerops.app",
-      basePath: "/preview/z3",
+      basePath: "/preview/mate",
     };
 
-    expect(zeropsCodeBaseUrl(app.origin, app)).toBe(
-      "https://zcp-current-8080.prg1.zerops.app/preview/z3",
+    expect(zeropsMateBaseUrl(app.origin, app)).toBe(
+      "https://zcp-current-8080.prg1.zerops.app/preview/mate",
     );
-    expect(zeropsCodeBaseUrl("https://zcp-remote-8080.prg1.zerops.app", app)).toBe(
-      "https://zcp-remote-8080.prg1.zerops.app/z3",
+    expect(zeropsMateBaseUrl("https://zcp-remote-8080.prg1.zerops.app", app)).toBe(
+      "https://zcp-remote-8080.prg1.zerops.app/mate",
     );
   });
 });
@@ -71,7 +71,7 @@ describe("deriveZeropsCandidates", () => {
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.group).toBe("unavailable");
-    expect(candidates[0]?.reason).toMatch(/no Zerops Code container/i);
+    expect(candidates[0]?.reason).toMatch(/no Zerops Mate container/i);
     expect(candidates[0]?.service).toBeUndefined();
   });
 

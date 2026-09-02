@@ -99,7 +99,7 @@ function SignedOutSurface(props: { readonly onOpenPairing: () => void }) {
         <View className="items-center gap-1.5">
           <Text className="font-t3-bold text-xl text-foreground">Sign in to Zerops</Text>
           <Text className="text-center text-sm leading-normal text-foreground-muted">
-            Choose a Zerops Code project and connect this device without entering a code.
+            Choose a Zerops Mate project and connect this device without entering a code.
           </Text>
         </View>
       </View>
@@ -353,7 +353,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
           <View className="items-center gap-2 rounded-[20px] bg-card px-5 py-8">
             <Text className="font-t3-bold text-base text-foreground">No projects found</Text>
             <Text className="text-center text-sm leading-normal text-foreground-muted">
-              This account has no Zerops Code container available yet.
+              This account has no Zerops Mate container available yet.
             </Text>
           </View>
         )

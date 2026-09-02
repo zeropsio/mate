@@ -238,7 +238,7 @@ const renderWebThemeTokens = (): string =>
 
 const renderWebBootMark = (): string =>
   [
-    `          <svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Code">`,
+    `          <svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
     ...ZEROPS_MARK.paths.flatMap((path) => [
       "            <path",
       `              d="${path.d}"`,

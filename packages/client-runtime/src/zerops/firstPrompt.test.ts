@@ -69,7 +69,7 @@ describe("first-prompt markers", () => {
   });
 
   it("opens with something the agent can actually answer", () => {
-    expect(ZEROPS_ONBOARDING_PROMPT).toContain("Zerops Code");
+    expect(ZEROPS_ONBOARDING_PROMPT).toContain("Zerops Mate");
     expect(ZEROPS_ONBOARDING_PROMPT.length).toBeLessThan(240);
   });
 });

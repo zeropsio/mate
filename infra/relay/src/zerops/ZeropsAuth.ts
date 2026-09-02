@@ -3,7 +3,7 @@
  * user id — the relay's replacement for Clerk session/OAuth verification.
  *
  * One authenticated read against the Zerops REST API, with the caller's own
- * token: `GET /user/info`. Unlike the z3 door
+ * token: `GET /user/info`. Unlike the mate door
  * (`apps/server/src/zerops/ZeropsIdentity.ts`), this has no fixed project to
  * check membership against — the relay serves every project, so "who is
  * this" and "are they a member of project X" are separate questions.

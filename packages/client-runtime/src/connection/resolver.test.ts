@@ -174,12 +174,12 @@ describe("ConnectionResolver", () => {
       const target = new PrimaryConnectionTarget({
         environmentId: ENVIRONMENT_ID,
         label: "Primary",
-        httpBaseUrl: "https://container.example.test/z3/",
-        wsBaseUrl: "wss://container.example.test/z3/",
+        httpBaseUrl: "https://container.example.test/mate/",
+        wsBaseUrl: "wss://container.example.test/mate/",
       });
 
       expect((yield* broker.prepare(catalogEntry(target))).socketUrl).toBe(
-        "wss://container.example.test/z3/ws?clientSurface=web&clientDeviceType=desktop&connectionMethod=direct",
+        "wss://container.example.test/mate/ws?clientSurface=web&clientDeviceType=desktop&connectionMethod=direct",
       );
     }),
   );

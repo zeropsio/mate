@@ -1,6 +1,6 @@
 /**
  * Probes each reachable candidate's container so the picker can say, per row,
- * whether Zerops Code is actually there — rather than making the user click
+ * whether Zerops Mate is actually there — rather than making the user click
  * Connect to find out.
  *
  * Capped and incremental: an account with a dozen containers gets four

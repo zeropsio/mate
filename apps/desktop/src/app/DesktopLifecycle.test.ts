@@ -32,7 +32,7 @@ function makeElectronAppLayer(
 
   return Layer.succeed(ElectronApp.ElectronApp, {
     metadata: Effect.die("unexpected metadata read"),
-    name: Effect.succeed("Zerops Code"),
+    name: Effect.succeed("Zerops Mate"),
     systemLocale: Effect.succeed("en-US"),
     whenReady: Effect.void,
     quit,

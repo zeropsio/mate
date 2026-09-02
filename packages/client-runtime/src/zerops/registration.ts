@@ -1,5 +1,5 @@
 /**
- * Signing up for Zerops from inside Zerops Code.
+ * Signing up for Zerops from inside Zerops Mate.
  *
  * The body is built by a pure function so the two decisions in it — whether a
  * pool project is claimed, and whether a captcha token rides along — are

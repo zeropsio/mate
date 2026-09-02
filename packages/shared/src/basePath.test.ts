@@ -19,36 +19,36 @@ describe("normalizeBasePath", () => {
   });
 
   it("normalizes a prefix to a leading slash and no trailing slash", () => {
-    expect(normalizeBasePath("z3")).toBe("/z3");
-    expect(normalizeBasePath("/z3")).toBe("/z3");
-    expect(normalizeBasePath("/z3/")).toBe("/z3");
-    expect(normalizeBasePath("  /z3/  ")).toBe("/z3");
-    expect(normalizeBasePath("//z3//")).toBe("/z3");
+    expect(normalizeBasePath("mate")).toBe("/mate");
+    expect(normalizeBasePath("/mate")).toBe("/mate");
+    expect(normalizeBasePath("/mate/")).toBe("/mate");
+    expect(normalizeBasePath("  /mate/  ")).toBe("/mate");
+    expect(normalizeBasePath("//mate//")).toBe("/mate");
     expect(normalizeBasePath("/a/b/")).toBe("/a/b");
   });
 });
 
 describe("joinBasePath", () => {
   it("joins a prefix and a route path without doubling slashes", () => {
-    expect(joinBasePath("/z3", "/api/auth/session")).toBe("/z3/api/auth/session");
-    expect(joinBasePath("/z3", "api/auth/session")).toBe("/z3/api/auth/session");
+    expect(joinBasePath("/mate", "/api/auth/session")).toBe("/mate/api/auth/session");
+    expect(joinBasePath("/mate", "api/auth/session")).toBe("/mate/api/auth/session");
     expect(joinBasePath("", "/api/auth/session")).toBe("/api/auth/session");
-    expect(joinBasePath("/z3/", "/ws")).toBe("/z3/ws");
+    expect(joinBasePath("/mate/", "/ws")).toBe("/mate/ws");
   });
 
   it("keeps the prefix itself when the route path is the root", () => {
-    expect(joinBasePath("/z3", "/")).toBe("/z3/");
+    expect(joinBasePath("/mate", "/")).toBe("/mate/");
     expect(joinBasePath("", "/")).toBe("/");
   });
 });
 
 describe("withBasePath", () => {
   it("joins a route onto a base URL that carries a path prefix", () => {
-    expect(withBasePath("https://host.example/z3/", "/api/auth/session")).toBe(
-      "https://host.example/z3/api/auth/session",
+    expect(withBasePath("https://host.example/mate/", "/api/auth/session")).toBe(
+      "https://host.example/mate/api/auth/session",
     );
-    expect(withBasePath("https://host.example/z3", "/.well-known/t3/environment")).toBe(
-      "https://host.example/z3/.well-known/t3/environment",
+    expect(withBasePath("https://host.example/mate", "/.well-known/t3/environment")).toBe(
+      "https://host.example/mate/.well-known/t3/environment",
     );
   });
 
@@ -62,19 +62,19 @@ describe("withBasePath", () => {
   });
 
   it("drops any query and fragment carried by the base URL", () => {
-    expect(withBasePath("https://host.example/z3/?a=1#frag", "/api/auth/session")).toBe(
-      "https://host.example/z3/api/auth/session",
+    expect(withBasePath("https://host.example/mate/?a=1#frag", "/api/auth/session")).toBe(
+      "https://host.example/mate/api/auth/session",
     );
   });
 });
 
 describe("socketUrlFromWsBaseUrl", () => {
   it("appends the socket route under the prefix", () => {
-    expect(socketUrlFromWsBaseUrl("wss://host.example/z3/").toString()).toBe(
-      "wss://host.example/z3/ws",
+    expect(socketUrlFromWsBaseUrl("wss://host.example/mate/").toString()).toBe(
+      "wss://host.example/mate/ws",
     );
-    expect(socketUrlFromWsBaseUrl("wss://host.example/z3").toString()).toBe(
-      "wss://host.example/z3/ws",
+    expect(socketUrlFromWsBaseUrl("wss://host.example/mate").toString()).toBe(
+      "wss://host.example/mate/ws",
     );
   });
 
@@ -84,8 +84,8 @@ describe("socketUrlFromWsBaseUrl", () => {
   });
 
   it("does not double an explicit socket path", () => {
-    expect(socketUrlFromWsBaseUrl("wss://host.example/z3/ws").toString()).toBe(
-      "wss://host.example/z3/ws",
+    expect(socketUrlFromWsBaseUrl("wss://host.example/mate/ws").toString()).toBe(
+      "wss://host.example/mate/ws",
     );
     expect(socketUrlFromWsBaseUrl("wss://host.example/ws").toString()).toBe(
       "wss://host.example/ws",
@@ -95,7 +95,7 @@ describe("socketUrlFromWsBaseUrl", () => {
 
 describe("readBasePath", () => {
   it("reads the prefix a base URL carries", () => {
-    expect(readBasePath("https://host.example/z3/")).toBe("/z3");
+    expect(readBasePath("https://host.example/mate/")).toBe("/mate");
     expect(readBasePath("https://host.example/")).toBe("");
     expect(readBasePath("wss://host.example/a/b")).toBe("/a/b");
   });
@@ -103,21 +103,21 @@ describe("readBasePath", () => {
 
 describe("stripBasePath", () => {
   it("removes the prefix from a request path", () => {
-    expect(stripBasePath("/z3", "/z3/api/auth/session")).toBe("/api/auth/session");
-    expect(stripBasePath("/z3", "/z3/")).toBe("/");
-    expect(stripBasePath("/z3", "/z3")).toBe("/");
+    expect(stripBasePath("/mate", "/mate/api/auth/session")).toBe("/api/auth/session");
+    expect(stripBasePath("/mate", "/mate/")).toBe("/");
+    expect(stripBasePath("/mate", "/mate")).toBe("/");
   });
 
   it("leaves a path that does not carry the prefix untouched", () => {
-    expect(stripBasePath("/z3", "/api/auth/session")).toBe("/api/auth/session");
+    expect(stripBasePath("/mate", "/api/auth/session")).toBe("/api/auth/session");
     expect(stripBasePath("", "/api/auth/session")).toBe("/api/auth/session");
   });
 
   it("does not treat a shared leading substring as the prefix", () => {
-    expect(stripBasePath("/z3", "/z3x/api")).toBe("/z3x/api");
+    expect(stripBasePath("/mate", "/matex/api")).toBe("/matex/api");
   });
 
   it("preserves the query string", () => {
-    expect(stripBasePath("/z3", "/z3/ws?wsTicket=abc")).toBe("/ws?wsTicket=abc");
+    expect(stripBasePath("/mate", "/mate/ws?wsTicket=abc")).toBe("/ws?wsTicket=abc");
   });
 });

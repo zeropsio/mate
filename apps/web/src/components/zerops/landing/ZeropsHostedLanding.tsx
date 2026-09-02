@@ -91,7 +91,7 @@ export function ZeropsHostedLanding({
   if (status === "loading") {
     return (
       <ZeropsLandingShell
-        title="Zerops Code"
+        title="Zerops Mate"
         description="Checking your Zerops session…"
         onManualConnect={manualConnect}
       >

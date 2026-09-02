@@ -106,7 +106,7 @@ describe("completeZeropsHandover", () => {
   });
 
   it("pins the storage key, because changing it silently breaks in-flight sign-ins", () => {
-    expect(ZEROPS_HANDOVER_NONCE_KEY).toBe("zerops-code.handover-nonce.v1");
+    expect(ZEROPS_HANDOVER_NONCE_KEY).toBe("zerops-mate.handover-nonce.v1");
   });
 });
 
@@ -119,7 +119,7 @@ describe("startZeropsHandover from a dev server", () => {
       startZeropsHandover({ store: fakeStore(), origin: "http://localhost:5173" }),
     );
 
-    expect(url.searchParams.get("app")).toBe("zerops-code");
+    expect(url.searchParams.get("app")).toBe("zerops-mate");
     expect(url.searchParams.get("port")).toBe("5173");
   });
 

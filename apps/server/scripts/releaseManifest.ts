@@ -7,9 +7,9 @@ import { resolveCatalogDependencies } from "../../../scripts/lib/resolve-catalog
 /**
  * The workspace keeps upstream's `t3` name because 124 Effect service-tag keys
  * in the ported server zone derive from it. The installed artifact carries the
- * Zerops Code identity instead.
+ * Zerops Mate identity instead.
  */
-export const RELEASE_PACKAGE_NAME = "zerops-code";
+export const RELEASE_PACKAGE_NAME = "zerops-mate";
 
 /** The fields of `apps/server/package.json` the release manifest is built from. */
 export interface ReleaseManifestSource {
@@ -80,7 +80,7 @@ export function buildReleaseManifest(input: {
  * does not declare — i.e. what would fail to resolve on the container.
  *
  * The prune's failure mode is silent here and fatal there: a static import that
- * resolves to nothing throws at load, inside `zerops@z3`, after the release is
+ * resolves to nothing throws at load, inside `zerops@mate`, after the release is
  * published. So the pack command reads the chunks it just built rather than
  * trusting `neverBundle` to describe them.
  */

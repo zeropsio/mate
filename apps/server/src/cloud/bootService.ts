@@ -48,7 +48,7 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
   // The user manager has no reliable network-online target; server networking retries itself.
   return [
     "[Unit]",
-    "Description=Zerops Code server",
+    "Description=Zerops Mate server",
     "StartLimitIntervalSec=300",
     "StartLimitBurst=5",
     "",
@@ -386,7 +386,7 @@ export class BootServiceInstallError extends Schema.TaggedErrorClass<BootService
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Could not set up the Zerops Code background service.";
+    return "Could not set up the Zerops Mate background service.";
   }
 }
 
@@ -548,7 +548,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
     if (host.entryPath === "" || !entryExists) {
       return yield* new BootServiceInstallError({
-        cause: new Error("The running z3 entrypoint is unavailable."),
+        cause: new Error("The running mate entrypoint is unavailable."),
       });
     }
     yield* runner
@@ -559,7 +559,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
       })
       .pipe(
         Effect.mapError(
-          (cause) => new BootServiceCommandError({ step: "verifying this z3 release", cause }),
+          (cause) => new BootServiceCommandError({ step: "verifying this mate release", cause }),
         ),
         Effect.flatMap((result) => {
           const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
@@ -567,7 +567,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
             ? Effect.void
             : Effect.fail(
                 new BootServiceCommandError({
-                  step: "verifying this z3 release",
+                  step: "verifying this mate release",
                   exitCode: Number(result.code),
                   stdoutLength: result.stdout.length,
                   stderrLength: result.stderr.length,

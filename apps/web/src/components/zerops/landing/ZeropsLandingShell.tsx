@@ -4,7 +4,7 @@
  * prop, so this file renders without a session, a router or a network.
  *
  * The reusable frame may keep a way out to upstream's manual connect flow.
- * The outer z3 account gate deliberately omits it: signed-out users see one
+ * The outer mate account gate deliberately omits it: signed-out users see one
  * product and one next action, while the legacy pairing route stays separate.
  */
 
@@ -33,7 +33,7 @@ export function ZeropsLandingShell({
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
         <WorkspacePageHeader className="border-b border-border">
-          <span className="text-sm font-medium text-foreground">Zerops Code</span>
+          <span className="text-sm font-medium text-foreground">Zerops Mate</span>
         </WorkspacePageHeader>
 
         <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
@@ -168,7 +168,7 @@ export function ZeropsHandedOffBanner({
   return (
     <div className="mb-4 space-y-2 rounded-2xl border border-border/55 bg-card/30 px-4 py-3 text-xs text-muted-foreground">
       <p>
-        Finish creating your account in the Zerops tab — it prepares a project with Zerops Code for
+        Finish creating your account in the Zerops tab — it prepares a project with Zerops Mate for
         you. Then sign in here.
       </p>
       <a

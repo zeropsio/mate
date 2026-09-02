@@ -311,7 +311,7 @@ describe("SidebarProjectTree", () => {
       title: "Second project thread",
     };
     feedState.topologies.set(environmentId, topology("zerops-xyz", 2));
-    feedState.topologies.set(secondEnvironmentId, topology("zerops-code", 2));
+    feedState.topologies.set(secondEnvironmentId, topology("zerops-mate", 2));
     const genericBranches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
       {
         key: "logical-project-one",
@@ -358,7 +358,7 @@ describe("SidebarProjectTree", () => {
     expect(markup.match(/>Projects<\/span>/gu)).toHaveLength(1);
     expect(markup).toContain("2 workspaces");
     expect(markup).toContain("zerops-xyz");
-    expect(markup).toContain("zerops-code");
+    expect(markup).toContain("zerops-mate");
     expect(markup.match(/2 services · zcp/gu)).toHaveLength(2);
     expect(markup).toContain("Active thread");
     expect(markup).toContain("Second project thread");

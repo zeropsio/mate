@@ -92,8 +92,8 @@ const makeEnv = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "z3-agent-auth-home-" });
-    const zembedDir = yield* fs.makeTempDirectoryScoped({ prefix: "z3-agent-auth-zembed-" });
+    const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-agent-auth-home-" });
+    const zembedDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-agent-auth-zembed-" });
     const envStorePath = path.join(zembedDir, ZEMBED_ENV_FILE_NAME);
     return { fs, path, homeDir, envStorePath };
   });

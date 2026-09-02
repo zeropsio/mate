@@ -45,19 +45,19 @@ export interface ZeropsCandidate {
 const ZCP_SERVICE_TYPE_PREFIX = "zcp@";
 
 /**
- * The container's single public port. Zerops Code rides on it under `/z3/`,
+ * The container's single public port. Zerops Mate rides on it under `/mate/`,
  * beside code-server — it does not declare a port of its own.
  */
 export const ZCP_HTTP_PORT = 8080;
 
 /**
- * Zerops Code is proxied under this prefix on the container's single port,
+ * Zerops Mate is proxied under this prefix on the container's single port,
  * beside code-server — it does not have an origin or a port of its own.
  */
-export const ZEROPS_CODE_BASE_PATH = "/z3";
+export const ZEROPS_MATE_BASE_PATH = "/mate";
 
-/** The z3 server's base URL for a container origin, prefix included. */
-export function zeropsCodeBaseUrl(
+/** The mate server's base URL for a container origin, prefix included. */
+export function zeropsMateBaseUrl(
   containerOrigin: string,
   servedApp?: {
     readonly origin: string;
@@ -70,7 +70,7 @@ export function zeropsCodeBaseUrl(
   const basePath =
     servedApp !== undefined && candidateOrigin !== null && candidateOrigin === servedAppOrigin
       ? normalizeBasePath(servedApp.basePath)
-      : ZEROPS_CODE_BASE_PATH;
+      : ZEROPS_MATE_BASE_PATH;
   return `${normalizedContainerOrigin}${basePath}`;
 }
 
@@ -161,7 +161,7 @@ export function deriveZeropsCandidates(
 
   const containers = services.filter(isZcpService);
   if (containers.length === 0) {
-    return [unavailable(project, "no Zerops Code container in this project")];
+    return [unavailable(project, "no Zerops Mate container in this project")];
   }
 
   return containers.map((service) => {

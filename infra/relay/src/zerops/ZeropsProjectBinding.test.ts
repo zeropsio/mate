@@ -27,7 +27,7 @@ const boundRoute = (url: string): Response => {
   if (url.endsWith(`/project/${PROJECT_ID}/service-stack`)) {
     return json({
       list: [
-        { name: "z3", subdomainAccess: true, ports: [{ port: 8080, httpSupport: true }] },
+        { name: "mate", subdomainAccess: true, ports: [{ port: 8080, httpSupport: true }] },
         { name: "db", subdomainAccess: false },
       ],
     });
@@ -43,7 +43,7 @@ describe("ZeropsProjectBinding.verify", () => {
         apiBaseUrl: "https://api.example.test",
         token: "user-token",
         zeropsProjectId: PROJECT_ID,
-        endpointOrigin: "https://z3-abcd-8080.prg1.zerops.app",
+        endpointOrigin: "https://mate-abcd-8080.prg1.zerops.app",
       }).pipe(Effect.provide(stub(boundRoute))),
   );
 
@@ -85,7 +85,7 @@ describe("ZeropsProjectBinding.verify", () => {
           apiBaseUrl: "https://api.example.test",
           token: "user-token",
           zeropsProjectId: PROJECT_ID,
-          endpointOrigin: "https://z3-abcd-8080.prg1.zerops.app",
+          endpointOrigin: "https://mate-abcd-8080.prg1.zerops.app",
         }),
       );
       expect(error._tag).toBe("ZeropsNotAMemberError");
@@ -107,7 +107,7 @@ describe("ZeropsProjectBinding.verify", () => {
           apiBaseUrl: "https://api.example.test",
           token: "user-token",
           zeropsProjectId: "unknown-project",
-          endpointOrigin: "https://z3-abcd-8080.prg1.zerops.app",
+          endpointOrigin: "https://mate-abcd-8080.prg1.zerops.app",
         }),
       );
       expect(error._tag).toBe("ZeropsProjectNotFoundError");
@@ -126,7 +126,7 @@ describe("ZeropsProjectBinding.verify", () => {
             apiBaseUrl: "https://api.example.test",
             token: "user-token",
             zeropsProjectId: PROJECT_ID,
-            endpointOrigin: "https://z3-8a.prg1.zerops.app",
+            endpointOrigin: "https://mate-8a.prg1.zerops.app",
           }),
         );
         expect(error._tag).toBe("ZeropsEndpointNotBoundError");
@@ -139,7 +139,7 @@ describe("ZeropsProjectBinding.verify", () => {
                 ? json({
                     list: [
                       {
-                        name: "z3",
+                        name: "mate",
                         subdomainAccess: true,
                         ports: [{ port: 80, httpSupport: true }],
                       },

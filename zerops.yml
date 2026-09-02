@@ -5,10 +5,10 @@
 # for it. One `setup:` per deployable; the import (or the push) selects one
 # by service hostname, or by an explicit `zeropsSetup`.
 zerops:
-  # The z3 web client, served at an origin root by its own nginx: the
-  # delivery shape the hosted client needs (spec-z3 §4 — "hosted separately,
+  # The mate web client, served at an origin root by its own nginx: the
+  # delivery shape the hosted client needs (spec-mate §4 — "hosted separately,
   # not built into the container"). Same bundle the container serves under
-  # /z3/, built without the prefix.
+  # /mate/, built without the prefix.
   - setup: prod
     build:
       base: ubuntu/nodejs@24
@@ -48,7 +48,7 @@ zerops:
         PUPPETEER_SKIP_DOWNLOAD: "1"
         CI: "1"
         # VITE_BASE_PATH stays unset: this bundle is served at an origin
-        # root, not under the container's /z3/ prefix.
+        # root, not under the container's /mate/ prefix.
         #
         # VITE_HTTP_URL / VITE_WS_URL stay unset too — either one makes the
         # app non-hosted and pins it to that backend. The repository `.env`

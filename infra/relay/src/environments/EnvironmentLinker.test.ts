@@ -22,7 +22,7 @@ import * as EnvironmentLinker from "./EnvironmentLinker.ts";
 
 const ZEROPS_PROJECT_ID = "project-1";
 const ZEROPS_SUBDOMAIN_HOST = "abcd.prg1.zerops.app";
-const ZEROPS_SERVICE_NAME = "z3";
+const ZEROPS_SERVICE_NAME = "mate";
 const ZEROPS_SERVICE_PORT = 8080;
 const BOUND_ENDPOINT_ORIGIN = `https://${ZEROPS_SERVICE_NAME}-abcd-${ZEROPS_SERVICE_PORT}.prg1.zerops.app`;
 const ZEROPS_TOKEN = "user-zerops-token";

@@ -4,8 +4,8 @@
 
 | #   | System           | Where it runs                                | Notes                                     |
 | --- | ---------------- | -------------------------------------------- | ----------------------------------------- |
-| 1   | z3 client        | browser / desktop / phone                    | this repo, `apps/web` etc.                |
-| 2   | z3 server        | anywhere — for this work, inside (3)         | this repo, `apps/server`                  |
+| 1   | mate client      | browser / desktop / phone                    | this repo, `apps/web` etc.                |
+| 2   | mate server      | anywhere — for this work, inside (3)         | this repo, `apps/server`                  |
 | 3   | `zcp` container  | one per Zerops project, service type `zcp@1` | nginx + code-server + agent CLIs + sshd   |
 | 4   | Zerops API       | `api.app-prg1.zerops.io`                     | REST under `/api/rest/public`             |
 | 5   | `zcli`           | the user's laptop                            | VPN, project ops, zcp SSH sessions        |
@@ -29,20 +29,20 @@ Two structural facts that shape everything else:
   re-renders nginx.conf from that template. Anything patched into nginx.conf at runtime is reverted
   by the next restart, so container-side changes belong in the template, never in a live edit.
 
-## Where z3 sits
+## Where mate sits
 
 `zcp@1` can declare as many ports as it needs, which makes the clean layout:
 
 ```
   :8080  ──► nginx ──► code-server          unchanged
              └──────► location = /z3-pair/<password>  ──► mints a pairing credential
-  :3773  ──► z3 server                      straight from the platform L7, no nginx in the path
+  :3773  ──► mate server                      straight from the platform L7, no nginx in the path
 ```
 
-- **z3 gets its own declared port and its own origin**, so it needs no nginx block at all — the
+- **mate gets its own declared port and its own origin**, so it needs no nginx block at all — the
   Zerops L7 terminates TLS and forwards to 3773 directly. See `questions.md` Q-09.
-- **No cookie gate in front of z3.** A separate port is a separate origin with its own cookie jar,
-  so `__zcp_auth` would not apply anyway, and z3's pairing → bearer → WS-ticket chain is real auth.
+- **No cookie gate in front of mate.** A separate port is a separate origin with its own cookie jar,
+  so `__zcp_auth` would not apply anyway, and mate's pairing → bearer → WS-ticket chain is real auth.
   Putting a second gate in front of it would add nothing and break the WebSocket.
 - **The mint endpoint stays on 8080**, behind the password check that already exists there, because
   that is the only place with a cheap proof that the caller belongs to the project. It reuses the
@@ -58,7 +58,7 @@ origin → bearer and WS ticket from there.
 | ------------------------ | --------------------------------- | ----------------------------------- | ------------------- | -------------------------------------------- |
 | client → Zerops API      | orgs, projects, services, env     | `Authorization: Bearer`             | no                  | yes — CORS is `*`                            |
 | client → zcp public URL  | everything the container serves   | cookie `__zcp_auth`                 | no                  | yes — HTTP/2, ~86 ms, WS upgrade in template |
-| client → z3 server       | the actual work session           | pairing → bearer → WS ticket        | no                  | partially                                    |
+| client → mate server     | the actual work session           | pairing → bearer → WS ticket        | no                  | partially                                    |
 | laptop → project VXLAN   | SSH, direct service ports         | WireGuard                           | **yes**             | yes                                          |
 | zcp → siblings           | sshfs mounts, `zcli push` deploys | SSH keys, pre-trusted VXLAN-wide    | no (inside project) | yes                                          |
 | agent in container → zcp | the `zerops_*` MCP tools          | none — stdio child process          | no                  | yes                                          |
@@ -67,9 +67,9 @@ origin → bearer and WS ticket from there.
 **SSH over VPN is the only way to run a command inside a container from outside.** There is no API,
 webhook, or network-reachable MCP endpoint. Anything else has to be built.
 
-## The z3 pairing chain
+## The mate pairing chain
 
-1. `GET /.well-known/t3/environment` — confirms it is a z3 server, returns `environmentId` and label.
+1. `GET /.well-known/t3/environment` — confirms it is a mate server, returns `environmentId` and label.
 2. `POST /oauth/token` — RFC 8693 exchange, `subject_token` is the pairing credential, returns a
    30-day bearer.
 3. `POST /api/auth/websocket-ticket` — with that bearer, returns a ~5-minute ticket.

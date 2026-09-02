@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { probeZeropsContainerHealth } from "./containerHealth.ts";
 
 const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
-const HEALTHZ = `${ORIGIN}/z3/healthz`;
-const DESCRIPTOR = `${ORIGIN}/z3/.well-known/t3/environment`;
+const HEALTHZ = `${ORIGIN}/mate/healthz`;
+const DESCRIPTOR = `${ORIGIN}/mate/.well-known/t3/environment`;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -68,31 +68,31 @@ describe("probeZeropsContainerHealth", () => {
     expect(globalFetch).not.toHaveBeenCalled();
   });
 
-  it("treats the z3 descriptor as the authority, and asks nothing else once it answers", async () => {
+  it("treats the mate descriptor as the authority, and asks nothing else once it answers", async () => {
     const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
 
     await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
     expect(spy.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
   });
 
-  it("reads readiness under the /z3/ prefix, which is the only place zcp publishes it", () => {
-    // The route moved out of the container root when z3 became opt-in: zcp
-    // renders it only with ZCP_Z3_ENABLED set, and the root /healthz is
+  it("reads readiness under the /mate/ prefix, which is the only place zcp publishes it", () => {
+    // The route moved out of the container root when mate became opt-in: zcp
+    // renders it only with ZCP_MATE_ENABLED set, and the root /healthz is
     // code-server's own again. Probing the root would read a booting container
-    // as one that cannot run Zerops Code at all, and offer a restart that
+    // as one that cannot run Zerops Mate at all, and offer a restart that
     // changes nothing. Pinned as an exact URL because the coupling is to a
     // path in another repository's nginx template, which no type can check.
     const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
 
     void probeZeropsContainerHealth(ORIGIN, spy.fetch);
 
-    expect(HEALTHZ).toBe(`${ORIGIN}/z3/healthz`);
+    expect(HEALTHZ).toBe(`${ORIGIN}/mate/healthz`);
   });
 
   it("is ready even when /healthz cannot be read cross-origin", async () => {
     // Measured 2026-08-28: nginx serves /healthz without an
     // Access-Control-Allow-Origin header, so a browser cannot read it at all,
-    // while the z3 descriptor answers `*`. Connecting must not depend on the
+    // while the mate descriptor answers `*`. Connecting must not depend on the
     // one the browser is refused.
     const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR), [HEALTHZ]: corsBlocked });
 
@@ -112,25 +112,25 @@ describe("probeZeropsContainerHealth", () => {
     }
   });
 
-  it("reads the cookie gate's redirect as a container that predates Zerops Code", async () => {
-    // Measured on two live pre-z3 containers: every path answers 302 to
+  it("reads the cookie gate's redirect as a container that predates Zerops Mate", async () => {
+    // Measured on two live pre-mate containers: every path answers 302 to
     // /zcp-login, because neither location exists yet.
     const opaque = stub({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect });
-    await expect(probeZeropsContainerHealth(ORIGIN, opaque.fetch)).resolves.toBe("predates-z3");
+    await expect(probeZeropsContainerHealth(ORIGIN, opaque.fetch)).resolves.toBe("predates-mate");
 
     const seen = () => new Response(null, { status: 302, headers: { location: "/zcp-login" } });
     const node = stub({ [DESCRIPTOR]: seen, [HEALTHZ]: seen });
-    await expect(probeZeropsContainerHealth(ORIGIN, node.fetch)).resolves.toBe("predates-z3");
+    await expect(probeZeropsContainerHealth(ORIGIN, node.fetch)).resolves.toBe("predates-mate");
   });
 
   it("never trusts a 200 without parsing it", async () => {
     // A mis-prefixed proxy turns any path into the SPA's index.html, which is
     // a perfectly good 200 and a completely wrong answer.
     const spy = stub({ [DESCRIPTOR]: () => html(200), [HEALTHZ]: () => html(200) });
-    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("predates-z3");
+    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("predates-mate");
   });
 
-  it("keeps waiting when zcp answers but Zerops Code has not come up yet", async () => {
+  it("keeps waiting when zcp answers but Zerops Mate has not come up yet", async () => {
     const notYet = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
     await expect(probeZeropsContainerHealth(ORIGIN, notYet.fetch)).resolves.toBe("initializing");
 
@@ -148,7 +148,7 @@ describe("probeZeropsContainerHealth", () => {
     });
     await expect(probeZeropsContainerHealth(ORIGIN, wrong.fetch)).resolves.toBe("initializing");
 
-    const right = stub({ [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, basePath: "/z3" }) });
+    const right = stub({ [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, basePath: "/mate" }) });
     await expect(probeZeropsContainerHealth(ORIGIN, right.fetch)).resolves.toBe("ready");
   });
 
@@ -168,7 +168,7 @@ describe("probeZeropsContainerHealth", () => {
     await expect(probeZeropsContainerHealth(`${ORIGIN}/`, spy.fetch)).resolves.toBe("ready");
   });
 
-  it("never reads a 5xx as a container that predates Zerops Code", async () => {
+  it("never reads a 5xx as a container that predates Zerops Mate", async () => {
     // The platform runs every initCommands entry to completion before any
     // startCommands process starts, so nginx answering at all proves that
     // boot's `zcp init` finished. A container mid-boot is the L7's 502, and

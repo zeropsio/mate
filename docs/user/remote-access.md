@@ -5,7 +5,7 @@ outside Zerops.
 
 ## Zerops
 
-Open `/z3/` on the `zcp` container's public subdomain and sign in with your Zerops account. The
+Open `/mate/` on the `zcp` container's public subdomain and sign in with your Zerops account. The
 Zerops identity door checks project membership and creates the authenticated connection. There is
 no pairing code and no shared container secret.
 
@@ -18,7 +18,7 @@ Use this section only with a server installed from the GitHub release tarball an
 Zerops. From its installation directory, start a server on an address your other device can reach:
 
 ```bash
-./node_modules/.bin/z3 serve --host 192.168.1.42
+./node_modules/.bin/mate serve --host 192.168.1.42
 ```
 
 The command prints the connection address, a one-time pairing token, a pairing URL, and a QR code.
@@ -27,14 +27,14 @@ Open the pairing URL on the other device or scan the QR code.
 If the server is already running, mint a fresh pairing token without restarting it:
 
 ```bash
-./node_modules/.bin/z3 pair
+./node_modules/.bin/mate pair
 ```
 
-Run `z3 pair` from the installation that owns the server state. If the server was started with an
-explicit `--base-dir`, pass the same directory to `z3 pair`:
+Run `mate pair` from the installation that owns the server state. If the server was started with an
+explicit `--base-dir`, pass the same directory to `mate pair`:
 
 ```bash
-./node_modules/.bin/z3 pair --base-dir /path/to/z3-data
+./node_modules/.bin/mate pair --base-dir /path/to/mate-data
 ```
 
 The token is single-use. After the browser exchanges it, that browser uses its own authenticated
@@ -53,7 +53,7 @@ If you put the standalone server behind a reverse proxy path, start it with the 
 The standalone executable can inspect and revoke pairing credentials and sessions:
 
 ```bash
-./node_modules/.bin/z3 auth --help
+./node_modules/.bin/mate auth --help
 ```
 
 Use the nested help pages for the available pairing and session commands.
@@ -65,4 +65,4 @@ Use the nested help pages for the available pairing and session commands.
 - Pairing credentials can leak through browser history, screenshots, logs, or copy and paste.
 - Revoke credentials or sessions you no longer trust.
 
-For server updates, see [Keeping Zerops Code Current](./updating.md).
+For server updates, see [Keeping Zerops Mate Current](./updating.md).

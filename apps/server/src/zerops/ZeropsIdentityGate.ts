@@ -1,5 +1,5 @@
 /**
- * ZeropsIdentityGate - the door into a z3 server that runs inside a Zerops
+ * ZeropsIdentityGate - the door into a mate server that runs inside a Zerops
  * project.
  *
  * The client presents its Zerops access token; this proves the caller is a

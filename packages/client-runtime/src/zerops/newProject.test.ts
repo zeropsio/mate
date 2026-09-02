@@ -13,8 +13,8 @@ import {
  * Traced from the platform GUI's own `ZeropsYamlBuilder` on 2026-08-28 for the
  * config the pool claim uses: one zcp, VS Code on, public access on, no agents,
  * no sshfs hostnames. Byte-for-byte, including the absent trailing newline —
- * plus `ZCP_Z3_ENABLED`, the one key this client adds to that document so the
- * container it creates comes up serving Zerops Code.
+ * plus `ZCP_MATE_ENABLED`, the one key this client adds to that document so the
+ * container it creates comes up serving Zerops Mate.
  */
 const GOLDEN = `services:
   - hostname: zcp
@@ -27,7 +27,7 @@ const GOLDEN = `services:
       VSCODE_PASSWORD: "PASSWORD0PASSWORD"
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
-      ZCP_Z3_ENABLED: "1"
+      ZCP_MATE_ENABLED: "1"
     zeropsYaml:
       zerops:
         - setup: zcp
@@ -47,7 +47,7 @@ const GOLDEN = `services:
                 name: vscode`;
 
 describe("buildZcpServiceImportYaml", () => {
-  it("emits the platform's own import document, byte for byte, plus the z3 flag", () => {
+  it("emits the platform's own import document, byte for byte, plus the mate flag", () => {
     expect(
       buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "PASSWORD0PASSWORD" }),
     ).toBe(GOLDEN);
@@ -62,9 +62,9 @@ describe("buildZcpServiceImportYaml", () => {
     expect(yaml).toContain("enableSubdomainAccess: true");
     expect(yaml).toMatch(/VSCODE_PASSWORD: "[^"]+"/);
     expect(yaml).toContain('ZCP_VSCODE_AUTH_ENABLED: "true"');
-    // Without this the container installs no z3 at all, so a "New project"
-    // would hand the user a container that cannot serve Zerops Code.
-    expect(yaml).toContain('ZCP_Z3_ENABLED: "1"');
+    // Without this the container installs no mate at all, so a "New project"
+    // would hand the user a container that cannot serve Zerops Mate.
+    expect(yaml).toContain('ZCP_MATE_ENABLED: "1"');
     expect(() =>
       buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "" }),
     ).toThrowError(/password/i);
@@ -156,7 +156,7 @@ describe("buildDevelopmentContainerImportBody", () => {
   });
 });
 
-describe("ZeropsApiClient.createProjectWithZeropsCode", () => {
+describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
   function recordingClient() {
     const requests: Array<{ url: string; method: string; body: string | null }> = [];
     const client = new ZeropsApiClient({
@@ -184,7 +184,7 @@ describe("ZeropsApiClient.createProjectWithZeropsCode", () => {
   it("creates the project, then imports the container recipe into it", async () => {
     const { client, requests } = recordingClient();
 
-    const result = await client.createProjectWithZeropsCode({ clientId: "org-1", name: "new" });
+    const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
 
     expect(result.project.id).toBe("project-9");
     expect(result.serviceName).toBe("zcp");
@@ -214,7 +214,7 @@ describe("ZeropsApiClient.createProjectWithZeropsCode", () => {
     );
 
     try {
-      const result = await client.createProjectWithZeropsCode({ clientId: "org-1", name: "new" });
+      const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
 
       const password = /VSCODE_PASSWORD: "([A-Za-z0-9]{16})"/.exec(
         JSON.parse(requests[1]?.body ?? "{}").serviceImportYaml as string,
@@ -233,7 +233,7 @@ describe("ZeropsApiClient.createProjectWithZeropsCode", () => {
   it("names the container around the ones a project already has", async () => {
     const { client, requests } = recordingClient();
 
-    await client.createProjectWithZeropsCode({
+    await client.createProjectWithZeropsMate({
       clientId: "org-1",
       name: "new",
       existingServiceNames: ["zcp", "zcp1"],

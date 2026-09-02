@@ -1,19 +1,19 @@
-> **This is `z3`, a Zerops hard fork of T3 Code.** Read [`CLAUDE.md`](CLAUDE.md) and
+> **This is `mate`, a Zerops hard fork of T3 Code.** Read [`CLAUDE.md`](CLAUDE.md) and
 > [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md) first. Two rules override
 > upstream's guide below: never `git merge`/`rebase upstream/main` — the fork is frozen at tag
 > `upstream-base-2026-08-28`; in the ported zone (`apps/server/src/provider/**`, provider
 > contracts) keep edits minimal so future ports stay cheap. Where the two disagree about product
 > name or scope, the rules above win.
 
-# z3 — Zerops Code
+# mate — Zerops Mate
 
-z3 is a control surface for coding agents that live inside Zerops project containers. A Node
-WebSocket server wraps provider CLIs and serves the hosted web bundle at `/z3/` on the container's
+Zerops Mate is a control surface for coding agents that live inside Zerops project containers. A Node
+WebSocket server wraps provider CLIs and serves the hosted web bundle at `/mate/` on the container's
 public origin. Zerops users sign in with their Zerops account; they do not install or pair the
 container by hand.
 
-The server release is pinned and installed by zcp, then supervised as `zerops@z3`. Standalone
-server releases are GitHub tarballs whose package is `zerops-code` and executable is `z3`; there is
+The server release is pinned and installed by zcp, then supervised as `zerops@mate`. Standalone
+server releases are GitHub tarballs whose package is `zerops-mate` and executable is `mate`; there is
 no npm-registry release. The fork does not currently publish desktop or mobile clients.
 
 ## Product constraints
@@ -47,28 +47,28 @@ people to upstream desktop or mobile packages.
 
 Prefer the smallest model that makes the correct behavior unsurprising. Do not preserve complexity
 because it already exists, and do not introduce machinery without a concrete constraint. Most work
-is performed through z3 itself, often remotely, so be careful with live data, processes, and dev
+is performed through mate itself, often remotely, so be careful with live data, processes, and dev
 servers that may belong to the person directing you.
 
 ## Glossary
 
 Use this language when communicating:
 
-- **you** means the agent reading this file and changing z3.
+- **you** means the agent reading this file and changing mate.
 - **we, us, and maintainers** mean the people maintaining this fork.
-- **user** means the person using z3 to direct coding agents.
-- **agent** means the coding agent a user runs inside z3. Depending on context, that may also
+- **user** means the person using mate to direct coding agents.
+- **agent** means the coding agent a user runs inside mate. Depending on context, that may also
   include you.
-- **provider** means the agent runtime or harness z3 talks to, such as Codex, Claude, Cursor, Grok,
+- **provider** means the agent runtime or harness mate talks to, such as Codex, Claude, Cursor, Grok,
   or OpenCode.
 - **client** means the web, desktop, or mobile UI source; the released fork client is the hosted
   web bundle.
-- **environment** means one running z3 server and the machine, filesystem, provider credentials,
+- **environment** means one running mate server and the machine, filesystem, provider credentials,
   and state it owns.
 - **project** means an environment-local workspace record rooted at a directory.
 - **thread** means the durable conversation and work history for a project.
 - **turn** means one user-to-agent cycle, including follow-up work such as checkpointing.
-- **z3 home** means the base data directory. Runtime state normally lives below its `userdata`
+- **mate home** means the base data directory. Runtime state normally lives below its `userdata`
   directory; internal names still use `.t3` and `T3CODE_HOME` where the code does.
 
 ## The three ways to hurt yourself

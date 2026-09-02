@@ -18,10 +18,10 @@ const READY_CANDIDATE: ZeropsCandidate = {
 
 describe("candidateAfterHealthProbe", () => {
   it.each([
-    [undefined, "provisioning", "checking Zerops Code readiness"],
+    [undefined, "provisioning", "checking Zerops Mate readiness"],
     ["ready", "ready", undefined],
-    ["initializing", "provisioning", "Zerops Code is starting"],
-    ["predates-z3", "unavailable", "Zerops Code is not enabled for this container"],
+    ["initializing", "provisioning", "Zerops Mate is starting"],
+    ["predates-mate", "unavailable", "Zerops Mate is not enabled for this container"],
     ["unreachable", "unavailable", "container is not answering"],
   ] as const)("maps %s health to %s", (health, group, reason) => {
     const candidate = candidateAfterHealthProbe(READY_CANDIDATE, health);

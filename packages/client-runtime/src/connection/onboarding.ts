@@ -46,8 +46,8 @@ export interface SshConnectionInput {
 
 export interface ZeropsIdentityConnectionInput {
   /**
-   * The container's z3 base URL — the public origin plus the path prefix it is
-   * proxied under, `https://<container>/z3`.
+   * The container's mate base URL — the public origin plus the path prefix it is
+   * proxied under, `https://<container>/mate`.
    */
   readonly httpBaseUrl: string;
   /** The signed-in account's Zerops access token, held only by the client. */

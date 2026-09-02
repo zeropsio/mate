@@ -1709,12 +1709,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         path.join(staticDir, "index.html"),
         "<html>router-static-ok</html>",
       );
-      yield* buildAppUnderTest({ config: { staticDir, basePath: "/z3" } });
+      yield* buildAppUnderTest({ config: { staticDir, basePath: "/mate" } });
 
-      const response = yield* HttpClient.get("/z3/.well-known/t3/environment");
+      const response = yield* HttpClient.get("/mate/.well-known/t3/environment");
       assert.equal(response.status, 404);
       assert.include(response.headers["content-type"], "application/json");
-      assert.include(yield* response.text, "/z3");
+      assert.include(yield* response.text, "/mate");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -1731,7 +1731,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
       yield* buildAppUnderTest({ config: { staticDir } });
 
-      const response = yield* HttpClient.get("/z3/thread/42");
+      const response = yield* HttpClient.get("/mate/thread/42");
       assert.equal(response.status, 200);
       assert.include(yield* response.text, "router-static-ok");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),

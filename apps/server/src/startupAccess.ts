@@ -161,7 +161,7 @@ export const resolveStartupAccessMode = (config: {
 /** What a Zerops container prints in place of a credential. */
 export const formatZeropsServeOutput = (connectionString: string): string =>
   [
-    "Zerops Code is ready.",
+    "Zerops Mate is ready.",
     `Address: ${connectionString}`,
     "Sign in with your Zerops account - members of this project are let in by",
     "their Zerops identity, so no pairing code is issued here.",

@@ -2,7 +2,7 @@
 /**
  * record-claude.mjs — SPI-3 fixture recorder.
  *
- * Drives `@anthropic-ai/claude-agent-sdk` `query()` directly (no z3/T3 server
+ * Drives `@anthropic-ai/claude-agent-sdk` `query()` directly (no mate/T3 server
  * in the loop) with the same streaming-input SDK options
  * `ClaudeAdapter.ts`'s `makeClaudeAdapter` passes (see `queryOptions` around
  * apps/server/src/provider/Layers/ClaudeAdapter.ts:4305-4345), and tees every
@@ -50,7 +50,7 @@
  *                               `input.runtimeMode: "auto"` mapping).
  *   --claude-binary <path>     default: resolved via `which claude`.
  *   --sdk-path <path>          default:
- *                               /home/zerops/.zcp/z3/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
+ *                               /home/zerops/.zcp/mate/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
  *   --max-wait-ms <n>          safety cap from query start to forced close.
  *                               Default 120000.
  *   --notes <text>             free-text note recorded in the meta sidecar.
@@ -61,7 +61,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeURL from "node:url";
 import * as NodePath from "node:path";
 
-const DEFAULT_SDK_PATH = "/home/zerops/.zcp/z3/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs";
+const DEFAULT_SDK_PATH =
+  "/home/zerops/.zcp/mate/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs";
 const DEFAULT_ALLOWED_TOOLS = [
   "mcp__zerops__zerops_workflow",
   "mcp__zerops__zerops_mount",

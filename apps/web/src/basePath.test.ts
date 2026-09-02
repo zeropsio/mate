@@ -13,13 +13,13 @@ describe("appBasePath", () => {
   });
 
   it("normalizes the trailing slash Vite's base always carries", () => {
-    vi.stubEnv("BASE_URL", "/z3/");
-    expect(appBasePath()).toBe("/z3");
+    vi.stubEnv("BASE_URL", "/mate/");
+    expect(appBasePath()).toBe("/mate");
   });
 
   it("tolerates a base without a trailing slash", () => {
-    vi.stubEnv("BASE_URL", "/z3");
-    expect(appBasePath()).toBe("/z3");
+    vi.stubEnv("BASE_URL", "/mate");
+    expect(appBasePath()).toBe("/mate");
   });
 });
 
@@ -31,7 +31,7 @@ describe("appBasePathHref", () => {
   it("renders the router basepath form", () => {
     vi.stubEnv("BASE_URL", "/");
     expect(appBasePathHref()).toBe("/");
-    vi.stubEnv("BASE_URL", "/z3/");
-    expect(appBasePathHref()).toBe("/z3/");
+    vi.stubEnv("BASE_URL", "/mate/");
+    expect(appBasePathHref()).toBe("/mate/");
   });
 });

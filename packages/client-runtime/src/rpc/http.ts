@@ -90,7 +90,7 @@ export const remoteHttpClientLayer = (
 /**
  * The API base an environment answers on, keeping the path prefix it is
  * reverse-proxied under. `prependUrl` joins the contract's route onto this, so
- * an environment served at `<origin>/z3/` is reached below the prefix.
+ * an environment served at `<origin>/mate/` is reached below the prefix.
  */
 const remoteApiBaseUrl = (httpBaseUrl: string): string => {
   const url = new URL(httpBaseUrl);

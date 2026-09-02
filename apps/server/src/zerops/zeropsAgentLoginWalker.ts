@@ -35,7 +35,7 @@ import {
 } from "./zeropsAgentLoginOutputParser.ts";
 import type { ZeropsAgentLoginHandler } from "./zeropsAgentLoginHandlers.ts";
 
-/** `\r` — z3's own terminal-write convention (matches `terminalEnvironment`'s `runProjectScript`), not upstream's `\n`. */
+/** `\r` — mate's own terminal-write convention (matches `terminalEnvironment`'s `runProjectScript`), not upstream's `\n`. */
 const ENTER = "\r";
 
 export interface LoginWalkerInput {

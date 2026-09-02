@@ -18,7 +18,7 @@ import * as BootService from "./bootService.ts";
 
 const linuxPlan = {
   nodePath: "/usr/bin/node",
-  entryPath: "/srv/z3/node_modules/zerops-code/dist/bin.mjs",
+  entryPath: "/srv/mate/node_modules/zerops-mate/dist/bin.mjs",
   baseDir: "/home/theo/.t3",
   logPath: "/home/theo/.t3/userdata/logs/boot-service.log",
   unitPath: "/home/theo/.config/systemd/user/t3code.service",
@@ -28,7 +28,7 @@ it("runs the already-installed release entrypoint under systemd", () => {
   const unit = BootService.renderBootServiceUnit(linuxPlan);
 
   expect(unit).toContain(
-    "ExecStart=/usr/bin/node /srv/z3/node_modules/zerops-code/dist/bin.mjs serve",
+    "ExecStart=/usr/bin/node /srv/mate/node_modules/zerops-mate/dist/bin.mjs serve",
   );
   expect(unit).toContain("KillMode=mixed");
   expect(unit).toContain("OOMPolicy=continue");
@@ -39,7 +39,7 @@ it("runs the already-installed release entrypoint under systemd", () => {
 const macPlan = {
   ...linuxPlan,
   nodePath: "/opt/homebrew/bin/node",
-  entryPath: "/Users/theo/z3/node_modules/zerops-code/dist/bin.mjs",
+  entryPath: "/Users/theo/mate/node_modules/zerops-mate/dist/bin.mjs",
   baseDir: "/Users/theo/.t3",
   logPath: "/Users/theo/.t3/userdata/logs/boot-service.log",
   unitPath: "/Users/theo/Library/LaunchAgents/com.t3tools.t3code.service.plist",
@@ -53,7 +53,9 @@ it("runs the already-installed release entrypoint under launchd", () => {
   });
 
   expect(plist).toContain("<string>/opt/homebrew/bin/node</string>");
-  expect(plist).toContain("<string>/Users/theo/z3/node_modules/zerops-code/dist/bin.mjs</string>");
+  expect(plist).toContain(
+    "<string>/Users/theo/mate/node_modules/zerops-mate/dist/bin.mjs</string>",
+  );
   expect(plist).toContain("<string>serve</string>");
   expect(plist).toContain(`    <key>PATH</key>\n    <string>${macInstallerPath}</string>`);
   expect(plist).toContain("<key>KeepAlive</key>\n  <true/>");
@@ -61,7 +63,7 @@ it("runs the already-installed release entrypoint under launchd", () => {
 });
 
 it("escapes service-manager values", () => {
-  expect(BootService.quoteSystemdValue("/srv/100% ready/z3")).toBe('"/srv/100%% ready/z3"');
+  expect(BootService.quoteSystemdValue("/srv/100% ready/mate")).toBe('"/srv/100%% ready/mate"');
   expect(BootService.escapeXmlText("/Users/T3 & <Co>")).toBe("/Users/T3 &amp; &lt;Co&gt;");
 });
 
@@ -70,8 +72,8 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const home = yield* fs.makeTempDirectoryScoped({ prefix: "z3-boot-service-test-" });
-  const entryPath = path.join(home, "node_modules", "zerops-code", "dist", "bin.mjs");
+  const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-boot-service-test-" });
+  const entryPath = path.join(home, "node_modules", "zerops-mate", "dist", "bin.mjs");
   yield* fs.makeDirectory(path.dirname(entryPath), { recursive: true });
   yield* fs.writeFileString(entryPath, "export {};\n");
 
@@ -82,7 +84,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       Effect.sync(() => {
         commands.push(`${input.command} ${input.args.join(" ")}`);
         return {
-          stdout: input.args[1] === "--version" ? `z3 v${control.reportedVersion}\n` : "",
+          stdout: input.args[1] === "--version" ? `mate v${control.reportedVersion}\n` : "",
           stderr: "",
           code: ChildProcessSpawner.ExitCode(0),
           timedOut: false,
@@ -138,7 +140,7 @@ it.layer(NodeServices.layer)("boot service lifecycle", (it) => {
 
       const error = yield* service.install.pipe(Effect.flip);
       expect(error._tag).toBe("BootServiceCommandError");
-      expect(error.message).toContain("verifying this z3 release");
+      expect(error.message).toContain("verifying this mate release");
     }),
   );
 });

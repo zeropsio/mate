@@ -113,7 +113,7 @@ function createTemporaryProjectionRoot(): Readonly<{
   root: string;
 }> {
   const pristine = getThemeTokenProjectionOutputs();
-  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "z3-theme-token-projection-"));
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-theme-token-projection-"));
   temporaryRoots.push(root);
   for (const output of pristine) {
     const outputPath = NodePath.join(root, output.target);
@@ -228,7 +228,7 @@ describe("generate theme tokens", () => {
     expect(web.contents).toContain('<link rel="manifest" href="%BASE_URL%manifest.webmanifest" />');
     expect(web.contents).not.toContain("apple-touch-icon");
     expect(web.contents).toContain(
-      `<svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Code">`,
+      `<svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
     );
     const bootMark = web.contents.slice(
       web.contents.indexOf(WEB_BOOT_MARK_MARKERS.start),

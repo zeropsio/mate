@@ -11,11 +11,11 @@
  * 2. **No second commit pipeline.** T3's stacked commit -> push -> PR action
  *    and zcp's git-push flow would be two programs pushing the same repository
  *    with different identities and different opinions about the remote. zcp
- *    owns init, identity, the PAT, commit and push; z3 owns turn-level history
+ *    owns init, identity, the PAT, commit and push; mate owns turn-level history
  *    (checkpoints, diff, restore, review).
  * 3. **No automatic upstream refresh.** A status poll triggers a background
  *    `fetch` per remote, which on Zerops is unwanted network from N services
- *    at once against a PAT-backed origin z3 does not own.
+ *    at once against a PAT-backed origin mate does not own.
  * 4. **No destructive restore.** Upstream, reverting a checkpoint runs
  *    `clean -fd` because the tree is a checkout on a laptop. On Zerops it is a
  *    *running application's* disk: uploads, sqlite files and logs the live app
@@ -83,4 +83,4 @@ export const zeropsPolicy: Effect.Effect<ZeropsPolicy> = Effect.serviceOption(Se
  * button.
  */
 export const REFUSED_STACKED_ACTION_DETAIL =
-  "Commit and push are zcp's on Zerops - ask the agent to run the git-push flow instead of committing from z3.";
+  "Commit and push are zcp's on Zerops - ask the agent to run the git-push flow instead of committing from mate.";

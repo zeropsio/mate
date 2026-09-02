@@ -4,7 +4,7 @@
  * Two independent feeds, neither derived from the other:
  *
  * - **topology** (`ZeropsTopologySnapshot`) — what exists in the Zerops project,
- *   read from `zcp studio topology`. One per server: a z3 environment is one
+ *   read from `zcp studio topology`. One per server: a mate environment is one
  *   Zerops project.
  * - **lifecycle** (`ZeropsLifecycle`) — where the agent is, reduced per thread
  *   from the `workflow.StateEnvelope` that zcp's workflow-aware tool results
@@ -239,7 +239,7 @@ export type ZeropsBootstrapSession = typeof ZeropsBootstrapSession.Type;
 /**
  * `workflow.StateEnvelope` — the state zcp computes once per workflow-aware
  * tool result and ships inside the result text as a fenced `json zcp-envelope`
- * block. Contract: zcp `docs/spec-z3.md` §1.
+ * block. Contract: zcp `docs/spec-mate.md` §1.
  *
  * `services` decodes through {@link ForwardCompatibleArray}: a snapshot this
  * build cannot decode is dropped rather than failing the envelope, so one
@@ -331,7 +331,7 @@ export type ZeropsAgentId = typeof ZeropsAgentId.Type;
  * §3): the platform flag and the local credential artifact are two
  * INDEPENDENT inputs that compose a matrix, never a boolean union. Unlike
  * {@link ZeropsAdoptionState}/the envelope's `phase`, this value is computed
- * by z3 itself (never received verbatim from zcp on the wire), so a closed
+ * by mate itself (never received verbatim from zcp on the wire), so a closed
  * union is safe here.
  */
 export const ZeropsAgentAuthState = Schema.Literals([

@@ -135,7 +135,7 @@ interface McpToolCallItemCompleted {
  * Pins a content-level invariant of the checked-in golden itself (not just
  * "replay still matches golden") — the fixture this golden comes from
  * exists specifically to confirm both StateEnvelope wire carriers
- * (docs/spec-z3.md §1) survive the Claude adapter's normalization. SPI-4's
+ * (docs/spec-mate.md §1) survive the Claude adapter's normalization. SPI-4's
  * enrichment slice reads this exact item.completed/payload.data shape.
  * Reads the checked-in file directly (not a fresh replay) so a
  * SPI_UPDATE_GOLDENS regeneration that quietly loses the envelope content

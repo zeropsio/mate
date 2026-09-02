@@ -84,7 +84,7 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   platform: ExecutionEnvironmentPlatform,
   serverVersion: TrimmedNonEmptyString,
   capabilities: ExecutionEnvironmentCapabilities,
-  /** The public path prefix this server is published under (`/z3`), absent at
+  /** The public path prefix this server is published under (`/mate`), absent at
       an origin root and on older servers. A client that loaded the app from a
       different prefix is talking to a server that answers but is not the one it
       thinks — the SPA catch-all makes that silent, so the prefix is stated. */

@@ -22,12 +22,12 @@ describe("resolveAssetUrl", () => {
   // plain `new URL` would drop the prefix the environment is proxied under and
   // point every image and attachment at whoever owns the origin root.
   it("keeps the path prefix the environment is served under", () => {
-    expect(resolveAssetUrl("https://host.example/z3/", "/api/assets/token/file.png")).toBe(
-      "https://host.example/z3/api/assets/token/file.png",
+    expect(resolveAssetUrl("https://host.example/mate/", "/api/assets/token/file.png")).toBe(
+      "https://host.example/mate/api/assets/token/file.png",
     );
-    expect(resolveAssetUrl("https://host.example/z3/", "/api/attachments/upload/payload.sig")).toBe(
-      "https://host.example/z3/api/attachments/upload/payload.sig",
-    );
+    expect(
+      resolveAssetUrl("https://host.example/mate/", "/api/attachments/upload/payload.sig"),
+    ).toBe("https://host.example/mate/api/attachments/upload/payload.sig");
   });
 
   it("returns null for an unusable base URL", () => {

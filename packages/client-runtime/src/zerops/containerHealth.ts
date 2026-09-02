@@ -1,46 +1,46 @@
 /**
- * Is Zerops Code running on this container?
+ * Is Zerops Mate running on this container?
  *
  * Two probes against the container's public origin, both plain header-less
  * GETs with `redirect: "manual"` — any custom header forces a CORS preflight
  * the container's nginx does not answer:
  *
- * - `GET /z3/.well-known/t3/environment` — the z3 server's own environment
- *   document, and the **authority**: if it answers, Zerops Code is up and
+ * - `GET /mate/.well-known/t3/environment` — the mate server's own environment
+ *   document, and the **authority**: if it answers, Zerops Mate is up and
  *   reachable, which is the whole question.
- * - `GET /z3/healthz` — `{"initComplete": bool, "initAt": "…"}`, served statically
+ * - `GET /mate/healthz` — `{"initComplete": bool, "initAt": "…"}`, served statically
  *   by nginx outside the code-server cookie gate. Consulted only when the
  *   descriptor does not answer, to tell "still starting" from "this container
- *   is not serving Zerops Code at all".
+ *   is not serving Zerops Mate at all".
  *
- * The readiness path lives under the `/z3/` prefix, not at the container root:
- * zcp publishes it only when `ZCP_Z3_ENABLED` is set, and the root `/healthz`
+ * The readiness path lives under the `/mate/` prefix, not at the container root:
+ * zcp publishes it only when `ZCP_MATE_ENABLED` is set, and the root `/healthz`
  * is code-server's own. So the route ANSWERING is itself the signal that this
- * container has Zerops Code turned on — which is why a container with the flag
- * off reads the same as one whose zcp predates z3. Both need an operator, not a
+ * container has Zerops Mate turned on — which is why a container with the flag
+ * off reads the same as one whose zcp predates mate. Both need an operator, not a
  * wait; neither is distinguishable from the browser, and both are covered by
  * the same phase.
  *
- * The descriptor comes first because it is the authority. A current z3 server
+ * The descriptor comes first because it is the authority. A current mate server
  * echoes a Zerops-issued browser origin (and localhost) on that response, while
- * nginx answers `/z3/healthz` with `Access-Control-Allow-Origin: *`. A container
- * not serving Zerops Code answers neither probe with usable CORS headers.
+ * nginx answers `/mate/healthz` with `Access-Control-Allow-Origin: *`. A container
+ * not serving Zerops Mate answers neither probe with usable CORS headers.
  *
  * Nothing is concluded from a status code alone. A container not serving
- * Zerops Code has neither route, so the cookie gate answers a redirect to
+ * Zerops Mate has neither route, so the cookie gate answers a redirect to
  * `/zcp-login` (measured on two live containers); and under a mis-prefixed
- * proxy the z3 SPA's catch-all turns any path into a valid `200 index.html`.
+ * proxy the mate SPA's catch-all turns any path into a valid `200 index.html`.
  * Parse first, then decide.
  *
  * One limit worth knowing, measured from a browser 2026-08-28: a container
- * not serving Zerops Code sends no CORS headers on ANY route, so every read
+ * not serving Zerops Mate sends no CORS headers on ANY route, so every read
  * of it throws and it is indistinguishable here from a container that is
  * simply away — both come back `unreachable`. The picker resolves that where
  * it has more to go on: the platform has already said the service is ACTIVE,
  * and a restart is the action that helps in either case.
  */
 
-import { zeropsCodeBaseUrl } from "./candidates.ts";
+import { zeropsMateBaseUrl } from "./candidates.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -89,13 +89,13 @@ async function read(url: string, fetchImpl: FetchLike): Promise<Reading> {
   }
 }
 
-/** Whether this document really is a z3 server's, served under the right prefix. */
-function isZeropsCodeDescriptor(body: Record<string, unknown>): boolean {
+/** Whether this document really is a mate server's, served under the right prefix. */
+function isZeropsMateDescriptor(body: Record<string, unknown>): boolean {
   if (typeof body.environmentId !== "string") return false;
   // Once the server reports its base path, a wrong one means the proxy prefix
   // is mismatched — reachable, but not usable.
   const basePath = body.basePath;
-  return typeof basePath === "string" ? basePath === "/z3" : true;
+  return typeof basePath === "string" ? basePath === "/mate" : true;
 }
 
 export async function probeZeropsContainerHealth(
@@ -104,12 +104,12 @@ export async function probeZeropsContainerHealth(
 ): Promise<ZeropsContainerHealth> {
   const base = origin.replace(/\/+$/, "");
 
-  const descriptor = await read(`${zeropsCodeBaseUrl(base)}/.well-known/t3/environment`, fetchImpl);
-  if (descriptor.kind === "json" && isZeropsCodeDescriptor(descriptor.body)) {
+  const descriptor = await read(`${zeropsMateBaseUrl(base)}/.well-known/t3/environment`, fetchImpl);
+  if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
     return "ready";
   }
 
-  const health = await read(`${zeropsCodeBaseUrl(base)}/healthz`, fetchImpl);
+  const health = await read(`${zeropsMateBaseUrl(base)}/healthz`, fetchImpl);
 
   // A server error anywhere means the container is on its way up, so it can
   // never be read as an old container needing a restart — that would restart
@@ -119,22 +119,22 @@ export async function probeZeropsContainerHealth(
   }
 
   if (health.kind === "json") {
-    // zcp publishes this route only with z3 turned on, so its answering means
-    // a missing descriptor is z3 still coming up — never a container that is
+    // zcp publishes this route only with mate turned on, so its answering means
+    // a missing descriptor is mate still coming up — never a container that is
     // not serving it, whatever `initComplete` says.
     return "initializing";
   }
   if (health.kind === "redirect" || health.kind === "not-json") {
-    // Neither route: this container is not serving Zerops Code — an older zcp,
-    // or one with ZCP_Z3_ENABLED off. Either way an operator has to act, so
+    // Neither route: this container is not serving Zerops Mate — an older zcp,
+    // or one with ZCP_MATE_ENABLED off. Either way an operator has to act, so
     // this must not read as "still starting", which would poll to a timeout
     // and never offer an action at all.
-    return "predates-z3";
+    return "predates-mate";
   }
 
   // The readiness route gave no answer at all. If the descriptor gave none
   // either, the container itself is away; otherwise nginx is answering
   // something that is neither route, which is again a container not serving
-  // Zerops Code.
-  return descriptor.kind === "blocked" ? "unreachable" : "predates-z3";
+  // Zerops Mate.
+  return descriptor.kind === "blocked" ? "unreachable" : "predates-mate";
 }

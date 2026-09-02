@@ -18,7 +18,7 @@ import { triageCommand } from "./cli/triage.ts";
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
 const makeCli = () =>
-  Command.make("z3", { ...sharedServerCommandFlags }).pipe(
+  Command.make("mate", { ...sharedServerCommandFlags }).pipe(
     Command.withDescription("Run the T3 Code server."),
     Command.withHandler((flags) => runServerCommand(flags)),
     Command.withSubcommands([

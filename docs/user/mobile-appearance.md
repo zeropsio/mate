@@ -1,6 +1,6 @@
 # Mobile appearance
 
-Zerops Code Mobile includes the Zerops, T3 Chat, Grove, Ocean, Ember, and Iris themes. Zerops is
+Zerops Mate Mobile includes the Zerops, T3 Chat, Grove, Ocean, Ember, and Iris themes. Zerops is
 selected by default. Each theme has light and dark colors that apply throughout the app, including
 code reviews, file previews, the terminal, native headers, and sheets.
 

@@ -136,7 +136,7 @@ describe("provisioning state machine", () => {
     expect(ready.capMs).toBeNull();
   });
 
-  it("routes a container that predates Zerops Code to its own state, not to a timeout", () => {
+  it("routes a container that predates Zerops Mate to its own state, not to a timeout", () => {
     const awaitingHealth = advanceProvisioning(
       reachAwaitingContainer(),
       { kind: "services", project: PROJECT, services: [container()] },
@@ -145,7 +145,7 @@ describe("provisioning state machine", () => {
 
     const stale = advanceProvisioning(
       awaitingHealth,
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       2000,
     );
     expect(stale.phase).toBe("needs-enable");
@@ -302,7 +302,7 @@ describe("readProvisioning", () => {
   });
 });
 
-describe("enabling Zerops Code on an older container", () => {
+describe("enabling Zerops Mate on an older container", () => {
   function reachNeedsEnable(): ProvisioningState {
     return advanceProvisioning(
       advanceProvisioning(
@@ -310,7 +310,7 @@ describe("enabling Zerops Code on an older container", () => {
         { kind: "services", project: PROJECT, services: [container()] },
         1000,
       ),
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       2000,
     );
   }
@@ -347,11 +347,11 @@ describe("enabling Zerops Code on an older container", () => {
     expect(advanceProvisioning(reachNeedsEnable(), { kind: "enable" }, 50_000).enabled).toBe(true);
   });
 
-  it("stops offering Enable when the restarted container still predates Zerops Code", () => {
+  it("stops offering Enable when the restarted container still predates Zerops Mate", () => {
     const enabled = advanceProvisioning(reachNeedsEnable(), { kind: "enable" }, 50_000);
     const stillOld = advanceProvisioning(
       enabled,
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       60_000,
     );
 

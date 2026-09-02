@@ -1,5 +1,5 @@
 /**
- * The process seam between the z3 server and the `zcp` binary.
+ * The process seam between the mate server and the `zcp` binary.
  *
  * Two calls, both read-only:
  *

@@ -29,7 +29,7 @@ import {
   type ZeropsHandoverOutcome,
 } from "@t3tools/client-runtime/zerops/handover";
 
-export const ZEROPS_HANDOVER_NONCE_KEY = "zerops-code.handover-nonce.v1";
+export const ZEROPS_HANDOVER_NONCE_KEY = "zerops-mate.handover-nonce.v1";
 
 /** Remember the nonce across the round trip; `take` spends it. */
 export interface ZeropsHandoverNonceStore {

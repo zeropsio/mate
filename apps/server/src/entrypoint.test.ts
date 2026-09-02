@@ -53,7 +53,7 @@ describe("isEntrypoint", () => {
   it("matches through a symlinked entrypoint, as npm and npx install it", () => {
     const dir = makeTempDir();
     const real = NodePath.join(dir, "bin.mjs");
-    const link = NodePath.join(dir, "z3");
+    const link = NodePath.join(dir, "mate");
     NodeFS.writeFileSync(real, "");
     NodeFS.symlinkSync(real, link);
 

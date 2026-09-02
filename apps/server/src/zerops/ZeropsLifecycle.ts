@@ -11,7 +11,7 @@
  *
  * - **the latest envelope**, from every tool that carries one — through either
  *   carrier, the trailing fenced block on a prose result or the top-level
- *   `envelope` key on a JSON one (zcp `docs/spec-z3.md` §1). Latest wins; a
+ *   `envelope` key on a JSON one (zcp `docs/spec-mate.md` §1). Latest wins; a
  *   result with no readable envelope leaves the previous one alone.
  * - **the recent `zerops_*` tool calls**, from ALL of them, carrier or not.
  *   The envelope says where the agent IS; it cannot say what is happening right

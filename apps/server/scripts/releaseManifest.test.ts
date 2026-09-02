@@ -10,7 +10,7 @@ import {
 
 const sourceManifest = {
   repository: { type: "git", url: "https://github.com/zeropsio/mate", directory: "apps/server" },
-  bin: { z3: "./dist/bin.mjs" },
+  bin: { mate: "./dist/bin.mjs" },
   type: "module",
   version: "0.0.0-workspace",
   engines: { node: "^22.16 || ^23.11 || >=24.10" },
@@ -36,7 +36,7 @@ describe("buildReleaseManifest", () => {
 
     assert.strictEqual(manifest.name, RELEASE_PACKAGE_NAME);
     assert.strictEqual(manifest.version, "0.1.8");
-    assert.deepStrictEqual(manifest.bin, { z3: "./dist/bin.mjs" });
+    assert.deepStrictEqual(manifest.bin, { mate: "./dist/bin.mjs" });
     assert.deepStrictEqual(manifest.files, ["dist"]);
     assert.deepStrictEqual(manifest.engines, sourceManifest.engines);
     assert.strictEqual(manifest.type, "module");

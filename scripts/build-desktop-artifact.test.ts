@@ -88,8 +88,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "Zerops Code (Alpha)");
-    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "Zerops Code (Nightly)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "Zerops Mate (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "Zerops Mate (Nightly)");
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -369,11 +369,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       // unconditional list on every platform — no Windows-only sidecar split.
       for (const config of [mac, linux, win]) {
         assert.deepStrictEqual(config.extraResources, [...DESKTOP_EXTRA_RESOURCES]);
-        assert.equal(config.artifactName, "Zerops-Code-${version}-${arch}.${ext}");
+        assert.equal(config.artifactName, "Zerops-Mate-${version}-${arch}.${ext}");
       }
       assert.deepStrictEqual(win.nsis, { differentialPackage: true });
       assert.deepStrictEqual(mac.dmg, {
-        title: "Zerops Code (Alpha) 1.2.3 Installer",
+        title: "Zerops Mate (Alpha) 1.2.3 Installer",
         background: "dmg/dmg-background-latest.png",
         window: { width: 540, height: 412 },
         contents: [
@@ -386,7 +386,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       // Linux must register the renderer schemes so the generated .desktop
       // entry advertises MimeType=x-scheme-handler/t3code; for OAuth deep links.
       assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
-        { name: "Zerops Code", schemes: ["t3code", "t3code-dev"] },
+        { name: "Zerops Mate", schemes: ["t3code", "t3code-dev"] },
       ]);
       assert.notProperty(mac.mac as Record<string, unknown>, "sign");
       // The desktop no longer embeds a server, so every platform (including
@@ -532,7 +532,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
-  it.effect("brands every DMG background with Zerops Code and the canonical Zerops mark", () =>
+  it.effect("brands every DMG background with Zerops Mate and the canonical Zerops mark", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;

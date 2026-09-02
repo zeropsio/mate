@@ -2,7 +2,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { zeropsCodeBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
+import { zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { zeropsErrorMessage } from "./errors";
@@ -27,7 +27,7 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
   }
 
   const result = await input.connect({
-    httpBaseUrl: zeropsCodeBaseUrl(input.containerOrigin),
+    httpBaseUrl: zeropsMateBaseUrl(input.containerOrigin),
     zeropsToken: input.zeropsToken,
   });
   if (result._tag === "Failure") {

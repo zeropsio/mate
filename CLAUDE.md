@@ -1,7 +1,7 @@
-# z3 — Zerops Code
+# mate — Zerops Mate
 
-z3 is a hard fork of T3 Code: a control surface for coding agents. Its server runs inside a
-Zerops `zcp` container under `/z3/`, spawning Claude Code / Codex with ZCP's MCP tools attached;
+Zerops Mate is a hard fork of T3 Code: a control surface for coding agents. Its server runs inside a
+Zerops `zcp` container under `/mate/`, spawning Claude Code / Codex with ZCP's MCP tools attached;
 its client — web, desktop, mobile — is the product surface a Zerops user signs into.
 
 ## Where knowledge lives
@@ -11,7 +11,7 @@ the spec or the ledger. To answer a question, go to the home:
 
 | Knowledge                                                                                                                | Home                                                                               |
 | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Design / workflow decision                                                                                               | `../zcp/docs/spec-z3.md`                                                           |
+| Design / workflow decision                                                                                               | `../zcp/docs/spec-mate.md`                                                         |
 | Fork rules — zones, freeze, keep/delete, work loop, intake                                                               | `docs/internals/zerops/fork.md`                                                    |
 | Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                                     |
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
@@ -37,7 +37,7 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - `vp test run <file>` — targeted tests for what you touched, never the repo-wide suite.
 - Package `typecheck` (scoped to the package you changed), never repo-wide.
 - Delivery to a running container is the push loop, not a release:
-  `../zcp/eval/scripts/z3-dev-push.sh`. A container restart wipes a dev build; push again after.
+  `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
 ## Disciplines
 
@@ -53,5 +53,5 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 ## Maintenance
 
 CLAUDE.md earns a line only for a cross-cutting trap or a discipline that isn't test-/spec-shaped.
-A design decision belongs in `../zcp/docs/spec-z3.md`; a fork rule in `fork.md`; a measured fact
+A design decision belongs in `../zcp/docs/spec-mate.md`; a fork rule in `fork.md`; a measured fact
 in the ledger. When one of those already states it, delete the line here.

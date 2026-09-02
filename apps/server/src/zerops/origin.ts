@@ -1,5 +1,5 @@
 /**
- * Which browser origins may talk to a z3 server running inside a Zerops
+ * Which browser origins may talk to a mate server running inside a Zerops
  * project.
  *
  * Upstream leaves CORS at a wildcard and puts no `Origin` check on the
@@ -8,7 +8,7 @@
  * holes are closed by the same list:
  *
  * - the container's own origin, matched per request against the host it was
- *   asked for rather than configured. A client served under `/z3/` is
+ *   asked for rather than configured. A client served under `/mate/` is
  *   same-origin with this API, so this case never appears in CORS at all - it
  *   exists only on the upgrade, which a browser sends an `Origin` for whether
  *   or not the request is cross-site.

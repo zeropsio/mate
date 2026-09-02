@@ -40,7 +40,7 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
       headline: "Disabled",
       detail:
         provider.message ??
-        "This provider is installed but disabled for new sessions in Zerops Code.",
+        "This provider is installed but disabled for new sessions in Zerops Mate.",
     };
   }
   if (!provider.installed) {

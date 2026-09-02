@@ -222,13 +222,13 @@ describe("same-origin Zerops identity bootstrap", () => {
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
-      basePath: "/z3/",
+      basePath: "/mate/",
       zeropsToken: "zerops-account-token",
       connect,
     });
 
     expect(connect).toHaveBeenCalledWith({
-      httpBaseUrl: `${APP_ORIGIN}/z3`,
+      httpBaseUrl: `${APP_ORIGIN}/mate`,
       zeropsToken: "zerops-account-token",
     });
     expect(result).toEqual({
@@ -243,7 +243,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
-      basePath: "/z3/",
+      basePath: "/mate/",
       zeropsToken: null,
       connect,
     });
@@ -262,7 +262,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     const result = await exchangeZeropsContainerIdentity({
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
-      basePath: "/z3/",
+      basePath: "/mate/",
       zeropsToken: "zerops-account-token",
       connect,
     });

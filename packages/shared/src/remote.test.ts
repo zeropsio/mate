@@ -62,12 +62,12 @@ describe("remote", () => {
   it("keeps the path prefix a pairing url is served under", () => {
     expect(
       resolveRemotePairingTarget({
-        pairingUrl: "https://remote.example.com/z3/pair#token=pairing-token",
+        pairingUrl: "https://remote.example.com/mate/pair#token=pairing-token",
       }),
     ).toEqual({
       credential: "pairing-token",
-      httpBaseUrl: "https://remote.example.com/z3/",
-      wsBaseUrl: "wss://remote.example.com/z3/",
+      httpBaseUrl: "https://remote.example.com/mate/",
+      wsBaseUrl: "wss://remote.example.com/mate/",
     });
   });
 
@@ -75,25 +75,25 @@ describe("remote", () => {
     expect(
       resolveRemotePairingTarget({
         pairingUrl:
-          "https://app.t3.codes/pair?host=https%3A%2F%2Fremote.example.com%2Fz3#token=pairing-token",
+          "https://app.t3.codes/pair?host=https%3A%2F%2Fremote.example.com%2Fmate#token=pairing-token",
       }),
     ).toEqual({
       credential: "pairing-token",
-      httpBaseUrl: "https://remote.example.com/z3/",
-      wsBaseUrl: "wss://remote.example.com/z3/",
+      httpBaseUrl: "https://remote.example.com/mate/",
+      wsBaseUrl: "wss://remote.example.com/mate/",
     });
   });
 
   it("keeps the path prefix of a directly entered host", () => {
     expect(
       resolveRemotePairingTarget({
-        host: "https://remote.example.com/z3",
+        host: "https://remote.example.com/mate",
         pairingCode: "pairing-token",
       }),
     ).toEqual({
       credential: "pairing-token",
-      httpBaseUrl: "https://remote.example.com/z3/",
-      wsBaseUrl: "wss://remote.example.com/z3/",
+      httpBaseUrl: "https://remote.example.com/mate/",
+      wsBaseUrl: "wss://remote.example.com/mate/",
     });
   });
 

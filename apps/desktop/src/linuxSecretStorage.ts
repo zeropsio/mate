@@ -112,11 +112,11 @@ export function resolveLinuxSecretStorageUnavailableMessage(input: {
 }
 
 function getGnomeKeyringRemediationMessage(): string {
-  return "Zerops Code could not access GNOME Keyring to save this environment credential. Install and start GNOME Keyring, then restart Zerops Code.";
+  return "Zerops Mate could not access GNOME Keyring to save this environment credential. Install and start GNOME Keyring, then restart Zerops Mate.";
 }
 
 function getKWalletRemediationMessage(): string {
-  return "Zerops Code could not access KWallet to save this environment credential. Enable the KDE wallet subsystem in System Settings, then restart Zerops Code.";
+  return "Zerops Mate could not access KWallet to save this environment credential. Enable the KDE wallet subsystem in System Settings, then restart Zerops Mate.";
 }
 
 // Advisory only: this picks between the GNOME Keyring and KWallet wording in the failure notice. It

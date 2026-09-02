@@ -35,10 +35,10 @@ it("keeps the path prefix the public base URL carries", () => {
       createdAt: DateTime.makeUnsafe("2026-04-08T09:00:00.000Z"),
       expiresAt: DateTime.makeUnsafe("2026-04-08T10:00:00.000Z"),
     },
-    { baseUrl: "https://container.example.test/z3", json: false },
+    { baseUrl: "https://container.example.test/mate", json: false },
   );
 
-  expect(output).toContain("https://container.example.test/z3/pair#token=secret-pairing-token");
+  expect(output).toContain("https://container.example.test/mate/pair#token=secret-pairing-token");
 });
 
 it("formats pairing listings without exposing the secret token", () => {

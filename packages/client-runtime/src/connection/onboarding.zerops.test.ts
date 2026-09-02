@@ -7,14 +7,14 @@ import { remoteHttpClientLayer } from "../rpc/http.ts";
 import { ClientPresentation } from "../platform/capabilities.ts";
 import { prepareZeropsIdentityRegistration } from "./onboarding.ts";
 
-/** The container's z3, which lives under a path prefix beside code-server. */
-const BASE_URL = "https://zcp-26a7-8080.prg1.zerops.app/z3";
+/** The container's mate, which lives under a path prefix beside code-server. */
+const BASE_URL = "https://zcp-26a7-8080.prg1.zerops.app/mate";
 const ZEROPS_TOKEN = "a-zerops-access-token";
 
 const CLIENT_PRESENTATION_LAYER = Layer.succeed(
   ClientPresentation,
   ClientPresentation.of({
-    metadata: { label: "Zerops Code Test", deviceType: "desktop", os: "Test OS" },
+    metadata: { label: "Zerops Mate Test", deviceType: "desktop", os: "Test OS" },
     scopes: AuthStandardClientScopes,
   }),
 );
@@ -118,7 +118,7 @@ describe("Zerops identity onboarding", () => {
       // Every derived URL keeps the container's path prefix; overwriting it
       // would aim the client at code-server's root on the same origin.
       expect(registration.profile.httpBaseUrl).toBe(`${BASE_URL}/`);
-      expect(registration.profile.wsBaseUrl).toBe("wss://zcp-26a7-8080.prg1.zerops.app/z3/");
+      expect(registration.profile.wsBaseUrl).toBe("wss://zcp-26a7-8080.prg1.zerops.app/mate/");
     }),
   );
 

@@ -100,7 +100,7 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
   });
 
   it("rejects every other origin", () => {
-    // A client served under /z3/ is same-origin with this API and does not need
+    // A client served under /mate/ is same-origin with this API and does not need
     // CORS; the Zerops-domain rule still accepts that serialized origin when a
     // proxy arrangement makes the request cross-origin.
     const { allowsOrigin } = allowlist();

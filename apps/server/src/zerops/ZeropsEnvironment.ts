@@ -5,7 +5,7 @@
  *
  * The rule is deliberately one explicit signal: `T3CODE_ZEROPS_PROJECT_ID` is
  * set and non-empty. Nothing else votes. The zcp binary sets it when it starts
- * the z3 unit; a laptop, a desktop build and an ordinary `t3 serve` never have
+ * the mate unit; a laptop, a desktop build and an ordinary `t3 serve` never have
  * it and therefore keep every upstream behaviour untouched. Sniffing the
  * platform-injected `projectId` instead would make the rule two-headed and let
  * a missing value fail silently rather than loudly.

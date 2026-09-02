@@ -542,14 +542,14 @@ describe("remote environment authorization", () => {
       );
 
       const url = yield* resolveRemoteWebSocketConnectionUrl({
-        wsBaseUrl: "wss://remote.example.com/z3/",
-        httpBaseUrl: "https://remote.example.com/z3/",
+        wsBaseUrl: "wss://remote.example.com/mate/",
+        httpBaseUrl: "https://remote.example.com/mate/",
         bearerToken: "bearer-token",
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
-      expect(url).toBe("wss://remote.example.com/z3/ws?wsTicket=ws-ticket");
+      expect(url).toBe("wss://remote.example.com/mate/ws?wsTicket=ws-ticket");
       expectFetchCall(fetch.calls, 1, {
-        url: "https://remote.example.com/z3/api/auth/websocket-ticket",
+        url: "https://remote.example.com/mate/api/auth/websocket-ticket",
         method: "POST",
       });
     }),

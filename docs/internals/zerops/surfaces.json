@@ -517,8 +517,8 @@
       "connectionModes": ["zerops-door", "manual-link"],
       "connectionModeNote": "The Zerops door composes the opening prompt once per environment; a manual link never composes it.",
       "contracts": [
-        "local-storage:zerops-code.first-prompt.v1",
-        "local-storage:zerops-code.zerops-environments.v1"
+        "local-storage:zerops-mate.first-prompt.v1",
+        "local-storage:zerops-mate.zerops-environments.v1"
       ],
       "reverseStates": [
         {

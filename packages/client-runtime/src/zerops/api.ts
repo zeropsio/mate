@@ -1,14 +1,14 @@
 /**
  * Zerops account client — sign-in, TOTP, refresh, and the read-only project
- * calls the Zerops Code entry flow needs.
+ * calls the Zerops Mate entry flow needs.
  *
  * Deliberately plain async/await (no Effect runtime): this talks to the Zerops
- * REST API, not to a z3 server, so it needs neither the contracts package nor
+ * REST API, not to a mate server, so it needs neither the contracts package nor
  * the orchestration machinery. It is shared by web and mobile so both clients
  * hold **one** Zerops auth model.
  *
  * The access token stays on the client. It is presented to the Zerops API and,
- * once per identity bootstrap, to the z3 server — nowhere else, and never
+ * once per identity bootstrap, to the mate server — nowhere else, and never
  * persisted server-side.
  */
 
@@ -125,12 +125,12 @@ export interface ZeropsServiceEnvVar {
 }
 
 /**
- * The service env key zcp keys every z3-shaped effect off. Nothing about
- * Zerops Code happens in a container without it: no bundle, no unit, no
- * `/z3/` location. Spelled here once because it is a contract with zcp, not
+ * The service env key zcp keys every mate-shaped effect off. Nothing about
+ * Zerops Mate happens in a container without it: no bundle, no unit, no
+ * `/mate/` location. Spelled here once because it is a contract with zcp, not
  * a value this client is free to choose.
  */
-export const ZEROPS_CODE_ENV_KEY = "ZCP_Z3_ENABLED";
+export const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
 
 /**
  * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
@@ -578,7 +578,7 @@ export class ZeropsApiClient {
    * the import request: it is deliberately absent from the return value, so no
    * caller can put it on a screen, in a log or in storage.
    */
-  async createProjectWithZeropsCode(input: {
+  async createProjectWithZeropsMate(input: {
     readonly clientId: string;
     readonly name: string;
     readonly existingServiceNames?: ReadonlyArray<string>;
@@ -631,13 +631,13 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Turns Zerops Code on for a container that is not serving it: write the
+   * Turns Zerops Mate on for a container that is not serving it: write the
    * flag, then restart.
    *
-   * Both halves are needed and neither is enough. `ZCP_Z3_ENABLED` is the one
-   * input zcp keys every z3-shaped effect off — without it `zcp init` does not
-   * register the z3 step at all, so no bundle is installed, no `zerops@z3` unit
-   * is created and nginx publishes no `/z3/` location. And a service env change
+   * Both halves are needed and neither is enough. `ZCP_MATE_ENABLED` is the one
+   * input zcp keys every mate-shaped effect off — without it `zcp init` does not
+   * register the mate step at all, so no bundle is installed, no `zerops@mate` unit
+   * is created and nginx publishes no `/mate/` location. And a service env change
    * reaches a container's process environment only at boot, which is the same
    * boot `zcp init` reads it on. So a restart without the write comes back in
    * the identical state, and a write without the restart changes nothing yet.
@@ -653,9 +653,9 @@ export class ZeropsApiClient {
    * yaml-baked key cannot be deleted at all, so a needless delete-then-create
    * would turn a working container into an error.
    */
-  async enableZeropsCode(serviceId: string): Promise<void> {
+  async enableZeropsMate(serviceId: string): Promise<void> {
     const current = (await this.#serviceEnv(serviceId)).find(
-      (entry) => entry.key === ZEROPS_CODE_ENV_KEY,
+      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
 
     if (!current || !readsAsEnabled(current.content)) {
@@ -666,7 +666,7 @@ export class ZeropsApiClient {
         method: "POST",
         // `sensitive` is required on every service userData write — the
         // platform rejects a body without it as "field is required".
-        body: JSON.stringify({ key: ZEROPS_CODE_ENV_KEY, content: "1", sensitive: true }),
+        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
       });
     }
 

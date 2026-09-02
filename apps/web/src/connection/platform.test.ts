@@ -228,8 +228,8 @@ describe("primary platform registration auth gate", () => {
         target: new PrimaryConnectionTarget({
           environmentId,
           label: "Zerops container",
-          httpBaseUrl: "https://container.example/z3",
-          wsBaseUrl: "wss://container.example/z3",
+          httpBaseUrl: "https://container.example/mate",
+          wsBaseUrl: "wss://container.example/mate",
         }),
       });
       const connectionId = "zerops-door-environment-1";
@@ -244,8 +244,8 @@ describe("primary platform registration auth gate", () => {
           environmentId,
           label: "Zerops container",
           connectionId,
-          httpBaseUrl: "https://container.example/z3",
-          wsBaseUrl: "wss://container.example/z3",
+          httpBaseUrl: "https://container.example/mate",
+          wsBaseUrl: "wss://container.example/mate",
         }),
         credential,
       });

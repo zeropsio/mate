@@ -5,7 +5,7 @@ import { ZEROPS_THEME } from "../../themePalette";
 import { STANDARD_THEME_CARDS, previewColorsOf } from "./ThemePreviewCircles";
 
 describe("standard theme preview", () => {
-  it("derives the Zerops Code card from the default palette", () => {
+  it("derives the Zerops Mate card from the default palette", () => {
     const card = STANDARD_THEME_CARDS[0]!;
     expect(card.label).toBe(APP_BASE_NAME);
     expect(previewColorsOf(card, "light")).toEqual({

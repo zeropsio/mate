@@ -16,7 +16,7 @@ const noop = () => undefined;
 describe("ZeropsLandingShell", () => {
   it("always offers a way to upstream's manual connect flow", () => {
     const markup = renderToStaticMarkup(
-      <ZeropsLandingShell title="Zerops Code" description="Sign in" onManualConnect={noop}>
+      <ZeropsLandingShell title="Zerops Mate" description="Sign in" onManualConnect={noop}>
         <ZeropsSignInForm busy={false} error={null} onSubmit={noop} onSwitchToRegister={noop} />
       </ZeropsLandingShell>,
     );
@@ -137,7 +137,7 @@ describe("ZeropsHandedOffBanner", () => {
     const markup = renderToStaticMarkup(<ZeropsHandedOffBanner onOpenSignUpAgain={noop} />);
 
     expect(markup).toContain(
-      "Finish creating your account in the Zerops tab — it prepares a project with Zerops Code for you. Then sign in here.",
+      "Finish creating your account in the Zerops tab — it prepares a project with Zerops Mate for you. Then sign in here.",
     );
     expect(markup).toContain("Open the sign-up page again");
     expect(markup).toContain(ZEROPS_GUI_REGISTRATION_URL.replace(/&/g, "&amp;"));

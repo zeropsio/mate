@@ -31,7 +31,7 @@ function provisioningStatus(state: ProvisioningState): {
     case "ready":
       return { label: "Ready", tone: "ok" };
     case "needs-enable":
-      return { label: "Needs Zerops Code", tone: "attention" };
+      return { label: "Needs Zerops Mate", tone: "attention" };
     case "not-yet-available":
       return { label: "Not available", tone: "attention" };
     case "timed-out":
@@ -57,14 +57,14 @@ export function ZeropsProvisioningPanel({
   readonly onEnable: () => void;
 }) {
   // Enable was already tried this wait — the flag was written and the container
-  // restarted — and it still is not serving Zerops Code. With the flag no
-  // longer in question, what is left is a zcp release that does not carry z3
+  // restarted — and it still is not serving Zerops Mate. With the flag no
+  // longer in question, what is left is a zcp release that does not carry mate
   // yet, and pressing Enable again would change nothing.
   const notYetAvailable =
     state.phase === "not-yet-available" ||
     (state.phase === "timed-out" && state.expiredPhase === "awaiting-health" && state.enabled);
 
-  // A container that never answered is either from before Zerops Code or away;
+  // A container that never answered is either from before Zerops Mate or away;
   // both are fixed by the same restart, so once the health wait has run out
   // the panel offers it rather than only ever saying "keep waiting" — unless
   // a restart already ran and changed nothing.
@@ -123,13 +123,13 @@ export function ZeropsProvisioningPanel({
         <div className="space-y-3">
           <p className="text-sm text-foreground">
             {state.phase === "needs-enable"
-              ? "This container is not serving Zerops Code. Enabling turns it on for the container and restarts it, which installs the current version. Your files, history and services are untouched."
+              ? "This container is not serving Zerops Mate. Enabling turns it on for the container and restarts it, which installs the current version. Your files, history and services are untouched."
               : "This container has not answered. Restarting it installs the current version and brings it back — your files, history and services are untouched."}
           </p>
           <Pill
             className="w-full"
             disabled={busy}
-            label={busy ? "Enabling…" : "Enable Zerops Code"}
+            label={busy ? "Enabling…" : "Enable Zerops Mate"}
             onClick={onEnable}
           />
         </div>
@@ -137,8 +137,8 @@ export function ZeropsProvisioningPanel({
 
       {notYetAvailable ? (
         <p className="text-sm text-foreground">
-          Zerops Code was turned on for this container and it was restarted, and it still is not
-          serving it — so this container&apos;s zcp release does not carry Zerops Code yet.
+          Zerops Mate was turned on for this container and it was restarted, and it still is not
+          serving it — so this container&apos;s zcp release does not carry Zerops Mate yet.
           Restarting again will not change that.
         </p>
       ) : null}
@@ -156,7 +156,7 @@ export function ZeropsProvisioningPanel({
       ) : null}
 
       {state.phase === "ready" ? (
-        <p className="text-sm text-foreground">Zerops Code is ready in this project.</p>
+        <p className="text-sm text-foreground">Zerops Mate is ready in this project.</p>
       ) : null}
 
       {state.phase === "pool-exhausted" ? (

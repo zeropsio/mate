@@ -139,7 +139,7 @@ describe("ZeropsProjectPicker rows", () => {
         callbackProp: "onWait" as const,
       },
       {
-        label: "Enable Zerops Code",
+        label: "Enable Zerops Mate",
         candidate: CANDIDATE,
         health: "unreachable" as const,
         callbackProp: "onEnable" as const,
@@ -177,7 +177,7 @@ describe("ZeropsProjectPicker rows", () => {
   });
 
   it("keeps project reverse and error states distinct", () => {
-    const predates = render("predates-z3");
+    const predates = render("predates-mate");
     const unreachable = render("unreachable");
     const connectionFailure = renderToStaticMarkup(
       <ZeropsProjectPicker
@@ -205,10 +205,10 @@ describe("ZeropsProjectPicker rows", () => {
       <ZeropsProjectPicker candidates={[]} isLoading error={null} onRefresh={noop} />,
     );
 
-    expect(predates).toContain("Zerops Code is not enabled yet.");
+    expect(predates).toContain("Zerops Mate is not enabled yet.");
     expect(unreachable).toContain("Container is not answering.");
-    expect(predates).toContain("Enable Zerops Code");
-    expect(unreachable).toContain("Enable Zerops Code");
+    expect(predates).toContain("Enable Zerops Mate");
+    expect(unreachable).toContain("Enable Zerops Mate");
     expect(connectionFailure).toContain("The WebSocket upgrade was rejected.");
     expect(empty).toContain("No projects in this account yet.");
     expect(loading).toContain("Reading your Zerops projects");
@@ -220,23 +220,23 @@ describe("ZeropsProjectPicker rows", () => {
     expect(render(undefined)).not.toContain(">Connect<");
   });
 
-  it("offers the restart for a container that predates Zerops Code", () => {
-    expect(render("predates-z3")).toContain("Enable Zerops Code");
+  it("offers the restart for a container that predates Zerops Mate", () => {
+    expect(render("predates-mate")).toContain("Enable Zerops Mate");
   });
 
   it("offers the restart for a running container that answers nothing at all", () => {
-    // A container from before Zerops Code sends no CORS headers on any route,
+    // A container from before Zerops Mate sends no CORS headers on any route,
     // so from a browser it is indistinguishable from one that is down — and
     // the platform already told us this one is ACTIVE. Restarting is the only
     // action that helps either way, so it must be offered rather than leaving
     // the row saying "Starting…" forever.
-    expect(render("unreachable")).toContain("Enable Zerops Code");
+    expect(render("unreachable")).toContain("Enable Zerops Mate");
   });
 
   it("waits quietly while a container is still coming up", () => {
     const markup = render("initializing");
     expect(markup).toContain("Starting");
-    expect(markup).not.toContain("Enable Zerops Code");
+    expect(markup).not.toContain("Enable Zerops Mate");
   });
 
   it("renders the identity exchange failure reason beside the manual action", () => {
@@ -318,7 +318,7 @@ describe("ZeropsProjectPicker rows", () => {
     );
 
     expect(markup).toContain("The container is unreachable.");
-    expect(markup).toContain("Enable Zerops Code");
+    expect(markup).toContain("Enable Zerops Mate");
   });
 
   it("shows a settled socket failure reason beside the manual action", () => {

@@ -36,7 +36,7 @@ export function normalizeHttpBaseUrl(rawValue: string): string {
   }
 
   // The path is the prefix the environment is reverse-proxied under, not noise:
-  // a server served at `<origin>/z3/` answers nothing at the origin root.
+  // a server served at `<origin>/mate/` answers nothing at the origin root.
   url.pathname = `${normalizeBasePath(url.pathname)}/`;
   url.search = "";
   url.hash = "";

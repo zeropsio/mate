@@ -186,7 +186,7 @@ function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
 
 function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
   // The server this bundle talks to lives under the same prefix the bundle is
-  // served under — on Zerops that is <origin>/z3/, where the origin root
+  // served under — on Zerops that is <origin>/mate/, where the origin root
   // belongs to code-server. The origin alone would aim every request at it.
   const url = parseTargetUrl({
     rawValue: appBasePathHref(),

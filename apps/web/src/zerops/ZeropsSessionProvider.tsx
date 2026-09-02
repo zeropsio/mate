@@ -6,7 +6,7 @@
  * through more than one branch of that gate, and the session has to outlive
  * route transitions.
  *
- * The access token lives here and in `localStorage` — never on a z3 server.
+ * The access token lives here and in `localStorage` — never on a mate server.
  */
 
 import {

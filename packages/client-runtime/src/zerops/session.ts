@@ -16,8 +16,8 @@ export interface ZeropsStorageAdapter {
   readonly remove: (key: string) => Promise<void>;
 }
 
-export const ZEROPS_SESSION_STORAGE_KEY = "zerops-code.zerops-session.v1";
-export const ZEROPS_SELECTION_STORAGE_KEY = "zerops-code.zerops-selection.v1";
+export const ZEROPS_SESSION_STORAGE_KEY = "zerops-mate.zerops-session.v1";
+export const ZEROPS_SELECTION_STORAGE_KEY = "zerops-mate.zerops-selection.v1";
 
 export interface ZeropsSelection {
   readonly userId: string;

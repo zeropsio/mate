@@ -419,7 +419,7 @@ async function main(): Promise<void> {
   const captures = planWebShowcaseCaptures(options);
   for (const sceneId of options.sceneIds) {
     const scene = loadShowcaseScene(sceneId);
-    const baseDir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "z3-web-showcase-"));
+    const baseDir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-web-showcase-"));
     const workspaceRoot = NodePath.join(baseDir, "workspace");
     await NodeFSP.mkdir(workspaceRoot, { recursive: true });
     const port = await reserveAvailablePort();

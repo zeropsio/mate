@@ -29,7 +29,7 @@ describe("authenticatedZeropsOrigins", () => {
     const registeredButRejected = authenticatedZeropsOrigins([
       {
         environmentId,
-        displayUrl: "https://zcp-24cb-8080.prg1.zerops.app/z3",
+        displayUrl: "https://zcp-24cb-8080.prg1.zerops.app/mate",
         connection: { phase: "error" },
       },
     ]);
@@ -42,7 +42,7 @@ describe("authenticatedZeropsOrigins", () => {
     const authenticated = authenticatedZeropsOrigins([
       {
         environmentId,
-        displayUrl: "https://zcp-24cb-8080.prg1.zerops.app/z3",
+        displayUrl: "https://zcp-24cb-8080.prg1.zerops.app/mate",
         connection: { phase: "connected" },
       },
     ]);

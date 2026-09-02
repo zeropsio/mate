@@ -1,7 +1,7 @@
 /**
  * The topology feed: what exists in this Zerops project, kept current.
  *
- * A z3 environment is one Zerops project (one server, one `workspaceRoot`), so
+ * A mate environment is one Zerops project (one server, one `workspaceRoot`), so
  * there is exactly one topology per server and no key to scope it by.
  *
  * Three things move it, because no single one is enough:

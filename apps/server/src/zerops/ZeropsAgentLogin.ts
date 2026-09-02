@@ -75,7 +75,7 @@ const STALL_TIMEOUT_MS = 1000;
 const MAX_BUFFER_LENGTH = 8000;
 const BUFFER_TRIM_KEEP = 4000;
 
-/** The sshfs-mounted project root every z3 terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
+/** The sshfs-mounted project root every mate terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
 const AGENT_LOGIN_CWD = "/var/www";
 
 /** Deterministic per-agent terminal id, distinct from the user's own `term-1` primary shell. */

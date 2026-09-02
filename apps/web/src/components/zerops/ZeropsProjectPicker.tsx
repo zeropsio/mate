@@ -172,10 +172,10 @@ function readyCandidatePresentation(
     };
   }
   switch (health) {
-    case "predates-z3":
+    case "predates-mate":
       return {
-        detail: "Zerops Code is not enabled yet.",
-        status: { label: "Needs Zerops Code", tone: "attention" },
+        detail: "Zerops Mate is not enabled yet.",
+        status: { label: "Needs Zerops Mate", tone: "attention" },
       };
     case "unreachable":
       return {
@@ -184,7 +184,7 @@ function readyCandidatePresentation(
       };
     case "initializing":
       return {
-        detail: "Zerops Code is starting.",
+        detail: "Zerops Mate is starting.",
         status: { label: "Starting", pulse: true, tone: "busy" },
       };
     case "ready":
@@ -206,17 +206,17 @@ function readyRowAction(input: {
   if (health === undefined) {
     return <Spinner className="size-4 text-muted-foreground" />;
   }
-  // A container from before Zerops Code answers no route with a CORS header,
+  // A container from before Zerops Mate answers no route with a CORS header,
   // so from a browser it is indistinguishable from one that is simply away —
   // and the platform has already told us this service is ACTIVE. A restart is
   // the action that helps in either case, so it is what the row offers.
-  if (health === "predates-z3" || health === "unreachable") {
+  if (health === "predates-mate" || health === "unreachable") {
     return onEnable ? (
       <Pill
         className="w-full"
-        data-zerops-primary-action="Enable Zerops Code"
+        data-zerops-primary-action="Enable Zerops Mate"
         disabled={busy}
-        label="Enable Zerops Code"
+        label="Enable Zerops Mate"
         onClick={() => {
           onEnable(candidate);
         }}
@@ -337,7 +337,7 @@ export function ZeropsProjectPicker({
         }
         renderAction={(candidate) => {
           const candidateHealth = health?.get(candidate.key);
-          return candidateHealth === "predates-z3" || candidateHealth === "unreachable" ? (
+          return candidateHealth === "predates-mate" || candidateHealth === "unreachable" ? (
             readyRowAction({
               candidate,
               busy: busyCandidateKeys?.has(candidate.key) ?? false,
@@ -352,7 +352,7 @@ export function ZeropsProjectPicker({
       />
       <CandidateGroup
         title="Ready to connect"
-        description="A Zerops Code container is running and reachable."
+        description="A Zerops Mate container is running and reachable."
         busyCandidateKeys={busyCandidateKeys}
         candidates={ready}
         status={{ label: "Ready", tone: "ok" }}

@@ -1735,7 +1735,7 @@ const makeWsRpcLayer = (
             WS_METHODS.serverUpdateServer,
             Effect.fail(
               new ServerSelfUpdateError({
-                reason: `Zerops Code ${input.targetVersion} must be installed outside the running server.`,
+                reason: `Zerops Mate ${input.targetVersion} must be installed outside the running server.`,
               }),
             ),
             { "rpc.aggregate": "server" },
@@ -1745,7 +1745,7 @@ const makeWsRpcLayer = (
             WS_METHODS.serverUpdateServerWithProgress,
             Stream.fail(
               new ServerSelfUpdateError({
-                reason: "Zerops Code must be installed outside the running server.",
+                reason: "Zerops Mate must be installed outside the running server.",
               }),
             ),
             { "rpc.aggregate": "server" },

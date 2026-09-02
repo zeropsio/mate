@@ -131,22 +131,22 @@ describe("ZeropsProvisioningPanel", () => {
     );
     expect(render(startProvisioning({ zcpClaimed: true, nowMs: 0 }))).toContain("up to 60s");
 
-    expect(render(awaitingContainer)).toContain("Waiting for the Zerops Code container to start");
+    expect(render(awaitingContainer)).toContain("Waiting for the Zerops Mate container to start");
     expect(render(awaitingContainer)).toContain("up to 5 min");
 
-    expect(render(awaitingHealth)).toContain("Waiting for Zerops Code to answer");
+    expect(render(awaitingHealth)).toContain("Waiting for Zerops Mate to answer");
     expect(render(awaitingHealth)).toContain("up to 30s");
   });
 
-  it("offers the restart when the container predates Zerops Code, and says what it costs", () => {
+  it("offers the restart when the container predates Zerops Mate, and says what it costs", () => {
     const needsEnable = advanceProvisioning(
       awaitingHealth,
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       2000,
     );
 
     const markup = render(needsEnable);
-    expect(markup).toContain("Enable Zerops Code");
+    expect(markup).toContain("Enable Zerops Mate");
     // A restart is safe; saying so is what makes the button clickable.
     expect(markup).toMatch(/untouched/i);
   });
@@ -173,11 +173,11 @@ describe("ZeropsProvisioningPanel", () => {
     const markup = render(awaitingHealth, "Network error contacting Zerops.");
 
     expect(markup).toContain("Network error contacting Zerops.");
-    expect(markup).toContain("Waiting for Zerops Code to answer");
+    expect(markup).toContain("Waiting for Zerops Mate to answer");
   });
 
   it("offers the restart when the health wait runs out on a known container", () => {
-    // A container that never answers is either from before Zerops Code or
+    // A container that never answers is either from before Zerops Mate or
     // away; both are addressed by the same restart, and the alternative is a
     // panel that can only ever say "keep waiting".
     const expired = advanceProvisioning(
@@ -189,7 +189,7 @@ describe("ZeropsProvisioningPanel", () => {
     const markup = render(expired);
     expect(expired.phase).toBe("timed-out");
     expect(markup).toContain("Keep waiting");
-    expect(markup).toContain("Enable Zerops Code");
+    expect(markup).toContain("Enable Zerops Mate");
   });
 
   it("does not offer a restart when it is the project that is late", () => {
@@ -199,33 +199,37 @@ describe("ZeropsProvisioningPanel", () => {
       PROVISIONING_CAPS["awaiting-container"] + 1,
     );
 
-    expect(render(expired)).not.toContain("Enable Zerops Code");
+    expect(render(expired)).not.toContain("Enable Zerops Mate");
   });
 
-  it("stops offering Enable once a restart already tried it and the container still predates Zerops Code", () => {
+  it("stops offering Enable once a restart already tried it and the container still predates Zerops Mate", () => {
     const needsEnable = advanceProvisioning(
       awaitingHealth,
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       2000,
     );
     const enabled = advanceProvisioning(needsEnable, { kind: "enable" }, 3000);
-    const stillOld = advanceProvisioning(enabled, { kind: "health", health: "predates-z3" }, 4000);
+    const stillOld = advanceProvisioning(
+      enabled,
+      { kind: "health", health: "predates-mate" },
+      4000,
+    );
 
     const markup = render(stillOld);
     expect(stillOld.phase).toBe("not-yet-available");
     // The button is gone and so is the old advice to go set a flag by hand:
     // enabling now writes it, so the only thing left to name is the release.
-    expect(markup).not.toContain(">Enable Zerops Code<");
+    expect(markup).not.toContain(">Enable Zerops Mate<");
     expect(markup).toContain("this container");
-    expect(markup).toContain("zcp release does not carry Zerops Code");
-    expect(markup).not.toContain("ZCP_Z3_ENABLED");
+    expect(markup).toContain("zcp release does not carry Zerops Mate");
+    expect(markup).not.toContain("ZCP_MATE_ENABLED");
     expect(markup).not.toMatch(/failed|error/i);
   });
 
   it("prefers the same copy when the post-enable health wait times out instead", () => {
     const needsEnable = advanceProvisioning(
       awaitingHealth,
-      { kind: "health", health: "predates-z3" },
+      { kind: "health", health: "predates-mate" },
       2000,
     );
     const enabled = advanceProvisioning(needsEnable, { kind: "enable" }, 3000);
@@ -237,9 +241,9 @@ describe("ZeropsProvisioningPanel", () => {
 
     const markup = render(expired);
     expect(expired.phase).toBe("timed-out");
-    expect(markup).not.toContain(">Enable Zerops Code<");
+    expect(markup).not.toContain(">Enable Zerops Mate<");
     expect(markup).toContain("this container");
-    expect(markup).toContain("zcp release does not carry Zerops Code");
-    expect(markup).not.toContain("ZCP_Z3_ENABLED");
+    expect(markup).toContain("zcp release does not carry Zerops Mate");
+    expect(markup).not.toContain("ZCP_MATE_ENABLED");
   });
 });

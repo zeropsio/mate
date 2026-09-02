@@ -4,7 +4,7 @@
  * Holds the latest `StateEnvelope` a thread's agent reported and the recent
  * `zerops_*` tool calls, so a client reconnecting after a container restart
  * still sees its lifecycle strip. A restart keeps `state.sqlite` — and restart
- * is the product's own "Enable Zerops Code" path, which is exactly when a
+ * is the product's own "Enable Zerops Mate" path, which is exactly when a
  * returning client should not be shown a blank strip.
  *
  * Written directly from the live provider event stream, not by the projection

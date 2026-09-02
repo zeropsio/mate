@@ -56,8 +56,8 @@ jobs:
       - name: Check showcase scenes
         run: node scripts/showcase-scenes.ts --check
 
-      - name: z3 zone architecture
-        run: vp test run scripts/z3-zone-architecture.test.ts
+      - name: mate zone architecture
+        run: vp test run scripts/mate-zone-architecture.test.ts
 
       - name: Reconcile no-platform-globals exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-platform-globals

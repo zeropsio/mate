@@ -80,7 +80,7 @@ describe("client telemetry metadata", () => {
         desktopBridge: { getClientPlatform: () => "darwin" },
       }),
     ).toEqual({
-      label: "Zerops Code Desktop",
+      label: "Zerops Mate Desktop",
       deviceType: "desktop",
       os: "macOS",
       surface: "desktop",
@@ -105,10 +105,10 @@ describe("hosted client label", () => {
         identity,
         desktopBridge: undefined,
       }).label,
-    ).toBe("Zerops Code · Chrome on macOS");
+    ).toBe("Zerops Mate · Chrome on macOS");
   });
 
-  it("keeps the hosted/self-hosted split under the Zerops Code brand", () => {
+  it("keeps the hosted/self-hosted split under the Zerops Mate brand", () => {
     expect(
       clientPresentationMetadata({
         appVersion: "1.2.3",
@@ -116,6 +116,6 @@ describe("hosted client label", () => {
         identity,
         desktopBridge: undefined,
       }).label,
-    ).toBe("Zerops Code Web");
+    ).toBe("Zerops Mate Web");
   });
 });

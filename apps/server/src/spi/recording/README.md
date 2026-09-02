@@ -1,7 +1,7 @@
 # Claude fixture recorder
 
 `record-claude.mjs` drives `@anthropic-ai/claude-agent-sdk` `query()` directly
-(no z3/T3 server) with the same streaming-input options
+(no mate/T3 server) with the same streaming-input options
 `ClaudeAdapter.ts`'s `makeClaudeAdapter` passes, and tees every `SDKMessage`
 plus every control callback (`canUseTool`, `onUserDialog`) to a JSONL file in
 arrival order. Used to record the fixtures under `../fixtures/claude/`.

@@ -53,17 +53,17 @@ describe("electron development launcher", () => {
 
   it("keeps the native Electron executable name inside the branded macOS bundle", () => {
     const paths = resolveMacLauncherPaths(
-      "/repo/apps/desktop/.electron-runtime/Zerops Code (Alpha).app",
+      "/repo/apps/desktop/.electron-runtime/Zerops Mate (Alpha).app",
     );
 
-    assert.equal(paths.launcherExecutableName, "Zerops Code (Alpha) Launcher");
+    assert.equal(paths.launcherExecutableName, "Zerops Mate (Alpha) Launcher");
     assert.equal(
       paths.launcherBinaryPath,
-      "/repo/apps/desktop/.electron-runtime/Zerops Code (Alpha).app/Contents/MacOS/Zerops Code (Alpha) Launcher",
+      "/repo/apps/desktop/.electron-runtime/Zerops Mate (Alpha).app/Contents/MacOS/Zerops Mate (Alpha) Launcher",
     );
     assert.equal(
       paths.runtimeElectronBinaryPath,
-      "/repo/apps/desktop/.electron-runtime/Zerops Code (Alpha).app/Contents/MacOS/Electron",
+      "/repo/apps/desktop/.electron-runtime/Zerops Mate (Alpha).app/Contents/MacOS/Electron",
     );
 
     const script = makeDevelopmentLauncherScript({
@@ -74,7 +74,7 @@ describe("electron development launcher", () => {
     });
     assert.include(
       script,
-      "exec '/repo/apps/desktop/.electron-runtime/Zerops Code (Alpha).app/Contents/MacOS/Electron'",
+      "exec '/repo/apps/desktop/.electron-runtime/Zerops Mate (Alpha).app/Contents/MacOS/Electron'",
     );
     assert.notInclude(script, "node_modules/electron");
   });

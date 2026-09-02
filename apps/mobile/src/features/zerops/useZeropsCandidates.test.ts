@@ -8,12 +8,12 @@ it("indexes only connected Zerops origins", () => {
   const origins = connectedZeropsOrigins([
     {
       environmentId: connected,
-      displayUrl: "https://ZCP-DEMO-8080.PRG1.ZEROPS.APP/z3/",
+      displayUrl: "https://ZCP-DEMO-8080.PRG1.ZEROPS.APP/mate/",
       connection: { phase: "connected" },
     },
     {
       environmentId: EnvironmentId.make("offline"),
-      displayUrl: "https://offline.example.test/z3",
+      displayUrl: "https://offline.example.test/mate",
       connection: { phase: "offline" },
     },
   ]);

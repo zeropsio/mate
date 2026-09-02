@@ -81,7 +81,7 @@ Examples:
 Run the executable from an installed release tarball:
 
 ```bash
-./node_modules/.bin/z3 serve
+./node_modules/.bin/mate serve
 ```
 
 ```bash
@@ -132,7 +132,7 @@ export T3CODE_TRACE_TIMING_ENABLED=true
 CLI:
 
 ```bash
-./node_modules/.bin/z3 serve
+./node_modules/.bin/mate serve
 ```
 
 Monorepo web/server dev:

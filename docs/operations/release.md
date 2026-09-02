@@ -1,11 +1,11 @@
 # Release Tooling
 
-> For maintainers. Using Zerops Code? See [docs/user](../user/).
+> For maintainers. Using Zerops Mate? See [docs/user](../user/).
 
-Zerops Code releases are GitHub releases in
+Zerops Mate releases are GitHub releases in
 [`zeropsio/mate`](https://github.com/zeropsio/mate/releases). The release is an npm-compatible tarball
 only because that gives zcp and standalone operators a standard local installation format. There
-is no npm publication step: nothing is published under the `zerops-code` name. The running server
+is no npm publication step: nothing is published under the `zerops-mate` name. The running server
 also has no in-app update path.
 
 ## Server Release Path
@@ -14,14 +14,14 @@ also has no in-app update path.
    green.
 2. Push a `v<version>` tag whose version exactly matches that package version.
 3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) builds the hosted web
-   client with `VITE_BASE_PATH=/z3`, builds the server, and packs `zerops-code-<version>.tgz`.
+   client with `VITE_BASE_PATH=/mate`, builds the server, and packs `zerops-mate-<version>.tgz`.
 4. The workflow installs that tarball into a scratch npm project, runs the installed
-   `./node_modules/.bin/z3 --version` binary, and loads the native addons. A tarball that cannot be
+   `./node_modules/.bin/mate --version` binary, and loads the native addons. A tarball that cannot be
    installed and executed never reaches a release.
 5. The workflow writes `SHA256SUMS`, transfers both verified assets to its release job, checks the
    checksum again, and creates the GitHub release for that tag.
-6. A zcp release may then pin the z3 version and digest together in `internal/z3/z3.go`. In a Zerops
-   project, zcp downloads and verifies that asset and supervises it as `zerops@z3`.
+6. A zcp release may then pin the mate version and digest together in `internal/mate/mate.go`. In a Zerops
+   project, zcp downloads and verifies that asset and supervises it as `zerops@mate`.
 
 The zcp version and digest are one pin. Bumping either without the other makes the selected asset
 and the digest used to verify it disagree.
@@ -56,7 +56,7 @@ node apps/server/scripts/cli.ts pack --out <release-directory> --app-version <ve
 
 Verify the resulting archive the same way a standalone installation does: write or check its
 SHA-256 digest, install the local tarball in an empty directory, and run the installed
-`./node_modules/.bin/z3 --version`. There is intentionally no `publish` subcommand.
+`./node_modules/.bin/mate --version`. There is intentionally no `publish` subcommand.
 
 The release-only transformation smoke test remains available for shared build tooling:
 
@@ -85,7 +85,7 @@ publish desktop clients. These scripts remain build inputs and must continue to 
 
 The desktop updater source uses GitHub Releases when a downstream build enables distribution. Its
 repository slug comes from `T3CODE_DESKTOP_UPDATE_REPOSITORY`, falling back to
-`GITHUB_REPOSITORY`. This is separate from the z3 server release and is not an installation path
+`GITHUB_REPOSITORY`. This is separate from the mate server release and is not an installation path
 published by this fork.
 
 ## Release Checklist
@@ -94,6 +94,6 @@ published by this fork.
 2. Run focused release tests and `node scripts/release-smoke.ts`.
 3. Create and push the matching `v<version>` tag.
 4. Confirm the workflow's tarball-install check and both checksum checks pass.
-5. Confirm the GitHub release contains exactly the expected `zerops-code-<version>.tgz` and
+5. Confirm the GitHub release contains exactly the expected `zerops-mate-<version>.tgz` and
    `SHA256SUMS` assets.
 6. Hand the release version and digest to the zcp maintainers for an explicit pin.

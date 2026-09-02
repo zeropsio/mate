@@ -10,7 +10,7 @@ import {
 /**
  * The wire shape zcp's `workflow.AppendEnvelope` produces: markdown, a blank
  * line, then a three-line fenced block whose body is compact single-line JSON.
- * Contract: zcp `docs/spec-z3.md` §1.1, reference `internal/workflow/envelope_wire.go`.
+ * Contract: zcp `docs/spec-mate.md` §1.1, reference `internal/workflow/envelope_wire.go`.
  */
 const block = (body: string): string => `\`\`\`${ZEROPS_ENVELOPE_FENCE}\n${body}\n\`\`\`\n`;
 

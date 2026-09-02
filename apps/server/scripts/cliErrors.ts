@@ -28,7 +28,7 @@ export class ServerCliBuildAssetMissingError extends Schema.TaggedErrorClass<Ser
 /**
  * The emitted bundle statically imports a package the release manifest does not
  * declare. Raised at pack time because the alternative is a published tarball
- * whose entry point throws ERR_MODULE_NOT_FOUND inside `zerops@z3` on a
+ * whose entry point throws ERR_MODULE_NOT_FOUND inside `zerops@mate` on a
  * container — the manifest declares only what the bundler left external, so a
  * package that stops being inlined has to be noticed here.
  */

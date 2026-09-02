@@ -9,11 +9,11 @@ import {
 
 describe("parsePairingUrl path prefix", () => {
   // A pairing link scanned from a proxied environment is
-  // https://host/z3/pair#token=...; dropping the path would leave a host that
+  // https://host/mate/pair#token=...; dropping the path would leave a host that
   // answers with whatever owns the origin root.
   it("keeps the prefix while dropping the pair route", () => {
-    expect(parsePairingUrl("https://container.example.test/z3/pair#token=abc")).toEqual({
-      host: "https://container.example.test/z3",
+    expect(parsePairingUrl("https://container.example.test/mate/pair#token=abc")).toEqual({
+      host: "https://container.example.test/mate",
       code: "abc",
     });
   });

@@ -1,4 +1,4 @@
-name: Release z3 bundle
+name: Release mate bundle
 
 on:
   push:
@@ -55,7 +55,7 @@ jobs:
             version="$package_version"
           else
             version="$DISPATCH_VERSION"
-            echo "Rehearsal version '$version' deliberately overrides apps/server/package.json version '$package_version'; z3 --version will report 'z3 v$package_version'."
+            echo "Rehearsal version '$version' deliberately overrides apps/server/package.json version '$package_version'; mate --version will report 'mate v$package_version'."
           fi
 
           if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
@@ -68,11 +68,11 @@ jobs:
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
-      # /z3 is deliberately baked in: it is the only supported Zerops mount,
+      # /mate is deliberately baked in: it is the only supported Zerops mount,
       # and Vite's client base path cannot be supplied by the server at runtime.
       - name: Build web client
         env:
-          VITE_BASE_PATH: /z3
+          VITE_BASE_PATH: /mate
         run: vp run --filter @t3tools/web build
 
       - name: Build server bundle
@@ -106,13 +106,13 @@ jobs:
           TARBALL: ${{ steps.pack.outputs.tarball }}
           TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
         run: |
-          install_prefix="$(mktemp -d "${RUNNER_TEMP}/z3-install.XXXXXX")"
+          install_prefix="$(mktemp -d "${RUNNER_TEMP}/mate-install.XXXXXX")"
           cp "$TARBALL" "$install_prefix/$TARBALL_NAME"
           cd "$install_prefix"
           npm init -y
           npm install "./$TARBALL_NAME"
 
-          installed_version="$(./node_modules/.bin/z3 --version)"
+          installed_version="$(./node_modules/.bin/mate --version)"
           echo "Installed binary version: $installed_version"
 
           # The manifest declares only the native addons the bundle still loads
@@ -142,7 +142,7 @@ jobs:
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: z3-release-${{ steps.version.outputs.version }}
+          name: mate-release-${{ steps.version.outputs.version }}
           path: |
             ${{ steps.pack.outputs.tarball }}
             ${{ runner.temp }}/release-assets/SHA256SUMS
@@ -161,7 +161,7 @@ jobs:
       - name: Download verified release assets
         uses: actions/download-artifact@v4
         with:
-          name: z3-release-${{ needs.build.outputs.version }}
+          name: mate-release-${{ needs.build.outputs.version }}
           path: release-assets
 
       - name: Verify downloaded release assets

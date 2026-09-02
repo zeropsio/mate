@@ -19,7 +19,7 @@
  *
  * This is the TypeScript mirror of zcp's `workflow.ExtractEnvelope`
  * (`internal/workflow/envelope_wire.go`); the contract it implements is
- * `docs/spec-z3.md` §1.2. Keep the two in step — the sharp edges below are
+ * `docs/spec-mate.md` §1.2. Keep the two in step — the sharp edges below are
  * deliberate, not incidental.
  */
 import * as Option from "effect/Option";

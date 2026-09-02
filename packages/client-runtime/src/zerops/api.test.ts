@@ -455,9 +455,9 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests[0]?.authorization).toBe("Bearer access-1");
   });
 
-  it("writes the Zerops Code flag before restarting a container that lacks it", async () => {
+  it("writes the Zerops Mate flag before restarting a container that lacks it", async () => {
     // The restart alone was the whole of "enable" and could not work: zcp
-    // registers no z3 step at all without this key, so the container came back
+    // registers no mate step at all without this key, so the container came back
     // in the identical state it was restarted out of.
     const stub = recordingFetch((request) =>
       request.url.endsWith("/env")
@@ -467,7 +467,7 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.enableZeropsCode("service-1");
+    await client.enableZeropsMate("service-1");
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
@@ -477,25 +477,25 @@ describe("ZeropsApiClient project reads", () => {
     // `sensitive` is required on every service userData write — the platform
     // rejects the POST outright with "field is required" when it is absent.
     expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
-      key: "ZCP_Z3_ENABLED",
+      key: "ZCP_MATE_ENABLED",
       content: "1",
       sensitive: true,
     });
   });
 
-  it("replaces a Zerops Code flag that is present but switched off", async () => {
+  it("replaces a Zerops Mate flag that is present but switched off", async () => {
     // The platform exposes create and delete for a single key, no update, so an
     // upsert is delete-then-create. The bulk env-file PUT is not an option: it
     // replaces the whole file and drops every other var the user set.
     const stub = recordingFetch((request) =>
       request.url.endsWith("/env")
-        ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_Z3_ENABLED", content: "0" }] })
+        ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_MATE_ENABLED", content: "0" }] })
         : jsonResponse(200, { id: "process-1" }),
     );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.enableZeropsCode("service-1");
+    await client.enableZeropsMate("service-1");
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
@@ -513,13 +513,13 @@ describe("ZeropsApiClient project reads", () => {
     for (const content of ["1", "true", " TRUE "]) {
       const stub = recordingFetch((request) =>
         request.url.endsWith("/env")
-          ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_Z3_ENABLED", content }] })
+          ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_MATE_ENABLED", content }] })
           : jsonResponse(200, { id: "process-1" }),
       );
       const client = new ZeropsApiClient({ fetch: stub.fetch });
       client.restoreSession(SESSION);
 
-      await client.enableZeropsCode("service-1");
+      await client.enableZeropsMate("service-1");
 
       expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
         `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,

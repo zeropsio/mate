@@ -39,9 +39,9 @@ const IOS_READY_FILENAME = "T3ShowcaseReadyScene";
 const SERVER_HOST = "0.0.0.0";
 const IOS_SIMULATOR_ARCH = NodeProcess.arch === "arm64" ? "arm64" : "x86_64";
 export const IOS_NATIVE_PRODUCT = {
-  appFileName: "ZeropsCode.app",
-  scheme: "ZeropsCode",
-  workspace: "ZeropsCode.xcworkspace",
+  appFileName: "ZeropsMate.app",
+  scheme: "ZeropsMate",
+  workspace: "ZeropsMate.xcworkspace",
 } as const;
 const IOS_APP_PATH = NodePath.join(
   MOBILE_ROOT,

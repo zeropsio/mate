@@ -652,7 +652,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
   it.effect("normalizes the base path from the flag, then the environment", () =>
     Effect.gen(function* () {
       const fromFlag = yield* resolveServerConfig(
-        { ...noFlags, basePath: Option.some("z3/") },
+        { ...noFlags, basePath: Option.some("mate/") },
         Option.none(),
       ).pipe(
         Effect.provide(
@@ -662,17 +662,17 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           ),
         ),
       );
-      expect(fromFlag.basePath).toBe("/z3");
+      expect(fromFlag.basePath).toBe("/mate");
 
       const fromEnv = yield* resolveServerConfig({ ...noFlags }, Option.none()).pipe(
         Effect.provide(
           Layer.mergeAll(
-            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_BASE_PATH: "/z3/" } })),
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_BASE_PATH: "/mate/" } })),
             NetService.layer,
           ),
         ),
       );
-      expect(fromEnv.basePath).toBe("/z3");
+      expect(fromEnv.basePath).toBe("/mate");
 
       const flagWins = yield* resolveServerConfig(
         { ...noFlags, basePath: Option.some("/flag") },

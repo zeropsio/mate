@@ -75,12 +75,12 @@ describe("mintZeropsIdentityCredential", () => {
       const fetch = recordedFetch(credentialResponse());
 
       yield* mintZeropsIdentityCredential({
-        httpBaseUrl: "https://zcp-26a7-8080.prg1.zerops.app/z3/",
+        httpBaseUrl: "https://zcp-26a7-8080.prg1.zerops.app/mate/",
         zeropsToken: "a-zerops-access-token",
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
       expect(String(fetch.calls[0]?.[0])).toBe(
-        "https://zcp-26a7-8080.prg1.zerops.app/z3/api/auth/zerops-identity",
+        "https://zcp-26a7-8080.prg1.zerops.app/mate/api/auth/zerops-identity",
       );
     }),
   );

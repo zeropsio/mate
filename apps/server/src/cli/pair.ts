@@ -1,5 +1,5 @@
 /**
- * `z3 pair` - mint a pairing token for an already-running server and print it
+ * `mate pair` - mint a pairing token for an already-running server and print it
  * as a QR code, without restarting anything.
  *
  * Discovery reads the `server-runtime.json` a live server persists next to its
@@ -61,9 +61,9 @@ export class NoRunningServerError extends Schema.TaggedErrorClass<NoRunningServe
 ) {
   override get message(): string {
     return [
-      "No running Zerops Code server found.",
+      "No running Zerops Mate server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start the standalone server with `z3 serve` from an installed zeropsio/mate release tarball.",
+      "Start the standalone server with `mate serve` from an installed zeropsio/mate release tarball.",
     ].join("\n");
   }
 }
@@ -153,7 +153,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
     bases.push(yield* resolveBaseDir(explicitBaseDir));
   } else {
     // Same precedence as dev-runner: inside a linked worktree its own `.t3`
-    // outranks the shared home, so `z3 pair` in a worktree pairs with the dev
+    // outranks the shared home, so `mate pair` in a worktree pairs with the dev
     // server under test rather than the daily-driver install.
     const worktreeHome = yield* resolveWorktreeT3Home(process.cwd());
     if (worktreeHome !== undefined) {
@@ -233,7 +233,7 @@ const makePairServerConfig = Effect.fn(function* (input: {
     mode: "web",
     port: state.port,
     host: state.host,
-    // `z3 pair` only mints into the running server's database; it emits no
+    // `mate pair` only mints into the running server's database; it emits no
     // URL through this config, so it needs no prefix of its own.
     basePath: "",
     cwd: process.cwd(),
@@ -265,7 +265,7 @@ const mintPairingLink = Effect.fn("pair.mintPairingLink")(function* (input: {
     return yield* environmentAuth.createPairingLink({
       scopes: AuthStandardClientScopes,
       subject: "one-time-token",
-      label: Option.getOrElse(input.label, () => "z3 pair"),
+      label: Option.getOrElse(input.label, () => "mate pair"),
       ...(Option.isSome(input.ttl) ? { ttl: input.ttl.value } : {}),
     });
   }).pipe(
@@ -297,7 +297,7 @@ export const pairCommand = Command.make("pair", {
   label: labelFlag,
 }).pipe(
   Command.withDescription(
-    "Mint a pairing token for a running Zerops Code server and print it as a QR code.",
+    "Mint a pairing token for a running Zerops Mate server and print it as a QR code.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {

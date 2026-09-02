@@ -25,9 +25,9 @@ describe("branding", () => {
       value: {
         desktopBridge: {
           getAppBranding: () => ({
-            baseName: "Zerops Code",
+            baseName: "Zerops Mate",
             stageLabel: "Nightly",
-            displayName: "Zerops Code (Nightly)",
+            displayName: "Zerops Mate (Nightly)",
           }),
         },
       },
@@ -35,9 +35,9 @@ describe("branding", () => {
 
     const branding = await import("./branding");
 
-    expect(branding.APP_BASE_NAME).toBe("Zerops Code");
+    expect(branding.APP_BASE_NAME).toBe("Zerops Mate");
     expect(branding.APP_STAGE_LABEL).toBe("Nightly");
-    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Code (Nightly)");
+    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Mate (Nightly)");
   });
 
   it("normalizes hosted app channel metadata", async () => {
@@ -48,7 +48,7 @@ describe("branding", () => {
     expect(branding.HOSTED_APP_CHANNEL).toBe("nightly");
     expect(branding.HOSTED_APP_CHANNEL_LABEL).toBe("Nightly");
     expect(branding.APP_STAGE_LABEL).toBe("Nightly");
-    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Code (Nightly)");
+    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Mate (Nightly)");
   });
 
   it("does not label the latest hosted app channel", async () => {
@@ -59,7 +59,7 @@ describe("branding", () => {
     expect(branding.HOSTED_APP_CHANNEL).toBe("latest");
     expect(branding.HOSTED_APP_CHANNEL_LABEL).toBe("Latest");
     expect(branding.APP_STAGE_LABEL).toBe("Latest");
-    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Code");
+    expect(branding.APP_DISPLAY_NAME).toBe("Zerops Mate");
   });
 
   it("ignores unknown hosted app channels", async () => {
@@ -71,11 +71,11 @@ describe("branding", () => {
     expect(branding.HOSTED_APP_CHANNEL_LABEL).toBeNull();
   });
 
-  it("brands the pre-React boot shell as Zerops Code", () => {
-    expect(indexHtml).toContain("<title>Zerops Code (Alpha)</title>");
-    expect(indexHtml).toContain('aria-label="Zerops Code splash screen"');
+  it("brands the pre-React boot shell as Zerops Mate", () => {
+    expect(indexHtml).toContain("<title>Zerops Mate (Alpha)</title>");
+    expect(indexHtml).toContain('aria-label="Zerops Mate splash screen"');
     expect(indexHtml).toContain(
-      '<svg id="boot-shell-logo" viewBox="0 0 42.27 50.48" role="img" aria-label="Zerops Code">',
+      '<svg id="boot-shell-logo" viewBox="0 0 42.27 50.48" role="img" aria-label="Zerops Mate">',
     );
   });
 });
@@ -93,33 +93,33 @@ describe("branding logic", () => {
   it("updates the display name for nightly primary server versions", () => {
     expect(
       resolveServerBackedAppDisplayName({
-        baseName: "Zerops Code",
-        fallbackDisplayName: "Zerops Code (Alpha)",
+        baseName: "Zerops Mate",
+        fallbackDisplayName: "Zerops Mate (Alpha)",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.28-nightly.20260616.12",
       }),
-    ).toBe("Zerops Code (Nightly)");
+    ).toBe("Zerops Mate (Nightly)");
   });
 
   it("keeps the fallback display name for stable primary server versions", () => {
     expect(
       resolveServerBackedAppDisplayName({
-        baseName: "Zerops Code",
-        fallbackDisplayName: "Zerops Code (Alpha)",
+        baseName: "Zerops Mate",
+        fallbackDisplayName: "Zerops Mate (Alpha)",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.27",
       }),
-    ).toBe("Zerops Code (Alpha)");
+    ).toBe("Zerops Mate (Alpha)");
   });
 
   it("keeps the fallback display name for malformed nightly primary server versions", () => {
     expect(
       resolveServerBackedAppDisplayName({
-        baseName: "Zerops Code",
-        fallbackDisplayName: "Zerops Code (Alpha)",
+        baseName: "Zerops Mate",
+        fallbackDisplayName: "Zerops Mate (Alpha)",
         fallbackStageLabel: "Alpha",
         primaryServerVersion: "0.0.28-nightly.20260616",
       }),
-    ).toBe("Zerops Code (Alpha)");
+    ).toBe("Zerops Mate (Alpha)");
   });
 });

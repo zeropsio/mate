@@ -3,7 +3,7 @@
 The declared contract between the **ported** driver zone (`apps/server/src/provider/**`,
 `packages/contracts/src/provider*.ts`) and everything **owned** that consumes provider events. A
 port that drops or reshapes a lifecycle event fails a test here, not at runtime for a user.
-Enforcement: `scripts/z3-zone-architecture.test.ts`'s four rules — ported zone imports nothing
+Enforcement: `scripts/mate-zone-architecture.test.ts`'s four rules — ported zone imports nothing
 matching `zerops`; owned product reaches providers only through the SPI; only `spi/**` and one
 named exception (`provider/Services/ProviderInstanceRegistry.ts`, consumed directly by
 `TextGeneration.ts`'s `resolveInstance`) may import provider internals from
@@ -135,7 +135,7 @@ Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `cl
 
 1. **Import the wire packages** — regenerate `imported.lock` from the new upstream ref: `imported-lock --write --upstream <ref>` (`scripts/imported-lock.ts`); it refuses to write if HEAD has diverged from the ref for either imported path (an import must stay byte-identical).
 2. **Port the driver commits** behind the SPI, minimally — the ported zone (`provider/**`, `packages/effect-codex-app-server/**`, `packages/effect-acp/**`) must still import nothing matching `zerops`.
-3. **Run the goldens** (`replay/goldens.test.ts`) **+ the zone test** (`scripts/z3-zone-architecture.test.ts`) **+ package typecheck**.
+3. **Run the goldens** (`replay/goldens.test.ts`) **+ the zone test** (`scripts/mate-zone-architecture.test.ts`) **+ package typecheck**.
 4. If a golden diverges: fix `toolCall.ts`'s readers or the typed capabilities (§6) to match the new driver shape — **never edit `apps/server/src/zerops/**`to chase a driver change**; that tree only ever reads`event.toolCall`, never `payload.data`.
 5. Add a `compat.md` row for the new port.
 6. Bump `PROVIDER_RUNTIME_SPI_VERSION` (§2) only when the change alters what owned code may depend on — not for every port.

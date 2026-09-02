@@ -22,7 +22,7 @@ import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "./api.ts";
 import { deriveZeropsCandidates } from "./candidates.ts";
 
 /** What a `/healthz` probe concluded about a container. */
-export type ZeropsContainerHealth = "ready" | "initializing" | "predates-z3" | "unreachable";
+export type ZeropsContainerHealth = "ready" | "initializing" | "predates-mate" | "unreachable";
 
 export type ProvisioningPhase =
   | "awaiting-project"
@@ -42,7 +42,7 @@ export type ProvisioningPhase =
 /**
  * How long each wait is given. The container cap matches the platform GUI's
  * own provisioning timeout; the health cap covers a restart's ~19 s to
- * `z3Up` with room to spare.
+ * `mateUp` with room to spare.
  */
 export const PROVISIONING_CAPS = {
   "awaiting-project": 60_000,
@@ -63,8 +63,8 @@ export function isProvisioningWaiting(state: ProvisioningState): boolean {
 
 const WAITING_LABELS: Readonly<Record<WaitingPhase, string>> = {
   "awaiting-project": "Waiting for your project to appear",
-  "awaiting-container": "Waiting for the Zerops Code container to start",
-  "awaiting-health": "Waiting for Zerops Code to answer",
+  "awaiting-container": "Waiting for the Zerops Mate container to start",
+  "awaiting-health": "Waiting for Zerops Mate to answer",
 };
 
 export interface ProvisioningState {
@@ -96,7 +96,7 @@ export type ProvisioningEvent =
   | { readonly kind: "health"; readonly health: ZeropsContainerHealth }
   | { readonly kind: "tick" }
   | { readonly kind: "retry" }
-  /** The user asked for the older container to be restarted into Zerops Code. */
+  /** The user asked for the older container to be restarted into Zerops Mate. */
   | { readonly kind: "enable" };
 
 function waiting(
@@ -165,7 +165,7 @@ export function startProvisioning(input: {
 /**
  * Starts at the health wait for a container the caller already knows about —
  * the picker path, where a project and its container exist and the only
- * question is whether Zerops Code answers on it.
+ * question is whether Zerops Mate answers on it.
  */
 export function startProvisioningForContainer(input: {
   readonly projectId: string;
@@ -200,7 +200,7 @@ export function advanceProvisioning(
       containerServiceId: state.containerServiceId,
       containerOrigin: state.containerOrigin,
       // A retry must not forget an enable already tried this wait — otherwise
-      // a retry-into-predates-z3 loop would offer Enable again forever.
+      // a retry-into-predates-mate loop would offer Enable again forever.
       enabled: state.enabled,
     });
   }
@@ -248,21 +248,21 @@ export function advanceProvisioning(
 
   if (event.kind === "health" && state.phase === "awaiting-health") {
     if (event.health === "ready") {
-      return settled(state, "ready", "Zerops Code is ready", nowMs);
+      return settled(state, "ready", "Zerops Mate is ready", nowMs);
     }
-    if (event.health === "predates-z3") {
+    if (event.health === "predates-mate") {
       // A restart was already tried this wait and the container still
-      // predates Zerops Code: it is not a stale container, it is a zcp
-      // release that does not carry z3 yet — restarting again changes nothing.
+      // predates Zerops Mate: it is not a stale container, it is a zcp
+      // release that does not carry mate yet — restarting again changes nothing.
       if (state.enabled) {
         return settled(
           state,
           "not-yet-available",
-          "Zerops Code is not part of this container's zcp release yet",
+          "Zerops Mate is not part of this container's zcp release yet",
           nowMs,
         );
       }
-      return settled(state, "needs-enable", "This container is not serving Zerops Code", nowMs);
+      return settled(state, "needs-enable", "This container is not serving Zerops Mate", nowMs);
     }
     // `initializing` and `unreachable` both mean "not yet" — an unreachable
     // container mid-restart answers 502 through the platform balancer.

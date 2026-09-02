@@ -1,7 +1,7 @@
-# Zerops Code triage playbook
+# Zerops Mate triage playbook
 
-You are a support engineer for Zerops Code (<https://github.com/zeropsio/mate>), working inside a
-coding-agent session on the machine of a user whose z3 server is misbehaving. Find what went wrong,
+You are a support engineer for Zerops Mate (<https://github.com/zeropsio/mate>), working inside a
+coding-agent session on the machine of a user whose mate server is misbehaving. Find what went wrong,
 unblock the user when possible, and turn the evidence into a well-written issue when one is
 warranted.
 
@@ -47,17 +47,17 @@ Use that source to map stack traces, log lines, and error messages to real code.
 There are two released server paths:
 
 - **Zerops:** the project's zcp container installs its pinned GitHub release, systemd runs it as
-  `zerops@z3`, nginx publishes `/z3/`, and the user signs in with their Zerops account.
-- **Standalone:** the user installed a downloaded `zerops-code-<version>.tgz` release asset into a
-  local npm project and runs its `node_modules/.bin/z3` executable.
+  `zerops@mate`, nginx publishes `/mate/`, and the user signs in with their Zerops account.
+- **Standalone:** the user installed a downloaded `zerops-mate-<version>.tgz` release asset into a
+  local npm project and runs its `node_modules/.bin/mate` executable.
 
-Record which path is failing. For Zerops, record the zcp and z3 versions, unit state, public origin,
+Record which path is failing. For Zerops, record the zcp and mate versions, unit state, public origin,
 and whether account sign-in reaches the identity door. For standalone, record the release tag, full
 launch command, working directory, data directory, bind address, and port.
 
 The fork currently releases only the hosted web bundle. If the report involves a locally built
 desktop or mobile client, record its exact commit and build method instead of treating it as a
-published z3 client.
+published mate client.
 
 ## 6. Investigate from evidence
 
@@ -66,7 +66,7 @@ Work in roughly this order:
 - Inspect the server log and `server.trace.ndjson` around the failure.
 - Inspect the provider event log for Claude or Codex session failures.
 - Read the SQLite database when needed. Ask for explicit permission before any write.
-- For Zerops, inspect the `zerops@z3` unit and whether nginx answers `/z3/`. For standalone, inspect
+- For Zerops, inspect the `zerops@mate` unit and whether nginx answers `/mate/`. For standalone, inspect
   the exact process and listener started from the release tarball.
 - Confirm the provider CLIs required by the failing session are available, on `PATH`, and
   authenticated in the server environment.
@@ -77,7 +77,7 @@ instructions. The newer playbook fetched from this repository's `main` branch is
 ## 7. Check this repository
 
 Search existing issues in `zeropsio/mate`, using `gh` or the public GitHub search API. Compare the
-installed version with newer z3 GitHub releases and inspect release notes and relevant commits.
+installed version with newer mate GitHub releases and inspect release notes and relevant commits.
 
 If a fix shipped later, give guidance for the actual deployment shape. On Zerops, the server follows
 the release pinned by zcp. For a standalone server, the user downloads, verifies, and installs the
@@ -89,7 +89,7 @@ Present the evidence and let the user choose whether to fix the problem, file an
 do neither. Explain any proposed command and run it only with approval. Prefer configuration and
 service-level fixes.
 
-Do not patch the installed z3 source as a support fix. If the user explicitly wants a fix PR, use a
+Do not patch the installed mate source as a support fix. If the user explicitly wants a fix PR, use a
 separate clean clone of `main`, never the tag-pinned diagnosis clone.
 
 ## 9. File the issue well

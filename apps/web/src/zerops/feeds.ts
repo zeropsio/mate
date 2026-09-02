@@ -1,7 +1,7 @@
 /**
  * The three Zerops server feeds, as atoms.
  *
- * - **topology** — one per environment (a z3 environment is one Zerops
+ * - **topology** — one per environment (a mate environment is one Zerops
  *   project): what exists, for the service map.
  * - **lifecycle** — one per thread: where the agent is, for the strip and the
  *   cards.

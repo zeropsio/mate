@@ -2,12 +2,12 @@
  * Base-path algebra.
  *
  * A T3 environment may be reverse-proxied under a path prefix rather than at an
- * origin root — Zerops serves the container's server at `<origin>/z3/` beside
+ * origin root — Zerops serves the container's server at `<origin>/mate/` beside
  * code-server on the same 8080 origin. That makes the path part of a base URL
  * rather than noise to discard, so every URL the client derives from a base URL
  * must JOIN onto the prefix instead of overwriting `pathname`.
  *
- * The normal form of a prefix is `""` (origin root) or `/z3` — a leading slash,
+ * The normal form of a prefix is `""` (origin root) or `/mate` — a leading slash,
  * no trailing slash — so a prefix is always safe to concatenate with a
  * root-absolute route path.
  *
@@ -76,7 +76,7 @@ export function socketUrlFromWsBaseUrl(wsBaseUrl: string | URL): URL {
 /**
  * Remove a path prefix from an incoming request path.
  *
- * Only a whole-segment match counts: with prefix `/z3`, `/z3x/api` is not below
+ * Only a whole-segment match counts: with prefix `/mate`, `/matex/api` is not below
  * the prefix and is returned untouched. A path that is exactly the prefix
  * becomes `/`.
  */
@@ -89,7 +89,7 @@ export function stripBasePath(basePath: string, requestPath: string): string {
     return "/";
   }
   if (!requestPath.startsWith(`${prefix}/`)) {
-    // `/z3?x=1` names the prefix itself with a query string attached.
+    // `/mate?x=1` names the prefix itself with a query string attached.
     if (requestPath.startsWith(`${prefix}?`) || requestPath.startsWith(`${prefix}#`)) {
       return `/${requestPath.slice(prefix.length)}`;
     }

@@ -85,7 +85,7 @@ export const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalSta
     }
     if (!wasQuitting) {
       yield* electronDialog.showErrorBox(
-        "Zerops Code failed to start",
+        "Zerops Mate failed to start",
         `Stage: ${stage}\n${message}${detail}`,
       );
     }

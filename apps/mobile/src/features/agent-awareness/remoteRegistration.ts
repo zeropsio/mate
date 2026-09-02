@@ -508,7 +508,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     const startingStatus = awarenessPhaseStatusLabel("starting");
     const nowIso = new Date(Date.now()).toISOString();
     const activity = AgentActivity.start({
-      title: "Zerops Code",
+      title: "Zerops Mate",
       subtitle: "Agent work in progress",
       activeCount: 1,
       updatedAt: nowIso,

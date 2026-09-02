@@ -50,21 +50,21 @@ describe("registry-free server releases", () => {
 
     expect(invocation).not.toContain("suggestedPackageSpec");
     expect(invocation).not.toContain("detectCliRunner");
-    expect(invocation).not.toContain("zerops-code@nightly");
+    expect(invocation).not.toContain("zerops-mate@nightly");
   });
 
   it("documents the GitHub release and zcp pin path without registry instructions", () => {
     const install = read("docs/user/install.md");
     expect(install).toContain("https://github.com/zeropsio/mate/releases/latest");
-    expect(install).toContain("zerops-code-<version>.tgz");
-    expect(install).toContain("zerops-code-0.1.0.tgz");
+    expect(install).toContain("zerops-mate-<version>.tgz");
+    expect(install).toContain("zerops-mate-0.1.0.tgz");
 
     const release = read("docs/operations/release.md");
     expect(release).toContain(".github/workflows/release.yml");
-    expect(release).toContain("VITE_BASE_PATH=/z3");
+    expect(release).toContain("VITE_BASE_PATH=/mate");
     expect(release).toContain("SHA256SUMS");
     expect(release).toContain("zcp");
-    expect(release).toContain("nothing is published under the `zerops-code` name");
+    expect(release).toContain("nothing is published under the `zerops-mate` name");
     for (const releaseScript of [
       "scripts/update-release-package-versions.ts",
       "scripts/resolve-nightly-release.ts",
@@ -84,7 +84,7 @@ describe("registry-free server releases", () => {
       const source = read(relativePath);
       expect(source, relativePath).not.toContain("pingdotgg/t3code");
       expect(source, relativePath).not.toMatch(
-        /\b(?:npm|npx)\s+(?:install\s+)?(?:t3|zerops-code)@/,
+        /\b(?:npm|npx)\s+(?:install\s+)?(?:t3|zerops-mate)@/,
       );
     }
   });

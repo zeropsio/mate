@@ -53,7 +53,7 @@ describe("ElectronWindow", () => {
         throw cause;
       });
       const options = {
-        title: "Zerops Code",
+        title: "Zerops Mate",
         width: 1100,
         height: 780,
         minWidth: 840,
@@ -81,7 +81,7 @@ describe("ElectronWindow", () => {
       assert.instanceOf(error, ElectronWindow.ElectronWindowCreateError);
       assert.isTrue(ElectronWindow.isElectronWindowCreateError(error));
       assert.deepEqual(error.options, {
-        title: "Zerops Code",
+        title: "Zerops Mate",
         width: 1100,
         height: 780,
         minWidth: 840,
@@ -106,7 +106,7 @@ describe("ElectronWindow", () => {
       assert.strictEqual(error.cause, cause);
       assert.equal(
         error.message,
-        'Failed to create Electron BrowserWindow "Zerops Code" (1100x780).',
+        'Failed to create Electron BrowserWindow "Zerops Mate" (1100x780).',
       );
       assert.notInclude(error.message, cause.message);
       assert.deepEqual(browserWindowMock.mock.calls, [[options]]);

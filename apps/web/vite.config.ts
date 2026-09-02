@@ -28,7 +28,7 @@ Object.assign(process.env, repoEnv);
 const isSingleOriginDev = process.env.T3CODE_SINGLE_ORIGIN_DEV === "1";
 
 // The bundle may be hosted under a path prefix rather than at an origin root:
-// Zerops serves the container's server at <origin>/z3/, beside code-server on
+// Zerops serves the container's server at <origin>/mate/, beside code-server on
 // the same 8080 origin. Every asset reference is root-absolute, so without this
 // the shell loads under the prefix and every asset 404s (or worse, is answered
 // by whatever owns the origin root). Vite exposes the value as

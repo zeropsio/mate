@@ -66,7 +66,7 @@ vi.mock("electron", () => ({
     getVersion: getVersionMock,
     isDefaultProtocolClient: isDefaultProtocolClientMock,
     isPackaged: true,
-    name: "Zerops Code",
+    name: "Zerops Mate",
     on: onMock,
     quit: quitMock,
     relaunch: relaunchMock,

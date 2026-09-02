@@ -3,7 +3,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { zeropsCodeBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
+import { zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import { useCallback } from "react";
 
 import { appBasePath } from "~/basePath";
@@ -34,7 +34,7 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
     };
   }
   const result = await input.connect({
-    httpBaseUrl: zeropsCodeBaseUrl(input.containerOrigin, {
+    httpBaseUrl: zeropsMateBaseUrl(input.containerOrigin, {
       origin: input.appOrigin,
       basePath: input.basePath,
     }),

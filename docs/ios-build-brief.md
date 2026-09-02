@@ -44,7 +44,7 @@ merges `.env` and `.env.local`):
 
 ```bash
 T3CODE_IOS_PERSONAL_TEAM=1
-T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=cz.krls.z3      # any reverse-DNS you control
+T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID=cz.krls.mate      # any reverse-DNS you control
 ```
 
 The config validates this: with `T3CODE_IOS_PERSONAL_TEAM=1` and a missing or malformed id it
@@ -86,7 +86,7 @@ Two servers you can point it at:
   loopback only**, so a LAN URL needs the server, not the vite port.
 
 Pairing differs by server: on a Zerops project, sign-in goes through the identity door — no
-pairing code, no shared secret (`../zcp/docs/spec-z3.md` §3–§4). The one-time pairing code stays
+pairing code, no shared secret (`../zcp/docs/spec-mate.md` §3–§4). The one-time pairing code stays
 only for a non-Zerops server (the local dev server above), minted with
 `node apps/server/src/bin.ts pair`.
 

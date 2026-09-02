@@ -1,7 +1,7 @@
 /**
  * Verbatim `zerops_*` tool results captured from a live container.
  *
- * Project `z3-eval` via the z3 server on `zcp-26a7`, 2026-08-28, against the
+ * Project `z3-eval` via the mate server on `zcp-26a7`, 2026-08-28, against the
  * unadopted service `s3git1`. Kept byte-exact on purpose — a fixture rewritten
  * by hand stops being evidence, and these are the only samples proving the
  * decoders read what zcp actually emits rather than what its Go structs

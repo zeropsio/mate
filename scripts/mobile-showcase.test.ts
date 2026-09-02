@@ -29,11 +29,11 @@ import {
   validateStoreAssetCount,
 } from "./mobile-showcase.ts";
 
-it("targets the renamed ZeropsCode iOS native product", () => {
+it("targets the renamed ZeropsMate iOS native product", () => {
   assert.deepStrictEqual(IOS_NATIVE_PRODUCT, {
-    appFileName: "ZeropsCode.app",
-    scheme: "ZeropsCode",
-    workspace: "ZeropsCode.xcworkspace",
+    appFileName: "ZeropsMate.app",
+    scheme: "ZeropsMate",
+    workspace: "ZeropsMate.xcworkspace",
   });
 });
 

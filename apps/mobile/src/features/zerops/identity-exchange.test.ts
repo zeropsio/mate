@@ -22,7 +22,7 @@ it("refuses identity exchange without a current Zerops token", async () => {
   expect(connected).toBe(false);
 });
 
-it("registers the container through its /z3 identity door", async () => {
+it("registers the container through its /mate identity door", async () => {
   let input: { readonly httpBaseUrl: string; readonly zeropsToken: string } | null = null;
   const result = await exchangeZeropsContainerIdentity({
     containerOrigin: "https://zcp-demo-8080.prg1.zerops.app/",
@@ -34,7 +34,7 @@ it("registers the container through its /z3 identity door", async () => {
   });
 
   expect(input).toEqual({
-    httpBaseUrl: "https://zcp-demo-8080.prg1.zerops.app/z3",
+    httpBaseUrl: "https://zcp-demo-8080.prg1.zerops.app/mate",
     zeropsToken: "zerops-token",
   });
   expect(result).toEqual({ _tag: "Success", environmentId: "environment-1" });

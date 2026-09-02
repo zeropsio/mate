@@ -72,11 +72,11 @@ it("builds a pairing URL that embeds the token in the hash", () => {
 // prefix; the pair route hangs off it, not off the origin root that the prefix
 // shares with something else.
 it("builds a pairing URL below the prefix the connection string carries", () => {
-  expect(buildPairingUrl("https://container.example.test/z3", "PAIRCODE")).toBe(
-    "https://container.example.test/z3/pair#token=PAIRCODE",
+  expect(buildPairingUrl("https://container.example.test/mate", "PAIRCODE")).toBe(
+    "https://container.example.test/mate/pair#token=PAIRCODE",
   );
-  expect(buildPairingUrl("https://container.example.test/z3/", "PAIRCODE")).toBe(
-    "https://container.example.test/z3/pair#token=PAIRCODE",
+  expect(buildPairingUrl("https://container.example.test/mate/", "PAIRCODE")).toBe(
+    "https://container.example.test/mate/pair#token=PAIRCODE",
   );
 });
 

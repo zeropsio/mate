@@ -8,7 +8,7 @@
     "directory": "apps/server"
   },
   "bin": {
-    "z3": "./dist/bin.mjs"
+    "mate": "./dist/bin.mjs"
   },
   "files": [
     "dist"

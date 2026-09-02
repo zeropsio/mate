@@ -185,7 +185,7 @@ describe("reconcileDesiredCloudLink", () => {
 
       expect(error).toMatchObject({
         _tag: "EnvironmentHttpUnauthorizedError",
-        message: "Run `z3 connect link` to authorize this environment.",
+        message: "Run `mate connect link` to authorize this environment.",
       });
     }).pipe(
       Effect.provideService(

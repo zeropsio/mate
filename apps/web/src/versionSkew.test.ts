@@ -18,7 +18,7 @@ import {
 } from "./versionSkew";
 
 const MISMATCH_HINT =
-  "Version mismatch. Try syncing the client and server to the same Zerops Code version.";
+  "Version mismatch. Try syncing the client and server to the same Zerops Mate version.";
 
 describe("versionSkew", () => {
   beforeEach(() => {

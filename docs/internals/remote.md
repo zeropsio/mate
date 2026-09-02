@@ -1,6 +1,6 @@
 # Remote Architecture
 
-> For maintainers. Using Zerops Code? See [docs/user](../user/).
+> For maintainers. Using Zerops Mate? See [docs/user](../user/).
 
 The released hosted web client reaches Zerops environments directly through the identity door and
 standalone environments through bearer pairing. Shared client source still retains other connection
@@ -144,7 +144,7 @@ Launch answers a different question: how does a T3 server come to exist on the t
 it separate from access.
 
 - **Zerops environment.** zcp installs and supervises the pinned release in the project container.
-- **Standalone server.** The operator installs a GitHub release tarball and starts `z3 serve`; the
+- **Standalone server.** The operator installs a GitHub release tarball and starts `mate serve`; the
   client connects to that pre-existing server through its reachable endpoint.
 
 ## Security model

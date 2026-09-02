@@ -50,7 +50,7 @@ import {
  * zcp's managed `~/.ssh/config` block already sets all of these for `Host *`,
  * but a driver that depends on a file another program owns breaks silently
  * when that file changes. The `ControlPath` deliberately matches zcp's
- * (`zcp:internal/content/templates/ssh-config`) so z3 reuses the master zcp
+ * (`zcp:internal/content/templates/ssh-config`) so mate reuses the master zcp
  * already holds - 8 ms per round trip instead of 59 ms, which is 1.2 s per
  * repository per turn across a turn's 24 round trips.
  */

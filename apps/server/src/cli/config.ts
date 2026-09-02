@@ -40,7 +40,7 @@ export const baseDirFlag = Flag.string("base-dir").pipe(
 );
 export const basePathFlag = Flag.string("base-path").pipe(
   Flag.withDescription(
-    "Public path prefix this server is published under, for example /z3. Routes stay mounted at the root: the reverse proxy is expected to strip the prefix, and the server uses this for the URLs it emits (and tolerates a prefix a proxy forwarded).",
+    "Public path prefix this server is published under, for example /mate. Routes stay mounted at the root: the reverse proxy is expected to strip the prefix, and the server uses this for the URLs it emits (and tolerates a prefix a proxy forwarded).",
   ),
   Flag.optional,
 );

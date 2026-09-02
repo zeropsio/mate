@@ -136,7 +136,7 @@ function NewProjectForm({
   readonly error: string | null;
 }) {
   const { client } = useZeropsSession();
-  const [name, setName] = useState("zerops-code");
+  const [name, setName] = useState("zerops-mate");
   const [locations, setLocations] = useState<ReadonlyArray<ZeropsLocation>>([]);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [locationStatus, setLocationStatus] = useState<"loading" | "ready" | "failed">("loading");
@@ -216,7 +216,7 @@ function NewProjectForm({
       <div>
         <h2 className="text-sm font-semibold text-foreground">New project</h2>
         <p className="text-xs text-muted-foreground">
-          Creates a Zerops project with a Zerops Code container in it.
+          Creates a Zerops project with a Zerops Mate container in it.
         </p>
       </div>
       <div className="space-y-1.5">
@@ -529,11 +529,11 @@ function ZeropsProjectsContent() {
           setConnectError(null);
           setEnablingCandidateKey(candidate.key);
           // Write the flag, then restart: the install step re-runs on boot and
-          // comes back with the current zcp, which only installs Zerops Code
-          // when it finds ZCP_Z3_ENABLED set. A restart on its own returns the
+          // comes back with the current zcp, which only installs Zerops Mate
+          // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
           // container to the identical state.
           void client
-            .enableZeropsCode(serviceId)
+            .enableZeropsMate(serviceId)
             .then(() => {
               startWaitFor(candidate);
             })
@@ -553,7 +553,7 @@ function ZeropsProjectsContent() {
           setCreating(true);
           setCreateError(null);
           void client
-            .createProjectWithZeropsCode({ clientId, name, ...(location ? { location } : {}) })
+            .createProjectWithZeropsMate({ clientId, name, ...(location ? { location } : {}) })
             .then(() => {
               setCreatingIn(clientId);
               provisioning.start({ zcpClaimed: true });

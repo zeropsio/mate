@@ -47,20 +47,20 @@ export function formatServiceStatus(
   cliVersion: string,
 ): string {
   if (!status.supported) {
-    return "Zerops Code service\n  Status: unavailable on this machine\n  Supported on: Linux with systemd, macOS with launchd";
+    return "Zerops Mate service\n  Status: unavailable on this machine\n  Supported on: Linux with systemd, macOS with launchd";
   }
   if (!status.installed) {
-    return "Zerops Code service\n  Status: not installed\n  Next: Run `z3 service install`.";
+    return "Zerops Mate service\n  Status: not installed\n  Next: Run `mate service install`.";
   }
   return [
-    "Zerops Code service",
+    "Zerops Mate service",
     `  Status: ${status.current ? `installed · v${cliVersion}` : "needs an update or repair"}`,
     `  Unit: ${status.unitPath}`,
     `  Logs: ${status.logPath}`,
     ...(status.current
       ? []
       : [
-          "  Next: Install the matching zeropsio/mate release tarball, then run its `z3 service update`.",
+          "  Next: Install the matching zeropsio/mate release tarball, then run its `mate service update`.",
         ]),
   ].join("\n");
 }
@@ -75,7 +75,7 @@ const runServiceCommand = Effect.fn("cli.service.run")(function* <A, E>(
 });
 
 const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe(
-  Command.withDescription("Install Zerops Code as a background service for this user."),
+  Command.withDescription("Install Zerops Mate as a background service for this user."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -83,12 +83,12 @@ const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe
         const result = yield* reconcileService();
         if (!result.changed) {
           yield* Console.log(
-            `Zerops Code service is already installed at v${packageJson.version}.`,
+            `Zerops Mate service is already installed at v${packageJson.version}.`,
           );
           return;
         }
         yield* Console.log(
-          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Code service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
+          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Mate service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
         );
       }),
     ),
@@ -105,11 +105,11 @@ const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
       Effect.gen(function* () {
         const result = yield* reconcileService();
         if (!result.changed) {
-          yield* Console.log(`Zerops Code service is already using v${packageJson.version}.`);
+          yield* Console.log(`Zerops Mate service is already using v${packageJson.version}.`);
           return;
         }
         yield* Console.log(
-          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Code service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
+          `${result.previouslyInstalled ? "Updated" : "Installed"} Zerops Mate service at v${packageJson.version}.\nLogs: ${result.plan.logPath}`,
         );
       }),
     ),
@@ -117,7 +117,7 @@ const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
 );
 
 const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).pipe(
-  Command.withDescription("Stop and remove the Zerops Code background service."),
+  Command.withDescription("Stop and remove the Zerops Mate background service."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -125,7 +125,7 @@ const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).
         const service = yield* BootService.BootService;
         const removed = yield* service.uninstall;
         yield* Console.log(
-          removed ? "Removed the Zerops Code service." : "Zerops Code service is not installed.",
+          removed ? "Removed the Zerops Mate service." : "Zerops Mate service is not installed.",
         );
       }),
     ),
@@ -133,7 +133,7 @@ const serviceUninstallCommand = Command.make("uninstall", projectLocationFlags).
 );
 
 const serviceStatusCommand = Command.make("status", projectLocationFlags).pipe(
-  Command.withDescription("Show whether the Zerops Code background service is installed."),
+  Command.withDescription("Show whether the Zerops Mate background service is installed."),
   Command.withHandler((flags) =>
     runServiceCommand(
       flags,
@@ -146,7 +146,7 @@ const serviceStatusCommand = Command.make("status", projectLocationFlags).pipe(
 );
 
 export const serviceCommand = Command.make("service").pipe(
-  Command.withDescription("Manage the Zerops Code background service."),
+  Command.withDescription("Manage the Zerops Mate background service."),
   Command.withSubcommands([
     serviceInstallCommand,
     serviceUninstallCommand,

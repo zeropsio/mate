@@ -841,7 +841,7 @@ const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function*
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "z3-protected-root-" });
+  const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-protected-root-" });
   const webSrcDir = path.join(fixtureRoot, "apps/web/src");
   for (const [relativePath, source] of Object.entries(files)) {
     const file = path.join(webSrcDir, relativePath);
@@ -859,12 +859,12 @@ const makeProtectedRootFixture = Effect.fn("makeProtectedRootFixture")(function*
   };
 });
 
-it.layer(NodeServices.layer)("z3 zone architecture", (it) => {
+it.layer(NodeServices.layer)("mate zone architecture", (it) => {
   it.effect("collects UI imports from client-runtime Zerops fixtures", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "z3-ui-imports-" });
+      const fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-ui-imports-" });
       const fixtureFile = path.join(fixtureRoot, "packages/client-runtime/src/zerops/probe.ts");
       yield* fs.makeDirectory(path.dirname(fixtureFile), { recursive: true });
       yield* fs.writeFileString(

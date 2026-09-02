@@ -6,7 +6,7 @@
 and pushes to `main`:
 
 - **Check**: `node scripts/imported-lock.ts --check` verifies the byte-identical import zone
-  (`imported.lock`) against `HEAD`, then `vp test run scripts/z3-zone-architecture.test.ts` checks
+  (`imported.lock`) against `HEAD`, then `vp test run scripts/mate-zone-architecture.test.ts` checks
   the import-direction rules between the ported, owned-product, and zerops zones. Then `vp check`
   (format and lint; this repo sets `typeCheck: false` in its lint options), then `vpr typecheck` for
   the workspace type check. The same job builds the desktop pipeline (`vp run build:desktop`) and

@@ -77,7 +77,7 @@ export function clientPresentationMetadata(input: {
 }): AuthClientPresentationMetadata {
   if (input.desktopBridge !== undefined) {
     return {
-      label: "Zerops Code Desktop",
+      label: "Zerops Mate Desktop",
       deviceType: "desktop",
       os: clientOsFromElectronPlatform(input.desktopBridge.getClientPlatform?.()),
       surface: "desktop",
@@ -86,12 +86,12 @@ export function clientPresentationMetadata(input: {
   }
 
   return {
-    // The hosted bundle is Zerops Code, and the label is what a user reads in
+    // The hosted bundle is Zerops Mate, and the label is what a user reads in
     // the environment's session list — where a laptop and a phone would
     // otherwise be two identical rows.
     label: input.hosted
-      ? `Zerops Code · ${browserFamily(input.identity.userAgent)} on ${browserClientOs(input.identity)}`
-      : "Zerops Code Web",
+      ? `Zerops Mate · ${browserFamily(input.identity.userAgent)} on ${browserClientOs(input.identity)}`
+      : "Zerops Mate Web",
     deviceType: browserDeviceType(input.identity),
     os: browserClientOs(input.identity),
     surface: "web",

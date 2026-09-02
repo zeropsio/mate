@@ -37,7 +37,7 @@ it.effect("reports unsupported platforms with a structured startup defect", () =
         platform: "win32",
       });
       expect(error.message).toBe(
-        "Bun PTY terminal support is unavailable on win32. Start this installed Zerops Code release with Node.js instead.",
+        "Bun PTY terminal support is unavailable on win32. Start this installed Zerops Mate release with Node.js instead.",
       );
     }
   }),

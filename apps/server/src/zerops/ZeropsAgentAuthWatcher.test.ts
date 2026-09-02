@@ -34,7 +34,7 @@ const startWatcher = (
   });
 
 beforeEach(() => {
-  root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "z3-agent-auth-watcher-"));
+  root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-agent-auth-watcher-"));
 });
 
 afterEach(() => {

@@ -100,7 +100,7 @@ const normalizeRemoteBaseUrl = (
       protocol: url.protocol,
     });
   }
-  // A host may name a reverse-proxied prefix (`https://container/z3`), which is
+  // A host may name a reverse-proxied prefix (`https://container/mate`), which is
   // part of the backend's address rather than a stray path to discard.
   url.pathname = `${normalizeBasePath(url.pathname)}/`;
   url.search = "";
@@ -137,7 +137,7 @@ const toWsBaseUrl = (url: URL): string => {
 /**
  * A direct pairing URL points at the client's `/pair` route, so the backend base
  * is that URL with the route removed — which is the origin root at `/pair` and
- * the proxy prefix at `/z3/pair`.
+ * the proxy prefix at `/mate/pair`.
  */
 const dropPairingRoute = (url: URL): URL => {
   const next = new URL(url.toString());

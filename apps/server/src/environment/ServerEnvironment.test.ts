@@ -129,11 +129,11 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         Effect.provide(
           ServerEnvironment.layer.pipe(
             Layer.provide(ServerSecretStore.layer),
-            Layer.provide(ServerConfig.layer({ ...config, basePath: "/z3" })),
+            Layer.provide(ServerConfig.layer({ ...config, basePath: "/mate" })),
           ),
         ),
       );
-      expect(prefixed.basePath).toBe("/z3");
+      expect(prefixed.basePath).toBe("/mate");
     }),
   );
 

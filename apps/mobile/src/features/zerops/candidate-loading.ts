@@ -14,12 +14,12 @@ export function candidateAfterHealthProbe(
     case "ready":
       return candidate;
     case "initializing":
-      return { ...candidate, group: "provisioning", reason: "Zerops Code is starting" };
-    case "predates-z3":
+      return { ...candidate, group: "provisioning", reason: "Zerops Mate is starting" };
+    case "predates-mate":
       return {
         ...candidate,
         group: "unavailable",
-        reason: "Zerops Code is not enabled for this container",
+        reason: "Zerops Mate is not enabled for this container",
       };
     case "unreachable":
       return { ...candidate, group: "unavailable", reason: "container is not answering" };
@@ -27,7 +27,7 @@ export function candidateAfterHealthProbe(
       return {
         ...candidate,
         group: "provisioning",
-        reason: "checking Zerops Code readiness",
+        reason: "checking Zerops Mate readiness",
       };
   }
 }

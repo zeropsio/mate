@@ -296,7 +296,7 @@ const packCmd = Command.make(
 // ---------------------------------------------------------------------------
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("Zerops Code server build and pack CLI."),
+  Command.withDescription("Zerops Mate server build and pack CLI."),
   Command.withSubcommands([buildCmd, packCmd]),
 );
 

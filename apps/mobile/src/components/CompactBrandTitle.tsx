@@ -31,7 +31,7 @@ export function CompactBrandTitle(
   return (
     <View
       aria-level={1}
-      accessibilityLabel="Zerops Code, Threads"
+      accessibilityLabel="Zerops Mate, Threads"
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"

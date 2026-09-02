@@ -331,7 +331,7 @@ function AgentAuthorizationTerminal({
       <div className="flex h-full flex-col justify-between p-5 font-mono text-xs leading-5 text-[var(--zerops-auth-terminal-muted)]">
         <div>
           <p className="text-[var(--zerops-auth-terminal-text)]">
-            Zerops Code authorization terminal
+            Zerops Mate authorization terminal
           </p>
           <p className="mt-2 max-w-md">
             The dedicated terminal session will appear here after authorization starts.

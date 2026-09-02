@@ -71,7 +71,7 @@ function ZeropsHandoverCallback() {
     if (outcome.kind === "mismatched") {
       setState({
         kind: "failed",
-        message: "That sign-in did not come from this window. Start again from Zerops Code.",
+        message: "That sign-in did not come from this window. Start again from Zerops Mate.",
       });
       return;
     }
@@ -123,7 +123,7 @@ function ZeropsHandoverCallback() {
                 void navigate({ to: "/zerops", replace: true });
               }}
             >
-              Back to Zerops Code
+              Back to Zerops Mate
             </button>
           </>
         )}

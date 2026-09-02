@@ -635,7 +635,7 @@ const reconcileDesiredCloudLinkWith = Effect.fn("environment.cloud.reconcileDesi
           onNone: () =>
             Effect.fail(
               new EnvironmentHttpUnauthorizedError({
-                message: "Run `z3 connect link` to authorize this environment.",
+                message: "Run `mate connect link` to authorize this environment.",
               }),
             ),
           onSome: Effect.succeed,

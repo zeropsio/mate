@@ -36,18 +36,18 @@ Proxies to `internal/z3sidecar`, a loopback-only (127.0.0.1:3774) HTTP listener 
 ExecStart shape as nginx/vscode, no `zsc unit create` involved (H-05 was rewritten once this
 landed). Its `/` route checks `VSCODE_PASSWORD` is set too — belt-and-suspenders: nginx already
 omits the whole location when it isn't, but a container with no auth gets a plain 404 from the
-sidecar itself, never a mint, even on a direct hit. It then derives the public z3 origin from
+sidecar itself, never a mint, even on a direct hit. It then derives the public mate origin from
 `zeropsSubdomain` (H-01's fix, never `prg1` — see verified.md for a live-found quirk: it is
 newline-joined, one URL per declared port, on a multi-port service like this one), and runs
-`npx t3@<pinned> auth pairing create --base-dir <same base-dir z3 itself
+`npx t3@<pinned> auth pairing create --base-dir <same base-dir mate itself
 uses> --base-url <origin> --json`, returning `{credential, expiresAt, origin}` with
 `Access-Control-Allow-Origin: *` (see H-15).
 **Status** Live-verified end to end against `z3probe`, 2026-08-27, including across a real service
 restart: `GET /z3-pair/<password>` returns a usable credential, a wrong password gets no mint
 (302, same cookie gate as everything else), and the credential drives the FULL chain — RFC 8693
-token exchange at z3's own `/oauth/token`, a ticket from `/api/auth/websocket-ticket`, a real
+token exchange at mate's own `/oauth/token`, a ticket from `/api/auth/websocket-ticket`, a real
 `wss://…/ws?wsTicket=…` connection that opens successfully. See verified.md for the exact requests.
-**Why** z3 lives on its own declared port with its own auth, so it has no cookie gate and therefore
+**Why** mate lives on its own declared port with its own auth, so it has no cookie gate and therefore
 no proof that a caller is entitled to a pairing credential. The 8080 origin already has one —
 `VSCODE_PASSWORD`, readable only by a project member through the authenticated Zerops API — so the
 mint endpoint borrows it rather than inventing a second scheme.
@@ -99,35 +99,35 @@ gate, and the per-row `ServiceResolution`/manual pairing-code form built around 
 
 ---
 
-### H-05 · Container-side z3 installed via unpinned `npx t3@latest` · paid back
+### H-05 · Container-side mate installed via unpinned `npx t3@latest` · paid back
 
 **Where was** `zcp` — the init command ran `npx t3@latest`, and nothing supervised it. An
 intermediate design (this entry's own earlier text, superseded before ever being deployed)
 additionally used `zsc unit create` and needed one manual SSH bootstrap per container, because
 `zcp init z3` had no `startCommands` line to fire it. Both are now resolved together.
-**Fix** `internal/z3/z3.go` pins the version in one named constant (`PinnedVersion = "0.0.35"`,
+**Fix** `internal/mate/mate.go` pins the version in one named constant (`PinnedVersion = "0.0.35"`,
 `PackageSpec = "t3@" + PinnedVersion`) — every `npx` call in the codebase resolves through it, and
-bumping it is the one place that touches. `internal/service/service.go`'s `"z3"` exec config
+bumping it is the one place that touches. `internal/service/service.go`'s `"mate"` exec config
 (`npx --yes t3@0.0.35 serve --mode web --host 0.0.0.0 --port 3773 --base-dir /home/zerops/.t3
 --no-browser /home/zerops/app` — see H-17 for why the workspace path moved off `/var/www`) runs the
 same way as the existing `"nginx"`/`"vscode"` entries: signal forwarding, logging, TasksMax
 tuning if declared. It is wired up via `deploy/zcp-container.yml`'s `run.startCommands`, a
-`{name: z3, command: zcp service start z3}` entry sitting right next to nginx/vscode's — the exact
+`{name: mate, command: zcp service start mate}` entry sitting right next to nginx/vscode's — the exact
 mechanism this repo initially assumed was unreachable (zcp@1's own service YAML is platform-owned)
 turned out to just need a checked-in recipe file someone applies, not a workaround. Same shape for
 `internal/z3sidecar` (H-02) as `"z3sidecar"`.
 **Verified** Live-tested on `z3probe` (project `p`) across a genuine `zcli service stop` +
 `start` cycle, 2026-08-27: both units came back on their own with zero manual intervention —
-`/healthz` reported `z3Up: true` again within ~10s of the container coming up, and a fresh mint +
+`/healthz` reported `mateUp: true` again within ~10s of the container coming up, and a fresh mint +
 full pairing chain (H-02) completed immediately after. Durable by construction, exactly as
 predicted — no residual bootstrap gap, and `questions.md` Q-01 (whether a `zsc unit create` unit
-survives a full restart) is moot for z3/z3sidecar specifically since neither uses that primitive
+survives a full restart) is moot for mate/z3sidecar specifically since neither uses that primitive
 any more.
 **Residue** `npx` still resolves the package fresh at every container start rather than an
 image-baked install — a network dependency in principle (measured 2026-08-28, S0.10: on an
-image-fresh container after a redeploy, unit start → `z3Up` took **58 s**; after a plain restart
+image-fresh container after a redeploy, unit start → `mateUp` took **58 s**; after a plain restart
 with a warm cache, 4 s), though the npm cache is warm after the
-first run and z3/z3sidecar share one pinned version so there's exactly one thing to fetch. This
+first run and mate/z3sidecar share one pinned version so there's exactly one thing to fetch. This
 mirrors the same class of boot-path network dependency `install.sh` already has for `zcp` itself
 (`plans/research/zcp-install-delivery-architecture-2026-08-24.md`'s F1) — not re-litigated here as
 a separate hack.
@@ -152,14 +152,14 @@ the `{{- if .HasAuth}}` gate (a client needs this before it has a pairing creden
 `internal/z3sidecar`'s `/healthz` route, which always answers `200` with the interesting signal in
 the body: `initComplete` (+ `initAt`) reflects whether `internal/init.Run` reached the end of its
 step list this boot — it writes `<baseDir>/.zcp/state/init-complete` right before printing "Init
-complete", read back via the absolute `z3.InitMarkerPath` — and `z3Up` is a live 2 s TCP dial
-against `internal/z3.ServePort`, so a z3 crash after a clean boot still shows up (the marker alone
+complete", read back via the absolute `mate.InitMarkerPath` — and `mateUp` is a live 2 s TCP dial
+against `internal/mate.ServePort`, so a mate crash after a clean boot still shows up (the marker alone
 would miss it). Since nginx itself only starts after every `initCommands` entry finishes
 (verified.md), `/healthz` answering at all already proves that boot's `zcp init` reached the end of
 its step list too — the marker mostly exists so `/healthz` doesn't have to special-case that
 reasoning, and so a later addition to `Run()`'s step list has somewhere to report into without a
 nginx template change.
-**Residue** Only reports two booleans, `z3Up` alongside `initComplete`/`initAt` — nothing about
+**Residue** Only reports two booleans, `mateUp` alongside `initComplete`/`initAt` — nothing about
 _which_ `Run()` step succeeded or failed. H-08 (mount status) was evaluated for the same route and
 skipped as more than a thin wrapper — see H-08 and the report on this slice.
 
@@ -169,7 +169,7 @@ skipped as more than a thin wrapper — see H-08 and the report on this slice.
 
 **Where** `zcp` computes mount state live from `/proc/mounts`, readdir and `systemctl`
 **Why** There has never been a reader outside the container.
-**Blast radius** "What is under this project" cannot be answered over HTTPS; it needs the z3 server
+**Blast radius** "What is under this project" cannot be answered over HTTPS; it needs the mate server
 to already be running and to shell out.
 **Real fix** Have `zcp` write a manifest, or expose mount status over the same authenticated
 endpoint as H-03.
@@ -251,7 +251,7 @@ H-17 for the same reasoning applied to the web mounts panel.
 ### H-15 · The `/z3-pair` mint response uses `Access-Control-Allow-Origin: *` · in place
 
 **Where** `zcp` — `internal/z3sidecar/z3sidecar.go`'s `handleMint`
-**Why** The caller is the z3 web app, a different origin than the container, so the mint response
+**Why** The caller is the mate web app, a different origin than the container, so the mint response
 needs a CORS header for `fetch()` to read it at all. `*` was chosen deliberately over echoing the
 request's `Origin`: the URL itself already carries the secret (the raw `VSCODE_PASSWORD` as a path
 segment, H-02's pattern), so a wildcard adds no exposure beyond what a leaked URL already grants —
@@ -363,7 +363,7 @@ with no warning that anything was there.
 **Blast radius** Today this only matters for a directory a human put real content into by hand
 under `/var/www` before a matching-hostname sibling gets mounted (or before `ZCP_SSHFS_HOSTNAMES`
 is set on a container that already has one) — an edge case, not a common path. It was investigated
-as part of relocating z3's own workspace off `/var/www` (H-17): z3's directory was exactly this
+as part of relocating mate's own workspace off `/var/www` (H-17): mate's directory was exactly this
 kind of pre-existing, real, git-tracked content, and would have been silently shadowed the moment a
 sibling literally named `app` (which exists in the project this was tested against) got mounted.
 **Real fix** Have `Mount` refuse (or at least warn) when the target directory is non-empty and not
@@ -374,9 +374,9 @@ distinction `CheckMount` already draws for the mount itself.
 
 ### H-22 · Connecting a container lands the user in an empty environment · in place
 
-**Where** the container side registers no z3 project; `zcp init` only creates the workspace
-directory (`internal/init/init_z3.go`), and `t3 serve` takes it as a cwd, not as a registered project
-**Why** Nothing in the flow bootstraps `/home/zerops/app` as a z3 _project_. Serving a directory and
+**Where** the container side registers no mate project; `zcp init` only creates the workspace
+directory (`internal/init/init_mate.go`), and `t3 serve` takes it as a cwd, not as a registered project
+**Why** Nothing in the flow bootstraps `/home/zerops/app` as a mate _project_. Serving a directory and
 having a project record for it are different things.
 **Blast radius** Breaks the "no human steps in between" promise at the last step. Verified in a
 browser on 2026-08-27: pairing to `z3probe` succeeds and the environment registers, but the app then
@@ -393,34 +393,34 @@ environment.
 
 ### H-23 · Dev builds are delivered by hand and a container restart wipes them · in place
 
-**Where** the dev loop — `../zcp/eval/scripts/z3-dev-push.sh [zcp|z3|all]` (brief §4a in
-`../zcp/plans/z3-brief-2026-08-28.md`). Nothing is released while z3 is built: the zcp binary
+**Where** the dev loop — `../zcp/eval/scripts/mate-dev-push.sh [zcp|mate|all]` (brief §4a in
+`../zcp/plans/z3-brief-2026-08-28.md`). Nothing is released while mate is built: the zcp binary
 and the forked server (`cli.ts build` → `cli.ts pack` → `npm install` into
-`/home/zerops/.zcp/z3` on the container) go in over VPN + ssh. Target: project `z3-eval`
+`/home/zerops/.zcp/mate` on the container) go in over VPN + ssh. Target: project `z3-eval`
 (`nTV3oMB2SS634ImDJnQckg`), service `zcp` (`gt7tJZjDSk2zyH5XvNeAQQ`).
 **Why** a release is slow to iterate on and the pool hands a new zcp to fresh projects only after
 midnight; hand delivery means build → try → throw away within minutes.
 **Cost** the platform recipe runs `install.sh` (unpinned → latest _release_) on every container
 start, so any restart replaces the dev binary and `zcp init z3` with it — push again after every
 restart, and restart only to measure S0.2. The web client never goes in (`vite dev` on the
-laptop against the container), so `http://localhost:*` is on the z3 Origin/CORS allowlist.
+laptop against the container), so `http://localhost:*` is on the mate Origin/CORS allowlist.
 **Owner decision 2026-08-28 (end of day 1)** hand delivery stays the ONLY channel until
 further notice, and **no zcp release from `main` while the `zcp init z3` step is unconditional**
-(`../zcp/internal/init/init_z3.go`): a release would, on every container restart fleet-wide,
+(`../zcp/internal/init/init_mate.go`): a release would, on every container restart fleet-wide,
 fetch upstream `t3@0.0.35` (`z3.PackageSpec` — the fork is not published), i.e. no Zerops door
 and no base path. Before anything else ships from `main`, the step needs a gate (opt-in service
-env) or must leave `main`. Direction under consideration, NOT decided: z3 on by default
+env) or must leave `main`. Direction under consideration, NOT decided: mate on by default
 everywhere (as the step is now), the bundle fetched from an own GitHub repo with releases in the
 shape of zcp's `install.sh` (not the npm `t3` package), and a hard fork off t3 — own axis, no
 `rebase upstream/main`. **Evening 2026-08-28:** the hard fork is decided and frozen
-(`fork.md`, tag `upstream-base-2026-08-28`); "z3 on by default everywhere" and the bundle channel
+(`fork.md`, tag `upstream-base-2026-08-28`); "mate on by default everywhere" and the bundle channel
 stay open for the release gate.
 **Real fix** the release gate (brief §4a) once the direction above is decided: one release, then
 the three "naked" acceptances — fresh `zcp@1` from the platform recipe answers
-`/healthz {z3Up:true}`, a restart of an older container brings z3 up, a brand-new pool account
+`/healthz {mateUp:true}`, a restart of an older container brings mate up, a brand-new pool account
 reaches a thread untouched.
 **First used** 2026-08-28 — zcp half verified on `z3-eval` (`zcp version` reports the local
-commit after the push, `zcp init` + `nginx -s reload` clean); z3 half see `verified.md`.
+commit after the push, `zcp init` + `nginx -s reload` clean); mate half see `verified.md`.
 
 ---
 
@@ -439,4 +439,4 @@ agent.
 **Cost** one identity in N containers; a token refresh in one container can invalidate the copy
 in another — re-stash from the one that still works. The contents never get printed or
 committed.
-**Real fix** S7 — OAuth inside z3's own terminal, credential-file watch, `zcp agent mark-oauth`.
+**Real fix** S7 — OAuth inside mate's own terminal, credential-file watch, `zcp agent mark-oauth`.

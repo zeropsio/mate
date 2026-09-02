@@ -1201,8 +1201,8 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 
 export function resolveDesktopProductName(version: string): string {
   return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "Zerops Code (Nightly)"
-    : (desktopPackageJson.productName ?? "Zerops Code");
+    ? "Zerops Mate (Nightly)"
+    : (desktopPackageJson.productName ?? "Zerops Mate");
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -1216,7 +1216,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const buildConfig: Record<string, unknown> = {
     appId: DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version),
-    artifactName: "Zerops-Code-${version}-${arch}.${ext}",
+    artifactName: "Zerops-Mate-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [...DESKTOP_FILE_EXCLUSIONS],
     directories: {
@@ -1251,7 +1251,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       category: "public.app-category.developer-tools",
       protocols: [
         {
-          name: "Zerops Code",
+          name: "Zerops Mate",
           schemes: ["t3code", "t3code-dev"],
         },
       ],
@@ -1293,7 +1293,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // t3code:// OAuth callbacks to the app.
       protocols: [
         {
-          name: "Zerops Code",
+          name: "Zerops Mate",
           schemes: ["t3code", "t3code-dev"],
         },
       ],
@@ -1561,7 +1561,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     t3codeCommitHash: commitHash,
     private: true,
     packageManager: rootPackageJson.packageManager,
-    description: "Zerops Code desktop build",
+    description: "Zerops Mate desktop build",
     author: "Zerops",
     main: "apps/desktop/dist-electron/main.cjs",
     build: yield* createBuildConfig(
@@ -1764,7 +1764,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
     Flag.optional,
   ),
 }).pipe(
-  Command.withDescription("Build a desktop artifact for Zerops Code."),
+  Command.withDescription("Build a desktop artifact for Zerops Mate."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
 );
 
