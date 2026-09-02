@@ -106,21 +106,29 @@ export function reduceActivityState(input: ActivityReducerInput, nowMs: number):
       input.resultStatus !== undefined &&
       RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(input.resultStatus);
     const stepSource = input.lastObservation?.attribution.stepSource;
-    // The continuation is subject to the SAME ceiling and staleness rule as
-    // the pending path (§6): a historical BUILD_TRIGGERED card whose call
-    // started over 30 minutes ago, or whose last good read is over a minute
-    // old, never gets an overlay — there is nothing left worth polling for.
+    // The 30-minute ceiling always applies — a historical BUILD_TRIGGERED
+    // card never gets an overlay, however its pipeline reads. The 60s
+    // staleness cutoff (§6), by contrast, is exempted once the pipeline has
+    // SETTLED: a terminal outcome (finished/failed/cancelled) does not go
+    // stale by sitting unpolled — the poller has already stopped polling for
+    // exactly that reason (nothing left to learn), and re-applying the
+    // pending path's staleness rule here would make "Platform reports
+    // finished" flicker away 60s after settling and only reappear for 60s on
+    // each reload.
     if (
       !allowed ||
       input.lastObservation === undefined ||
       stepSource === undefined ||
-      input.ceilingExceeded ||
-      nowMs - input.lastObservation.atMs > UNAVAILABLE_AFTER_MS
+      input.ceilingExceeded
     ) {
       return { kind: "resolved" };
     }
     const { attribution, atMs } = input.lastObservation;
     const pipeline = getPipelineState(stepSource.appVersion);
+    const isSettled = pipelineOutcomeFor(stepSource, pipeline) !== undefined;
+    if (!isSettled && nowMs - atMs > UNAVAILABLE_AFTER_MS) {
+      return { kind: "resolved" };
+    }
     return {
       kind: "resolved",
       continuation: { pipeline, chips: attribution.chips, atMs },

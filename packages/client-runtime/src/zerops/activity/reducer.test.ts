@@ -215,6 +215,38 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
     expect(state.kind === "resolved" && state.continuation).toBeDefined();
   });
 
+  /**
+   * The 60s staleness cutoff is a "the poller is still trying" signal — it
+   * does not apply once the pipeline has actually SETTLED, because the poller
+   * has already stopped polling for exactly that reason. Without this
+   * exemption, "Platform reports finished" would flicker away 60s after
+   * settling and only reappear for another 60s on the next reload/poll.
+   */
+  it("keeps a SETTLED continuation past the 60s staleness cutoff, inside the 30-minute ceiling", () => {
+    const p = process({ appVersion: { status: "ACTIVE" } });
+    const input = baseInput({
+      hasResult: true,
+      resultStatus: "BUILD_TRIGGERED",
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
+    // 5 minutes since the last read — long past the 60s cutoff, well inside
+    // the 30-minute ceiling.
+    const state = reduceActivityState(input, NOW + 5 * 60_000);
+    expect(state.kind).toBe("resolved");
+    expect(state.kind === "resolved" && state.continuation).toBeDefined();
+  });
+
+  it("still drops a SETTLED continuation once the 30-minute ceiling is exceeded", () => {
+    const p = process({ appVersion: { status: "ACTIVE" } });
+    const input = baseInput({
+      hasResult: true,
+      resultStatus: "BUILD_TRIGGERED",
+      ceilingExceeded: true,
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
+    expect(reduceActivityState(input, NOW + 5 * 60_000)).toEqual({ kind: "resolved" });
+  });
+
   it("any other resolved status never carries a continuation, even with platform data", () => {
     const p = process({ appVersion: { status: "DEPLOYING" } });
     const input = baseInput({

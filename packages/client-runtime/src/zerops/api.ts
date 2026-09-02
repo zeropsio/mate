@@ -355,6 +355,8 @@ export class ZeropsApiClient {
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   #session: ZeropsSession | null = null;
   #refreshPromise: Promise<ZeropsSession> | null = null;
+  /** OR'd across every caller sharing the current `#refreshPromise` — see `#refreshSession`'s doc comment. */
+  #refreshClearOnFailure = true;
 
   constructor(options: ZeropsApiClientOptions = {}) {
     this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, "");
@@ -716,13 +718,20 @@ export class ZeropsApiClient {
    * `clearOnFailure` governs only what happens when the refresh itself fails
    * (no refresh token, the refresh call rejected, an unusable refreshed
    * session) — a SUCCESSFUL refresh always adopts the new session regardless.
-   * Concurrent callers share one in-flight refresh either way; the first
-   * caller's `clearOnFailure` decides the outcome for everyone waiting on it,
-   * which is fine because a real (not "one caller opted out") refresh failure
-   * clears the session for the whole client no matter who asked first.
+   *
+   * Concurrent callers SHARE one in-flight refresh, and its outcome is an OR
+   * across every caller that joined it: if the background poller starts the
+   * refresh with `false` and a user-initiated request piggybacks with `true`
+   * before it settles, a failure still clears the session — the user-facing
+   * caller's stricter preference wins, whichever caller happened to start
+   * the request. Only when EVERY joiner opted out does a failure leave the
+   * (now-dead) session in place for the poller alone to observe as a 401.
    */
   async #refreshSession(clearOnFailure = true): Promise<ZeropsSession> {
-    if (this.#refreshPromise) return this.#refreshPromise;
+    if (this.#refreshPromise) {
+      this.#refreshClearOnFailure ||= clearOnFailure;
+      return this.#refreshPromise;
+    }
     const current = this.#session;
     if (!current?.refreshToken) {
       if (clearOnFailure) await this.#setSession(null);
@@ -733,6 +742,7 @@ export class ZeropsApiClient {
       );
     }
 
+    this.#refreshClearOnFailure = clearOnFailure;
     this.#refreshPromise = (async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
@@ -745,14 +755,16 @@ export class ZeropsApiClient {
       });
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
-        if (error.kind === "expired-session" && clearOnFailure) await this.#setSession(null);
+        if (error.kind === "expired-session" && this.#refreshClearOnFailure) {
+          await this.#setSession(null);
+        }
         throw error;
       }
       // `/auth/refresh` answers with the session fields at the top level, not
       // wrapped in `auth` the way `/auth/login` does.
       const session = (await response.json()) as ZeropsSession;
       if (!isUsableZeropsSession(session)) {
-        if (clearOnFailure) await this.#setSession(null);
+        if (this.#refreshClearOnFailure) await this.#setSession(null);
         throw new ZeropsApiError(
           "Zerops returned an invalid refreshed session.",
           "expired-session",
@@ -763,6 +775,7 @@ export class ZeropsApiClient {
       return session;
     })().finally(() => {
       this.#refreshPromise = null;
+      this.#refreshClearOnFailure = true;
     });
 
     return this.#refreshPromise;

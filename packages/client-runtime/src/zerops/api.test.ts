@@ -629,6 +629,58 @@ describe("ZeropsApiClient.fetchProjectProcesses", () => {
     expect(onSessionChange).not.toHaveBeenCalledWith(null);
     expect(client.session).not.toBeNull();
   });
+
+  /**
+   * The poller's own 401 must never sign the user out on its own — but if a
+   * user-initiated request happens to piggyback on the SAME in-flight
+   * refresh the poller started, that refresh failing is real evidence the
+   * session is dead, and the piggybacking caller's stricter preference must
+   * win: leaving the UI signed in over a session the platform has already
+   * rejected would be worse than the poller's own 401 ever was.
+   */
+  it("clears the session when a user-initiated call piggybacks on the poller's in-flight refresh and it fails", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    // Not awaited individually: both `#request` calls start before either
+    // resolves, so the second joins the first's in-flight `#refreshSession`
+    // instead of starting its own.
+    const pollerCall = client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
+    const userCall = client.fetchProject("project-1").catch((cause: unknown) => cause);
+    const [pollerResult, userResult] = await Promise.all([pollerCall, userCall]);
+
+    expect(pollerResult).toBeInstanceOf(ZeropsApiError);
+    expect(userResult).toBeInstanceOf(ZeropsApiError);
+    expect(onSessionChange).toHaveBeenCalledTimes(1);
+    expect(onSessionChange).toHaveBeenCalledWith(null);
+    expect(client.session).toBeNull();
+  });
+
+  it("leaves the session intact when every caller sharing the refresh opted out of clearing it", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const first = client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
+    const second = client.fetchProjectProcesses("project-2").catch((cause: unknown) => cause);
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toBeInstanceOf(ZeropsApiError);
+    expect(secondResult).toBeInstanceOf(ZeropsApiError);
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(client.session).toEqual(SESSION);
+  });
 });
 
 describe("ZeropsApiClient.adoptPersonalToken", () => {
