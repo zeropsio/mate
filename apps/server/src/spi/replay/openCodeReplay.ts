@@ -43,6 +43,10 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
 
 /** The fixed canned SSE body sequence this baseline replays through OpenCodeAdapter. */
 const CANNED_EVENTS: ReadonlyArray<unknown> = [
+  // The adapter's `startSession` waits on this to mark the event stream ready
+  // (`context.firstConnection`) before returning — without it, startup times
+  // out after 10 seconds even though the events below are still processed.
+  { type: "server.connected", properties: {} },
   {
     type: "message.updated",
     properties: {
@@ -99,6 +103,7 @@ const replayOpenCodeRuntime: OpenCodeRuntimeShape = {
   connectToOpenCodeServer: ({ serverUrl }) =>
     Effect.succeed({
       url: serverUrl ?? "http://127.0.0.1:9999",
+      version: "1.14.19",
       exitCode: null,
       external: Boolean(serverUrl),
     }),
@@ -118,6 +123,15 @@ const replayOpenCodeRuntime: OpenCodeRuntimeShape = {
         promptAsync: async () => {},
         messages: async () => ({ data: [] }),
         revert: async () => {},
+      },
+      // Startup runs pending-request recovery (permission.list/question.list)
+      // once the event stream connects; an empty backlog matches this
+      // baseline's clean session with nothing to recover.
+      permission: {
+        list: async () => ({ data: [] }),
+      },
+      question: {
+        list: async () => ({ data: [] }),
       },
       event: {
         subscribe: async () => ({
