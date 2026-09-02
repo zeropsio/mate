@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect, it, vi } from "@effect/vitest";
 
 import {
   DEFAULT_ZEROPS_API_BASE,
@@ -584,6 +584,50 @@ describe("ZeropsApiClient.fetchProjectProcesses", () => {
 
     expect(error).toBeInstanceOf(ZeropsApiError);
     expect((error as ZeropsApiError).kind).toBe("forbidden");
+  });
+
+  /**
+   * A background activity poll's own 401 is not evidence the account's
+   * session is gone — it must reject (so the poller can mark that project
+   * unavailable) without signing the whole UI out via `onSessionChange(null)`.
+   */
+  it("rejects on a 401 with a failed refresh, but never clears the held session", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(client.session).toEqual(SESSION);
+  });
+
+  it("rejects on a 401 that survives a successful-looking retry, without clearing the session", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(200, { accessToken: "access-2", refreshToken: "refresh-2" })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    // The refresh itself succeeded, so it is the one onSessionChange call this
+    // path is allowed: adopting the new session is never gated by the flag,
+    // only CLEARING a session on a failure is.
+    expect(onSessionChange).toHaveBeenCalledTimes(1);
+    expect(onSessionChange).not.toHaveBeenCalledWith(null);
+    expect(client.session).not.toBeNull();
   });
 });
 

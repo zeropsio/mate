@@ -327,6 +327,17 @@ export interface ZeropsApiClientOptions {
 interface RequestOptions {
   readonly authenticated?: boolean;
   readonly retryAfterRefresh?: boolean;
+  /**
+   * Whether a 401 that survives a refresh attempt (or a refresh that itself
+   * fails) signs the account out via `onSessionChange(null)`. Defaults to
+   * `true` for every ordinary call — an expired session should sign a person
+   * out of the UI they are looking at. `false` is for a background reader
+   * whose own 401 is not evidence the account's session is gone (a poll that
+   * only proves that ONE endpoint refused THIS request): it still surfaces the
+   * 401 as a thrown `ZeropsApiError`, it just never clears the held session
+   * out from under whatever else is using it.
+   */
+  readonly clearSessionOnUnauthorized?: boolean;
 }
 
 export interface ListProjectsOptions {
@@ -576,9 +587,18 @@ export class ZeropsApiClient {
    * raw document is returned as-is; the caller decodes it with
    * `zerops/activity/dto` `readProjectProcesses`, which degrades field-by-field
    * rather than throwing on a shape this client does not expect.
+   *
+   * `clearSessionOnUnauthorized: false` — this is a background poll behind an
+   * advisory overlay, not a user-initiated action: its own 401 says nothing
+   * about whether the account's session is still good elsewhere, so it must
+   * never sign the whole UI out from under someone reading something else. A
+   * 401 that survives the refresh attempt still rejects; the caller (the
+   * activity poller) maps that to "unavailable for this project".
    */
   async fetchProjectProcesses(projectId: string): Promise<unknown> {
-    return this.#request<unknown>(`/project/${projectId}/process`);
+    return this.#request<unknown>(`/project/${projectId}/process`, undefined, {
+      clearSessionOnUnauthorized: false,
+    });
   }
 
   /**
@@ -692,11 +712,20 @@ export class ZeropsApiClient {
     await this.#onSessionChange(session);
   }
 
-  async #refreshSession(): Promise<ZeropsSession> {
+  /**
+   * `clearOnFailure` governs only what happens when the refresh itself fails
+   * (no refresh token, the refresh call rejected, an unusable refreshed
+   * session) — a SUCCESSFUL refresh always adopts the new session regardless.
+   * Concurrent callers share one in-flight refresh either way; the first
+   * caller's `clearOnFailure` decides the outcome for everyone waiting on it,
+   * which is fine because a real (not "one caller opted out") refresh failure
+   * clears the session for the whole client no matter who asked first.
+   */
+  async #refreshSession(clearOnFailure = true): Promise<ZeropsSession> {
     if (this.#refreshPromise) return this.#refreshPromise;
     const current = this.#session;
     if (!current?.refreshToken) {
-      await this.#setSession(null);
+      if (clearOnFailure) await this.#setSession(null);
       throw new ZeropsApiError(
         "Your Zerops session has expired. Sign in again.",
         "expired-session",
@@ -716,14 +745,14 @@ export class ZeropsApiClient {
       });
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
-        if (error.kind === "expired-session") await this.#setSession(null);
+        if (error.kind === "expired-session" && clearOnFailure) await this.#setSession(null);
         throw error;
       }
       // `/auth/refresh` answers with the session fields at the top level, not
       // wrapped in `auth` the way `/auth/login` does.
       const session = (await response.json()) as ZeropsSession;
       if (!isUsableZeropsSession(session)) {
-        await this.#setSession(null);
+        if (clearOnFailure) await this.#setSession(null);
         throw new ZeropsApiError(
           "Zerops returned an invalid refreshed session.",
           "expired-session",
@@ -746,6 +775,7 @@ export class ZeropsApiClient {
   ): Promise<T> {
     const authenticated = options.authenticated ?? true;
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
+    const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
     const run = () => {
       const session = this.#session;
@@ -766,10 +796,10 @@ export class ZeropsApiClient {
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
         if (session?.refreshToken) {
-          await this.#refreshSession();
+          await this.#refreshSession(clearSessionOnUnauthorized);
           response = await run();
         }
-        if (response.status === 401) await this.#setSession(null);
+        if (response.status === 401 && clearSessionOnUnauthorized) await this.#setSession(null);
       }
     } catch (cause) {
       if (cause instanceof ZeropsApiError) throw cause;
