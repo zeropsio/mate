@@ -312,6 +312,51 @@ describe("projectActivityPayload — zerops results", () => {
   });
 
   /**
+   * Projection is idempotent for the card: a payload that was ALREADY projected
+   * (its `result` slimmed to the teaser, its `zerops` copy riding alongside)
+   * keeps that copy when projected again. The history path re-projects every
+   * stored row on read, and a row persisted in projected form — every
+   * non-terminal `item.updated`, and any terminal row an older server slimmed
+   * before storing — has nothing left to recompute the card from. Dropping the
+   * stored copy there is exactly the reopened-thread-without-cards bug.
+   */
+  it("keeps a stored zerops copy when the result can no longer be recomputed", () => {
+    const once = projectActivityPayload(
+      activity({
+        itemType: "mcp_tool_call",
+        data: {
+          toolName: "mcp__zerops__zerops_verify",
+          input: { hostname: "kanbandev" },
+          result: {
+            type: "tool_result",
+            tool_use_id: "toolu_01",
+            content: [{ type: "text", text: '{"status":"healthy"}' }],
+          },
+        },
+      }),
+    );
+    const twice = projectActivityPayload(once);
+
+    const data = (twice.payload as Record<string, unknown>).data as Record<string, unknown>;
+    const zerops = data.zerops as Record<string, unknown>;
+    expect(zerops.toolName).toBe("zerops_verify");
+    expect(zerops.resultText).toBe('{"status":"healthy"}');
+  });
+
+  it("does not resurrect a malformed stored zerops key", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "mcp_tool_call",
+        data: {
+          zerops: { toolName: 42 },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.zerops).toBeUndefined();
+  });
+
+  /**
    * `classifyToolItemType` tests `…delete…` before `…mcp…`, so this call is
    * typed `file_change` and takes the NON-mcp branch of the projection. The
    * hook therefore sits in `projectActivityPayload` itself, not in the mcp one.

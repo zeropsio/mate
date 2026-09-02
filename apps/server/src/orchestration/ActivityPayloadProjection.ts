@@ -5,13 +5,36 @@ import type {
 } from "@t3tools/contracts";
 
 import { sniffToolCallShape } from "../spi/toolCall.ts";
-import { projectZeropsToolCall } from "../zerops/zeropsActivityResult.ts";
+import {
+  projectZeropsToolCall,
+  type ZeropsActivityResult,
+} from "../zerops/zeropsActivityResult.ts";
 import { isZeropsToolName } from "../zerops/zeropsToolResult.ts";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+/**
+ * The `zerops` copy an already-projected payload carries, when it is one this
+ * server would have written: a bare tool name plus, optionally, the verbatim
+ * result text and the over-limit marker. Anything else is not a card.
+ */
+function readStoredZeropsResult(value: unknown): ZeropsActivityResult | undefined {
+  const stored = asRecord(value);
+  if (!stored || typeof stored.toolName !== "string" || stored.toolName.length === 0) {
+    return undefined;
+  }
+  if (stored.resultText !== undefined && typeof stored.resultText !== "string") {
+    return undefined;
+  }
+  return {
+    toolName: stored.toolName,
+    ...(stored.resultText === undefined ? {} : { resultText: stored.resultText }),
+    ...(stored.truncated === true ? { truncated: true } : {}),
+  };
 }
 
 function asTrimmedString(value: unknown): string | null {
@@ -371,11 +394,18 @@ export function projectActivityPayload(
    * it shape-sniffs instead — see `sniffToolCallShape`'s doc comment.
    */
   const sniffed = sniffToolCallShape(data);
-  const zerops = projectZeropsToolCall(
-    sniffed.kind === "toolCall" && isZeropsToolName(sniffed.call.rawName)
-      ? sniffed.call
-      : undefined,
-  );
+  const zerops =
+    projectZeropsToolCall(
+      sniffed.kind === "toolCall" && isZeropsToolName(sniffed.call.rawName)
+        ? sniffed.call
+        : undefined,
+    ) ??
+    // Idempotence: a payload that was already projected has its `result`
+    // slimmed to the teaser and its card text in `zerops`. The history path
+    // re-projects every stored row on read, so a row persisted in projected
+    // form must keep the copy it carries — there is nothing left to recompute
+    // it from.
+    readStoredZeropsResult(data.zerops);
 
   if (payload.itemType === "mcp_tool_call") {
     return {
