@@ -7,6 +7,46 @@
     "threadId": "spi-replay-grok-thread",
     "payload": {
       "resume": {
+        "_meta": {
+          "modelState": {
+            "currentModelId": "grok-4.6",
+            "availableModels": [
+              {
+                "modelId": "grok-4.6",
+                "name": "Grok 4.6",
+                "_meta": {
+                  "totalContextTokens": 500000,
+                  "supportsReasoningEffort": true,
+                  "reasoningEffort": "high",
+                  "reasoningEfforts": [
+                    {
+                      "id": "xhigh",
+                      "value": "xhigh",
+                      "label": "Extra High Effort",
+                      "default": false
+                    },
+                    {
+                      "id": "high",
+                      "value": "high",
+                      "label": "High Effort",
+                      "default": true
+                    },
+                    {
+                      "id": "low",
+                      "value": "low",
+                      "label": "Low Effort",
+                      "default": false
+                    }
+                  ]
+                }
+              },
+              {
+                "modelId": "grok-mock-alt",
+                "name": "Grok Mock Alt"
+              }
+            ]
+          }
+        },
         "agentCapabilities": {
           "loadSession": true
         },
