@@ -63,7 +63,7 @@ export class NoRunningServerError extends Schema.TaggedErrorClass<NoRunningServe
     return [
       "No running Zerops Code server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start the standalone server with `z3 serve` from an installed zeropsio/z3 release tarball.",
+      "Start the standalone server with `z3 serve` from an installed zeropsio/mate release tarball.",
     ].join("\n");
   }
 }

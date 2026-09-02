@@ -79,7 +79,7 @@ export function resolveServerConfigVersionMismatch(
 
 /** One sentence naming the two release paths that can resolve version skew. */
 export function serverUpdateGuidance(serverLabel: string): string {
-  return `On Zerops, the ${serverLabel} follows the release pinned by zcp. For a standalone server, install the matching zeropsio/z3 release tarball.`;
+  return `On Zerops, the ${serverLabel} follows the release pinned by zcp. For a standalone server, install the matching zeropsio/mate release tarball.`;
 }
 
 export function buildVersionMismatchDismissalKey(

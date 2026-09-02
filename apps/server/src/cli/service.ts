@@ -60,7 +60,7 @@ export function formatServiceStatus(
     ...(status.current
       ? []
       : [
-          "  Next: Install the matching zeropsio/z3 release tarball, then run its `z3 service update`.",
+          "  Next: Install the matching zeropsio/mate release tarball, then run its `z3 service update`.",
         ]),
   ].join("\n");
 }
@@ -97,7 +97,7 @@ const serviceInstallCommand = Command.make("install", projectLocationFlags).pipe
 
 const serviceUpdateCommand = Command.make("update", projectLocationFlags).pipe(
   Command.withDescription(
-    "Update or repair the background service using this installed release. Install a newer zeropsio/z3 release tarball first when changing versions.",
+    "Update or repair the background service using this installed release. Install a newer zeropsio/mate release tarball first when changing versions.",
   ),
   Command.withHandler((flags) =>
     runServiceCommand(

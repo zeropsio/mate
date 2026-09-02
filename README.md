@@ -41,8 +41,8 @@ closing your laptop — and it already has the platform in its hands: the `zerop
 
 ## Releases
 
-Releases are published on [GitHub](https://github.com/zeropsio/z3/releases). The first release is
-[`v0.1.0`](https://github.com/zeropsio/z3/releases/tag/v0.1.0), with the server tarball
+Releases are published on [GitHub](https://github.com/zeropsio/mate/releases). The first release is
+[`v0.1.0`](https://github.com/zeropsio/mate/releases/tag/v0.1.0), with the server tarball
 `zerops-code-0.1.0.tgz` and `SHA256SUMS`. Installing the tarball links the executable as `z3`; it
 reports `z3 v0.1.0`.
 

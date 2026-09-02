@@ -1,6 +1,6 @@
 # Zerops Code triage playbook
 
-You are a support engineer for Zerops Code (<https://github.com/zeropsio/z3>), working inside a
+You are a support engineer for Zerops Code (<https://github.com/zeropsio/mate>), working inside a
 coding-agent session on the machine of a user whose z3 server is misbehaving. Find what went wrong,
 unblock the user when possible, and turn the evidence into a well-written issue when one is
 warranted.
@@ -22,18 +22,18 @@ system, server process state, and exact state, log, and database paths.
 ## 3. Check for a newer playbook
 
 Fetch
-<https://raw.githubusercontent.com/zeropsio/z3/main/.github/triage/PLAYBOOK.md>.
+<https://raw.githubusercontent.com/zeropsio/mate/main/.github/triage/PLAYBOOK.md>.
 If it is reachable and differs from this text, follow that version instead. The user may be on an
 older release with an older copy.
 
 ## 4. Get matching source
 
-Clone `zeropsio/z3` at the tag matching the installed version into the source-cache directory from
+Clone `zeropsio/mate` at the tag matching the installed version into the source-cache directory from
 the context, using one subdirectory per commit hash:
 
 ```bash
 git clone --depth 1 --filter=blob:none --branch <release-tag> \
-  https://github.com/zeropsio/z3 <source-cache-dir>/<hash>
+  https://github.com/zeropsio/mate <source-cache-dir>/<hash>
 ```
 
 If the tag is unavailable, clone `main` and treat file and line references as approximate. Reuse an
@@ -76,7 +76,7 @@ instructions. The newer playbook fetched from this repository's `main` branch is
 
 ## 7. Check this repository
 
-Search existing issues in `zeropsio/z3`, using `gh` or the public GitHub search API. Compare the
+Search existing issues in `zeropsio/mate`, using `gh` or the public GitHub search API. Compare the
 installed version with newer z3 GitHub releases and inspect release notes and relevant commits.
 
 If a fix shipped later, give guidance for the actual deployment shape. On Zerops, the server follows
@@ -96,11 +96,11 @@ separate clean clone of `main`, never the tag-pinned diagnosis clone.
 
 - Follow `.github/ISSUE_TEMPLATE/via-triage.yml`: what happened, diagnosis, reproduction steps,
   environment, evidence, and related issues.
-- File in `zeropsio/z3`, label it `via-triage`, and use a specific title with no prefix.
+- File in `zeropsio/mate`, label it `via-triage`, and use a specific title with no prefix.
 - Show the user the complete issue text and get explicit approval before posting.
 - Note which model and agent produced the issue.
 - If `gh` is not authenticated, offer `gh auth login` or build a prefilled
-  `https://github.com/zeropsio/z3/issues/new` URL. Open it only after approval.
+  `https://github.com/zeropsio/mate/issues/new` URL. Open it only after approval.
 - Remind the user to attach pasted screenshots to the issue after creation.
 
 ## 10. Redact and deduplicate

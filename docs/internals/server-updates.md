@@ -15,7 +15,7 @@ offer an in-app update action.
 ## Standalone Servers
 
 A standalone operator downloads `zerops-code-<version>.tgz` and `SHA256SUMS` from a
-[`zeropsio/z3` GitHub release](https://github.com/zeropsio/z3/releases), verifies the archive, and
+[`zeropsio/mate` GitHub release](https://github.com/zeropsio/mate/releases), verifies the archive, and
 installs that local tarball. See [the install guide](../user/install.md) for the commands.
 
 `z3 service install` and `z3 service update` register the already installed server entry point with

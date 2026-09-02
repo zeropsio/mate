@@ -25,7 +25,7 @@ it("reports the installed service version and host paths", () => {
 it("gives a direct repair command for a stale service", () => {
   assert.include(
     formatServiceStatus({ ...status, current: false }, "0.0.29"),
-    "Next: Install the matching zeropsio/z3 release tarball, then run its `z3 service update`.",
+    "Next: Install the matching zeropsio/mate release tarball, then run its `z3 service update`.",
   );
 });
 

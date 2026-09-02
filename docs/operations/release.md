@@ -3,7 +3,7 @@
 > For maintainers. Using Zerops Code? See [docs/user](../user/).
 
 Zerops Code releases are GitHub releases in
-[`zeropsio/z3`](https://github.com/zeropsio/z3/releases). The release is an npm-compatible tarball
+[`zeropsio/mate`](https://github.com/zeropsio/mate/releases). The release is an npm-compatible tarball
 only because that gives zcp and standalone operators a standard local installation format. There
 is no npm publication step: nothing is published under the `zerops-code` name. The running server
 also has no in-app update path.

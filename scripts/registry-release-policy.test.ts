@@ -55,7 +55,7 @@ describe("registry-free server releases", () => {
 
   it("documents the GitHub release and zcp pin path without registry instructions", () => {
     const install = read("docs/user/install.md");
-    expect(install).toContain("https://github.com/zeropsio/z3/releases/latest");
+    expect(install).toContain("https://github.com/zeropsio/mate/releases/latest");
     expect(install).toContain("zerops-code-<version>.tgz");
     expect(install).toContain("zerops-code-0.1.0.tgz");
 

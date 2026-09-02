@@ -69,7 +69,7 @@ it("context file carries every path the playbook depends on", () => {
   assert.include(context, "/home/u/.t3/userdata/secrets");
   assert.include(context, "/home/u/.t3/source");
   assert.include(context, "./node_modules/.bin/z3 triage");
-  assert.include(context, "https://github.com/zeropsio/z3");
+  assert.include(context, "https://github.com/zeropsio/mate");
   assert.notInclude(context, "pingdotgg/t3code");
   assert.include(context, "v0.0.33");
 });

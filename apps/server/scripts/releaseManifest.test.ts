@@ -9,7 +9,7 @@ import {
 } from "./releaseManifest.ts";
 
 const sourceManifest = {
-  repository: { type: "git", url: "https://github.com/zeropsio/z3", directory: "apps/server" },
+  repository: { type: "git", url: "https://github.com/zeropsio/mate", directory: "apps/server" },
   bin: { z3: "./dist/bin.mjs" },
   type: "module",
   version: "0.0.0-workspace",

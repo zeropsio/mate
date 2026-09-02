@@ -16,7 +16,7 @@ services:
   - hostname: relay
     type: ubuntu/nodejs@22
     mode: NON_HA
-    buildFromGit: https://github.com/zeropsio/z3
+    buildFromGit: https://github.com/zeropsio/mate
     enableSubdomainAccess: true
     verticalAutoscaling:
       minRam: 0.5

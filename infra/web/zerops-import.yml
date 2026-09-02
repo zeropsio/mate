@@ -23,6 +23,6 @@ services:
     enableSubdomainAccess: true
     # Public repository, plain URL: a trailing `.git` fails clone-preflight
     # in ~0.3s with no build log. Clones the default branch (`main`).
-    buildFromGit: https://github.com/zeropsio/z3
+    buildFromGit: https://github.com/zeropsio/mate
     verticalAutoscaling:
       minRam: 0.25

@@ -15,7 +15,7 @@ client and server together.
 ## Standalone Server
 
 For a server you installed yourself, download the newer `zerops-code-<version>.tgz` and
-`SHA256SUMS` from [zeropsio/z3 releases](https://github.com/zeropsio/z3/releases), then verify the
+`SHA256SUMS` from [zeropsio/mate releases](https://github.com/zeropsio/mate/releases), then verify the
 tarball against `SHA256SUMS`.
 
 Let active agent work and terminal commands finish, stop the standalone server, and install the

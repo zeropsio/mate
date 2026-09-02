@@ -148,7 +148,7 @@ describe("versionSkew", () => {
 
   it("names the real update owner for Zerops and standalone servers", () => {
     expect(serverUpdateGuidance("Remote server")).toBe(
-      "On Zerops, the Remote server follows the release pinned by zcp. For a standalone server, install the matching zeropsio/z3 release tarball.",
+      "On Zerops, the Remote server follows the release pinned by zcp. For a standalone server, install the matching zeropsio/mate release tarball.",
     );
   });
 });
