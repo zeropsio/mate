@@ -396,6 +396,7 @@ const runBootstrap = (input: {
             command as unknown as Record<string, unknown>,
           ]).pipe(Effect.as({ sequence: 1 })),
         streamDomainEvents: Stream.empty,
+        subscribeDomainEvents: Effect.succeed(Stream.empty),
         latestSequence: Effect.succeed(0),
       } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
       Effect.provideService(ProviderRegistry.ProviderRegistry, {
