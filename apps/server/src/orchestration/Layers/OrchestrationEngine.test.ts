@@ -113,6 +113,7 @@ describe("OrchestrationEngine", () => {
             detail: "historical replay should not be used during bootstrap",
           }),
         ),
+      hasEventAfter: () => Effect.succeed(false),
     };
 
     const projectionSnapshot = {
@@ -199,6 +200,7 @@ describe("OrchestrationEngine", () => {
           getSnapshotSequence: () =>
             Effect.succeed({ snapshotSequence: projectionSnapshot.snapshotSequence }),
           getCounts: () => Effect.succeed({ projectCount: 1, threadCount: 1 }),
+          getEventReplayStats: () => Effect.die("unused"),
           getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
           getProjectShellById: () => Effect.succeed(Option.none()),
           getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
@@ -214,6 +216,7 @@ describe("OrchestrationEngine", () => {
         Layer.succeed(OrchestrationProjectionPipeline, {
           bootstrap: Effect.void,
           projectEvent: () => Effect.void,
+          projectEventDeferred: () => Effect.succeed(Effect.void),
         } satisfies OrchestrationProjectionPipelineShape),
       ),
       Layer.provide(Layer.succeed(OrchestrationEventStore, eventStore)),
@@ -812,6 +815,7 @@ describe("OrchestrationEngine", () => {
       readAll() {
         return Stream.fromIterable(events);
       },
+      hasEventAfter: () => Effect.succeed(false),
     };
 
     const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
@@ -907,7 +911,8 @@ describe("OrchestrationEngine", () => {
     let shouldFailRequestedProjection = true;
     const flakyProjectionPipeline: OrchestrationProjectionPipelineShape = {
       bootstrap: Effect.void,
-      projectEvent: (event) => {
+      projectEvent: () => Effect.void,
+      projectEventDeferred: (event) => {
         if (
           shouldFailRequestedProjection &&
           event.commandId === CommandId.make("cmd-turn-start-atomic") &&
@@ -921,7 +926,7 @@ describe("OrchestrationEngine", () => {
             }),
           );
         }
-        return Effect.void;
+        return Effect.succeed(Effect.void);
       },
     };
 
@@ -1048,12 +1053,14 @@ describe("OrchestrationEngine", () => {
       readAll() {
         return Stream.fromIterable(events);
       },
+      hasEventAfter: () => Effect.succeed(false),
     };
 
     let shouldFailProjection = true;
     const flakyProjectionPipeline: OrchestrationProjectionPipelineShape = {
       bootstrap: Effect.void,
-      projectEvent: (event) => {
+      projectEvent: () => Effect.void,
+      projectEventDeferred: (event) => {
         if (
           shouldFailProjection &&
           event.commandId === CommandId.make("cmd-thread-archive-sync-fail")
@@ -1066,7 +1073,7 @@ describe("OrchestrationEngine", () => {
             }),
           );
         }
-        return Effect.void;
+        return Effect.succeed(Effect.void);
       },
     };
 

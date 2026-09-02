@@ -1144,11 +1144,11 @@
     "turnId": "turn-0",
     "payload": {
       "usage": {
-        "usedTokens": 21704,
-        "lastUsedTokens": 21704,
+        "usedTokens": 21702,
+        "lastUsedTokens": 21702,
         "totalProcessedTokens": 43338,
         "inputTokens": 21701,
-        "outputTokens": 3,
+        "outputTokens": 1,
         "maxTokens": 1000000
       }
     },

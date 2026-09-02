@@ -24,6 +24,8 @@ import {
 import { createModelSelection } from "@t3tools/shared/model";
 import { it, assert, describe, vi } from "@effect/vitest";
 
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -282,7 +284,11 @@ const hasMetricSnapshot = (
       Object.entries(attributes).every(([key, value]) => snapshot.attributes?.[key] === value),
   );
 
-function makeProviderServiceLayer() {
+function makeProviderServiceLayer(
+  input: {
+    readonly directory?: ProviderSessionDirectory.ProviderSessionDirectory["Service"];
+  } = {},
+) {
   const codex = makeFakeCodexAdapter();
   const claude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
   const cursor = makeFakeCodexAdapter(CURSOR_DRIVER);
@@ -299,7 +305,10 @@ function makeProviderServiceLayer() {
   const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
   );
-  const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+  const directoryLayer =
+    input.directory === undefined
+      ? ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer))
+      : Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, input.directory);
 
   const layer = it.layer(
     Layer.mergeAll(
@@ -1531,6 +1540,67 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("does not persist running after a concurrent send is interrupted", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const sendStarted = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      routing.codex.sendTurn.mockImplementationOnce(() =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(sendStarted, undefined);
+          yield* Deferred.await(interrupted);
+          return yield* Effect.interrupt;
+        }),
+      );
+      routing.codex.interruptTurn.mockImplementationOnce(() =>
+        Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+      );
+
+      const threadId = asThreadId("thread-interrupted-send-directory");
+      const session = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const sendExitFiber = yield* provider
+        .sendTurn({
+          threadId: session.threadId,
+          input: "hold this prompt",
+          attachments: [],
+        })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* Deferred.await(sendStarted);
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      const sendExit = yield* Fiber.join(sendExitFiber);
+
+      assert.equal(Exit.isFailure(sendExit), true);
+      if (Exit.isFailure(sendExit)) {
+        assert.equal(Cause.hasInterruptsOnly(sendExit.cause), true);
+      }
+      const persisted = yield* runtimeRepository.getByThreadId({
+        threadId: session.threadId,
+      });
+      assert.equal(Option.isSome(persisted), true);
+      if (Option.isSome(persisted)) {
+        // The directory folds both adapter "ready" and "running" into its
+        // runtime "running" state. The payload proves sendTurn did not upsert.
+        assert.equal(persisted.value.status, "running");
+        const payload = persisted.value.runtimePayload;
+        assert.equal(payload !== null && typeof payload === "object", true);
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          const runtimePayload = payload as {
+            activeTurnId?: string | null;
+            lastRuntimeEvent?: string | null;
+          };
+          assert.equal(runtimePayload.activeTurnId ?? null, null);
+          assert.notEqual(runtimePayload.lastRuntimeEvent, "provider.sendTurn");
+        }
+      }
+    }),
+  );
+
   it.effect("reuses persisted resume cursor when startSession is called after a restart", () =>
     Effect.gen(function* () {
       const tempDir = NodeFS.mkdtempSync(
@@ -2141,6 +2211,53 @@ validation.layer("ProviderServiceLive validation", (it) => {
       if (Option.isSome(runtime)) {
         assert.equal(runtime.value.threadId, session.threadId);
       }
+    }),
+  );
+});
+
+const activeSessionThreadId = asThreadId("thread-active-session");
+const historicalSessionThreadId = asThreadId("thread-historical-session");
+const listThreadIds = vi.fn(() =>
+  Effect.succeed([activeSessionThreadId, historicalSessionThreadId]),
+);
+const getBinding = vi.fn((threadId: ThreadId) =>
+  Effect.succeed(
+    Option.some({
+      threadId,
+      provider: CODEX_DRIVER,
+      providerInstanceId: codexInstanceId,
+    }),
+  ),
+);
+const boundedListing = makeProviderServiceLayer({
+  directory: {
+    upsert: () => Effect.void,
+    getProvider: () => Effect.die("ProviderService.listSessions does not use getProvider"),
+    getBinding,
+    listThreadIds,
+    listBindings: () => Effect.die("ProviderService.listSessions does not use listBindings"),
+  },
+});
+
+boundedListing.layer("ProviderServiceLive session listing", (it) => {
+  it.effect("looks up bindings for active sessions without scanning historical threads", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* boundedListing.codex.startSession({
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId: activeSessionThreadId,
+        cwd: "/tmp/project-active-session",
+        runtimeMode: "full-access",
+      });
+      listThreadIds.mockClear();
+      getBinding.mockClear();
+
+      const sessions = yield* provider.listSessions();
+
+      assert.equal(sessions.length, 1);
+      assert.equal(listThreadIds.mock.calls.length, 0);
+      assert.deepEqual(getBinding.mock.calls, [[activeSessionThreadId]]);
     }),
   );
 });
