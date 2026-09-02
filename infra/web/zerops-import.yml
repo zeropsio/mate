@@ -12,13 +12,19 @@
 #   zcli project service-import infra/web/zerops-import.yml --project-id <id>
 #
 # The build spec lives in the repository root `zerops.yml` under
-# `setup: z3web`, NOT here: `buildFromGit` clones the repository and reads
+# `setup: prod`, NOT here: `buildFromGit` clones the repository and reads
 # that file from the clone's root. An inline `zeropsYaml` in this document
 # does not substitute for it — the build ends "zerops.yml file not found at
 # the root of your project". So the root file has to be on the branch this
 # clones (`main`) before the import can build.
+#
+# The hostname IS the setup selector: with no explicit `zeropsSetup`, Zerops
+# looks for a setup named after the service hostname, and a miss fails the
+# build before it starts ("The setup was not found"). So this service is
+# `prod`, matching the root file's only setup — rename one and you rename
+# both, or add `zeropsSetup:` here.
 services:
-  - hostname: z3web
+  - hostname: prod
     type: alpine/static@1.0
     enableSubdomainAccess: true
     # Public repository, plain URL: a trailing `.git` fails clone-preflight
