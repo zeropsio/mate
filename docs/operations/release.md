@@ -15,9 +15,9 @@ also has no in-app update path.
 2. Push a `v<version>` tag whose version exactly matches that package version.
 3. [`.github/workflows/release.yml`](../../.github/workflows/release.yml) builds the hosted web
    client with `VITE_BASE_PATH=/z3`, builds the server, and packs `zerops-code-<version>.tgz`.
-4. The workflow installs that tarball into a scratch npm project and runs the installed
-   `./node_modules/.bin/z3 --version` binary. A tarball that cannot be installed and executed never
-   reaches a release.
+4. The workflow installs that tarball into a scratch npm project, runs the installed
+   `./node_modules/.bin/z3 --version` binary, and loads the native addons. A tarball that cannot be
+   installed and executed never reaches a release.
 5. The workflow writes `SHA256SUMS`, transfers both verified assets to its release job, checks the
    checksum again, and creates the GitHub release for that tag.
 6. A zcp release may then pin the z3 version and digest together in `internal/z3/z3.go`. In a Zerops
@@ -28,6 +28,23 @@ and the digest used to verify it disagree.
 
 `workflow_dispatch` rehearses the build and verification with an explicit version but deliberately
 does not create a GitHub release.
+
+## What the Release Manifest Declares
+
+The bundler inlines the server's JavaScript dependencies into `dist/`, so the manifest inside the
+tarball declares only the packages the emitted bundle still resolves from the real filesystem: the
+native addons and their dlopen wrappers (`node-pty`, `msgpackr-extract`, `@ff-labs/fff-node`, via
+`CLI_RUNTIME_EXTERNAL_PREFIXES`). `buildReleaseManifest` in
+[`apps/server/scripts/releaseManifest.ts`](../../apps/server/scripts/releaseManifest.ts) applies
+that prune; declaring the inlined packages too made the container download a second, unused copy of
+every one of them — 159 packages and 500 MB installed on 0.1.7, against 7 packages and 158 MB.
+
+The manifest carries no `overrides`: npm honours that field only in the root project, never in an
+installed dependency, so the block 0.1.7 shipped had no effect on what was installed.
+
+Because the manifest is derived from the bundler's external list, `pack` reads the chunks it just
+built and fails when one statically imports a package the manifest does not declare. That check is
+what keeps the prune honest if the bundler stops inlining something.
 
 ## Local Packaging Check
 
