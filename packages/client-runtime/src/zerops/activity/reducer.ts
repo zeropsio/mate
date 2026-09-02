@@ -60,7 +60,7 @@ export interface ActivityReducerInput {
   /** The tool call's own result has landed (`zeropsResult.resultText` decoded). */
   readonly hasResult: boolean;
   /** The decoded result's `status` field, when `hasResult`. */
-  readonly resultStatus?: string;
+  readonly resultStatus?: string | undefined;
   /** False when there is no session, no resolvable hostname, or no topology — §5's `idle` guard. */
   readonly attributable: boolean;
   /** Server-stamped start time of the tool call, epoch ms. */
@@ -68,7 +68,7 @@ export interface ActivityReducerInput {
   /** §6 per-call ceiling: 30 minutes since `toolStartedAtMs`. */
   readonly ceilingExceeded: boolean;
   /** Set when the poller itself reports the feed is off for this call/project (401/403/404/mismatch). */
-  readonly unavailableReason?: string;
+  readonly unavailableReason?: string | undefined;
   /** The last successful attribution read, if any has ever landed. */
   readonly lastObservation?: ActivityObservationRecord | undefined;
 }

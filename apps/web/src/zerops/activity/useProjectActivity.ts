@@ -29,16 +29,25 @@ const EMPTY_SNAPSHOT: ProjectActivitySnapshot = { processes: undefined, atMs: un
  * snapshot (undefined `processes` until the first successful read) and starts
  * polling on mount, stopping when the last subscriber for that project unmounts.
  *
- * `projectId === null` renders nothing and subscribes to nothing — the caller
- * uses this when there is no Zerops session or no resolvable project yet.
+ * `projectId === null` or `client === null` renders nothing and subscribes to
+ * nothing — the caller uses this when there is no Zerops session or no
+ * resolvable project yet.
  */
 export function useProjectActivity(
   projectId: string | null,
-  client: ZeropsApiClient,
+  client: ZeropsApiClient | null,
 ): ProjectActivitySnapshot {
+  const active = projectId !== null && client !== null ? { projectId, client } : null;
   return useSyncExternalStore(
     (listener) =>
-      projectId === null ? () => undefined : pollerFor(projectId, client).subscribe(listener),
-    () => (projectId === null ? EMPTY_SNAPSHOT : pollerFor(projectId, client).getSnapshot()),
+      active === null
+        ? () => undefined
+        : pollerFor(active.projectId, active.client).subscribe(listener),
+    () =>
+      active === null ? EMPTY_SNAPSHOT : pollerFor(active.projectId, active.client).getSnapshot(),
+    // Server-rendered (e.g. `renderToStaticMarkup` in tests): there is no poll
+    // yet, so the overlay starts as "no observation", identical to the client's
+    // first render before any poll has landed.
+    () => EMPTY_SNAPSHOT,
   );
 }

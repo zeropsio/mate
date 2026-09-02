@@ -137,7 +137,19 @@ function CheckInfo({ checks }: { readonly checks: ReadonlyArray<ZeropsCheckLine>
   );
 }
 
-export function ZeropsToolCard({ payload }: { readonly payload: ZeropsCardPayload }) {
+export function ZeropsToolCard({
+  payload,
+  activityOverlay,
+}: {
+  readonly payload: ZeropsCardPayload;
+  /**
+   * The §4 BUILD_TRIGGERED continuation — a platform-activity overlay shown
+   * below this card's own verdict while the async build/deploy is still
+   * unsettled. Every other card kind and status ignores this prop entirely;
+   * passing nothing keeps this component byte-identical to before it existed.
+   */
+  readonly activityOverlay?: React.ReactNode;
+}) {
   switch (payload.kind) {
     case "plan": {
       const steps = payload.steps.map((step, index) => ({
@@ -335,6 +347,7 @@ export function ZeropsToolCard({ payload }: { readonly payload: ZeropsCardPayloa
               <UrlChip url={payload.subdomainUrl} />
             </div>
           )}
+          {buildTriggered ? activityOverlay : null}
         </CardShell>
       );
     }

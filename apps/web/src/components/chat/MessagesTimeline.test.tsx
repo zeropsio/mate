@@ -1324,6 +1324,48 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("data-zerops-card");
   });
 
+  it("renders a pending zerops_deploy call byte-identical to a plain in-progress tool row when there is no Zerops session", () => {
+    const turnId = TurnId.make("turn-deploy-pending");
+    const buildEntry = (overrides: Record<string, unknown>) => (
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "deploy-pending-entry",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "deploy-pending-work",
+              createdAt: MESSAGE_CREATED_AT,
+              turnId,
+              label: "Deploy kanbandev",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "inProgress",
+              ...overrides,
+            },
+          },
+        ]}
+      />
+    );
+
+    // Without a `zeropsResult` at all — today's ordinary pending MCP row.
+    const plainMarkup = renderToStaticMarkup(buildEntry({}));
+    // With a decodable zerops_deploy call, but rendered with no
+    // `ZeropsSessionProvider` in the tree (as every other test in this file
+    // is): the overlay hook resolves to `idle` and must fall back to the
+    // exact same row.
+    const deployMarkup = renderToStaticMarkup(
+      buildEntry({
+        zeropsResult: { toolName: "zerops_deploy" },
+        toolData: { input: { targetService: "kanbandev" } },
+      }),
+    );
+
+    expect(deployMarkup).toBe(plainMarkup);
+    expect(deployMarkup).not.toContain("data-zerops-card");
+  });
+
   it("keeps undecodable, absent and oversize results in the ordinary generic tool block", () => {
     const cases = [
       {

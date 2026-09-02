@@ -320,3 +320,13 @@ export function useZeropsSession(): ZeropsSessionValue {
   }
   return value;
 }
+
+/**
+ * `useZeropsSession`, without the throw. For a component that renders in
+ * contexts outside `AppRoot`'s provider tree (a render test in isolation) and
+ * has to treat "no session available" as its own `idle`/off state rather than
+ * crash — e.g. the platform-activity overlay's `useDeployActivityState`.
+ */
+export function useZeropsSessionOptional(): ZeropsSessionValue | null {
+  return useContext(ZeropsSessionContext);
+}

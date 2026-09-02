@@ -118,8 +118,15 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { ZeropsToolCard } from "../zerops/ZeropsToolCard";
+import {
+  DeployPlatformOverlayBody,
+  ZeropsDeployPendingCard,
+} from "../zerops/ZeropsDeployActivityCard";
 import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
 import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
+import { RESULT_STATUSES_WITH_PLATFORM_CONTINUATION } from "@t3tools/client-runtime/zerops/activity/reducer";
+import { readPendingDeployCall } from "../../zerops/activity/pendingDeployCall";
+import { useDeployActivityState } from "../../zerops/activity/useDeployActivityState";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -2588,10 +2595,8 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   isExpandedToolGroupEntry: boolean;
 }) {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry } = props;
-  // Before any hooks: spawn CTA rows render their own component.
-  if (workEntry.agentSpawn) {
-    return <AgentSpawnCtaRow workEntry={workEntry} />;
-  }
+  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
+
   // A zerops_* result this build can read renders as a card. Everything that
   // cannot be read — a tool with no card, a payload from a newer zcp, a result
   // the server dropped as oversized — falls through to the row below, which is
@@ -2601,9 +2606,57 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       failed: workEntry.toolLifecycleStatus === "failed",
     }),
   );
-  if (zeropsCard !== undefined) {
-    return <ZeropsToolCard payload={zeropsCard} />;
+
+  // The platform-activity overlay (`../../../../zcp/plans/mate-live-activity-2026-09-02.md`)
+  // is gated on: this is a `zerops_deploy` call, its target hostname is
+  // decodable, and it is either still pending or resolved with the one
+  // allowlisted BUILD_TRIGGERED continuation (§4). A row that qualifies for
+  // neither never subscribes — `useDeployActivityState` no-ops on `null`.
+  const isDeployTool = workEntry.zeropsResult?.toolName === "zerops_deploy";
+  const deployCall = isDeployTool
+    ? readPendingDeployCall({ toolData: workEntry.toolData, createdAt: workEntry.createdAt })
+    : undefined;
+  const isPendingDeploy = isDeployTool && workEntry.toolLifecycleStatus === "inProgress";
+  const buildTriggeredResult =
+    zeropsCard !== undefined &&
+    zeropsCard.kind === "deploy" &&
+    RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(zeropsCard.status);
+  const wantsActivity = deployCall !== undefined && (isPendingDeploy || buildTriggeredResult);
+
+  const activityState = useDeployActivityState({
+    environmentId: wantsActivity ? activeThreadEnvironmentId : null,
+    toolData: workEntry.toolData,
+    createdAt: workEntry.createdAt,
+    hasResult: workEntry.zeropsResult?.resultText !== undefined,
+    resultStatus:
+      zeropsCard !== undefined && zeropsCard.kind === "deploy" ? zeropsCard.status : undefined,
+  });
+
+  // Spawn CTA rows render their own component, after every hook above has run
+  // unconditionally.
+  if (workEntry.agentSpawn) {
+    return <AgentSpawnCtaRow workEntry={workEntry} />;
   }
+
+  if (zeropsCard !== undefined) {
+    const overlay =
+      buildTriggeredResult && deployCall !== undefined ? (
+        <DeployPlatformOverlayBody hostname={deployCall.targetService} state={activityState} />
+      ) : undefined;
+    return <ZeropsToolCard payload={zeropsCard} activityOverlay={overlay} />;
+  }
+
+  // `idle`/`unavailable` render nothing here — the row below is byte-identical
+  // to the row that existed before this overlay did.
+  if (
+    isPendingDeploy &&
+    deployCall !== undefined &&
+    activityState.kind !== "idle" &&
+    activityState.kind !== "unavailable"
+  ) {
+    return <ZeropsDeployPendingCard hostname={deployCall.targetService} state={activityState} />;
+  }
+
   return (
     <PlainWorkEntryRow
       workEntry={workEntry}
