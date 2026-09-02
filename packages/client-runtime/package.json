@@ -151,6 +151,22 @@
       "types": "./src/zerops/index.ts",
       "default": "./src/zerops/index.ts"
     },
+    "./zerops/activity/attribution": {
+      "types": "./src/zerops/activity/attribution.ts",
+      "default": "./src/zerops/activity/attribution.ts"
+    },
+    "./zerops/activity/dto": {
+      "types": "./src/zerops/activity/dto.ts",
+      "default": "./src/zerops/activity/dto.ts"
+    },
+    "./zerops/activity/pipelineState": {
+      "types": "./src/zerops/activity/pipelineState.ts",
+      "default": "./src/zerops/activity/pipelineState.ts"
+    },
+    "./zerops/activity/reducer": {
+      "types": "./src/zerops/activity/reducer.ts",
+      "default": "./src/zerops/activity/reducer.ts"
+    },
     "./zerops/activityResult": {
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"

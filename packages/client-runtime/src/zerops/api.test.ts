@@ -560,6 +560,33 @@ describe("ZeropsApiClient project reads", () => {
   });
 });
 
+describe("ZeropsApiClient.fetchProjectProcesses", () => {
+  it("reads the project's process list through the direct read", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { list: [{ id: "proc-1" }] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const document = await client.fetchProjectProcesses("project-1");
+
+    expect(document).toEqual({ list: [{ id: "proc-1" }] });
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/project-1/process`,
+    );
+    expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
+  });
+
+  it("surfaces a forbidden project read as a typed ZeropsApiError", async () => {
+    const stub = recordingFetch(() => jsonResponse(403, { error: { code: "forbidden" } }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("forbidden");
+  });
+});
+
 describe("ZeropsApiClient.adoptPersonalToken", () => {
   // The hand-over from app.zerops.io delivers a personal access token, which is
   // already a bearer — there is nothing to exchange. What there is to do is

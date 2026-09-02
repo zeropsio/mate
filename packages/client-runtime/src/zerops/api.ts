@@ -571,6 +571,17 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /project/{id}/process` — the direct, lag-free process read the
+   * platform-activity overlay polls (zcp's `GetProjectProcessesDirect`). The
+   * raw document is returned as-is; the caller decodes it with
+   * `zerops/activity/dto` `readProjectProcesses`, which degrades field-by-field
+   * rather than throwing on a shape this client does not expect.
+   */
+  async fetchProjectProcesses(projectId: string): Promise<unknown> {
+    return this.#request<unknown>(`/project/${projectId}/process`);
+  }
+
+  /**
    * Creates a project and imports the platform's development-container recipe
    * into it — the "New project" path, and the same one an exhausted pool
    * takes.
