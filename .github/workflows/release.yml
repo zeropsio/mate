@@ -163,10 +163,12 @@ jobs:
 
   build_desktop:
     name: Build desktop (${{ matrix.platform }}/${{ matrix.arch }})
-    # Rehearsal dispatches only exercise the server tarball; packaging four
-    # installers on every manual run would make the rehearsal path as slow as
-    # a real release for no verification benefit.
-    if: github.event_name == 'push'
+    # Runs on a rehearsal dispatch too, deliberately. Three things in this job
+    # have never run in this repository's CI — setup-vp on Windows, the Linux
+    # icon step's ImageMagick, and the Rust build of native/resource-monitor —
+    # and a rehearsal that skipped them would rehearse only the half that
+    # already works. Publishing stays push-only, so a dispatch leaves the
+    # artifacts as workflow artifacts and touches no release.
     needs: build
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
