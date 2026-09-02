@@ -102,6 +102,7 @@ import {
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
 import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
+import { DesktopDownloadRow } from "./DesktopDownloadRow";
 import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
 import {
   NumberField,
@@ -2390,6 +2391,7 @@ export function GeneralSettingsPanel() {
             description="Current version of the application."
           />
         )}
+        <DesktopDownloadRow />
         <SettingsRow
           {...searchableSetting("diagnostics")}
           description={diagnosticsDescription}

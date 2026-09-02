@@ -1,5 +1,5 @@
 {
-  "contractsVersion": "0.1.0",
+  "contractsVersion": "0.2.1",
   "scenes": {
     "web:service-map-live": "1dad4cf5e912a4d80b2c2dc123bcb3915d1cc65790bac48bc702b32ed2ace5c2",
     "web:service-map-degraded": "ab44c45b4f67a12179153c5f6e647aa5c293516200648531bedc96df2609eacf",
