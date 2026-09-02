@@ -384,9 +384,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         iconTextSize: 12,
       });
       // Linux must register the renderer schemes so the generated .desktop
-      // entry advertises MimeType=x-scheme-handler/t3code; for OAuth deep links.
+      // entry advertises MimeType=x-scheme-handler/zerops-mate; for OAuth deep links.
       assert.deepStrictEqual((linux.linux as Record<string, unknown>).protocols, [
-        { name: "Zerops Mate", schemes: ["t3code", "t3code-dev"] },
+        { name: "Zerops Mate", schemes: ["zerops-mate", "zerops-mate-dev"] },
       ]);
       assert.notProperty(mac.mac as Record<string, unknown>, "sign");
       // The desktop no longer embeds a server, so every platform (including

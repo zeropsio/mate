@@ -34,7 +34,7 @@
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
 /** The custom schemes the packaged desktop renderer is served from. */
-const DESKTOP_SHELL_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+const DESKTOP_SHELL_ORIGINS = ["zerops-mate://app", "zerops-mate-dev://app"] as const;
 const ZEROPS_BROWSER_ORIGIN_SUFFIXES = [".zerops.app", ".zerops.dev", ".zerops.io"] as const;
 
 const parseOrigin = (origin: string): URL | undefined => {

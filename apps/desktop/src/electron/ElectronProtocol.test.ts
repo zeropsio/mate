@@ -52,18 +52,18 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code-dev",
+              scheme: "zerops-mate-dev",
               target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
             });
             assert.isDefined(handler);
 
             const response = yield* Effect.promise(() =>
               handler!(
-                new Request("t3code-dev://app/api/health?verbose=1", {
+                new Request("zerops-mate-dev://app/api/health?verbose=1", {
                   headers: {
                     accept: "application/json",
-                    origin: "t3code-dev://app",
-                    referer: "t3code-dev://app/",
+                    origin: "zerops-mate-dev://app",
+                    referer: "zerops-mate-dev://app/",
                     "sec-fetch-site": "same-origin",
                   },
                 }),
@@ -83,7 +83,7 @@ describe("ElectronProtocol", () => {
 
         assert.deepEqual(
           handleMock.mock.calls.map((call) => call[0]),
-          ["t3code-dev"],
+          ["zerops-mate-dev"],
         );
         assert.equal(netFetchMock.mock.calls[0]?.[0], "http://127.0.0.1:3773/api/health?verbose=1");
         const forwardedHeaders = new Headers(netFetchMock.mock.calls[0]?.[1]?.headers);
@@ -91,7 +91,7 @@ describe("ElectronProtocol", () => {
         assert.isNull(forwardedHeaders.get("origin"));
         assert.isNull(forwardedHeaders.get("referer"));
         assert.isNull(forwardedHeaders.get("sec-fetch-site"));
-        assert.deepEqual(unhandleMock.mock.calls, [["t3code-dev"]]);
+        assert.deepEqual(unhandleMock.mock.calls, [["zerops-mate-dev"]]);
       }).pipe(Effect.provide(testLayer)),
     );
 
@@ -109,10 +109,10 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code-dev",
+              scheme: "zerops-mate-dev",
               target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:5733/") },
             });
-            return yield* Effect.promise(() => handler!(new Request("t3code-dev://app/")));
+            return yield* Effect.promise(() => handler!(new Request("zerops-mate-dev://app/")));
           }),
         );
 
@@ -144,10 +144,10 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code",
+              scheme: "zerops-mate",
               target: { _tag: "static", bundleDir },
             });
-            return yield* Effect.promise(() => handler!(new Request("t3code://app/")));
+            return yield* Effect.promise(() => handler!(new Request("zerops-mate://app/")));
           }),
         );
 
@@ -173,10 +173,12 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code",
+              scheme: "zerops-mate",
               target: { _tag: "static", bundleDir },
             });
-            return yield* Effect.promise(() => handler!(new Request("t3code://app/assets/app.js")));
+            return yield* Effect.promise(() =>
+              handler!(new Request("zerops-mate://app/assets/app.js")),
+            );
           }),
         );
 
@@ -197,11 +199,11 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code",
+              scheme: "zerops-mate",
               target: { _tag: "static", bundleDir },
             });
             return yield* Effect.promise(() =>
-              handler!(new Request("t3code://app/some/client/route")),
+              handler!(new Request("zerops-mate://app/some/client/route")),
             );
           }),
         );
@@ -222,11 +224,11 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code",
+              scheme: "zerops-mate",
               target: { _tag: "static", bundleDir },
             });
             return yield* Effect.promise(() =>
-              handler!(new Request("t3code://app/..%2F..%2Fetc%2Fpasswd")),
+              handler!(new Request("zerops-mate://app/..%2F..%2Fetc%2Fpasswd")),
             );
           }),
         );
@@ -247,10 +249,10 @@ describe("ElectronProtocol", () => {
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "t3code",
+              scheme: "zerops-mate",
               target: { _tag: "static", bundleDir },
             });
-            return yield* Effect.promise(() => handler!(new Request("t3code://other/")));
+            return yield* Effect.promise(() => handler!(new Request("zerops-mate://other/")));
           }),
         );
 
@@ -269,15 +271,15 @@ describe("ElectronProtocol", () => {
       const protocol = yield* ElectronProtocol.ElectronProtocol;
       const error = yield* Effect.scoped(
         protocol.registerDesktopProtocol({
-          scheme: "t3code-dev",
+          scheme: "zerops-mate-dev",
           target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
         }),
       ).pipe(Effect.flip);
 
       assert.instanceOf(error, ElectronProtocol.ElectronProtocolRegistrationError);
-      assert.equal(error.scheme, "t3code-dev");
+      assert.equal(error.scheme, "zerops-mate-dev");
       assert.strictEqual(error.cause, cause);
-      assert.equal(error.message, 'Failed to register Electron protocol scheme "t3code-dev".');
+      assert.equal(error.message, 'Failed to register Electron protocol scheme "zerops-mate-dev".');
     }).pipe(Effect.provide(testLayer)),
   );
 
@@ -292,7 +294,7 @@ describe("ElectronProtocol", () => {
       const exit = yield* Effect.exit(
         Effect.scoped(
           protocol.registerDesktopProtocol({
-            scheme: "t3code",
+            scheme: "zerops-mate",
             target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
           }),
         ),
@@ -302,15 +304,15 @@ describe("ElectronProtocol", () => {
       if (exit._tag === "Failure") {
         const error = Cause.squash(exit.cause);
         assert.instanceOf(error, ElectronProtocol.ElectronProtocolUnregistrationError);
-        assert.equal(error.scheme, "t3code");
+        assert.equal(error.scheme, "zerops-mate");
         assert.strictEqual(error.cause, cause);
-        assert.equal(error.message, 'Failed to unregister Electron protocol scheme "t3code".');
+        assert.equal(error.message, 'Failed to unregister Electron protocol scheme "zerops-mate".');
       }
     }).pipe(Effect.provide(testLayer)),
   );
 
   it("keeps executable sources host-restricted while allowing runtime network resources", () => {
-    const policy = ElectronProtocol.makeDesktopContentSecurityPolicy({ scheme: "t3code" });
+    const policy = ElectronProtocol.makeDesktopContentSecurityPolicy({ scheme: "zerops-mate" });
     const directives = Object.fromEntries(
       policy.split("; ").map((directive) => {
         const [name, ...sources] = directive.split(" ");
@@ -327,12 +329,12 @@ describe("ElectronProtocol", () => {
     assert.deepEqual(directives["connect-src"], ["'self'", "http:", "https:", "ws:", "wss:"]);
     assert.deepEqual(directives["img-src"], [
       "'self'",
-      "t3code:",
+      "zerops-mate:",
       "blob:",
       "data:",
       "http:",
       "https:",
     ]);
-    assert.deepEqual(directives["font-src"], ["'self'", "t3code:", "data:"]);
+    assert.deepEqual(directives["font-src"], ["'self'", "zerops-mate:", "data:"]);
   });
 });

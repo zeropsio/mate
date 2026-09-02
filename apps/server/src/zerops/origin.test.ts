@@ -47,8 +47,8 @@ describe("allowsOrigin — what a browser may call cross-origin", () => {
 
   it("allows the two desktop shell origins", () => {
     const { allowsOrigin } = allowlist();
-    assert.isTrue(allowsOrigin("t3code://app"));
-    assert.isTrue(allowsOrigin("t3code-dev://app"));
+    assert.isTrue(allowsOrigin("zerops-mate://app"));
+    assert.isTrue(allowsOrigin("zerops-mate-dev://app"));
   });
 
   it("allows Zerops-issued HTTPS origins", () => {

@@ -109,7 +109,7 @@ const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
  * (`apps/web/src/hostedPairing.ts`) is true and `__root.tsx`'s `beforeLoad`
  * takes the `hosted-static` branch before it ever reaches
  * `readPrimaryEnvironmentTarget()` — which would otherwise throw on the
- * non-http `t3code://` origin.
+ * non-http `zerops-mate://` origin.
  */
 const resolveDesktopProtocolTarget = Effect.fn("desktop.bootstrap.resolveDesktopProtocolTarget")(
   function* (): Effect.fn.Return<
