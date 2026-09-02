@@ -16,6 +16,7 @@ import { Route as PairRouteImport } from './routes/pair'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsAuthorizedRouteImport } from './routes/zerops_.authorized'
+import { Route as ZeropsNewRouteImport } from './routes/zerops.new'
 import { Route as SettingsZeropsRouteImport } from './routes/settings.zerops'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
@@ -63,6 +64,11 @@ const ZeropsAuthorizedRoute = ZeropsAuthorizedRouteImport.update({
   id: '/zerops_/authorized',
   path: '/zerops/authorized',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ZeropsNewRoute = ZeropsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => ZeropsRoute,
 } as any)
 const SettingsZeropsRoute = SettingsZeropsRouteImport.update({
   id: '/zerops',
@@ -136,7 +142,7 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/zerops': typeof ZeropsRoute
+  '/zerops': typeof ZeropsRouteWithChildren
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops/new': typeof ZeropsNewRoute
   '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -156,7 +163,7 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/zerops': typeof ZeropsRoute
+  '/zerops': typeof ZeropsRouteWithChildren
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops/new': typeof ZeropsNewRoute
   '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -179,7 +187,7 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/zerops': typeof ZeropsRoute
+  '/zerops': typeof ZeropsRouteWithChildren
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -191,6 +199,7 @@ export interface FileRoutesById {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/zerops': typeof SettingsZeropsRoute
+  '/zerops/new': typeof ZeropsNewRoute
   '/zerops_/authorized': typeof ZeropsAuthorizedRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops/new'
     | '/zerops/authorized'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -235,6 +245,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops/new'
     | '/zerops/authorized'
     | '/'
     | '/$environmentId/$threadId'
@@ -257,6 +268,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/zerops'
+    | '/zerops/new'
     | '/zerops_/authorized'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
@@ -268,7 +280,7 @@ export interface RootRouteChildren {
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
-  ZeropsRoute: typeof ZeropsRoute
+  ZeropsRoute: typeof ZeropsRouteWithChildren
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
 }
@@ -323,6 +335,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/zerops/authorized'
       preLoaderRoute: typeof ZeropsAuthorizedRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/zerops/new': {
+      id: '/zerops/new'
+      path: '/new'
+      fullPath: '/zerops/new'
+      preLoaderRoute: typeof ZeropsNewRouteImport
+      parentRoute: typeof ZeropsRoute
     }
     '/settings/zerops': {
       id: '/settings/zerops'
@@ -462,12 +481,23 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
   SettingsRouteChildren,
 )
 
+interface ZeropsRouteChildren {
+  ZeropsNewRoute: typeof ZeropsNewRoute
+}
+
+const ZeropsRouteChildren: ZeropsRouteChildren = {
+  ZeropsNewRoute: ZeropsNewRoute,
+}
+
+const ZeropsRouteWithChildren =
+  ZeropsRoute._addFileChildren(ZeropsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
-  ZeropsRoute: ZeropsRoute,
+  ZeropsRoute: ZeropsRouteWithChildren,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
 }

@@ -5,7 +5,12 @@
       "id": "zerops-session",
       "title": "Zerops session provider",
       "components": ["apps/web/src/zerops/ZeropsSessionProvider.tsx"],
-      "entryPoints": [{ "kind": "provider", "value": "AppRoot" }],
+      "entryPoints": [
+        {
+          "kind": "provider",
+          "value": "AppRoot"
+        }
+      ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
@@ -18,9 +23,18 @@
       "connectionModes": ["zerops-door", "manual-link"],
       "contracts": ["@t3tools/client-runtime/zerops"],
       "reverseStates": [
-        { "action": "Sign in", "reverse": "Sign out" },
-        { "action": "Sign out", "reverse": "Sign in" },
-        { "action": "Register", "reverse": "Sign out" },
+        {
+          "action": "Sign in",
+          "reverse": "Sign out"
+        },
+        {
+          "action": "Sign out",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Register",
+          "reverse": "Sign out"
+        },
         {
           "action": "Verify TOTP",
           "reverse": "none: Verification completes the pending sign-in and has no separate reverse action."
@@ -45,9 +59,18 @@
         "apps/web/src/zerops/chatChrome.ts"
       ],
       "entryPoints": [
-        { "kind": "right-panel-tab", "value": "Zerops (shortcut Z)" },
-        { "kind": "inline", "value": "ChatView Zerops panel opener" },
-        { "kind": "inline", "value": "Zerops lifecycle strip click" }
+        {
+          "kind": "right-panel-tab",
+          "value": "Zerops (shortcut Z)"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatView Zerops panel opener"
+        },
+        {
+          "kind": "inline",
+          "value": "Zerops lifecycle strip click"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -65,10 +88,18 @@
         "subscribeZeropsAgentAuth"
       ],
       "reverseStates": [
-        { "action": "Open", "reverse": "Close" },
-        { "action": "Close", "reverse": "Open" }
+        {
+          "action": "Open",
+          "reverse": "Close"
+        },
+        {
+          "action": "Close",
+          "reverse": "Open"
+        }
       ],
-      "docs": { "none": "No docs/user page documents the Zerops right panel yet." },
+      "docs": {
+        "none": "No docs/user page documents the Zerops right panel yet."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsPanel.test.tsx",
         "apps/web/src/zerops/chatChrome.test.ts",
@@ -91,7 +122,12 @@
         "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
         "packages/client-runtime/src/zerops/serviceMap.ts"
       ],
-      "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        }
+      ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
@@ -109,7 +145,9 @@
           "reverse": "none: The action opens an external URL and does not mutate application state."
         }
       ],
-      "docs": { "none": "No docs/user page documents the Zerops service map yet." },
+      "docs": {
+        "none": "No docs/user page documents the Zerops service map yet."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
@@ -130,7 +168,12 @@
         "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
         "packages/client-runtime/src/zerops/quickActions.ts"
       ],
-      "entryPoints": [{ "kind": "inline", "value": "ZeropsPanel" }],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        }
+      ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
@@ -148,7 +191,9 @@
           "reverse": "none: Quick actions only insert editable draft text and expose no dedicated undo action."
         }
       ],
-      "docs": { "none": "No docs/user page documents Zerops quick actions yet." },
+      "docs": {
+        "none": "No docs/user page documents Zerops quick actions yet."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
         "packages/client-runtime/src/zerops/quickActions.test.ts",
@@ -167,8 +212,14 @@
         "apps/web/src/zerops/useAgentLoginCancel.ts"
       ],
       "entryPoints": [
-        { "kind": "inline", "value": "ZeropsPanel" },
-        { "kind": "overlay", "value": "ChatView when agent authorization needs attention" }
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        },
+        {
+          "kind": "overlay",
+          "value": "ChatView when agent authorization needs attention"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -186,9 +237,18 @@
         "subscribeZeropsAgentAuth"
       ],
       "reverseStates": [
-        { "action": "Sign in", "reverse": "Cancel" },
-        { "action": "Cancel", "reverse": "Sign in" },
-        { "action": "Sign in again", "reverse": "Cancel" },
+        {
+          "action": "Sign in",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Sign in again",
+          "reverse": "Cancel"
+        },
         {
           "action": "Open sign-in link",
           "reverse": "none: The action opens the provider's external authorization page."
@@ -222,7 +282,12 @@
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
         "packages/client-runtime/src/zerops/strip.ts"
       ],
-      "entryPoints": [{ "kind": "inline", "value": "ChatHeader" }],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ChatHeader"
+        }
+      ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
@@ -235,10 +300,18 @@
       "connectionModes": ["zerops-door", "manual-link"],
       "contracts": ["subscribeZeropsLifecycle"],
       "reverseStates": [
-        { "action": "Open Zerops panel", "reverse": "Close Zerops panel" },
-        { "action": "Close Zerops panel", "reverse": "Open Zerops panel" }
+        {
+          "action": "Open Zerops panel",
+          "reverse": "Close Zerops panel"
+        },
+        {
+          "action": "Close Zerops panel",
+          "reverse": "Open Zerops panel"
+        }
       ],
-      "docs": { "none": "No docs/user page documents the Zerops lifecycle strip yet." },
+      "docs": {
+        "none": "No docs/user page documents the Zerops lifecycle strip yet."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
@@ -256,7 +329,12 @@
         "packages/client-runtime/src/zerops/cards/milestone.ts",
         "packages/client-runtime/src/zerops/cards/payloads.ts"
       ],
-      "entryPoints": [{ "kind": "inline", "value": "MessagesTimeline tool result" }],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "MessagesTimeline tool result"
+        }
+      ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
@@ -274,7 +352,9 @@
           "reverse": "none: The action opens an external URL and does not mutate application state."
         }
       ],
-      "docs": { "none": "No docs/user page documents Zerops tool result cards yet." },
+      "docs": {
+        "none": "No docs/user page documents Zerops tool result cards yet."
+      },
       "tests": [
         "apps/web/src/components/chat/MessagesTimeline.logic.test.ts",
         "apps/web/src/components/chat/MessagesTimeline.test.tsx",
@@ -311,7 +391,9 @@
         }
       },
       "providers": "n/a",
-      "docs": { "none": "Foundation primitives have no user-facing behavior to document." },
+      "docs": {
+        "none": "Foundation primitives have no user-facing behavior to document."
+      },
       "tests": [
         "apps/web/src/components/zerops/primitives/StatusDot.test.tsx",
         "apps/web/src/components/zerops/primitives/MicroLabel.test.tsx",
@@ -334,8 +416,14 @@
         "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx"
       ],
       "entryPoints": [
-        { "kind": "route", "value": "/" },
-        { "kind": "escape", "value": "Connect a backend manually" }
+        {
+          "kind": "route",
+          "value": "/"
+        },
+        {
+          "kind": "escape",
+          "value": "Connect a backend manually"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -349,8 +437,14 @@
       "connectionModes": ["zerops-door", "manual-link"],
       "contracts": ["@t3tools/client-runtime/zerops"],
       "reverseStates": [
-        { "action": "Switch to registration", "reverse": "Switch to sign in" },
-        { "action": "Switch to sign in", "reverse": "Switch to registration" },
+        {
+          "action": "Switch to registration",
+          "reverse": "Switch to sign in"
+        },
+        {
+          "action": "Switch to sign in",
+          "reverse": "Switch to registration"
+        },
         {
           "action": "Sign in",
           "reverse": "none: Successful sign-in leaves the landing; sign-out lives in Zerops settings."
@@ -372,7 +466,9 @@
           "reverse": "none: The landing has no in-component way back after selecting the manual fallback."
         }
       ],
-      "docs": { "none": "No docs/user page documents the hosted Zerops landing yet." },
+      "docs": {
+        "none": "No docs/user page documents the hosted Zerops landing yet."
+      },
       "tests": ["apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"],
       "untested": "ZeropsLandingShell has focused markup tests, but ZeropsHostedLanding orchestration has no component test.",
       "captures": []
@@ -394,10 +490,22 @@
         "apps/web/src/zerops/turnstile.tsx"
       ],
       "entryPoints": [
-        { "kind": "route", "value": "/zerops" },
-        { "kind": "inline", "value": "Signed-in ZeropsHostedLanding" },
-        { "kind": "sidebar-item", "value": "Zerops" },
-        { "kind": "settings-section", "value": "Open Zerops" }
+        {
+          "kind": "route",
+          "value": "/zerops"
+        },
+        {
+          "kind": "inline",
+          "value": "Signed-in ZeropsHostedLanding"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Zerops"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Open Zerops"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -418,10 +526,22 @@
           "action": "Connect",
           "reverse": "none: The projects page exposes no explicit disconnect action."
         },
-        { "action": "Wait", "reverse": "Stop waiting" },
-        { "action": "Stop waiting", "reverse": "Wait" },
-        { "action": "Back", "reverse": "Wait" },
-        { "action": "Switch organization", "reverse": "Switch organization" },
+        {
+          "action": "Wait",
+          "reverse": "Stop waiting"
+        },
+        {
+          "action": "Stop waiting",
+          "reverse": "Wait"
+        },
+        {
+          "action": "Back",
+          "reverse": "Wait"
+        },
+        {
+          "action": "Switch organization",
+          "reverse": "Switch organization"
+        },
         {
           "action": "Enable",
           "reverse": "none: Enable restarts the service and the page exposes no inverse operation."
@@ -443,7 +563,9 @@
           "reverse": "none: The action opens the external Zerops GUI."
         }
       ],
-      "docs": { "none": "No docs/user page documents Zerops project connection yet." },
+      "docs": {
+        "none": "No docs/user page documents Zerops project connection yet."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsOrganizationScope.test.tsx",
         "apps/web/src/components/zerops/ZeropsProjectPicker.test.tsx",
@@ -459,14 +581,102 @@
       "captures": []
     },
     {
+      "id": "zerops-new-project",
+      "title": "Zerops new project wizard",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectAgents.tsx",
+        "packages/client-runtime/src/zerops/newProject.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/zerops/new"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "New project"
+        },
+        {
+          "kind": "inline",
+          "value": "Zerops projects page New project button"
+        },
+        {
+          "kind": "inline",
+          "value": "Provisioning panel pool-exhausted Create a project"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile's AddProjectScreen still means a workspace, not a Zerops project; the wizard is planned alongside the rest of the Zerops mobile UI."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops",
+        "apps/web/src/connection/onboarding:connectZeropsIdentity"
+      ],
+      "reverseStates": [
+        {
+          "action": "Create project",
+          "reverse": "none: Project deletion is not offered here; the created project is reversed only in the Zerops GUI."
+        },
+        {
+          "action": "Select agents",
+          "reverse": "Select agents"
+        },
+        {
+          "action": "Switch organization",
+          "reverse": "Switch organization"
+        },
+        {
+          "action": "Back to projects",
+          "reverse": "none: Leaving the wizard is reached again through its entry points, not through an action of this surface."
+        },
+        {
+          "action": "Retry",
+          "reverse": "none: Retry repeats a failed operation and creates no reversible state of its own."
+        },
+        {
+          "action": "Enable",
+          "reverse": "none: Enable restarts the service and the wizard exposes no inverse operation."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Zerops project wizard yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectAgents.test.tsx",
+        "packages/client-runtime/src/zerops/newProject.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-settings",
       "title": "Zerops settings",
       "components": ["apps/web/src/components/settings/ZeropsSettings.tsx"],
       "entryPoints": [
-        { "kind": "route", "value": "/settings/zerops" },
-        { "kind": "settings-section", "value": "Zerops" },
-        { "kind": "settings-search", "value": "zerops-account" },
-        { "kind": "settings-search", "value": "zerops-organizations" }
+        {
+          "kind": "route",
+          "value": "/settings/zerops"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Zerops"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-account"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-organizations"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -489,7 +699,9 @@
           "reverse": "none: This action navigates to the Zerops projects page and does not mutate account state."
         }
       ],
-      "docs": { "none": "No docs/user page documents Zerops account settings yet." },
+      "docs": {
+        "none": "No docs/user page documents Zerops account settings yet."
+      },
       "tests": [],
       "untested": "ZeropsSettings has no focused component test.",
       "captures": []
@@ -503,7 +715,10 @@
         "apps/web/src/zerops/firstPromptStorage.ts"
       ],
       "entryPoints": [
-        { "kind": "inline", "value": "First thread created after connecting an environment" }
+        {
+          "kind": "inline",
+          "value": "First thread created after connecting an environment"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -526,7 +741,9 @@
           "reverse": "none: The prompt is inserted into an editable draft that the user may change or clear before sending."
         }
       ],
-      "docs": { "none": "No docs/user page documents the Zerops first prompt yet." },
+      "docs": {
+        "none": "No docs/user page documents the Zerops first prompt yet."
+      },
       "tests": ["packages/client-runtime/src/zerops/firstPrompt.test.ts"],
       "captures": []
     },
@@ -542,10 +759,22 @@
         "apps/mobile/src/features/connection/useConnectionController.ts"
       ],
       "entryPoints": [
-        { "kind": "route", "value": "/pair" },
-        { "kind": "route", "value": "/pair?token=" },
-        { "kind": "route", "value": "mobile connections/new" },
-        { "kind": "escape", "value": "Zerops landing manual-connect fallback" }
+        {
+          "kind": "route",
+          "value": "/pair"
+        },
+        {
+          "kind": "route",
+          "value": "/pair?token="
+        },
+        {
+          "kind": "route",
+          "value": "mobile connections/new"
+        },
+        {
+          "kind": "escape",
+          "value": "Zerops landing manual-connect fallback"
+        }
       ],
       "clients": {
         "web": "yes",
@@ -568,10 +797,18 @@
           "action": "Try again",
           "reverse": "none: Retrying repeats a failed hosted pairing attempt and creates no reversible state of its own."
         },
-        { "action": "Scan QR code", "reverse": "Close scanner" },
-        { "action": "Close scanner", "reverse": "Scan QR code" }
+        {
+          "action": "Scan QR code",
+          "reverse": "Close scanner"
+        },
+        {
+          "action": "Close scanner",
+          "reverse": "Scan QR code"
+        }
       ],
-      "docs": { "none": "No docs/user page documents manual pairing links yet." },
+      "docs": {
+        "none": "No docs/user page documents manual pairing links yet."
+      },
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
         "apps/web/src/components/auth/PairingRouteSurface.test.tsx",
