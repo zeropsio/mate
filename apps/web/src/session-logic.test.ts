@@ -1241,6 +1241,93 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.toolCallId).toBe("call-1");
   });
 
+  /**
+   * Claude's `mcp_tool_call` projection carries no `item` at all — its
+   * arguments are the flat `data.input` record (`ActivityPayloadProjection.ts`
+   * `projectMcpToolCallData`, proven by the same file's own tests). Without
+   * `toolInput`, a pending `zerops_deploy` call from Claude has no readable
+   * target hostname anywhere on the entry.
+   */
+  it("captures a Claude-shaped mcp_tool_call's flat input as toolInput while the call is still running", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "claude-deploy-updated",
+        kind: "tool.updated",
+        summary: "zerops_deploy",
+        payload: {
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          toolCallId: "call-claude-deploy",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "kanbandev" } },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities);
+    expect(entry?.toolLifecycleStatus).toBe("inProgress");
+    expect(entry?.toolInput).toEqual({ targetService: "kanbandev" });
+    expect(entry?.toolData).toBeUndefined();
+  });
+
+  it("prefers a Codex-shaped item over toolInput when both would be present", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "codex-deploy",
+        kind: "tool.completed",
+        summary: "zerops_deploy",
+        payload: {
+          itemType: "mcp_tool_call",
+          data: { item: { input: { targetService: "kanbandev" } } },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities);
+    expect(entry?.toolData).toEqual({ input: { targetService: "kanbandev" } });
+    expect(entry?.toolInput).toBeUndefined();
+  });
+
+  /**
+   * `createdAt` moves to the newest activity's own timestamp on every merge
+   * (right for "last updated"); `startedAt` must stay pinned to the FIRST
+   * observation so the platform-activity overlay's attribution window starts
+   * at the real call start, not at whenever the call happened to finish.
+   */
+  it("keeps startedAt pinned to the first observation across a started-then-completed merge", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "deploy-updated",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "tool.updated",
+        summary: "zerops_deploy",
+        payload: {
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          toolCallId: "call-timing",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "kanbandev" } },
+        },
+      }),
+      makeActivity({
+        id: "deploy-completed",
+        createdAt: "2026-02-23T00:00:09.000Z",
+        kind: "tool.completed",
+        summary: "zerops_deploy",
+        payload: {
+          itemType: "mcp_tool_call",
+          toolCallId: "call-timing",
+          data: {
+            toolName: "mcp__zerops__zerops_deploy",
+            zerops: { toolName: "zerops_deploy", resultText: '{"status":"DEPLOYED"}' },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities);
+    expect(entry?.createdAt).toBe("2026-02-23T00:00:09.000Z");
+    expect(entry?.startedAt).toBe("2026-02-23T00:00:02.000Z");
+  });
+
   it("collapses interleaved lifecycle updates by tool call id", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

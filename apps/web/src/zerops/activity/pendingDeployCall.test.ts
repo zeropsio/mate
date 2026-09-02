@@ -4,9 +4,11 @@ import { readPendingDeployCall } from "./pendingDeployCall.ts";
 
 const CREATED_AT = "2026-09-02T10:00:00.000Z";
 const CREATED_AT_MS = Date.parse(CREATED_AT);
+const STARTED_AT = "2026-09-02T09:59:58.000Z";
+const STARTED_AT_MS = Date.parse(STARTED_AT);
 
 describe("readPendingDeployCall", () => {
-  it("reads targetService from a Codex-shaped item.input", () => {
+  it("reads targetService from a Codex-shaped toolData.input", () => {
     expect(
       readPendingDeployCall({
         toolData: { input: { targetService: "kanbandev" } },
@@ -15,31 +17,48 @@ describe("readPendingDeployCall", () => {
     ).toEqual({ targetService: "kanbandev", toolStartedAtMs: CREATED_AT_MS });
   });
 
-  it("reads targetService from a flat field", () => {
+  it("reads targetService from a Claude-shaped toolInput", () => {
     expect(
-      readPendingDeployCall({ toolData: { targetService: "kanbandev" }, createdAt: CREATED_AT }),
+      readPendingDeployCall({ toolInput: { targetService: "kanbandev" }, createdAt: CREATED_AT }),
     ).toEqual({ targetService: "kanbandev", toolStartedAtMs: CREATED_AT_MS });
   });
 
-  it("reads targetService from an `arguments` field", () => {
+  it("prefers toolData.input over toolInput when both are somehow present", () => {
     expect(
       readPendingDeployCall({
-        toolData: { arguments: { targetService: "kanbandev" } },
+        toolData: { input: { targetService: "codex-target" } },
+        toolInput: { targetService: "claude-target" },
         createdAt: CREATED_AT,
       }),
-    ).toEqual({ targetService: "kanbandev", toolStartedAtMs: CREATED_AT_MS });
+    ).toEqual({ targetService: "codex-target", toolStartedAtMs: CREATED_AT_MS });
   });
 
-  it("returns undefined when toolData carries no targetService at all", () => {
+  it("returns undefined when neither carrier has a targetService", () => {
     expect(
-      readPendingDeployCall({ toolData: { input: {} }, createdAt: CREATED_AT }),
+      readPendingDeployCall({ toolData: { input: {} }, toolInput: {}, createdAt: CREATED_AT }),
     ).toBeUndefined();
     expect(readPendingDeployCall({ createdAt: CREATED_AT })).toBeUndefined();
   });
 
-  it("returns undefined for an unparseable createdAt", () => {
+  it("uses startedAt over createdAt for the tool-start timestamp, when present", () => {
     expect(
-      readPendingDeployCall({ toolData: { targetService: "kanbandev" }, createdAt: "not-a-date" }),
+      readPendingDeployCall({
+        toolInput: { targetService: "kanbandev" },
+        createdAt: CREATED_AT,
+        startedAt: STARTED_AT,
+      }),
+    ).toEqual({ targetService: "kanbandev", toolStartedAtMs: STARTED_AT_MS });
+  });
+
+  it("falls back to createdAt when startedAt is absent", () => {
+    expect(
+      readPendingDeployCall({ toolInput: { targetService: "kanbandev" }, createdAt: CREATED_AT }),
+    ).toEqual({ targetService: "kanbandev", toolStartedAtMs: CREATED_AT_MS });
+  });
+
+  it("returns undefined for an unparseable timestamp", () => {
+    expect(
+      readPendingDeployCall({ toolInput: { targetService: "kanbandev" }, createdAt: "not-a-date" }),
     ).toBeUndefined();
   });
 });

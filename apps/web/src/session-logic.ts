@@ -73,6 +73,15 @@ export type WorkLogToolLifecycleStatus =
 export interface WorkLogEntry {
   id: string;
   createdAt: string;
+  /**
+   * The server-stamped time this entry was FIRST observed (its earliest
+   * lifecycle activity's own `createdAt`), preserved across every later
+   * merge — unlike `createdAt`, which moves to the newest activity's own
+   * timestamp on each update/completion. Absent for an entry never derived
+   * from a tool-lifecycle activity; a reader wanting "when did this call
+   * start" falls back to `createdAt` in that case.
+   */
+  startedAt?: string;
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
@@ -84,6 +93,14 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   toolData?: unknown;
+  /**
+   * The tool call's own arguments, when the driver reported them as a flat
+   * `data.input` record rather than the Codex-shaped `data.item` `toolData`
+   * captures below — Claude's `mcp_tool_call` projection (`ActivityPayloadProjection.ts`
+   * `projectMcpToolCallData`: `data = {toolName, input, result}`, no `item`).
+   * Read this before falling back to `toolData` for a call's arguments.
+   */
+  toolInput?: Record<string, unknown>;
   /**
    * The `zerops_*` result this entry carries, when it is a Zerops tool call.
    * Attached by the server because the slimming pass drops MCP results — see
@@ -972,6 +989,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
+    startedAt: activity.createdAt,
     turnId: activity.turnId,
     label: taskLabel || activity.summary,
     tone:
@@ -1003,6 +1021,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     const data = asRecord(payload?.data);
     if (data?.item !== undefined) {
       entry.toolData = data.item;
+    } else {
+      // Claude's `mcp_tool_call` projection carries no `item` at all — its
+      // arguments are the flat `data.input` record instead
+      // (`ActivityPayloadProjection.ts` `projectMcpToolCallData`).
+      const input = asRecord(data?.input);
+      if (input !== null) {
+        entry.toolInput = input;
+      }
     }
   }
   // Not gated on itemType: Claude types `zerops_delete` as `file_change`, and
@@ -1231,9 +1257,15 @@ function mergeDerivedWorkLogEntries(
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
+  const toolInput = next.toolInput ?? previous.toolInput;
+  // The FIRST observation's timestamp, never the latest — `createdAt` itself
+  // moves to `next`'s own timestamp via the spread below, which is right for
+  // "when was this last updated" but wrong for "when did this call start".
+  const startedAt = previous.startedAt ?? previous.createdAt;
   return {
     ...previous,
     ...next,
+    startedAt,
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
@@ -1245,6 +1277,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolLifecycleStatus !== undefined ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
+    ...(toolInput !== undefined ? { toolInput } : {}),
   };
 }
 

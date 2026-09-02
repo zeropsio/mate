@@ -26,10 +26,14 @@ const CEILING_MS = 30 * 60 * 1000;
 
 export interface DeployActivityQuery {
   readonly environmentId: EnvironmentId | null;
-  /** The entry's raw MCP item, when present — see `pendingDeployCall.ts`. */
+  /** The entry's Codex-shaped raw MCP item, when present — see `pendingDeployCall.ts`. */
   readonly toolData?: unknown;
-  /** The entry's own server-stamped timestamp. */
+  /** The entry's Claude-shaped flat call arguments, when present — see `pendingDeployCall.ts`. */
+  readonly toolInput?: unknown;
+  /** The entry's own server-stamped timestamp (last-updated). */
   readonly createdAt: string;
+  /** The entry's first-observed server-stamped timestamp, when known. */
+  readonly startedAt?: string | undefined;
   /** True once the tool call's own result has landed. */
   readonly hasResult: boolean;
   /** The decoded deploy result's `status`, when `hasResult`. */
@@ -40,7 +44,12 @@ export interface DeployActivityQuery {
 export function useDeployActivityState(query: DeployActivityQuery): ActivityState {
   const session = useZeropsSessionOptional();
   const topology = useZeropsTopology(query.environmentId);
-  const call = readPendingDeployCall({ toolData: query.toolData, createdAt: query.createdAt });
+  const call = readPendingDeployCall({
+    toolData: query.toolData,
+    toolInput: query.toolInput,
+    createdAt: query.createdAt,
+    startedAt: query.startedAt,
+  });
 
   const targetServiceId =
     call === undefined

@@ -2614,7 +2614,12 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   // neither never subscribes — `useDeployActivityState` no-ops on `null`.
   const isDeployTool = workEntry.zeropsResult?.toolName === "zerops_deploy";
   const deployCall = isDeployTool
-    ? readPendingDeployCall({ toolData: workEntry.toolData, createdAt: workEntry.createdAt })
+    ? readPendingDeployCall({
+        toolData: workEntry.toolData,
+        toolInput: workEntry.toolInput,
+        createdAt: workEntry.createdAt,
+        startedAt: workEntry.startedAt,
+      })
     : undefined;
   const isPendingDeploy = isDeployTool && workEntry.toolLifecycleStatus === "inProgress";
   const buildTriggeredResult =
@@ -2626,7 +2631,9 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const activityState = useDeployActivityState({
     environmentId: wantsActivity ? activeThreadEnvironmentId : null,
     toolData: workEntry.toolData,
+    toolInput: workEntry.toolInput,
     createdAt: workEntry.createdAt,
+    startedAt: workEntry.startedAt,
     hasResult: workEntry.zeropsResult?.resultText !== undefined,
     resultStatus:
       zeropsCard !== undefined && zeropsCard.kind === "deploy" ? zeropsCard.status : undefined,

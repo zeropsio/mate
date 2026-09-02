@@ -3,16 +3,13 @@
  * start time off a work-log entry — `../../../../zcp/plans/mate-live-activity-2026-09-02.md`
  * §3 ("the pending tool call's arguments reach the client").
  *
- * `targetService` is read defensively across more than one shape because the
- * raw MCP item a `WorkLogEntry` carries as `toolData` is driver-specific:
- * `session-logic.ts` only populates it from a Codex-shaped `data.item`, so on
- * Claude — this build's primary provider — `toolData` is undefined for an
- * in-flight MCP call today (`data.input` is projected but never copied onto
- * the entry). Reading `.input`, `.arguments` and a flat field covers every
- * shape this reducer can plausibly see without requiring a `session-logic.ts`
- * change, which is outside this slice's write-set; see the implementation
- * report for the concrete gap this leaves on Claude until that file is
- * touched.
+ * `targetService` is read from the two verified shapes a `WorkLogEntry`
+ * actually carries a call's arguments in: Codex's `toolData.input` (copied
+ * from the driver's `data.item.input`) and Claude's `toolInput` (copied from
+ * the driver's flat `data.input` — `session-logic.ts`'s `toDerivedWorkLogEntry`,
+ * proven against `ActivityPayloadProjection.test.ts`'s Claude fixtures). No
+ * other shape is read: nothing in the codebase produces a flat `targetService`
+ * or an `arguments` field on either carrier.
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -23,39 +20,33 @@ const readString = (value: unknown): string | undefined =>
 
 export interface PendingDeployCall {
   readonly targetService: string;
-  /** Server-stamped start time (the item.started activity's own `createdAt`), epoch ms. */
+  /** The call's first-observed server-stamped time (`WorkLogEntry.startedAt`, falling back to `createdAt`), epoch ms. */
   readonly toolStartedAtMs: number;
 }
 
-function readTargetService(toolData: unknown): string | undefined {
-  if (!isRecord(toolData)) {
-    return undefined;
+function readTargetService(toolData: unknown, toolInput: unknown): string | undefined {
+  const fromCodexItem = isRecord(toolData) && isRecord(toolData.input) ? toolData.input : undefined;
+  const fromCodex = readString(fromCodexItem?.targetService);
+  if (fromCodex !== undefined) {
+    return fromCodex;
   }
-  const direct = readString(toolData.targetService);
-  if (direct !== undefined) {
-    return direct;
-  }
-  const input = isRecord(toolData.input) ? toolData.input : undefined;
-  const fromInput = readString(input?.targetService);
-  if (fromInput !== undefined) {
-    return fromInput;
-  }
-  const args = isRecord(toolData.arguments) ? toolData.arguments : undefined;
-  return readString(args?.targetService);
+  return isRecord(toolInput) ? readString(toolInput.targetService) : undefined;
 }
 
 /**
- * `createdAt` must be the entry's own server-stamped timestamp (`WorkLogEntry.createdAt`,
- * itself `item.started`'s `stamp.createdAt` — never the browser clock, per §3.3).
+ * `startedAt`/`createdAt` must be the entry's own server-stamped timestamps
+ * (`WorkLogEntry.startedAt`/`createdAt`) — never the browser clock, per §3.3.
  */
 export function readPendingDeployCall(entry: {
   readonly toolData?: unknown;
+  readonly toolInput?: unknown;
   readonly createdAt: string;
+  readonly startedAt?: string | undefined;
 }): PendingDeployCall | undefined {
-  const toolStartedAtMs = Date.parse(entry.createdAt);
+  const toolStartedAtMs = Date.parse(entry.startedAt ?? entry.createdAt);
   if (Number.isNaN(toolStartedAtMs)) {
     return undefined;
   }
-  const targetService = readTargetService(entry.toolData);
+  const targetService = readTargetService(entry.toolData, entry.toolInput);
   return targetService === undefined ? undefined : { targetService, toolStartedAtMs };
 }
