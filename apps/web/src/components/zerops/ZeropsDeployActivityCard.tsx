@@ -48,10 +48,6 @@ function pipelineSteps(pipeline: PipelineState): ReadonlyArray<ProcessStep> {
   }));
 }
 
-function pipelineContinuationLabel(pipeline: PipelineState): string {
-  return pipelineTerminalOutcome(pipeline) ?? "progress";
-}
-
 function chipLabel(process: ActivityProcess): string {
   return `${process.actionName} · ${process.status}`;
 }
@@ -73,22 +69,34 @@ export function DeployPlatformOverlayBody({
     case "unavailable":
       return null;
 
-    case "resolved":
+    case "resolved": {
       // §4's one exception: BUILD_TRIGGERED keeps this below the card's own
       // verdict while the platform continues. Every other resolved status —
       // no `continuation` — renders nothing; the overlay is frozen (§4).
-      return state.continuation === undefined ? null : (
+      //
+      // The agent's OWN result has already landed here (that is what makes
+      // this `resolved`), so — unlike `settledOnPlatform` on the pending
+      // path — this copy never says "waiting for the agent's result": there
+      // is nothing left to wait for. It uses the same "as of Ns ago" /
+      // "Platform reports X" lines as the still-running observed state.
+      if (state.continuation === undefined) {
+        return null;
+      }
+      const outcome = pipelineTerminalOutcome(state.continuation.pipeline);
+      return (
         <div className="space-y-2" data-zerops-activity-overlay="continuation">
           <ProcessSteps
             aria-label={`Platform build steps for ${hostname}`}
             steps={pipelineSteps(state.continuation.pipeline)}
           />
           <p className="text-muted-foreground text-xs">
-            Platform reports {pipelineContinuationLabel(state.continuation.pipeline)} · waiting for
-            the agent's result
+            {outcome === undefined
+              ? `Platform · as of ${elapsedLabel(Date.now() - state.continuation.atMs)} ago`
+              : `Platform reports ${outcome}`}
           </p>
         </div>
       );
+    }
 
     case "searching":
       return (
@@ -151,10 +159,36 @@ export function DeployPlatformOverlayBody({
 }
 
 /**
- * The standalone pending-deploy card. The caller renders this only for
- * `searching | observed | settledOnPlatform | stale` — `idle`/`unavailable`
- * fall back to the ordinary generic pending tool row instead of this
- * component, so that row stays byte-identical to today's.
+ * Whether `ZeropsDeployPendingCard` has anything to draw for this state.
+ *
+ * A POSITIVE list on purpose: `idle` and `unavailable` fall back to the
+ * ordinary generic pending row by design, and so must every OTHER state not
+ * yet named here — notably `resolved`, reachable when a result lands with an
+ * undecodable body while the row still reads `toolLifecycleStatus ===
+ * "inProgress"` (event ordering). A negative list (`!== "idle" && !==
+ * "unavailable"`) would let that `resolved` case through and render an empty
+ * "Deploy · hostname / Running" shell with no body content.
+ */
+export function activityStateHasPendingOverlayContent(
+  state: ActivityState,
+): state is Extract<
+  ActivityState,
+  { kind: "searching" | "observed" | "settledOnPlatform" | "stale" }
+> {
+  return (
+    state.kind === "searching" ||
+    state.kind === "observed" ||
+    state.kind === "settledOnPlatform" ||
+    state.kind === "stale"
+  );
+}
+
+/**
+ * The standalone pending-deploy card. The caller renders this only when
+ * {@link activityStateHasPendingOverlayContent} says there is something to
+ * show — `idle`/`unavailable`/`resolved` fall back to the ordinary generic
+ * pending tool row instead of this component, so that row stays
+ * byte-identical to today's.
  */
 export function ZeropsDeployPendingCard({
   hostname,

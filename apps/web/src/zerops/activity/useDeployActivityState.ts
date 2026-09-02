@@ -12,9 +12,12 @@ import {
   type AttributionResult,
 } from "@t3tools/client-runtime/zerops/activity/attribution";
 import {
+  RESULT_STATUSES_WITH_PLATFORM_CONTINUATION,
+  pipelineOutcomeFor,
   reduceActivityState,
   type ActivityState,
 } from "@t3tools/client-runtime/zerops/activity/reducer";
+import { getPipelineState } from "@t3tools/client-runtime/zerops/activity/pipelineState";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
@@ -22,7 +25,8 @@ import { useZeropsTopology } from "../useZeropsFeeds";
 import { readPendingDeployCall } from "./pendingDeployCall.ts";
 import { useProjectActivity } from "./useProjectActivity.ts";
 
-const CEILING_MS = 30 * 60 * 1000;
+/** §6 per-call ceiling, shared with the caller so it can avoid activating this hook at all on a historical card. */
+export const DEPLOY_ACTIVITY_CEILING_MS = 30 * 60 * 1000;
 
 export interface DeployActivityQuery {
   readonly environmentId: EnvironmentId | null;
@@ -57,7 +61,11 @@ export function useDeployActivityState(query: DeployActivityQuery): ActivityStat
       : topology?.services.find((service) => service.hostname === call.targetService)?.serviceId;
   const projectId = topology?.project?.id;
 
-  const attributable =
+  const nowMs = Date.now();
+  const ceilingExceeded =
+    call !== undefined && nowMs - call.toolStartedAtMs > DEPLOY_ACTIVITY_CEILING_MS;
+
+  const identifiable =
     session !== null &&
     session.status === "signed-in" &&
     topology?.available === true &&
@@ -65,8 +73,35 @@ export function useDeployActivityState(query: DeployActivityQuery): ActivityStat
     targetServiceId !== undefined &&
     projectId !== undefined;
 
+  // §5's `idle` guard applies only to the still-pending path; a resolved
+  // BUILD_TRIGGERED continuation is never `idle` — either it has a
+  // continuation to show, or `reduceActivityState` renders bare `resolved`.
+  const attributableForPending = !query.hasResult && identifiable;
+
+  const isAllowedContinuationStatus =
+    query.hasResult &&
+    query.resultStatus !== undefined &&
+    RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(query.resultStatus);
+
+  // Once a BUILD_TRIGGERED continuation's own platform pipeline has settled,
+  // there is nothing left to poll for on that card — remembered across
+  // renders so the subscription stops even though the caller may still be
+  // willing to keep this hook active (it does not know the pipeline settled
+  // until this hook tells it, via the state this hook returns).
+  const continuationSettledRef = useRef(false);
+  if (!query.hasResult) {
+    continuationSettledRef.current = false;
+  }
+
+  const wantsPoll = query.hasResult
+    ? identifiable &&
+      isAllowedContinuationStatus &&
+      !ceilingExceeded &&
+      !continuationSettledRef.current
+    : attributableForPending;
+
   const snapshot = useProjectActivity(
-    attributable && projectId ? projectId : null,
+    wantsPoll && projectId ? projectId : null,
     session?.client ?? null,
   );
 
@@ -78,12 +113,9 @@ export function useDeployActivityState(query: DeployActivityQuery): ActivityStat
     undefined,
   );
 
-  if (
-    attributable &&
-    call !== undefined &&
-    targetServiceId !== undefined &&
-    projectId !== undefined
-  ) {
+  let projectMismatch = false;
+
+  if (wantsPoll && call !== undefined && targetServiceId !== undefined && projectId !== undefined) {
     if (snapshot.processes !== undefined && snapshot.atMs !== undefined) {
       const attribution = attributeActivity({
         processes: snapshot.processes,
@@ -91,25 +123,32 @@ export function useDeployActivityState(query: DeployActivityQuery): ActivityStat
         targetServiceId,
         toolStartedAtMs: call.toolStartedAtMs,
       });
+      projectMismatch = attribution.projectMismatch;
       if (attribution.stepSource !== undefined) {
         lastObservationRef.current = { attribution, atMs: snapshot.atMs };
+        if (
+          query.hasResult &&
+          pipelineOutcomeFor(
+            attribution.stepSource,
+            getPipelineState(attribution.stepSource.appVersion),
+          ) !== undefined
+        ) {
+          continuationSettledRef.current = true;
+        }
       }
     }
-  } else {
+  } else if (!query.hasResult) {
     lastObservationRef.current = undefined;
   }
-
-  const nowMs = Date.now();
-  const ceilingExceeded = call !== undefined && nowMs - call.toolStartedAtMs > CEILING_MS;
 
   return reduceActivityState(
     {
       hasResult: query.hasResult,
       resultStatus: query.resultStatus,
-      attributable,
+      attributable: attributableForPending,
       toolStartedAtMs: call?.toolStartedAtMs ?? nowMs,
       ceilingExceeded,
-      unavailableReason: snapshot.unavailableReason,
+      unavailableReason: projectMismatch ? "project-mismatch" : snapshot.unavailableReason,
       lastObservation: lastObservationRef.current,
     },
     nowMs,

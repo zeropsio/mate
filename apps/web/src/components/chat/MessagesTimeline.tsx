@@ -121,12 +121,16 @@ import { ZeropsToolCard } from "../zerops/ZeropsToolCard";
 import {
   DeployPlatformOverlayBody,
   ZeropsDeployPendingCard,
+  activityStateHasPendingOverlayContent,
 } from "../zerops/ZeropsDeployActivityCard";
 import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
 import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
 import { RESULT_STATUSES_WITH_PLATFORM_CONTINUATION } from "@t3tools/client-runtime/zerops/activity/reducer";
 import { readPendingDeployCall } from "../../zerops/activity/pendingDeployCall";
-import { useDeployActivityState } from "../../zerops/activity/useDeployActivityState";
+import {
+  DEPLOY_ACTIVITY_CEILING_MS,
+  useDeployActivityState,
+} from "../../zerops/activity/useDeployActivityState";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -2626,7 +2630,15 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
     zeropsCard !== undefined &&
     zeropsCard.kind === "deploy" &&
     RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(zeropsCard.status);
-  const wantsActivity = deployCall !== undefined && (isPendingDeploy || buildTriggeredResult);
+  // A historical card — the call started over 30 minutes ago — never
+  // activates this hook at all: there is nothing left worth polling for, and
+  // the ceiling check inside the hook itself is only a second line of
+  // defense once this is already subscribed.
+  const ceilingExceeded =
+    deployCall !== undefined &&
+    Date.now() - deployCall.toolStartedAtMs > DEPLOY_ACTIVITY_CEILING_MS;
+  const wantsActivity =
+    deployCall !== undefined && !ceilingExceeded && (isPendingDeploy || buildTriggeredResult);
 
   const activityState = useDeployActivityState({
     environmentId: wantsActivity ? activeThreadEnvironmentId : null,
@@ -2653,13 +2665,10 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
     return <ZeropsToolCard payload={zeropsCard} activityOverlay={overlay} />;
   }
 
-  // `idle`/`unavailable` render nothing here — the row below is byte-identical
-  // to the row that existed before this overlay did.
   if (
     isPendingDeploy &&
     deployCall !== undefined &&
-    activityState.kind !== "idle" &&
-    activityState.kind !== "unavailable"
+    activityStateHasPendingOverlayContent(activityState)
   ) {
     return <ZeropsDeployPendingCard hostname={deployCall.targetService} state={activityState} />;
   }

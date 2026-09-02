@@ -1324,11 +1324,70 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("data-zerops-card");
   });
 
-  it("renders a pending zerops_deploy call byte-identical to a plain in-progress tool row when there is no Zerops session", () => {
+  /**
+   * §6's ceiling applies to the BUILD_TRIGGERED continuation, not just the
+   * still-pending path: a historical card — its call started over 30 minutes
+   * ago — never activates the overlay hook at all, so it never polls and
+   * never shows a "Platform" line, however BUILD_TRIGGERED its own verdict
+   * still reads.
+   */
+  it("shows a historical BUILD_TRIGGERED card with no platform overlay", () => {
+    const resultText = JSON.stringify({
+      status: "BUILD_TRIGGERED",
+      targetService: "kanbandev",
+      message: "Build triggered from kanbandev to kanbanstage via SSH",
+    });
+    const oldStart = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "deploy-historical-entry",
+            kind: "work",
+            createdAt: oldStart,
+            entry: {
+              id: "deploy-historical-work",
+              createdAt: oldStart,
+              startedAt: oldStart,
+              turnId: TurnId.make("turn-deploy-historical"),
+              label: "Deploy kanbandev",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "completed",
+              toolInput: { targetService: "kanbandev" },
+              zeropsResult: { toolName: "zerops_deploy", resultText },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("data-zerops-card");
+    expect(markup).toContain("Build triggered");
+    expect(markup).not.toContain("Platform");
+  });
+
+  /**
+   * `isWorking` + a matching `runningTurnId` routes an "inProgress" entry
+   * through the collapsed "live work" summary row, not `SimpleWorkEntryRow`'s
+   * own card-gating branch (that branch is proven directly by
+   * `activityStateHasPendingOverlayContent`'s own unit tests instead — this
+   * repo has no component-interaction harness to force that branch's
+   * internal expand state open in a full render). What THIS test guards is
+   * narrower but still real: a `zerops_deploy` call carrying `toolData` must
+   * not change the live summary row's markup versus an ordinary command,
+   * with no Zerops session in the tree (the hook resolves to `idle`).
+   */
+  it("renders a pending zerops_deploy call's live summary row byte-identical to a plain in-progress tool's", () => {
     const turnId = TurnId.make("turn-deploy-pending");
     const buildEntry = (overrides: Record<string, unknown>) => (
       <MessagesTimeline
         {...buildProps()}
+        isWorking
+        activeTurnStartedAt={MESSAGE_CREATED_AT}
+        latestTurn={{ turnId, state: "running", startedAt: MESSAGE_CREATED_AT, completedAt: null }}
+        runningTurnId={turnId}
         timelineEntries={[
           {
             id: "deploy-pending-entry",
@@ -1338,6 +1397,7 @@ describe("MessagesTimeline", () => {
               id: "deploy-pending-work",
               createdAt: MESSAGE_CREATED_AT,
               turnId,
+              toolCallId: "call-deploy-pending",
               label: "Deploy kanbandev",
               tone: "tool",
               itemType: "mcp_tool_call",
@@ -1351,6 +1411,7 @@ describe("MessagesTimeline", () => {
 
     // Without a `zeropsResult` at all — today's ordinary pending MCP row.
     const plainMarkup = renderToStaticMarkup(buildEntry({}));
+    expect(plainMarkup).toContain("Deploy kanbandev");
     // With a decodable zerops_deploy call, but rendered with no
     // `ZeropsSessionProvider` in the tree (as every other test in this file
     // is): the overlay hook resolves to `idle` and must fall back to the
@@ -1364,6 +1425,58 @@ describe("MessagesTimeline", () => {
 
     expect(deployMarkup).toBe(plainMarkup);
     expect(deployMarkup).not.toContain("data-zerops-card");
+  });
+
+  /**
+   * Same caveat as the test above: this exercises the "live work" summary
+   * row, not `SimpleWorkEntryRow`'s own gate — that exact regression
+   * (`toolLifecycleStatus` still "inProgress" at the moment a landed result
+   * fails to decode, resolving to a bare `resolved` state with no overlay
+   * content) is proven directly by `activityStateHasPendingOverlayContent`'s
+   * own tests. This still guards that the live row itself renders
+   * identically regardless.
+   */
+  it("renders the live summary row identically for an inProgress entry whose result already landed but did not decode", () => {
+    const turnId = TurnId.make("turn-deploy-undecodable");
+    const buildEntry = (overrides: Record<string, unknown>) => (
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnStartedAt={MESSAGE_CREATED_AT}
+        latestTurn={{ turnId, state: "running", startedAt: MESSAGE_CREATED_AT, completedAt: null }}
+        runningTurnId={turnId}
+        timelineEntries={[
+          {
+            id: "deploy-undecodable-entry",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "deploy-undecodable-work",
+              createdAt: MESSAGE_CREATED_AT,
+              turnId,
+              toolCallId: "call-deploy-undecodable",
+              label: "Deploy kanbandev",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "inProgress",
+              ...overrides,
+            },
+          },
+        ]}
+      />
+    );
+
+    const plainMarkup = renderToStaticMarkup(buildEntry({}));
+    expect(plainMarkup).toContain("Deploy kanbandev");
+    const undecodableMarkup = renderToStaticMarkup(
+      buildEntry({
+        zeropsResult: { toolName: "zerops_deploy", resultText: "not json" },
+        toolData: { input: { targetService: "kanbandev" } },
+      }),
+    );
+
+    expect(undecodableMarkup).toBe(plainMarkup);
+    expect(undecodableMarkup).not.toContain("data-zerops-card");
   });
 
   it("keeps undecodable, absent and oversize results in the ordinary generic tool block", () => {

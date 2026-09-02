@@ -10,15 +10,29 @@ import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
 import { ProjectActivityPoller, type ProjectActivitySnapshot } from "./projectActivityPoller.ts";
 
-const pollersByProject = new Map<string, ProjectActivityPoller>();
+interface PollerEntry {
+  readonly client: ZeropsApiClient;
+  readonly poller: ProjectActivityPoller;
+}
 
-function pollerFor(projectId: string, client: ZeropsApiClient): ProjectActivityPoller {
+const pollersByProject = new Map<string, PollerEntry>();
+
+/**
+ * Keyed on `projectId` AND the `client` instance: a re-login (or a
+ * `ZeropsSessionProvider` remount) can hand out a NEW `ZeropsApiClient` for
+ * the same project id, and a poller built against the old client would keep
+ * polling with its stale session forever. When the client for a project
+ * changes, the stale poller is disposed (stops its timer, drops its
+ * listeners) before a fresh one takes its place.
+ */
+export function pollerFor(projectId: string, client: ZeropsApiClient): ProjectActivityPoller {
   const existing = pollersByProject.get(projectId);
-  if (existing !== undefined) {
-    return existing;
+  if (existing !== undefined && existing.client === client) {
+    return existing.poller;
   }
+  existing?.poller.dispose();
   const poller = new ProjectActivityPoller({ client, projectId });
-  pollersByProject.set(projectId, poller);
+  pollersByProject.set(projectId, { client, poller });
   return poller;
 }
 
