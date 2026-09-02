@@ -118,4 +118,39 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.appUserModelId, "io.zerops.mate.dev.local");
     }),
   );
+
+  describe("applicationUrl", () => {
+    it.effect("defaults to the hosted client when nothing is configured", () =>
+      Effect.gen(function* () {
+        const environment = yield* makeEnvironment();
+
+        assert.equal(environment.applicationUrl, "https://mate.zerops.io");
+      }),
+    );
+
+    it.effect("falls back to the dev server when it is running", () =>
+      Effect.gen(function* () {
+        const environment = yield* makeEnvironment(
+          {},
+          { VITE_DEV_SERVER_URL: "http://127.0.0.1:5733" },
+        );
+
+        assert.equal(environment.applicationUrl, "http://127.0.0.1:5733/");
+      }),
+    );
+
+    it.effect("prefers an explicit override over the dev server and the hosted default", () =>
+      Effect.gen(function* () {
+        const environment = yield* makeEnvironment(
+          {},
+          {
+            VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
+            T3CODE_DESKTOP_APP_URL: " http://127.0.0.1:9911/staged/ ",
+          },
+        );
+
+        assert.equal(environment.applicationUrl, "http://127.0.0.1:9911/staged/");
+      }),
+    );
+  });
 });

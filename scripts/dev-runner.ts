@@ -370,10 +370,16 @@ export function createDevRunnerEnv({
       }
     } else {
       output.T3CODE_PORT = String(serverPort);
-      output.VITE_HTTP_URL = `http://${DESKTOP_DEV_LOOPBACK_HOST}:${serverPort}`;
-      output.VITE_WS_URL = `ws://${DESKTOP_DEV_LOOPBACK_HOST}:${serverPort}`;
-      // Desktop pins the renderer to loopback on purpose; an ambient marker
-      // must not make Vite drop those URLs.
+      // The desktop no longer runs its own backend in dev — dev:desktop's
+      // MODE_ARGS never starts one — so it loads the Vite dev server the
+      // same way DesktopEnvironment.applicationUrl loads the hosted client
+      // in production: no backend url baked in, and the client is told it
+      // is the hosted app the same way stageHostedWebBundle tells it for a
+      // packaged build.
+      delete output.VITE_HTTP_URL;
+      delete output.VITE_WS_URL;
+      output.VITE_HOSTED_APP_CHANNEL = "latest";
+      output.T3CODE_DESKTOP_APP_URL = output.VITE_DEV_SERVER_URL;
       delete output.T3CODE_SINGLE_ORIGIN_DEV;
       delete output.T3CODE_MODE;
       delete output.T3CODE_NO_BROWSER;

@@ -67,7 +67,7 @@ function makeFakeBrowserWindow() {
   let zoomLevel = 0;
   const webContents = {
     copyImageAt: vi.fn(),
-    getURL: vi.fn(() => "zerops-mate-dev://app/"),
+    getURL: vi.fn(() => "http://127.0.0.1:5733/"),
     getZoomLevel: vi.fn(() => zoomLevel),
     setZoomLevel: vi.fn((level: number) => {
       zoomLevel = level;
@@ -316,6 +316,30 @@ describe("DesktopWindow", () => {
     );
   });
 
+  // The Zerops sign-in hand-over navigates the window to app.zerops.io and the
+  // platform redirects back to the app origin, so both origins must stay
+  // in-window or the token lands in a system browser tab instead of the app.
+  it("also keeps the Zerops GUI origin in-window, alongside the application origin", () => {
+    assert.isTrue(
+      DesktopWindow.isInWindowRendererNavigation({
+        applicationUrl: "https://mate.zerops.io/",
+        navigationUrl: "https://mate.zerops.io/settings/connections",
+      }),
+    );
+    assert.isTrue(
+      DesktopWindow.isInWindowRendererNavigation({
+        applicationUrl: "https://mate.zerops.io/",
+        navigationUrl: "https://app.zerops.io/authorize-app?app=zerops-code&state=abc",
+      }),
+    );
+    assert.isFalse(
+      DesktopWindow.isInWindowRendererNavigation({
+        applicationUrl: "https://mate.zerops.io/",
+        navigationUrl: "https://accounts.microsoft.com/oauth",
+      }),
+    );
+  });
+
   it.effect("opens a development window unconditionally on activate", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
@@ -340,7 +364,7 @@ describe("DesktopWindow", () => {
         assert.isTrue(createdWindowOptions[0]?.disableAutoHideCursor);
         assert.isFalse(createdWindowOptions[0]?.webPreferences?.backgroundThrottling);
         assert.deepEqual(fakeWindow.setAutoHideCursor.mock.calls, [[false]]);
-        assert.deepEqual(fakeWindow.loadURL.mock.calls[0], ["zerops-mate-dev://app/"]);
+        assert.deepEqual(fakeWindow.loadURL.mock.calls[0], ["http://127.0.0.1:5733/"]);
         assert.equal(fakeWindow.openDevTools.mock.calls.length, 1);
 
         yield* desktopWindow.activate;
@@ -976,17 +1000,17 @@ describe("DesktopWindow", () => {
           return yield* Effect.die("renderer load listeners were not registered");
         }
 
-        didFailLoad({}, -9, "ERR_UNEXPECTED", "zerops-mate-dev://app/", true);
+        didFailLoad({}, -9, "ERR_UNEXPECTED", "http://127.0.0.1:5733/", true);
         assert.equal(fakeWindow.loadURL.mock.calls.length, 1);
 
         yield* TestClock.adjust(100);
         assert.deepEqual(fakeWindow.loadURL.mock.calls, [
-          ["zerops-mate-dev://app/"],
-          ["zerops-mate-dev://app/"],
+          ["http://127.0.0.1:5733/"],
+          ["http://127.0.0.1:5733/"],
         ]);
         assert.equal(fakeWindow.reload.mock.calls.length, 0);
 
-        didFailLoad({}, -9, "ERR_UNEXPECTED", "zerops-mate-dev://app/", true);
+        didFailLoad({}, -9, "ERR_UNEXPECTED", "http://127.0.0.1:5733/", true);
         didFinishLoad();
         yield* TestClock.adjust(250);
         assert.equal(fakeWindow.loadURL.mock.calls.length, 2);
@@ -1056,6 +1080,107 @@ describe("DesktopWindow", () => {
 
         assert.isTrue(prevented);
         assert.deepEqual(openedExternalUrls, ["https://accounts.microsoft.com/oauth"]);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("keeps the Zerops sign-in hand-over navigation in the app window", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const openedExternalUrls: unknown[] = [];
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        openedExternalUrls,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.createMain;
+
+        const willNavigate = fakeWindow.webContentsListeners.get("will-navigate");
+        if (!willNavigate) {
+          return yield* Effect.die("will-navigate listener was not registered");
+        }
+        let prevented = false;
+        willNavigate(
+          {
+            preventDefault: () => {
+              prevented = true;
+            },
+          },
+          "https://app.zerops.io/authorize-app?app=zerops-code&state=abc",
+        );
+        yield* Effect.promise(() => Promise.resolve());
+
+        assert.isFalse(prevented);
+        assert.deepEqual(openedExternalUrls, []);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect(
+    "falls back to the offline page when the application url fails to load outside development retry",
+    () =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+        const layer = makeTestLayer({
+          window: fakeWindow.window,
+          createCount,
+          mainWindow,
+        });
+
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          yield* desktopWindow.createMain;
+
+          const didFailLoad = fakeWindow.webContentsListeners.get("did-fail-load");
+          if (!didFailLoad) {
+            return yield* Effect.die("did-fail-load listener was not registered");
+          }
+
+          assert.deepEqual(fakeWindow.loadURL.mock.calls, [["http://127.0.0.1:5733/"]]);
+
+          // -3 (ERR_ABORTED) is not in the retryable set, so this is not a
+          // development bring-up race — the window should show the offline page.
+          didFailLoad({}, -3, "ERR_ABORTED", "http://127.0.0.1:5733/", true);
+
+          assert.deepEqual(fakeWindow.loadURL.mock.calls, [
+            ["http://127.0.0.1:5733/"],
+            ["zerops-mate-dev://app/"],
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
+
+  it.effect("ignores a sub-frame load failure", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.createMain;
+
+        const didFailLoad = fakeWindow.webContentsListeners.get("did-fail-load");
+        if (!didFailLoad) {
+          return yield* Effect.die("did-fail-load listener was not registered");
+        }
+
+        didFailLoad({}, -3, "ERR_ABORTED", "https://challenges.cloudflare.com/turnstile", false);
+
+        assert.deepEqual(fakeWindow.loadURL.mock.calls, [["http://127.0.0.1:5733/"]]);
       }).pipe(Effect.provide(layer));
     }),
   );

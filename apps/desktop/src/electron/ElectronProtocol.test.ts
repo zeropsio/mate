@@ -1,240 +1,68 @@
-// @effect-diagnostics nodeBuiltinImport:off - test fixture uses raw fs/path to stage a bundle dir.
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-import { afterEach, beforeEach, vi } from "vite-plus/test";
+import { beforeEach, vi } from "vite-plus/test";
 
-const { handleMock, netFetchMock, unhandleMock } = vi.hoisted(() => ({
+const { handleMock, unhandleMock } = vi.hoisted(() => ({
   handleMock: vi.fn(),
-  netFetchMock: vi.fn(),
   unhandleMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
-  net: { fetch: netFetchMock },
   protocol: { handle: handleMock, unhandle: unhandleMock },
 }));
 
 import * as ElectronProtocol from "./ElectronProtocol.ts";
 
-const testLayer = ElectronProtocol.layer.pipe(Layer.provideMerge(NodeServices.layer));
-
-function makeBundleFixture(): string {
-  const bundleDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3code-web-bundle-"));
-  NodeFS.writeFileSync(NodePath.join(bundleDir, "index.html"), "<html>root</html>");
-  NodeFS.mkdirSync(NodePath.join(bundleDir, "assets"));
-  NodeFS.writeFileSync(NodePath.join(bundleDir, "assets", "app.js"), "console.log('app');");
-  return bundleDir;
-}
+const testLayer = ElectronProtocol.layer;
 
 describe("ElectronProtocol", () => {
   beforeEach(() => {
     handleMock.mockReset();
-    netFetchMock.mockReset();
     unhandleMock.mockReset();
   });
 
-  describe("development target", () => {
-    it.effect("proxies the stable renderer origin to the dev server", () =>
+  describe("offline fallback page", () => {
+    it.effect("serves it at the desktop host, whatever the path", () =>
       Effect.gen(function* () {
         let handler: ((request: Request) => Promise<Response>) | undefined;
         handleMock.mockImplementation((_scheme, nextHandler) => {
           handler = nextHandler;
         });
-        netFetchMock.mockResolvedValue(new Response("ok"));
 
         yield* Effect.scoped(
           Effect.gen(function* () {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate-dev",
-              target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
+              scheme: "zerops-mate",
+              applicationUrl: "https://mate.zerops.io/",
             });
             assert.isDefined(handler);
 
-            const response = yield* Effect.promise(() =>
-              handler!(
-                new Request("zerops-mate-dev://app/api/health?verbose=1", {
-                  headers: {
-                    accept: "application/json",
-                    origin: "zerops-mate-dev://app",
-                    referer: "zerops-mate-dev://app/",
-                    "sec-fetch-site": "same-origin",
-                  },
-                }),
-              ),
+            const rootResponse = yield* Effect.promise(() =>
+              handler!(new Request("zerops-mate://app/")),
             );
-            assert.equal(yield* Effect.promise(() => response.text()), "ok");
+            const nestedResponse = yield* Effect.promise(() =>
+              handler!(new Request("zerops-mate://app/some/nested/route")),
+            );
+
+            assert.equal(rootResponse.status, 200);
+            assert.equal(rootResponse.headers.get("content-type"), "text/html; charset=utf-8");
+            const rootBody = yield* Effect.promise(() => rootResponse.text());
+            assert.include(rootBody, "mate.zerops.io");
+            assert.include(rootBody, 'href="https://mate.zerops.io/"');
             assert.include(
-              response.headers.get("content-security-policy") ?? "",
+              rootResponse.headers.get("content-security-policy") ?? "",
               "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com",
             );
-            assert.include(
-              response.headers.get("content-security-policy") ?? "",
-              "connect-src 'self' http: https: ws: wss:",
-            );
+
+            assert.equal(nestedResponse.status, 200);
+            const nestedBody = yield* Effect.promise(() => nestedResponse.text());
+            assert.equal(nestedBody, rootBody);
           }),
         );
 
-        assert.deepEqual(
-          handleMock.mock.calls.map((call) => call[0]),
-          ["zerops-mate-dev"],
-        );
-        assert.equal(netFetchMock.mock.calls[0]?.[0], "http://127.0.0.1:3773/api/health?verbose=1");
-        const forwardedHeaders = new Headers(netFetchMock.mock.calls[0]?.[1]?.headers);
-        assert.equal(forwardedHeaders.get("accept"), "application/json");
-        assert.isNull(forwardedHeaders.get("origin"));
-        assert.isNull(forwardedHeaders.get("referer"));
-        assert.isNull(forwardedHeaders.get("sec-fetch-site"));
-        assert.deepEqual(unhandleMock.mock.calls, [["zerops-mate-dev"]]);
-      }).pipe(Effect.provide(testLayer)),
-    );
-
-    it.effect("retries transient dev server failures", () =>
-      Effect.gen(function* () {
-        let handler: ((request: Request) => Promise<Response>) | undefined;
-        handleMock.mockImplementation((_scheme, nextHandler) => {
-          handler = nextHandler;
-        });
-        netFetchMock
-          .mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:5733"))
-          .mockResolvedValueOnce(new Response("ready"));
-
-        const response = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* ElectronProtocol.ElectronProtocol;
-            yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate-dev",
-              target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:5733/") },
-            });
-            return yield* Effect.promise(() => handler!(new Request("zerops-mate-dev://app/")));
-          }),
-        );
-
-        assert.equal(yield* Effect.promise(() => response.text()), "ready");
-        assert.equal(netFetchMock.mock.calls.length, 2);
-      }).pipe(Effect.provide(testLayer)),
-    );
-  });
-
-  describe("static target", () => {
-    let bundleDir: string;
-
-    beforeEach(() => {
-      bundleDir = makeBundleFixture();
-    });
-
-    afterEach(() => {
-      NodeFS.rmSync(bundleDir, { recursive: true, force: true });
-    });
-
-    it.effect("serves index.html from disk at the bundle root", () =>
-      Effect.gen(function* () {
-        let handler: ((request: Request) => Promise<Response>) | undefined;
-        handleMock.mockImplementation((_scheme, nextHandler) => {
-          handler = nextHandler;
-        });
-
-        const response = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* ElectronProtocol.ElectronProtocol;
-            yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate",
-              target: { _tag: "static", bundleDir },
-            });
-            return yield* Effect.promise(() => handler!(new Request("zerops-mate://app/")));
-          }),
-        );
-
-        assert.equal(response.status, 200);
-        assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
-        assert.equal(yield* Effect.promise(() => response.text()), "<html>root</html>");
-        assert.include(
-          response.headers.get("content-security-policy") ?? "",
-          "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com",
-        );
-        assert.equal(netFetchMock.mock.calls.length, 0);
-      }).pipe(Effect.provide(testLayer)),
-    );
-
-    it.effect("serves a nested asset with its own content type", () =>
-      Effect.gen(function* () {
-        let handler: ((request: Request) => Promise<Response>) | undefined;
-        handleMock.mockImplementation((_scheme, nextHandler) => {
-          handler = nextHandler;
-        });
-
-        const response = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* ElectronProtocol.ElectronProtocol;
-            yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate",
-              target: { _tag: "static", bundleDir },
-            });
-            return yield* Effect.promise(() =>
-              handler!(new Request("zerops-mate://app/assets/app.js")),
-            );
-          }),
-        );
-
-        assert.equal(response.status, 200);
-        assert.equal(response.headers.get("content-type"), "text/javascript; charset=utf-8");
-        assert.equal(yield* Effect.promise(() => response.text()), "console.log('app');");
-      }).pipe(Effect.provide(testLayer)),
-    );
-
-    it.effect("falls back to index.html for an unknown path (client-side routing)", () =>
-      Effect.gen(function* () {
-        let handler: ((request: Request) => Promise<Response>) | undefined;
-        handleMock.mockImplementation((_scheme, nextHandler) => {
-          handler = nextHandler;
-        });
-
-        const response = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* ElectronProtocol.ElectronProtocol;
-            yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate",
-              target: { _tag: "static", bundleDir },
-            });
-            return yield* Effect.promise(() =>
-              handler!(new Request("zerops-mate://app/some/client/route")),
-            );
-          }),
-        );
-
-        assert.equal(response.status, 200);
-        assert.equal(yield* Effect.promise(() => response.text()), "<html>root</html>");
-      }).pipe(Effect.provide(testLayer)),
-    );
-
-    it.effect("refuses to serve a path that escapes the bundle directory", () =>
-      Effect.gen(function* () {
-        let handler: ((request: Request) => Promise<Response>) | undefined;
-        handleMock.mockImplementation((_scheme, nextHandler) => {
-          handler = nextHandler;
-        });
-
-        const response = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const protocol = yield* ElectronProtocol.ElectronProtocol;
-            yield* protocol.registerDesktopProtocol({
-              scheme: "zerops-mate",
-              target: { _tag: "static", bundleDir },
-            });
-            return yield* Effect.promise(() =>
-              handler!(new Request("zerops-mate://app/..%2F..%2Fetc%2Fpasswd")),
-            );
-          }),
-        );
-
-        assert.equal(response.status, 200);
-        assert.equal(yield* Effect.promise(() => response.text()), "<html>root</html>");
+        assert.deepEqual(unhandleMock.mock.calls, [["zerops-mate"]]);
       }).pipe(Effect.provide(testLayer)),
     );
 
@@ -250,7 +78,7 @@ describe("ElectronProtocol", () => {
             const protocol = yield* ElectronProtocol.ElectronProtocol;
             yield* protocol.registerDesktopProtocol({
               scheme: "zerops-mate",
-              target: { _tag: "static", bundleDir },
+              applicationUrl: "https://mate.zerops.io/",
             });
             return yield* Effect.promise(() => handler!(new Request("zerops-mate://other/")));
           }),
@@ -272,7 +100,7 @@ describe("ElectronProtocol", () => {
       const error = yield* Effect.scoped(
         protocol.registerDesktopProtocol({
           scheme: "zerops-mate-dev",
-          target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
+          applicationUrl: "http://127.0.0.1:5733/",
         }),
       ).pipe(Effect.flip);
 
@@ -295,7 +123,7 @@ describe("ElectronProtocol", () => {
         Effect.scoped(
           protocol.registerDesktopProtocol({
             scheme: "zerops-mate",
-            target: { _tag: "development", devServerUrl: new URL("http://127.0.0.1:3773/") },
+            applicationUrl: "https://mate.zerops.io/",
           }),
         ),
       );
@@ -336,5 +164,24 @@ describe("ElectronProtocol", () => {
       "https:",
     ]);
     assert.deepEqual(directives["font-src"], ["'self'", "zerops-mate:", "data:"]);
+  });
+
+  describe("renderOfflineFallbackPage", () => {
+    it("names the unreachable host and links retry back to the application url", () => {
+      const html = ElectronProtocol.renderOfflineFallbackPage({
+        applicationUrl: "https://mate.zerops.io/",
+      });
+
+      assert.include(html, "mate.zerops.io");
+      assert.include(html, 'href="https://mate.zerops.io/"');
+    });
+
+    it("escapes the application url before embedding it", () => {
+      const html = ElectronProtocol.renderOfflineFallbackPage({
+        applicationUrl: 'https://mate.zerops.io/"><script>alert(1)</script>',
+      });
+
+      assert.notInclude(html, "<script>alert(1)</script>");
+    });
   });
 });

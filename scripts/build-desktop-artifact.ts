@@ -7,15 +7,11 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 
-import {
-  BRAND_ASSET_PATHS,
-  resolveWebAssetBrandForChannel,
-  type WebAssetBrand,
-} from "./lib/brand-assets.ts";
+import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import { findInlinedExternalPackages } from "./lib/cli-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
-import { resolveDesktopUpdateChannel, stageHostedWebBundle } from "./stage-desktop-web.ts";
+import { resolveDesktopUpdateChannel } from "./stage-desktop-web.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -568,24 +564,12 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   // so the SDK's optional platform packages (each a ~200MB bundled executable)
   // are dead weight. The trailing dash keeps the SDK's own JS package.
   "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
-  // Every prod-resources staging input is emitted once at resources/ via
-  // extraResources. Keep it out of app.asar too, or it packs twice.
-  "!apps/desktop/prod-resources/web",
-  "!apps/desktop/prod-resources/web/**/*",
 ] as const;
 
 export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
-  },
-  // The hosted-static apps/web build (VITE_HOSTED_APP_CHANNEL set,
-  // VITE_HTTP_URL/VITE_WS_URL unset). DesktopEnvironment.resolveResourcePathCandidates
-  // resolves "web/index.html" against resources/, and ElectronProtocol serves
-  // every file under its parent directory — see stageHostedWebBundle.
-  {
-    from: "apps/desktop/prod-resources/web",
-    to: "web",
   },
 ] as const;
 
@@ -1162,10 +1146,6 @@ function isDesktopPreviewVersion(version: string): boolean {
   return /-pr\./.test(version);
 }
 
-export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
-  return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
-}
-
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
   if (resolveDesktopUpdateChannel(version) === "nightly") {
     return {
@@ -1401,12 +1381,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const stageAppDir = path.join(stageRoot, "app");
   const stageResourcesDir = path.join(stageAppDir, "apps/desktop/resources");
-  const stageWebResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources/web");
   const distDirs = {
     desktopDist: path.join(repoRoot, "apps/desktop/dist-electron"),
     desktopResources: path.join(repoRoot, "apps/desktop/resources"),
     serverDist: path.join(repoRoot, "apps/server/dist"),
-    webDist: path.join(repoRoot, "apps/web/dist"),
   };
 
   if (!options.skipBuild) {
@@ -1535,17 +1513,6 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
-
-  const webAssetBrand = resolveDesktopWebAssetBrand(appVersion);
-  yield* stageHostedWebBundle({
-    repoRoot,
-    webDistDir: distDirs.webDist,
-    stageWebResourcesDir,
-    appVersion,
-    webAssetBrand,
-    skipBuild: options.skipBuild,
-    verbose: options.verbose,
-  });
 
   // The desktop no longer embeds a server, so every platform installs the
   // same dependency set: just the desktop main-process runtime deps.

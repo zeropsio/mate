@@ -164,8 +164,13 @@ const validateBundledClientAssets = Effect.fn("validateDesktopWebBuildAssets")(f
   }
 });
 
-// This is the single hosted-web staging path for both repository smoke runs
-// and temporary electron-builder stage trees.
+// The packaged desktop app no longer ships its own copy of the client — the
+// shell loads the hosted client directly (DesktopEnvironment.applicationUrl)
+// instead, so build-desktop-artifact.ts does not call this anymore. It
+// survives as the desktop smoke test's fixture: `stageDesktopWebCommand`
+// below stages a real hosted-static build that the smoke test then serves
+// over a loopback static server and points the shell at, so the test still
+// launches the shell against the actual client rather than a mock.
 export const stageHostedWebBundle = Effect.fn("stageHostedWebBundle")(function* (input: {
   readonly repoRoot: string;
   readonly webDistDir: string;

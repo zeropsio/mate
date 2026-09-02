@@ -1,10 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as NodeTimersPromises from "node:timers/promises";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -23,6 +19,12 @@ export function getDesktopOrigin(isDevelopment: boolean): string {
   return `${getDesktopScheme(isDevelopment)}://${DESKTOP_HOST}`;
 }
 
+/**
+ * The scheme's one page: shown when the window can't reach `applicationUrl`
+ * (see `renderOfflineFallbackPage`). Unlike the origin the shell used to
+ * serve its own client from, this URL never carries the app itself anymore —
+ * see `DesktopEnvironment.applicationUrl`.
+ */
 export function getDesktopUrl(isDevelopment: boolean): string {
   return `${getDesktopOrigin(isDevelopment)}/`;
 }
@@ -51,20 +53,10 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedErrorClass
   }
 }
 
-/**
- * Where the renderer origin's requests are served from. Development proxies
- * to the Vite dev server (HMR); every other run (packaged or an unpackaged
- * production-mode launch) serves the staged hosted-static web bundle
- * straight off disk — the desktop no longer runs a local backend to proxy
- * to.
- */
-export type DesktopProtocolTarget =
-  | { readonly _tag: "development"; readonly devServerUrl: URL }
-  | { readonly _tag: "static"; readonly bundleDir: string };
-
 export interface DesktopProtocolRegistrationInput {
   readonly scheme: string;
-  readonly target: DesktopProtocolTarget;
+  /** The URL the offline page's Retry link sends the window back to. */
+  readonly applicationUrl: string;
 }
 
 export class ElectronProtocol extends Context.Service<
@@ -139,171 +131,119 @@ const registerDesktopSchemePrivileges = Effect.sync(registerDesktopSchemePrivile
 
 export const layerSchemePrivileges = Layer.effectDiscard(registerDesktopSchemePrivileges);
 
-const TRANSIENT_FETCH_RETRY_DELAYS_MS = [0, 50, 150] as const;
-
-async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<Response> {
-  let lastError: unknown;
-
-  for (const delayMs of TRANSIENT_FETCH_RETRY_DELAYS_MS) {
-    if (delayMs > 0) {
-      await NodeTimersPromises.setTimeout(delayMs);
-    }
-
-    try {
-      return await Electron.net.fetch(url, init);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-async function proxyToDevServer(
-  request: Request,
-  devServerUrl: URL,
-  contentSecurityPolicy: string,
-): Promise<Response> {
-  const requestUrl = new URL(request.url);
-  if (requestUrl.host !== DESKTOP_HOST) {
-    return new Response(null, { status: 404 });
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
-
-  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, devServerUrl);
-  const headers = new Headers(request.headers);
-  const headersToRemove: string[] = [];
-  for (const name of headers.keys()) {
-    if (
-      name === "host" ||
-      name === "origin" ||
-      name === "referer" ||
-      name === "connection" ||
-      name === "content-length" ||
-      name === "accept-encoding" ||
-      name === "upgrade-insecure-requests" ||
-      name.startsWith("sec-fetch-")
-    ) {
-      headersToRemove.push(name);
-    }
-  }
-  for (const name of headersToRemove) {
-    headers.delete(name);
-  }
-  const init: RequestInit = {
-    method: request.method,
-    headers,
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-    (init as RequestInit & { duplex: "half" }).duplex = "half";
-  }
-  const response =
-    request.method === "GET" || request.method === "HEAD"
-      ? await fetchWithTransientRetry(targetUrl.toString(), init)
-      : await Electron.net.fetch(targetUrl.toString(), init);
-  return withContentSecurityPolicy(response, contentSecurityPolicy);
-}
-
-const STATIC_FILE_MIME_TYPES: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".wasm": "application/wasm",
-  ".txt": "text/plain; charset=utf-8",
-};
-
-function staticFileMimeType(path: Path.Path, filePath: string): string {
-  return STATIC_FILE_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
 /**
- * Resolves a request path to a file inside `bundleDir`, guarding against
- * traversal outside it. Falls back to `index.html` — for the bundle root and
- * for any path that isn't a real file on disk (e.g. a stale renderer
- * navigation to a path-based route; the client itself only ever uses hash
- * routing under Electron).
+ * The scheme's only page. A main-frame load of `applicationUrl` can fail —
+ * no network, a hosted deployment that is briefly down — and a blank window
+ * is the worst answer to that, so `DesktopWindow` sends the failed window
+ * here instead. The Retry link is a plain anchor back to `applicationUrl`:
+ * clicking it is an ordinary same-origin-to-itself navigation, which
+ * `isInWindowRendererNavigation` already lets proceed in-window, so no IPC
+ * bridge is needed to wire retry up.
  */
-const resolveStaticFilePath = (
-  fileSystem: FileSystem.FileSystem,
-  path: Path.Path,
-  bundleDir: string,
-  pathname: string,
-): Effect.Effect<string> =>
-  Effect.gen(function* () {
-    const indexPath = path.join(bundleDir, "index.html");
-    const decodedPath = decodeURIComponent(pathname);
-    const relativePath = decodedPath.replace(/^\/+/, "");
-    if (relativePath.length === 0) {
-      return indexPath;
-    }
+export function renderOfflineFallbackPage(input: { readonly applicationUrl: string }): string {
+  const host = escapeHtml(hostOf(input.applicationUrl));
+  const retryHref = escapeHtml(input.applicationUrl);
 
-    const candidatePath = path.join(bundleDir, relativePath);
-    const relativeToBundle = path.relative(bundleDir, candidatePath);
-    if (relativeToBundle.startsWith("..") || path.isAbsolute(relativeToBundle)) {
-      return indexPath;
-    }
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Zerops Mate</title>
+<style>
+  :root { color-scheme: light dark; }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #ffffff;
+    color: #1f2937;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0a0a0a; color: #f8fafc; }
+    .retry { background: #f8fafc; color: #0a0a0a; }
+  }
+  .card {
+    max-width: 320px;
+    padding: 32px;
+    text-align: center;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  p {
+    margin: 0 0 20px;
+    font-size: 13px;
+    line-height: 1.5;
+    opacity: 0.65;
+  }
+  .retry {
+    display: inline-block;
+    padding: 8px 20px;
+    border-radius: 6px;
+    background: #1f2937;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Can't reach ${host}</h1>
+    <p>Zerops Mate couldn't load. Check your connection, then try again.</p>
+    <a class="retry" href="${retryHref}">Retry</a>
+  </div>
+</body>
+</html>
+`;
+}
 
-    const info = yield* fileSystem.stat(candidatePath).pipe(Effect.option);
-    return Option.isSome(info) && info.value.type === "File" ? candidatePath : indexPath;
-  });
-
-const serveStaticFile = (
-  fileSystem: FileSystem.FileSystem,
-  path: Path.Path,
-  request: Request,
-  bundleDir: string,
+function serveOfflineFallbackPage(
+  applicationUrl: string,
   contentSecurityPolicy: string,
-): Promise<Response> =>
-  Effect.gen(function* () {
+): (request: Request) => Promise<Response> {
+  const body = renderOfflineFallbackPage({ applicationUrl });
+  return async (request) => {
     const requestUrl = new URL(request.url);
     if (requestUrl.host !== DESKTOP_HOST) {
       return new Response(null, { status: 404 });
     }
-
-    const filePath = yield* resolveStaticFilePath(fileSystem, path, bundleDir, requestUrl.pathname);
-    const data = yield* fileSystem.readFile(filePath).pipe(Effect.option);
-    return Option.match(data, {
-      onNone: () =>
-        withContentSecurityPolicy(new Response(null, { status: 404 }), contentSecurityPolicy),
-      onSome: (bytes) =>
-        withContentSecurityPolicy(
-          new Response(Uint8Array.from(bytes), {
-            status: 200,
-            headers: { "Content-Type": staticFileMimeType(path, filePath) },
-          }),
-          contentSecurityPolicy,
-        ),
-    });
-  }).pipe(Effect.runPromise);
-
-function makeProtocolHandler(
-  fileSystem: FileSystem.FileSystem,
-  path: Path.Path,
-  target: DesktopProtocolTarget,
-  contentSecurityPolicy: string,
-): (request: Request) => Promise<Response> {
-  return target._tag === "development"
-    ? (request) => proxyToDevServer(request, target.devServerUrl, contentSecurityPolicy)
-    : (request) =>
-        serveStaticFile(fileSystem, path, request, target.bundleDir, contentSecurityPolicy);
+    return withContentSecurityPolicy(
+      new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+      contentSecurityPolicy,
+    );
+  };
 }
 
 export const make = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const registered = yield* Ref.make(false);
 
   const registerDesktopProtocol = Effect.fn("desktop.electron.protocol.registerDesktopProtocol")(
@@ -311,7 +251,7 @@ export const make = Effect.gen(function* () {
       if (yield* Ref.get(registered)) return;
 
       const contentSecurityPolicy = makeDesktopContentSecurityPolicy({ scheme: input.scheme });
-      const handler = makeProtocolHandler(fileSystem, path, input.target, contentSecurityPolicy);
+      const handler = serveOfflineFallbackPage(input.applicationUrl, contentSecurityPolicy);
 
       yield* Effect.acquireRelease(
         Effect.try({

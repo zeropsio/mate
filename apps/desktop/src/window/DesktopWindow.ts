@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import * as Electron from "electron";
 
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import { DEFAULT_ZEROPS_GUI_URL } from "@t3tools/client-runtime/zerops/handover";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -162,6 +163,26 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
+/**
+ * Same-origin navigations stay in-window; so does the Zerops GUI origin. The
+ * sign-in hand-over navigates the window to `app.zerops.io/authorize-app`
+ * and the platform redirects the token back to the app's own origin — if the
+ * GUI origin were treated as off-origin here it would open in the system
+ * browser and strand the hand-over there instead of back in the app.
+ */
+export function isInWindowRendererNavigation(input: {
+  readonly applicationUrl: string;
+  readonly navigationUrl: string;
+}): boolean {
+  return (
+    isSameOriginRendererNavigation(input) ||
+    isSameOriginRendererNavigation({
+      applicationUrl: DEFAULT_ZEROPS_GUI_URL,
+      navigationUrl: input.navigationUrl,
+    })
+  );
+}
+
 export function isRetryableDevelopmentRendererLoadFailure(input: {
   readonly applicationUrl: string;
   readonly errorCode: number;
@@ -258,7 +279,10 @@ export const make = Effect.gen(function* () {
     DesktopWindowError
   > {
     yield* previewManager.getBrowserSession();
-    const applicationUrl = getDesktopUrl(environment.isDevelopment);
+    const applicationUrl = environment.applicationUrl;
+    // Where a failed main-frame load of applicationUrl falls back to — the
+    // scheme's one remaining page, see ElectronProtocol.renderOfflineFallbackPage.
+    const offlineFallbackUrl = getDesktopUrl(environment.isDevelopment);
     const iconPaths = yield* assets.iconPaths;
     const iconOption = getIconOption(iconPaths, environment.platform);
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
@@ -473,7 +497,7 @@ export const make = Effect.gen(function* () {
     });
     window.webContents.on("will-navigate", (event, url) => {
       if (
-        isSameOriginRendererNavigation({
+        isInWindowRendererNavigation({
           applicationUrl,
           navigationUrl: url,
         })
@@ -562,6 +586,12 @@ export const make = Effect.gen(function* () {
       }
       void window.loadURL(applicationUrl).catch(() => undefined);
     };
+    const loadOfflineFallback = () => {
+      if (window.isDestroyed()) {
+        return;
+      }
+      void window.loadURL(offlineFallbackUrl).catch(() => undefined);
+    };
     const scheduleDevelopmentLoadRetry = () => {
       if (developmentLoadRetryFiber !== undefined || window.isDestroyed()) {
         return undefined;
@@ -618,6 +648,21 @@ export const make = Effect.gen(function* () {
           })
             ? scheduleDevelopmentLoadRetry()
             : undefined;
+        // A development bring-up race schedules its own quiet retry above; any
+        // other main-frame failure (production, or a dev failure the retry set
+        // doesn't cover) is not a transient "not up yet" — the window is left
+        // pointed at applicationUrl with nothing to load, so send it to the
+        // offline page instead of a blank window. Guarded against the offline
+        // page's own origin so a failure loading *it* can't loop back into itself.
+        if (
+          retryInMs === undefined &&
+          !isSameOriginRendererNavigation({
+            applicationUrl: offlineFallbackUrl,
+            navigationUrl: validatedURL,
+          })
+        ) {
+          loadOfflineFallback();
+        }
         void runPromise(
           logWindowWarning("main window failed to load", {
             errorCode,

@@ -293,7 +293,11 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("pins desktop dev to a stable backend port and websocket url", () =>
+    // Desktop dev no longer runs its own backend (see `dev:desktop`'s
+    // MODE_ARGS — it never filtered in `t3`): the shell loads the Vite dev
+    // server directly, the same way it loads the hosted client in
+    // production, so an inherited backend url must not survive into it.
+    it.effect("clears an inherited backend url and points the shell at the dev server", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
@@ -322,11 +326,13 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(env.VITE_DEV_SERVER_URL, "http://127.0.0.1:5733");
         assert.equal(env.HOST, "127.0.0.1");
         assert.equal(env.T3CODE_PORT, "4222");
-        assert.equal(env.VITE_HTTP_URL, "http://127.0.0.1:4222");
+        assert.equal(env.VITE_HTTP_URL, undefined);
+        assert.equal(env.VITE_WS_URL, undefined);
+        assert.equal(env.VITE_HOSTED_APP_CHANNEL, "latest");
+        assert.equal(env.T3CODE_DESKTOP_APP_URL, "http://127.0.0.1:5733");
         assert.equal(env.T3CODE_MODE, undefined);
         assert.equal(env.T3CODE_NO_BROWSER, undefined);
         assert.equal(env.T3CODE_HOST, undefined);
-        assert.equal(env.VITE_WS_URL, "ws://127.0.0.1:4222");
       }),
     );
 
@@ -404,7 +410,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         });
 
         assert.equal(env.T3CODE_SINGLE_ORIGIN_DEV, undefined);
-        assert.equal(env.VITE_HTTP_URL, "http://127.0.0.1:13773");
+        assert.equal(env.VITE_HTTP_URL, undefined);
       }),
     );
 
@@ -498,7 +504,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("keeps explicit backend URLs for the desktop renderer", () =>
+    it.effect("does not bake a backend url into the desktop renderer", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({
           mode: "dev:desktop",
@@ -514,8 +520,10 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.VITE_HTTP_URL, "http://127.0.0.1:13773");
-        assert.equal(env.VITE_WS_URL, "ws://127.0.0.1:13773");
+        assert.equal(env.VITE_HTTP_URL, undefined);
+        assert.equal(env.VITE_WS_URL, undefined);
+        assert.equal(env.VITE_HOSTED_APP_CHANNEL, "latest");
+        assert.equal(env.T3CODE_DESKTOP_APP_URL, env.VITE_DEV_SERVER_URL);
       }),
     );
   });

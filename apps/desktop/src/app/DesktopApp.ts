@@ -3,7 +3,6 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
@@ -12,7 +11,6 @@ import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
-import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
@@ -29,15 +27,6 @@ const makeDesktopRunId = Crypto.Crypto.pipe(
   Effect.flatMap((crypto) => crypto.randomUUIDv4),
   Effect.map((value) => value.replaceAll("-", "").slice(0, 12)),
 );
-
-export class DesktopWebBundleMissingError extends Schema.TaggedErrorClass<DesktopWebBundleMissingError>()(
-  "DesktopWebBundleMissingError",
-  {},
-) {
-  override get message(): string {
-    return "Could not locate the staged hosted-static web bundle (resources/web/index.html) next to the desktop app.";
-  }
-}
 
 const { logInfo: logBootstrapInfo } = DesktopObservability.makeComponentLogger("desktop-bootstrap");
 
@@ -97,44 +86,6 @@ export const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalSta
 const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
   handleFatalStartupError(stage, Cause.pretty(cause)).pipe(Effect.andThen(Effect.failCause(cause)));
 
-/**
- * Where the renderer origin's requests come from. Development proxies to the
- * Vite dev server; every other run serves the staged hosted-static web
- * bundle straight off disk — the desktop no longer runs a local backend to
- * point the window at. That bundle is built by
- * `scripts/stage-desktop-web.ts`'s `stageHostedWebBundle` with
- * `VITE_HOSTED_APP_CHANNEL` set to the desktop's own update channel
- * ("latest" or "nightly", see `resolveDesktopUpdateChannel`) and
- * `VITE_HTTP_URL`/`VITE_WS_URL` both empty, so `isHostedStaticApp()`
- * (`apps/web/src/hostedPairing.ts`) is true and `__root.tsx`'s `beforeLoad`
- * takes the `hosted-static` branch before it ever reaches
- * `readPrimaryEnvironmentTarget()` — which would otherwise throw on the
- * non-http `zerops-mate://` origin.
- */
-const resolveDesktopProtocolTarget = Effect.fn("desktop.bootstrap.resolveDesktopProtocolTarget")(
-  function* (): Effect.fn.Return<
-    ElectronProtocol.DesktopProtocolTarget,
-    DesktopWebBundleMissingError,
-    DesktopEnvironment.DesktopEnvironment | DesktopAssets.DesktopAssets
-  > {
-    const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    if (environment.isDevelopment) {
-      return {
-        _tag: "development",
-        devServerUrl: Option.getOrThrow(environment.devServerUrl),
-      };
-    }
-
-    const assets = yield* DesktopAssets.DesktopAssets;
-    const indexPath = yield* assets.resolveResourcePath("web/index.html").pipe(Effect.orDie);
-    if (Option.isNone(indexPath)) {
-      return yield* new DesktopWebBundleMissingError();
-    }
-
-    return { _tag: "static", bundleDir: environment.path.dirname(indexPath.value) };
-  },
-);
-
 const bootstrap = Effect.gen(function* () {
   const state = yield* DesktopState.DesktopState;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -142,12 +93,14 @@ const bootstrap = Effect.gen(function* () {
   const electronProtocol = yield* ElectronProtocol.ElectronProtocol;
   yield* logBootstrapInfo("bootstrap start");
 
-  const target = yield* resolveDesktopProtocolTarget();
+  // The scheme no longer carries the client (DesktopEnvironment.applicationUrl
+  // does, loaded directly by DesktopWindow) — it now only ever serves the
+  // offline fallback page a failed load of that URL falls back to.
   yield* electronProtocol.registerDesktopProtocol({
     scheme: ElectronProtocol.getDesktopScheme(environment.isDevelopment),
-    target,
+    applicationUrl: environment.applicationUrl,
   });
-  yield* logBootstrapInfo("bootstrap registered renderer protocol", { target: target._tag });
+  yield* logBootstrapInfo("bootstrap registered renderer protocol");
 
   yield* installDesktopIpcHandlers();
   yield* logBootstrapInfo("bootstrap ipc handlers registered");

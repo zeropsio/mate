@@ -8,20 +8,11 @@ import { vi } from "vite-plus/test";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
-import { DesktopWebBundleMissingError, handleFatalStartupError } from "./DesktopApp.ts";
+import { handleFatalStartupError } from "./DesktopApp.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopState from "./DesktopState.ts";
 
 describe("DesktopApp errors", () => {
-  it("reports the missing hosted-static web bundle", () => {
-    const error = new DesktopWebBundleMissingError();
-
-    assert.equal(
-      error.message,
-      "Could not locate the staged hosted-static web bundle (resources/web/index.html) next to the desktop app.",
-    );
-  });
-
   const fatalErrorRows = [
     {
       name: "normal startup",

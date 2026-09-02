@@ -1,5 +1,6 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeProcess from "node:process";
@@ -9,11 +10,102 @@ import { resolveElectronLaunchCommand } from "./electron-launcher.mjs";
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const desktopDir = NodePath.resolve(__dirname, "..");
 const mainJs = NodePath.resolve(desktopDir, "dist-electron/main.cjs");
-const stagedWebEntry = NodePath.resolve(desktopDir, "prod-resources/web/index.html");
+const webBundleDir = NodePath.resolve(desktopDir, "prod-resources/web");
+const stagedWebEntry = NodePath.join(webBundleDir, "index.html");
 const stageCommand = "node scripts/stage-desktop-web.ts";
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const smokeTimeoutMs = 30_000;
 const terminateGraceMs = 2_000;
+
+const STATIC_FILE_CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".wasm": "application/wasm",
+  ".txt": "text/plain; charset=utf-8",
+};
+
+function contentTypeFor(filePath) {
+  return (
+    STATIC_FILE_CONTENT_TYPES[NodePath.extname(filePath).toLowerCase()] ??
+    "application/octet-stream"
+  );
+}
+
+/**
+ * Resolves a request path to a file inside `rootDir`, falling back to
+ * index.html for the bundle root and for any path that isn't a real file on
+ * disk (the client only ever uses hash routing here, but this keeps parity
+ * with how the packaged app's offline/static origins used to behave).
+ * Guards against escaping `rootDir` the same way.
+ */
+async function resolveStaticFilePath(rootDir, pathname) {
+  const indexPath = NodePath.join(rootDir, "index.html");
+  const relativePath = decodeURIComponent(pathname).replace(/^\/+/u, "");
+  if (relativePath.length === 0) {
+    return indexPath;
+  }
+
+  const candidatePath = NodePath.join(rootDir, relativePath);
+  const relativeToRoot = NodePath.relative(rootDir, candidatePath);
+  if (relativeToRoot.startsWith("..") || NodePath.isAbsolute(relativeToRoot)) {
+    return indexPath;
+  }
+
+  try {
+    const stat = await NodeFSP.stat(candidatePath);
+    return stat.isFile() ? candidatePath : indexPath;
+  } catch {
+    return indexPath;
+  }
+}
+
+/**
+ * A loopback static server for the desktop smoke test: it starts this,
+ * points T3CODE_DESKTOP_APP_URL at it, and the shell loads it exactly like
+ * it would load any other application url — no network involved, but the
+ * real staged hosted-static client rather than a mock.
+ */
+export function startStaticServer(rootDir) {
+  return new Promise((resolve, reject) => {
+    const server = NodeHttp.createServer((request, response) => {
+      void (async () => {
+        try {
+          const requestUrl = new NodeURL.URL(request.url ?? "/", "http://127.0.0.1");
+          const filePath = await resolveStaticFilePath(rootDir, requestUrl.pathname);
+          const body = await NodeFSP.readFile(filePath);
+          response.writeHead(200, { "Content-Type": contentTypeFor(filePath) });
+          response.end(body);
+        } catch {
+          response.writeHead(404);
+          response.end();
+        }
+      })();
+    });
+
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      resolve({
+        url: `http://127.0.0.1:${typeof address === "object" && address !== null ? address.port : 0}/`,
+        close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
+      });
+    });
+  });
+}
 
 function outputTail(output, lineCount = 80) {
   const tail = output.trimEnd().split(/\r?\n/u).slice(-lineCount).join("\n");
@@ -28,7 +120,7 @@ function printFailures(failures, output) {
   console.error(`\nOutput tail:\n${outputTail(output)}`);
 }
 
-async function runElectronSmoke(capturePath) {
+async function runElectronSmoke(capturePath, appUrl) {
   console.log("\nLaunching Electron smoke test...");
 
   let electronCommand;
@@ -45,6 +137,7 @@ async function runElectronSmoke(capturePath) {
     env: {
       ...NodeProcess.env,
       VITE_DEV_SERVER_URL: "",
+      T3CODE_DESKTOP_APP_URL: appUrl,
       ELECTRON_ENABLE_LOGGING: "1",
       T3CODE_SMOKE_CAPTURE: capturePath,
     },
@@ -95,7 +188,6 @@ async function runElectronSmoke(capturePath) {
     "Uncaught TypeError",
     "Uncaught ReferenceError",
     "fatal startup error",
-    "DesktopWebBundleMissingError",
   ];
   const failures = fatalPatterns
     .filter((pattern) => output.includes(pattern))
@@ -186,9 +278,15 @@ export async function main() {
     NodePath.join(runnerTemp ?? NodeOS.tmpdir(), "desktop-smoke-"),
   );
   let exitCode = 1;
+  let staticServer;
   try {
-    exitCode = await runElectronSmoke(NodePath.join(captureDirectory, "smoke.png"));
+    staticServer = await startStaticServer(webBundleDir);
+    exitCode = await runElectronSmoke(
+      NodePath.join(captureDirectory, "smoke.png"),
+      staticServer.url,
+    );
   } finally {
+    await staticServer?.close();
     exitCode = await cleanupCaptureDirectory(captureDirectory, { runnerTemp, exitCode });
   }
   return exitCode;

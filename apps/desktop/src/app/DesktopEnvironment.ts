@@ -11,6 +11,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
@@ -55,6 +57,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly preloadPath: string;
     readonly appUpdateYmlPath: string;
     readonly devServerUrl: Option.Option<URL>;
+    readonly applicationUrl: string;
     readonly commitHashOverride: Option.Option<string>;
     readonly otlpTracesUrl: Option.Option<string>;
     readonly otlpExportIntervalMs: number;
@@ -96,6 +99,29 @@ function resolveDesktopAppBranding(input: {
     stageLabel,
     displayName: `${APP_BASE_NAME} (${stageLabel})`,
   };
+}
+
+/**
+ * Where the window's `loadURL` points. The shell no longer serves its own
+ * snapshot of the client, so the app is always pointed at a real client
+ * somewhere: an explicit override wins (a staged bundle under test, or an
+ * operator pinning a specific deployment); otherwise a running Vite dev
+ * server (`VITE_DEV_SERVER_URL`) is loaded directly, no custom-scheme proxy
+ * in between; otherwise the hosted client at `DEFAULT_HOSTED_APP_URL` —
+ * imported rather than retyped, so this shell and the client it loads can
+ * never disagree about where the hosted app lives.
+ */
+export function resolveDesktopApplicationUrl(input: {
+  readonly applicationUrlOverride: Option.Option<string>;
+  readonly devServerUrl: Option.Option<URL>;
+}): string {
+  if (Option.isSome(input.applicationUrlOverride)) {
+    return input.applicationUrlOverride.value;
+  }
+  if (Option.isSome(input.devServerUrl)) {
+    return input.devServerUrl.value.href;
+  }
+  return DEFAULT_HOSTED_APP_URL;
 }
 
 function normalizeDesktopArch(arch: string): DesktopRuntimeArch {
@@ -201,6 +227,10 @@ const make = Effect.fn("desktop.environment.make")(function* (
       ? path.join(resourcesPath, "app-update.yml")
       : path.join(input.appPath, "dev-app-update.yml"),
     devServerUrl,
+    applicationUrl: resolveDesktopApplicationUrl({
+      applicationUrlOverride: config.applicationUrlOverride,
+      devServerUrl,
+    }),
     commitHashOverride: config.commitHashOverride,
     otlpTracesUrl: config.otlpTracesUrl,
     otlpExportIntervalMs: config.otlpExportIntervalMs,

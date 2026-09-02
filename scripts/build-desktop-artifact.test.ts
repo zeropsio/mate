@@ -26,7 +26,6 @@ import {
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
   resolveDesktopProductName,
-  resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
   resourceMonitorExecutableName,
   resolveGitHubPublishConfig,
@@ -104,12 +103,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
     });
-  });
-
-  it("switches the bundled splash and favicon branding for nightly versions", () => {
-    assert.equal(resolveDesktopWebAssetBrand("0.0.17"), "production");
-    assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
-    assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.x"), "production");
   });
 
   it.effect("resolves GitHub desktop publish config from Effect config", () =>
@@ -343,14 +336,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     );
   });
 
-  it("limits Electron locales and excludes separately packaged resources", () => {
+  it("limits Electron locales and excludes the Claude SDK's platform binaries", () => {
     assert.deepStrictEqual(DESKTOP_ELECTRON_LANGUAGES, ["en-US"]);
-    // The hosted web bundle ships via extraResources (DESKTOP_EXTRA_RESOURCES),
-    // so it must be excluded here or it packs a second copy into app.asar too.
     assert.deepStrictEqual(DESKTOP_FILE_EXCLUSIONS, [
       "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
-      "!apps/desktop/prod-resources/web",
-      "!apps/desktop/prod-resources/web/**/*",
     ]);
   });
 
@@ -601,15 +590,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
-  it("stages the resource monitor and hosted web bundle as external resources", () => {
+  it("stages the resource monitor as an external resource", () => {
     assert.deepStrictEqual(DESKTOP_EXTRA_RESOURCES, [
       {
         from: "apps/desktop/prod-resources/resource-monitor",
         to: "resource-monitor",
-      },
-      {
-        from: "apps/desktop/prod-resources/web",
-        to: "web",
       },
     ]);
     assert.deepStrictEqual(resolveResourceMonitorRustTargets("mac", "universal"), [
