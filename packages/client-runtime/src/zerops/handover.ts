@@ -41,8 +41,11 @@ export const DEFAULT_ZEROPS_GUI_URL = "https://app.zerops.io";
 /**
  * The mode this client asks for. The platform's registry maps it to our
  * callback origin; an unknown mode is refused there before anything renders.
+ * A registry key, not a brand string: it stays `zerops-code` (the value
+ * registered in the platform client, `z3-handover.util.ts`) across product
+ * renames — no user ever sees it, and changing it needs a platform release.
  */
-export const ZEROPS_HANDOVER_APP_MODE = "zerops-mate";
+export const ZEROPS_HANDOVER_APP_MODE = "zerops-code";
 
 /** The route that receives the redirect. Registered platform-side per mode. */
 export const ZEROPS_HANDOVER_CALLBACK_PATH = "/zerops/authorized";

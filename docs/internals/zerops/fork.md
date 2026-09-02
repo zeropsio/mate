@@ -83,7 +83,10 @@ The product identity is Zerops Mate: `mate` is the executable, `zerops-mate` the
 `/mate` the base path, `zerops@mate` the unit, `ZCP_MATE_*` the zcp-side envs. Upstream's names —
 `t3`, `t3code`, the `T3CODE_*` env vars, the `@t3tools/*` packages, `/.well-known/t3/environment` —
 are inherited plumbing and are never renamed: they run through the ported and imported zones, no
-user sees them, and renaming them would turn every port into a bespoke merge.
+user sees them, and renaming them would turn every port into a bespoke merge. The same holds for
+keys registered on the platform side: the sign-in hand-over asks for mode `zerops-code`
+(`ZEROPS_HANDOVER_APP_MODE`), the value the platform client's registry serves — a rename there is a
+platform release, not a string sweep.
 
 ## 5. How work is done — the zcp loop, transplanted
 

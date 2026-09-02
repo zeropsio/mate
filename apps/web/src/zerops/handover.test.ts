@@ -119,7 +119,7 @@ describe("startZeropsHandover from a dev server", () => {
       startZeropsHandover({ store: fakeStore(), origin: "http://localhost:5173" }),
     );
 
-    expect(url.searchParams.get("app")).toBe("zerops-mate");
+    expect(url.searchParams.get("app")).toBe("zerops-code");
     expect(url.searchParams.get("port")).toBe("5173");
   });
 
