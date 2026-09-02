@@ -86,6 +86,16 @@ describe("reduceCommandPaletteUiState", () => {
       mode: "command",
       openIntent: { kind: "add-project" },
     });
+    expect(
+      reduceCommandPaletteUiState(filesOpen, {
+        _tag: "OpenAddProject",
+        environmentId: EnvironmentId.make("environment-one"),
+      }),
+    ).toEqual({
+      open: true,
+      mode: "command",
+      openIntent: { kind: "add-project", environmentId: EnvironmentId.make("environment-one") },
+    });
     expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenNewThreadIn" })).toEqual({
       open: true,
       mode: "command",

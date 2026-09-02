@@ -23,7 +23,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
-  type EnvironmentId,
+  EnvironmentId,
   type FilesystemBrowseResult,
   type ProjectId,
   type SourceControlDiscoveryResult,
@@ -383,7 +383,14 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     (mode: SearchOverlayMode) => dispatch({ _tag: "ToggleMode", mode }),
     [],
   );
-  const openAddProject = useCallback(() => dispatch({ _tag: "OpenAddProject" }), []);
+  const openAddProject = useCallback(
+    (environmentId?: EnvironmentId) =>
+      dispatch({
+        _tag: "OpenAddProject",
+        ...(environmentId !== undefined ? { environmentId } : {}),
+      }),
+    [],
+  );
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -458,7 +465,11 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         if (detail.open === "new-thread-in") {
           openNewThreadIn();
         } else if (detail.open === "add-project") {
-          openAddProject();
+          openAddProject(
+            detail.environmentId !== undefined
+              ? EnvironmentId.make(detail.environmentId)
+              : undefined,
+          );
         } else {
           setOpen(true);
         }
@@ -1344,42 +1355,49 @@ function OpenCommandPaletteDialog(props: {
     [addProjectEnvironmentItems],
   );
 
-  const openAddProjectFlow = useCallback(() => {
-    if (addProjectEnvironmentOptions.length > 1 || defaultAddProjectEnvironmentId === null) {
-      pushPaletteView({
-        addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
-        groups: addProjectEnvironmentGroups,
-      });
-      return;
-    }
+  const openAddProjectFlow = useCallback(
+    (environmentId?: EnvironmentId) => {
+      if (environmentId !== undefined) {
+        void startAddProjectSourceSelection(environmentId);
+        return;
+      }
+      if (addProjectEnvironmentOptions.length > 1 || defaultAddProjectEnvironmentId === null) {
+        pushPaletteView({
+          addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
+          groups: addProjectEnvironmentGroups,
+        });
+        return;
+      }
 
-    const environmentId = defaultAddProjectEnvironmentId;
-    if (!environmentId) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Unable to browse projects",
-          description: "No environment is available.",
-        }),
-      );
-      return;
-    }
+      const defaultEnvironmentId = defaultAddProjectEnvironmentId;
+      if (!defaultEnvironmentId) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to browse projects",
+            description: "No environment is available.",
+          }),
+        );
+        return;
+      }
 
-    void startAddProjectSourceSelection(environmentId);
-  }, [
-    addProjectEnvironmentGroups,
-    addProjectEnvironmentOptions.length,
-    defaultAddProjectEnvironmentId,
-    pushPaletteView,
-    startAddProjectSourceSelection,
-  ]);
+      void startAddProjectSourceSelection(defaultEnvironmentId);
+    },
+    [
+      addProjectEnvironmentGroups,
+      addProjectEnvironmentOptions.length,
+      defaultAddProjectEnvironmentId,
+      pushPaletteView,
+      startAddProjectSourceSelection,
+    ],
+  );
 
   useLayoutEffect(() => {
     if (openIntent?.kind !== "add-project") {
       return;
     }
     clearOpenIntent();
-    openAddProjectFlow();
+    openAddProjectFlow(openIntent.environmentId);
   }, [clearOpenIntent, openAddProjectFlow, openIntent]);
 
   useLayoutEffect(() => {

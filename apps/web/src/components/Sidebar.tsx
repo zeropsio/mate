@@ -30,7 +30,7 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { hasUnseenCompletion, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import {
@@ -1762,13 +1762,15 @@ export default function Sidebar() {
   });
   const [projectScopeMenuOpen, setProjectScopeMenuOpen] = useState(false);
   const newThreadContext = useHandleNewThread();
-  const openAddProjectCommandPalette = useCallback(
-    () =>
+  const openAddProjectSourcePicker = useCallback(
+    (environmentId: EnvironmentId) => {
+      setProjectScopeMenuOpen(false);
       openAddProjectFromSidebar({
         isMobile,
         closeMobile: () => setOpenMobile(false),
-        openPalette: () => openCommandPalette({ open: "add-project" }),
-      }),
+        openPalette: () => openCommandPalette({ open: "add-project", environmentId }),
+      });
+    },
     [isMobile, setOpenMobile],
   );
   const { environments } = useEnvironments();
@@ -1995,6 +1997,13 @@ export default function Sidebar() {
     },
     [isMobile, router, setOpenMobile],
   );
+
+  const navigateToNewZeropsProject = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void router.navigate({ to: "/zerops/new" });
+  }, [isMobile, router, setOpenMobile]);
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3558,9 +3567,24 @@ export default function Sidebar() {
                             <Button
                               size="icon-xs"
                               variant="ghost-muted"
+                              aria-label={`Add source to ${project.displayName}`}
+                              title={`Add source to ${project.displayName}`}
+                              className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                openAddProjectSourcePicker(project.environmentId);
+                              }}
+                            >
+                              <GitBranchIcon className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="icon-xs"
+                              variant="ghost-muted"
                               aria-label={`Project settings for ${project.displayName}`}
                               title={`Project settings for ${project.displayName}`}
-                              className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                              className="size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 void handleProjectSettings(event, project);
@@ -3580,7 +3604,7 @@ export default function Sidebar() {
                       <SidebarMenuButton
                         size="icon"
                         className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={openAddProjectCommandPalette}
+                        onClick={navigateToNewZeropsProject}
                         type="button"
                         aria-label="New project"
                       />
@@ -4071,11 +4095,11 @@ export default function Sidebar() {
                   <span>No projects yet</span>
                   <button
                     type="button"
-                    onClick={openAddProjectCommandPalette}
+                    onClick={navigateToNewZeropsProject}
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                   >
                     <PlusIcon className="-mx-0.5 size-3" />
-                    Add project
+                    New project
                   </button>
                 </>
               ) : scopedProjectGroup ? (
