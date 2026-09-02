@@ -18,6 +18,7 @@ import {
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
+  type ZeropsAgentType,
 } from "./newProject.ts";
 import {
   ZEROPS_CAPTCHA_ERROR_CODE,
@@ -584,6 +585,7 @@ export class ZeropsApiClient {
     readonly existingServiceNames?: ReadonlyArray<string>;
     readonly location?: string;
     readonly zcpVersion?: string;
+    readonly agents?: ReadonlyArray<ZeropsAgentType>;
   }): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
     const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
       method: "POST",
@@ -605,6 +607,7 @@ export class ZeropsApiClient {
             serviceName,
             vscodePassword: generateVscodePassword(),
             ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+            ...(input.agents ? { agents: input.agents } : {}),
           }),
         }),
       ),

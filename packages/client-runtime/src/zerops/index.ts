@@ -54,6 +54,7 @@ export {
 
 export {
   VSCODE_PASSWORD_LENGTH,
+  ZEROPS_AGENT_TYPE_CANONICAL_ORDER,
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
   buildZcpServiceImportYaml,
@@ -62,4 +63,5 @@ export {
   type CreateProjectBody,
   type DevelopmentContainerImportBody,
   type RandomBytes,
+  type ZeropsAgentType,
 } from "./newProject.ts";

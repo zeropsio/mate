@@ -46,11 +46,108 @@ const GOLDEN = `services:
               - command: zcp service start vscode
                 name: vscode`;
 
+/**
+ * Traced the same way as GOLDEN, for two agents (`codex`, `claude-code`)
+ * selected out of canonical order — the emitted keys must still land in
+ * canonical order: `ZCP_AGENTS` right after `ZCP_VSCODE` (it is the key the
+ * container reads, so it leads), then the GUI-parity `ZCP_AGENT_AUTH_TYPE_*`
+ * lines, then `ZCP_MATE_ENABLED` last.
+ */
+const GOLDEN_TWO_AGENTS = `services:
+  - hostname: zcp
+    type: zcp@1
+    maxContainers: 1
+    enableSubdomainAccess: true
+    verticalAutoscaling:
+      minRam: 2
+    envSecrets:
+      VSCODE_PASSWORD: "PASSWORD0PASSWORD"
+      ZCP_VSCODE_AUTH_ENABLED: "true"
+      ZCP_VSCODE: "true"
+      ZCP_AGENTS: "claude-code,codex"
+      ZCP_AGENT_AUTH_TYPE_CLAUDE_CODE: "oauth"
+      ZCP_AGENT_AUTH_TYPE_CODEX: "oauth"
+      ZCP_MATE_ENABLED: "1"
+    zeropsYaml:
+      zerops:
+        - setup: zcp
+          run:
+            base: zcp@1
+            initCommands:
+              - curl -sSfL https://zerops.io/zcp/install.sh | sudo sh
+              - zcp init
+              - sudo -E zcp init nginx
+            ports:
+              - port: 8080
+                httpSupport: true
+            startCommands:
+              - command: zcp service start nginx
+                name: nginx
+              - command: zcp service start vscode
+                name: vscode`;
+
 describe("buildZcpServiceImportYaml", () => {
   it("emits the platform's own import document, byte for byte, plus the mate flag", () => {
     expect(
       buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "PASSWORD0PASSWORD" }),
     ).toBe(GOLDEN);
+  });
+
+  it("emits an empty agent list as exactly the no-agent document", () => {
+    expect(
+      buildZcpServiceImportYaml({
+        serviceName: "zcp",
+        vscodePassword: "PASSWORD0PASSWORD",
+        agents: [],
+      }),
+    ).toBe(GOLDEN);
+  });
+
+  it('never emits ZCP_AGENTS at all when the list is absent or empty, because an emitted empty string would fail the container closed to zero agents instead of the intended "offer all five"', () => {
+    const withoutAgentsField = buildZcpServiceImportYaml({
+      serviceName: "zcp",
+      vscodePassword: "PASSWORD0PASSWORD",
+    });
+    const withEmptyAgentsList = buildZcpServiceImportYaml({
+      serviceName: "zcp",
+      vscodePassword: "PASSWORD0PASSWORD",
+      agents: [],
+    });
+
+    expect(withoutAgentsField).not.toContain("ZCP_AGENTS");
+    expect(withEmptyAgentsList).not.toContain("ZCP_AGENTS");
+  });
+
+  it("emits ZCP_AGENTS as a comma-separated list in canonical order, the presentation order the container preserves", () => {
+    const yaml = buildZcpServiceImportYaml({
+      serviceName: "zcp",
+      vscodePassword: "PASSWORD0PASSWORD",
+      // Passed out of canonical order.
+      agents: ["cursor", "claude-code"],
+    });
+
+    expect(yaml).toContain('ZCP_AGENTS: "claude-code,cursor"');
+  });
+
+  it("emits one ZCP_AGENT_AUTH_TYPE_<SUFFIX> oauth secret per selected agent, in canonical order", () => {
+    expect(
+      buildZcpServiceImportYaml({
+        serviceName: "zcp",
+        vscodePassword: "PASSWORD0PASSWORD",
+        // Passed out of canonical order — the output must not follow it.
+        agents: ["codex", "claude-code"],
+      }),
+    ).toBe(GOLDEN_TWO_AGENTS);
+  });
+
+  it("uppercases a hyphenated agent type and replaces hyphens with underscores for the suffix", () => {
+    const yaml = buildZcpServiceImportYaml({
+      serviceName: "zcp",
+      vscodePassword: "PASSWORD0PASSWORD",
+      agents: ["claude-code"],
+    });
+
+    expect(yaml).toContain('ZCP_AGENT_AUTH_TYPE_CLAUDE_CODE: "oauth"');
   });
 
   it("never emits a container with a public subdomain and no password", () => {
