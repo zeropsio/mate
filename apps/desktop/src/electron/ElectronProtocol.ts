@@ -154,7 +154,7 @@ function hostOf(url: string): string {
  * is the worst answer to that, so `DesktopWindow` sends the failed window
  * here instead. The Retry link is a plain anchor back to `applicationUrl`:
  * clicking it is an ordinary same-origin-to-itself navigation, which
- * `isInWindowRendererNavigation` already lets proceed in-window, so no IPC
+ * `isSameOriginRendererNavigation` already lets proceed in-window, so no IPC
  * bridge is needed to wire retry up.
  */
 export function renderOfflineFallbackPage(input: { readonly applicationUrl: string }): string {

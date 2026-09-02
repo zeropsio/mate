@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ZEROPS_GUI_REGISTRATION_URL,
   ZeropsHandedOffBanner,
+  ZeropsHandoverActions,
   ZeropsLandingShell,
   ZeropsRegisterForm,
   ZeropsRegistrationUnavailable,
@@ -155,5 +156,47 @@ describe("ZeropsHandedOffBanner", () => {
     expect(markup).toContain("Finish creating your account");
     expect(markup).toContain('name="email"');
     expect(markup).toContain('type="password"');
+  });
+});
+
+describe("ZeropsHandoverActions", () => {
+  it("offers the ordinary in-tab hand-over when no native sign-in is in progress", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsHandoverActions onContinue={noop} onCreateAccount={noop} />,
+    );
+
+    expect(markup).toContain("Continue with Zerops");
+    expect(markup).toContain("Create one on Zerops");
+    expect(markup).not.toContain("Continue in your browser");
+  });
+
+  // A window that appears to have done nothing on click is the worst answer
+  // to "the browser has the flow now" — this state names what's happening
+  // and gives a way back.
+  it("names the browser and offers a way back while a native sign-in is in flight", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsHandoverActions
+        onContinue={noop}
+        onCreateAccount={noop}
+        nativeSignIn={{ busy: true, error: null, onCancel: noop }}
+      />,
+    );
+
+    expect(markup).toContain("Continue in your browser");
+    expect(markup).toContain("Cancel");
+    expect(markup).not.toContain("Continue with Zerops");
+  });
+
+  it("surfaces a native sign-in error once no longer busy", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsHandoverActions
+        onContinue={noop}
+        onCreateAccount={noop}
+        nativeSignIn={{ busy: false, error: "Sign-in was cancelled.", onCancel: noop }}
+      />,
+    );
+
+    expect(markup).toContain("Continue with Zerops");
+    expect(markup).toContain("Sign-in was cancelled.");
   });
 });

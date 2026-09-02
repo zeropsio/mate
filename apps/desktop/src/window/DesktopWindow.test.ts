@@ -316,30 +316,6 @@ describe("DesktopWindow", () => {
     );
   });
 
-  // The Zerops sign-in hand-over navigates the window to app.zerops.io and the
-  // platform redirects back to the app origin, so both origins must stay
-  // in-window or the token lands in a system browser tab instead of the app.
-  it("also keeps the Zerops GUI origin in-window, alongside the application origin", () => {
-    assert.isTrue(
-      DesktopWindow.isInWindowRendererNavigation({
-        applicationUrl: "https://mate.zerops.io/",
-        navigationUrl: "https://mate.zerops.io/settings/connections",
-      }),
-    );
-    assert.isTrue(
-      DesktopWindow.isInWindowRendererNavigation({
-        applicationUrl: "https://mate.zerops.io/",
-        navigationUrl: "https://app.zerops.io/authorize-app?app=zerops-code&state=abc",
-      }),
-    );
-    assert.isFalse(
-      DesktopWindow.isInWindowRendererNavigation({
-        applicationUrl: "https://mate.zerops.io/",
-        navigationUrl: "https://accounts.microsoft.com/oauth",
-      }),
-    );
-  });
-
   it.effect("opens a development window unconditionally on activate", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
@@ -1080,44 +1056,6 @@ describe("DesktopWindow", () => {
 
         assert.isTrue(prevented);
         assert.deepEqual(openedExternalUrls, ["https://accounts.microsoft.com/oauth"]);
-      }).pipe(Effect.provide(layer));
-    }),
-  );
-
-  it.effect("keeps the Zerops sign-in hand-over navigation in the app window", () =>
-    Effect.gen(function* () {
-      const fakeWindow = makeFakeBrowserWindow();
-      const createCount = yield* Ref.make(0);
-      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
-      const openedExternalUrls: unknown[] = [];
-      const layer = makeTestLayer({
-        window: fakeWindow.window,
-        createCount,
-        mainWindow,
-        openedExternalUrls,
-      });
-
-      yield* Effect.gen(function* () {
-        const desktopWindow = yield* DesktopWindow.DesktopWindow;
-        yield* desktopWindow.createMain;
-
-        const willNavigate = fakeWindow.webContentsListeners.get("will-navigate");
-        if (!willNavigate) {
-          return yield* Effect.die("will-navigate listener was not registered");
-        }
-        let prevented = false;
-        willNavigate(
-          {
-            preventDefault: () => {
-              prevented = true;
-            },
-          },
-          "https://app.zerops.io/authorize-app?app=zerops-code&state=abc",
-        );
-        yield* Effect.promise(() => Promise.resolve());
-
-        assert.isFalse(prevented);
-        assert.deepEqual(openedExternalUrls, []);
       }).pipe(Effect.provide(layer));
     }),
   );

@@ -46,6 +46,7 @@ import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as BrowserSession from "./preview/BrowserSession.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
+import * as DesktopZeropsSignIn from "./zerops/DesktopZeropsSignIn.ts";
 
 const desktopEnvironmentLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -101,7 +102,11 @@ const desktopApplicationLayer = Layer.mergeAll(
   DesktopLinuxUrlHandler.layer,
   DesktopShellEnvironment.layer,
   DesktopAppIdentity.layer,
-).pipe(Layer.provideMerge(DesktopUpdates.layer), Layer.provideMerge(desktopWindowLayer));
+).pipe(
+  Layer.provideMerge(DesktopUpdates.layer),
+  Layer.provideMerge(DesktopZeropsSignIn.layer()),
+  Layer.provideMerge(desktopWindowLayer),
+);
 
 const desktopApplicationRuntimeLayer = desktopApplicationLayer.pipe(
   Layer.provideMerge(NodeServices.layer),

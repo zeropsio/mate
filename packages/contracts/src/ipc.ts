@@ -261,6 +261,35 @@ export const DesktopUpdateCheckResultSchema = Schema.Struct({
   state: DesktopUpdateStateSchema,
 });
 
+/**
+ * The Zerops sign-in hand-over, run out-of-window: the renderer mints a
+ * nonce (`state`) and hands it to the main process, which opens the system
+ * browser at the platform's authorize URL and listens on a loopback port for
+ * the redirect back. See `packages/client-runtime/src/zerops/handover.ts`
+ * for the wire contract this rides on.
+ */
+export interface DesktopZeropsSignInInput {
+  /** The nonce the renderer minted and is holding, to check the callback against. */
+  state: string;
+  intent?: "register" | undefined;
+}
+
+export const DesktopZeropsSignInInputSchema = Schema.Struct({
+  state: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
+  intent: Schema.optional(Schema.Literal("register")),
+});
+
+export type DesktopZeropsSignInResult =
+  /** The platform redirected back with a callback fragment for the renderer to verify. */
+  | { kind: "callback"; fragment: string }
+  /** Timed out, or the window closed before the browser came back. */
+  | { kind: "cancelled" };
+
+export const DesktopZeropsSignInResultSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("callback"), fragment: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("cancelled") }),
+]);
+
 // Stable id for the historical same-origin "primary" local environment
 // (Windows-native backend in the T3-upstream desktop, or a self-hosted web
 // deployment's own origin). Not desktop-bridge specific — it is a cache/map
@@ -962,6 +991,15 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  /**
+   * Runs the Zerops sign-in hand-over in the system browser instead of the
+   * app window: opens `input.state`'s authorize URL externally, listens on a
+   * loopback port for the platform's redirect, and resolves with the
+   * callback fragment (or `cancelled` on timeout or an abandoned window).
+   * Optional: older desktop builds lack it, and callers fall back to
+   * navigating the app window itself.
+   */
+  zeropsSignIn?: (input: DesktopZeropsSignInInput) => Promise<DesktopZeropsSignInResult>;
   /**
    * Desktop-only preview surface. Present iff the renderer is hosted by the
    * Electron desktop build; web builds have `preview === undefined`.

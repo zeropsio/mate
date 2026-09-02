@@ -5,6 +5,7 @@ import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/hando
 import {
   ZEROPS_HANDOVER_NONCE_KEY,
   completeZeropsHandover,
+  mintZeropsHandoverNonce,
   readHandoverOnce,
   startZeropsHandover,
   type ZeropsHandoverNonceStore,
@@ -56,6 +57,27 @@ describe("startZeropsHandover", () => {
     const url = new URL(startZeropsHandover({ store: fakeStore(), intent: "register" }));
     expect(url.searchParams.get("intent")).toBe("register");
     expect(url.pathname).toBe("/authorize-app");
+  });
+});
+
+describe("mintZeropsHandoverNonce", () => {
+  // The native (desktop-bridge) sign-in hands this bare value to the main
+  // process as `state` instead of building a browser URL with it — the
+  // platform is opened by Electron's shell, not this tab's location.
+  it("mints and remembers a nonce, so the callback has something to check against", () => {
+    const store = fakeStore();
+    const nonce = mintZeropsHandoverNonce({ store });
+
+    expect(nonce).not.toBe("");
+    expect(store.take()).toBe(nonce);
+  });
+
+  it("mints a fresh nonce per call", () => {
+    const seen = new Set<string>();
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      seen.add(mintZeropsHandoverNonce({ store: fakeStore() }));
+    }
+    expect(seen.size).toBe(32);
   });
 });
 

@@ -103,6 +103,22 @@ function loopbackPortOf(origin: string): number | null {
 }
 
 /**
+ * Mints and remembers a nonce, and returns it bare. Used directly by the
+ * native (desktop-bridge) sign-in, which hands the nonce to the main process
+ * as `state` rather than building a browser URL with it — the platform is
+ * opened by Electron's shell, not this tab's location. `startZeropsHandover`
+ * below is this plus the browser URL, for the ordinary in-tab flow.
+ */
+export function mintZeropsHandoverNonce(
+  input: { readonly store?: ZeropsHandoverNonceStore } = {},
+): string {
+  const store = input.store ?? sessionHandoverNonceStore;
+  const state = mintNonce();
+  store.remember(state);
+  return state;
+}
+
+/**
  * Mints and remembers a nonce, and returns the URL to send the tab to. Same
  * tab, always: the callback lands back here and reads the nonce out of this
  * tab's storage, which a new tab would not have.
@@ -116,8 +132,7 @@ export function startZeropsHandover(
   } = {},
 ): string {
   const store = input.store ?? sessionHandoverNonceStore;
-  const state = mintNonce();
-  store.remember(state);
+  const state = mintZeropsHandoverNonce({ store });
   const loopbackPort = loopbackPortOf(input.origin ?? currentOrigin());
   return buildZeropsAuthorizeUrl({
     state,

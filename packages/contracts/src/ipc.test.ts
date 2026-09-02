@@ -1,7 +1,11 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { DesktopEnvironmentBootstrapSchema } from "./ipc.ts";
+import {
+  DesktopEnvironmentBootstrapSchema,
+  DesktopZeropsSignInInputSchema,
+  DesktopZeropsSignInResultSchema,
+} from "./ipc.ts";
 
 describe("DesktopEnvironmentBootstrapSchema", () => {
   const decode = Schema.decodeUnknownSync(DesktopEnvironmentBootstrapSchema);
@@ -34,5 +38,38 @@ describe("DesktopEnvironmentBootstrapSchema", () => {
         wsBaseUrl: null,
       }).runningDistro,
     ).toBeNull();
+  });
+});
+
+describe("DesktopZeropsSignInInputSchema", () => {
+  const decode = Schema.decodeUnknownSync(DesktopZeropsSignInInputSchema);
+
+  it("requires a non-empty state nonce", () => {
+    expect(decode({ state: "nonce-1" })).toEqual({ state: "nonce-1" });
+    expect(() => decode({ state: "" })).toThrow();
+    expect(() => decode({})).toThrow();
+  });
+
+  it("carries an optional register intent", () => {
+    expect(decode({ state: "nonce-1", intent: "register" })).toEqual({
+      state: "nonce-1",
+      intent: "register",
+    });
+    expect(() => decode({ state: "nonce-1", intent: "sign-in" })).toThrow();
+  });
+});
+
+describe("DesktopZeropsSignInResultSchema", () => {
+  const decode = Schema.decodeUnknownSync(DesktopZeropsSignInResultSchema);
+
+  it("decodes a delivered callback fragment", () => {
+    expect(decode({ kind: "callback", fragment: "#token=rt-1&state=nonce-1" })).toEqual({
+      kind: "callback",
+      fragment: "#token=rt-1&state=nonce-1",
+    });
+  });
+
+  it("decodes a cancelled outcome", () => {
+    expect(decode({ kind: "cancelled" })).toEqual({ kind: "cancelled" });
   });
 });

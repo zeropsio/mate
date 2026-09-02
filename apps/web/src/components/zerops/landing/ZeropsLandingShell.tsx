@@ -367,10 +367,45 @@ export function ZeropsTotpForm({
 export function ZeropsHandoverActions({
   onContinue,
   onCreateAccount,
+  nativeSignIn,
 }: {
   readonly onContinue: () => void;
   readonly onCreateAccount: () => void;
+  /**
+   * Present only when the desktop bridge runs the hand-over out-of-window,
+   * in the system browser. A window that just sits there while the browser
+   * has the flow looks like it did nothing, so `busy` names what's
+   * happening; `onCancel` is the way back for someone who abandons the
+   * browser tab instead of finishing there — the in-flight main-process
+   * listener keeps running until it times out, but the UI returns to normal
+   * immediately.
+   */
+  readonly nativeSignIn?:
+    | {
+        readonly busy: boolean;
+        readonly error: string | null;
+        readonly onCancel: () => void;
+      }
+    | undefined;
 }) {
+  if (nativeSignIn?.busy) {
+    return (
+      <div className="space-y-3 text-center">
+        <Spinner className="mx-auto size-5" />
+        <p className="text-sm text-muted-foreground">
+          Continue in your browser, then come back here.
+        </p>
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          onClick={nativeSignIn.onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <Button className="w-full" onClick={onContinue}>
@@ -386,6 +421,7 @@ export function ZeropsHandoverActions({
           Create one on Zerops
         </button>
       </p>
+      <FormError message={nativeSignIn?.error ?? null} />
     </div>
   );
 }

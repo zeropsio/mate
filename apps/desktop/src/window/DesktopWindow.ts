@@ -8,8 +8,6 @@ import * as Option from "effect/Option";
 import * as Electron from "electron";
 
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
-import { DEFAULT_ZEROPS_GUI_URL } from "@t3tools/client-runtime/zerops/handover";
-
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
@@ -161,26 +159,6 @@ export function isSameOriginRendererNavigation(input: {
   } catch {
     return false;
   }
-}
-
-/**
- * Same-origin navigations stay in-window; so does the Zerops GUI origin. The
- * sign-in hand-over navigates the window to `app.zerops.io/authorize-app`
- * and the platform redirects the token back to the app's own origin — if the
- * GUI origin were treated as off-origin here it would open in the system
- * browser and strand the hand-over there instead of back in the app.
- */
-export function isInWindowRendererNavigation(input: {
-  readonly applicationUrl: string;
-  readonly navigationUrl: string;
-}): boolean {
-  return (
-    isSameOriginRendererNavigation(input) ||
-    isSameOriginRendererNavigation({
-      applicationUrl: DEFAULT_ZEROPS_GUI_URL,
-      navigationUrl: input.navigationUrl,
-    })
-  );
 }
 
 export function isRetryableDevelopmentRendererLoadFailure(input: {
@@ -497,7 +475,7 @@ export const make = Effect.gen(function* () {
     });
     window.webContents.on("will-navigate", (event, url) => {
       if (
-        isInWindowRendererNavigation({
+        isSameOriginRendererNavigation({
           applicationUrl,
           navigationUrl: url,
         })

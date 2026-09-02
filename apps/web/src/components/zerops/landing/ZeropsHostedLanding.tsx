@@ -5,7 +5,7 @@
  */
 
 import { isZeropsCaptchaRejection } from "@t3tools/client-runtime/zerops";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { Spinner } from "../../ui/spinner";
 import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
@@ -13,6 +13,11 @@ import { useZeropsTurnstile } from "~/zerops/turnstile";
 
 import { ZeropsProjectsPage } from "../ZeropsProjectsPage";
 import { startZeropsHandover } from "~/zerops/handover";
+import {
+  readZeropsNativeSignInBridge,
+  runZeropsNativeSignIn,
+  type ZeropsNativeSignInState,
+} from "~/zerops/nativeSignIn";
 
 import {
   ZEROPS_GUI_REGISTRATION_URL,
@@ -40,7 +45,7 @@ export function ZeropsHostedLanding({
   readonly exclusive?: boolean;
   readonly manualFallback: ReactNode;
 }) {
-  const { status, signIn, register, verifyTotp } = useZeropsSession();
+  const { status, signIn, register, verifyTotp, adoptHandover } = useZeropsSession();
   const [mode, setMode] = useState<LandingMode>("sign-in");
   const [showManual, setShowManual] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -50,6 +55,29 @@ export function ZeropsHostedLanding({
   // end as a widget that will not render on this origin.
   const [captchaRefusal, setCaptchaRefusal] = useState<string | null>(null);
   const turnstile = useZeropsTurnstile();
+  const [nativeSignInState, setNativeSignInState] = useState<ZeropsNativeSignInState>({
+    kind: "idle",
+  });
+  // Bumped on every new attempt and by Cancel; a resolution that arrives
+  // after either must not touch the UI the user has already moved past.
+  const nativeSignInGeneration = useRef(0);
+
+  const startNativeSignIn = (input: { readonly intent?: "register" }): boolean => {
+    const zeropsSignIn = readZeropsNativeSignInBridge();
+    if (!zeropsSignIn) return false;
+    const generation = ++nativeSignInGeneration.current;
+    void runZeropsNativeSignIn(
+      { zeropsSignIn, adoptHandover },
+      input,
+      setNativeSignInState,
+      () => nativeSignInGeneration.current === generation,
+    );
+    return true;
+  };
+  const cancelNativeSignIn = () => {
+    nativeSignInGeneration.current += 1;
+    setNativeSignInState({ kind: "idle" });
+  };
 
   if (showManual && !exclusive) {
     return <>{manualFallback}</>;
@@ -189,13 +217,24 @@ export function ZeropsHostedLanding({
     >
       <ZeropsHandoverActions
         onContinue={() => {
+          if (startNativeSignIn({})) return;
           // A full-page navigation in this tab, never a new one: the callback
           // reads the nonce back out of this tab's storage.
           window.location.href = startZeropsHandover();
         }}
         onCreateAccount={() => {
+          if (startNativeSignIn({ intent: "register" })) return;
           window.location.href = startZeropsHandover({ intent: "register" });
         }}
+        nativeSignIn={
+          readZeropsNativeSignInBridge()
+            ? {
+                busy: nativeSignInState.kind === "busy",
+                error: nativeSignInState.kind === "error" ? nativeSignInState.message : null,
+                onCancel: cancelNativeSignIn,
+              }
+            : undefined
+        }
       />
       <ZeropsPasswordDisclosure
         open={showPasswordForm}
