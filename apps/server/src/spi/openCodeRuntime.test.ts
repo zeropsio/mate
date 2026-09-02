@@ -4,9 +4,11 @@ import * as Effect from "effect/Effect";
 import type { ChatAttachment } from "@t3tools/contracts";
 
 import { OpenCodeRuntime, type OpenCodeRuntimeShape } from "../provider/opencodeRuntime.ts";
+import { OpenCodeServerOwner } from "../provider/OpenCodeServerOwner.ts";
 import {
   openCodeRuntimeCapability,
   openCodeRuntimeErrorDetail,
+  openCodeServerOwnerCapability,
   parseOpenCodeModelSlug,
   toOpenCodeFileParts,
 } from "./openCodeRuntime.ts";
@@ -14,12 +16,14 @@ import {
 const unusedMember = () => Effect.die("not used by OpenCodeRuntimeCapability's contract test");
 
 const makeFakeShape = (): OpenCodeRuntimeShape => ({
-  startOpenCodeServerProcess: (input) =>
+  startOpenCodeServerProcess: unusedMember,
+  connectToOpenCodeServer: ({ binaryPath }) =>
     Effect.succeed({
-      url: `http://127.0.0.1:4300?binaryPath=${input.binaryPath}`,
-      exitCode: Effect.never,
+      url: `http://127.0.0.1:4300?binaryPath=${binaryPath}`,
+      version: "1.14.19",
+      exitCode: null,
+      external: true,
     }),
-  connectToOpenCodeServer: unusedMember,
   runOpenCodeCommand: unusedMember,
   createOpenCodeSdkClient: (input) => ({ __fakeBaseUrl: input.baseUrl }) as never,
   loadOpenCodeInventory: unusedMember,
@@ -36,9 +40,12 @@ describe("openCodeRuntimeCapability", () => {
         );
 
         const server = yield* capability
-          .startOpenCodeServerProcess({ binaryPath: "/usr/local/bin/opencode" })
+          .connectToOpenCodeServer({ binaryPath: "/usr/local/bin/opencode", directory: "/tmp" })
           .pipe(Effect.scoped);
         expect(server.url).toBe("http://127.0.0.1:4300?binaryPath=/usr/local/bin/opencode");
+        expect(server.version).toBe("1.14.19");
+        expect(server).not.toHaveProperty("exitCode");
+        expect(server).not.toHaveProperty("external");
 
         const client = capability.createOpenCodeSdkClient({
           baseUrl: "http://127.0.0.1:4300",
@@ -46,6 +53,27 @@ describe("openCodeRuntimeCapability", () => {
         });
         expect(client).toEqual({ __fakeBaseUrl: "http://127.0.0.1:4300" });
       }),
+  );
+});
+
+describe("openCodeServerOwnerCapability", () => {
+  it.effect("narrows the driver's server-owner service to just withServer", () =>
+    Effect.gen(function* () {
+      const capability = yield* openCodeServerOwnerCapability.pipe(
+        Effect.provideService(OpenCodeServerOwner, {
+          withServer: (use) =>
+            use({
+              url: "http://127.0.0.1:4301",
+              version: "1.14.19",
+              isRunning: Effect.succeed(true),
+              exitCode: Effect.never,
+            }),
+        }),
+      );
+
+      const url = yield* capability.withServer((server) => Effect.succeed(server.url));
+      expect(url).toBe("http://127.0.0.1:4301");
+    }),
   );
 });
 

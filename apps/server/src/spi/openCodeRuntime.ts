@@ -2,22 +2,31 @@
  * openCodeRuntime — the owned, narrow OpenCode capability
  * `textGeneration/OpenCodeTextGeneration.ts` uses, cut down from the
  * driver's full `OpenCodeRuntimeShape` (`provider/opencodeRuntime.ts`,
- * 6 members: server lifecycle, CLI passthrough, and inventory loading).
- * `OpenCodeTextGeneration.ts` only ever spawns/reuses a server
- * (`startOpenCodeServerProcess`) and talks to it over the SDK client
- * (`createOpenCodeSdkClient`) — the other four members (`connectToOpenCodeServer`,
- * `runOpenCodeCommand`, `loadOpenCodeInventory`, `loadInventoryFromCli`) serve
- * other callers and are deliberately NOT part of this capability.
+ * 6 members: server lifecycle, CLI passthrough, and inventory loading) plus
+ * the shared local-server lifecycle owner (`provider/OpenCodeServerOwner.ts`,
+ * a per-instance `Context.Service` the driver constructs and provides).
+ * `OpenCodeTextGeneration.ts` only ever connects to an externally-configured
+ * server (`connectToOpenCodeServer`), borrows the shared local server
+ * (`openCodeServerOwnerCapability`'s `withServer`), and talks to either over
+ * the SDK client (`createOpenCodeSdkClient`) — the other three driver members
+ * (`startOpenCodeServerProcess`, `runOpenCodeCommand`, `loadOpenCodeInventory`,
+ * `loadInventoryFromCli`) serve other callers (the shared server owner spawns
+ * its own process directly from the ported zone; the OpenCode provider check
+ * loads inventory) and are deliberately NOT part of this capability.
  *
  * `openCodeRuntimeCapability` is an Effect whose R channel is still exactly
  * `OpenCodeRuntime.OpenCodeRuntime` (the driver's own Context.Service tag) —
  * unchanged so that `provider/Drivers/OpenCodeDriver.ts` (ported zone, not
  * touched by this slice) keeps providing it via `OpenCodeRuntimeLive` with
- * zero changes. What's owned is the NARROWING: `OpenCodeTextGeneration.ts`
- * never names the driver's tag or its 6-method shape — it only sees
- * `OpenCodeRuntimeCapability`, so a driver-side rename/removal of one of
- * these two members fails `openCodeRuntime.test.ts`, not the text-generation
- * spawn/prompt call sites.
+ * zero changes. `openCodeServerOwnerCapability` is likewise keyed on the
+ * driver's own `OpenCodeServerOwner.OpenCodeServerOwner` tag, which the
+ * driver constructs per instance (`OpenCodeServerOwner.make`, bound to that
+ * instance's binary path/directory/password) and provides alongside the
+ * runtime tag. What's owned in both cases is the NARROWING:
+ * `OpenCodeTextGeneration.ts` never names either driver tag or their full
+ * shapes — it only sees `OpenCodeRuntimeCapability`/`OpenCodeServerOwnerCapability`,
+ * so a driver-side rename/removal of a member it doesn't use fails
+ * `openCodeRuntime.test.ts`, not the text-generation spawn/prompt call sites.
  *
  * The three parsing/formatting helpers below (`openCodeRuntimeErrorDetail`,
  * `parseOpenCodeModelSlug`, `toOpenCodeFileParts`) are pure logic the driver
@@ -32,32 +41,42 @@ import type { OpencodeClient } from "@opencode-ai/sdk/v2";
 
 import {
   OpenCodeRuntime,
+  OpenCodeRuntimeError,
   openCodeRuntimeErrorDetail as driverOpenCodeRuntimeErrorDetail,
   parseOpenCodeModelSlug as driverParseOpenCodeModelSlug,
   toOpenCodeFileParts as driverToOpenCodeFileParts,
-  type OpenCodeRuntimeError,
   type ParsedOpenCodeModelSlug,
 } from "../provider/opencodeRuntime.ts";
+import { OpenCodeServerOwner } from "../provider/OpenCodeServerOwner.ts";
 
-export type { OpenCodeRuntimeError, ParsedOpenCodeModelSlug };
+// Re-exported as a value (not just a type) so a test double outside the
+// ported zone can construct a real failure — `Effect.catchTags` and the
+// capability's declared error channel both key off this class's identity,
+// not just its `_tag` string, so a plain `{ _tag: "OpenCodeRuntimeError" }`
+// object literal does not satisfy `OpenCodeRuntimeCapability`'s types.
+export { OpenCodeRuntimeError };
+export type { ParsedOpenCodeModelSlug };
 
-/** A running (or externally-managed) OpenCode server process handle. */
-export interface OpenCodeServerProcess {
+/** A running (owned or externally-managed) OpenCode server connection. */
+export interface OpenCodeServerConnection {
   readonly url: string;
-  readonly exitCode: Effect.Effect<number, never>;
+  readonly serverPassword?: string;
+  readonly version: string;
 }
 
 /** The narrow OpenCode capability `OpenCodeTextGeneration.ts` depends on. */
 export interface OpenCodeRuntimeCapability {
   /**
-   * Spawns a local OpenCode server process, bound to the caller's
-   * `Scope.Scope`. Callers format the error via `openCodeRuntimeErrorDetail`
-   * rather than narrowing on `OpenCodeRuntimeError`'s tag/fields directly.
+   * Connects to an externally-configured OpenCode server. Callers format the
+   * error via `openCodeRuntimeErrorDetail` rather than narrowing on
+   * `OpenCodeRuntimeError`'s tag/fields directly.
    */
-  readonly startOpenCodeServerProcess: (input: {
+  readonly connectToOpenCodeServer: (input: {
     readonly binaryPath: string;
-    readonly environment?: NodeJS.ProcessEnv;
-  }) => Effect.Effect<OpenCodeServerProcess, OpenCodeRuntimeError, Scope.Scope>;
+    readonly directory: string;
+    readonly serverUrl?: string | null;
+    readonly serverPassword?: string;
+  }) => Effect.Effect<OpenCodeServerConnection, OpenCodeRuntimeError, Scope.Scope>;
 
   /** Builds an OpenCode SDK client bound to a running server's base URL. */
   readonly createOpenCodeSdkClient: (input: {
@@ -67,9 +86,24 @@ export interface OpenCodeRuntimeCapability {
   }) => OpencodeClient;
 }
 
+function narrowServerConnection(connection: {
+  readonly url: string;
+  readonly serverPassword?: string;
+  readonly version: string;
+}): OpenCodeServerConnection {
+  return {
+    url: connection.url,
+    ...(connection.serverPassword !== undefined
+      ? { serverPassword: connection.serverPassword }
+      : {}),
+    version: connection.version,
+  };
+}
+
 function toOpenCodeRuntimeCapability(shape: OpenCodeRuntime["Service"]): OpenCodeRuntimeCapability {
   return {
-    startOpenCodeServerProcess: shape.startOpenCodeServerProcess,
+    connectToOpenCodeServer: (input) =>
+      Effect.map(shape.connectToOpenCodeServer(input), narrowServerConnection),
     createOpenCodeSdkClient: shape.createOpenCodeSdkClient,
   };
 }
@@ -92,10 +126,20 @@ export const openCodeRuntimeCapability: Effect.Effect<
 export const OpenCodeRuntimeCapabilityTest = {
   make: (capability: OpenCodeRuntimeCapability): Layer.Layer<OpenCodeRuntime> =>
     Layer.succeed(OpenCodeRuntime, {
-      startOpenCodeServerProcess: capability.startOpenCodeServerProcess,
+      startOpenCodeServerProcess: () =>
+        Effect.die(
+          "OpenCodeRuntimeCapabilityTest double: startOpenCodeServerProcess not configured",
+        ),
+      // `exitCode`/`external` are unused by `OpenCodeRuntimeCapability` (they only
+      // matter to `OpenCodeServerOwner`'s real lifecycle management); placeholder
+      // values here keep the fake satisfying the driver's full shape.
+      connectToOpenCodeServer: (input) =>
+        Effect.map(capability.connectToOpenCodeServer(input), (connection) => ({
+          ...connection,
+          exitCode: null,
+          external: true,
+        })),
       createOpenCodeSdkClient: capability.createOpenCodeSdkClient,
-      connectToOpenCodeServer: () =>
-        Effect.die("OpenCodeRuntimeCapabilityTest double: connectToOpenCodeServer not configured"),
       runOpenCodeCommand: () =>
         Effect.die("OpenCodeRuntimeCapabilityTest double: runOpenCodeCommand not configured"),
       loadOpenCodeInventory: () =>
@@ -103,6 +147,42 @@ export const OpenCodeRuntimeCapabilityTest = {
       loadInventoryFromCli: () =>
         Effect.die("OpenCodeRuntimeCapabilityTest double: loadInventoryFromCli not configured"),
     } satisfies OpenCodeRuntime["Service"]),
+};
+
+/**
+ * The narrow shared-local-server-lifecycle capability `OpenCodeTextGeneration.ts`
+ * depends on for the (non-externally-configured) local server path — one lazy
+ * server per provider instance, borrowed for the duration of `use` and released
+ * (and, once idle, closed) afterward. Wraps `provider/OpenCodeServerOwner.ts`'s
+ * `withServer`.
+ */
+export interface OpenCodeServerOwnerCapability {
+  readonly withServer: <A, E, R>(
+    use: (server: OpenCodeServerConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | OpenCodeRuntimeError, R>;
+}
+
+/** Resolves the shared local-server-owner capability from its driver-provided service. */
+export const openCodeServerOwnerCapability: Effect.Effect<
+  OpenCodeServerOwnerCapability,
+  never,
+  OpenCodeServerOwner
+> = Effect.map(OpenCodeServerOwner, (shape) => ({
+  withServer: (use) => shape.withServer((server) => use(narrowServerConnection(server))),
+}));
+
+/** A test double factory for `openCodeServerOwnerCapability`, mirroring `OpenCodeRuntimeCapabilityTest`. */
+export const OpenCodeServerOwnerCapabilityTest = {
+  make: (capability: OpenCodeServerOwnerCapability): Layer.Layer<OpenCodeServerOwner> =>
+    Layer.succeed(OpenCodeServerOwner, {
+      // `isRunning`/`exitCode` are unused by `OpenCodeServerOwnerCapability` (they
+      // only matter to the real owner's own reuse/idle-close bookkeeping);
+      // placeholder values here keep the fake satisfying the driver's full shape.
+      withServer: (use) =>
+        capability.withServer((connection) =>
+          use({ ...connection, isRunning: Effect.succeed(true), exitCode: Effect.never }),
+        ),
+    }),
 };
 
 /** Formats an OpenCode runtime/SDK failure cause into a display-ready detail string. */

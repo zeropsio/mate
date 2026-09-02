@@ -1,7 +1,6 @@
 import { OpenCodeSettings, ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -12,18 +11,23 @@ import { beforeEach, expect } from "vite-plus/test";
 import * as ServerConfig from "../config.ts";
 import {
   OpenCodeRuntimeCapabilityTest,
+  OpenCodeRuntimeError,
+  OpenCodeServerOwnerCapabilityTest,
   type OpenCodeRuntimeCapability,
+  type OpenCodeServerOwnerCapability,
 } from "../spi/openCodeRuntime.ts";
 import * as OpenCodeTextGeneration from "./OpenCodeTextGeneration.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 
+const LOCAL_SERVER_URL = "http://127.0.0.1:4301";
+
 const runtimeMock = {
   state: {
-    startCalls: [] as string[],
     promptUrls: [] as string[],
     promptParts: [] as ReadonlyArray<unknown>[],
     authHeaders: [] as Array<string | null>,
-    closeCalls: [] as string[],
+    sessionCreateCalls: 0,
+    connectionError: undefined as Error | undefined,
     sessionCreateError: undefined as unknown,
     sessionResult: undefined as { data?: { id: string } } | undefined,
     promptRequestError: undefined as unknown,
@@ -32,11 +36,11 @@ const runtimeMock = {
       | undefined,
   },
   reset() {
-    this.state.startCalls.length = 0;
     this.state.promptUrls.length = 0;
     this.state.promptParts.length = 0;
     this.state.authHeaders.length = 0;
-    this.state.closeCalls.length = 0;
+    this.state.sessionCreateCalls = 0;
+    this.state.connectionError = undefined;
     this.state.sessionCreateError = undefined;
     this.state.sessionResult = undefined;
     this.state.promptRequestError = undefined;
@@ -44,28 +48,34 @@ const runtimeMock = {
   },
 };
 
+// Local-server reuse/idle-close is `OpenCodeServerOwner`'s own contract
+// (OpenCodeServerOwner.test.ts) — this double just hands back one fixed
+// connection so `OpenCodeTextGeneration.ts`'s own delegation to
+// `serverOwner.withServer` can be exercised without re-testing ownership.
+const OpenCodeServerOwnerTestDouble: OpenCodeServerOwnerCapability = {
+  withServer: (use) => use({ url: LOCAL_SERVER_URL, version: "1.14.19" }),
+};
+
 const OpenCodeRuntimeTestDouble: OpenCodeRuntimeCapability = {
-  startOpenCodeServerProcess: ({ binaryPath }) =>
-    Effect.gen(function* () {
-      const index = runtimeMock.state.startCalls.length + 1;
-      const url = `http://127.0.0.1:${4_300 + index}`;
-      runtimeMock.state.startCalls.push(binaryPath);
-      // The production runtime binds server lifetime to the caller's scope.
-      // Mirror that here so the closeCalls probe observes scope close.
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          runtimeMock.state.closeCalls.push(url);
+  connectToOpenCodeServer: ({ serverUrl, serverPassword }) =>
+    runtimeMock.state.connectionError
+      ? Effect.fail(
+          new OpenCodeRuntimeError({
+            operation: "global.health",
+            detail: runtimeMock.state.connectionError.message,
+            cause: runtimeMock.state.connectionError,
+          }),
+        )
+      : Effect.succeed({
+          url: serverUrl ?? LOCAL_SERVER_URL,
+          ...(serverPassword ? { serverPassword } : {}),
+          version: "1.14.19",
         }),
-      );
-      return {
-        url,
-        exitCode: Effect.never,
-      };
-    }),
   createOpenCodeSdkClient: ({ baseUrl, serverPassword }) =>
     ({
       session: {
         create: async () => {
+          runtimeMock.state.sessionCreateCalls += 1;
           if (runtimeMock.state.sessionCreateError !== undefined) {
             throw runtimeMock.state.sessionCreateError;
           }
@@ -112,10 +122,9 @@ const DEFAULT_COMMIT_MESSAGE_INPUT = {
   modelSelection: DEFAULT_TEST_MODEL_SELECTION,
 };
 
-const OPENCODE_TEXT_GENERATION_IDLE_TTL_MS = 30_000;
-
-const OpenCodeTextGenerationTestLayer = OpenCodeRuntimeCapabilityTest.make(
-  OpenCodeRuntimeTestDouble,
+const OpenCodeTextGenerationTestLayer = Layer.merge(
+  OpenCodeRuntimeCapabilityTest.make(OpenCodeRuntimeTestDouble),
+  OpenCodeServerOwnerCapabilityTest.make(OpenCodeServerOwnerTestDouble),
 ).pipe(
   Layer.provideMerge(
     ServerConfig.ServerConfig.layerTest(process.cwd(), {
@@ -126,8 +135,9 @@ const OpenCodeTextGenerationTestLayer = OpenCodeRuntimeCapabilityTest.make(
   Layer.provideMerge(NodeServices.layer),
 );
 
-const OpenCodeTextGenerationExistingServerTestLayer = OpenCodeRuntimeCapabilityTest.make(
-  OpenCodeRuntimeTestDouble,
+const OpenCodeTextGenerationExistingServerTestLayer = Layer.merge(
+  OpenCodeRuntimeCapabilityTest.make(OpenCodeRuntimeTestDouble),
+  OpenCodeServerOwnerCapabilityTest.make(OpenCodeServerOwnerTestDouble),
 ).pipe(
   Layer.provideMerge(
     ServerConfig.ServerConfig.layerTest(process.cwd(), {
@@ -146,6 +156,10 @@ const EXISTING_SERVER_OPENCODE_SETTINGS = Schema.decodeSync(OpenCodeSettings)({
   serverUrl: "http://127.0.0.1:9999",
   serverPassword: "secret-password",
 });
+const EXTERNAL_SERVER_WITHOUT_AUTH_OPENCODE_SETTINGS = Schema.decodeSync(OpenCodeSettings)({
+  binaryPath: "fake-opencode",
+  serverUrl: "http://127.0.0.1:9999",
+});
 
 function withOpenCodeTextGeneration<A, E, R>(
   settings: OpenCodeSettings,
@@ -159,12 +173,6 @@ function withOpenCodeTextGeneration<A, E, R>(
 
 beforeEach(() => {
   runtimeMock.reset();
-});
-
-const advanceIdleClock = Effect.gen(function* () {
-  yield* Effect.yieldNow;
-  yield* TestClock.adjust(Duration.millis(OPENCODE_TEXT_GENERATION_IDLE_TTL_MS + 1));
-  yield* Effect.yieldNow;
 });
 
 it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
@@ -207,67 +215,15 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
     ),
   );
 
-  it.effect("reuses a warm server across back-to-back requests and closes it after idling", () =>
+  it.effect("routes local requests through the shared server owner", () =>
     withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
       Effect.gen(function* () {
-        yield* textGeneration.generateCommitMessage({
-          cwd: process.cwd(),
-          branch: "feature/opencode-reuse",
-          stagedSummary: "M README.md",
-          stagedPatch: "diff --git a/README.md b/README.md",
-          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-        });
-        yield* textGeneration.generateCommitMessage({
-          cwd: process.cwd(),
-          branch: "feature/opencode-reuse",
-          stagedSummary: "M README.md",
-          stagedPatch: "diff --git a/README.md b/README.md",
-          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-        });
+        yield* textGeneration.generateCommitMessage(DEFAULT_COMMIT_MESSAGE_INPUT);
+        yield* textGeneration.generateCommitMessage(DEFAULT_COMMIT_MESSAGE_INPUT);
 
-        expect(runtimeMock.state.startCalls).toEqual(["fake-opencode"]);
-        expect(runtimeMock.state.promptUrls).toEqual([
-          "http://127.0.0.1:4301",
-          "http://127.0.0.1:4301",
-        ]);
-        expect(runtimeMock.state.closeCalls).toEqual([]);
-
-        yield* advanceIdleClock;
-
-        expect(runtimeMock.state.closeCalls).toEqual(["http://127.0.0.1:4301"]);
+        expect(runtimeMock.state.promptUrls).toEqual([LOCAL_SERVER_URL, LOCAL_SERVER_URL]);
       }),
-    ).pipe(Effect.provide(TestClock.layer())),
-  );
-
-  it.effect("starts a new server after the warm server idles out", () =>
-    withOpenCodeTextGeneration(DEFAULT_OPENCODE_SETTINGS, (textGeneration) =>
-      Effect.gen(function* () {
-        yield* textGeneration.generateCommitMessage({
-          cwd: process.cwd(),
-          branch: "feature/opencode-reuse",
-          stagedSummary: "M README.md",
-          stagedPatch: "diff --git a/README.md b/README.md",
-          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-        });
-
-        yield* advanceIdleClock;
-
-        yield* textGeneration.generateCommitMessage({
-          cwd: process.cwd(),
-          branch: "feature/opencode-reuse",
-          stagedSummary: "M README.md",
-          stagedPatch: "diff --git a/README.md b/README.md",
-          modelSelection: DEFAULT_TEST_MODEL_SELECTION,
-        });
-
-        expect(runtimeMock.state.startCalls).toEqual(["fake-opencode", "fake-opencode"]);
-        expect(runtimeMock.state.promptUrls).toEqual([
-          "http://127.0.0.1:4301",
-          "http://127.0.0.1:4302",
-        ]);
-        expect(runtimeMock.state.closeCalls).toEqual(["http://127.0.0.1:4301"]);
-      }),
-    ).pipe(Effect.provide(TestClock.layer())),
+    ),
   );
 
   it.effect("preserves the SDK cause when session creation fails", () =>
@@ -328,7 +284,7 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
           _tag: "OpenCodeTextGenerationPromptRequestError",
           operation: "generateCommitMessage",
           cwd: process.cwd(),
-          sessionId: "http://127.0.0.1:4301/session",
+          sessionId: `${LOCAL_SERVER_URL}/session`,
           providerId: "openai",
           modelId: "gpt-5",
           cause: sdkCause,
@@ -356,7 +312,7 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
           _tag: "OpenCodeTextGenerationEmptyOutputError",
           operation: "generateCommitMessage",
           cwd: process.cwd(),
-          sessionId: "http://127.0.0.1:4301/session",
+          sessionId: `${LOCAL_SERVER_URL}/session`,
           providerId: "openai",
           modelId: "gpt-5",
           responsePartCount: 3,
@@ -423,7 +379,7 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
           _tag: "OpenCodeTextGenerationPromptResponseError",
           operation: "generateCommitMessage",
           cwd: process.cwd(),
-          sessionId: "http://127.0.0.1:4301/session",
+          sessionId: `${LOCAL_SERVER_URL}/session`,
           providerId: "openai",
           modelId: "gpt-5",
           providerErrorName: "StructuredOutputError",
@@ -438,7 +394,38 @@ it.layer(OpenCodeTextGenerationTestLayer)("OpenCodeTextGeneration", (it) => {
 it.layer(OpenCodeTextGenerationExistingServerTestLayer)(
   "OpenCodeTextGeneration with configured server URL",
   (it) => {
-    it.effect("reuses a configured OpenCode server URL without spawning or applying idle TTL", () =>
+    it.effect(
+      "does not send a serverPassword to a configured server when settings don't set one",
+      () =>
+        withOpenCodeTextGeneration(
+          EXTERNAL_SERVER_WITHOUT_AUTH_OPENCODE_SETTINGS,
+          (textGeneration) =>
+            Effect.gen(function* () {
+              yield* textGeneration.generateCommitMessage(DEFAULT_COMMIT_MESSAGE_INPUT);
+              expect(runtimeMock.state.authHeaders).toEqual([null]);
+            }),
+        ),
+    );
+
+    it.effect("does not create a session when the server version is unsupported", () =>
+      withOpenCodeTextGeneration(EXISTING_SERVER_OPENCODE_SETTINGS, (textGeneration) =>
+        Effect.gen(function* () {
+          runtimeMock.state.connectionError = new Error(
+            "OpenCode v1.14.18 is too old. Upgrade to v1.14.19 or newer.",
+          );
+
+          const error = yield* textGeneration
+            .generateCommitMessage(DEFAULT_COMMIT_MESSAGE_INPUT)
+            .pipe(Effect.flip);
+
+          expect(error).toBeInstanceOf(TextGenerationError);
+          expect(error.message).toContain("v1.14.18 is too old");
+          expect(runtimeMock.state.sessionCreateCalls).toBe(0);
+        }),
+      ),
+    );
+
+    it.effect("reuses a configured OpenCode server URL without spawning", () =>
       withOpenCodeTextGeneration(EXISTING_SERVER_OPENCODE_SETTINGS, (textGeneration) =>
         Effect.gen(function* () {
           yield* textGeneration.generateCommitMessage({
@@ -456,7 +443,6 @@ it.layer(OpenCodeTextGenerationExistingServerTestLayer)(
             modelSelection: DEFAULT_TEST_MODEL_SELECTION,
           });
 
-          expect(runtimeMock.state.startCalls).toEqual([]);
           expect(runtimeMock.state.promptUrls).toEqual([
             "http://127.0.0.1:9999",
             "http://127.0.0.1:9999",
@@ -465,10 +451,6 @@ it.layer(OpenCodeTextGenerationExistingServerTestLayer)(
             `Basic ${btoa("opencode:secret-password")}`,
             `Basic ${btoa("opencode:secret-password")}`,
           ]);
-
-          yield* advanceIdleClock;
-
-          expect(runtimeMock.state.closeCalls).toEqual([]);
         }),
       ).pipe(Effect.provide(TestClock.layer())),
     );
