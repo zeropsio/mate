@@ -6,7 +6,11 @@ export type ZeropsAccountGateSurface = "app" | "auth-only" | "handover" | "pairi
 
 const HANDOVER_PATH_PATTERN = new RegExp(`^${ZEROPS_HANDOVER_CALLBACK_PATH}$`, "iu");
 const PAIRING_PATH_PATTERN = /^\/pair$/iu;
-const ZEROPS_ENTRY_PATH_PATTERN = /^\/zerops$/iu;
+// The entry and everything under it: `/zerops/new` creates a real project on
+// the user's own account, so it must never be reachable on the branch a local
+// server takes. The handover callback is matched before this and keeps its
+// own surface.
+const ZEROPS_ENTRY_PATH_PATTERN = /^\/zerops(?:\/.*)?$/iu;
 
 export function resolveZeropsAccountGate(input: {
   readonly accountRequired?: boolean | undefined;

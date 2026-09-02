@@ -27,6 +27,26 @@ describe("resolveZeropsAccountGate", () => {
     ).toBe("app");
   });
 
+  it("keeps a Zerops entry's sub-route a bare login too, so the project wizard is not reachable signed out", () => {
+    expect(
+      resolveZeropsAccountGate({
+        accountRequired: false,
+        pathname: "/zerops/new",
+        status: "signed-out",
+      }),
+    ).toBe("auth-only");
+  });
+
+  it("still hands the identity callback over rather than gating it as a Zerops sub-route", () => {
+    expect(
+      resolveZeropsAccountGate({
+        accountRequired: false,
+        pathname: "/zerops/authorized",
+        status: "signed-out",
+      }),
+    ).toBe("handover");
+  });
+
   it("keeps the explicit Zerops entry as a bare login even beside a local server", () => {
     expect(
       resolveZeropsAccountGate({
