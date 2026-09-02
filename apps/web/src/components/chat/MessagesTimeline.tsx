@@ -125,12 +125,7 @@ import {
 } from "../zerops/ZeropsDeployActivityCard";
 import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
 import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
-import { RESULT_STATUSES_WITH_PLATFORM_CONTINUATION } from "@t3tools/client-runtime/zerops/activity/reducer";
-import { readPendingDeployCall } from "../../zerops/activity/pendingDeployCall";
-import {
-  DEPLOY_ACTIVITY_CEILING_MS,
-  useDeployActivityState,
-} from "../../zerops/activity/useDeployActivityState";
+import { useDeployActivityForEntry } from "../../zerops/activity/useDeployActivityForEntry";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -1512,6 +1507,20 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const ctx = use(TimelineRowCtx);
   const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot);
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
+  // A still-running `zerops_deploy` is ALWAYS shown through this row for its
+  // whole active-turn lifetime — it never reaches `SimpleWorkEntryRow` until
+  // the turn settles — so this is the one place that has to run the same
+  // activity decision `SimpleWorkEntryRow` does, or the overlay never
+  // appears for a live deploy at all. See `useDeployActivityForEntry`'s doc
+  // comment.
+  const { deployCall, isPendingDeploy, activityState } = useDeployActivityForEntry(
+    row.entry,
+    ctx.activeThreadEnvironmentId,
+  );
+  const showDeployOverlay =
+    isPendingDeploy &&
+    deployCall !== undefined &&
+    activityStateHasPendingOverlayContent(activityState);
 
   return (
     <button
@@ -1521,7 +1530,11 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       aria-expanded={row.expanded}
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     >
-      <LiveActivityRow label={label} iconName={workEntryIconName(row.entry)} failed={failed} />
+      {showDeployOverlay ? (
+        <ZeropsDeployPendingCard hostname={deployCall.targetService} state={activityState} />
+      ) : (
+        <LiveActivityRow label={label} iconName={workEntryIconName(row.entry)} failed={failed} />
+      )}
     </button>
   );
 }
@@ -2614,42 +2627,10 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   // The platform-activity overlay (`../../../../zcp/plans/mate-live-activity-2026-09-02.md`)
   // is gated on: this is a `zerops_deploy` call, its target hostname is
   // decodable, and it is either still pending or resolved with the one
-  // allowlisted BUILD_TRIGGERED continuation (§4). A row that qualifies for
-  // neither never subscribes — `useDeployActivityState` no-ops on `null`.
-  const isDeployTool = workEntry.zeropsResult?.toolName === "zerops_deploy";
-  const deployCall = isDeployTool
-    ? readPendingDeployCall({
-        toolData: workEntry.toolData,
-        toolInput: workEntry.toolInput,
-        createdAt: workEntry.createdAt,
-        startedAt: workEntry.startedAt,
-      })
-    : undefined;
-  const isPendingDeploy = isDeployTool && workEntry.toolLifecycleStatus === "inProgress";
-  const buildTriggeredResult =
-    zeropsCard !== undefined &&
-    zeropsCard.kind === "deploy" &&
-    RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(zeropsCard.status);
-  // A historical card — the call started over 30 minutes ago — never
-  // activates this hook at all: there is nothing left worth polling for, and
-  // the ceiling check inside the hook itself is only a second line of
-  // defense once this is already subscribed.
-  const ceilingExceeded =
-    deployCall !== undefined &&
-    Date.now() - deployCall.toolStartedAtMs > DEPLOY_ACTIVITY_CEILING_MS;
-  const wantsActivity =
-    deployCall !== undefined && !ceilingExceeded && (isPendingDeploy || buildTriggeredResult);
-
-  const activityState = useDeployActivityState({
-    environmentId: wantsActivity ? activeThreadEnvironmentId : null,
-    toolData: workEntry.toolData,
-    toolInput: workEntry.toolInput,
-    createdAt: workEntry.createdAt,
-    startedAt: workEntry.startedAt,
-    hasResult: workEntry.zeropsResult?.resultText !== undefined,
-    resultStatus:
-      zeropsCard !== undefined && zeropsCard.kind === "deploy" ? zeropsCard.status : undefined,
-  });
+  // allowlisted BUILD_TRIGGERED continuation (§4). Shared with
+  // `LiveWorkEntryTimelineRow` — see that hook's own doc comment for why.
+  const { deployCall, isPendingDeploy, buildTriggeredResult, activityState } =
+    useDeployActivityForEntry(workEntry, activeThreadEnvironmentId);
 
   // Spawn CTA rows render their own component, after every hook above has run
   // unconditionally.

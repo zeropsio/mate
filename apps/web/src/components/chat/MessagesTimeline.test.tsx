@@ -2,7 +2,7 @@ import { CheckpointRef, EnvironmentId, MessageId, TurnId } from "@t3tools/contra
 import { codexFeedbackMessage } from "@t3tools/client-runtime/state/threads";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
 
 vi.mock("@legendapp/list/react", async () => {
@@ -126,6 +126,35 @@ vi.mock("@pierre/diffs/react", () => {
   return { FileDiff: MockFileDiff };
 });
 
+/**
+ * The activity overlay depends on a signed-in Zerops session and a resolved
+ * topology (hostname -> serviceId, project id) — neither is present in this
+ * file's plain `renderToStaticMarkup` calls, which is exactly right for
+ * every OTHER test here (it proves the `idle`-path byte-identical guarantee).
+ * A handful of tests below need `attributable: true` to reach a real
+ * `searching`/`observed` overlay state instead, so both feeds are mocked
+ * behind a per-test toggle that defaults to "no session, no topology" —
+ * reset in `beforeEach` so a test that opts in never leaks into the next one.
+ */
+const zeropsFeedMocks = vi.hoisted(() => ({
+  session: null as { status: string; client: unknown } | null,
+  topology: undefined as
+    | undefined
+    | {
+        available: boolean;
+        project?: { id: string };
+        services: ReadonlyArray<{ hostname: string; serviceId: string }>;
+      },
+}));
+
+vi.mock("../../zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => zeropsFeedMocks.session,
+}));
+
+vi.mock("../../zerops/useZeropsFeeds", () => ({
+  useZeropsTopology: () => zeropsFeedMocks.topology,
+}));
+
 function matchMedia() {
   return {
     matches: false,
@@ -237,6 +266,11 @@ function buildAssistantTimelineEntry(text: string) {
 }
 
 describe("MessagesTimeline", () => {
+  beforeEach(() => {
+    zeropsFeedMocks.session = null;
+    zeropsFeedMocks.topology = undefined;
+  });
+
   it("renders a feedback command and its pending response as normal thread messages", () => {
     const submission = {
       id: MessageId.make("feedback-command"),
@@ -1104,6 +1138,66 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Working for");
     expect(markup).toContain("Running pnpm");
     expect(markup).toContain("live-activity-focus");
+  });
+
+  /**
+   * The bug: a running `zerops_deploy` is shown through THIS row
+   * (`LiveWorkEntryTimelineRow`) for its whole active-turn lifetime — it
+   * never reaches `SimpleWorkEntryRow` until the turn settles — so the
+   * overlay has to be wired here too, not just in the grouped/settled row.
+   * Live on mate.zerops.io this showed the raw
+   * `mcp__zerops__zerops_deploy: {"targetService":"kanban"}` label for the
+   * whole ~70s deploy instead of the platform overlay.
+   */
+  it("shows the platform overlay on a live zerops_deploy row, not the raw tool label", () => {
+    zeropsFeedMocks.session = { status: "signed-in", client: {} };
+    zeropsFeedMocks.topology = {
+      available: true,
+      project: { id: "proj-1" },
+      services: [{ hostname: "kanban", serviceId: "svc-1" }],
+    };
+    const turnId = TurnId.make("turn-live-deploy");
+    // A fresh timestamp, not the shared `MESSAGE_CREATED_AT` fixture — this
+    // scenario needs the call to be well inside the 30-minute ceiling.
+    const startedAt = new Date().toISOString();
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        isWorking
+        activeTurnStartedAt={startedAt}
+        latestTurn={{
+          turnId,
+          state: "running",
+          startedAt,
+          completedAt: null,
+        }}
+        runningTurnId={turnId}
+        timelineEntries={[
+          {
+            id: "entry-live-deploy",
+            kind: "work",
+            createdAt: startedAt,
+            entry: {
+              id: "work-live-deploy",
+              createdAt: startedAt,
+              turnId,
+              toolCallId: "call-live-deploy",
+              label: "mcp__zerops__zerops_deploy",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "inProgress",
+              toolInput: { targetService: "kanban" },
+              zeropsResult: { toolName: "zerops_deploy" },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-zerops-card-kind="deploy-pending"');
+    expect(markup).toContain("Deploy · kanban");
+    expect(markup).toContain("Platform");
+    expect(markup).not.toContain("mcp__zerops__zerops_deploy");
   });
 
   it("scopes a live row failure to the tool named by the row", () => {
