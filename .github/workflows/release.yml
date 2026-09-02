@@ -115,6 +115,19 @@ jobs:
           installed_version="$(./node_modules/.bin/z3 --version)"
           echo "Installed binary version: $installed_version"
 
+          # The manifest declares only the native addons the bundle still loads
+          # from disk; everything else is inlined. `--version` proves the static
+          # import graph resolves — these prove the addons themselves open, which
+          # is the failure the prune could otherwise hide until a container boots.
+          node --input-type=commonjs -e '
+            const pty = require("node-pty");
+            if (typeof pty.spawn !== "function") throw new Error("node-pty did not load");
+            if (typeof require("msgpackr-extract").extractStrings !== "function") {
+              throw new Error("msgpackr-extract did not load");
+            }
+            console.log("native addons loaded");
+          '
+
       - name: Write checksum
         env:
           TARBALL: ${{ steps.pack.outputs.tarball }}
