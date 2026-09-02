@@ -327,9 +327,14 @@ export function createDevRunnerEnv({
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
       PORT: String(webPort),
-      VITE_DEV_SERVER_URL:
-        devUrl?.toString() ??
-        `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
+      // The NAME localhost, never the IP literal, even though the desktop's
+      // dev server binds the loopback address below. Two contracts outside
+      // this repo key on the spelling: a Zerops container's CORS allowlist
+      // trusts the hostname `localhost`, and the platform grants a loopback
+      // sign-in callback only to that hostname. Handing the desktop
+      // `http://127.0.0.1:<port>` leaves both silently refusing it — a healthy
+      // container reads as "still starting" and sign-in never comes back.
+      VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
     };
 
     if (configuredBaseDir !== undefined) {

@@ -323,13 +323,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
 
         assert.equal(env.T3CODE_HOME, path.resolve("/tmp/my-t3"));
         assert.equal(env.PORT, "5733");
-        assert.equal(env.VITE_DEV_SERVER_URL, "http://127.0.0.1:5733");
+        // The name, not the IP literal: a container's CORS allowlist and the
+        // platform's loopback sign-in callback both key on `localhost`.
+        assert.equal(env.VITE_DEV_SERVER_URL, "http://localhost:5733");
         assert.equal(env.HOST, "127.0.0.1");
         assert.equal(env.T3CODE_PORT, "4222");
         assert.equal(env.VITE_HTTP_URL, undefined);
         assert.equal(env.VITE_WS_URL, undefined);
         assert.equal(env.VITE_HOSTED_APP_CHANNEL, "latest");
-        assert.equal(env.T3CODE_DESKTOP_APP_URL, "http://127.0.0.1:5733");
+        assert.equal(env.T3CODE_DESKTOP_APP_URL, "http://localhost:5733");
         assert.equal(env.T3CODE_MODE, undefined);
         assert.equal(env.T3CODE_NO_BROWSER, undefined);
         assert.equal(env.T3CODE_HOST, undefined);
