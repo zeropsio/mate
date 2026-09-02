@@ -73,15 +73,25 @@ export interface ActivityReducerInput {
   readonly lastObservation?: ActivityObservationRecord | undefined;
 }
 
-function outcomeFor(process: ActivityProcess, pipeline: PipelineState) {
+/**
+ * The terminal reading of one attributed process, combining the process's own
+ * status (a GUI cancel, or a bare `FAILED` process with no appVersion at all)
+ * with what its pipeline says. Exported so a caller that needs to know
+ * "has this settled" *before* the reducer runs — e.g. to decide whether it is
+ * still worth polling — uses the exact same rule the reducer itself does.
+ */
+export function pipelineOutcomeFor(
+  process: ActivityProcess,
+  pipeline: PipelineState,
+): "finished" | "failed" | "cancelled" | undefined {
   if (process.status === "CANCELED") {
-    return "cancelled" as const;
+    return "cancelled";
   }
   const fromPipeline = pipelineTerminalOutcome(pipeline);
   if (fromPipeline !== undefined) {
     return fromPipeline;
   }
-  return process.status === "FAILED" ? ("failed" as const) : undefined;
+  return process.status === "FAILED" ? "failed" : undefined;
 }
 
 /**
@@ -96,7 +106,17 @@ export function reduceActivityState(input: ActivityReducerInput, nowMs: number):
       input.resultStatus !== undefined &&
       RESULT_STATUSES_WITH_PLATFORM_CONTINUATION.has(input.resultStatus);
     const stepSource = input.lastObservation?.attribution.stepSource;
-    if (!allowed || input.lastObservation === undefined || stepSource === undefined) {
+    // The continuation is subject to the SAME ceiling and staleness rule as
+    // the pending path (§6): a historical BUILD_TRIGGERED card whose call
+    // started over 30 minutes ago, or whose last good read is over a minute
+    // old, never gets an overlay — there is nothing left worth polling for.
+    if (
+      !allowed ||
+      input.lastObservation === undefined ||
+      stepSource === undefined ||
+      input.ceilingExceeded ||
+      nowMs - input.lastObservation.atMs > UNAVAILABLE_AFTER_MS
+    ) {
       return { kind: "resolved" };
     }
     const { attribution, atMs } = input.lastObservation;
@@ -137,7 +157,7 @@ export function reduceActivityState(input: ActivityReducerInput, nowMs: number):
     return { kind: "stale", observation, staleMs: ageMs };
   }
 
-  const outcome = outcomeFor(stepSource, pipeline);
+  const outcome = pipelineOutcomeFor(stepSource, pipeline);
   if (outcome !== undefined) {
     return { kind: "settledOnPlatform", observation, outcome };
   }

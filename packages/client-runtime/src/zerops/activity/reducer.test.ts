@@ -52,21 +52,27 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
 
   it("observed once a live process is attributed", () => {
     const p = process({ actionName: "stack.deploy", appVersion: { status: "BUILDING" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
+    });
     const state = reduceActivityState(input, NOW);
     expect(state.kind).toBe("observed");
   });
 
   it("settledOnPlatform once the attributed process's pipeline is terminal", () => {
     const p = process({ appVersion: { status: "ACTIVE" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
+    });
     const state = reduceActivityState(input, NOW);
     expect(state).toMatchObject({ kind: "settledOnPlatform", outcome: "finished" });
   });
 
   it("settledOnPlatform with outcome failed for a DEPLOY_FAILED pipeline", () => {
     const p = process({ appVersion: { status: "DEPLOY_FAILED" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
+    });
     expect(reduceActivityState(input, NOW)).toMatchObject({
       kind: "settledOnPlatform",
       outcome: "failed",
@@ -76,7 +82,9 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
   /** §7 edge 9: a GUI cancel is a process-level CANCELED, independent of the appVersion shape. */
   it("settledOnPlatform 'cancelled' when the process itself is CANCELED, even mid-build", () => {
     const p = process({ status: "CANCELED", appVersion: { status: "BUILDING" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
+    });
     expect(reduceActivityState(input, NOW)).toMatchObject({
       kind: "settledOnPlatform",
       outcome: "cancelled",
@@ -85,14 +93,18 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
 
   it("stale after 10s with no fresh read, keeping the last pipeline", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }, NOW) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
     const state = reduceActivityState(input, NOW + 11_000);
     expect(state).toMatchObject({ kind: "stale", staleMs: 11_000 });
   });
 
   it("unavailable after 60s with no fresh read", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
-    const input = baseInput({ lastObservation: observationOf({ stepSource: p, chips: [] }, NOW) });
+    const input = baseInput({
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
     expect(reduceActivityState(input, NOW + 61_000)).toEqual({
       kind: "unavailable",
       reason: "stale-timeout",
@@ -102,12 +114,15 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
   it("stale recovers to observed/settledOnPlatform once a good read lands (fresh atMs)", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
     const staleInput = baseInput({
-      lastObservation: observationOf({ stepSource: p, chips: [] }, NOW),
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
     });
     expect(reduceActivityState(staleInput, NOW + 11_000).kind).toBe("stale");
 
     const freshInput = baseInput({
-      lastObservation: observationOf({ stepSource: p, chips: [] }, NOW + 11_000),
+      lastObservation: observationOf(
+        { stepSource: p, chips: [], projectMismatch: false },
+        NOW + 11_000,
+      ),
     });
     expect(reduceActivityState(freshInput, NOW + 11_000).kind).toBe("observed");
   });
@@ -116,7 +131,7 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
     const input = baseInput({
       ceilingExceeded: true,
-      lastObservation: observationOf({ stepSource: p, chips: [] }),
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
     });
     expect(reduceActivityState(input, NOW)).toEqual({ kind: "unavailable", reason: "ceiling" });
   });
@@ -133,7 +148,7 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
     const input = baseInput({
       hasResult: true,
       resultStatus: "DEPLOYED",
-      lastObservation: observationOf({ stepSource: p, chips: [] }),
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
     });
     expect(reduceActivityState(input, NOW)).toEqual({ kind: "resolved" });
   });
@@ -150,7 +165,7 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
     const input = baseInput({
       hasResult: true,
       resultStatus: "BUILD_TRIGGERED",
-      lastObservation: observationOf({ stepSource: p, chips: [] }),
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
     });
     const state = reduceActivityState(input, NOW);
     expect(state.kind).toBe("resolved");
@@ -162,12 +177,50 @@ describe("reduceActivityState — §5 the per-card state machine", () => {
     expect(reduceActivityState(input, NOW)).toEqual({ kind: "resolved" });
   });
 
+  /**
+   * A historical card — the tool call started over 30 minutes ago — never
+   * gets a continuation, however BUILD_TRIGGERED its status is: there is
+   * nothing left worth polling for on a card this old.
+   */
+  it("drops the continuation once the 30-minute ceiling is exceeded", () => {
+    const p = process({ appVersion: { status: "BUILDING" } });
+    const input = baseInput({
+      hasResult: true,
+      resultStatus: "BUILD_TRIGGERED",
+      ceilingExceeded: true,
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
+    });
+    expect(reduceActivityState(input, NOW)).toEqual({ kind: "resolved" });
+  });
+
+  it("drops the continuation once the last good read is over 60s old", () => {
+    const p = process({ appVersion: { status: "BUILDING" } });
+    const input = baseInput({
+      hasResult: true,
+      resultStatus: "BUILD_TRIGGERED",
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
+    expect(reduceActivityState(input, NOW + 61_000)).toEqual({ kind: "resolved" });
+  });
+
+  it("keeps the continuation just inside the 60s staleness window", () => {
+    const p = process({ appVersion: { status: "BUILDING" } });
+    const input = baseInput({
+      hasResult: true,
+      resultStatus: "BUILD_TRIGGERED",
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
+    });
+    expect(reduceActivityState(input, NOW + 59_000).kind).toBe("resolved");
+    const state = reduceActivityState(input, NOW + 59_000);
+    expect(state.kind === "resolved" && state.continuation).toBeDefined();
+  });
+
   it("any other resolved status never carries a continuation, even with platform data", () => {
     const p = process({ appVersion: { status: "DEPLOYING" } });
     const input = baseInput({
       hasResult: true,
       resultStatus: "BUILD_FAILED",
-      lastObservation: observationOf({ stepSource: p, chips: [] }),
+      lastObservation: observationOf({ stepSource: p, chips: [], projectMismatch: false }),
     });
     expect(reduceActivityState(input, NOW)).toEqual({ kind: "resolved" });
   });

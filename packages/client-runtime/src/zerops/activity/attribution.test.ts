@@ -28,7 +28,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ stepSource: p, chips: [] });
+    ).toEqual({ stepSource: p, chips: [], projectMismatch: false });
   });
 
   it("does not attribute a process on a different service", () => {
@@ -40,10 +40,10 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [] });
+    ).toEqual({ chips: [], projectMismatch: false });
   });
 
-  it("does not attribute a process in a different project", () => {
+  it("does not attribute a process in a different project — and flags it as a mismatch (§3.2)", () => {
     const p = process({ projectId: "proj-2" });
     expect(
       attributeActivity({
@@ -52,7 +52,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [] });
+    ).toEqual({ chips: [], projectMismatch: true });
   });
 
   it("does not attribute a process created more than 5s before the tool started", () => {
@@ -64,7 +64,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [] });
+    ).toEqual({ chips: [], projectMismatch: false });
   });
 
   it("attributes a process created up to 5s before the tool started", () => {
@@ -76,7 +76,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ stepSource: p, chips: [] });
+    ).toEqual({ stepSource: p, chips: [], projectMismatch: false });
   });
 
   it("ignores a process with an unparseable created timestamp", () => {
@@ -88,7 +88,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [] });
+    ).toEqual({ chips: [], projectMismatch: false });
   });
 
   it("puts a same-service, same-window action outside the allowlist in chips, never as the step source", () => {
@@ -100,7 +100,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [restart] });
+    ).toEqual({ chips: [restart], projectMismatch: false });
   });
 
   it("drives steps from the newest deploy/build process; older ones become chips", () => {
@@ -121,7 +121,7 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ stepSource: newer, chips: [older] });
+    ).toEqual({ stepSource: newer, chips: [older], projectMismatch: false });
   });
 
   it("shows every attributed process — never collapses to just the first (LiveOp rule)", () => {
@@ -145,6 +145,48 @@ describe("attributeActivity — §3 attribution rules", () => {
         targetServiceId: "svc-1",
         toolStartedAtMs: NOW,
       }),
-    ).toEqual({ chips: [] });
+    ).toEqual({ chips: [], projectMismatch: false });
+  });
+
+  /**
+   * §3.2: `GET /project/{id}/process` is scoped to one project by URL, so
+   * every returned process SHOULD carry that project's id — a read that comes
+   * back with data for none of them is the wrong project/host entirely, not
+   * "nothing has happened yet". That must switch the overlay off rather than
+   * sit in `searching` until the ceiling.
+   */
+  it("flags a project mismatch when the read returns data for no matching project at all", () => {
+    const wrongProject = process({ projectId: "proj-other" });
+    expect(
+      attributeActivity({
+        processes: [wrongProject],
+        projectId: "proj-1",
+        targetServiceId: "svc-1",
+        toolStartedAtMs: NOW,
+      }),
+    ).toEqual({ chips: [], projectMismatch: true });
+  });
+
+  it("is not a mismatch when at least one process belongs to the right project", () => {
+    const right = process({ projectId: "proj-1" });
+    const wrong = process({ id: "p-wrong", projectId: "proj-other" });
+    const result = attributeActivity({
+      processes: [wrong, right],
+      projectId: "proj-1",
+      targetServiceId: "svc-1",
+      toolStartedAtMs: NOW,
+    });
+    expect(result.projectMismatch).toBe(false);
+  });
+
+  it("is not a mismatch when the process list is simply empty", () => {
+    expect(
+      attributeActivity({
+        processes: [],
+        projectId: "proj-1",
+        targetServiceId: "svc-1",
+        toolStartedAtMs: NOW,
+      }).projectMismatch,
+    ).toBe(false);
   });
 });

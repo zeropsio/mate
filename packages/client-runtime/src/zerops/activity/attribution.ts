@@ -33,11 +33,26 @@ export interface AttributionResult {
   readonly stepSource?: ActivityProcess;
   /** Every other attributed process — older deploy/build calls and secondary actions. */
   readonly chips: ReadonlyArray<ActivityProcess>;
+  /**
+   * §3.2: the read came back with processes, but NONE belong to
+   * `input.projectId` — wrong API host or wrong project entirely. The caller
+   * must switch the overlay off for this project, not sit in `searching`
+   * until the 30-minute ceiling: no process for the right project is ever
+   * going to arrive from a read that is not even reading that project.
+   */
+  readonly projectMismatch: boolean;
 }
 
-const EMPTY: AttributionResult = { chips: [] };
+const EMPTY: AttributionResult = { chips: [], projectMismatch: false };
 
 export function attributeActivity(input: AttributionInput): AttributionResult {
+  if (
+    input.processes.length > 0 &&
+    input.processes.every((process) => process.projectId !== input.projectId)
+  ) {
+    return { chips: [], projectMismatch: true };
+  }
+
   const threshold = input.toolStartedAtMs - ATTRIBUTION_LOOKBACK_MS;
   const matches = input.processes.filter((process) => {
     if (process.projectId !== input.projectId) {
@@ -61,5 +76,5 @@ export function attributeActivity(input: AttributionInput): AttributionResult {
   const stepSource = deployish[0];
   const chips = matches.filter((process) => process !== stepSource);
 
-  return { ...(stepSource === undefined ? {} : { stepSource }), chips };
+  return { ...(stepSource === undefined ? {} : { stepSource }), chips, projectMismatch: false };
 }
