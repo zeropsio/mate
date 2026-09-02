@@ -343,6 +343,25 @@ describe("projectActivityPayload — zerops results", () => {
     expect(zerops.resultText).toBe('{"status":"healthy"}');
   });
 
+  it("prefers the stored copy over recomputing from an already-slimmed result", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "mcp_tool_call",
+        data: {
+          toolName: "mcp__zerops__zerops_deploy",
+          input: { targetService: "kanban" },
+          result: {
+            content: '{"status":"DEPLOYED","targetService":"kanban","subdomainUrl":"https://k…',
+          },
+          zerops: { toolName: "zerops_deploy", resultText: zeropsDeployText },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    const zerops = data.zerops as Record<string, unknown>;
+    expect(zerops.resultText).toBe(zeropsDeployText);
+  });
+
   it("does not resurrect a malformed stored zerops key", () => {
     const projected = projectActivityPayload(
       activity({

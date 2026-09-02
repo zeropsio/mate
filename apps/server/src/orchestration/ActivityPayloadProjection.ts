@@ -393,19 +393,20 @@ export function projectActivityPayload(
    * driver-agnostic) to call the SPI's provider-keyed `readToolCall` with, so
    * it shape-sniffs instead — see `sniffToolCallShape`'s doc comment.
    */
+  // Idempotence: a payload that was already projected has its `result`
+  // slimmed to the 84-character teaser and its card text in `zerops`. The
+  // history path re-projects every stored row on read, and a row persisted
+  // in projected form (every streamed `tool.updated`) must keep the copy it
+  // carries: recomputing from the teaser would replace the document with its
+  // first line, and a row with no result left has nothing to recompute from.
   const sniffed = sniffToolCallShape(data);
   const zerops =
+    readStoredZeropsResult(data.zerops) ??
     projectZeropsToolCall(
       sniffed.kind === "toolCall" && isZeropsToolName(sniffed.call.rawName)
         ? sniffed.call
         : undefined,
-    ) ??
-    // Idempotence: a payload that was already projected has its `result`
-    // slimmed to the teaser and its card text in `zerops`. The history path
-    // re-projects every stored row on read, so a row persisted in projected
-    // form must keep the copy it carries — there is nothing left to recompute
-    // it from.
-    readStoredZeropsResult(data.zerops);
+    );
 
   if (payload.itemType === "mcp_tool_call") {
     return {
