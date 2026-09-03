@@ -467,7 +467,7 @@ function collectUiImportViolations(
 const PROTECTED_ROOTS = [
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
   "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
-  "apps/web/src/components/zerops/ZeropsToolCard.tsx",
+  "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
   "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
 ] as const;
 

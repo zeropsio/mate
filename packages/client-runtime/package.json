@@ -187,17 +187,9 @@
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
     },
-    "./zerops/cards/identity": {
-      "types": "./src/zerops/cards/identity.ts",
-      "default": "./src/zerops/cards/identity.ts"
-    },
     "./zerops/cards/liveFixtures": {
       "types": "./src/zerops/cards/liveFixtures.ts",
       "default": "./src/zerops/cards/liveFixtures.ts"
-    },
-    "./zerops/cards/milestone": {
-      "types": "./src/zerops/cards/milestone.ts",
-      "default": "./src/zerops/cards/milestone.ts"
     },
     "./zerops/cards/payloads": {
       "types": "./src/zerops/cards/payloads.ts",
