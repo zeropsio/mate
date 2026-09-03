@@ -171,14 +171,42 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.state).toEqual({ kind: "off", reason: "project-mismatch" });
   });
 
-  it("passes through the poller's own unavailableReason", () => {
+  /**
+   * The poller reports `ZeropsApiErrorKind` values (`expired-session`,
+   * `forbidden`, `not-found` — the only three it ever sets, per
+   * `isPermanentlyUnavailable`), never the observation contract's own
+   * reason vocabulary — those must be mapped, not passed through as-is.
+   */
+  it("maps the poller's expired-session/forbidden to unauthorized", () => {
+    for (const pollerReason of ["expired-session", "forbidden"]) {
+      const result = deriveOperationObservation(
+        baseInput({
+          snapshot: { processes: undefined, atMs: undefined, unavailableReason: pollerReason },
+        }),
+        NOW,
+      );
+      expect(result.state).toEqual({ kind: "off", reason: "unauthorized" });
+    }
+  });
+
+  it("maps the poller's not-found straight through", () => {
     const result = deriveOperationObservation(
       baseInput({
-        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "unauthorized" },
+        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "not-found" },
       }),
       NOW,
     );
-    expect(result.state).toEqual({ kind: "off", reason: "unauthorized" });
+    expect(result.state).toEqual({ kind: "off", reason: "not-found" });
+  });
+
+  it("maps any other poller reason to feed-error", () => {
+    const result = deriveOperationObservation(
+      baseInput({
+        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "server" },
+      }),
+      NOW,
+    );
+    expect(result.state).toEqual({ kind: "off", reason: "feed-error" });
   });
 
   it("carries an explicit previousHistory forward with no observation at all yet", () => {

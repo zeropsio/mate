@@ -53,6 +53,27 @@ export interface OperationObservation {
 
 type LastRead = { readonly attribution: AttributionResult; readonly atMs: number };
 
+/**
+ * `ProjectActivitySnapshot.unavailableReason` carries a `ZeropsApiErrorKind`
+ * (the poller's own vocabulary — only ever `expired-session`, `forbidden` or
+ * `not-found`, per `isPermanentlyUnavailable`), not an `ObservationOffReason`.
+ * The two happen to share the string `"not-found"`, but that is a
+ * coincidence, not a contract — map explicitly rather than casting.
+ */
+function mapPollerUnavailableReason(reason: string | undefined): ObservationOffReason | undefined {
+  switch (reason) {
+    case undefined:
+      return undefined;
+    case "expired-session":
+    case "forbidden":
+      return "unauthorized";
+    case "not-found":
+      return "not-found";
+    default:
+      return "feed-error";
+  }
+}
+
 export interface DeriveOperationObservationInput {
   readonly target: ObservationTarget | null;
   /** Session + target service id(s) resolved. */
@@ -96,7 +117,7 @@ export function deriveOperationObservation(
   }
 
   let lastRead = input.previousLastRead;
-  let unavailableReason = input.snapshot.unavailableReason as ObservationOffReason | undefined;
+  let unavailableReason = mapPollerUnavailableReason(input.snapshot.unavailableReason);
 
   if (
     input.attributable &&
