@@ -1076,6 +1076,32 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
+  it.effect("retries a blocked-authentication connection when credentials change", () =>
+    Effect.gen(function* () {
+      // A rotated bearer only reaches the wire on the next attempt: `prepare`
+      // re-reads the credential store every time. A supervisor parked on
+      // `blocked/authentication` must therefore take the rotation as its cue to
+      // try again — otherwise a credential renewed in the background is never
+      // used and only a page reload recovers.
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          attempt === 1 ? Effect.fail(blocked()) : Effect.succeed(PREPARED_CONNECTION),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "blocked" && state.lastFailure?.reason === "authentication",
+      );
+      yield* harness.wake("credentials-changed");
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+    }),
+  );
+
   it.effect("releases and reconnects a relay session when credentials change", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();

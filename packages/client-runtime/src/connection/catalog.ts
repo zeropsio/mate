@@ -41,10 +41,26 @@ export interface ConnectionCatalogEntry {
   readonly profile: Option.Option<ConnectionProfile>;
 }
 
+/** Which door minted a bearer, and so what can renew it. */
+export const ConnectionCredentialOrigin = Schema.Literals(["zerops-identity", "pairing"]);
+export type ConnectionCredentialOrigin = typeof ConnectionCredentialOrigin.Type;
+
 export class BearerConnectionCredential extends Schema.TaggedClass<BearerConnectionCredential>()(
   "BearerConnectionCredential",
   {
     token: Schema.String,
+    // Both derived from the token exchange's RELATIVE `expires_in`, never from
+    // an absolute deadline the server reports: a client clock that disagrees
+    // with the server would otherwise renew far too early or not at all.
+    //
+    // Optional so records persisted before the deadline was stored still
+    // decode; without it proactive renewal is simply off for that record.
+    issuedAtEpochMs: Schema.optionalKey(Schema.Number),
+    expiresAtEpochMs: Schema.optionalKey(Schema.Number),
+    // Provenance belongs here, on the record, not in a side list: the web
+    // client used to decide "is this a Zerops connection?" from a separate
+    // localStorage array, which could desync and silently disable renewal.
+    origin: Schema.optionalKey(ConnectionCredentialOrigin),
   },
 ) {}
 

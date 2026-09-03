@@ -44,6 +44,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import type { AuthGateState } from "../environments/primary/auth";
 import {
   canReuseCachedPlatformRegistration,
+  connectionWakeupForDocumentEvent,
   primaryPlatformRegistrationStream,
   primaryRegistrationToRetainAfterTopologyRead,
   readPrimaryPlatformAuthGate,
@@ -373,5 +374,41 @@ describe("primary topology cache", () => {
         target: null,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("connection wakeups", () => {
+  it("treats a bfcache restore as a reconnect, not an ordinary activation", () => {
+    // A tab restored from the back/forward cache comes back with a socket the
+    // browser already killed, so the lease must be replaced without waiting out
+    // a backoff rung — that is exactly `application-active-reconnect`.
+    expect(connectionWakeupForDocumentEvent({ type: "pageshow", persisted: true })).toBe(
+      "application-active-reconnect",
+    );
+  });
+
+  it("ignores a pageshow that is not a bfcache restore", () => {
+    // A cold load connects on its own; a second wakeup would only churn.
+    expect(connectionWakeupForDocumentEvent({ type: "pageshow", persisted: false })).toBeNull();
+  });
+
+  it("wakes on window focus, which an app switch fires when visibility does not", () => {
+    // Switching back from ANOTHER APPLICATION leaves document.visibilityState
+    // "visible" throughout, so visibilitychange never fires and nothing probed
+    // the transport. focus is the only signal that case produces.
+    expect(connectionWakeupForDocumentEvent({ type: "focus" })).toBe("application-active");
+  });
+
+  it("wakes when the document becomes visible and stays quiet when it hides", () => {
+    expect(
+      connectionWakeupForDocumentEvent({ type: "visibilitychange", visibilityState: "visible" }),
+    ).toBe("application-active");
+    expect(
+      connectionWakeupForDocumentEvent({ type: "visibilitychange", visibilityState: "hidden" }),
+    ).toBeNull();
+  });
+
+  it("ignores events it does not model", () => {
+    expect(connectionWakeupForDocumentEvent({ type: "pagehide" })).toBeNull();
   });
 });

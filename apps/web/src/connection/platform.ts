@@ -9,10 +9,12 @@ import {
 import {
   ConnectionBlockedError,
   Connectivity,
+  CredentialRenewal,
   mapRemoteEnvironmentError,
   type PlatformConnectionRegistration,
   PrimaryConnectionRegistration,
   PrimaryConnectionTarget,
+  renewZeropsIdentityCredential,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { fetchRemoteEnvironmentDescriptor } from "@t3tools/client-runtime/environment";
@@ -40,6 +42,8 @@ import {
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
+import { loadZeropsSession } from "@t3tools/client-runtime/zerops";
+import { browserZeropsStorage } from "../zerops/storage";
 import { connectionStorageLayer } from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";
 
@@ -72,21 +76,61 @@ const connectivityLayer = Connectivity.layer({
   ),
 });
 
+/**
+ * The wakeup a browser lifecycle event stands for, or `null` when it means
+ * nothing to the connection layer.
+ *
+ * `visibilitychange` alone is too weak for this client. It does not fire when
+ * the user switches back from another APPLICATION — the document stays
+ * "visible" throughout — so returning to mate that way produced no signal at
+ * all, and it cannot distinguish an ordinary tab switch from a back/forward
+ * cache restore, where the browser has already killed the socket.
+ */
+export function connectionWakeupForDocumentEvent(event: {
+  readonly type: string;
+  readonly persisted?: boolean;
+  readonly visibilityState?: DocumentVisibilityState;
+}): Wakeups.ConnectionWakeup | null {
+  switch (event.type) {
+    case "pageshow":
+      // Only a bfcache restore; a cold load connects on its own. The socket is
+      // already gone, so replace the lease instead of probing it.
+      return event.persisted === true ? "application-active-reconnect" : null;
+    case "focus":
+      return "application-active";
+    case "visibilitychange":
+      return event.visibilityState === "visible" ? "application-active" : null;
+    default:
+      return null;
+  }
+}
+
+const WAKEUP_EVENT_TYPES = ["visibilitychange", "focus", "pageshow"] as const;
+
 const wakeupsLayer = Wakeups.layer({
-  changes: Stream.callback<"application-active">((queue) =>
+  changes: Stream.callback<Wakeups.ConnectionWakeup>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const listener = () => {
-          if (document.visibilityState === "visible") {
-            Queue.offerUnsafe(queue, "application-active");
+        const listener = (event: Event) => {
+          const wakeup = connectionWakeupForDocumentEvent({
+            type: event.type,
+            ...("persisted" in event ? { persisted: Boolean(event.persisted) } : {}),
+            visibilityState: document.visibilityState,
+          });
+          if (wakeup !== null) {
+            Queue.offerUnsafe(queue, wakeup);
           }
         };
-        document.addEventListener("visibilitychange", listener);
+        for (const type of WAKEUP_EVENT_TYPES) {
+          window.addEventListener(type, listener);
+        }
         return listener;
       }),
       (listener) =>
         Effect.sync(() => {
-          document.removeEventListener("visibilitychange", listener);
+          for (const type of WAKEUP_EVENT_TYPES) {
+            window.removeEventListener(type, listener);
+          }
         }),
     ).pipe(Effect.asVoid),
   ),
@@ -342,11 +386,50 @@ const rpcRequestObserverLayer = Layer.succeed(
   }),
 );
 
+/**
+ * Keeps a Zerops-door bearer ahead of its 15-minute membership window.
+ *
+ * The Zerops account token is read from storage on each attempt rather than
+ * captured from React: the session provider holds a `useMemo`-stable client, so
+ * a closure over it would keep whatever token existed when the layer was built.
+ *
+ * A credential minted at any other door is left alone (`Option.none`), and so is
+ * one whose profile carries no origin to re-mint against.
+ */
+const credentialRenewerLayer = CredentialRenewal.layer({
+  renew: ({ httpBaseUrl, credential }) =>
+    Effect.gen(function* () {
+      if (credential.origin !== "zerops-identity" || httpBaseUrl === undefined) {
+        return Option.none();
+      }
+      const session = yield* Effect.promise(() => loadZeropsSession(browserZeropsStorage));
+      const zeropsToken = session?.accessToken;
+      if (!zeropsToken) {
+        // Signed out of Zerops: nothing here can re-mint, and the door would
+        // only answer 401. The reactive path surfaces it when it matters.
+        return Option.none();
+      }
+      return Option.some(
+        yield* renewZeropsIdentityCredential({ httpBaseUrl, zeropsToken }).pipe(
+          Effect.provide(FetchHttpClient.layer),
+          Effect.provideService(
+            ClientPresentation,
+            ClientPresentation.of({
+              metadata: clientMetadata(),
+              scopes: AuthStandardClientScopes,
+            }),
+          ),
+        ),
+      );
+    }),
+});
+
 type ConnectionPlatformLayerSource =
   | typeof connectionStorageLayer
   | typeof connectivityLayer
   | typeof wakeupsLayer
   | typeof capabilitiesLayer
+  | typeof credentialRenewerLayer
   | typeof platformConnectionSourceLayer
   | typeof environmentOwnedDataCleanupLayer
   | typeof rpcRequestObserverLayer;
@@ -360,6 +443,7 @@ export const connectionPlatformLayer: Layer.Layer<
   connectivityLayer,
   wakeupsLayer,
   capabilitiesLayer,
+  credentialRenewerLayer,
   platformConnectionSourceLayer,
   environmentOwnedDataCleanupLayer,
   rpcRequestObserverLayer,

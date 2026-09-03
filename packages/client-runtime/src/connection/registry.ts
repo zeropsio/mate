@@ -1,4 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -22,6 +23,7 @@ import {
   connectionRegistrationCatalogEntry,
 } from "./catalog.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
+import * as CredentialRenewal from "./credentialRenewal.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import * as Connectivity from "./connectivity.ts";
 import type {
@@ -136,6 +138,10 @@ export const make = Effect.gen(function* () {
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
   const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
+  // Optional: clients that do not provide one keep the reactive path.
+  const credentialRenewer = yield* Effect.serviceOption(
+    CredentialRenewal.ConnectionCredentialRenewer,
+  );
   const persistedTargets = yield* storage.list;
   const initialEntries = new Map(
     yield* Effect.forEach(
@@ -159,6 +165,24 @@ export const make = Effect.gen(function* () {
   const serviceScopes = yield* SubscriptionRef.make<
     ReadonlyMap<EnvironmentId, EnvironmentServiceScope>
   >(new Map());
+  // Bumped whenever `installEntryLocked` replaces an environment's supervisor.
+  // `followStream` keys on this instead of on the entry: a re-registration can
+  // carry a STRUCTURALLY IDENTICAL entry — the Zerops identity repair re-mints a
+  // credential, which is not part of the entry — and still build a new
+  // supervisor. Deduping on the entry left every consumer bound to the closed
+  // one, so a repair that succeeded never reached the UI.
+  const installGenerations = yield* SubscriptionRef.make<ReadonlyMap<EnvironmentId, number>>(
+    new Map(),
+  );
+  const forgetInstallGeneration = (environmentId: EnvironmentId) =>
+    SubscriptionRef.update(installGenerations, (current) => {
+      if (!current.has(environmentId)) {
+        return current;
+      }
+      const next = new Map(current);
+      next.delete(environmentId);
+      return next;
+    });
   const platformEnvironmentIds = yield* Ref.make<ReadonlySet<EnvironmentId>>(new Set());
   const persistedTargetsByEnvironment = yield* Ref.make<
     ReadonlyMap<EnvironmentId, ConnectionTarget>
@@ -244,6 +268,92 @@ export const make = Effect.gen(function* () {
     yield* Scope.close(lease.scope, Exit.void);
   });
 
+  /**
+   * Keeps one environment's bearer ahead of its own deadline.
+   *
+   * Writes through the credential STORE and never through `register`: the
+   * socket is authorised at upgrade time only, so `resolver.prepare` picks the
+   * rotated token up on the next attempt with no teardown. Re-registering
+   * instead would rebuild the supervisor and drop a live socket mid-turn every
+   * window.
+   */
+  const runCredentialRenewal = Effect.fnUntraced(function* (
+    entry: ConnectionCatalogEntry,
+    supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"],
+  ) {
+    if (Option.isNone(credentialRenewer) || entry.target._tag !== "BearerConnectionTarget") {
+      return;
+    }
+    const renewer = credentialRenewer.value;
+    const { environmentId, connectionId } = entry.target;
+    const httpBaseUrl =
+      Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
+        ? entry.profile.value.httpBaseUrl
+        : undefined;
+    let previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+
+    for (;;) {
+      const stored = yield* credentials.get(connectionId).pipe(Effect.orElseSucceed(Option.none));
+      if (Option.isNone(stored) || stored.value._tag !== "BearerConnectionCredential") {
+        return;
+      }
+      const credential = stored.value;
+      const renewAtEpochMs = CredentialRenewal.credentialRenewAtEpochMs(credential);
+      if (renewAtEpochMs === null) {
+        // No deadline on the record — nothing to be proactive about.
+        return;
+      }
+      // A renewer that hands back a credential no fresher than the one it
+      // replaced would otherwise spin this loop.
+      if (renewAtEpochMs <= previousRenewAtEpochMs) {
+        yield* Effect.logWarning("Credential renewal did not advance its deadline; stopping.", {
+          environmentId,
+        });
+        return;
+      }
+      previousRenewAtEpochMs = renewAtEpochMs;
+
+      const delayMs = renewAtEpochMs - (yield* Clock.currentTimeMillis);
+      if (delayMs > 0) {
+        yield* Effect.sleep(delayMs);
+      }
+
+      const renewed = yield* renewer
+        .renew({ environmentId, connectionId, httpBaseUrl, credential })
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning("Could not renew the environment credential.", {
+              environmentId,
+              error,
+            }),
+          ),
+          Effect.option,
+          Effect.map(Option.flatten),
+        );
+      if (Option.isNone(renewed)) {
+        // Either this renewer does not own the credential, or the attempt
+        // failed. Either way the reactive path still covers it.
+        return;
+      }
+      yield* credentials.put(connectionId, renewed.value).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("Could not store the renewed environment credential.", {
+            environmentId,
+            error,
+          }),
+        ),
+        Effect.ignore,
+      );
+      // A healthy socket is deliberately left alone — it stays authorised for
+      // its lifetime and picks the new token up at its next upgrade. Only a
+      // connection already parked on an auth failure needs prodding.
+      const state = yield* SubscriptionRef.get(supervisor.state);
+      if (state.phase === "blocked") {
+        yield* supervisor.retryNow;
+      }
+    }
+  });
+
   const createServiceScope = Effect.fn("EnvironmentRegistry.createServiceScope")(
     (entry: ConnectionCatalogEntry) =>
       Effect.uninterruptible(
@@ -260,6 +370,7 @@ export const make = Effect.gen(function* () {
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
           yield* supervisor.connect;
+          yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope));
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
             next.set(environmentId, { entry, supervisor, scope });
@@ -312,16 +423,36 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  // The key a consumer's binding is switched on: `none` while the environment is
+  // not registered, otherwise the install generation of the supervisor it should
+  // be bound to. Registration of an unrelated environment also ticks `entries`,
+  // so the trailing `Stream.changes` keeps those from tearing this binding down.
+  const bindingKeys = (environmentId: EnvironmentId) =>
+    Stream.merge(
+      Stream.concat(
+        Stream.succeed(undefined),
+        SubscriptionRef.changes(entries).pipe(Stream.map(() => undefined)),
+      ),
+      SubscriptionRef.changes(installGenerations).pipe(Stream.map(() => undefined)),
+    ).pipe(
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          const currentEntries = yield* SubscriptionRef.get(entries);
+          if (!currentEntries.has(environmentId)) {
+            return Option.none<number>();
+          }
+          const generations = yield* SubscriptionRef.get(installGenerations);
+          return Option.some(generations.get(environmentId) ?? 0);
+        }),
+      ),
+      Stream.changes,
+    );
+
   const followStream: EnvironmentRegistry["Service"]["followStream"] = <A, E, R>(
     environmentId: EnvironmentId,
     stream: Stream.Stream<A, E, R>,
   ) =>
-    Stream.concat(
-      Stream.fromEffect(SubscriptionRef.get(entries)),
-      SubscriptionRef.changes(entries),
-    ).pipe(
-      Stream.map((current) => Option.fromUndefinedOr(current.get(environmentId))),
-      Stream.changes,
+    bindingKeys(environmentId).pipe(
       Stream.switchMap(
         Option.match({
           onNone: () => Stream.empty,
@@ -384,6 +515,13 @@ export const make = Effect.gen(function* () {
       return next;
     });
     yield* createServiceScope(entry);
+    // Published only once the replacement exists, so a consumer woken by this
+    // key acquires the new supervisor rather than racing its construction.
+    yield* SubscriptionRef.update(installGenerations, (current) => {
+      const next = new Map(current);
+      next.set(target.environmentId, (current.get(target.environmentId) ?? 0) + 1);
+      return next;
+    });
   });
 
   const register = Effect.fn("EnvironmentRegistry.register")(function* (
@@ -487,6 +625,7 @@ export const make = Effect.gen(function* () {
             next.delete(environmentId);
             return next;
           });
+          yield* forgetInstallGeneration(environmentId);
           if (entry !== undefined && entry.target._tag === "BearerConnectionTarget") {
             yield* credentials.remove(entry.target.connectionId).pipe(
               Effect.catch((error) =>
@@ -568,6 +707,7 @@ export const make = Effect.gen(function* () {
           next.delete(environmentId);
           return next;
         });
+        yield* forgetInstallGeneration(environmentId);
         yield* Effect.all(
           [
             cache.clear(environmentId).pipe(

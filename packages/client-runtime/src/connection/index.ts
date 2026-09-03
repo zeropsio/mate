@@ -1,5 +1,6 @@
 export * from "./catalog.ts";
 export * as Connectivity from "./connectivity.ts";
+export * as CredentialRenewal from "./credentialRenewal.ts";
 export * as CredentialStore from "./credentialStore.ts";
 export {
   ConnectionDriver,
@@ -19,6 +20,7 @@ export {
   prepareSshRegistration,
   registerPairingConnection,
   registerSshConnection,
+  renewZeropsIdentityCredential,
   updateBearerConnection,
 } from "./onboarding.ts";
 export * from "./presentation.ts";

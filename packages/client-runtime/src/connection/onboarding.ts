@@ -1,6 +1,7 @@
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -100,6 +101,24 @@ const resolvePairingTarget = Effect.fn("clientRuntime.connection.onboarding.reso
   },
 );
 
+/**
+ * Turns the exchange's RELATIVE `expires_in` into the absolute deadline stored
+ * on the credential. Relative on the wire is deliberate: it is immune to a
+ * client clock that disagrees with the server's.
+ */
+const bearerCredentialLifetime = Effect.fn(
+  "clientRuntime.connection.onboarding.bearerCredentialLifetime",
+)(function* (expiresInSeconds: number | undefined) {
+  if (expiresInSeconds === undefined || !Number.isFinite(expiresInSeconds)) {
+    return {};
+  }
+  const issuedAtEpochMs = yield* Clock.currentTimeMillis;
+  return {
+    issuedAtEpochMs,
+    expiresAtEpochMs: issuedAtEpochMs + Math.round(expiresInSeconds * 1000),
+  };
+});
+
 export const preparePairingRegistration = Effect.fn(
   "clientRuntime.connection.onboarding.preparePairingRegistration",
 )(function* (input: PairingConnectionInput) {
@@ -114,6 +133,7 @@ export const preparePairingRegistration = Effect.fn(
     scopes: presentation.scopes,
     clientMetadata: presentation.metadata,
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));
+  const lifetime = yield* bearerCredentialLifetime(access.expires_in);
   const connectionId = `bearer:${descriptor.environmentId}`;
 
   return new BearerConnectionRegistration({
@@ -131,6 +151,8 @@ export const preparePairingRegistration = Effect.fn(
     }),
     credential: new BearerConnectionCredential({
       token: access.access_token,
+      ...lifetime,
+      origin: "pairing" as const,
     }),
   });
 });
@@ -171,6 +193,7 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
     scopes: presentation.scopes,
     clientMetadata: presentation.metadata,
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));
+  const lifetime = yield* bearerCredentialLifetime(access.expires_in);
   const connectionId = `bearer:${descriptor.environmentId}`;
 
   return new BearerConnectionRegistration({
@@ -188,7 +211,47 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
     }),
     credential: new BearerConnectionCredential({
       token: access.access_token,
+      ...lifetime,
+      origin: "zerops-identity" as const,
     }),
+  });
+});
+
+/**
+ * Mints a replacement bearer at the Zerops door without touching the registry.
+ *
+ * The re-mint IS the membership check (`POST /api/auth/zerops-identity` proves
+ * the caller against the platform with their own token), so running it ahead of
+ * the window's end re-checks membership more often than letting the window
+ * lapse — and the connection never has to fail first.
+ */
+export const renewZeropsIdentityCredential = Effect.fn(
+  "clientRuntime.connection.onboarding.renewZeropsIdentityCredential",
+)(function* (input: ZeropsIdentityConnectionInput) {
+  const httpBaseUrl = yield* Effect.try({
+    try: () => normalizeHttpBaseUrl(input.httpBaseUrl),
+    catch: (cause) =>
+      new ConnectionBlockedError({
+        reason: "configuration",
+        detail: cause instanceof Error ? cause.message : "The container URL is invalid.",
+      }),
+  });
+  const presentation = yield* ClientCapabilities.ClientPresentation;
+  const minted = yield* mintZeropsIdentityCredential({
+    httpBaseUrl,
+    zeropsToken: input.zeropsToken,
+  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
+  const access = yield* bootstrapRemoteBearerSession({
+    httpBaseUrl,
+    credential: minted.credential,
+    scopes: presentation.scopes,
+    clientMetadata: presentation.metadata,
+  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
+  const lifetime = yield* bearerCredentialLifetime(access.expires_in);
+  return new BearerConnectionCredential({
+    token: access.access_token,
+    ...lifetime,
+    origin: "zerops-identity" as const,
   });
 });
 

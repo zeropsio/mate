@@ -13,6 +13,7 @@ import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as TokenStore from "../authorization/tokenStore.ts";
@@ -29,6 +30,7 @@ import {
 } from "./catalog.ts";
 import * as Connectivity from "./connectivity.ts";
 import * as ConnectionCredentialStore from "./credentialStore.ts";
+import * as CredentialRenewal from "./credentialRenewal.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
   ConnectionTransientError,
@@ -135,6 +137,7 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
     readonly beforeRegistrationRemove?: (
       target: ConnectionTarget,
     ) => Effect.Effect<void, Persistence.ConnectionPersistenceError>;
+    readonly credentialRenewer?: CredentialRenewal.ConnectionCredentialRenewer["Service"];
   },
 ) {
   const storedTargets = yield* Ref.make(
@@ -382,6 +385,9 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
         Layer.succeed(ConnectionDriver.ConnectionDriver, driver),
         cacheLayer,
         Layer.succeed(Persistence.EnvironmentOwnedDataCleanup, ownedDataCleanup),
+        options?.credentialRenewer === undefined
+          ? Layer.empty
+          : CredentialRenewal.layer(options.credentialRenewer),
       ),
     ),
   );
@@ -402,6 +408,27 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
     networkStatus,
   };
 });
+
+function eventuallyCredential(
+  storedCredentials: Ref.Ref<Map<string, ConnectionCredential>>,
+  connectionId: string,
+  predicate: (credential: BearerConnectionCredential) => boolean,
+) {
+  return Effect.gen(function* () {
+    for (let iteration = 0; iteration < 200; iteration += 1) {
+      const stored = (yield* Ref.get(storedCredentials)).get(connectionId);
+      if (
+        stored !== undefined &&
+        stored._tag === "BearerConnectionCredential" &&
+        predicate(stored)
+      ) {
+        return stored;
+      }
+      yield* Effect.yieldNow;
+    }
+    return yield* Effect.die(new Error("Credential was not renewed."));
+  });
+}
 
 function awaitConnectionState(
   registry: EnvironmentRegistry.EnvironmentRegistry["Service"],
@@ -649,6 +676,140 @@ describe("EnvironmentRegistry", () => {
         yield* Fiber.interrupt(subscription);
 
         expect(yield* Ref.get(labels)).toEqual([RELAY_TARGET.label, replacement.label]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  // RED: the Zerops identity repair re-registers a STRUCTURALLY IDENTICAL entry
+  // (same target and profile — the refreshed credential is not part of the entry).
+  // `installEntryLocked` does close the old supervisor scope and create a new one,
+  // but `followStream`'s `Stream.changes` dedupes the identical entry, so every
+  // consumer stays bound to the CLOSED supervisor and never sees the repaired
+  // connection. Symptom: a repair that succeeds still shows "Connection failed"
+  // until the page is reloaded.
+  it.effect("moves durable streams to a replacement supervisor built from an identical entry", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([RELAY_TARGET]);
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const firstObserved = yield* Deferred.make<void>();
+        const secondObserved = yield* Deferred.make<void>();
+        const binds = yield* Ref.make(0);
+        yield* registry.start;
+        yield* awaitConnectionState(
+          registry,
+          RELAY_TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        const subscription = yield* Effect.forkChild(
+          registry
+            .followStream(
+              RELAY_TARGET.environmentId,
+              Stream.unwrap(
+                EnvironmentSupervisor.EnvironmentSupervisor.pipe(
+                  Effect.map(() => Stream.concat(Stream.succeed(undefined), Stream.never)),
+                ),
+              ),
+            )
+            .pipe(
+              Stream.tap(() =>
+                Ref.updateAndGet(binds, (count) => count + 1).pipe(
+                  Effect.flatMap((count) =>
+                    count === 1
+                      ? Deferred.succeed(firstObserved, undefined)
+                      : Deferred.succeed(secondObserved, undefined),
+                  ),
+                ),
+              ),
+              Stream.runDrain,
+            ),
+        );
+
+        yield* Deferred.await(firstObserved).pipe(Effect.timeout("1 second"));
+        yield* registry.register(new RelayConnectionRegistration({ target: RELAY_TARGET }));
+        yield* Deferred.await(secondObserved).pipe(Effect.timeout("1 second"));
+        yield* Fiber.interrupt(subscription);
+
+        expect(yield* Ref.get(binds)).toBe(2);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("renews a Zerops bearer before its membership window lapses", () =>
+    Effect.gen(function* () {
+      // The Zerops door caps a session at one membership window (900s). The
+      // renewer must rotate the stored token BEFORE that deadline — the re-mint
+      // is itself the membership re-check, so running it early is both safer
+      // and keeps the failure off the user's screen.
+      const current = new BearerConnectionCredential({
+        token: "current-token",
+        issuedAtEpochMs: 0,
+        expiresAtEpochMs: 900_000,
+        origin: "zerops-identity",
+      });
+      const renewed = new BearerConnectionCredential({
+        token: "renewed-token",
+        issuedAtEpochMs: 720_000,
+        expiresAtEpochMs: 1_620_000,
+        origin: "zerops-identity",
+      });
+      const renewals = yield* Ref.make(0);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, current]],
+        {
+          credentialRenewer: {
+            renew: () =>
+              Ref.update(renewals, (count) => count + 1).pipe(Effect.as(Option.some(renewed))),
+          },
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+
+        // 20% of the window is held back as slack, so nothing happens yet.
+        yield* TestClock.adjust("11 minutes");
+        expect(yield* Ref.get(renewals)).toBe(0);
+
+        yield* TestClock.adjust("2 minutes");
+        const stored = yield* eventuallyCredential(
+          harness.storedCredentials,
+          BEARER_TARGET.connectionId,
+          (credential) => credential.token === "renewed-token",
+        );
+        expect(stored.expiresAtEpochMs).toBe(1_620_000);
+        expect(yield* Ref.get(renewals)).toBe(1);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("never renews a credential that carries no deadline", () =>
+    Effect.gen(function* () {
+      // Records persisted before the deadline was stored. Proactive renewal is
+      // off for them; the reactive path is still their recovery.
+      const legacy = new BearerConnectionCredential({ token: "legacy-token" });
+      const renewals = yield* Ref.make(0);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, legacy]],
+        {
+          credentialRenewer: {
+            renew: () => Ref.update(renewals, (count) => count + 1).pipe(Effect.as(Option.none())),
+          },
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* TestClock.adjust("30 days");
+        expect(yield* Ref.get(renewals)).toBe(0);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
