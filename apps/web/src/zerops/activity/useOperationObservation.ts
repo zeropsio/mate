@@ -134,7 +134,12 @@ export function deriveOperationObservation(
     });
     if (attribution.projectMismatch) {
       unavailableReason = "project-mismatch";
-    } else {
+    } else if (attribution.stepSource !== undefined || attribution.chips.length > 0) {
+      // A successful poll that attributes nothing new for this target (the
+      // everyday "still polling, not there yet/anymore" case — `processes`
+      // is `[]`, not `undefined`, once the poller has read successfully at
+      // least once) must not refresh the staleness clock; only a read that
+      // actually found something for this target counts as fresh knowledge.
       lastRead = { attribution, atMs: input.snapshot.atMs };
     }
   }

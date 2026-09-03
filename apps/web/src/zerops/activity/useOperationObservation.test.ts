@@ -92,6 +92,35 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(second.state.kind).toBe("stale");
   });
 
+  /**
+   * The poller's `processes` is `[]`, not `undefined`, once it has read
+   * successfully at least once and found nothing relevant (dto.ts's own
+   * "a valid observation that just found nothing" distinction) — the
+   * everyday shape of "still polling, target not attributed (yet)", not the
+   * rarer "poller has never read anything at all" case the previous test
+   * covers. A read that succeeds but attributes nothing new must NOT reset
+   * the staleness clock, or an operation that stops appearing in the poll
+   * (e.g. between the tool call starting and the platform process existing)
+   * would never go stale — it would sit "observing" forever off an
+   * increasingly out-of-date `atMs`.
+   */
+  it("does not refresh lastRead on a successful poll that attributes nothing for this target", () => {
+    const p = process({ appVersion: { status: "BUILDING" } });
+    const first = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
+      NOW,
+    );
+    const second = deriveOperationObservation(
+      baseInput({
+        snapshot: { processes: [], atMs: NOW + 5_000 },
+        previousLastRead: first.lastRead,
+      }),
+      NOW + 11_000,
+    );
+    expect(second.state.kind).toBe("stale");
+    expect(second.lastRead?.atMs).toBe(NOW);
+  });
+
   it("history is kept once running flips false — the last non-empty-steps observation persists", () => {
     const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
     const running = deriveOperationObservation(
