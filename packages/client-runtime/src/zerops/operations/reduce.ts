@@ -23,6 +23,7 @@ import {
 import {
   humanizeCheckName,
   humanizeToolName,
+  neutralStatusWord,
   operationClosing,
   operationStatusWord,
   operationVoice,
@@ -564,7 +565,10 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.deploy} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("deploy", phase, { resultStatus }),
+    statusWord:
+      card !== undefined
+        ? operationStatusWord("deploy", phase, { resultStatus })
+        : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links,
@@ -649,7 +653,8 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.verify} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("verify", phase),
+    statusWord:
+      card !== undefined ? operationStatusWord("verify", phase) : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
@@ -756,7 +761,8 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.import} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("import", phase),
+    statusWord:
+      card !== undefined ? operationStatusWord("import", phase) : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps: read.steps,
     links: [],
@@ -809,7 +815,7 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.mount} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("mount", phase),
+    statusWord: card !== undefined ? operationStatusWord("mount", phase) : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
@@ -864,7 +870,10 @@ function buildSubdomainOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.subdomain} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("subdomain", phase, { action }),
+    statusWord:
+      card !== undefined
+        ? operationStatusWord("subdomain", phase, { action })
+        : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps: [
       buildStep(
@@ -941,7 +950,8 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: operationStatusWord(kind, phase),
+    statusWord:
+      decoded.document !== undefined ? operationStatusWord(kind, phase) : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps: [
       buildStep(
@@ -1211,7 +1221,8 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
     kicker,
     voice,
     voiceSource,
-    statusWord: operationStatusWord("bootstrap", phase),
+    statusWord:
+      plan !== undefined ? operationStatusWord("bootstrap", phase) : neutralStatusWord(phase),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],

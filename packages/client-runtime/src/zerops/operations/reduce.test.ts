@@ -181,6 +181,18 @@ describe("reduceZeropsOperations — verify-and-refused-deploy", () => {
       expect(verify.phase).toBe("done");
     }
   });
+
+  it("the first verify's own fallback text is a truncated teaser, not JSON — statusWord is neutral, not Healthy", () => {
+    // This call never carries `data.zerops` in the captured session, and
+    // Claude's own raw result (the fixture adapter's fallback source) is cut
+    // short rather than the full JSON document, so it never decodes at all.
+    const verifies = operations.filter((o) => o.kind === "verify");
+    const undecoded = verifies.find((v) => !v.hasResult)!;
+    expect(undecoded).toBeDefined();
+    expect(undecoded.phase).toBe("done");
+    expect(undecoded.statusWord).toBe("Done");
+    expect(undecoded.closing).toBe("Finished.");
+  });
 });
 
 describe("reduceZeropsOperations — adopt-two-services", () => {
@@ -290,12 +302,12 @@ describe("reduceZeropsOperations — pending states (hand-built)", () => {
     status: "inProgress",
   };
 
-  it("a pending deploy is running, statusWord Deploying, hasResult false, target from input", () => {
+  it("a pending deploy is running, statusWord Working (no result to decode yet), hasResult false, target from input", () => {
     const { operations } = reduceZeropsOperations([pendingDeploy]);
     expect(operations).toHaveLength(1);
     const deploy = operations[0]!;
     expect(deploy.phase).toBe("running");
-    expect(deploy.statusWord).toBe("Deploying");
+    expect(deploy.statusWord).toBe("Working");
     expect(deploy.hasResult).toBe(false);
     expect(deploy.target).toEqual({ hostname: "weatherdash" });
     expect(deploy.closing).toBeUndefined();
@@ -687,6 +699,36 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     expect(op.closing).toBe("Service old-svc deleted.");
     // the message composed the closing — it is not repeated in detail
     expect(op.detail).toBeUndefined();
+  });
+});
+
+describe("reduceZeropsOperations — neutral status word for an undecoded result", () => {
+  // The verify case is pinned against the real fixture in the
+  // verify-and-refused-deploy describe block above (its first verify call
+  // never carries a decodable result at all). This covers deploy: a
+  // "completed" result with no card at all (no decoder recognizes the tool,
+  // or the JSON doesn't parse) must not claim "Deployed" — only a decoded
+  // card earns the kind-specific word.
+  it("a done deploy with no decodable card gets the neutral word Done, not Deployed", () => {
+    const entry: ZeropsCallEntry = {
+      id: "d1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy_batch",
+      input: { targetServices: ["a", "b"] },
+      status: "completed",
+      resultText: JSON.stringify({ batchId: "b1", results: [] }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    expect(operations).toHaveLength(1);
+    const op = operations[0]!;
+    expect(op.kind).toBe("deploy");
+    expect(op.phase).toBe("done");
+    // The JSON parses fine (hasResult tracks that) — there is simply no
+    // decoder for zerops_deploy_batch, so no "deploy" card comes out of it.
+    expect(op.hasResult).toBe(true);
+    expect(op.statusWord).toBe("Done");
+    expect(op.closing).toBe("Finished.");
   });
 });
 

@@ -153,6 +153,24 @@ export function operationStatusWord(
   }
 }
 
+/**
+ * The status word for a phase when the result did not decode — a kind's own
+ * word ("Healthy", "Deployed", "Complete", …) is a claim about what the
+ * result said, and an undecoded result never said it. Same three words the
+ * closing already falls back to in spirit ("Finished." / "Failed."), just as
+ * a status-dot word.
+ */
+export function neutralStatusWord(phase: ZeropsOperationPhase): string {
+  switch (phase) {
+    case "running":
+      return "Working";
+    case "done":
+      return "Done";
+    case "failed":
+      return "Failed";
+  }
+}
+
 const DELETE_SCALE_MANAGE_ENV_VOICE: Readonly<Record<string, string>> = {
   delete: "Deleting",
   scale: "Scaling",
