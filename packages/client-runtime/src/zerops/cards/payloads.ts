@@ -85,8 +85,7 @@ export type ZeropsCardPayload =
       readonly kind: "plan";
       /**
        * Stable for the life of one bootstrap session (a `reset` or a later new
-       * bootstrap gets a new one). The merge key the timeline uses to fold
-       * repeated bootstrap calls into one card — see `cards/identity.ts`.
+       * bootstrap gets a new one).
        */
       readonly sessionId?: string;
       readonly intent?: string;
