@@ -123,3 +123,37 @@ describe("formatStepDuration", () => {
     expect(formatStepDuration(durationMs)).toBe(expected);
   });
 });
+
+describe("ProcessSteps — redundant step state words", () => {
+  it("hides the stateLabel when it only repeats what the glyph already says (Done, Waiting)", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[
+          { id: "a", label: "Discover", state: "done", stateLabel: "Done" },
+          { id: "b", label: "Provision", state: "queued", stateLabel: "Waiting" },
+        ]}
+      />,
+    );
+
+    expect(html).not.toContain(">Done<");
+    expect(html).not.toContain(">Waiting<");
+  });
+
+  it("keeps the stateLabel for Running, Failed, Skipped, and any other word", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[
+          { id: "a", label: "Build", state: "running", stateLabel: "Running" },
+          { id: "b", label: "Deploy", state: "failed", stateLabel: "Failed" },
+          { id: "c", label: "Close", state: "done", stateLabel: "Skipped" },
+          { id: "d", label: "Custom", state: "queued", stateLabel: "Pending review" },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(">Running<");
+    expect(html).toContain(">Failed<");
+    expect(html).toContain(">Skipped<");
+    expect(html).toContain(">Pending review<");
+  });
+});

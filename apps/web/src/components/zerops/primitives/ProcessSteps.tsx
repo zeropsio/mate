@@ -65,6 +65,11 @@ const PRESENTATION = {
   { icon: keyof typeof ICON_COMPONENT; className: string; tone: ServiceStatusToneId }
 >;
 
+// A word that says nothing the glyph doesn't already say — never shown.
+// "Skipped" keeps its word even though it shares the "done" glyph: a
+// checkmark alone reads as done, not skipped.
+const REDUNDANT_STATE_LABELS: ReadonlySet<string> = new Set(["Done", "Waiting"]);
+
 type ProcessStepsProps = Omit<React.ComponentProps<"ol">, "children"> & {
   readonly steps: ReadonlyArray<ProcessStep>;
 };
@@ -112,7 +117,9 @@ function ProcessSteps({
                     <span className="text-muted-foreground"> · {step.note}</span>
                   ) : null}
                 </span>
-                <MicroLabel>{step.stateLabel}</MicroLabel>
+                {REDUNDANT_STATE_LABELS.has(step.stateLabel) ? null : (
+                  <MicroLabel>{step.stateLabel}</MicroLabel>
+                )}
               </span>
               {step.durationMs !== undefined ? (
                 <span className="shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
