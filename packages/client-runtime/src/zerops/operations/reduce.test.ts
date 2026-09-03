@@ -162,6 +162,15 @@ describe("reduceZeropsOperations — verify-and-refused-deploy", () => {
       expect(deploy.closing).toContain("zerops.yml not found");
       expect(deploy.detail).toBeDefined();
       expect(deploy.detail).toContain("Using config file");
+      // decodeZeropsCard never returns a "deploy" card on a failed tool call
+      // (it returns the error card, or nothing) — the failing step still has
+      // to be named from the raw document. This result has no buildStatus at
+      // all (the SSH check failed before a build ever started), so there is
+      // no Build step, and no failedPhase either, so the one step is a plain
+      // "Deploy".
+      expect(deploy.steps).toEqual([
+        { id: "deploy", label: "Deploy", state: "failed", stateLabel: "Failed" },
+      ]);
     }
   });
 
@@ -207,12 +216,18 @@ describe("reduceZeropsOperations — adopt-two-services", () => {
       (e) => e.toolName === "zerops_workflow" && e.status === "failed",
     );
     const prefix = entries.slice(0, failedIndex + 1);
-    const { operations: prefixOperations } = reduceZeropsOperations(prefix);
+    const { operations: prefixOperations, consumedEntryIds: prefixConsumed } =
+      reduceZeropsOperations(prefix);
     const bootstrap = prefixOperations.find((o) => o.kind === "bootstrap")!;
     expect(bootstrap.phase).toBe("running");
     const discover = bootstrap.steps.find((s) => s.id === "discover")!;
     expect(discover.state).toBe("failed");
     expect(discover.note).toContain("ambiguous dev/stage pairing");
+    // The failed continuation is a bootstrap-session call — it joined the
+    // operation, not a standalone `error` operation, so it is one of the
+    // bootstrap's own folded entries.
+    expect(bootstrap.entryIds).toContain(entries[failedIndex]!.id);
+    expect(prefixConsumed.has(entries[failedIndex]!.id)).toBe(true);
   });
 });
 
@@ -220,7 +235,7 @@ describe("reduceZeropsOperations — mount-status", () => {
   const entries = callEntriesFromThread(mountStatus);
   const { operations } = reduceZeropsOperations(entries);
 
-  it("classifies the mount status call as generic", () => {
+  it("hides the mount status call", () => {
     const mountEntry = entries.find((e) => e.toolName === "zerops_mount")!;
     expect(classifyZeropsCall(mountEntry.toolName, mountEntry.input, mountEntry.status)).toBe(
       "hidden",
@@ -330,6 +345,12 @@ describe("reduceZeropsOperations — pending states (hand-built)", () => {
     expect(operations).toHaveLength(1);
     expect(operations[0]!.entryIds).toEqual(["b1", "b2"]);
     expect(consumedEntryIds.has("b2")).toBe(true);
+    // The joined pending call names its own step — that step renders running
+    // even though the last known plan (from b1) still says "pending", since
+    // this pending call is the freshest signal about it.
+    const provisionStep = operations[0]!.steps.find((s) => s.id === "provision")!;
+    expect(provisionStep.state).toBe("running");
+    expect(provisionStep.stateLabel).toBe("Running");
   });
 
   it("a pending complete step=provision with zero open bootstraps is its own call: operation", () => {
@@ -365,5 +386,351 @@ describe("reduceZeropsOperations — pending states (hand-built)", () => {
     expect(deploy.phase).toBe("running");
     expect(deploy.hasResult).toBe(true);
     expect(deploy.statusWord).toBe("Build triggered");
+  });
+});
+
+describe("reduceZeropsOperations — kind error (a hidden/generic-shaped call that failed)", () => {
+  const failedStatus: ZeropsCallEntry = {
+    id: "err1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_workflow",
+    input: { action: "status" },
+    status: "failed",
+    resultText: JSON.stringify({ code: "INTERNAL", error: "status lookup failed" }),
+  };
+
+  const failedRouteMenuStart: ZeropsCallEntry = {
+    id: "err2",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_workflow",
+    input: { action: "start", workflow: "bootstrap", intent: "New service" },
+    status: "failed",
+    resultText: JSON.stringify({ code: "INTERNAL", error: "menu unavailable" }),
+  };
+
+  const failedMountStatus: ZeropsCallEntry = {
+    id: "err3",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_mount",
+    input: { action: "status" },
+    status: "failed",
+    resultText: JSON.stringify({ code: "INTERNAL", error: "mount status unavailable" }),
+  };
+
+  const failedDiscover: ZeropsCallEntry = {
+    id: "err4",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_discover",
+    status: "failed",
+    resultText: JSON.stringify({ code: "INTERNAL", error: "discover unavailable" }),
+  };
+
+  it("a failed action=status becomes its own kind error operation, not bootstrap", () => {
+    const { operations } = reduceZeropsOperations([failedStatus]);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]!.kind).toBe("error");
+    expect(operations[0]!.closing).toContain("status lookup failed");
+  });
+
+  it("a failed route-menu start becomes kind error, not bootstrap, and never joins an open session", () => {
+    const openBootstrap: ZeropsCallEntry = {
+      id: "b0",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_workflow",
+      input: { action: "start", workflow: "bootstrap", route: "classic" },
+      status: "completed",
+      resultText: JSON.stringify({
+        sessionId: "sessOpen",
+        progress: {
+          total: 3,
+          completed: 0,
+          steps: [
+            { name: "discover", status: "in_progress" },
+            { name: "provision", status: "pending" },
+            { name: "close", status: "pending" },
+          ],
+        },
+      }),
+    };
+    const { operations } = reduceZeropsOperations([openBootstrap, failedRouteMenuStart]);
+    expect(operations.map((o) => o.kind)).toEqual(["bootstrap", "error"]);
+    // The failed route-menu call must not have joined the open session as a
+    // trailing failure — the bootstrap's own steps are untouched.
+    const bootstrap = operations.find((o) => o.kind === "bootstrap")!;
+    expect(bootstrap.entryIds).toEqual(["b0"]);
+    expect(bootstrap.steps.find((s) => s.id === "discover")!.state).toBe("running");
+  });
+
+  it("a failed mount action=status becomes kind error, not mount", () => {
+    const { operations } = reduceZeropsOperations([failedMountStatus]);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]!.kind).toBe("error");
+    expect(operations[0]!.closing).toContain("mount status unavailable");
+  });
+
+  it("a failed zerops_discover becomes kind error, kicker names the code, voice names the humanized tool", () => {
+    const { operations } = reduceZeropsOperations([failedDiscover]);
+    expect(operations).toHaveLength(1);
+    const op = operations[0]!;
+    expect(op.kind).toBe("error");
+    expect(op.kicker).toBe("Error · INTERNAL");
+    expect(op.voice).toBe("Discover failed.");
+    expect(op.closing).toContain("discover unavailable");
+  });
+});
+
+describe("reduceZeropsOperations — bootstrap session identity", () => {
+  const openBootstrap = (id: string, sessionId: string, createdAt: string): ZeropsCallEntry => ({
+    id,
+    createdAt,
+    turnId: "t1",
+    toolName: "zerops_workflow",
+    input: { action: "start", workflow: "bootstrap", route: "classic" },
+    status: "completed",
+    resultText: JSON.stringify({
+      sessionId,
+      progress: {
+        total: 3,
+        completed: 0,
+        steps: [
+          { name: "discover", status: "in_progress" },
+          { name: "provision", status: "pending" },
+          { name: "close", status: "pending" },
+        ],
+      },
+    }),
+  });
+
+  it("a continuation carrying a foreign, already-known-different sessionId starts its own group instead of hijacking the one open session", () => {
+    const sessA = openBootstrap("a1", "sessA", "2026-09-01T00:00:00.000Z");
+    const foreignContinuation: ZeropsCallEntry = {
+      id: "a2",
+      createdAt: "2026-09-01T00:01:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_workflow",
+      input: { action: "complete", step: "discover" },
+      status: "completed",
+      resultText: JSON.stringify({
+        sessionId: "sessB",
+        progress: {
+          total: 3,
+          completed: 1,
+          steps: [
+            { name: "discover", status: "complete" },
+            { name: "provision", status: "in_progress" },
+            { name: "close", status: "pending" },
+          ],
+        },
+      }),
+    };
+    const { operations } = reduceZeropsOperations([sessA, foreignContinuation]);
+    const keys = operations.filter((o) => o.kind === "bootstrap").map((o) => o.key);
+    expect(keys.sort()).toEqual(["bootstrap:sessA", "bootstrap:sessB"]);
+    const a = operations.find((o) => o.key === "bootstrap:sessA")!;
+    expect(a.entryIds).toEqual(["a1"]);
+    const b = operations.find((o) => o.key === "bootstrap:sessB")!;
+    expect(b.entryIds).toEqual(["a2"]);
+  });
+
+  it("a second start route= for an already-open session joins it instead of duplicating the group", () => {
+    const first = openBootstrap("s1", "sessDup", "2026-09-01T00:00:00.000Z");
+    const second = openBootstrap("s2", "sessDup", "2026-09-01T00:05:00.000Z");
+    const { operations } = reduceZeropsOperations([first, second]);
+    const bootstraps = operations.filter((o) => o.kind === "bootstrap");
+    expect(bootstraps).toHaveLength(1);
+    expect(bootstraps[0]!.key).toBe("bootstrap:sessDup");
+    expect(bootstraps[0]!.anchorEntryId).toBe("s1");
+    expect(bootstraps[0]!.entryIds).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("reduceZeropsOperations — verify, the all-services shape", () => {
+  const allServicesVerify: ZeropsCallEntry = {
+    id: "v1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_verify",
+    status: "completed",
+    resultText: JSON.stringify({
+      status: "degraded",
+      services: [
+        { hostname: "s3git1", status: "healthy" },
+        { hostname: "s3git2", status: "degraded" },
+      ],
+    }),
+  };
+
+  it("subject and kicker are 'all services' when input.serviceHostname is absent", () => {
+    const { operations } = reduceZeropsOperations([allServicesVerify]);
+    expect(operations).toHaveLength(1);
+    const op = operations[0]!;
+    expect(op.subject).toBe("all services");
+    expect(op.kicker).toBe("Verify · all services");
+  });
+
+  it("step labels are the raw hostnames, never humanized", () => {
+    const { operations } = reduceZeropsOperations([allServicesVerify]);
+    const op = operations[0]!;
+    expect(op.steps.map((s) => s.label)).toEqual(["s3git1", "s3git2"]);
+  });
+});
+
+describe("reduceZeropsOperations — standalone card kinds", () => {
+  it("a standalone import, done: subject, step, closing from the summary", () => {
+    const entry: ZeropsCallEntry = {
+      id: "imp1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_import",
+      status: "completed",
+      resultText: JSON.stringify({
+        projectId: "p1",
+        processes: [
+          { processId: "1", actionName: "stack.create", status: "FINISHED", service: "newsvc" },
+        ],
+        summary: "1 service created",
+      }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    expect(operations).toHaveLength(1);
+    const op = operations[0]!;
+    expect(op.kind).toBe("import");
+    expect(op.phase).toBe("done");
+    expect(op.subject).toBe("newsvc");
+    expect(op.closing).toBe("1 service created");
+    expect(op.steps).toEqual([
+      { id: "newsvc", label: "newsvc", state: "done", stateLabel: "Done" },
+    ]);
+  });
+
+  it("a standalone import, failed: closing from the error", () => {
+    const entry: ZeropsCallEntry = {
+      id: "imp2",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_import",
+      status: "failed",
+      resultText: JSON.stringify({ code: "IMPORT_FAILED", error: "YAML syntax error on line 4" }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("import");
+    expect(op.phase).toBe("failed");
+    expect(op.closing).toContain("YAML syntax error on line 4");
+  });
+
+  it("a mount call: subject, step, closing counting mounted services", () => {
+    const entry: ZeropsCallEntry = {
+      id: "mnt1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_mount",
+      input: { action: "mount", hostname: "db" },
+      status: "completed",
+      resultText: JSON.stringify({ hostname: "db", status: "MOUNTED", mountPath: "/mnt/db" }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("mount");
+    expect(op.phase).toBe("done");
+    expect(op.subject).toBe("db");
+    expect(op.steps).toEqual([
+      { id: "db", label: "db", state: "done", stateLabel: "Done", note: "/mnt/db" },
+    ]);
+    expect(op.closing).toBe("1 of 1 services mounted.");
+  });
+
+  it("a subdomain call: statusWord and closing by action, links from the URLs", () => {
+    const entry: ZeropsCallEntry = {
+      id: "sub1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_subdomain",
+      input: { serviceHostname: "weatherdash", action: "enable" },
+      status: "completed",
+      resultText: JSON.stringify({
+        serviceHostname: "weatherdash",
+        action: "enable",
+        subdomainUrls: ["https://weatherdash-x.prg1.zerops.app"],
+      }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("subdomain");
+    expect(op.statusWord).toBe("Enabled");
+    expect(op.closing).toBe("Enabled.");
+    expect(op.links).toEqual([
+      { label: "weatherdash-x.prg1.zerops.app", url: "https://weatherdash-x.prg1.zerops.app" },
+    ]);
+  });
+
+  it("a simple kind (delete): subject from input, closing from the message's first paragraph", () => {
+    const entry: ZeropsCallEntry = {
+      id: "del1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_delete",
+      input: { hostname: "old-svc" },
+      status: "completed",
+      resultText: JSON.stringify({ message: "Service old-svc deleted." }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("delete");
+    expect(op.phase).toBe("done");
+    expect(op.subject).toBe("old-svc");
+    expect(op.closing).toBe("Service old-svc deleted.");
+    // the message composed the closing — it is not repeated in detail
+    expect(op.detail).toBeUndefined();
+  });
+});
+
+describe("reduceZeropsOperations — a failed import joining an open bootstrap", () => {
+  it("marks the provision step failed with the import error's first line as note, and never becomes a second card", () => {
+    const bootstrapAtProvision: ZeropsCallEntry = {
+      id: "bp1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_workflow",
+      input: { action: "start", workflow: "bootstrap", route: "classic" },
+      status: "completed",
+      resultText: JSON.stringify({
+        sessionId: "sessProvision",
+        progress: {
+          total: 3,
+          completed: 1,
+          steps: [
+            { name: "discover", status: "complete" },
+            { name: "provision", status: "in_progress" },
+            { name: "close", status: "pending" },
+          ],
+        },
+        message: "Step 2/3: provision",
+      }),
+    };
+    const failedImport: ZeropsCallEntry = {
+      id: "bp2",
+      createdAt: "2026-09-01T00:01:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_import",
+      status: "failed",
+      resultText: JSON.stringify({ code: "IMPORT_FAILED", error: "YAML syntax error on line 4" }),
+    };
+    const { operations, consumedEntryIds } = reduceZeropsOperations([
+      bootstrapAtProvision,
+      failedImport,
+    ]);
+    expect(operations.map((o) => o.kind)).toEqual(["bootstrap"]);
+    const bootstrap = operations[0]!;
+    expect(bootstrap.entryIds).toContain("bp2");
+    expect(consumedEntryIds.has("bp2")).toBe(true);
+    const provision = bootstrap.steps.find((s) => s.id === "provision")!;
+    expect(provision.state).toBe("failed");
+    expect(provision.note).toContain("YAML syntax error on line 4");
   });
 });

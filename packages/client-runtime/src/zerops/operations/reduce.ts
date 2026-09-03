@@ -14,13 +14,19 @@ import {
   type ZeropsCardSource,
 } from "../cards/decode.ts";
 import { decodeZeropsCard, type ZeropsCardPayload } from "../cards/payloads.ts";
-import { classifyZeropsCall } from "./classify.ts";
+import {
+  classifyZeropsCall,
+  isBootstrapRouteMenuStart,
+  isBootstrapSessionCall,
+  isBootstrapStartWithRoute,
+} from "./classify.ts";
 import {
   humanizeCheckName,
   humanizeToolName,
   operationClosing,
   operationStatusWord,
   operationVoice,
+  sentenceCase,
   statusWord,
 } from "./phrases.ts";
 import type {
@@ -116,6 +122,16 @@ function decodeEntry(entry: ZeropsCallEntry): DecodedEntry {
   return { document: source?.document, card: decodeZeropsCard(source) };
 }
 
+/** An entry decoded exactly once, at fold time — every later read reuses this. */
+interface DecodedCall {
+  readonly entry: ZeropsCallEntry;
+  readonly decoded: DecodedEntry;
+}
+
+function decodeCall(entry: ZeropsCallEntry): DecodedCall {
+  return { entry, decoded: decodeEntry(entry) };
+}
+
 interface ErrorInfo {
   readonly message: string;
   readonly diagnostic?: string;
@@ -148,22 +164,6 @@ function readInputString(
   return readString(input?.[key]);
 }
 
-function isBootstrapStartWithRoute(input: Record<string, unknown> | undefined): boolean {
-  return (
-    readInputString(input, "action") === "start" &&
-    readInputString(input, "workflow") === "bootstrap" &&
-    readInputString(input, "route") !== undefined
-  );
-}
-
-function isBootstrapRouteMenuStart(input: Record<string, unknown> | undefined): boolean {
-  return (
-    readInputString(input, "action") === "start" &&
-    readInputString(input, "workflow") === "bootstrap" &&
-    readInputString(input, "route") === undefined
-  );
-}
-
 const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_deploy: "deploy",
   zerops_deploy_batch: "deploy",
@@ -176,20 +176,27 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_env: "env",
 };
 
-/** The operation kind a "card"-classified call becomes — independent of success/failure. */
+/**
+ * The operation kind a "card"-classified call becomes — independent of
+ * success/failure, but NOT independent of tool-specific shape: a call whose
+ * successful form would be hidden or generic (`zerops_workflow status`, the
+ * route-menu start, `zerops_mount action=status`, `zerops_discover`, …) only
+ * ever reaches this function by failing, and stays kind `error` even then —
+ * it never borrows `bootstrap` or `mount` just because the tool name matches.
+ * Mirrors `classifyZeropsCall`'s own bootstrap/mount predicates exactly, so
+ * the two never disagree about what a call fundamentally is.
+ */
 function determineKind(entry: ZeropsCallEntry): ZeropsOperationKind {
   const fixed = CARD_TOOL_KINDS[entry.toolName];
   if (fixed !== undefined) {
     return fixed;
   }
   if (entry.toolName === "zerops_mount") {
-    return "mount";
+    return readInputString(entry.input, "action") === "status" ? "error" : "mount";
   }
-  if (entry.toolName === "zerops_workflow") {
+  if (entry.toolName === "zerops_workflow" && isBootstrapSessionCall(entry.input)) {
     return "bootstrap";
   }
-  // A generic/hidden-shaped zerops_* call only reaches "card" classification
-  // by failing (classifyZeropsCall's zerops_*-wide failed override).
   return "error";
 }
 
@@ -199,28 +206,25 @@ interface OperationGroup {
   key: string;
   kind: ZeropsOperationKind;
   anchorEntryId: string;
-  /** The bootstrap / card-tool call entries folded into this operation, in fold order. */
-  entries: ZeropsCallEntry[];
+  /** The bootstrap / card-tool calls folded into this operation, in fold order. */
+  entries: DecodedCall[];
   /** `zerops_import` calls absorbed into an open bootstrap's `provision` step. */
-  joinedImports: ZeropsCallEntry[];
+  joinedImports: DecodedCall[];
   /** The bootstrap founder's own `intent`, or the route-menu reply's — set once, never overwritten. */
   bootstrapIntent?: string;
 }
 
-function bootstrapLatestPlan(
-  group: OperationGroup,
-):
+function bootstrapLatestPlan(group: OperationGroup):
   | {
-      entry: ZeropsCallEntry;
+      call: DecodedCall;
       document: Record<string, unknown>;
       card: Extract<ZeropsCardPayload, { kind: "plan" }>;
     }
   | undefined {
   for (let i = group.entries.length - 1; i >= 0; i--) {
-    const entry = group.entries[i]!;
-    const decoded = decodeEntry(entry);
-    if (decoded.card?.kind === "plan" && decoded.document !== undefined) {
-      return { entry, document: decoded.document, card: decoded.card };
+    const call = group.entries[i]!;
+    if (call.decoded.card?.kind === "plan" && call.decoded.document !== undefined) {
+      return { call, document: call.decoded.document, card: call.decoded.card };
     }
   }
   return undefined;
@@ -236,7 +240,7 @@ function bootstrapPhase(group: OperationGroup): ZeropsOperationPhase {
     return plan.card.completed >= plan.card.total ? "done" : "running";
   }
   const latest = group.entries[group.entries.length - 1]!;
-  return phaseFromStatus(latest.status);
+  return phaseFromStatus(latest.entry.status);
 }
 
 function findSingleOpenBootstrap(
@@ -246,23 +250,44 @@ function findSingleOpenBootstrap(
   return open.length === 1 ? open[0] : undefined;
 }
 
+/**
+ * Folds one bootstrap-kind entry into `groups`/`groupByKey`.
+ *
+ * A founding `start route=…` call joins its own already-open group instead
+ * of starting a duplicate when the session is already known (the agent
+ * re-issuing `start` on an active session, which zcp answers with that
+ * session's current state rather than a new one).
+ *
+ * A continuation's own decoded `sessionId`, when present, is authoritative —
+ * it never re-keys a group that already carries a *different* real session
+ * identity (`bootstrap:<id>`, not the placeholder `call:<entryId>`): doing so
+ * would hijack that group's identity out from under its own later calls, which
+ * would then find no group to join. A continuation with no resolvable session
+ * of its own (still pending, or failed with no session in its error) instead
+ * joins the single open bootstrap, exactly as before.
+ */
 function foldBootstrap(
   entry: ZeropsCallEntry,
   groups: OperationGroup[],
   groupByKey: Map<string, OperationGroup>,
   pendingIntent: string | undefined,
 ): void {
-  const decoded = decodeEntry(entry);
-  const sessionId = decoded.card?.kind === "plan" ? decoded.card.sessionId : undefined;
+  const call = decodeCall(entry);
+  const sessionId = call.decoded.card?.kind === "plan" ? call.decoded.card.sessionId : undefined;
 
   if (isBootstrapStartWithRoute(entry.input)) {
     const key = sessionId !== undefined ? `bootstrap:${sessionId}` : `call:${entry.id}`;
+    const existing = sessionId !== undefined ? groupByKey.get(key) : undefined;
+    if (existing !== undefined) {
+      existing.entries.push(call);
+      return;
+    }
     const intent = readInputString(entry.input, "intent") ?? pendingIntent;
     const group: OperationGroup = {
       key,
       kind: "bootstrap",
       anchorEntryId: entry.id,
-      entries: [entry],
+      entries: [call],
       joinedImports: [],
       ...(intent !== undefined ? { bootstrapIntent: intent } : {}),
     };
@@ -273,15 +298,21 @@ function foldBootstrap(
 
   let target = sessionId !== undefined ? groupByKey.get(`bootstrap:${sessionId}`) : undefined;
   if (target === undefined) {
-    target = findSingleOpenBootstrap(groups);
+    const openCandidate = findSingleOpenBootstrap(groups);
+    if (
+      openCandidate !== undefined &&
+      (sessionId === undefined || openCandidate.key.startsWith("call:"))
+    ) {
+      target = openCandidate;
+    }
   }
   if (target === undefined) {
-    const key = `call:${entry.id}`;
+    const key = sessionId !== undefined ? `bootstrap:${sessionId}` : `call:${entry.id}`;
     const group: OperationGroup = {
       key,
       kind: "bootstrap",
       anchorEntryId: entry.id,
-      entries: [entry],
+      entries: [call],
       joinedImports: [],
     };
     groups.push(group);
@@ -289,8 +320,8 @@ function foldBootstrap(
     return;
   }
 
-  target.entries.push(entry);
-  if (sessionId !== undefined && target.key !== `bootstrap:${sessionId}`) {
+  target.entries.push(call);
+  if (sessionId !== undefined && target.key.startsWith("call:")) {
     groupByKey.delete(target.key);
     target.key = `bootstrap:${sessionId}`;
     groupByKey.set(target.key, target);
@@ -335,7 +366,7 @@ export function reduceZeropsOperations(
       const openBootstrap = findSingleOpenBootstrap(groups);
       if (openBootstrap !== undefined) {
         consumedEntryIds.add(entry.id);
-        openBootstrap.joinedImports.push(entry);
+        openBootstrap.joinedImports.push(decodeCall(entry));
         continue;
       }
     }
@@ -346,7 +377,7 @@ export function reduceZeropsOperations(
       key,
       kind,
       anchorEntryId: entry.id,
-      entries: [entry],
+      entries: [decodeCall(entry)],
       joinedImports: [],
     };
     groups.push(group);
@@ -402,14 +433,17 @@ function buildOperation(group: OperationGroup): ZeropsOperation {
 }
 
 function baseFields(group: OperationGroup) {
-  const first = group.entries[0]!;
+  const first = group.entries[0]!.entry;
   return {
     key: group.key,
     anchorEntryId: group.anchorEntryId,
     createdAt: first.createdAt,
     startedAt: first.startedAt ?? first.createdAt,
     turnId: first.turnId,
-    entryIds: [...group.entries.map((e) => e.id), ...group.joinedImports.map((e) => e.id)],
+    entryIds: [
+      ...group.entries.map((c) => c.entry.id),
+      ...group.joinedImports.map((c) => c.entry.id),
+    ],
   };
 }
 
@@ -417,7 +451,7 @@ function settledAtFor(group: OperationGroup, phase: ZeropsOperationPhase): strin
   if (phase === "running") {
     return undefined;
   }
-  const latest = group.entries[group.entries.length - 1]!;
+  const latest = group.entries[group.entries.length - 1]!.entry;
   return latest.settledAt ?? latest.createdAt;
 }
 
@@ -456,8 +490,7 @@ function detailField(
 // --- deploy -------------------------------------------------------------------
 
 function buildDeployOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const card = decoded.card?.kind === "deploy" ? decoded.card : undefined;
   const resultStatus = card?.status;
@@ -478,15 +511,32 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
   );
   const settledAt = settledAtFor(group, phase);
 
+  // decodeZeropsCard never returns a "deploy" card once the tool call itself
+  // failed (it returns the error card, or nothing) — the failing step still
+  // needs naming, so this reads `failedPhase`/`buildStatus` straight off the
+  // raw document instead of the (always-undefined-here) typed payload.
   const steps: ZeropsOperationStep[] = [];
-  if (card !== undefined) {
-    if (card.buildStatus !== undefined) {
-      const failed = card.failedPhase === "build" && phase === "failed";
-      steps.push(buildStep("build", "Build", failed ? "FAILED" : card.buildStatus));
+  const failureClassification =
+    phase === "failed" && decoded.document !== undefined
+      ? readRecord(decoded.document.failureClassification)
+      : undefined;
+  if (phase === "failed") {
+    const document = decoded.document;
+    const buildStatus = document !== undefined ? readString(document.buildStatus) : undefined;
+    const failedPhase = document !== undefined ? readString(document.failedPhase) : undefined;
+    if (buildStatus !== undefined) {
+      steps.push(buildStep("build", "Build", failedPhase === "build" ? "FAILED" : buildStatus));
     }
-    const deployFailed =
-      phase === "failed" && (card.failedPhase === undefined || card.failedPhase !== "build");
-    steps.push(buildStep("deploy", "Deploy", deployFailed ? "FAILED" : card.status));
+    if (document !== undefined) {
+      const stepId = failedPhase ?? "deploy";
+      const stepLabel = failedPhase !== undefined ? sentenceCase(failedPhase) : "Deploy";
+      steps.push(buildStep(stepId, stepLabel, "FAILED"));
+    }
+  } else if (card !== undefined) {
+    if (card.buildStatus !== undefined) {
+      steps.push(buildStep("build", "Build", card.buildStatus));
+    }
+    steps.push(buildStep("deploy", "Deploy", card.status));
   }
 
   const links: ZeropsOperationLink[] = [];
@@ -499,10 +549,11 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
       ? undefined
       : phase === "failed"
         ? operationClosing("deploy", "failed", {
-            failureCause: card?.failureCause,
             errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
           })
-        : operationClosing("deploy", "done", { host: subject });
+        : card !== undefined
+          ? operationClosing("deploy", "done", { host: subject })
+          : "Finished.";
 
   return {
     ...baseFields(group),
@@ -520,9 +571,12 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
     ...detailField([
       decoded.document !== undefined ? readString(decoded.document.nextActions) : undefined,
       decoded.document !== undefined ? readString(decoded.document.verification) : undefined,
+      failureClassification !== undefined
+        ? readString(failureClassification.likelyCause)
+        : undefined,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     target: { hostname: subject },
     ...(resultStatus !== undefined ? { resultStatus } : {}),
@@ -533,14 +587,17 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
 // --- verify -------------------------------------------------------------------
 
 function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const card = decoded.card?.kind === "verify" ? decoded.card : undefined;
   const phase: ZeropsOperationPhase =
     entry.status === "failed" ? "failed" : entry.status === "inProgress" ? "running" : "done";
-  const subject =
-    pickFirst(readInputString(entry.input, "serviceHostname"), card?.hostname) ?? "the service";
+  // `payloads.ts` folds the all-services shape's summary prose into `hostname`
+  // when there is no single service — that prose is never a subject, so the
+  // only trustworthy source is whether the call itself named one service.
+  const inputHostname = readInputString(entry.input, "serviceHostname");
+  const isAllServices = inputHostname === undefined;
+  const subject = inputHostname ?? "all services";
   const { voice, voiceSource } = voiceFor(
     readInputString(entry.input, "intent"),
     "verify",
@@ -551,7 +608,9 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
   const steps: ZeropsOperationStep[] = (card?.checks ?? []).map((check) =>
     buildStep(
       check.name,
-      humanizeCheckName(check.name),
+      // The all-services shape's "checks" are per-service verdicts, keyed by
+      // hostname, not check names — humanizing a hostname would mangle it.
+      isAllServices ? check.name : humanizeCheckName(check.name),
       check.status,
       check.httpStatus !== undefined ? `HTTP ${check.httpStatus}` : undefined,
     ),
@@ -559,20 +618,27 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
   const passed = steps.filter((s) => s.state === "done").length;
   const failedCount = steps.filter((s) => s.state === "failed").length;
 
-  const checkHints = (card?.checks ?? []).flatMap((check) =>
-    check.detail !== undefined ? [`${check.name}: ${check.detail}`] : [],
-  );
+  const checkHints = isAllServices
+    ? []
+    : (card?.checks ?? []).flatMap((check) =>
+        check.detail !== undefined ? [`${check.name}: ${check.detail}`] : [],
+      );
 
   const closing =
     phase === "running"
       ? undefined
       : phase === "failed"
-        ? operationClosing("verify", "failed", {
-            checksFailed: failedCount,
-            checksTotal: steps.length,
-            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
-          })
-        : operationClosing("verify", "done", { checksPassed: passed, checksTotal: steps.length });
+        ? card !== undefined
+          ? operationClosing("verify", "failed", {
+              checksFailed: failedCount,
+              checksTotal: steps.length,
+            })
+          : errorInfo !== undefined
+            ? firstLine(errorInfo.message)
+            : "Failed."
+        : card !== undefined
+          ? operationClosing("verify", "done", { checksPassed: passed, checksTotal: steps.length })
+          : "Finished.";
 
   return {
     ...baseFields(group),
@@ -591,7 +657,7 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
       ...checkHints,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
@@ -608,8 +674,8 @@ interface ImportRead {
   document?: Record<string, unknown> | undefined;
 }
 
-function readImport(entry: ZeropsCallEntry): ImportRead {
-  const decoded = decodeEntry(entry);
+function readImport(call: DecodedCall): ImportRead {
+  const { decoded } = call;
   const card = decoded.card?.kind === "import" ? decoded.card : undefined;
   if (card === undefined) {
     return { hostnames: [], steps: [], document: decoded.document };
@@ -643,10 +709,11 @@ function readImport(entry: ZeropsCallEntry): ImportRead {
 }
 
 function buildImportOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const call = group.entries[0]!;
+  const { entry, decoded } = call;
   const errorInfo = errorInfoFor(entry, decoded);
-  const read = readImport(entry);
+  const card = decoded.card?.kind === "import" ? decoded.card : undefined;
+  const read = readImport(call);
   const phase: ZeropsOperationPhase =
     entry.status === "failed"
       ? "failed"
@@ -673,10 +740,12 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
               read.errorFirstLine ??
               (errorInfo !== undefined ? firstLine(errorInfo.message) : undefined),
           })
-        : operationClosing("import", "done", {
-            summary: read.summary,
-            createdCount: read.hostnames.length,
-          });
+        : card !== undefined
+          ? operationClosing("import", "done", {
+              summary: read.summary,
+              createdCount: read.hostnames.length,
+            })
+          : "Finished.";
 
   return {
     ...baseFields(group),
@@ -695,7 +764,7 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
       read.document !== undefined ? readString(read.document.nextActions) : undefined,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      read.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     ...(target !== undefined ? { target: { hostname: target } } : {}),
     hasResult: read.document !== undefined,
@@ -705,8 +774,7 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
 // --- mount ----------------------------------------------------------------------
 
 function buildMountOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const card = decoded.card?.kind === "mount" ? decoded.card : undefined;
   const phase: ZeropsOperationPhase =
@@ -728,10 +796,9 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
         ? operationClosing("mount", "failed", {
             errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
           })
-        : operationClosing("mount", "done", {
-            mountedCount,
-            mountsTotal: card?.mounts.length ?? 0,
-          });
+        : card !== undefined
+          ? operationClosing("mount", "done", { mountedCount, mountsTotal: card.mounts.length })
+          : "Finished.";
 
   return {
     ...baseFields(group),
@@ -749,7 +816,7 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
     ...detailField([
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     ...(hostnames[0] !== undefined ? { target: { hostname: hostnames[0] } } : {}),
     hasResult: decoded.document !== undefined,
@@ -759,8 +826,7 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
 // --- subdomain -------------------------------------------------------------------
 
 function buildSubdomainOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const card = decoded.card?.kind === "subdomain" ? decoded.card : undefined;
   const phase: ZeropsOperationPhase =
@@ -811,7 +877,7 @@ function buildSubdomainOperation(group: OperationGroup): ZeropsOperation {
     ...detailField([
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
@@ -842,8 +908,7 @@ function readSimpleSubject(
 }
 
 function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const kind = group.kind as "delete" | "scale" | "manage" | "env";
   const phase: ZeropsOperationPhase =
@@ -852,8 +917,10 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
   const { voice, voiceSource } = voiceFor(readInputString(entry.input, "intent"), kind, subject);
   const settledAt = settledAtFor(group, phase);
 
-  const message = decoded.document !== undefined ? readString(decoded.document.message) : undefined;
+  const rawMessage =
+    decoded.document !== undefined ? readString(decoded.document.message) : undefined;
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
+  const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
   const closing =
     phase === "running"
@@ -862,8 +929,8 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
         ? operationClosing(kind, "failed", {
             errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
           })
-        : operationClosing(kind, "done", { message, summary });
-  const messageUsedAsClosing = phase === "done" && message !== undefined && closing === message;
+        : operationClosing(kind, "done", { message: messageFirstParagraph, summary });
+  const messageUsedAsClosing = phase === "done" && rawMessage !== undefined;
 
   return {
     ...baseFields(group),
@@ -885,7 +952,7 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
     ],
     links: [],
     ...detailField([
-      !messageUsedAsClosing ? message : undefined,
+      !messageUsedAsClosing ? rawMessage : undefined,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
       decoded.document === undefined ? undecodedDetail(entry) : undefined,
@@ -898,8 +965,7 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
 // --- error (failed generic/hidden zerops call) -----------------------------------
 
 function buildErrorOperation(group: OperationGroup): ZeropsOperation {
-  const entry = group.entries[0]!;
-  const decoded = decodeEntry(entry);
+  const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
   const toolLabel = humanizeToolName(entry.toolName);
   const settledAt = settledAtFor(group, "failed");
@@ -911,7 +977,7 @@ function buildErrorOperation(group: OperationGroup): ZeropsOperation {
     phase: "failed",
     ...(settledAt !== undefined ? { settledAt } : {}),
     subject: toolLabel,
-    kicker: `Error · ${code ?? entry.toolName}`,
+    kicker: `Error · ${code ?? toolLabel}`,
     voice: `${toolLabel} failed.`,
     voiceSource: "mate",
     statusWord: operationStatusWord("error", "failed"),
@@ -923,7 +989,7 @@ function buildErrorOperation(group: OperationGroup): ZeropsOperation {
     ...detailField([
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decoded.document === undefined ? undecodedDetail(entry) : undefined,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
     ]),
     hasResult: decoded.document !== undefined,
   };
@@ -959,7 +1025,7 @@ function readPlanTargets(
  */
 function bootstrapPlanTargetsDocument(group: OperationGroup): Record<string, unknown> | undefined {
   for (let i = group.entries.length - 1; i >= 0; i--) {
-    const document = decodeEntry(group.entries[i]!).document;
+    const document = group.entries[i]!.decoded.document;
     if (document !== undefined && readPlanTargets(document).length > 0) {
       return document;
     }
@@ -1004,10 +1070,16 @@ function readPlanKickerHostnames(
   });
 }
 
+/** A bare, lowercase, hostname-shaped token — never an unrelated bolded phrase. */
+const HOSTNAME_TOKEN = /^[a-z0-9]+$/;
+
 /** The bold names in a bootstrap `message`, when the plan's own targets are absent. */
 function readMessageBoldNames(message: string): string[] {
   const matches = [...message.matchAll(/\*\*([^*]+)\*\*/g)];
-  return matches.flatMap((m) => (m[1] !== undefined ? [m[1].split(" ")[0]!.trim()] : []));
+  return matches.flatMap((m) => {
+    const token = m[1]?.split(" ")[0]?.trim();
+    return token !== undefined && HOSTNAME_TOKEN.test(token) ? [token] : [];
+  });
 }
 
 function joinedImportProvisionNote(group: OperationGroup): {
@@ -1019,9 +1091,8 @@ function joinedImportProvisionNote(group: OperationGroup): {
     return { failed: false };
   }
   const latest = group.joinedImports[group.joinedImports.length - 1]!;
-  if (latest.status === "failed") {
-    const decoded = decodeEntry(latest);
-    const errorInfo = errorInfoFor(latest, decoded);
+  if (latest.entry.status === "failed") {
+    const errorInfo = errorInfoFor(latest.entry, latest.decoded);
     return {
       failed: true,
       errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : "Import failed.",
@@ -1036,8 +1107,9 @@ function joinedImportProvisionNote(group: OperationGroup): {
 }
 
 function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
-  const anchor = group.entries[0]!;
-  const latestEntry = group.entries[group.entries.length - 1]!;
+  const anchorCall = group.entries[0]!;
+  const anchor = anchorCall.entry;
+  const latestCall = group.entries[group.entries.length - 1]!;
   const plan = bootstrapLatestPlan(group);
   const phase = bootstrapPhase(group);
   const settledAt = settledAtFor(group, phase);
@@ -1065,35 +1137,45 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
 
   const { voice, voiceSource } = voiceFor(group.bootstrapIntent, "bootstrap", subject);
 
-  const decodedAnchor = decodeEntry(anchor);
-  const errorInfo = errorInfoFor(latestEntry, decodeEntry(latestEntry));
+  const errorInfo = errorInfoFor(latestCall.entry, latestCall.decoded);
 
   const joinedImportInfo = joinedImportProvisionNote(group);
+
+  // A pending continuation (no result yet) names the step it targets in its
+  // own `input.step` — the latest known plan can't reflect that yet, so it
+  // renders as running regardless of what that plan last said about it.
+  const pendingStep =
+    latestCall.entry.status === "inProgress"
+      ? readInputString(latestCall.entry.input, "step")
+      : undefined;
 
   const stepIndexRunning =
     plan !== undefined ? plan.card.steps.findIndex((s) => s.status === "in_progress") : -1;
   const trailingFailure =
     plan !== undefined
       ? group.entries
-          .slice(group.entries.indexOf(plan.entry) + 1)
-          .find((e) => e.status === "failed")
+          .slice(group.entries.indexOf(plan.call) + 1)
+          .find((c) => c.entry.status === "failed")
       : group.entries.length === 1 && anchor.status === "failed"
-        ? anchor
+        ? anchorCall
         : undefined;
 
   const steps: ZeropsOperationStep[] =
     plan === undefined
       ? []
       : plan.card.steps.map((step, index) => {
+          const label = sentenceCase(step.name);
+          if (pendingStep === step.name) {
+            return buildStep(step.name, label, "in_progress");
+          }
           const attestation = readAttestation(plan.document, step.name);
           const importNote = step.name === "provision" ? joinedImportInfo.note : undefined;
           const note = attestation ?? importNote;
           if (trailingFailure !== undefined && index === stepIndexRunning) {
-            const decodedFailure = decodeEntry(trailingFailure);
-            const failureInfo = errorInfoFor(trailingFailure, decodedFailure);
+            const failureInfo = errorInfoFor(trailingFailure.entry, trailingFailure.decoded);
             return buildStep(
               step.name,
-              step.name[0]!.toUpperCase() + step.name.slice(1),
+              label,
               "FAILED",
               failureInfo !== undefined ? firstLine(failureInfo.message) : undefined,
             );
@@ -1103,19 +1185,9 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
             joinedImportInfo.failed &&
             step.status === "in_progress"
           ) {
-            return buildStep(
-              step.name,
-              step.name[0]!.toUpperCase() + step.name.slice(1),
-              "FAILED",
-              joinedImportInfo.errorFirstLine,
-            );
+            return buildStep(step.name, label, "FAILED", joinedImportInfo.errorFirstLine);
           }
-          return buildStep(
-            step.name,
-            step.name[0]!.toUpperCase() + step.name.slice(1),
-            step.status,
-            note,
-          );
+          return buildStep(step.name, label, step.status, note);
         });
 
   const messageFirstParagraph =
@@ -1147,7 +1219,7 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
       plan !== undefined ? readString(plan.document.nextActions) : undefined,
       errorInfo?.diagnostic,
       errorInfo?.suggestion,
-      decodedAnchor.document === undefined ? undecodedDetail(anchor) : undefined,
+      anchorCall.decoded.card === undefined ? undecodedDetail(anchor) : undefined,
     ]),
     ...(targetHostnames[0] !== undefined ? { target: { hostname: targetHostnames[0] } } : {}),
     hasResult: plan !== undefined,

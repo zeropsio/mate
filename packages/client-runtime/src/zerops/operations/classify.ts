@@ -25,25 +25,45 @@ const BOOTSTRAP_CONTINUATION_ACTIONS: ReadonlySet<string> = new Set([
 const readString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
-function isBootstrapRouteMenuStart(input: Record<string, unknown> | undefined): boolean {
+/** `action=start workflow=bootstrap` with a route already chosen — the bootstrap session's founder. */
+export function isBootstrapStartWithRoute(input: Record<string, unknown> | undefined): boolean {
+  const action = readString(input?.action);
+  const workflow = readString(input?.workflow);
+  const route = readString(input?.route);
+  return action === "start" && workflow === "bootstrap" && route !== undefined;
+}
+
+/** `action=start workflow=bootstrap` with no route yet — the route-menu reply, hidden from the timeline. */
+export function isBootstrapRouteMenuStart(input: Record<string, unknown> | undefined): boolean {
   const action = readString(input?.action);
   const workflow = readString(input?.workflow);
   const route = readString(input?.route);
   return action === "start" && workflow === "bootstrap" && route === undefined;
 }
 
-/** A `zerops_workflow` call that is part of a bootstrap session's lifecycle. */
-function isBootstrapSessionCall(input: Record<string, unknown> | undefined): boolean {
-  const action = readString(input?.action);
-  const workflow = readString(input?.workflow);
-  const route = readString(input?.route);
-  if (action === "start" && workflow === "bootstrap" && route !== undefined) {
+/**
+ * A `zerops_workflow` call that is part of a bootstrap session's lifecycle —
+ * the single source of truth both `classifyZeropsCall` (hidden/generic/card)
+ * and the operations reducer (which calls become kind `bootstrap`, on any
+ * status) read to agree on what a bootstrap call is.
+ *
+ * The route-menu reply is excluded explicitly: it has `workflow: "bootstrap"`
+ * too, but it is never itself a session call — successfully it is the hidden
+ * menu prompt, and on failure (no session ever established) it is its own
+ * `error` operation, never a bootstrap one.
+ */
+export function isBootstrapSessionCall(input: Record<string, unknown> | undefined): boolean {
+  if (isBootstrapRouteMenuStart(input)) {
+    return false;
+  }
+  if (isBootstrapStartWithRoute(input)) {
     return true;
   }
+  const action = readString(input?.action);
   if (action !== undefined && BOOTSTRAP_CONTINUATION_ACTIONS.has(action)) {
     return true;
   }
-  return workflow === "bootstrap";
+  return readString(input?.workflow) === "bootstrap";
 }
 
 /** Called only when the call did not fail — the caller returns "card" on failure first. */
