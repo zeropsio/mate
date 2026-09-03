@@ -604,6 +604,26 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /project/{id}/log` — a signed URL for the project's log backend
+   * (auth rides inside the URL itself; the backend ignores an Authorization
+   * header). The response's `url` arrives as `GET https://…` (a legacy
+   * method-prefixed form); the prefix is stripped here so no caller has to
+   * know about it. Never logged: it is a bearer credential in URL form.
+   *
+   * `clearSessionOnUnauthorized: false` — mirrors `fetchProjectProcesses`:
+   * this backs a build-log read behind an advisory overlay, not a
+   * user-initiated action, so its own 401 must never sign the whole UI out.
+   */
+  async fetchProjectLogAccess(projectId: string): Promise<{ readonly url: string }> {
+    const response = await this.#request<{ readonly url: string }>(
+      `/project/${projectId}/log`,
+      undefined,
+      { clearSessionOnUnauthorized: false },
+    );
+    return { url: response.url.replace(/^GET\s+/, "") };
+  }
+
+  /**
    * Creates a project and imports the platform's development-container recipe
    * into it — the "New project" path, and the same one an exhausted pool
    * takes.

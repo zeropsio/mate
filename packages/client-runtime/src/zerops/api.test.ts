@@ -683,6 +683,58 @@ describe("ZeropsApiClient.fetchProjectProcesses", () => {
   });
 });
 
+describe("ZeropsApiClient.fetchProjectLogAccess", () => {
+  it("reads the project's signed log-backend URL, stripping a leading GET", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { url: "GET https://proxy.example.com/api/rest/log?signature=abc" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const access = await client.fetchProjectLogAccess("project-1");
+
+    expect(access).toEqual({ url: "https://proxy.example.com/api/rest/log?signature=abc" });
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/project-1/log`,
+    );
+    expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
+  });
+
+  it("leaves a URL with no GET prefix untouched", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { url: "https://proxy.example.com/api/rest/log?signature=abc" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const access = await client.fetchProjectLogAccess("project-1");
+
+    expect(access).toEqual({ url: "https://proxy.example.com/api/rest/log?signature=abc" });
+  });
+
+  /**
+   * A background/log read's own 401 is not evidence the account's session is
+   * gone elsewhere — mirrors `fetchProjectProcesses`.
+   */
+  it("rejects on a 401 with a failed refresh, but never clears the held session", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const error = await client.fetchProjectLogAccess("project-1").catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(client.session).toEqual(SESSION);
+  });
+});
+
 describe("ZeropsApiClient.adoptPersonalToken", () => {
   // The hand-over from app.zerops.io delivers a personal access token, which is
   // already a bearer — there is nothing to exchange. What there is to do is

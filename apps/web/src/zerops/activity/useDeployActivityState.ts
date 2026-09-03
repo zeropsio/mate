@@ -120,8 +120,9 @@ export function useDeployActivityState(query: DeployActivityQuery): ActivityStat
       const attribution = attributeActivity({
         processes: snapshot.processes,
         projectId,
-        targetServiceId,
-        toolStartedAtMs: call.toolStartedAtMs,
+        serviceIds: [targetServiceId],
+        startedAtMs: call.toolStartedAtMs,
+        kind: "deploy",
       });
       projectMismatch = attribution.projectMismatch;
       if (attribution.stepSource !== undefined) {

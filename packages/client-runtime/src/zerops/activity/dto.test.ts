@@ -122,6 +122,62 @@ describe("readProjectProcesses", () => {
     });
   });
 
+  it("reads the observation fields the pipeline-with-durations port needs", () => {
+    const processes = readProjectProcesses({
+      list: [
+        {
+          id: "p1",
+          projectId: "proj-1",
+          serviceStackId: "svc-1",
+          status: "RUNNING",
+          actionName: "stack.deploy",
+          created: "2026-09-02T10:00:00.000Z",
+          started: "2026-09-02T10:00:01.000Z",
+          finished: "2026-09-02T10:05:00.000Z",
+          appVersion: {
+            id: "av-1",
+            status: "BUILDING",
+            build: {
+              pipelineStart: "t1",
+              startDate: "t2",
+              serviceStackId: "build-svc-1",
+              pipelineFinish: "t9",
+            },
+            prepareCustomRuntime: { startDate: "t3", serviceStackId: "prepare-svc-1" },
+          },
+        },
+      ],
+    });
+
+    expect(processes?.[0]?.started).toBe("2026-09-02T10:00:01.000Z");
+    expect(processes?.[0]?.finished).toBe("2026-09-02T10:05:00.000Z");
+    expect(processes?.[0]?.appVersion?.id).toBe("av-1");
+    expect(processes?.[0]?.appVersion?.build?.serviceStackId).toBe("build-svc-1");
+    expect(processes?.[0]?.appVersion?.build?.pipelineFinish).toBe("t9");
+    expect(processes?.[0]?.appVersion?.prepareCustomRuntime?.serviceStackId).toBe("prepare-svc-1");
+  });
+
+  it("decodes a process/appVersion with none of the new observation fields", () => {
+    const processes = readProjectProcesses({
+      list: [
+        {
+          id: "p1",
+          projectId: "proj-1",
+          serviceStackId: "svc-1",
+          status: "RUNNING",
+          actionName: "stack.deploy",
+          created: "2026-09-02T10:00:00.000Z",
+          appVersion: { status: "BUILDING" },
+        },
+      ],
+    });
+
+    expect(processes?.[0]?.started).toBeUndefined();
+    expect(processes?.[0]?.finished).toBeUndefined();
+    expect(processes?.[0]?.appVersion?.id).toBeUndefined();
+    expect(processes?.[0]?.appVersion?.build).toBeUndefined();
+  });
+
   it("returns an empty array for a valid empty list, distinct from no observation", () => {
     expect(readProjectProcesses({ list: [] })).toEqual([]);
   });
