@@ -163,12 +163,14 @@ jobs:
 
   build_desktop:
     name: Build desktop (${{ matrix.platform }}/${{ matrix.arch }})
-    # Runs on a rehearsal dispatch too, deliberately. Three things in this job
-    # have never run in this repository's CI — setup-vp on Windows, the Linux
-    # icon step's ImageMagick, and the Rust build of native/resource-monitor —
-    # and a rehearsal that skipped them would rehearse only the half that
-    # already works. Publishing stays push-only, so a dispatch leaves the
-    # artifacts as workflow artifacts and touches no release.
+    # Runs on a rehearsal dispatch too, deliberately. Two things in this job
+    # had never run in this repository's CI — setup-vp on Windows and the Rust
+    # build of native/resource-monitor — and a rehearsal that skipped them
+    # would rehearse only the half that already works. The third, the Linux
+    # icon step's ImageMagick, ran for the first time on v0.2.2 and failed:
+    # the runner image does not carry it, hence the install step below.
+    # Publishing stays push-only, so a dispatch leaves the artifacts as
+    # workflow artifacts and touches no release.
     needs: build
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
@@ -221,6 +223,19 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      # build-desktop-artifact.ts resizes the 1024px source icon into the nine
+      # sizes a Linux desktop entry needs, shelling out to `magick` and falling
+      # back to `convert` — both ImageMagick. The GitHub Ubuntu runner image
+      # does not carry it, so the first tagged build that packaged Linux failed
+      # on `spawn magick ENOENT`. Only this leg resizes anything; mac takes an
+      # .icns and Windows an .ico straight from assets/prod.
+      - name: Install ImageMagick
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends imagemagick
+          magick -version | head -1
 
       # native/resource-monitor is staged into every desktop build by
       # build-desktop-artifact.ts, which shells out to `cargo build --target
