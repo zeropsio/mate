@@ -2775,3 +2775,83 @@ describe("deriveTimelineEntries — Zerops operations", () => {
     expect(entries.map((entry) => entry.kind)).toEqual(["work"]);
   });
 });
+
+describe("toDerivedWorkLogEntry — a Zerops call's input capture is itemType-independent (MF-3)", () => {
+  it("captures toolInput for a file_change-typed zerops_delete activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "delete-file-change",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-delete-1",
+          itemType: "file_change",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_delete",
+            input: { hostname: "api" },
+            zerops: {
+              toolName: "zerops_delete",
+              resultText: JSON.stringify({ message: "api deleted" }),
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.toolInput).toEqual({ hostname: "api" });
+
+    const { operations } = deriveZeropsOperations(entries);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]?.kind).toBe("delete");
+    expect(operations[0]?.target).toEqual({ hostname: "api" });
+  });
+
+  it("captures toolData (Codex item shape) the same way for a file_change-typed zerops_delete", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "delete-file-change-codex",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-delete-2",
+          itemType: "file_change",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_delete",
+            item: { arguments: { hostname: "worker" } },
+            zerops: {
+              toolName: "zerops_delete",
+              resultText: JSON.stringify({ message: "worker deleted" }),
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.toolData).toEqual({ arguments: { hostname: "worker" } });
+
+    const { operations } = deriveZeropsOperations(entries);
+    expect(operations[0]?.target).toEqual({ hostname: "worker" });
+  });
+
+  it("does not widen input capture for a non-Zerops file_change activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "plain-file-change",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-plain-1",
+          itemType: "file_change",
+          status: "completed",
+          data: {
+            toolName: "Edit",
+            input: { file: "a.ts" },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.toolInput).toBeUndefined();
+  });
+});

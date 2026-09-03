@@ -1171,7 +1171,17 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (title) {
     entry.toolTitle = title;
   }
-  if (itemType === "mcp_tool_call") {
+  // Not gated on itemType: Claude types `zerops_delete` as `file_change`, and
+  // the server attaches the result by tool NAME for exactly that reason.
+  const zeropsResult =
+    readZeropsActivityResult(payload?.data) ?? fallbackZeropsResultFromRawContent(payload);
+  if (zeropsResult !== undefined) {
+    entry.zeropsResult = zeropsResult;
+  }
+  // Same reasoning as the result read above: a Zerops call's own arguments
+  // must not be gated on itemType either, or a `file_change`-typed
+  // `zerops_delete` would reach `deriveZeropsOperations` with no input at all.
+  if (itemType === "mcp_tool_call" || zeropsResult !== undefined) {
     const data = asRecord(payload?.data);
     if (data?.item !== undefined) {
       entry.toolData = data.item;
@@ -1184,13 +1194,6 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
         entry.toolInput = input;
       }
     }
-  }
-  // Not gated on itemType: Claude types `zerops_delete` as `file_change`, and
-  // the server attaches the result by tool NAME for exactly that reason.
-  const zeropsResult =
-    readZeropsActivityResult(payload?.data) ?? fallbackZeropsResultFromRawContent(payload);
-  if (zeropsResult !== undefined) {
-    entry.zeropsResult = zeropsResult;
   }
   if (itemType) {
     entry.itemType = itemType;
