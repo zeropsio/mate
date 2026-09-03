@@ -118,6 +118,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -1319,9 +1320,14 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
 }: {
   row: Extract<TimelineRow, { kind: "operation" }>;
 }) {
+  const ctx = use(TimelineRowCtx);
+  const observed = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
   return (
     <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} />
+      <ZeropsOperationCard
+        operation={row.operation}
+        {...(observed === undefined ? {} : { observed })}
+      />
     </div>
   );
 });
