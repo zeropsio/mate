@@ -31,16 +31,22 @@ export interface ActivityAppVersionBuild {
   readonly endDate?: string;
   /** A timestamp in the API; only its presence is read (`!!pipelineFailed`). */
   readonly pipelineFailed?: string;
+  /** The build container's own service, e.g. `zbuilder@<appVersionId>` log tags. */
+  readonly serviceStackId?: string;
+  /** Set once the whole pipeline (build → prepare → deploy) has finished. */
+  readonly pipelineFinish?: string;
 }
 
 /** Fields off `PrepareCustomRuntime` the pipeline steps are derived from. */
 export interface ActivityPrepareCustomRuntime {
   readonly startDate?: string;
   readonly endDate?: string;
+  readonly serviceStackId?: string;
 }
 
 /** The slice of `AppVersionJsonObject` the pipeline-state port reads. */
 export interface ActivityAppVersion {
+  readonly id?: string;
   /** One of the `AppVersionStatusEnum` values, e.g. `BUILDING`, `WAITING_TO_DEPLOY`. */
   readonly status?: string;
   readonly build?: ActivityAppVersionBuild;
@@ -59,6 +65,8 @@ export interface ActivityProcess {
   readonly actionName: string;
   /** ISO timestamp; the platform's own clock, never the browser's. */
   readonly created: string;
+  readonly started?: string;
+  readonly finished?: string;
   readonly appVersion?: ActivityAppVersion;
 }
 
@@ -70,6 +78,7 @@ function readAppVersion(value: unknown): ActivityAppVersion | undefined {
   const build = readRecord(record.build);
   const prepareCustomRuntime = readRecord(record.prepareCustomRuntime);
   return {
+    ...(readString(record.id) === undefined ? {} : { id: readString(record.id)! }),
     ...(readString(record.status) === undefined ? {} : { status: readString(record.status)! }),
     ...(build === undefined
       ? {}
@@ -87,6 +96,12 @@ function readAppVersion(value: unknown): ActivityAppVersion | undefined {
             ...(readString(build.pipelineFailed) === undefined
               ? {}
               : { pipelineFailed: readString(build.pipelineFailed)! }),
+            ...(readString(build.serviceStackId) === undefined
+              ? {}
+              : { serviceStackId: readString(build.serviceStackId)! }),
+            ...(readString(build.pipelineFinish) === undefined
+              ? {}
+              : { pipelineFinish: readString(build.pipelineFinish)! }),
           },
         }),
     ...(prepareCustomRuntime === undefined
@@ -99,6 +114,9 @@ function readAppVersion(value: unknown): ActivityAppVersion | undefined {
             ...(readString(prepareCustomRuntime.endDate) === undefined
               ? {}
               : { endDate: readString(prepareCustomRuntime.endDate)! }),
+            ...(readString(prepareCustomRuntime.serviceStackId) === undefined
+              ? {}
+              : { serviceStackId: readString(prepareCustomRuntime.serviceStackId)! }),
           },
         }),
     ...(readString(record.activationDate) === undefined
@@ -138,6 +156,8 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
     return undefined;
   }
   const appVersion = readAppVersion(entry.appVersion);
+  const started = readString(entry.started);
+  const finished = readString(entry.finished);
   return {
     id,
     projectId,
@@ -145,6 +165,8 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
     status,
     actionName,
     created,
+    ...(started === undefined ? {} : { started }),
+    ...(finished === undefined ? {} : { finished }),
     ...(appVersion === undefined ? {} : { appVersion }),
   };
 }
