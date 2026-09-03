@@ -258,10 +258,8 @@ describe("BuildLogSession — the engine behind useBuildLog", () => {
    */
   it("goes to error status when the WebSocket constructor throws, without rethrowing", async () => {
     const fetchStub = fakeFetch(() => okResponse({ items: [] }));
-    class ThrowingWebSocket {
-      constructor(url: string) {
-        throw new SyntaxError(`Failed to construct 'WebSocket': The URL '${url}' is invalid.`);
-      }
+    function ThrowingWebSocket(url: string): never {
+      throw new SyntaxError(`Failed to construct 'WebSocket': The URL '${url}' is invalid.`);
     }
     const session = new BuildLogSession({
       resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
