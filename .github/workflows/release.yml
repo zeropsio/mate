@@ -358,13 +358,30 @@ jobs:
           rm -f desktop-assets/desktop-mac-x64/latest-mac.yml
 
       # Windows and Linux are single-arch, so their per-leg files need no
-      # merging; every remaining filename here is unique (electron-builder's
-      # artifactName template embeds ${arch}, and the merged mac manifest is
-      # the only file left in the x64 leg's directory that overlapped).
+      # merging; every remaining filename should be unique (electron-builder's
+      # artifactName template embeds ${arch}, the merged mac manifest is the
+      # only file left in the x64 leg's directory that overlapped, and
+      # build-desktop-artifact.ts drops the fixed-name config dumps).
+      #
+      # Copied one at a time rather than with a single `cp -t`: that failed
+      # with a bare "will not overwrite just-created" and named nothing useful,
+      # which cost a release cycle to diagnose. A duplicate is still fatal —
+      # silently shipping one leg's file as another's would be worse — but it
+      # now says which file and which leg.
       - name: Stage desktop release assets
         run: |
           mkdir -p release-assets
-          find desktop-assets -mindepth 2 -maxdepth 2 -type f -exec cp -t release-assets {} +
+          status=0
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            if [[ -e "release-assets/$name" ]]; then
+              echo "Duplicate desktop artifact name across legs: $name (from $file)" >&2
+              status=1
+              continue
+            fi
+            cp "$file" "release-assets/$name"
+          done < <(find desktop-assets -mindepth 2 -maxdepth 2 -type f -print0)
+          exit "$status"
 
       - name: Create GitHub release
         env:

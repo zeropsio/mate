@@ -27,6 +27,9 @@ import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
+/** Written into the build output but not shippable, and not arch-unique. */
+const NON_ARTIFACT_DIST_FILES = new Set(["builder-effective-config.yaml", "builder-debug.yml"]);
+
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const DESKTOP_APP_ID = "io.zerops.mate";
 
@@ -1656,6 +1659,12 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const copiedArtifacts: string[] = [];
   for (const entry of stageEntries) {
+    // electron-builder drops its resolved configuration next to the
+    // installers. It is build debug output, not a release asset, and its name
+    // carries neither arch nor version — so every platform leg produces the
+    // same one, and staging them into a single release directory collides.
+    if (NON_ARTIFACT_DIST_FILES.has(entry)) continue;
+
     const from = path.join(stageDistDir, entry);
     const stat = yield* fs.stat(from).pipe(Effect.orElseSucceed(() => null));
     if (!stat || stat.type !== "File") continue;
