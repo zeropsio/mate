@@ -122,6 +122,14 @@ export interface WorkLogEntry {
    * `@t3tools/client-runtime/zerops/activityResult`. Absent for every other tool.
    */
   zeropsResult?: ZeropsActivityResult;
+  /**
+   * The normalized `zerops_*` tool name for this call, set whenever it is
+   * recognized as one — independent of whether a result has landed yet (a
+   * `tool.started` row never carries one). Set once at first observation and
+   * carried through every later merge, same as `zeropsResult`; read this to
+   * identify a still-running Zerops call before `zeropsResult` exists.
+   */
+  zeropsToolName?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -910,7 +918,7 @@ export function deriveWorkLogEntries(
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries: DerivedWorkLogEntry[] = [];
   for (const activity of ordered) {
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started" && !isZeropsToolStartedActivity(activity)) continue;
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -927,6 +935,34 @@ export function deriveWorkLogEntries(
     entries.push(toDerivedWorkLogEntry(activity));
   }
   return collapseDerivedWorkLogEntries(entries);
+}
+
+// Keyed by activity identity — same reasoning as `isTimelineHiddenToolActivityCache`.
+const isZeropsToolStartedActivityCache = new WeakMap<OrchestrationThreadActivity, boolean>();
+
+/**
+ * A `tool.started` row is skipped for every tool except a Zerops call, which
+ * keeps it. The server's history/snapshot path drops every `tool.updated` a
+ * later `tool.completed` supersedes
+ * (`ActivityPayloadProjection.ts` `dropSupersededToolUpdatedActivities`), so
+ * a reloaded thread carries only started+completed per call — skipping
+ * started here would anchor a live call on its first `tool.updated` and a
+ * reloaded one on its `tool.completed`, moving the card on every reload,
+ * exactly the instability the operations layer exists to avoid.
+ */
+function isZeropsToolStartedActivity(activity: OrchestrationThreadActivity): boolean {
+  const cached = isZeropsToolStartedActivityCache.get(activity);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const data = asRecord(payload?.data);
+  const isZeropsCall = zeropsToolNameForClassification(payload, data).startsWith("zerops_");
+  isZeropsToolStartedActivityCache.set(activity, isZeropsCall);
+  return isZeropsCall;
 }
 
 // Keyed by activity identity, like `derivedWorkLogEntryByActivity` below — a
@@ -1162,6 +1198,16 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (title) {
     entry.toolTitle = title;
   }
+  const data = asRecord(payload?.data);
+  // Set whenever the call is recognized, independent of whether a result has
+  // landed yet — a `tool.started` row never carries one. Read this (rather
+  // than `zeropsResult`) anywhere the call needs identifying before its
+  // result exists: `mergeDerivedWorkLogEntries`'s anchor rule,
+  // `deriveZeropsOperations`'s still-running adapter.
+  const zeropsToolName = zeropsToolNameForClassification(payload, data);
+  if (zeropsToolName.startsWith("zerops_")) {
+    entry.zeropsToolName = zeropsToolName;
+  }
   // Not gated on itemType: Claude types `zerops_delete` as `file_change`, and
   // the server attaches the result by tool NAME for exactly that reason.
   const zeropsResult =
@@ -1173,7 +1219,6 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   // must not be gated on itemType either, or a `file_change`-typed
   // `zerops_delete` would reach `deriveZeropsOperations` with no input at all.
   if (itemType === "mcp_tool_call" || zeropsResult !== undefined) {
-    const data = asRecord(payload?.data);
     if (data?.item !== undefined) {
       entry.toolData = data.item;
     } else {
@@ -1254,6 +1299,7 @@ function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
 
 function toolLifecycleCollapseMapKey(entry: DerivedWorkLogEntry): string | undefined {
   if (
+    entry.sourceActivityKind !== "tool.started" &&
     entry.sourceActivityKind !== "tool.updated" &&
     entry.sourceActivityKind !== "tool.completed"
   ) {
@@ -1362,6 +1408,7 @@ function shouldCollapseToolLifecycleEntries(
   next: DerivedWorkLogEntry,
 ): boolean {
   if (
+    previous.sourceActivityKind !== "tool.started" &&
     previous.sourceActivityKind !== "tool.updated" &&
     previous.sourceActivityKind !== "tool.completed"
   ) {
@@ -1411,12 +1458,15 @@ function mergeDerivedWorkLogEntries(
   // moves to `next`'s own timestamp via the spread below, which is right for
   // "when was this last updated" but wrong for "when did this call start".
   const startedAt = previous.startedAt ?? previous.createdAt;
-  // A Zerops call keeps its anchor: once either side carries a `zeropsResult`,
-  // `id`/`createdAt` stay pinned to the FIRST activity (`previous`'s own)
-  // instead of moving to the newest one — the transcript row this call
-  // renders under must never change position or identity as its lifecycle
-  // advances (see `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3).
-  const keepsAnchor = previous.zeropsResult !== undefined || next.zeropsResult !== undefined;
+  // A Zerops call keeps its anchor: once either side is recognized as one
+  // (`zeropsToolName` — set before any result exists, so a lone `tool.started`
+  // already qualifies), `id`/`createdAt` stay pinned to the FIRST activity
+  // (`previous`'s own) instead of moving to the newest one — the transcript
+  // row this call renders under must never change position or identity as
+  // its lifecycle advances, nor between a live thread and a reload (server
+  // drops superseded `tool.updated` rows on reload; see `isZeropsToolStartedActivity`).
+  // See `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3.
+  const keepsAnchor = previous.zeropsToolName !== undefined || next.zeropsToolName !== undefined;
   return {
     ...previous,
     ...next,
@@ -1459,6 +1509,7 @@ function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | un
     return `task${entry.taskId}`;
   }
   if (
+    entry.sourceActivityKind !== "tool.started" &&
     entry.sourceActivityKind !== "tool.updated" &&
     entry.sourceActivityKind !== "tool.completed"
   ) {
@@ -2056,8 +2107,12 @@ export function deriveZeropsOperations(
 ): ZeropsOperationsReduction {
   const callEntries: ZeropsCallEntry[] = [];
   for (const entry of workEntries) {
-    const zeropsResult = entry.zeropsResult;
-    if (zeropsResult === undefined || !zeropsResult.toolName.startsWith("zerops_")) {
+    // `zeropsToolName` is set whenever the call is recognized, before any
+    // result exists — a lone `tool.started` (a call still in flight, or a
+    // stopped session) has one but no `zeropsResult`, and must still adapt
+    // into a running operation rather than being skipped.
+    const toolName = entry.zeropsResult?.toolName ?? entry.zeropsToolName;
+    if (toolName === undefined || !toolName.startsWith("zerops_")) {
       continue;
     }
     const status: ZeropsCallStatus = entry.toolLifecycleStatus ?? "completed";
@@ -2070,17 +2125,19 @@ export function deriveZeropsOperations(
       ...(settledAt !== undefined ? { settledAt } : {}),
       turnId: entry.turnId ?? null,
       ...(entry.toolCallId !== undefined ? { toolCallId: entry.toolCallId } : {}),
-      toolName: zeropsResult.toolName,
+      toolName,
       ...(input !== undefined ? { input } : {}),
       status,
-      ...(zeropsResult.resultText !== undefined ? { resultText: zeropsResult.resultText } : {}),
-      ...(zeropsResult.truncated === true ? { truncated: true } : {}),
+      ...(entry.zeropsResult?.resultText !== undefined
+        ? { resultText: entry.zeropsResult.resultText }
+        : {}),
+      ...(entry.zeropsResult?.truncated === true ? { truncated: true } : {}),
     });
   }
   return reduceZeropsOperations(callEntries);
 }
 
-/** `entry.toolInput` (Claude) ?? `entry.toolData.arguments` (Codex) — see `zeropsInputForClassification`. */
+/** `entry.toolInput` (Claude) ?? `entry.toolData.arguments` (Codex). */
 function zeropsWorkLogEntryInput(entry: WorkLogEntry): Record<string, unknown> | undefined {
   if (entry.toolInput !== undefined) {
     return entry.toolInput;

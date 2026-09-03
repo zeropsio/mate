@@ -2463,14 +2463,19 @@ describe("deriveWorkLogEntries — hidden Zerops calls never become entries", ()
 });
 
 describe("deriveWorkLogEntries — a Zerops call keeps its anchor", () => {
-  it("a zerops_deploy entry's id and createdAt are the FIRST lifecycle activity's, not the latest", () => {
+  it("a zerops_deploy entry's id and createdAt are the tool.started row's, not the latest", () => {
     const entries = deriveWorkLogEntries([
       makeActivity({
         id: "deploy-started",
         kind: "tool.started",
         createdAt: "2026-02-23T00:00:00.000Z",
         turnId: "turn-1",
-        payload: { toolCallId: "call-deploy", itemType: "mcp_tool_call", status: "inProgress" },
+        payload: {
+          toolCallId: "call-deploy",
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: {} },
+        },
       }),
       makeActivity({
         id: "deploy-updated",
@@ -2505,8 +2510,9 @@ describe("deriveWorkLogEntries — a Zerops call keeps its anchor", () => {
     ]);
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.id).toBe("deploy-updated");
-    expect(entries[0]?.createdAt).toBe("2026-02-23T00:00:01.000Z");
+    expect(entries[0]?.id).toBe("deploy-started");
+    expect(entries[0]?.createdAt).toBe("2026-02-23T00:00:00.000Z");
+    expect(entries[0]?.startedAt).toBe("2026-02-23T00:00:00.000Z");
     expect(entries[0]?.updatedAt).toBe("2026-02-23T00:00:42.000Z");
   });
 
@@ -2900,5 +2906,253 @@ describe("deriveWorkLogEntries + deriveZeropsOperations — hidden zerops_* call
     expect(visibleWorkIds.has(routeMenuStart!.id)).toBe(false);
     expect(visibleWorkIds.has(closeMode!.id)).toBe(false);
     expect(visibleWorkIds.has(developStart!.id)).toBe(true);
+  });
+});
+
+describe("deriveWorkLogEntries - a Zerops tool.started row anchors the call (MF-3 / server drops superseded updates on reload)", () => {
+  it("a lone tool.started with nothing after it becomes an entry, still inProgress", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "deploy-started-only",
+        kind: "tool.started",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-started-only",
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: {} },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe("deploy-started-only");
+    expect(entries[0]?.zeropsToolName).toBe("zerops_deploy");
+    expect(entries[0]?.toolLifecycleStatus).toBe("inProgress");
+    expect(entries[0]?.zeropsResult).toBeUndefined();
+  });
+
+  it("a lone tool.started renders as a running operation (a call in flight, or a stopped session)", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "deploy-started-only",
+        kind: "tool.started",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-started-only",
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: {} },
+        },
+      }),
+    ]);
+    const { operations } = deriveZeropsOperations(entries);
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0]?.kind).toBe("deploy");
+    expect(operations[0]?.phase).toBe("running");
+    expect(operations[0]?.anchorEntryId).toBe("deploy-started-only");
+    expect(operations[0]?.settledAt).toBeUndefined();
+  });
+
+  it("keeps the anchor on the started row across a started+completed-only merge (the reloaded shape)", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "deploy-started",
+        kind: "tool.started",
+        createdAt: "2026-02-23T18:23:58.544Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-reload",
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: {} },
+        },
+      }),
+      makeActivity({
+        id: "deploy-completed",
+        kind: "tool.completed",
+        createdAt: "2026-02-23T18:25:14.419Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-reload",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_deploy",
+            input: { targetService: "weatherdash" },
+            zerops: {
+              toolName: "zerops_deploy",
+              resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe("deploy-started");
+    expect(entries[0]?.createdAt).toBe("2026-02-23T18:23:58.544Z");
+    expect(entries[0]?.startedAt).toBe("2026-02-23T18:23:58.544Z");
+    expect(entries[0]?.updatedAt).toBe("2026-02-23T18:25:14.419Z");
+
+    const deploy = deriveZeropsOperations(entries).operations[0]!;
+    expect(deploy.anchorEntryId).toBe("deploy-started");
+    expect(deploy.startedAt).toBe("2026-02-23T18:23:58.544Z");
+    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.startedAt);
+    expect(elapsedMs).toBeGreaterThan(75_000);
+  });
+});
+
+describe("deriveWorkLogEntries - non-Zerops tool.started rows are still skipped", () => {
+  it("skips a ToolSearch tool.started activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "tool-search-started",
+        kind: "tool.started",
+        payload: {
+          toolCallId: "call-ts-started",
+          itemType: "dynamic_tool_call",
+          status: "inProgress",
+          data: { toolName: "ToolSearch", input: {} },
+        },
+      }),
+    ]);
+    expect(entries).toHaveLength(0);
+  });
+
+  it("skips a Skill tool.started activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "skill-started",
+        kind: "tool.started",
+        payload: {
+          toolCallId: "call-skill-started",
+          itemType: "dynamic_tool_call",
+          status: "inProgress",
+          data: { toolName: "Skill", input: {} },
+        },
+      }),
+    ]);
+    expect(entries).toHaveLength(0);
+  });
+
+  it("still skips an ordinary command tool.started activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "cmd-started",
+        kind: "tool.started",
+        payload: {
+          toolCallId: "call-cmd-started",
+          itemType: "command_execution",
+          status: "inProgress",
+          data: {},
+        },
+      }),
+    ]);
+    expect(entries).toHaveLength(0);
+  });
+});
+
+/**
+ * A simplified port of the server's own
+ * `apps/server/src/orchestration/ActivityPayloadProjection.ts`
+ * `dropSupersededToolUpdatedActivities` (not exported, and apps/server is
+ * outside this package's dependency graph): every `tool.updated` a later
+ * `tool.completed` for the same (turnId, toolCallId) supersedes is dropped -
+ * exactly what a reloaded thread's history/snapshot path returns. Every real
+ * Zerops call in the fixtures carries a `toolCallId`, so the server's
+ * label/detail fallback identity is not ported.
+ */
+function dropSupersededToolUpdatedActivitiesForTest(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): OrchestrationThreadActivity[] {
+  const keyOf = (activity: OrchestrationThreadActivity): string | null => {
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const toolCallId = typeof payload?.toolCallId === "string" ? payload.toolCallId : undefined;
+    return toolCallId ? `${activity.turnId ?? ""} ${toolCallId}` : null;
+  };
+  const completionIndicesByKey = new Map<string, number[]>();
+  activities.forEach((activity, index) => {
+    if (activity.kind !== "tool.completed") return;
+    const key = keyOf(activity);
+    if (key === null) return;
+    const indices = completionIndicesByKey.get(key);
+    if (indices) indices.push(index);
+    else completionIndicesByKey.set(key, [index]);
+  });
+  return activities.filter((activity, index) => {
+    if (activity.kind !== "tool.updated") return true;
+    const key = keyOf(activity);
+    if (key === null) return true;
+    const indices = completionIndicesByKey.get(key);
+    return !indices?.some((completionIndex) => completionIndex > index);
+  });
+}
+
+describe("deriveWorkLogEntries + deriveZeropsOperations - the anchor never moves between a live thread and a reload", () => {
+  it("produces identical anchorEntryId/createdAt/startedAt/settledAt/key for the full activity list and the reloaded (superseded-updates-dropped) one", () => {
+    const fullOps = deriveZeropsOperations(
+      deriveWorkLogEntries(weatherdashFirstDeploy.activities),
+    ).operations;
+    const reloadedActivities = dropSupersededToolUpdatedActivitiesForTest(
+      weatherdashFirstDeploy.activities,
+    );
+    const reloadedOps = deriveZeropsOperations(deriveWorkLogEntries(reloadedActivities)).operations;
+
+    expect(fullOps.length).toBeGreaterThan(0);
+    expect(reloadedOps.map((o) => o.kind)).toEqual(fullOps.map((o) => o.kind));
+    for (let index = 0; index < fullOps.length; index += 1) {
+      const full = fullOps[index]!;
+      const reloaded = reloadedOps[index]!;
+      expect(reloaded.anchorEntryId).toBe(full.anchorEntryId);
+      expect(reloaded.createdAt).toBe(full.createdAt);
+      expect(reloaded.startedAt).toBe(full.startedAt);
+      expect(reloaded.settledAt).toBe(full.settledAt);
+      expect(reloaded.key).toBe(full.key);
+    }
+
+    const deploy = fullOps.find((o) => o.kind === "deploy")!;
+    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.startedAt);
+    expect(elapsedMs).toBeGreaterThan(75_000);
+    expect(elapsedMs).toBeLessThan(77_000);
+  });
+
+  it("a live started->updated (pending) sequence anchors on the same entry id as the later started->updated->completed one", () => {
+    const activities = weatherdashFirstDeploy.activities;
+    const deployStarted = activities.find((activity) => {
+      const data = (activity.payload as Record<string, unknown> | null)?.data as
+        | Record<string, unknown>
+        | undefined;
+      return activity.kind === "tool.started" && data?.toolName === "mcp__zerops__zerops_deploy";
+    })!;
+    expect(deployStarted).toBeDefined();
+    const startedIndex = activities.indexOf(deployStarted);
+    const startedToolCallId = (deployStarted.payload as Record<string, unknown>).toolCallId;
+    const firstUpdateIndex = activities.findIndex(
+      (activity, index) =>
+        index > startedIndex &&
+        activity.kind === "tool.updated" &&
+        (activity.payload as Record<string, unknown> | null)?.toolCallId === startedToolCallId,
+    );
+    expect(firstUpdateIndex).toBeGreaterThan(startedIndex);
+
+    const liveActivities = activities.slice(0, firstUpdateIndex + 1);
+    const liveDeploy = deriveZeropsOperations(deriveWorkLogEntries(liveActivities)).operations.find(
+      (o) => o.kind === "deploy",
+    );
+    const fullDeploy = deriveZeropsOperations(deriveWorkLogEntries(activities)).operations.find(
+      (o) => o.kind === "deploy",
+    );
+
+    expect(liveDeploy?.anchorEntryId).toBeDefined();
+    expect(liveDeploy?.anchorEntryId).toBe(fullDeploy?.anchorEntryId);
+    expect(liveDeploy?.anchorEntryId).toBe(deployStarted.id);
+    expect(liveDeploy?.phase).toBe("running");
   });
 });

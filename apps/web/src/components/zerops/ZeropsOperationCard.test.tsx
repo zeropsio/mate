@@ -9,7 +9,9 @@ import {
   verifyAndRefusedDeploy,
   weatherdashFirstDeploy,
 } from "@t3tools/client-runtime/zerops/operations/fixtures";
+import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 
+import { deriveWorkLogEntries, deriveZeropsOperations } from "../../session-logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
 const operationsFor = (
@@ -261,5 +263,65 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
     expect(durationSpanTag).not.toContain("uppercase");
     const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
     expect(durationText).toContain("1m 12s");
+  });
+});
+
+/**
+ * A simplified port of the server's own
+ * `apps/server/src/orchestration/ActivityPayloadProjection.ts`
+ * `dropSupersededToolUpdatedActivities` (not exported): drops every
+ * tool.updated a later tool.completed for the same (turnId, toolCallId)
+ * supersedes - the shape a reloaded thread's history/snapshot path returns.
+ */
+function dropSupersededToolUpdatedActivitiesForTest(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): OrchestrationThreadActivity[] {
+  const keyOf = (activity: OrchestrationThreadActivity): string | null => {
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const toolCallId = typeof payload?.toolCallId === "string" ? payload.toolCallId : undefined;
+    return toolCallId ? `${activity.turnId ?? ""} ${toolCallId}` : null;
+  };
+  const completionIndicesByKey = new Map<string, number[]>();
+  activities.forEach((activity, index) => {
+    if (activity.kind !== "tool.completed") return;
+    const key = keyOf(activity);
+    if (key === null) return;
+    const indices = completionIndicesByKey.get(key);
+    if (indices) indices.push(index);
+    else completionIndicesByKey.set(key, [index]);
+  });
+  return activities.filter((activity, index) => {
+    if (activity.kind !== "tool.updated") return true;
+    const key = keyOf(activity);
+    if (key === null) return true;
+    const indices = completionIndicesByKey.get(key);
+    return !indices?.some((completionIndex) => completionIndex > index);
+  });
+}
+
+describe("ZeropsOperationCard - the deploy duration renders identically live and after a reload", () => {
+  it("shows 1m 16s for both the full activity list and the reloaded (superseded-updates-dropped) one", () => {
+    const fullDeploy = deriveZeropsOperations(
+      deriveWorkLogEntries(weatherdashFirstDeploy.activities),
+    ).operations.find((operation) => operation.kind === "deploy")!;
+    const reloadedDeploy = deriveZeropsOperations(
+      deriveWorkLogEntries(
+        dropSupersededToolUpdatedActivitiesForTest(weatherdashFirstDeploy.activities),
+      ),
+    ).operations.find((operation) => operation.kind === "deploy")!;
+
+    expect(fullDeploy.anchorEntryId).toBe(reloadedDeploy.anchorEntryId);
+    expect(fullDeploy.startedAt).toBe(reloadedDeploy.startedAt);
+    expect(fullDeploy.settledAt).toBe(reloadedDeploy.settledAt);
+
+    const liveHtml = renderToStaticMarkup(<ZeropsOperationCard operation={fullDeploy} />);
+    const reloadedHtml = renderToStaticMarkup(<ZeropsOperationCard operation={reloadedDeploy} />);
+    expect(liveHtml).toContain("1m 16s");
+    expect(reloadedHtml).toContain("1m 16s");
+    expect(liveHtml).not.toContain("0 s");
+    expect(reloadedHtml).not.toContain("0 s");
   });
 });
