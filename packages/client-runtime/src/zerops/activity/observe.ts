@@ -73,11 +73,6 @@ export interface ObservationInput {
   readonly lastRead?: {
     readonly attribution: AttributionResult;
     readonly atMs: number;
-    /**
-     * Forwarded by the caller for its own bookkeeping (e.g. a build-log access
-     * cache key) — this layer never reads it.
-     */
-    readonly logAccessUrl?: string;
   };
 }
 
