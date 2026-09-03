@@ -7,19 +7,25 @@
  * (`frontend-legacy` `trlog.utils.ts`) and its build-log query
  * (`pipeline-detail.feature.ts` `buildLogParams$`: `serviceStackId` = the
  * build container's own service, `tags=zbuilder@<appVersionId>`,
- * `from` = `pipelineStart − 5s`), and zcp's own verified item field names
- * (`internal/platform/logfetcher.go` `logAPIItem`: `message`, not `content`
- * — read defensively for either).
+ * `from` = `pipelineStart − 5s`).
  *
- * Not verified against the real backend: `trlog.store.ts`'s own live
- * stream (`_openLogStream$`) re-derives `from` on *reconnect* as the last
- * already-loaded item's id (with `limit: 100`), not a timestamp — a
- * stateful, catch-up-scoped param this pure function has no way to supply.
- * `ws` here instead carries the same ISO `fromIso` the HTTP backfill uses
- * (the point the build's pipeline started), on the assumption the log
- * backend accepts an ISO `from` identically on both transports; any overlap
- * this produces on reconnect is absorbed by `mergeBuildLogLines`'s
- * dedupe-by-id, but this has not been checked against a live log backend.
+ * Live-verified against the log backend (2026-09-03, from a container, a
+ * real project's access URL): the access URL's own query already carries
+ * the signed `accessToken` — every param here is *added* via
+ * `URL.searchParams.set`, the existing query is never rebuilt or discarded.
+ * `GET <access>&serviceStackId=<id>&limit=<n>&desc=1` → 200,
+ * `{items:[…]}` newest first. The stream —
+ * `wss://<same host>/api/rest/log/stream?<same query>&serviceStackId=<id>&limit=100&from=<newest loaded id>`
+ * — handshakes and then answers with the SAME `{items:[…]}` batch shape per
+ * frame (not one item per frame); with `from=<id>` the first frames replay
+ * a backlog of older items, so the stream's initial burst can overlap the
+ * HTTP backfill — `mergeBuildLogLines`'s dedupe-by-id absorbs it, `from` is
+ * not a guarantee of "strictly after". A frame batch and the HTTP page
+ * share ids, so ordering by `at` then `id` after merge (`mergeBuildLogLines`)
+ * is correct for both. zcp's own field-name reading confirms `message`,
+ * not only `content` (`internal/platform/logfetcher.go` `logAPIItem`) —
+ * `readBuildLogItems` reads either, for both the HTTP body and a stream
+ * frame (identical top-level `{items:[…]}` shape).
  */
 
 export interface BuildLogQuery {
@@ -29,6 +35,8 @@ export interface BuildLogQuery {
 }
 
 const DEFAULT_LIMIT = 500;
+/** Live-verified: the GUI's stream request always sends this, independent of the backfill's own limit. */
+const STREAM_LIMIT = 100;
 
 /** The access URL may arrive as `GET https://…` (a legacy method-prefixed form) or bare. */
 function rawAccessUrl(url: string): string {
@@ -60,6 +68,9 @@ export function buildLogUrls(
   const wsUrl = new URL(httpUrl.toString());
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `${wsUrl.pathname}/stream`;
+  // The live stream is not paginated the same way as the backfill — always
+  // `limit=100`, independent of whatever backfill page size was asked for.
+  wsUrl.searchParams.set("limit", String(STREAM_LIMIT));
 
   // The HTTP backfill wants the newest `limit` lines: the GUI's default
   // tail params always send `desc=1` (trlog.store.ts's `_toStateApiParams`)
@@ -71,6 +82,18 @@ export function buildLogUrls(
   httpUrl.searchParams.set("desc", "1");
 
   return { http: httpUrl.toString(), ws: wsUrl.toString() };
+}
+
+/**
+ * Re-derives a stream url's `from` — used on reconnect, once the newest
+ * already-loaded line's id is known (live-verified: the GUI's own reconnect
+ * does the same, `trlog.store.ts`'s `_openLogStream$`: `from: data.items.at(-1).id`,
+ * not a timestamp). Every other param is left exactly as it was.
+ */
+export function withStreamFrom(wsUrl: string, lineId: string): string {
+  const url = new URL(wsUrl);
+  url.searchParams.set("from", lineId);
+  return url.toString();
 }
 
 export interface BuildLogLine {

@@ -4,6 +4,7 @@ import {
   buildLogUrls,
   mergeBuildLogLines,
   readBuildLogItems,
+  withStreamFrom,
   type BuildLogLine,
 } from "./buildLog.ts";
 
@@ -42,10 +43,20 @@ describe("buildLogUrls", () => {
     expect(wsUrl.protocol).toBe("wss:");
     expect(wsUrl.host).toBe(httpUrl.host);
     expect(wsUrl.pathname).toBe(`${httpUrl.pathname}/stream`);
-    // Every param but `desc` (the HTTP-only tail ordering flag) matches.
-    const httpParams = new URLSearchParams(httpUrl.search);
-    httpParams.delete("desc");
-    expect(wsUrl.search).toBe(`?${httpParams.toString()}`);
+    expect(wsUrl.searchParams.get("serviceStackId")).toBe("build-svc-1");
+    expect(wsUrl.searchParams.get("tags")).toBe("zbuilder@av-1");
+    expect(wsUrl.searchParams.get("signature")).toBe("abc");
+    expect(wsUrl.searchParams.get("expiry")).toBe("123");
+  });
+
+  /**
+   * Live-verified against the log backend: the stream request always sends
+   * `limit=100`, independent of whatever backfill page size was asked for
+   * (the GUI's own `_openLogStream$` hardcodes the same value).
+   */
+  it("always sends limit=100 on the ws stream, regardless of the http limit", () => {
+    const { ws } = buildLogUrls(access, query, 500);
+    expect(new URL(ws).searchParams.get("limit")).toBe("100");
   });
 
   it("adds https:// when the access url has no protocol at all", () => {
@@ -67,6 +78,40 @@ describe("buildLogUrls", () => {
     const { http, ws } = buildLogUrls(access, query);
     expect(new URL(http).searchParams.get("desc")).toBe("1");
     expect(new URL(ws).searchParams.has("desc")).toBe(false);
+  });
+});
+
+describe("withStreamFrom", () => {
+  const access = { url: "GET https://proxy.example.com/api/rest/log?signature=abc&expiry=123" };
+  const query = { buildServiceStackId: "build-svc-1", appVersionId: "av-1" };
+
+  /**
+   * Live-verified: reopening the stream must pass the newest already-loaded
+   * line's id as `from`, not a timestamp — the GUI's own reconnect does the
+   * same (trlog.store.ts's `_openLogStream$`: `from: data.items.at(-1).id`).
+   */
+  it("sets from to the given line id, replacing any existing from", () => {
+    const { ws } = buildLogUrls(access, { ...query, fromIso: "2026-09-02T09:59:50.000Z" });
+    const updated = withStreamFrom(ws, "line-42");
+    expect(new URL(updated).searchParams.get("from")).toBe("line-42");
+  });
+
+  it("adds from when the ws url did not carry one yet", () => {
+    const { ws } = buildLogUrls(access, query);
+    expect(new URL(ws).searchParams.has("from")).toBe(false);
+    const updated = withStreamFrom(ws, "line-1");
+    expect(new URL(updated).searchParams.get("from")).toBe("line-1");
+  });
+
+  it("leaves every other param untouched", () => {
+    const { ws } = buildLogUrls(access, query);
+    const updated = new URL(withStreamFrom(ws, "line-1"));
+    const original = new URL(ws);
+    expect(updated.searchParams.get("serviceStackId")).toBe(
+      original.searchParams.get("serviceStackId"),
+    );
+    expect(updated.searchParams.get("limit")).toBe(original.searchParams.get("limit"));
+    expect(updated.pathname).toBe(original.pathname);
   });
 });
 
