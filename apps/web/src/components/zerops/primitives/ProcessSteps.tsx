@@ -12,7 +12,25 @@ type ProcessStep = Readonly<{
   label: string;
   state: ProcessStepState;
   stateLabel: string;
+  /** Muted text after the label, e.g. an attestation. */
+  note?: string;
+  /** Right-aligned, tabular-nums, formatted through {@link formatStepDuration}. */
+  durationMs?: number;
 }>;
+
+/** `4 s` under a minute, `1m` / `1m 12s` at or above it. Never negative. */
+function formatStepDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "0 s";
+  }
+  const totalSeconds = Math.round(durationMs / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds} s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+}
 
 const ICON_COMPONENT = {
   Check: CheckIcon,
@@ -86,9 +104,21 @@ function ProcessSteps({
             >
               <Icon className="size-2.5" data-zerops-process-icon={icon} />
             </span>
-            <span className="min-w-0">
-              <span className="block text-sm text-foreground">{step.label}</span>
-              <MicroLabel>{step.stateLabel}</MicroLabel>
+            <span className="flex min-w-0 items-start justify-between gap-2">
+              <span className="min-w-0">
+                <span className="block text-sm text-foreground">
+                  {step.label}
+                  {step.note !== undefined ? (
+                    <span className="text-muted-foreground"> · {step.note}</span>
+                  ) : null}
+                </span>
+                <MicroLabel>{step.stateLabel}</MicroLabel>
+              </span>
+              {step.durationMs !== undefined ? (
+                <span className="shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {formatStepDuration(step.durationMs)}
+                </span>
+              ) : null}
             </span>
           </li>
         );
@@ -97,5 +127,5 @@ function ProcessSteps({
   );
 }
 
-export { ProcessSteps };
+export { formatStepDuration, ProcessSteps };
 export type { ProcessStep, ProcessStepState, ProcessStepsProps };

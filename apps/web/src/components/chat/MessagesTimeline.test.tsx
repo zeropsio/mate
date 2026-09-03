@@ -1,8 +1,9 @@
 import { CheckpointRef, EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { codexFeedbackMessage } from "@t3tools/client-runtime/state/threads";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
 
 vi.mock("@legendapp/list/react", async () => {
@@ -126,35 +127,6 @@ vi.mock("@pierre/diffs/react", () => {
   return { FileDiff: MockFileDiff };
 });
 
-/**
- * The activity overlay depends on a signed-in Zerops session and a resolved
- * topology (hostname -> serviceId, project id) — neither is present in this
- * file's plain `renderToStaticMarkup` calls, which is exactly right for
- * every OTHER test here (it proves the `idle`-path byte-identical guarantee).
- * A handful of tests below need `attributable: true` to reach a real
- * `searching`/`observed` overlay state instead, so both feeds are mocked
- * behind a per-test toggle that defaults to "no session, no topology" —
- * reset in `beforeEach` so a test that opts in never leaks into the next one.
- */
-const zeropsFeedMocks = vi.hoisted(() => ({
-  session: null as { status: string; client: unknown } | null,
-  topology: undefined as
-    | undefined
-    | {
-        available: boolean;
-        project?: { id: string };
-        services: ReadonlyArray<{ hostname: string; serviceId: string }>;
-      },
-}));
-
-vi.mock("../../zerops/ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => zeropsFeedMocks.session,
-}));
-
-vi.mock("../../zerops/useZeropsFeeds", () => ({
-  useZeropsTopology: () => zeropsFeedMocks.topology,
-}));
-
 function matchMedia() {
   return {
     matches: false,
@@ -266,11 +238,6 @@ function buildAssistantTimelineEntry(text: string) {
 }
 
 describe("MessagesTimeline", () => {
-  beforeEach(() => {
-    zeropsFeedMocks.session = null;
-    zeropsFeedMocks.topology = undefined;
-  });
-
   it("renders a feedback command and its pending response as normal thread messages", () => {
     const submission = {
       id: MessageId.make("feedback-command"),
@@ -1141,24 +1108,15 @@ describe("MessagesTimeline", () => {
   });
 
   /**
-   * The bug: a running `zerops_deploy` is shown through THIS row
-   * (`LiveWorkEntryTimelineRow`) for its whole active-turn lifetime — it
-   * never reaches `SimpleWorkEntryRow` until the turn settles — so the
-   * overlay has to be wired here too, not just in the grouped/settled row.
-   * Live on mate.zerops.io this showed the raw
-   * `mcp__zerops__zerops_deploy: {"targetService":"kanban"}` label for the
-   * whole ~70s deploy instead of the platform overlay.
+   * A `zerops_deploy` call is now pulled entirely out of the transcript
+   * upstream (`deriveZeropsOperations` / `deriveTimelineEntries`, before
+   * `MessagesTimeline` ever sees it) and rendered as its own "operation" row
+   * through `ZeropsOperationCard`. A raw "work" kind entry that still carries
+   * a `zeropsResult` — this component never decodes one — renders through
+   * the same live-work row as any other in-progress tool, never a card.
    */
-  it("shows the platform overlay on a live zerops_deploy row, not the raw tool label", () => {
-    zeropsFeedMocks.session = { status: "signed-in", client: {} };
-    zeropsFeedMocks.topology = {
-      available: true,
-      project: { id: "proj-1" },
-      services: [{ hostname: "kanban", serviceId: "svc-1" }],
-    };
+  it("shows a live zerops_deploy work entry through the ordinary live-work row, never a card", () => {
     const turnId = TurnId.make("turn-live-deploy");
-    // A fresh timestamp, not the shared `MESSAGE_CREATED_AT` fixture — this
-    // scenario needs the call to be well inside the 30-minute ceiling.
     const startedAt = new Date().toISOString();
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -1194,10 +1152,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('data-zerops-card-kind="deploy-pending"');
-    expect(markup).toContain("Deploy · kanban");
-    expect(markup).toContain("Platform");
-    expect(markup).not.toContain("mcp__zerops__zerops_deploy");
+    expect(markup).not.toContain("data-zerops-card");
+    expect(markup).toContain("live-activity-focus");
   });
 
   it("scopes a live row failure to the tool named by the row", () => {
@@ -1386,7 +1342,14 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain('data-testid="file-diff"');
   });
 
-  it("renders a settled deploy milestone as a Zerops card", () => {
+  /**
+   * A settled `zerops_deploy` work entry — of the kind `deriveZeropsOperations`
+   * would normally have pulled out into its own "operation" row upstream —
+   * renders through the ordinary generic tool block when it reaches
+   * `MessagesTimeline` directly: this component decodes no Zerops payload of
+   * its own any more, for any result shape.
+   */
+  it("renders a settled zerops_deploy work entry as an ordinary tool row, never a card", () => {
     const resultText = JSON.stringify({
       status: "DEPLOYED",
       targetService: "kanbandev",
@@ -1403,7 +1366,6 @@ describe("MessagesTimeline", () => {
             entry: {
               id: "deploy-work",
               createdAt: MESSAGE_CREATED_AT,
-              turnId: TurnId.make("turn-deploy"),
               label: "Deploy kanbandev",
               tone: "tool",
               itemType: "mcp_tool_call",
@@ -1415,162 +1377,49 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("data-zerops-card");
+    expect(markup).not.toContain("data-zerops-card");
+    expect(markup).toContain("Used 1 tool");
   });
 
-  /**
-   * §6's ceiling applies to the BUILD_TRIGGERED continuation, not just the
-   * still-pending path: a historical card — its call started over 30 minutes
-   * ago — never activates the overlay hook at all, so it never polls and
-   * never shows a "Platform" line, however BUILD_TRIGGERED its own verdict
-   * still reads.
-   */
-  it("shows a historical BUILD_TRIGGERED card with no platform overlay", () => {
-    const resultText = JSON.stringify({
-      status: "BUILD_TRIGGERED",
-      targetService: "kanbandev",
-      message: "Build triggered from kanbandev to kanbanstage via SSH",
-    });
-    const oldStart = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  it("renders an operation timeline entry through ZeropsOperationCard", () => {
+    const operation: ZeropsOperation = {
+      key: "call:deploy-operation",
+      kind: "deploy",
+      phase: "done",
+      anchorEntryId: "deploy-operation",
+      createdAt: MESSAGE_CREATED_AT,
+      startedAt: MESSAGE_CREATED_AT,
+      settledAt: MESSAGE_CREATED_AT,
+      turnId: null,
+      subject: "kanbandev",
+      kicker: "Deploy · kanbandev",
+      voice: "Deploying kanbandev.",
+      voiceSource: "mate",
+      statusWord: "Deployed",
+      closing: "kanbandev is live.",
+      steps: [],
+      links: [],
+      entryIds: ["deploy-operation"],
+      hasResult: true,
+    };
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
         timelineEntries={[
           {
-            id: "deploy-historical-entry",
-            kind: "work",
-            createdAt: oldStart,
-            entry: {
-              id: "deploy-historical-work",
-              createdAt: oldStart,
-              startedAt: oldStart,
-              turnId: TurnId.make("turn-deploy-historical"),
-              label: "Deploy kanbandev",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "completed",
-              toolInput: { targetService: "kanbandev" },
-              zeropsResult: { toolName: "zerops_deploy", resultText },
-            },
+            id: "operation:deploy-operation",
+            kind: "operation",
+            createdAt: MESSAGE_CREATED_AT,
+            operation,
           },
         ]}
       />,
     );
 
     expect(markup).toContain("data-zerops-card");
-    expect(markup).toContain("Build triggered");
-    expect(markup).not.toContain("Platform");
-  });
-
-  /**
-   * `isWorking` + a matching `runningTurnId` routes an "inProgress" entry
-   * through the collapsed "live work" summary row, not `SimpleWorkEntryRow`'s
-   * own card-gating branch (that branch is proven directly by
-   * `activityStateHasPendingOverlayContent`'s own unit tests instead — this
-   * repo has no component-interaction harness to force that branch's
-   * internal expand state open in a full render). What THIS test guards is
-   * narrower but still real: a `zerops_deploy` call carrying `toolData` must
-   * not change the live summary row's markup versus an ordinary command,
-   * with no Zerops session in the tree (the hook resolves to `idle`).
-   */
-  it("renders a pending zerops_deploy call's live summary row byte-identical to a plain in-progress tool's", () => {
-    const turnId = TurnId.make("turn-deploy-pending");
-    const buildEntry = (overrides: Record<string, unknown>) => (
-      <MessagesTimeline
-        {...buildProps()}
-        isWorking
-        activeTurnStartedAt={MESSAGE_CREATED_AT}
-        latestTurn={{ turnId, state: "running", startedAt: MESSAGE_CREATED_AT, completedAt: null }}
-        runningTurnId={turnId}
-        timelineEntries={[
-          {
-            id: "deploy-pending-entry",
-            kind: "work",
-            createdAt: MESSAGE_CREATED_AT,
-            entry: {
-              id: "deploy-pending-work",
-              createdAt: MESSAGE_CREATED_AT,
-              turnId,
-              toolCallId: "call-deploy-pending",
-              label: "Deploy kanbandev",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "inProgress",
-              ...overrides,
-            },
-          },
-        ]}
-      />
-    );
-
-    // Without a `zeropsResult` at all — today's ordinary pending MCP row.
-    const plainMarkup = renderToStaticMarkup(buildEntry({}));
-    expect(plainMarkup).toContain("Deploy kanbandev");
-    // With a decodable zerops_deploy call, but rendered with no
-    // `ZeropsSessionProvider` in the tree (as every other test in this file
-    // is): the overlay hook resolves to `idle` and must fall back to the
-    // exact same row.
-    const deployMarkup = renderToStaticMarkup(
-      buildEntry({
-        zeropsResult: { toolName: "zerops_deploy" },
-        toolData: { input: { targetService: "kanbandev" } },
-      }),
-    );
-
-    expect(deployMarkup).toBe(plainMarkup);
-    expect(deployMarkup).not.toContain("data-zerops-card");
-  });
-
-  /**
-   * Same caveat as the test above: this exercises the "live work" summary
-   * row, not `SimpleWorkEntryRow`'s own gate — that exact regression
-   * (`toolLifecycleStatus` still "inProgress" at the moment a landed result
-   * fails to decode, resolving to a bare `resolved` state with no overlay
-   * content) is proven directly by `activityStateHasPendingOverlayContent`'s
-   * own tests. This still guards that the live row itself renders
-   * identically regardless.
-   */
-  it("renders the live summary row identically for an inProgress entry whose result already landed but did not decode", () => {
-    const turnId = TurnId.make("turn-deploy-undecodable");
-    const buildEntry = (overrides: Record<string, unknown>) => (
-      <MessagesTimeline
-        {...buildProps()}
-        isWorking
-        activeTurnStartedAt={MESSAGE_CREATED_AT}
-        latestTurn={{ turnId, state: "running", startedAt: MESSAGE_CREATED_AT, completedAt: null }}
-        runningTurnId={turnId}
-        timelineEntries={[
-          {
-            id: "deploy-undecodable-entry",
-            kind: "work",
-            createdAt: MESSAGE_CREATED_AT,
-            entry: {
-              id: "deploy-undecodable-work",
-              createdAt: MESSAGE_CREATED_AT,
-              turnId,
-              toolCallId: "call-deploy-undecodable",
-              label: "Deploy kanbandev",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "inProgress",
-              ...overrides,
-            },
-          },
-        ]}
-      />
-    );
-
-    const plainMarkup = renderToStaticMarkup(buildEntry({}));
-    expect(plainMarkup).toContain("Deploy kanbandev");
-    const undecodableMarkup = renderToStaticMarkup(
-      buildEntry({
-        zeropsResult: { toolName: "zerops_deploy", resultText: "not json" },
-        toolData: { input: { targetService: "kanbandev" } },
-      }),
-    );
-
-    expect(undecodableMarkup).toBe(plainMarkup);
-    expect(undecodableMarkup).not.toContain("data-zerops-card");
+    expect(markup).toContain('data-zerops-card-kind="deploy"');
+    expect(markup).toContain("Deploy · kanbandev");
+    expect(markup).toContain("kanbandev is live.");
   });
 
   it("keeps undecodable, absent and oversize results in the ordinary generic tool block", () => {
@@ -1619,53 +1468,6 @@ describe("MessagesTimeline", () => {
       expect(markup, fallbackCase.name).toContain("lucide-wrench");
       expect(markup, fallbackCase.name).not.toContain("data-zerops-card");
     }
-  });
-
-  it("keeps a standalone tool section around a milestone beside a remainder toggle", () => {
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          {
-            id: "deploy-entry",
-            kind: "work",
-            createdAt: MESSAGE_CREATED_AT,
-            entry: {
-              id: "deploy-work",
-              createdAt: MESSAGE_CREATED_AT,
-              label: "Deploy kanbandev",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "completed",
-              zeropsResult: {
-                toolName: "zerops_deploy",
-                resultText: JSON.stringify({ status: "DEPLOYED", targetService: "kanbandev" }),
-              },
-            },
-          },
-          {
-            id: "mount-entry",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:29.000Z",
-            entry: {
-              id: "mount-work",
-              createdAt: "2026-03-17T19:12:29.000Z",
-              label: "Mount api",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "completed",
-              zeropsResult: {
-                toolName: "zerops_mount",
-                resultText: JSON.stringify({ hostname: "api", status: "MOUNTED" }),
-              },
-            },
-          },
-        ]}
-      />,
-    );
-
-    expect(markup).toContain("Used 1 tool");
-    expect(markup).toMatch(/<section[^>]*aria-label="1 tool call"[^>]*>.*data-zerops-card/s);
   });
 
   it("renders a muted failure marker for failed tool lifecycle entries", () => {

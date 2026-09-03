@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ProcessSteps } from "./ProcessSteps";
+import { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 
 const STATES = [
   ["queued", "off", "Waiting to start", "Clock", "clock", "border-[var(--zerops-status-off)]"],
@@ -57,5 +57,69 @@ describe("ProcessSteps", () => {
     expect(running).toContain("animate-status-pulse");
     expect(running).toContain("motion-reduce:animate-none");
     expect(done).not.toContain("animate-status-pulse");
+  });
+
+  it("renders an optional note in muted text after the label", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[
+          {
+            id: "provision",
+            label: "Provision",
+            state: "done",
+            stateLabel: "Done",
+            note: "weatherdash created",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain(">Provision<");
+    expect(html).toContain("weatherdash created");
+  });
+
+  it("omits the note span entirely when no note is given", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
+      />,
+    );
+
+    expect(html).toContain(">Deploy</span>");
+  });
+
+  it("right-aligns a formatted duration in tabular nums when durationMs is given", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[
+          { id: "build", label: "Build", state: "done", stateLabel: "Done", durationMs: 4_000 },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("4 s");
+    expect(html).toContain("tabular-nums");
+  });
+
+  it("omits the duration span entirely when no durationMs is given", () => {
+    const html = renderToStaticMarkup(
+      <ProcessSteps
+        steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
+      />,
+    );
+
+    expect(html).not.toContain("tabular-nums");
+  });
+});
+
+describe("formatStepDuration", () => {
+  it.each([
+    [4_000, "4 s"],
+    [59_000, "59 s"],
+    [72_000, "1m 12s"],
+    [60_000, "1m"],
+    [0, "0 s"],
+  ])("formats %ims as %s", (durationMs, expected) => {
+    expect(formatStepDuration(durationMs)).toBe(expected);
   });
 });

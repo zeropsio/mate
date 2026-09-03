@@ -3,20 +3,17 @@ import {
   serviceStatusTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
-import { readZeropsActivityResult } from "@t3tools/client-runtime/zerops/activityResult";
-import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
-import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
+import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
+import { callEntriesFromActivities } from "@t3tools/client-runtime/zerops/operations/fixtures";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
 import { expect, it } from "vite-plus/test";
-import * as Predicate from "effect/Predicate";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsStripLine } from "./ZeropsLifecycleStrip";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
-import { ZeropsToolCard } from "./ZeropsToolCard";
+import { ZeropsOperationCard } from "./ZeropsOperationCard";
 import {
   Chip,
   FlatCard,
@@ -28,12 +25,6 @@ import {
   ProcessSteps,
   StatusDot,
 } from "./primitives";
-
-function activityPayload(activity: OrchestrationThreadActivity) {
-  return Predicate.isObject(activity.payload) && !Array.isArray(activity.payload)
-    ? (activity.payload as Record<string, unknown>)
-    : undefined;
-}
 
 it.each(listShowcaseScenes())("$id renders through the web presentation components", (scene) => {
   const markup: Array<string> = [];
@@ -72,14 +63,11 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
   markup.push(authMarkup);
   expect(authMarkup).toContain("data-zerops-agent-auth-card");
 
-  for (const activity of Object.values(scene.threadActivities).flat()) {
-    const payload = activityPayload(activity);
-    const result = readZeropsActivityResult(payload?.data);
-    const card = decodeZeropsCard(
-      readZeropsCardSource(result, { failed: payload?.status === "failed" }),
-    );
-    if (card !== undefined) {
-      const cardMarkup = renderToStaticMarkup(<ZeropsToolCard payload={card} />);
+  for (const activities of Object.values(scene.threadActivities)) {
+    const entries = callEntriesFromActivities(activities);
+    const { operations } = reduceZeropsOperations(entries);
+    for (const operation of operations) {
+      const cardMarkup = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
       markup.push(cardMarkup);
       expect(cardMarkup).toContain("data-zerops-card");
     }

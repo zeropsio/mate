@@ -117,15 +117,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import { ZeropsToolCard } from "../zerops/ZeropsToolCard";
-import {
-  DeployPlatformOverlayBody,
-  ZeropsDeployPendingCard,
-  activityStateHasPendingOverlayContent,
-} from "../zerops/ZeropsDeployActivityCard";
-import { readZeropsCardSource } from "@t3tools/client-runtime/zerops/cards/decode";
-import { decodeZeropsCard } from "@t3tools/client-runtime/zerops/cards/payloads";
-import { useDeployActivityForEntry } from "../../zerops/activity/useDeployActivityForEntry";
+import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -963,7 +955,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
-                  row.kind === "turn-plan"
+                  row.kind === "turn-plan" ||
+                  row.kind === "operation"
                 ? "pb-2"
                 : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
@@ -988,6 +981,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
+      {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
@@ -1319,6 +1313,19 @@ const TurnPlanTimelineRow = memo(function TurnPlanTimelineRow({
   );
 });
 
+/** One `ZeropsOperation` card, anchored at the transcript position the reducer gave it. */
+const OperationTimelineRow = memo(function OperationTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "operation" }>;
+}) {
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <ZeropsOperationCard operation={row.operation} />
+    </div>
+  );
+});
+
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { workingStepLabel } = use(TimelineRowActivityCtx);
   return (
@@ -1507,20 +1514,6 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const ctx = use(TimelineRowCtx);
   const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot);
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-  // A still-running `zerops_deploy` is ALWAYS shown through this row for its
-  // whole active-turn lifetime — it never reaches `SimpleWorkEntryRow` until
-  // the turn settles — so this is the one place that has to run the same
-  // activity decision `SimpleWorkEntryRow` does, or the overlay never
-  // appears for a live deploy at all. See `useDeployActivityForEntry`'s doc
-  // comment.
-  const { deployCall, isPendingDeploy, activityState } = useDeployActivityForEntry(
-    row.entry,
-    ctx.activeThreadEnvironmentId,
-  );
-  const showDeployOverlay =
-    isPendingDeploy &&
-    deployCall !== undefined &&
-    activityStateHasPendingOverlayContent(activityState);
 
   return (
     <button
@@ -1530,11 +1523,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       aria-expanded={row.expanded}
       onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     >
-      {showDeployOverlay ? (
-        <ZeropsDeployPendingCard hostname={deployCall.targetService} state={activityState} />
-      ) : (
-        <LiveActivityRow label={label} iconName={workEntryIconName(row.entry)} failed={failed} />
-      )}
+      <LiveActivityRow label={label} iconName={workEntryIconName(row.entry)} failed={failed} />
     </button>
   );
 }
@@ -2612,46 +2601,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   isExpandedToolGroupEntry: boolean;
 }) {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry } = props;
-  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
 
-  // A zerops_* result this build can read renders as a card. Everything that
-  // cannot be read — a tool with no card, a payload from a newer zcp, a result
-  // the server dropped as oversized — falls through to the row below, which is
-  // what "a card degrades to the generic tool block" means.
-  const zeropsCard = decodeZeropsCard(
-    readZeropsCardSource(workEntry.zeropsResult, {
-      failed: workEntry.toolLifecycleStatus === "failed",
-    }),
-  );
-
-  // The platform-activity overlay (`../../../../zcp/plans/mate-live-activity-2026-09-02.md`)
-  // is gated on: this is a `zerops_deploy` call, its target hostname is
-  // decodable, and it is either still pending or resolved with the one
-  // allowlisted BUILD_TRIGGERED continuation (§4). Shared with
-  // `LiveWorkEntryTimelineRow` — see that hook's own doc comment for why.
-  const { deployCall, isPendingDeploy, buildTriggeredResult, activityState } =
-    useDeployActivityForEntry(workEntry, activeThreadEnvironmentId);
-
-  // Spawn CTA rows render their own component, after every hook above has run
-  // unconditionally.
+  // Spawn CTA rows render their own component. Every other entry — including
+  // a Zerops call the operations reducer classified as "generic" (never an
+  // operation) — renders through the ordinary tool row below; its own result
+  // text is already what the generic expanded body shows.
   if (workEntry.agentSpawn) {
     return <AgentSpawnCtaRow workEntry={workEntry} />;
-  }
-
-  if (zeropsCard !== undefined) {
-    const overlay =
-      buildTriggeredResult && deployCall !== undefined ? (
-        <DeployPlatformOverlayBody hostname={deployCall.targetService} state={activityState} />
-      ) : undefined;
-    return <ZeropsToolCard payload={zeropsCard} activityOverlay={overlay} />;
-  }
-
-  if (
-    isPendingDeploy &&
-    deployCall !== undefined &&
-    activityStateHasPendingOverlayContent(activityState)
-  ) {
-    return <ZeropsDeployPendingCard hostname={deployCall.targetService} state={activityState} />;
   }
 
   return (
