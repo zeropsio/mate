@@ -22,7 +22,7 @@ import {
   type ZeropsActivityResult,
   readZeropsActivityResult,
 } from "@t3tools/client-runtime/zerops/activityResult";
-import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/operations/classify";
+import { TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/operations/classify";
 import {
   reduceZeropsOperations,
   type ZeropsCallEntry,
@@ -923,7 +923,7 @@ export function deriveWorkLogEntries(
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
-    if (isHiddenZeropsToolActivity(activity)) continue;
+    if (isTimelineHiddenToolActivity(activity)) continue;
     entries.push(toDerivedWorkLogEntry(activity));
   }
   return collapseDerivedWorkLogEntries(entries);
@@ -932,21 +932,29 @@ export function deriveWorkLogEntries(
 // Keyed by activity identity, like `derivedWorkLogEntryByActivity` below — a
 // repeat `deriveWorkLogEntries` call over the same (unchanged) activities
 // must never re-read `activity.payload` for one it already classified.
-const isHiddenZeropsToolActivityCache = new WeakMap<OrchestrationThreadActivity, boolean>();
+const isTimelineHiddenToolActivityCache = new WeakMap<OrchestrationThreadActivity, boolean>();
 
 /**
- * `ToolSearch` / `Skill` / a hidden `zerops_*` action (`action=status`, the
- * bootstrap route-menu reply, `close-mode`, …) never becomes a work-log
- * entry at all — classified per-activity, since the transcript's own
- * lifecycle collapse (started/updated/completed) has not happened yet here.
+ * `ToolSearch` / `Skill` never become work-log entries at all — classified
+ * per-activity, since the transcript's own lifecycle collapse
+ * (started/updated/completed) has not happened yet here.
+ *
+ * A hidden `zerops_*` action (`action=status`, the bootstrap route-menu
+ * reply, `close-mode`, …) is deliberately NOT filtered here any more: the
+ * bootstrap session's own voice line comes from the `intent` on the hidden
+ * route-menu `start`, which the operations reducer can only read if that
+ * call survives to reach it. Every `zerops_*` call always becomes an entry
+ * and flows into `deriveZeropsOperations`; the reducer alone decides which
+ * of them the transcript keeps, via `consumedEntryIds`
+ * (`deriveTimelineEntries`).
  */
-function isHiddenZeropsToolActivity(activity: OrchestrationThreadActivity): boolean {
-  const cached = isHiddenZeropsToolActivityCache.get(activity);
+function isTimelineHiddenToolActivity(activity: OrchestrationThreadActivity): boolean {
+  const cached = isTimelineHiddenToolActivityCache.get(activity);
   if (cached !== undefined) {
     return cached;
   }
   if (activity.kind !== "tool.updated" && activity.kind !== "tool.completed") {
-    isHiddenZeropsToolActivityCache.set(activity, false);
+    isTimelineHiddenToolActivityCache.set(activity, false);
     return false;
   }
   const payload =
@@ -955,21 +963,17 @@ function isHiddenZeropsToolActivity(activity: OrchestrationThreadActivity): bool
       : null;
   const data = asRecord(payload?.data);
   const toolName = zeropsToolNameForClassification(payload, data);
-  const input = zeropsInputForClassification(data);
-  const status: WorkLogToolLifecycleStatus =
-    extractWorkLogToolLifecycleStatus(payload) ??
-    (activity.kind === "tool.completed" ? "completed" : "inProgress");
-  const hidden = classifyZeropsCall(toolName, input, status) === "hidden";
-  isHiddenZeropsToolActivityCache.set(activity, hidden);
+  const hidden = TIMELINE_HIDDEN_TOOL_NAMES.has(toolName);
+  isTimelineHiddenToolActivityCache.set(activity, hidden);
   return hidden;
 }
 
 /**
  * `payload.data.zerops.toolName` ?? `payload.data.toolName` (its
  * `mcp__<server>__` prefix stripped) ?? the tool title, for a non-MCP tool
- * (`ToolSearch`, `Skill`) that carries no `data.toolName` of its own — a
- * name `classifyZeropsCall` never marks hidden falls through as "generic",
- * so an empty string here is always safe.
+ * (`ToolSearch`, `Skill`) that carries no `data.toolName` of its own — a name
+ * `TIMELINE_HIDDEN_TOOL_NAMES` never contains simply never matches, so an
+ * empty string here is always safe.
  */
 function zeropsToolNameForClassification(
   payload: Record<string, unknown> | null,
@@ -985,19 +989,6 @@ function zeropsToolNameForClassification(
     return plainToolName.replace(/^mcp__[^_]+__/, "");
   }
   return asTrimmedString(payload?.title) ?? "";
-}
-
-/** `payload.data.input` (Claude) ?? `payload.data.item.arguments` (Codex). */
-function zeropsInputForClassification(
-  data: Record<string, unknown> | null,
-): Record<string, unknown> | undefined {
-  const input = asRecord(data?.input);
-  if (input !== null) {
-    return input;
-  }
-  const item = asRecord(data?.item);
-  const args = item !== null ? asRecord(item.arguments) : null;
-  return args ?? undefined;
 }
 
 /**

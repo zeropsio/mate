@@ -23,6 +23,7 @@ import {
   workEntryIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   workEntryIndicatesToolSuccess,
+  type TimelineEntry,
   type WorkLogEntry,
 } from "./session-logic";
 
@@ -2853,5 +2854,51 @@ describe("toDerivedWorkLogEntry — a Zerops call's input capture is itemType-in
     ]);
 
     expect(entries[0]?.toolInput).toBeUndefined();
+  });
+});
+
+describe("deriveWorkLogEntries + deriveZeropsOperations — hidden zerops_* calls stay entries", () => {
+  it("keeps a real thread's route-menu start as an entry so the bootstrap operation reads the agent's intent, not the phrase producer fallback", () => {
+    const workEntries = deriveWorkLogEntries(weatherdashFirstDeploy.activities);
+    const { operations } = deriveZeropsOperations(workEntries);
+    const bootstrap = operations.find((operation) => operation.kind === "bootstrap");
+
+    expect(bootstrap).toBeDefined();
+    expect(bootstrap?.voiceSource).toBe("agent");
+    expect(bootstrap?.voice).toContain("Nový service pro weather dashboard");
+  });
+
+  it("removes every hidden zerops_workflow call from the visible timeline once consumed", () => {
+    const workEntries = deriveWorkLogEntries(weatherdashFirstDeploy.activities);
+    const operations = deriveZeropsOperations(workEntries);
+    const timelineEntries = deriveTimelineEntries([], [], workEntries, [], operations);
+    const visibleWorkIds = new Set(
+      timelineEntries
+        .filter((entry): entry is Extract<TimelineEntry, { kind: "work" }> => entry.kind === "work")
+        .map((entry) => entry.entry.id),
+    );
+
+    // The route-menu start (its own entry.id survives inside the reducer's
+    // consumedEntryIds even though it never anchors or joins the operation)
+    // and close-mode: both hidden zerops_workflow calls, both consumed, both
+    // absent from the visible timeline. The develop-start call (classified
+    // "generic", not hidden) is a control: it must still render.
+    const routeMenuStart = workEntries.find(
+      (entry) =>
+        entry.toolInput?.action === "start" &&
+        entry.toolInput?.workflow === "bootstrap" &&
+        entry.toolInput?.route === undefined,
+    );
+    const closeMode = workEntries.find((entry) => entry.toolInput?.action === "close-mode");
+    const developStart = workEntries.find(
+      (entry) => entry.toolInput?.action === "start" && entry.toolInput?.workflow === "develop",
+    );
+    expect(routeMenuStart).toBeDefined();
+    expect(closeMode).toBeDefined();
+    expect(developStart).toBeDefined();
+
+    expect(visibleWorkIds.has(routeMenuStart!.id)).toBe(false);
+    expect(visibleWorkIds.has(closeMode!.id)).toBe(false);
+    expect(visibleWorkIds.has(developStart!.id)).toBe(true);
   });
 });
