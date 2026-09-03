@@ -162,13 +162,37 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.wantsPoll).toBe(false);
   });
 
-  it("off: project-mismatch when the snapshot's processes belong to a different project", () => {
+  /**
+   * A project mismatch means the poll is reading the wrong project entirely
+   * — no process for the right project is ever going to arrive from it.
+   * Polling must stop here rather than run to the 30-minute ceiling, the
+   * same as every other `off` reason.
+   */
+  it("off: project-mismatch when the snapshot's processes belong to a different project, and stops polling", () => {
     const wrong = process({ projectId: "proj-other" });
     const result = deriveOperationObservation(
       baseInput({ snapshot: { processes: [wrong], atMs: NOW } }),
       NOW,
     );
     expect(result.state).toEqual({ kind: "off", reason: "project-mismatch" });
+    expect(result.wantsPoll).toBe(false);
+  });
+
+  it("stops polling for every off reason, not just project-mismatch and ceiling", () => {
+    const noSession = deriveOperationObservation(
+      baseInput({ attributable: false, notAttributableReason: "no-session" }),
+      NOW,
+    );
+    expect(noSession.wantsPoll).toBe(false);
+
+    const feedError = deriveOperationObservation(
+      baseInput({
+        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "server" },
+      }),
+      NOW,
+    );
+    expect(feedError.state).toEqual({ kind: "off", reason: "feed-error" });
+    expect(feedError.wantsPoll).toBe(false);
   });
 
   /**

@@ -162,9 +162,13 @@ export function deriveOperationObservation(
       ? observationNow
       : input.previousHistory;
 
+  // `state.kind === "off"` already covers every stop condition but
+  // `running`/outcome — not attributable, the ceiling, and any feed
+  // problem the poller or attribution itself reports (including a
+  // project mismatch: no process for the right project is ever going to
+  // arrive from a read that is not even reading that project).
   const outcomeSettled = observationNow?.outcome !== undefined;
-  const ceilingExceeded = nowMs - target.startedAtMs > ceilingMs;
-  const wantsPoll = target.running && input.attributable && !outcomeSettled && !ceilingExceeded;
+  const wantsPoll = target.running && state.kind !== "off" && !outcomeSettled;
 
   return { state, lastRead, history, wantsPoll };
 }
@@ -209,20 +213,22 @@ export function useOperationObservation(
 
   const keyRef = useRef<string | null>(null);
   const lastReadRef = useRef<LastRead | undefined>(undefined);
-  const settledRef = useRef(false);
+  // The single source of truth for "should we be polling" is
+  // `deriveOperationObservation`'s own `wantsPoll` — reused here as the
+  // guess driving *this* render's `useProjectActivity` subscription
+  // (necessarily one render behind its own verdict, since that verdict is
+  // computed from this render's snapshot) rather than a second,
+  // independently re-derived formula that can drift out of sync with it,
+  // as it once did for `project-mismatch`.
+  const wantsPollRef = useRef(target !== null && target.running);
   if (target === null || target.key !== keyRef.current) {
     keyRef.current = target?.key ?? null;
     lastReadRef.current = undefined;
-    settledRef.current = false;
+    wantsPollRef.current = target !== null && target.running;
   }
 
-  const ceilingExceeded =
-    target !== null && Date.now() - target.startedAtMs > OPERATION_OBSERVATION_CEILING_MS;
-  const wantsPollGuess =
-    target !== null && target.running && attributable && !ceilingExceeded && !settledRef.current;
-
   const snapshot = useProjectActivity(
-    wantsPollGuess && projectId !== undefined ? projectId : null,
+    wantsPollRef.current && projectId !== undefined ? projectId : null,
     session?.client ?? null,
   );
 
@@ -243,8 +249,7 @@ export function useOperationObservation(
   );
 
   lastReadRef.current = result.lastRead;
-  settledRef.current =
-    result.state.kind !== "off" && result.state.observation.outcome !== undefined;
+  wantsPollRef.current = result.wantsPoll;
   if (target !== null && result.history !== undefined) {
     historyByKey.set(target.key, result.history);
   }
