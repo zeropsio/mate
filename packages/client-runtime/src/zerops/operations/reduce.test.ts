@@ -302,12 +302,12 @@ describe("reduceZeropsOperations — pending states (hand-built)", () => {
     status: "inProgress",
   };
 
-  it("a pending deploy is running, statusWord Working (no result to decode yet), hasResult false, target from input", () => {
+  it("a pending deploy is running, statusWord Deploying, hasResult false, target from input", () => {
     const { operations } = reduceZeropsOperations([pendingDeploy]);
     expect(operations).toHaveLength(1);
     const deploy = operations[0]!;
     expect(deploy.phase).toBe("running");
-    expect(deploy.statusWord).toBe("Working");
+    expect(deploy.statusWord).toBe("Deploying");
     expect(deploy.hasResult).toBe(false);
     expect(deploy.target).toEqual({ hostname: "weatherdash" });
     expect(deploy.closing).toBeUndefined();

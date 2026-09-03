@@ -29,6 +29,7 @@ import {
   operationVoice,
   sentenceCase,
   statusWord,
+  type OperationStatusWordContext,
 } from "./phrases.ts";
 import type {
   ZeropsCallEntry,
@@ -409,6 +410,25 @@ function pickFirst(...values: ReadonlyArray<string | undefined>): string | undef
   return values.find((v) => v !== undefined);
 }
 
+/**
+ * The status word: the kind's own verb/claim when a card decoded, OR when no
+ * result has landed at all yet — a running verb ("Deploying", "Checking",
+ * "In progress", …) describes what is happening, not a claim the result
+ * made, so a pending call keeps it. The neutral word (`neutralStatusWord`)
+ * applies only once a result has landed and still did not decode.
+ */
+function gatedStatusWord(
+  kind: ZeropsOperationKind,
+  phase: ZeropsOperationPhase,
+  hasCard: boolean,
+  hasResult: boolean,
+  context?: OperationStatusWordContext,
+): string {
+  return hasCard || !hasResult
+    ? operationStatusWord(kind, phase, context)
+    : neutralStatusWord(phase);
+}
+
 function buildOperation(group: OperationGroup): ZeropsOperation {
   switch (group.kind) {
     case "bootstrap":
@@ -565,10 +585,15 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.deploy} · ${subject}`,
     voice,
     voiceSource,
-    statusWord:
-      card !== undefined
-        ? operationStatusWord("deploy", phase, { resultStatus })
-        : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      "deploy",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+      {
+        resultStatus,
+      },
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links,
@@ -653,8 +678,12 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.verify} · ${subject}`,
     voice,
     voiceSource,
-    statusWord:
-      card !== undefined ? operationStatusWord("verify", phase) : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      "verify",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
@@ -761,8 +790,12 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.import} · ${subject}`,
     voice,
     voiceSource,
-    statusWord:
-      card !== undefined ? operationStatusWord("import", phase) : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      "import",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps: read.steps,
     links: [],
@@ -815,7 +848,7 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.mount} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: card !== undefined ? operationStatusWord("mount", phase) : neutralStatusWord(phase),
+    statusWord: gatedStatusWord("mount", phase, card !== undefined, entry.resultText !== undefined),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
@@ -870,10 +903,13 @@ function buildSubdomainOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL.subdomain} · ${subject}`,
     voice,
     voiceSource,
-    statusWord:
-      card !== undefined
-        ? operationStatusWord("subdomain", phase, { action })
-        : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      "subdomain",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+      { action },
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps: [
       buildStep(
@@ -950,8 +986,12 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    statusWord:
-      decoded.document !== undefined ? operationStatusWord(kind, phase) : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      kind,
+      phase,
+      decoded.document !== undefined,
+      entry.resultText !== undefined,
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps: [
       buildStep(
@@ -1221,8 +1261,12 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
     kicker,
     voice,
     voiceSource,
-    statusWord:
-      plan !== undefined ? operationStatusWord("bootstrap", phase) : neutralStatusWord(phase),
+    statusWord: gatedStatusWord(
+      "bootstrap",
+      phase,
+      plan !== undefined,
+      latestCall.entry.resultText !== undefined,
+    ),
     ...(closing !== undefined ? { closing } : {}),
     steps,
     links: [],
