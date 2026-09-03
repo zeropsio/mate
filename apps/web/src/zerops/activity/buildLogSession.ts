@@ -86,6 +86,13 @@ export class BuildLogSession {
   #wsUrl: string | undefined;
   #pending: BuildLogLine[] = [];
   #flushHandle: unknown;
+  /**
+   * True while the current socket is itself a one-shot reopen after a
+   * server-side close — reset back to false on proof of life (a message),
+   * so a later close gets its own fresh reopen instead of an immediate
+   * give-up.
+   */
+  #reopening = false;
 
   constructor(options: BuildLogSessionOptions) {
     this.#resolveAccess = options.resolveAccess;
@@ -198,6 +205,8 @@ export class BuildLogSession {
     }
     const socket = new this.#WebSocketCtor(this.#wsUrl);
     socket.addEventListener("message", (event) => {
+      // Proof of life — a later close gets its own fresh one-shot reopen.
+      this.#reopening = false;
       const items = readBuildLogItems(parseMessageData(event.data));
       if (items.length === 0) {
         return;
@@ -209,9 +218,24 @@ export class BuildLogSession {
       this.#publish({ ...this.#snapshot, status: "error" });
     });
     socket.addEventListener("close", () => {
-      if (this.#socket === socket) {
-        this.#socket = undefined;
+      if (this.#socket !== socket) {
+        return; // superseded by a newer socket already.
       }
+      this.#socket = undefined;
+      if (this.#disposed || !this.#live) {
+        // Our own close (setLive(false)/dispose already published its status).
+        return;
+      }
+      // Server-side close (e.g. the Zerops L7 idle-kills a WebSocket after
+      // 60s) while we still want to be live — reopen once. If the reopened
+      // socket also closes without ever proving itself, give up.
+      if (this.#reopening) {
+        this.#reopening = false;
+        this.#publish({ ...this.#snapshot, status: "ended" });
+        return;
+      }
+      this.#reopening = true;
+      this.#openSocket();
     });
     this.#socket = socket;
   }
@@ -232,7 +256,11 @@ export class BuildLogSession {
       }
       const lines = mergeBuildLogLines(this.#snapshot.lines, this.#pending);
       this.#pending = [];
-      this.#publish({ lines, status: "live" });
+      // Keep whatever status already holds — a message can be buffered just
+      // before `setLive(false)` or an error closes things down, and this
+      // flush firing afterwards must not force the status back to `live`
+      // with no socket behind it.
+      this.#publish({ ...this.#snapshot, lines });
     }, FLUSH_INTERVAL_MS);
   }
 }
