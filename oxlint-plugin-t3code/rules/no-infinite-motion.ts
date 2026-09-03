@@ -32,7 +32,7 @@ const INFINITE_ANIMATION_CLASSES = new Set([
 const PROTECTED_ROOTS = new Set([
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
   "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
-  "apps/web/src/components/zerops/ZeropsToolCard.tsx",
+  "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
   "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
 ]);
 
