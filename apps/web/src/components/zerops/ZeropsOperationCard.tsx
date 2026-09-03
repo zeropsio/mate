@@ -62,22 +62,22 @@ function formatElapsedClock(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-/** " · 0:42" while running, " · 1m 12s" once settled — "" when neither timestamp resolves. */
-function headerDurationSuffix(operation: ZeropsOperation, now: number): string {
+/** `0:42` while running, `1m 12s` once settled — undefined when neither timestamp resolves. */
+function headerDurationText(operation: ZeropsOperation, now: number): string | undefined {
   const startedAtMs = Date.parse(operation.startedAt);
   if (!Number.isFinite(startedAtMs)) {
-    return "";
+    return undefined;
   }
   if (operation.phase === "running") {
-    return ` · ${formatElapsedClock(Math.max(0, now - startedAtMs))}`;
+    return formatElapsedClock(Math.max(0, now - startedAtMs));
   }
   if (operation.settledAt === undefined) {
-    return "";
+    return undefined;
   }
   const settledAtMs = Date.parse(operation.settledAt);
   return Number.isFinite(settledAtMs)
-    ? ` · ${formatStepDuration(Math.max(0, settledAtMs - startedAtMs))}`
-    : "";
+    ? formatStepDuration(Math.max(0, settledAtMs - startedAtMs))
+    : undefined;
 }
 
 /** Re-renders once a second while `active` — a text update, never an animation (R6). */
@@ -120,7 +120,7 @@ export function ZeropsOperationCard(props: {
   const isRunning = operation.phase === "running";
   useTick(props.now === undefined && isRunning);
   const now = props.now ?? Date.now();
-  const durationSuffix = headerDurationSuffix(operation, now);
+  const durationText = headerDurationText(operation, now);
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
   const hasBody = stepsForBody.length > 0 || observed !== undefined;
@@ -138,12 +138,20 @@ export function ZeropsOperationCard(props: {
       <header className={cn(HEADER_TONE_CLASS[tone], "px-3 py-2.5")}>
         <div className="flex items-center justify-between gap-3">
           <MicroLabel>{operation.kicker}</MicroLabel>
-          <span aria-label="Result status" className="shrink-0" role="status">
-            <StatusDot
-              label={`${operation.statusWord}${durationSuffix}`}
-              pulse={tone === "busy"}
-              tone={tone}
-            />
+          <span
+            aria-label="Result status"
+            className="flex shrink-0 items-center gap-1.5"
+            role="status"
+          >
+            <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
+            {durationText !== undefined ? (
+              <span
+                className="font-mono text-[11px] text-muted-foreground tabular-nums"
+                data-zerops-operation-duration
+              >
+                · {durationText}
+              </span>
+            ) : null}
           </span>
         </div>
         <div className="mt-1 flex items-center gap-1.5 font-medium text-foreground text-sm">

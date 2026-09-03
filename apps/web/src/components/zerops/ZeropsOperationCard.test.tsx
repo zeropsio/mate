@@ -181,3 +181,85 @@ describe("ZeropsOperationCard — footer detail disclosure", () => {
     expect(html).not.toContain(`data-zerops-chip-kind="detail"`);
   });
 });
+
+describe("ZeropsOperationCard — durations against the real fixture (regression)", () => {
+  const weatherdash = operationsFor(weatherdashFirstDeploy);
+  const deploy = weatherdash.find((o) => o.kind === "deploy")!;
+  const verify = weatherdash.find((o) => o.kind === "verify")!;
+  const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
+
+  it("the deploy operation's settledAt - startedAt is ~75.9s and the card shows 1m 16s", () => {
+    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.startedAt);
+    expect(elapsedMs).toBeGreaterThan(75_000);
+    expect(elapsedMs).toBeLessThan(77_000);
+
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
+    expect(html).toContain("1m 16s");
+    expect(html).not.toContain("0 s");
+  });
+
+  it("the verify and bootstrap operations also show a nonzero duration", () => {
+    const verifyHtml = renderToStaticMarkup(<ZeropsOperationCard operation={verify} />);
+    const bootstrapHtml = renderToStaticMarkup(<ZeropsOperationCard operation={bootstrap} />);
+    expect(verifyHtml).toContain("6 s");
+    expect(verifyHtml).not.toContain("0 s");
+    expect(bootstrapHtml).toContain("55 s");
+    expect(bootstrapHtml).not.toContain("0 s");
+  });
+});
+
+describe("ZeropsOperationCard — the duration renders outside the uppercase status label", () => {
+  it("keeps the running elapsed clock out of the StatusDot's own MicroLabel, in a separate tabular-nums span", () => {
+    const runningDeployEntry: ZeropsCallEntry = {
+      id: "dur-running",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "inProgress",
+    };
+    const running = reduceZeropsOperations([runningDeployEntry]).operations[0]!;
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard now={Date.parse("2026-09-01T00:00:42.000Z")} operation={running} />,
+    );
+
+    const statusDotSpan = html.match(
+      /data-zerops-primitive="status-dot"[\s\S]*?<\/span><\/span>/,
+    )?.[0];
+    expect(statusDotSpan).toBeDefined();
+    expect(statusDotSpan).not.toContain("0:42");
+
+    const durationSpan = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</);
+    expect(durationSpan).toBeDefined();
+    expect(durationSpan![1]).toContain("0:42");
+  });
+
+  it("renders the settled duration in normal case, tabular-nums, separate from the uppercase status word", () => {
+    const entry: ZeropsCallEntry = {
+      id: "dur-settled",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: null,
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "completed",
+      settledAt: "2026-09-01T00:01:12.000Z",
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+    };
+    const operation = reduceZeropsOperations([entry]).operations[0]!;
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+
+    const statusDotSpan = html.match(
+      /data-zerops-primitive="status-dot"[\s\S]*?<\/span><\/span>/,
+    )?.[0];
+    expect(statusDotSpan).not.toContain("1m 12s");
+
+    const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
+    expect(durationSpanTag).toBeDefined();
+    expect(durationSpanTag).toContain("tabular-nums");
+    expect(durationSpanTag).not.toContain("uppercase");
+    const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
+    expect(durationText).toContain("1m 12s");
+  });
+});
