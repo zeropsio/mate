@@ -175,10 +175,6 @@
       "types": "./src/zerops/activity/pipelineState.ts",
       "default": "./src/zerops/activity/pipelineState.ts"
     },
-    "./zerops/activity/reducer": {
-      "types": "./src/zerops/activity/reducer.ts",
-      "default": "./src/zerops/activity/reducer.ts"
-    },
     "./zerops/activityResult": {
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"
