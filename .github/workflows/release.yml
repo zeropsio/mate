@@ -226,16 +226,28 @@ jobs:
 
       # build-desktop-artifact.ts resizes the 1024px source icon into the nine
       # sizes a Linux desktop entry needs, shelling out to `magick` and falling
-      # back to `convert` — both ImageMagick. The GitHub Ubuntu runner image
-      # does not carry it, so the first tagged build that packaged Linux failed
-      # on `spawn magick ENOENT`. Only this leg resizes anything; mac takes an
-      # .icns and Windows an .ico straight from assets/prod.
+      # back to `convert`. The GitHub Ubuntu runner image carries neither, so
+      # the first tagged build that packaged Linux failed on `spawn magick
+      # ENOENT`. Only this leg resizes anything; mac takes an .icns and Windows
+      # an .ico straight from assets/prod.
+      #
+      # Ubuntu's `imagemagick` is still ImageMagick 6, which installs `convert`
+      # but NOT `magick` — that entry point arrived in ImageMagick 7. The
+      # script's fallback is what actually runs here, so this check asserts the
+      # contract it depends on (either tool present) rather than one binary.
       - name: Install ImageMagick
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends imagemagick
-          magick -version | head -1
+          if command -v magick >/dev/null 2>&1; then
+            magick -version | head -1
+          elif command -v convert >/dev/null 2>&1; then
+            convert -version | head -1
+          else
+            echo "Neither magick nor convert is on PATH after installing imagemagick." >&2
+            exit 1
+          fi
 
       # native/resource-monitor is staged into every desktop build by
       # build-desktop-artifact.ts, which shells out to `cargo build --target
