@@ -15,7 +15,7 @@
 import type { ActivityProcess } from "./dto.ts";
 import { type BuildLogQuery } from "./buildLog.ts";
 import { type ObservedStep, observedSteps } from "./observedSteps.ts";
-import { getPipelineState } from "./pipelineState.ts";
+import { getPipelineState, pipelineTerminalOutcome } from "./pipelineState.ts";
 import type { AttributionResult } from "./attribution.ts";
 
 export interface Observation {
@@ -97,16 +97,31 @@ function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQuery | u
   return { buildServiceStackId, appVersionId, ...(fromIso === undefined ? {} : { fromIso }) };
 }
 
+/**
+ * Terminal reading of one attributed process. A `deploy`/`import` step
+ * source carries an appVersion, so its pipeline settles the outcome; a kind
+ * with no appVersion at all (import's `stack.create`, subdomain, delete,
+ * scale, manage) has no pipeline to read and must settle off the process's
+ * own terminal status instead, or it never settles and ages into
+ * `stale-timeout`.
+ */
 function outcomeFor(process: ActivityProcess): "finished" | "failed" | "cancelled" | undefined {
   if (process.status === "CANCELED") {
     return "cancelled";
   }
-  const pipeline = getPipelineState(process.appVersion);
-  return pipeline.DEPLOY === "finished" ||
-    pipeline.DEPLOY === "failed" ||
-    pipeline.DEPLOY === "cancelled"
-    ? pipeline.DEPLOY
-    : undefined;
+  const fromPipeline = pipelineTerminalOutcome(getPipelineState(process.appVersion));
+  if (fromPipeline !== undefined) {
+    return fromPipeline;
+  }
+  if (process.appVersion === undefined) {
+    if (process.status === "FINISHED") {
+      return "finished";
+    }
+    if (process.status === "FAILED") {
+      return "failed";
+    }
+  }
+  return undefined;
 }
 
 function observationFor(attribution: AttributionResult, atMs: number, nowMs: number): Observation {

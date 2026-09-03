@@ -120,6 +120,39 @@ describe("observe — the three-state observation layer", () => {
     expect(state.kind === "observing" && state.observation.outcome).toBe("cancelled");
   });
 
+  /**
+   * A kind without an appVersion at all (import's stack.create, subdomain,
+   * delete, scale, manage) never gets a pipeline reading — it must still
+   * settle off the process's own terminal status, or it ages into
+   * off:stale-timeout despite the platform having already finished it.
+   */
+  it("outcome finished for a FINISHED process with no appVersion (e.g. stack.create)", () => {
+    const p = process({ status: "FINISHED", actionName: "stack.create" });
+    const state = observe(
+      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      NOW,
+    );
+    expect(state.kind === "observing" && state.observation.outcome).toBe("finished");
+  });
+
+  it("outcome failed for a FAILED process with no appVersion", () => {
+    const p = process({ status: "FAILED", actionName: "stack.create" });
+    const state = observe(
+      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      NOW,
+    );
+    expect(state.kind === "observing" && state.observation.outcome).toBe("failed");
+  });
+
+  it("no outcome for a still-RUNNING process with no appVersion", () => {
+    const p = process({ status: "RUNNING", actionName: "stack.create" });
+    const state = observe(
+      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      NOW,
+    );
+    expect(state.kind === "observing" && state.observation.outcome).toBeUndefined();
+  });
+
   it("stale after 10s with no fresh read, keeping the last observation", () => {
     const p = process({ appVersion: { status: "BUILDING" } });
     const input = baseInput({
