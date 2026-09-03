@@ -4,7 +4,7 @@
  * {@link ProjectActivityPoller}, so every pending card in a thread shares one
  * poll instead of racing its own (§6 "one request per project per tick").
  */
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
@@ -51,14 +51,31 @@ export function useProjectActivity(
   projectId: string | null,
   client: ZeropsApiClient | null,
 ): ProjectActivitySnapshot {
-  const active = projectId !== null && client !== null ? { projectId, client } : null;
-  return useSyncExternalStore(
-    (listener) =>
-      active === null
+  // Memoized on the identities that actually matter (`projectId`, `client`)
+  // rather than a fresh closure every render: `ProjectActivityPoller.subscribe`
+  // resets the backoff and fires an immediate poll on a 0→1 listener
+  // transition, so an unmemoized subscribe function — which `useSyncExternalStore`
+  // re-subscribes to whenever its identity changes — would unsubscribe and
+  // resubscribe (and therefore restart the poll) on every single render of
+  // every caller, however unrelated to this feed. Under a fast, dependency-free
+  // fake client this compounds into a tight render→poll→publish→render loop.
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      projectId === null || client === null
         ? () => undefined
-        : pollerFor(active.projectId, active.client).subscribe(listener),
+        : pollerFor(projectId, client).subscribe(listener),
+    [projectId, client],
+  );
+  const getSnapshot = useCallback(
     () =>
-      active === null ? EMPTY_SNAPSHOT : pollerFor(active.projectId, active.client).getSnapshot(),
+      projectId === null || client === null
+        ? EMPTY_SNAPSHOT
+        : pollerFor(projectId, client).getSnapshot(),
+    [projectId, client],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    getSnapshot,
     // Server-rendered (e.g. `renderToStaticMarkup` in tests): there is no poll
     // yet, so the overlay starts as "no observation", identical to the client's
     // first render before any poll has landed.
