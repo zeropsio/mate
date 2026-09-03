@@ -7,11 +7,13 @@ import {
   type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { weatherdashFirstDeploy } from "@t3tools/client-runtime/zerops/operations/fixtures";
 
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   deriveTurnPlans,
+  deriveZeropsOperations,
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
@@ -21,6 +23,7 @@ import {
   workEntryIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
   workEntryIndicatesToolSuccess,
+  type WorkLogEntry,
 } from "./session-logic";
 
 let nextActivityId = 0;
@@ -1323,9 +1326,13 @@ describe("deriveWorkLogEntries", () => {
       }),
     ];
 
+    // A Zerops call keeps its anchor: id/createdAt stay pinned to the FIRST
+    // lifecycle activity, not the latest — unlike an ordinary tool merge.
     const [entry] = deriveWorkLogEntries(activities);
-    expect(entry?.createdAt).toBe("2026-02-23T00:00:09.000Z");
+    expect(entry?.id).toBe("deploy-updated");
+    expect(entry?.createdAt).toBe("2026-02-23T00:00:02.000Z");
     expect(entry?.startedAt).toBe("2026-02-23T00:00:02.000Z");
+    expect(entry?.updatedAt).toBe("2026-02-23T00:00:09.000Z");
   });
 
   it("collapses interleaved lifecycle updates by tool call id", () => {
@@ -2367,5 +2374,404 @@ describe("session activity performance", () => {
 
     expect(entries).toHaveLength(activityCount + 1);
     expect(cachedActivityDataReads).toBe(0);
+  });
+});
+
+function activityToolNameForTest(activity: OrchestrationThreadActivity): unknown {
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const data =
+    payload?.data && typeof payload.data === "object"
+      ? (payload.data as Record<string, unknown>)
+      : null;
+  return data?.toolName;
+}
+
+describe("deriveWorkLogEntries — hidden Zerops calls never become entries", () => {
+  it("skips every ToolSearch/Skill activity in a real captured thread", () => {
+    const activities = weatherdashFirstDeploy.activities;
+    const hiddenActivityIds = new Set<string>(
+      activities
+        .filter(
+          (activity) =>
+            (activity.kind === "tool.updated" || activity.kind === "tool.completed") &&
+            (activityToolNameForTest(activity) === "ToolSearch" ||
+              activityToolNameForTest(activity) === "Skill"),
+        )
+        .map((activity) => activity.id),
+    );
+    expect(hiddenActivityIds.size).toBeGreaterThan(0);
+
+    const entries = deriveWorkLogEntries(activities);
+
+    for (const entry of entries) {
+      expect(hiddenActivityIds.has(entry.id)).toBe(false);
+    }
+  });
+
+  it("skips a hand-built ToolSearch tool.completed activity: no entry's label starts with ToolSearch", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "tool-search-1",
+        kind: "tool.completed",
+        summary: "ToolSearch: query zerops tools",
+        payload: {
+          toolCallId: "call-tool-search-1",
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          data: { toolName: "ToolSearch", input: { query: "deploy" } },
+        },
+      }),
+      makeActivity({
+        id: "read-file-1",
+        kind: "tool.completed",
+        summary: "Read package.json",
+        payload: {
+          toolCallId: "call-read-1",
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          data: { toolName: "Read" },
+        },
+      }),
+    ]);
+
+    expect(entries.some((entry) => entry.label.startsWith("ToolSearch"))).toBe(false);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.label).toBe("Read package.json");
+  });
+
+  it("skips a hand-built Skill tool.completed activity the same way", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "skill-1",
+        kind: "tool.completed",
+        summary: "Skill: zerops-onboarding",
+        payload: {
+          toolCallId: "call-skill-1",
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          data: { toolName: "Skill", input: { skill: "zerops-onboarding" } },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(0);
+  });
+});
+
+describe("deriveWorkLogEntries — a Zerops call keeps its anchor", () => {
+  it("a zerops_deploy entry's id and createdAt are the FIRST lifecycle activity's, not the latest", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "deploy-started",
+        kind: "tool.started",
+        createdAt: "2026-02-23T00:00:00.000Z",
+        turnId: "turn-1",
+        payload: { toolCallId: "call-deploy", itemType: "mcp_tool_call", status: "inProgress" },
+      }),
+      makeActivity({
+        id: "deploy-updated",
+        kind: "tool.updated",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-deploy",
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          data: { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "weatherdash" } },
+        },
+      }),
+      makeActivity({
+        id: "deploy-completed",
+        kind: "tool.completed",
+        createdAt: "2026-02-23T00:00:42.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-deploy",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_deploy",
+            zerops: {
+              toolName: "zerops_deploy",
+              resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe("deploy-updated");
+    expect(entries[0]?.createdAt).toBe("2026-02-23T00:00:01.000Z");
+    expect(entries[0]?.updatedAt).toBe("2026-02-23T00:00:42.000Z");
+  });
+
+  it("an ordinary (non-Zerops) merge still moves id/createdAt to the newest activity", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "cmd-updated",
+        kind: "tool.updated",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-cmd",
+          itemType: "command_execution",
+          status: "inProgress",
+          detail: "pnpm test",
+        },
+      }),
+      makeActivity({
+        id: "cmd-completed",
+        kind: "tool.completed",
+        createdAt: "2026-02-23T00:00:05.000Z",
+        turnId: "turn-1",
+        payload: {
+          toolCallId: "call-cmd",
+          itemType: "command_execution",
+          status: "completed",
+          detail: "pnpm test",
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.id).toBe("cmd-completed");
+    expect(entries[0]?.createdAt).toBe("2026-02-23T00:00:05.000Z");
+    expect(entries[0]?.updatedAt).toBe("2026-02-23T00:00:05.000Z");
+  });
+});
+
+describe("toDerivedWorkLogEntry — zerops raw-content fallback", () => {
+  it("synthesizes zeropsResult from data.result.content when no data.zerops enrichment is present", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "verify-no-enrichment",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-verify-legacy",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_verify",
+            result: {
+              content: JSON.stringify({ hostname: "api", status: "healthy", checks: [] }),
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.zeropsResult).toEqual({
+      toolName: "zerops_verify",
+      resultText: JSON.stringify({ hostname: "api", status: "healthy", checks: [] }),
+    });
+  });
+
+  it("reads the SDK content-block-array shape too", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "verify-array-content",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-verify-array",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_verify",
+            result: {
+              content: [
+                { type: "text", text: JSON.stringify({ hostname: "api", status: "healthy" }) },
+              ],
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.zeropsResult?.resultText).toBe(
+      JSON.stringify({ hostname: "api", status: "healthy" }),
+    );
+  });
+
+  it("does not synthesize a fallback for prose (not a JSON object)", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "verify-prose",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-verify-prose",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_verify",
+            result: { content: "the verify tool is still running" },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.zeropsResult).toBeUndefined();
+  });
+
+  it("does not synthesize a fallback for a non-zerops tool", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "read-file",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-read",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "Read",
+            result: { content: JSON.stringify({ ok: true }) },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.zeropsResult).toBeUndefined();
+  });
+
+  it("prefers the data.zerops enrichment over the raw fallback when both are present", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "verify-both",
+        kind: "tool.completed",
+        payload: {
+          toolCallId: "call-verify-both",
+          itemType: "mcp_tool_call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_verify",
+            zerops: { toolName: "zerops_verify", resultText: "enriched" },
+            result: { content: JSON.stringify({ hostname: "api" }) },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.zeropsResult).toEqual({ toolName: "zerops_verify", resultText: "enriched" });
+  });
+});
+
+describe("deriveZeropsOperations", () => {
+  it("adapts a completed zerops_deploy entry into a done deploy operation and consumes it", () => {
+    const entries: WorkLogEntry[] = [
+      {
+        id: "work-deploy-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        startedAt: "2026-02-23T00:00:01.000Z",
+        updatedAt: "2026-02-23T00:00:42.000Z",
+        turnId: TurnId.make("turn-1"),
+        toolCallId: "call-deploy-1",
+        label: "Deploy weatherdash",
+        tone: "tool",
+        toolLifecycleStatus: "completed",
+        toolInput: { targetService: "weatherdash" },
+        zeropsResult: {
+          toolName: "zerops_deploy",
+          resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+        },
+      },
+      {
+        id: "work-plain-1",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        label: "Read package.json",
+        tone: "tool",
+        toolLifecycleStatus: "completed",
+      },
+    ];
+
+    const { operations, consumedEntryIds } = deriveZeropsOperations(entries);
+
+    expect(operations).toHaveLength(1);
+    expect(operations[0]?.kind).toBe("deploy");
+    expect(operations[0]?.phase).toBe("done");
+    expect(operations[0]?.anchorEntryId).toBe("work-deploy-1");
+    expect(operations[0]?.settledAt).toBe("2026-02-23T00:00:42.000Z");
+    expect(consumedEntryIds.has("work-deploy-1")).toBe(true);
+    expect(consumedEntryIds.has("work-plain-1")).toBe(false);
+  });
+
+  it("leaves an inProgress zerops_deploy entry's settledAt undefined", () => {
+    const entries: WorkLogEntry[] = [
+      {
+        id: "work-deploy-running",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        turnId: null,
+        label: "Deploy weatherdash",
+        tone: "tool",
+        toolLifecycleStatus: "inProgress",
+        toolInput: { targetService: "weatherdash" },
+        zeropsResult: { toolName: "zerops_deploy" },
+      },
+    ];
+
+    const { operations } = deriveZeropsOperations(entries);
+
+    expect(operations[0]?.phase).toBe("running");
+    expect(operations[0]?.settledAt).toBeUndefined();
+  });
+
+  it("adapts nothing for entries with no zeropsResult", () => {
+    const entries: WorkLogEntry[] = [
+      {
+        id: "work-other",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        label: "Read package.json",
+        tone: "tool",
+      },
+    ];
+
+    expect(deriveZeropsOperations(entries).operations).toHaveLength(0);
+  });
+});
+
+describe("deriveTimelineEntries — Zerops operations", () => {
+  it("drops consumed work entries and inserts operation entries in time order", () => {
+    const deployWorkEntry: WorkLogEntry = {
+      id: "work-deploy-1",
+      createdAt: "2026-02-23T00:00:01.000Z",
+      label: "Deploy weatherdash",
+      tone: "tool",
+      toolLifecycleStatus: "completed",
+      zeropsResult: {
+        toolName: "zerops_deploy",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      },
+    };
+    const plainWorkEntry: WorkLogEntry = {
+      id: "work-plain-1",
+      createdAt: "2026-02-23T00:00:02.000Z",
+      label: "Read package.json",
+      tone: "tool",
+    };
+    const workEntries = [deployWorkEntry, plainWorkEntry];
+    const operations = deriveZeropsOperations(workEntries);
+
+    const entries = deriveTimelineEntries([], [], workEntries, [], operations);
+
+    expect(entries.map((entry) => entry.kind)).toEqual(["operation", "work"]);
+    expect(
+      entries.some((entry) => entry.kind === "work" && entry.entry.id === "work-deploy-1"),
+    ).toBe(false);
+    const operationEntry = entries.find((entry) => entry.kind === "operation");
+    expect(operationEntry?.id).toBe(`operation:${operations.operations[0]!.anchorEntryId}`);
+    expect(operationEntry?.createdAt).toBe(operations.operations[0]!.createdAt);
+  });
+
+  it("keeps existing behavior when no operations are given (default arg)", () => {
+    const entries = deriveTimelineEntries(
+      [],
+      [],
+      [{ id: "work-1", createdAt: "2026-02-23T00:00:01.000Z", label: "Read", tone: "tool" }],
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual(["work"]);
   });
 });

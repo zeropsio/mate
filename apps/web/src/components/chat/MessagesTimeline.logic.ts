@@ -9,8 +9,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
-import { zeropsCardIdentity } from "@t3tools/client-runtime/zerops/cards/identity";
-import { isZeropsMilestone } from "@t3tools/client-runtime/zerops/cards/milestone";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -240,6 +239,12 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       turnPlan: TurnPlanEntry;
+    }
+  | {
+      kind: "operation";
+      id: string;
+      createdAt: string;
+      operation: ZeropsOperation;
     }
   | {
       kind: "working";
@@ -518,6 +523,11 @@ function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
   if (entry.kind === "proposed-plan") {
     return entry.proposedPlan.turnId;
   }
+  if (entry.kind === "operation") {
+    // `ZeropsOperation.turnId` is a plain string — the reducer's package is
+    // platform-free (R1) and never imports the branded `TurnId` type.
+    return entry.operation.turnId as TurnId | null;
+  }
   return entry.kind === "work" ? (entry.entry.turnId ?? null) : null;
 }
 
@@ -558,7 +568,9 @@ function deriveTurnFolds(input: {
         ? (entry.message.turnId ?? null)
         : entry.kind === "work"
           ? (entry.entry.turnId ?? null)
-          : null;
+          : entry.kind === "operation"
+            ? (entry.operation.turnId as TurnId | null)
+            : null;
     if (!turnId) {
       continue;
     }
@@ -603,13 +615,14 @@ function deriveTurnFolds(input: {
       if (entry === firstAssistantEntry || entry === group.terminalEntry) {
         continue;
       }
-      // Agent-spawn CTA rows and selected Zerops cards never fold. Workflows
-      // outlive their launching turn, while these cards are the durable
-      // outcomes a settled turn needs to leave readable.
-      if (
-        entry.kind === "work" &&
-        (entry.entry.agentSpawn !== undefined || isZeropsMilestone(entry.entry))
-      ) {
+      // Agent-spawn CTA rows never fold: workflows outlive their launching
+      // turn.
+      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+        continue;
+      }
+      // Operation cards never fold either: they are the durable outcomes a
+      // settled turn needs to leave readable.
+      if (entry.kind === "operation") {
         continue;
       }
       hiddenEntries.add(entry);
@@ -660,80 +673,6 @@ function deriveTurnFolds(input: {
   return foldsByAnchorEntry;
 }
 
-/**
- * Folds a lifecycle object's repeated tool calls (e.g. every `zerops_workflow`
- * bootstrap call advancing one session) into a single card.
- *
- * The first entry carrying a given identity (see `zeropsCardIdentity`) is the
- * anchor: it keeps its position and its own `id`, so the card never jumps or
- * re-keys, but is replaced with a new entry object (never a mutation of the
- * original) whose `zeropsResult` / `toolLifecycleStatus` come from the LATEST
- * entry sharing that identity. Every later entry with the same identity is
- * dropped outright — it renders nothing, not a stub. An entry with no
- * identity (a different tool, a pending call, a plan from another session, an
- * error) passes through untouched.
- */
-function mergeZeropsCardEntries(
-  timelineEntries: ReadonlyArray<TimelineEntry>,
-): ReadonlyArray<TimelineEntry> {
-  const anchorByIdentity = new Map<string, WorkLogEntry>();
-  const latestByIdentity = new Map<string, WorkLogEntry>();
-  for (const timelineEntry of timelineEntries) {
-    if (timelineEntry.kind !== "work") {
-      continue;
-    }
-    const identity = zeropsCardIdentity(timelineEntry.entry);
-    if (identity === undefined) {
-      continue;
-    }
-    if (!anchorByIdentity.has(identity)) {
-      anchorByIdentity.set(identity, timelineEntry.entry);
-    }
-    latestByIdentity.set(identity, timelineEntry.entry);
-  }
-  if (anchorByIdentity.size === 0) {
-    return timelineEntries;
-  }
-
-  const merged: TimelineEntry[] = [];
-  for (const timelineEntry of timelineEntries) {
-    if (timelineEntry.kind !== "work") {
-      merged.push(timelineEntry);
-      continue;
-    }
-    const identity = zeropsCardIdentity(timelineEntry.entry);
-    if (identity === undefined) {
-      merged.push(timelineEntry);
-      continue;
-    }
-    if (timelineEntry.entry !== anchorByIdentity.get(identity)) {
-      // A later call sharing this identity folds into the anchor; drop it.
-      continue;
-    }
-    const latest = latestByIdentity.get(identity)!;
-    if (latest === timelineEntry.entry) {
-      merged.push(timelineEntry);
-      continue;
-    }
-    const {
-      zeropsResult: _anchorZeropsResult,
-      toolLifecycleStatus: _anchorStatus,
-      ...rest
-    } = timelineEntry.entry;
-    merged.push({
-      ...timelineEntry,
-      entry: {
-        ...rest,
-        ...(latest.zeropsResult === undefined ? {} : { zeropsResult: latest.zeropsResult }),
-        ...(latest.toolLifecycleStatus === undefined
-          ? {}
-          : { toolLifecycleStatus: latest.toolLifecycleStatus }),
-      },
-    });
-  }
-  return merged;
-}
-
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
@@ -746,7 +685,7 @@ export function deriveMessagesTimelineRows(input: {
   revertTurnCountByUserMessageId: ReadonlyMap<MessageId, number>;
 }): MessagesTimelineRow[] {
   const nextRows: MessagesTimelineRow[] = [];
-  const timelineEntries = mergeZeropsCardEntries(input.timelineEntries);
+  const timelineEntries = input.timelineEntries;
   const workTimelineEntries = timelineEntries.filter(
     (entry): entry is Extract<TimelineEntry, { kind: "work" }> => entry.kind === "work",
   );
@@ -817,14 +756,6 @@ export function deriveMessagesTimelineRows(input: {
     input.isWorking &&
     index >= activeTurnHeaderIndex &&
     (unsettledTurnId === null || timelineEntryTurnId(entry) === unsettledTurnId);
-  const activeMilestoneEntries = new Set(
-    timelineEntries.filter(
-      (entry, index): entry is Extract<TimelineEntry, { kind: "work" }> =>
-        entry.kind === "work" &&
-        entryBelongsToActiveTurn(entry, index) &&
-        isZeropsMilestone(entry.entry),
-    ),
-  );
   const workEntryIsInActiveRun = (entry: WorkLogEntry) =>
     input.isWorking &&
     unsettledTurnId !== null &&
@@ -842,15 +773,17 @@ export function deriveMessagesTimelineRows(input: {
     if (entry.kind === "work") {
       return (
         entry.entry.agentSpawn === undefined &&
-        ((workLogEntryIsToolLike(entry.entry) &&
-          entry.entry.toolLifecycleStatus === "inProgress") ||
-          activeMilestoneEntries.has(entry))
+        workLogEntryIsToolLike(entry.entry) &&
+        entry.entry.toolLifecycleStatus === "inProgress"
       );
     }
+    if (entry.kind === "operation") return true;
     if (entry.kind === "proposed-plan" || entry.kind === "turn-plan") return true;
     return false;
   });
 
+  // Stops at any non-"work" neighbour, including an "operation" row: an
+  // operation card ends the live tail on both sides, same as any other kind.
   const activeToolEntries: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
   for (let index = timelineEntries.length - 1; index >= activeTurnHeaderIndex; index -= 1) {
     const entry = timelineEntries[index]!;
@@ -858,7 +791,6 @@ export function deriveMessagesTimelineRows(input: {
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
       entry.entry.agentSpawn !== undefined ||
-      activeMilestoneEntries.has(entry) ||
       entry.entry.tone === "error" ||
       !workLogEntryIsToolLike(entry.entry)
     ) {
@@ -949,18 +881,16 @@ export function deriveMessagesTimelineRows(input: {
 
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
-      const timelineEntryIsActiveMilestone = activeMilestoneEntries.has(timelineEntry);
       let cursor = index + 1;
       while (cursor < timelineEntries.length) {
         const nextEntry = timelineEntries[cursor];
         if (
           !nextEntry ||
+          // An "operation" row (like any other non-"work" kind) ends the run.
           nextEntry.kind !== "work" ||
           activeWorkEntries.has(nextEntry) ||
           collapsedEntries.has(nextEntry) ||
-          foldsByAnchorEntry.has(nextEntry) ||
-          timelineEntryIsActiveMilestone ||
-          activeMilestoneEntries.has(nextEntry)
+          foldsByAnchorEntry.has(nextEntry)
         ) {
           break;
         }
@@ -1009,39 +939,30 @@ export function deriveMessagesTimelineRows(input: {
         } else if (onlyToolEntries) {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
           const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
-          const milestoneEntries = visibleGroupedEntries.filter(isZeropsMilestone);
-          const milestoneEntrySet = new Set(milestoneEntries);
-          const summarizedEntries = visibleGroupedEntries.filter(
-            (entry) => !milestoneEntrySet.has(entry),
-          );
-          const summarizedEntrySet = new Set(summarizedEntries);
-          const lastSummarizedEntry = summarizedEntries.at(-1);
-          if (summarizedEntries.length > 0) {
-            nextRows.push({
-              kind: "work-toggle",
-              id: `work-toggle:${timelineEntry.id}`,
-              createdAt: timelineEntry.createdAt,
-              groupId,
-              hiddenCount: summarizedEntries.length,
-              expanded,
-              onlyToolEntries: true,
-              summary: summarizeToolGroup(summarizedEntries),
-              summaryKind: toolGroupSummaryKind(summarizedEntries),
-              hasFailure: workEntryDisplayIndicatesToolFailure(summarizedEntries.at(-1)!),
-            });
-          }
-          const renderedEntries = expanded ? visibleGroupedEntries : milestoneEntries;
-          for (const workEntry of renderedEntries) {
-            const isRevealedSummaryEntry = expanded && summarizedEntrySet.has(workEntry);
-            nextRows.push({
-              kind: "work",
-              id: workRowId(workEntry),
-              createdAt: workEntry.createdAt,
-              groupedEntries: [workEntry],
-              isExpandedToolGroupEntry: isRevealedSummaryEntry,
-              isLastExpandedToolGroupEntry:
-                isRevealedSummaryEntry && workEntry === lastSummarizedEntry,
-            });
+          const lastEntry = visibleGroupedEntries.at(-1)!;
+          nextRows.push({
+            kind: "work-toggle",
+            id: `work-toggle:${timelineEntry.id}`,
+            createdAt: timelineEntry.createdAt,
+            groupId,
+            hiddenCount: visibleGroupedEntries.length,
+            expanded,
+            onlyToolEntries: true,
+            summary: summarizeToolGroup(visibleGroupedEntries),
+            summaryKind: toolGroupSummaryKind(visibleGroupedEntries),
+            hasFailure: workEntryDisplayIndicatesToolFailure(lastEntry),
+          });
+          if (expanded) {
+            for (const [entryIndex, workEntry] of visibleGroupedEntries.entries()) {
+              nextRows.push({
+                kind: "work",
+                id: workRowId(workEntry),
+                createdAt: workEntry.createdAt,
+                groupedEntries: [workEntry],
+                isExpandedToolGroupEntry: true,
+                isLastExpandedToolGroupEntry: entryIndex === visibleGroupedEntries.length - 1,
+              });
+            }
           }
         } else if (visibleGroupedEntries.length <= MAX_VISIBLE_WORK_LOG_ENTRIES) {
           nextRows.push({
@@ -1055,15 +976,13 @@ export function deriveMessagesTimelineRows(input: {
         } else {
           const groupId = workGroupId(timelineEntry.id, timelineEntry.entry);
           const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
-          // Agent-spawn CTA rows and selected Zerops cards are always visible:
-          // neither belongs behind a "+N tool calls" toggle. Selection is by
-          // membership (exempt OR recent-tail), preserving the group's order
-          // in both states (concatenating filtered lists once moved a
-          // mid-group spawn row above earlier tool rows).
+          // Agent-spawn CTA rows are always visible: they never belong behind
+          // a "+N tool calls" toggle. Selection is by membership (exempt OR
+          // recent-tail), preserving the group's order in both states
+          // (concatenating filtered lists once moved a mid-group spawn row
+          // above earlier tool rows).
           const alwaysVisibleEntries = new Set(
-            visibleGroupedEntries.filter(
-              (entry) => entry.agentSpawn !== undefined || isZeropsMilestone(entry),
-            ),
+            visibleGroupedEntries.filter((entry) => entry.agentSpawn !== undefined),
           );
           const overflowCandidates = visibleGroupedEntries.filter(
             (entry) => !alwaysVisibleEntries.has(entry),
@@ -1127,6 +1046,16 @@ export function deriveMessagesTimelineRows(input: {
         id: timelineEntry.id,
         createdAt: timelineEntry.createdAt,
         turnPlan: timelineEntry.turnPlan,
+      });
+      continue;
+    }
+
+    if (timelineEntry.kind === "operation") {
+      nextRows.push({
+        kind: "operation",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        operation: timelineEntry.operation,
       });
       continue;
     }
@@ -1217,6 +1146,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // Plans rewrite in place: compare the snapshot's identity fields so an
       // unchanged plan keeps its row reference (virtualization stability).
       return a.createdAt === bp.createdAt && a.turnPlan.plan === bp.turnPlan.plan;
+    }
+
+    case "operation": {
+      const bo = b as typeof a;
+      return a.createdAt === bo.createdAt && a.operation === bo.operation;
     }
 
     case "work": {
