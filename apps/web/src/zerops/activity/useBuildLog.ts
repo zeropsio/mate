@@ -6,7 +6,7 @@
  * backfills over HTTP before appending live lines over a WebSocket while
  * `live` is on.
  */
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -58,40 +58,42 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
       : null;
   const key = active === null ? null : keyFor(active.projectId, active.query);
 
-  const holderRef = useRef<{ readonly key: string; readonly session: BuildLogSession } | null>(
-    null,
-  );
+  // The session's lifecycle lives entirely in this effect, keyed on `key` —
+  // creating it in the render body (as this used to) makes it a side effect
+  // of rendering, which React.StrictMode's dev-mode double-render then runs
+  // twice, and which its double-invoke of effects (setup → cleanup → setup)
+  // tears down with nothing in a cleanup-only effect to recreate. Routing
+  // creation through `setSession` means the *second* setup call — the one
+  // StrictMode's simulated remount actually leaves standing — is what
+  // `useSyncExternalStore` below ends up subscribed to.
+  const [session, setSession] = useState<BuildLogSession | null>(null);
 
-  if (active === null) {
-    if (holderRef.current !== null) {
-      holderRef.current.session.dispose();
-      holderRef.current = null;
+  useEffect(() => {
+    if (active === null) {
+      setSession(null);
+      return;
     }
-  } else if (holderRef.current === null || holderRef.current.key !== key) {
-    holderRef.current?.session.dispose();
     const { client, projectId, query } = active;
-    const session = new BuildLogSession({
+    const created = new BuildLogSession({
       resolveAccess: () => resolveLogAccess(projectId, client),
       query,
     });
-    holderRef.current = { key: key!, session };
-    session.start(input.live);
-  } else {
-    holderRef.current.session.setLive(input.live);
-  }
+    created.start(input.live);
+    setSession(created);
+    return () => {
+      created.dispose();
+    };
+    // `input.live` deliberately excluded — the effect below applies live
+    // changes to whichever session is current without recreating it.
+  }, [key, active?.client, active?.projectId]);
 
-  useEffect(
-    () => () => {
-      holderRef.current?.session.dispose();
-      holderRef.current = null;
-    },
-    [],
-  );
+  useEffect(() => {
+    session?.setLive(input.live);
+  }, [session, input.live]);
 
   return useSyncExternalStore(
-    (listener) =>
-      holderRef.current === null ? () => undefined : holderRef.current.session.subscribe(listener),
-    () => holderRef.current?.session.getSnapshot() ?? IDLE_SNAPSHOT,
+    (listener) => (session === null ? () => undefined : session.subscribe(listener)),
+    () => session?.getSnapshot() ?? IDLE_SNAPSHOT,
     () => IDLE_SNAPSHOT,
   );
 }
