@@ -1,0 +1,197 @@
+// @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
+import { describe, expect, it } from "vite-plus/test";
+
+import type {
+  Observation,
+  ObservationState,
+} from "@t3tools/client-runtime/zerops/activity/observe";
+import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+
+import { deriveObservedStepsRegion, observationTargetFor } from "./useOperationCard.ts";
+
+const NOW = Date.parse("2026-09-01T00:00:42.000Z");
+
+function operation(overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
+  return {
+    key: "call:e1",
+    kind: "deploy",
+    phase: "running",
+    anchorEntryId: "e1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    startedAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    subject: "weatherdash",
+    kicker: "DEPLOY · WEATHERDASH",
+    voice: "Deploying weatherdash…",
+    voiceSource: "mate",
+    statusWord: "Deploying",
+    steps: [],
+    links: [],
+    entryIds: ["e1"],
+    target: { hostname: "weatherdash" },
+    hasResult: false,
+    ...overrides,
+  };
+}
+
+function step(overrides: Partial<ObservedStep> = {}): ObservedStep {
+  return {
+    id: "RUN_BUILD_COMMANDS",
+    label: "Build",
+    state: "running",
+    stateLabel: "Running",
+    durationMs: 38_000,
+    ...overrides,
+  };
+}
+
+function observation(overrides: Partial<Observation> = {}): Observation {
+  return {
+    steps: [],
+    processes: [],
+    readAtMs: NOW,
+    ...overrides,
+  };
+}
+
+describe("observationTargetFor — building the ObservationTarget from an operation", () => {
+  it("deploy: kind, hostnames from target.hostname, startedAtMs, running", () => {
+    const target = observationTargetFor(
+      operation({ kind: "deploy", phase: "running", startedAt: "2026-09-01T00:00:00.000Z" }),
+    );
+    expect(target).toEqual({
+      key: "call:e1",
+      kind: "deploy",
+      hostnames: ["weatherdash"],
+      startedAtMs: Date.parse("2026-09-01T00:00:00.000Z"),
+      running: true,
+    });
+  });
+
+  it("import: hostnames split from subject on ', ' — an import can name several services", () => {
+    const target = observationTargetFor(
+      operation({ kind: "import", subject: "weatherdash, mariadb" }),
+    );
+    expect(target?.hostnames).toEqual(["weatherdash", "mariadb"]);
+  });
+
+  it("a settled operation carries running: false", () => {
+    const target = observationTargetFor(operation({ phase: "done" }));
+    expect(target?.running).toBe(false);
+  });
+
+  it("a non-observed kind (verify) has no target at all", () => {
+    expect(observationTargetFor(operation({ kind: "verify" }))).toBeNull();
+  });
+
+  it("bootstrap, mount, env and error are also not observed", () => {
+    for (const kind of ["bootstrap", "mount", "env", "error"] as const) {
+      expect(observationTargetFor(operation({ kind }))).toBeNull();
+    }
+  });
+});
+
+describe("deriveObservedStepsRegion — mapping ObservationState to the card's region", () => {
+  it("observing, non-empty steps: maps steps and writes a live provenance line", () => {
+    const state: ObservationState = {
+      kind: "observing",
+      observation: observation({ steps: [step()], readAtMs: NOW - 2_000 }),
+      elapsedMs: 42_000,
+    };
+    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+
+    expect(region).toEqual({
+      steps: [
+        {
+          id: "RUN_BUILD_COMMANDS",
+          label: "Build",
+          state: "running",
+          stateLabel: "Running",
+          durationMs: 38_000,
+        },
+      ],
+      provenance: "live from Zerops · 2 s ago",
+    });
+  });
+
+  it("observing, non-empty steps, with a build log query: carries buildLogQuery for the caller to attach a log", () => {
+    const state: ObservationState = {
+      kind: "observing",
+      observation: observation({
+        steps: [step()],
+        readAtMs: NOW,
+        buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+      }),
+      elapsedMs: 42_000,
+    };
+    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+
+    expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
+  });
+
+  it("observing before the first read (empty steps): undefined — the card shows its own steps and clock", () => {
+    const state: ObservationState = {
+      kind: "observing",
+      observation: observation({ steps: [] }),
+      elapsedMs: 2_000,
+    };
+    expect(deriveObservedStepsRegion("running", state, undefined, NOW)).toBeUndefined();
+  });
+
+  it("off: undefined, regardless of reason", () => {
+    const state: ObservationState = { kind: "off", reason: "not-found" };
+    expect(deriveObservedStepsRegion("running", state, undefined, NOW)).toBeUndefined();
+  });
+
+  it("stale: 'last read N s ago' instead of the live wording", () => {
+    const state: ObservationState = {
+      kind: "stale",
+      observation: observation({ steps: [step()], readAtMs: NOW - 12_000 }),
+      ageMs: 12_000,
+    };
+    const region = deriveObservedStepsRegion("running", state, undefined, NOW);
+    expect(region?.provenance).toBe("last read 12 s ago");
+  });
+
+  it("settled operation with history: the history's steps stay, no provenance line, no log", () => {
+    const state: ObservationState = { kind: "off", reason: "ceiling" };
+    const history = observation({
+      steps: [step({ state: "done", stateLabel: "Done", durationMs: 52_000 })],
+      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+    });
+    const region = deriveObservedStepsRegion("done", state, history, NOW);
+
+    expect(region).toEqual({
+      steps: [
+        {
+          id: "RUN_BUILD_COMMANDS",
+          label: "Build",
+          state: "done",
+          stateLabel: "Done",
+          durationMs: 52_000,
+        },
+      ],
+      provenance: "",
+    });
+    expect(region?.buildLogQuery).toBeUndefined();
+  });
+
+  it("settled operation, no history at all: undefined", () => {
+    const state: ObservationState = { kind: "off", reason: "ceiling" };
+    expect(deriveObservedStepsRegion("failed", state, undefined, NOW)).toBeUndefined();
+  });
+
+  it("a settled operation prefers its history over a live state that might still be computing", () => {
+    const state: ObservationState = {
+      kind: "observing",
+      observation: observation({ steps: [step({ id: "DEPLOY", label: "Deploy" })] }),
+      elapsedMs: 0,
+    };
+    const history = observation({ steps: [step({ id: "RUN_BUILD_COMMANDS", label: "Build" })] });
+    const region = deriveObservedStepsRegion("done", state, history, NOW);
+    expect(region?.steps).toEqual([
+      expect.objectContaining({ id: "RUN_BUILD_COMMANDS", label: "Build" }),
+    ]);
+  });
+});
