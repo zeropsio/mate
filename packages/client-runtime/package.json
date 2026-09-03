@@ -207,6 +207,18 @@
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"
     },
+    "./zerops/operations": {
+      "types": "./src/zerops/operations/index.ts",
+      "default": "./src/zerops/operations/index.ts"
+    },
+    "./zerops/operations/classify": {
+      "types": "./src/zerops/operations/classify.ts",
+      "default": "./src/zerops/operations/classify.ts"
+    },
+    "./zerops/operations/fixtures": {
+      "types": "./src/zerops/operations/__fixtures__/callEntries.ts",
+      "default": "./src/zerops/operations/__fixtures__/callEntries.ts"
+    },
     "./zerops/firstPrompt": {
       "types": "./src/zerops/firstPrompt.ts",
       "default": "./src/zerops/firstPrompt.ts"

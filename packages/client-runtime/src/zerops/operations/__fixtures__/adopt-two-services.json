@@ -1,0 +1,1317 @@
+{
+  "threadId": "thread-s3audit-3ebff02e-2e26-41ab-9334-1163ee7b5a03",
+  "name": "adopt-two-services",
+  "activities": [
+    {
+      "id": "b2b8d619-7919-4063-a2ea-880bb6655169",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "Tool call started",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01YRh22zUcou9hKUw6um1ygE",
+        "status": "inProgress",
+        "detail": "ToolSearch: {}",
+        "data": {
+          "toolName": "ToolSearch",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:56.555Z"
+    },
+    {
+      "id": "309ed513-dc17-424a-81dd-a9ad974fa27b",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01YRh22zUcou9hKUw6um1ygE",
+        "status": "inProgress",
+        "detail": "ToolSearch: {\"query\":\"select:mcp__zerops__zerops_workflow,mcp__zerops__zerops_discover\",\"max_results\":5}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:56.922Z"
+    },
+    {
+      "id": "6cd0d1a0-8633-4f20-a625-4f8368ac287b",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01YRh22zUcou9hKUw6um1ygE",
+        "status": "inProgress",
+        "detail": "ToolSearch: {\"query\":\"select:mcp__zerops__zerops_workflow,mcp__zerops__zerops_discover\",\"max_results\":5}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:57.015Z"
+    },
+    {
+      "id": "ddcf13ac-2fe9-45da-8b98-0ded714cb5f7",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01YRh22zUcou9hKUw6um1ygE",
+        "status": "completed",
+        "detail": "ToolSearch: {\"query\":\"select:mcp__zerops__zerops_workflow,mcp__zerops__zerops_discover\",\"max_results\":5}",
+        "data": {
+          "toolName": "ToolSearch",
+          "input": {
+            "query": "select:mcp__zerops__zerops_workflow,mcp__zerops__zerops_discover",
+            "max_results": 5
+          },
+          "result": {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01YRh22zUcou9hKUw6um1ygE",
+            "content": [
+              {
+                "type": "tool_reference",
+                "tool_name": "mcp__zerops__zerops_workflow"
+              },
+              {
+                "type": "tool_reference",
+                "tool_name": "mcp__zerops__zerops_discover"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:57.015Z"
+    },
+    {
+      "id": "0ece7791-17d8-4840-9baa-119b5ba1bcd3",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 33383,
+        "lastUsedTokens": 33383,
+        "inputTokens": 32564,
+        "outputTokens": 819,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:57.050Z"
+    },
+    {
+      "id": "86eff482-e802-4435-a2a2-f8f86bf95843",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01MhMCrZPtR3bkPPhpQ5yb7k",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:58.273Z"
+    },
+    {
+      "id": "3ecc8303-1b2d-45f8-8e5f-c597b4fb5b0a",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01MhMCrZPtR3bkPPhpQ5yb7k",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"status\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "status"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:58.445Z"
+    },
+    {
+      "id": "037c068e-38ce-4129-8f69-2e35ae140166",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 41161,
+        "lastUsedTokens": 41161,
+        "inputTokens": 41102,
+        "outputTokens": 59,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:58.470Z"
+    },
+    {
+      "id": "3e330687-6680-41a3-891e-d5733fafdf80",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01MhMCrZPtR3bkPPhpQ5yb7k",
+        "status": "completed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"status\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "status"
+          },
+          "result": {
+            "tool_use_id": "toolu_01MhMCrZPtR3bkPPhpQ5yb7k",
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "## Status\nPhase: idle\nServices: s3git1, s3git2\n  - s3git1 (ubuntu/nodejs@22) — not bootstrapped — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — not bootstrapped — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\nGuidance:\n  === bootstrap-route-options ===\n  ### Bootstrap is two-phase\n\n  First call returns `kind: \"route-menu\"` listing `routeOptions[]` — no\n  session is open yet. Second call opens the session and returns\n  `kind: \"session-active\"`. Read `kind` on every response.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"<one-sentence>\"\n     → kind=\"route-menu\", routeOptions=[...]\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"<picked>\" \\\n     recipeSlug=\"<slug>\"   # if route=\"recipe\"\n     sessionId=\"<id>\"      # if route=\"resume\"\n     → kind=\"session-active\"\n  ```\n\n  ### Coexistence with existing services\n\n  Existing services in the project (bootstrapped or not) are **independent**.\n  Bootstrap creates **new** services alongside them — it does not modify,\n  re-import, or replace existing ones. To add a service to a project that\n  already has some, pick a non-colliding hostname and bootstrap normally.\n  `zerops_import override=true` is destructive and reserved for explicit\n  user requests (config change on a known service), never the default\n  path when bootstrap surfaces a hostname collision.\n\n  ### Ranked options\n\n  | Route | Present when | Carries | Dispatch / rule |\n  |---|---|---|---|\n  | `resume` | Snapshot has `resumable: true` | `resumeSession`, `resumeServices` | Pick first unless intentionally overriding: `route=\"resume\" sessionId=\"<resumeSession>\"`. |\n  | `adopt` | Runtime services lack bootstrap records (`not bootstrapped`) | `adoptServices[]` | Attach ZCP tracking to running services — no infra change. Use when the user's intent matches the listed `adoptServices[]`. To add NEW services alongside (instead of adopting these), use `classic`. |\n  | `recipe` | Up to three recipe matches | `recipeSlug`, `confidence`, `collisions[]` | `route=\"recipe\" recipeSlug=\"<value from routeOptions[].recipeSlug>\"`. Copy the slug verbatim from the discover response — corpus slugs don't carry a `zerops-` prefix even when users name a recipe by its branded form (`\"zerops-laravel-minimal\"`). Collisions recover by runtime rename or same-type managed `resolution: EXISTS`; switch routes only for different-type managed collision or independent infra. |\n  | `classic` | Always available | none | `route=\"classic\"` for manual planning. Default path for creating new services in any project state — fresh project or alongside existing ones. |\n\n  ### Explicit overrides\n\n  Explicit `route` on the first call bypasses discovery. Use only after\n  prior discovery or direct user route choice. Valid values:\n  `adopt`, `recipe`, `classic`, `resume`. Empty route re-enters discovery.\n\n  ### Collision semantics\n\n  `collisions[]` annotates recipe options; enforcement happens at plan\n  submission. Pre-plan hostnames: rename runtimes or set managed deps to\n  `EXISTS` before submitting.\n  === idle-adopt-entry ===\n  Per-service `adoptionState` in `zerops_discover` output classifies each\n  service into one of five states: `adopted` (ZCP-tracked, ready for\n  develop/deploy), `adoptable` (live runtime without ServiceMeta — call\n  bootstrap route=adopt), `resumable` (mid-bootstrap, owned by prior\n  session — call bootstrap route=resume with the session ID surfaced in\n  the warning), `managed-dep` (db/cache/storage, no adoption concept),\n  `zcp-self` (control-plane container, never adopted). The discover\n  response also surfaces directive warnings naming exact recovery calls\n  per state — read them before deriving anything from per-service flags.\n\n  **FIRST CALL when discover surfaces adoptable services:** open the\n  bootstrap-adopt session immediately, with the SAME intent string you'd\n  pass to develop/deploy later. Do NOT probe with `workflow=\"develop\"`\n  expecting an ADOPT_REQUIRED redirect — the redirect works but costs a\n  wasted round-trip + clutters the session log with a rejected start.\n\n  Concrete shape (commits the route on the first call — skip the menu\n  when adopt intent is already clear from discover output):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\" intent=\"<one-line user task summary>\"\n  ```\n\n  Replace `<one-line user task summary>` with the actual task intent\n  (e.g. `intent=\"redesign appdev homepage as tech blog\"`) — NOT a\n  placeholder, NOT a generic \"adopt existing\". The intent threads\n  through to the develop session that follows, so phrasing it as the\n  real task scope avoids a re-typed intent on the next call.\n\n  Service-scoped tools (`workflow=\"develop\"`, `zerops_deploy`,\n  `zerops_verify`) reject with `ADOPT_REQUIRED` until adoption completes.\n  That gate is structural backstop, not the primary path — read the\n  warning, fire adopt directly.\n\n  Services in project, `not bootstrapped`. Two primary paths, both\n  legitimate; existing services stay independent either way:\n\n  1. **Adopt the listed services** — attach ZCP tracking to running\n     services without changing their code, config, or scale.\n  2. **Create new services alongside** — pick non-colliding hostnames\n     and bootstrap normally; existing services keep running untouched.\n\n  Re-importing or rewriting the existing services is **not** one of\n  these paths — `zerops_import override=true` is destructive and only\n  runs on explicit user request for a known service.\n\n  **Branch on intent.** Clear adopt intent (\"adopt\", \"převzít\", named\n  existing hostnames) → run adopt, no menu. Clear add-new intent\n  (\"add another\", \"new service\") → use `classic`, no menu. Unclear →\n  offer routes, not workflows.\n\n  - ✅ \"Adopt existing appdev/appstage, or create new alongside?\"\n  - ❌ \"Develop on appdev, finish staging, or something else?\" — those\n    workflows aren't reachable yet; framing presents the unreachable as\n    available.\n\n  Start (route-menu, no session yet):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"adopt existing\"\n  ```\n\n  Commit (opens session):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\" intent=\"adopt existing\"\n  ```\n\n  Type field in the plan carries the full identifier from\n  `zerops_discover` verbatim — `alpine/nodejs@22`, `postgresql:single@18`.\n  Legacy `os:` + `mode:` sibling fields still accepted for BC but the\n  composite `type` is canonical; don't split. Pair-OS mismatch\n  (ubuntu/alpine) accepted silently — dev half's type is what the\n  plan carries.\n\n  Close: each adopted hostname stamps `bootstrapped: true`, mode preserved.\n  Close-mode + git-push stay empty (develop configures on first use).\n\n  After adopt completes the runtime becomes a valid `launch-production`\n  source — the adopted ServiceMeta carries the pair identity + setup\n  cascade state, so `zerops_workflow workflow=\"launch-production\"\n  targetService=<adopted-hostname>` lands on the canonical dev-half\n  without an extra normalization round-trip.\n  === discover-activity-inflight ===\n  A service can be mid-build or mid-deploy while its status still reads a resting\n  value like `READY_TO_DEPLOY` or `NEW`. `zerops_discover` carries a per-service\n  `activity` LIST of every live operation on it — a service can run several at once\n  (a buildFromGit import enqueues a build AND a subdomain-enable together). A\n  runtime doing its first deploy reads `activity:[{action:\"build\",\n  status:\"BUILDING\", processId:...}]` (then `\"deploy\"/\"DEPLOYING\"`), and only flips\n  to `ACTIVE` once the deploy activates.\n\n  A service carrying any `activity` is NOT idle — adopting or deploying onto it now\n  is premature. Block until it is done with `zerops_process action=\"wait\"\n  service=<hostname>`: it waits the service's in-flight processes (the build, the\n  deploy, and any queued op like the subdomain-enable sitting PENDING behind the\n  build) to finish. Then re-run `zerops_discover`. Each op carries its `processId`;\n  a genuinely stuck one can be canceled with `zerops_process processId=<id>\n  action=\"cancel\"`.\nNext:\n  ▸ Primary: Adopt unmanaged runtimes — zerops_workflow action=\"start\" route=\"adopt\" workflow=\"bootstrap\"\n\n```json zcp-envelope\n{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"adopt\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:02:58.455077895Z\"}\n```\n"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:58.504Z"
+    },
+    {
+      "id": "a9c93ebe-5595-49b8-8c51-cfe888959561",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01MhMCrZPtR3bkPPhpQ5yb7k",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"status\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "status"
+          },
+          "result": {
+            "content": "## Status"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "## Status\nPhase: idle\nServices: s3git1, s3git2\n  - s3git1 (ubuntu/nodejs@22) — not bootstrapped — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — not bootstrapped — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\nGuidance:\n  === bootstrap-route-options ===\n  ### Bootstrap is two-phase\n\n  First call returns `kind: \"route-menu\"` listing `routeOptions[]` — no\n  session is open yet. Second call opens the session and returns\n  `kind: \"session-active\"`. Read `kind` on every response.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"<one-sentence>\"\n     → kind=\"route-menu\", routeOptions=[...]\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"<picked>\" \\\n     recipeSlug=\"<slug>\"   # if route=\"recipe\"\n     sessionId=\"<id>\"      # if route=\"resume\"\n     → kind=\"session-active\"\n  ```\n\n  ### Coexistence with existing services\n\n  Existing services in the project (bootstrapped or not) are **independent**.\n  Bootstrap creates **new** services alongside them — it does not modify,\n  re-import, or replace existing ones. To add a service to a project that\n  already has some, pick a non-colliding hostname and bootstrap normally.\n  `zerops_import override=true` is destructive and reserved for explicit\n  user requests (config change on a known service), never the default\n  path when bootstrap surfaces a hostname collision.\n\n  ### Ranked options\n\n  | Route | Present when | Carries | Dispatch / rule |\n  |---|---|---|---|\n  | `resume` | Snapshot has `resumable: true` | `resumeSession`, `resumeServices` | Pick first unless intentionally overriding: `route=\"resume\" sessionId=\"<resumeSession>\"`. |\n  | `adopt` | Runtime services lack bootstrap records (`not bootstrapped`) | `adoptServices[]` | Attach ZCP tracking to running services — no infra change. Use when the user's intent matches the listed `adoptServices[]`. To add NEW services alongside (instead of adopting these), use `classic`. |\n  | `recipe` | Up to three recipe matches | `recipeSlug`, `confidence`, `collisions[]` | `route=\"recipe\" recipeSlug=\"<value from routeOptions[].recipeSlug>\"`. Copy the slug verbatim from the discover response — corpus slugs don't carry a `zerops-` prefix even when users name a recipe by its branded form (`\"zerops-laravel-minimal\"`). Collisions recover by runtime rename or same-type managed `resolution: EXISTS`; switch routes only for different-type managed collision or independent infra. |\n  | `classic` | Always available | none | `route=\"classic\"` for manual planning. Default path for creating new services in any project state — fresh project or alongside existing ones. |\n\n  ### Explicit overrides\n\n  Explicit `route` on the first call bypasses discovery. Use only after\n  prior discovery or direct user route choice. Valid values:\n  `adopt`, `recipe`, `classic`, `resume`. Empty route re-enters discovery.\n\n  ### Collision semantics\n\n  `collisions[]` annotates recipe options; enforcement happens at plan\n  submission. Pre-plan hostnames: rename runtimes or set managed deps to\n  `EXISTS` before submitting.\n  === idle-adopt-entry ===\n  Per-service `adoptionState` in `zerops_discover` output classifies each\n  service into one of five states: `adopted` (ZCP-tracked, ready for\n  develop/deploy), `adoptable` (live runtime without ServiceMeta — call\n  bootstrap route=adopt), `resumable` (mid-bootstrap, owned by prior\n  session — call bootstrap route=resume with the session ID surfaced in\n  the warning), `managed-dep` (db/cache/storage, no adoption concept),\n  `zcp-self` (control-plane container, never adopted). The discover\n  response also surfaces directive warnings naming exact recovery calls\n  per state — read them before deriving anything from per-service flags.\n\n  **FIRST CALL when discover surfaces adoptable services:** open the\n  bootstrap-adopt session immediately, with the SAME intent string you'd\n  pass to develop/deploy later. Do NOT probe with `workflow=\"develop\"`\n  expecting an ADOPT_REQUIRED redirect — the redirect works but costs a\n  wasted round-trip + clutters the session log with a rejected start.\n\n  Concrete shape (commits the route on the first call — skip the menu\n  when adopt intent is already clear from discover output):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\" intent=\"<one-line user task summary>\"\n  ```\n\n  Replace `<one-line user task summary>` with the actual task intent\n  (e.g. `intent=\"redesign appdev homepage as tech blog\"`) — NOT a\n  placeholder, NOT a generic \"adopt existing\". The intent threads\n  through to the develop session that follows, so phrasing it as the\n  real task scope avoids a re-typed intent on the next call.\n\n  Service-scoped tools (`workflow=\"develop\"`, `zerops_deploy`,\n  `zerops_verify`) reject with `ADOPT_REQUIRED` until adoption completes.\n  That gate is structural backstop, not the primary path — read the\n  warning, fire adopt directly.\n\n  Services in project, `not bootstrapped`. Two primary paths, both\n  legitimate; existing services stay independent either way:\n\n  1. **Adopt the listed services** — attach ZCP tracking to running\n     services without changing their code, config, or scale.\n  2. **Create new services alongside** — pick non-colliding hostnames\n     and bootstrap normally; existing services keep running untouched.\n\n  Re-importing or rewriting the existing services is **not** one of\n  these paths — `zerops_import override=true` is destructive and only\n  runs on explicit user request for a known service.\n\n  **Branch on intent.** Clear adopt intent (\"adopt\", \"převzít\", named\n  existing hostnames) → run adopt, no menu. Clear add-new intent\n  (\"add another\", \"new service\") → use `classic`, no menu. Unclear →\n  offer routes, not workflows.\n\n  - ✅ \"Adopt existing appdev/appstage, or create new alongside?\"\n  - ❌ \"Develop on appdev, finish staging, or something else?\" — those\n    workflows aren't reachable yet; framing presents the unreachable as\n    available.\n\n  Start (route-menu, no session yet):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" intent=\"adopt existing\"\n  ```\n\n  Commit (opens session):\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\" route=\"adopt\" intent=\"adopt existing\"\n  ```\n\n  Type field in the plan carries the full identifier from\n  `zerops_discover` verbatim — `alpine/nodejs@22`, `postgresql:single@18`.\n  Legacy `os:` + `mode:` sibling fields still accepted for BC but the\n  composite `type` is canonical; don't split. Pair-OS mismatch\n  (ubuntu/alpine) accepted silently — dev half's type is what the\n  plan carries.\n\n  Close: each adopted hostname stamps `bootstrapped: true`, mode preserved.\n  Close-mode + git-push stay empty (develop configures on first use).\n\n  After adopt completes the runtime becomes a valid `launch-production`\n  source — the adopted ServiceMeta carries the pair identity + setup\n  cascade state, so `zerops_workflow workflow=\"launch-production\"\n  targetService=<adopted-hostname>` lands on the canonical dev-half\n  without an extra normalization round-trip.\n  === discover-activity-inflight ===\n  A service can be mid-build or mid-deploy while its status still reads a resting\n  value like `READY_TO_DEPLOY` or `NEW`. `zerops_discover` carries a per-service\n  `activity` LIST of every live operation on it — a service can run several at once\n  (a buildFromGit import enqueues a build AND a subdomain-enable together). A\n  runtime doing its first deploy reads `activity:[{action:\"build\",\n  status:\"BUILDING\", processId:...}]` (then `\"deploy\"/\"DEPLOYING\"`), and only flips\n  to `ACTIVE` once the deploy activates.\n\n  A service carrying any `activity` is NOT idle — adopting or deploying onto it now\n  is premature. Block until it is done with `zerops_process action=\"wait\"\n  service=<hostname>`: it waits the service's in-flight processes (the build, the\n  deploy, and any queued op like the subdomain-enable sitting PENDING behind the\n  build) to finish. Then re-run `zerops_discover`. Each op carries its `processId`;\n  a genuinely stuck one can be canceled with `zerops_process processId=<id>\n  action=\"cancel\"`.\nNext:\n  ▸ Primary: Adopt unmanaged runtimes — zerops_workflow action=\"start\" route=\"adopt\" workflow=\"bootstrap\"\n\n```json zcp-envelope\n{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"adopt\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:02:58.455077895Z\"}\n```\n"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:02:58.504Z"
+    },
+    {
+      "id": "91429f34-76ba-436c-ab91-d7dadb45c708",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_011uFnFkHF7feVucoDNoakHX",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:00.182Z"
+    },
+    {
+      "id": "8ae72c51-7015-4e53-b55b-fdf6cfbcd40a",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_011uFnFkHF7feVucoDNoakHX",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"bootstrap\",\"route\":\"adopt\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "bootstrap",
+            "route": "adopt",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:00.852Z"
+    },
+    {
+      "id": "68fc757f-68f2-44a9-b124-6f07dda59275",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 44912,
+        "lastUsedTokens": 44912,
+        "inputTokens": 44737,
+        "outputTokens": 175,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:00.877Z"
+    },
+    {
+      "id": "8d5b6df7-0be4-4522-8f17-51599a535b3f",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_011uFnFkHF7feVucoDNoakHX",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"bootstrap\",\"route\":\"adopt\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "bootstrap",
+            "route": "adopt",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2"
+          },
+          "result": {
+            "content": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-liv…"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":0,\"steps\":[{\"name\":\"discover\",\"status\":\"in_progress\"},{\"name\":\"provision\",\"status\":\"pending\"},{\"name\":\"close\",\"status\":\"pending\"}]},\"current\":{\"name\":\"discover\",\"index\":0,\"tools\":[\"zerops_discover\",\"zerops_knowledge\",\"zerops_workflow\"],\"verification\":\"SUCCESS WHEN: plan submitted via zerops_workflow action=complete step=discover with valid targets (hostnames, types, resolution, modes validated against live catalog).\",\"detailedGuide\":\"=== bootstrap-intro ===\\nBootstrap is **infrastructure-only**: create services, mount filesystems, discover env var keys, write the evidence file. No application code, no `zerops.yaml`, no first deploy — those belong to the develop workflow.\\n\\nThree routes:\\n\\n- **Recipe** — services come from a matched recipe's import YAML.\\n- **Classic** — agent constructs the import YAML from the user's intent.\\n- **Adopt** — attach `ServiceMeta` to existing non-managed services; no infra change.\\n\\nRoute is chosen at bootstrap start and persists for the session. The 3 steps are `discover → provision → close` in fixed order; follow the step list from `zerops_workflow action=\\\"status\\\"`. (This overview fires only at the discover step — once route + plan are committed and you advance to `provision` / `close`, the step-specific atoms own the rendered guidance.)\\n\\n---\\n\\n=== bootstrap-adopt-discover ===\\n### Adopting existing services\\n\\nAdoption attaches ZCP tracking to an existing runtime service without touching its code, configuration, or scale. After adopt close, the envelope reports each adopted hostname with `bootstrapped: true` and an empty close-mode / git-push capability — populated later when the develop session needs them.\\n\\nIf you reached this atom by way of the `ADOPT_REQUIRED` rejection on a service-scoped tool, the right reflex was to fire adopt directly from the discover warning. The bootstrap-adopt session opens with a single committed call:\\n\\n```\\nzerops_workflow action=\\\"start\\\" workflow=\\\"bootstrap\\\" route=\\\"adopt\\\" intent=\\\"\\u003cone-line user task summary\\u003e\\\"\\n```\\n\\nUse the SAME `intent` string you'd pass to `workflow=\\\"develop\\\"` afterwards — the intent threads through so you don't re-type it on the next workflow call. Placeholder strings (`\\\"\\u003ctask\\u003e\\\"`, `\\\"adopt existing\\\"`) lose user context and break the develop-session continuity heuristic; phrase it as the actual scope the user requested.\\n\\nList what's there:\\n\\n```\\nzerops_discover\\n```\\n\\nThen complete the discover step naming the services you want to adopt in `scope` (the\\n`adoptionState=\\\"adoptable\\\"` hostnames from discover that THIS task needs):\\n\\n```\\nzerops_workflow action=\\\"complete\\\" step=\\\"discover\\\" scope=[\\\"appdev\\\",\\\"appstage\\\"]\\n```\\n\\n**Branch on what discover shows.** If discover flags exactly two adoptable runtimes that share a stack type (the dev/stage shape), skip `scope` and submit an explicit `plan=[...]` — a bare scope can't tell a standard dev/stage pair from two independent dev containers, so it rejects. (If you do call with `scope` here, the reject hands back two ready-to-paste templates — standard pair vs independent devs — to pick from; submitting the plan directly skips that round-trip.) Adopt-route plan shape — every runtime entry needs `isExisting: true` (adoption tracks a live service, it does not create one), and managed deps use `resolution: \\\"EXISTS\\\"`:\\n\\n```\\nplan=[{\\\"runtime\\\": {\\\"devHostname\\\": \\\"appdev\\\", \\\"stageHostname\\\": \\\"appstage\\\", \\\"type\\\": \\\"ubuntu/nodejs@22\\\", \\\"bootstrapMode\\\": \\\"standard\\\", \\\"isExisting\\\": true},\\n       \\\"dependencies\\\": [{\\\"hostname\\\": \\\"db\\\", \\\"type\\\": \\\"postgresql:single@18\\\", \\\"resolution\\\": \\\"EXISTS\\\"}]}]\\n```\\n\\nFor two independent devs, emit two entries each with its own `runtime` and no `stageHostname`. In every other case (one runtime, or runtimes of different stacks), `scope` is enough: you do not hand-write the plan — `scope` is just the hostname list and the plan is derived for you.\\n\\nEach named service becomes a tracked runtime target; `adoptionState=\\\"managed-dep\\\"` services attach as shared dependencies. Naming the services keeps adoption scoped to YOUR task: in a project with other live work (or another agent session), an empty scope is ambiguous, so it returns the adoptable candidate list for you to pick from rather than silently adopting everything. The control-plane (`zcp-self` / `zcp@*`), already-`adopted`, and `resumable` (mid-bootstrap, owned by a prior session → use `resume`) services are never adopt targets. Hostnames stay verbatim — never rename an adopted service.\"},\"message\":\"Step 1/3: discover\",\"availableStacks\":\"## Available Service Stacks (live, active concrete versions)\\nIdentifiers: runtime = `\\u003cos\\u003e/\\u003ctech\\u003e@\\u003cver\\u003e` (e.g. ubuntu/nodejs@22, alpine/nodejs@22) — every runtime below exists as alpine/ and ubuntu/ except ubuntu-only: deno; alpine-only: docker. Managed = `\\u003ctech\\u003e:single@\\u003cver\\u003e` or `\\u003ctech\\u003e:ha@\\u003cver\\u003e`. A bare `\\u003ctech\\u003e@\\u003cver\\u003e` is legacy (import resolves it to ubuntu, zerops.yaml to alpine) — always write the prefix.\\nPick a concrete version (newest marked `(latest)`). Family aliases (`go@1`) and rolling tags (`latest`/`canary`) are omitted — they resolve at import and won't match. Want another active version? Pass it; if it's not available ZCP lists the alternatives.\\nRuntime: bun@1.3.9 (latest) · 1.2.2 · 1.1.34 | docker@26.1.5 | dotnet@10 (latest) · 9 · 8 | elixir@1.16.3 (latest) · 1.16.2 | gleam@1.5.1 | go@1.22 | golang@latest | java@21 (latest) · 17 | nginx@1.22 | nodejs@24 (latest) · 22 · 20 | php-apache@8.5 (latest) · 8.4 · 8.3 · 8.1 | php-nginx@8.5 (latest) · 8.4 · 8.3 | python@3.14 (latest) · 3.12 · 3.11 | ruby@4.0 (latest) · 3.4 · 3.3 | rust@stable · latest · nightly | static@1.0 | zero@0.1 | alpine@3.24 (latest) · 3.23 · 3.22 · 3.21 | local-storage@1 | deno@2.0.0 | ubuntu@26.04 (latest) · 24.04 · 22.04 | zcp@1\\nManaged: clickhouse@25.3 | elasticsearch@9.2 (latest) · 8.16 | kafka@3.9 | mariadb@10.6 | meilisearch@1.44 (latest) · 1.20 · 1.10 | nats@2.12 (latest) · 2.10 | postgresql@18 (latest) · 17 · 16 · 14 | qdrant@1.12 (latest) · 1.10 | typesense@30.2 (latest) · 27.1 | valkey@7.2\\nShared storage: shared-storage\\nObject storage: object-storage\\n\",\"envelope\":{\"phase\":\"bootstrap-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:03:00.933359416Z\"}}"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:00.955Z"
+    },
+    {
+      "id": "cd10b23c-558a-4c23-9370-a66a8536705c",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_011uFnFkHF7feVucoDNoakHX",
+        "status": "completed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"bootstrap\",\"route\":\"adopt\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "bootstrap",
+            "route": "adopt",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2"
+          },
+          "result": {
+            "tool_use_id": "toolu_011uFnFkHF7feVucoDNoakHX",
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":0,\"steps\":[{\"name\":\"discover\",\"status\":\"in_progress\"},{\"name\":\"provision\",\"status\":\"pending\"},{\"name\":\"close\",\"status\":\"pending\"}]},\"current\":{\"name\":\"discover\",\"index\":0,\"tools\":[\"zerops_discover\",\"zerops_knowledge\",\"zerops_workflow\"],\"verification\":\"SUCCESS WHEN: plan submitted via zerops_workflow action=complete step=discover with valid targets (hostnames, types, resolution, modes validated against live catalog).\",\"detailedGuide\":\"=== bootstrap-intro ===\\nBootstrap is **infrastructure-only**: create services, mount filesystems, discover env var keys, write the evidence file. No application code, no `zerops.yaml`, no first deploy — those belong to the develop workflow.\\n\\nThree routes:\\n\\n- **Recipe** — services come from a matched recipe's import YAML.\\n- **Classic** — agent constructs the import YAML from the user's intent.\\n- **Adopt** — attach `ServiceMeta` to existing non-managed services; no infra change.\\n\\nRoute is chosen at bootstrap start and persists for the session. The 3 steps are `discover → provision → close` in fixed order; follow the step list from `zerops_workflow action=\\\"status\\\"`. (This overview fires only at the discover step — once route + plan are committed and you advance to `provision` / `close`, the step-specific atoms own the rendered guidance.)\\n\\n---\\n\\n=== bootstrap-adopt-discover ===\\n### Adopting existing services\\n\\nAdoption attaches ZCP tracking to an existing runtime service without touching its code, configuration, or scale. After adopt close, the envelope reports each adopted hostname with `bootstrapped: true` and an empty close-mode / git-push capability — populated later when the develop session needs them.\\n\\nIf you reached this atom by way of the `ADOPT_REQUIRED` rejection on a service-scoped tool, the right reflex was to fire adopt directly from the discover warning. The bootstrap-adopt session opens with a single committed call:\\n\\n```\\nzerops_workflow action=\\\"start\\\" workflow=\\\"bootstrap\\\" route=\\\"adopt\\\" intent=\\\"\\u003cone-line user task summary\\u003e\\\"\\n```\\n\\nUse the SAME `intent` string you'd pass to `workflow=\\\"develop\\\"` afterwards — the intent threads through so you don't re-type it on the next workflow call. Placeholder strings (`\\\"\\u003ctask\\u003e\\\"`, `\\\"adopt existing\\\"`) lose user context and break the develop-session continuity heuristic; phrase it as the actual scope the user requested.\\n\\nList what's there:\\n\\n```\\nzerops_discover\\n```\\n\\nThen complete the discover step naming the services you want to adopt in `scope` (the\\n`adoptionState=\\\"adoptable\\\"` hostnames from discover that THIS task needs):\\n\\n```\\nzerops_workflow action=\\\"complete\\\" step=\\\"discover\\\" scope=[\\\"appdev\\\",\\\"appstage\\\"]\\n```\\n\\n**Branch on what discover shows.** If discover flags exactly two adoptable runtimes that share a stack type (the dev/stage shape), skip `scope` and submit an explicit `plan=[...]` — a bare scope can't tell a standard dev/stage pair from two independent dev containers, so it rejects. (If you do call with `scope` here, the reject hands back two ready-to-paste templates — standard pair vs independent devs — to pick from; submitting the plan directly skips that round-trip.) Adopt-route plan shape — every runtime entry needs `isExisting: true` (adoption tracks a live service, it does not create one), and managed deps use `resolution: \\\"EXISTS\\\"`:\\n\\n```\\nplan=[{\\\"runtime\\\": {\\\"devHostname\\\": \\\"appdev\\\", \\\"stageHostname\\\": \\\"appstage\\\", \\\"type\\\": \\\"ubuntu/nodejs@22\\\", \\\"bootstrapMode\\\": \\\"standard\\\", \\\"isExisting\\\": true},\\n       \\\"dependencies\\\": [{\\\"hostname\\\": \\\"db\\\", \\\"type\\\": \\\"postgresql:single@18\\\", \\\"resolution\\\": \\\"EXISTS\\\"}]}]\\n```\\n\\nFor two independent devs, emit two entries each with its own `runtime` and no `stageHostname`. In every other case (one runtime, or runtimes of different stacks), `scope` is enough: you do not hand-write the plan — `scope` is just the hostname list and the plan is derived for you.\\n\\nEach named service becomes a tracked runtime target; `adoptionState=\\\"managed-dep\\\"` services attach as shared dependencies. Naming the services keeps adoption scoped to YOUR task: in a project with other live work (or another agent session), an empty scope is ambiguous, so it returns the adoptable candidate list for you to pick from rather than silently adopting everything. The control-plane (`zcp-self` / `zcp@*`), already-`adopted`, and `resumable` (mid-bootstrap, owned by a prior session → use `resume`) services are never adopt targets. Hostnames stay verbatim — never rename an adopted service.\"},\"message\":\"Step 1/3: discover\",\"availableStacks\":\"## Available Service Stacks (live, active concrete versions)\\nIdentifiers: runtime = `\\u003cos\\u003e/\\u003ctech\\u003e@\\u003cver\\u003e` (e.g. ubuntu/nodejs@22, alpine/nodejs@22) — every runtime below exists as alpine/ and ubuntu/ except ubuntu-only: deno; alpine-only: docker. Managed = `\\u003ctech\\u003e:single@\\u003cver\\u003e` or `\\u003ctech\\u003e:ha@\\u003cver\\u003e`. A bare `\\u003ctech\\u003e@\\u003cver\\u003e` is legacy (import resolves it to ubuntu, zerops.yaml to alpine) — always write the prefix.\\nPick a concrete version (newest marked `(latest)`). Family aliases (`go@1`) and rolling tags (`latest`/`canary`) are omitted — they resolve at import and won't match. Want another active version? Pass it; if it's not available ZCP lists the alternatives.\\nRuntime: bun@1.3.9 (latest) · 1.2.2 · 1.1.34 | docker@26.1.5 | dotnet@10 (latest) · 9 · 8 | elixir@1.16.3 (latest) · 1.16.2 | gleam@1.5.1 | go@1.22 | golang@latest | java@21 (latest) · 17 | nginx@1.22 | nodejs@24 (latest) · 22 · 20 | php-apache@8.5 (latest) · 8.4 · 8.3 · 8.1 | php-nginx@8.5 (latest) · 8.4 · 8.3 | python@3.14 (latest) · 3.12 · 3.11 | ruby@4.0 (latest) · 3.4 · 3.3 | rust@stable · latest · nightly | static@1.0 | zero@0.1 | alpine@3.24 (latest) · 3.23 · 3.22 · 3.21 | local-storage@1 | deno@2.0.0 | ubuntu@26.04 (latest) · 24.04 · 22.04 | zcp@1\\nManaged: clickhouse@25.3 | elasticsearch@9.2 (latest) · 8.16 | kafka@3.9 | mariadb@10.6 | meilisearch@1.44 (latest) · 1.20 · 1.10 | nats@2.12 (latest) · 2.10 | postgresql@18 (latest) · 17 · 16 · 14 | qdrant@1.12 (latest) · 1.10 | typesense@30.2 (latest) · 27.1 | valkey@7.2\\nShared storage: shared-storage\\nObject storage: object-storage\\n\",\"envelope\":{\"phase\":\"bootstrap-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:03:00.933359416Z\"}}"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:00.955Z"
+    },
+    {
+      "id": "59bf7585-58f5-4882-bd60-3fa53c2d1da2",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01UvLS3tWKYoszJ9orYskLAk",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:02.929Z"
+    },
+    {
+      "id": "b72273ce-3c59-460f-8f94-01c653aea022",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01UvLS3tWKYoszJ9orYskLAk",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:03.222Z"
+    },
+    {
+      "id": "e0e08d16-ae67-41c7-9ca3-43752e80a1e3",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 48111,
+        "lastUsedTokens": 48111,
+        "inputTokens": 47945,
+        "outputTokens": 166,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:03.245Z"
+    },
+    {
+      "id": "195ed6d2-0017-45c3-ac41-57e59d337782",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01UvLS3tWKYoszJ9orYskLAk",
+        "status": "failed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "result": {
+            "type": "tool_result",
+            "content": "{\"code\":\"INVALID_PARAMETER\",\"error\":\"Adopt plan failed: adopt: ambiguous dev/stage pairing: \\\"s3git1\\\" (ubuntu/nodejs@22) and \\\"s3git2\\\" (ubuntu/nodejs@22) share runtime base nodejs@22 — likely a dev/stage pair, which ZCP will not guess. Resubmit action=complete step=discover with ONE of these as an explicit plan:\\n\\n• dev/stage pair (cross-deploy promote — pick this if \\\"s3git1\\\" deploys to \\\"s3git2\\\"):\\nplan=[{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git1\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"standard\\\",\\\"stageHostname\\\":\\\"s3git2\\\"}}]\\n\\n• two independent dev containers:\\nplan=[{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git1\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"dev\\\"}},{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git2\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"dev\\\"}}]\",\"suggestion\":\"Omit plan and pass scope=[\\\"hostname\\\",...] to adopt exactly those services, or submit an explicit plan.\",\"subcode\":\"AMBIGUOUS_SCOPE\",\"recovery\":{\"tool\":\"zerops_workflow\",\"action\":\"status\"}}",
+            "is_error": true,
+            "tool_use_id": "toolu_01UvLS3tWKYoszJ9orYskLAk"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:03.302Z"
+    },
+    {
+      "id": "cbba33d6-f0c5-4fc5-bd72-220cb8f8ee26",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01UvLS3tWKYoszJ9orYskLAk",
+        "status": "failed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "result": {
+            "content": "{\"code\":\"INVALID_PARAMETER\",\"error\":\"Adopt plan failed: adopt: ambiguous dev/stage…"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "{\"code\":\"INVALID_PARAMETER\",\"error\":\"Adopt plan failed: adopt: ambiguous dev/stage pairing: \\\"s3git1\\\" (ubuntu/nodejs@22) and \\\"s3git2\\\" (ubuntu/nodejs@22) share runtime base nodejs@22 — likely a dev/stage pair, which ZCP will not guess. Resubmit action=complete step=discover with ONE of these as an explicit plan:\\n\\n• dev/stage pair (cross-deploy promote — pick this if \\\"s3git1\\\" deploys to \\\"s3git2\\\"):\\nplan=[{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git1\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"standard\\\",\\\"stageHostname\\\":\\\"s3git2\\\"}}]\\n\\n• two independent dev containers:\\nplan=[{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git1\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"dev\\\"}},{\\\"runtime\\\":{\\\"devHostname\\\":\\\"s3git2\\\",\\\"type\\\":\\\"ubuntu/nodejs@22\\\",\\\"isExisting\\\":true,\\\"bootstrapMode\\\":\\\"dev\\\"}}]\",\"suggestion\":\"Omit plan and pass scope=[\\\"hostname\\\",...] to adopt exactly those services, or submit an explicit plan.\",\"subcode\":\"AMBIGUOUS_SCOPE\",\"recovery\":{\"tool\":\"zerops_workflow\",\"action\":\"status\"}}"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:03.302Z"
+    },
+    {
+      "id": "35ce029f-f8c2-4b72-b83d-207203cdce11",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01XeimDB14sAUa3TaMK4W1UE",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:04.834Z"
+    },
+    {
+      "id": "2c0da654-774b-4c4e-b9a5-c3c045b80390",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01XeimDB14sAUa3TaMK4W1UE",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"plan\":[{\"runtime\":{\"devHostname\":\"s3git1\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"...",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "plan": [
+              {
+                "runtime": {
+                  "devHostname": "s3git1",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              },
+              {
+                "runtime": {
+                  "devHostname": "s3git2",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              }
+            ]
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:05.806Z"
+    },
+    {
+      "id": "ed966ddb-07ce-4538-b98c-d36e09fcb95a",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 48977,
+        "lastUsedTokens": 48977,
+        "inputTokens": 48727,
+        "outputTokens": 250,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:05.997Z"
+    },
+    {
+      "id": "59cea35b-bd40-47ad-addc-54b9ebd323bd",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01XeimDB14sAUa3TaMK4W1UE",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"plan\":[{\"runtime\":{\"devHostname\":\"s3git1\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"...",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "plan": [
+              {
+                "runtime": {
+                  "devHostname": "s3git1",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              },
+              {
+                "runtime": {
+                  "devHostname": "s3git2",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              }
+            ]
+          },
+          "result": {
+            "content": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-liv…"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":1,\"steps\":[{\"name\":\"discover\",\"status\":\"complete\"},{\"name\":\"provision\",\"status\":\"in_progress\"},{\"name\":\"close\",\"status\":\"pending\"}]},\"current\":{\"name\":\"provision\",\"index\":1,\"tools\":[\"zerops_import\",\"zerops_process\",\"zerops_discover\"],\"verification\":\"SUCCESS WHEN: all plan services exist in API with ACTIVE/RUNNING status AND service types match plan AND managed dependency env vars recorded in session state. Runtime services are auto-mounted on completion.\",\"detailedGuide\":\"=== bootstrap-env-var-discovery ===\\n### Discover env vars during provision\\n\\nOnce newly-provisioned (classic) or newly-attached (adopt) services have reached RUNNING / ACTIVE, run discovery so the session records env-var KEYS for every managed service. This is authoritative — do not guess alternative spellings; unknown cross-service references become literal strings at runtime and fail silently.\\n\\n```\\nzerops_discover includeEnvs=true\\n```\\n\\nRecord one row per service in the provision attestation. Keys are enough — values stay redacted; discovery is for cataloguing, not consumption. The develop response covers per-service canonical key names plus cross-service reference syntax (`${hostname_varName}`) when wiring `run.envVariables` at first deploy.\\n\\n**Adopt route — skip when no new wiring:** adopted services already carry their env wiring in the running app, so this discovery is only needed if THIS task adds NEW cross-service references. For a code-only change to an already-wired app (edit / redesign / bugfix), skip it and fetch keys lazily at wiring time — running it now is a no-op round-trip.\\n\\n**Pre-first-deploy caveat (classic route)**: classic creates runtime services with `startWithoutCode: true` so they reach RUNNING before any code lands; env vars in such containers live in the project catalogue, not `process.env`, until develop runs the first deploy and references fire. Adopted services are usually ACTIVE.\\n\\nWhen `zerops_discover` shows a runtime stuck at `status=READY_TO_DEPLOY`, branch on whether it ever tried to build (check `zerops_events`):\\n\\n- **Never built** (created without `startWithoutCode: true`, no failed build in the timeline): re-import with `startWithoutCode: true` + `override: true` to reach ACTIVE. Safe — there is no deployed code to lose.\\n- **Build FAILED** (the timeline shows a failed build / prior deploy attempt): the service still holds the buildFromGit code that failed to build. DIAGNOSE first — `zerops_events` then `zerops_logs` — fix the cause (e.g. add the missing managed dependency the build needed), then re-deploy. Do **NOT** `override`: it REPLACES the service stack and wipes the very source you need to fix. (`override=true` on a service with deploy history returns `DIAGNOSIS_REQUIRED`; acknowledging `confirmDestructive` still wipes — only do it if the code lives elsewhere, e.g. git.)\",\"priorContext\":{\"plan\":{\"targets\":[{\"runtime\":{\"devHostname\":\"s3git1\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"}},{\"runtime\":{\"devHostname\":\"s3git2\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"}}],\"createdAt\":\"2026-08-28T18:03:06Z\"},\"attestations\":{\"discover\":\"Planned targets: s3git1 (ubuntu/nodejs@22), s3git2 (ubuntu/nodejs@22)\"}},\"planMode\":\"dev\"},\"message\":\"Step 2/3: provision\",\"envelope\":{\"phase\":\"bootstrap-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:03:06.092654635Z\"}}"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:06.211Z"
+    },
+    {
+      "id": "6bcd34e3-89ee-497c-9649-1439dd5c38b7",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_01XeimDB14sAUa3TaMK4W1UE",
+        "status": "completed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"discover\",\"plan\":[{\"runtime\":{\"devHostname\":\"s3git1\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"...",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "discover",
+            "plan": [
+              {
+                "runtime": {
+                  "devHostname": "s3git1",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              },
+              {
+                "runtime": {
+                  "devHostname": "s3git2",
+                  "type": "ubuntu/nodejs@22",
+                  "isExisting": true,
+                  "bootstrapMode": "dev"
+                }
+              }
+            ]
+          },
+          "result": {
+            "tool_use_id": "toolu_01XeimDB14sAUa3TaMK4W1UE",
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":1,\"steps\":[{\"name\":\"discover\",\"status\":\"complete\"},{\"name\":\"provision\",\"status\":\"in_progress\"},{\"name\":\"close\",\"status\":\"pending\"}]},\"current\":{\"name\":\"provision\",\"index\":1,\"tools\":[\"zerops_import\",\"zerops_process\",\"zerops_discover\"],\"verification\":\"SUCCESS WHEN: all plan services exist in API with ACTIVE/RUNNING status AND service types match plan AND managed dependency env vars recorded in session state. Runtime services are auto-mounted on completion.\",\"detailedGuide\":\"=== bootstrap-env-var-discovery ===\\n### Discover env vars during provision\\n\\nOnce newly-provisioned (classic) or newly-attached (adopt) services have reached RUNNING / ACTIVE, run discovery so the session records env-var KEYS for every managed service. This is authoritative — do not guess alternative spellings; unknown cross-service references become literal strings at runtime and fail silently.\\n\\n```\\nzerops_discover includeEnvs=true\\n```\\n\\nRecord one row per service in the provision attestation. Keys are enough — values stay redacted; discovery is for cataloguing, not consumption. The develop response covers per-service canonical key names plus cross-service reference syntax (`${hostname_varName}`) when wiring `run.envVariables` at first deploy.\\n\\n**Adopt route — skip when no new wiring:** adopted services already carry their env wiring in the running app, so this discovery is only needed if THIS task adds NEW cross-service references. For a code-only change to an already-wired app (edit / redesign / bugfix), skip it and fetch keys lazily at wiring time — running it now is a no-op round-trip.\\n\\n**Pre-first-deploy caveat (classic route)**: classic creates runtime services with `startWithoutCode: true` so they reach RUNNING before any code lands; env vars in such containers live in the project catalogue, not `process.env`, until develop runs the first deploy and references fire. Adopted services are usually ACTIVE.\\n\\nWhen `zerops_discover` shows a runtime stuck at `status=READY_TO_DEPLOY`, branch on whether it ever tried to build (check `zerops_events`):\\n\\n- **Never built** (created without `startWithoutCode: true`, no failed build in the timeline): re-import with `startWithoutCode: true` + `override: true` to reach ACTIVE. Safe — there is no deployed code to lose.\\n- **Build FAILED** (the timeline shows a failed build / prior deploy attempt): the service still holds the buildFromGit code that failed to build. DIAGNOSE first — `zerops_events` then `zerops_logs` — fix the cause (e.g. add the missing managed dependency the build needed), then re-deploy. Do **NOT** `override`: it REPLACES the service stack and wipes the very source you need to fix. (`override=true` on a service with deploy history returns `DIAGNOSIS_REQUIRED`; acknowledging `confirmDestructive` still wipes — only do it if the code lives elsewhere, e.g. git.)\",\"priorContext\":{\"plan\":{\"targets\":[{\"runtime\":{\"devHostname\":\"s3git1\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"}},{\"runtime\":{\"devHostname\":\"s3git2\",\"type\":\"ubuntu/nodejs@22\",\"isExisting\":true,\"bootstrapMode\":\"dev\"}}],\"createdAt\":\"2026-08-28T18:03:06Z\"},\"attestations\":{\"discover\":\"Planned targets: s3git1 (ubuntu/nodejs@22), s3git2 (ubuntu/nodejs@22)\"}},\"planMode\":\"dev\"},\"message\":\"Step 2/3: provision\",\"envelope\":{\"phase\":\"bootstrap-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":false}],\"generated\":\"2026-08-28T18:03:06.092654635Z\"}}"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:06.212Z"
+    },
+    {
+      "id": "0d7ae470-a813-4517-990b-75c480151e15",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_016HCuEEKF2Qyeep2NNq88fs",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:08.553Z"
+    },
+    {
+      "id": "4079237d-71ae-4baa-aac1-4a4feabcd0cd",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_016HCuEEKF2Qyeep2NNq88fs",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"provision\",\"attestation\":\"s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is.\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "provision",
+            "attestation": "s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is."
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:09.037Z"
+    },
+    {
+      "id": "4968ffbe-80ca-418c-809f-fa9de73ef5be",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 50786,
+        "lastUsedTokens": 50786,
+        "inputTokens": 50612,
+        "outputTokens": 174,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:09.114Z"
+    },
+    {
+      "id": "1c6dc8a5-8cd7-42b2-9d21-90a01a7f75db",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_016HCuEEKF2Qyeep2NNq88fs",
+        "status": "completed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"provision\",\"attestation\":\"s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is.\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "provision",
+            "attestation": "s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is."
+          },
+          "result": {
+            "tool_use_id": "toolu_016HCuEEKF2Qyeep2NNq88fs",
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":3,\"steps\":[{\"name\":\"discover\",\"status\":\"complete\"},{\"name\":\"provision\",\"status\":\"complete\"},{\"name\":\"close\",\"status\":\"skipped\"}]},\"message\":\"Bootstrap complete. Services adopted — existing code and configuration preserved.\\n\\n## Services\\n\\n- **s3git1** (ubuntu/nodejs@22, dev mode)\\n- **s3git2** (ubuntu/nodejs@22, dev mode)\\n\\nNext: `zerops_workflow action=\\\"start\\\" workflow=\\\"develop\\\"` — develop reads each service's existing code and runs the iterate-edit-deploy loop. Platform invariants surface via the develop-active atoms on the first call.\\n\\n\\n## Runtime URLs\\n\\n| Hostname | Role | URL |\\n|---|---|---|\\n| `zcp` | other | https://zcp-26a7-8080.prg1.zerops.app |\\n\\nA hostname not listed above could not be resolved yet — this never blocks close; re-check via `zerops_discover` if needed.\\n\",\"checkResult\":{\"passed\":true,\"checks\":[{\"name\":\"s3git1_status\",\"status\":\"pass\"},{\"name\":\"s3git2_status\",\"status\":\"pass\"}],\"summary\":\"all services provisioned\"},\"autoMounts\":[{\"hostname\":\"s3git1\",\"mountPath\":\"/var/www/s3git1\",\"status\":\"ALREADY_MOUNTED\"},{\"hostname\":\"s3git2\",\"mountPath\":\"/var/www/s3git2\",\"status\":\"ALREADY_MOUNTED\"}],\"runtimeUrls\":[{\"hostname\":\"zcp\",\"role\":\"other\",\"url\":\"https://zcp-26a7-8080.prg1.zerops.app\",\"handoff\":false}],\"envelope\":{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"}],\"generated\":\"2026-08-28T18:03:09.321563679Z\"}}"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:09.356Z"
+    },
+    {
+      "id": "dff01ab9-a05d-4247-b2a6-de42882569eb",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_016HCuEEKF2Qyeep2NNq88fs",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"complete\",\"step\":\"provision\",\"attestation\":\"s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is.\"}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "complete",
+            "step": "provision",
+            "attestation": "s3git1 and s3git2 already exist and are ACTIVE; no new provisioning needed, adopting as-is."
+          },
+          "result": {
+            "content": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-liv…"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "{\"kind\":\"session-active\",\"sessionId\":\"1f91cf22be48b097\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"progress\":{\"total\":3,\"completed\":3,\"steps\":[{\"name\":\"discover\",\"status\":\"complete\"},{\"name\":\"provision\",\"status\":\"complete\"},{\"name\":\"close\",\"status\":\"skipped\"}]},\"message\":\"Bootstrap complete. Services adopted — existing code and configuration preserved.\\n\\n## Services\\n\\n- **s3git1** (ubuntu/nodejs@22, dev mode)\\n- **s3git2** (ubuntu/nodejs@22, dev mode)\\n\\nNext: `zerops_workflow action=\\\"start\\\" workflow=\\\"develop\\\"` — develop reads each service's existing code and runs the iterate-edit-deploy loop. Platform invariants surface via the develop-active atoms on the first call.\\n\\n\\n## Runtime URLs\\n\\n| Hostname | Role | URL |\\n|---|---|---|\\n| `zcp` | other | https://zcp-26a7-8080.prg1.zerops.app |\\n\\nA hostname not listed above could not be resolved yet — this never blocks close; re-check via `zerops_discover` if needed.\\n\",\"checkResult\":{\"passed\":true,\"checks\":[{\"name\":\"s3git1_status\",\"status\":\"pass\"},{\"name\":\"s3git2_status\",\"status\":\"pass\"}],\"summary\":\"all services provisioned\"},\"autoMounts\":[{\"hostname\":\"s3git1\",\"mountPath\":\"/var/www/s3git1\",\"status\":\"ALREADY_MOUNTED\"},{\"hostname\":\"s3git2\",\"mountPath\":\"/var/www/s3git2\",\"status\":\"ALREADY_MOUNTED\"}],\"runtimeUrls\":[{\"hostname\":\"zcp\",\"role\":\"other\",\"url\":\"https://zcp-26a7-8080.prg1.zerops.app\",\"handoff\":false}],\"envelope\":{\"phase\":\"idle\",\"environment\":\"container\",\"idleScenario\":\"bootstrapped\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"}],\"generated\":\"2026-08-28T18:03:09.321563679Z\"}}"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:09.356Z"
+    },
+    {
+      "id": "f38f9d7e-7b1c-420e-b0a7-06ad74260a35",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "MCP tool call started",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_0189ZvdAzecfa5dCjkbe2Nqw",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:11.436Z"
+    },
+    {
+      "id": "9b483115-7406-4895-b91d-e2aa9b90b538",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_0189ZvdAzecfa5dCjkbe2Nqw",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"develop\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "develop",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "zerops": {
+            "toolName": "zerops_workflow"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:11.709Z"
+    },
+    {
+      "id": "c6f5ab2b-7808-4efa-b596-e20524f36689",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 52017,
+        "lastUsedTokens": 52017,
+        "inputTokens": 51828,
+        "outputTokens": 189,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:11.737Z"
+    },
+    {
+      "id": "3d9da6f3-4f45-45e1-8fc1-a74738a84d9e",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_0189ZvdAzecfa5dCjkbe2Nqw",
+        "status": "inProgress",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"develop\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "develop",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "result": {
+            "content": "## Status"
+          },
+          "zerops": {
+            "toolName": "zerops_workflow",
+            "resultText": "## Status\nPhase: develop-active — intent: \"append 'prune-live' line to README.md on s3git1 and s3git2\"\nServices: s3git1, s3git2\n  - s3git1 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\nDurability: s3git1, s3git2 served via zerops_dev_server (dev-mode) — live now but NOT supervised; the URL 502s after a container cycle. Use simple mode for an always-on service.\n→ Auto-close blocked: 0/2 ready, pending s3git1, s3git2. Next: zerops_deploy targetService=\"s3git1\" (un-deployed edits revert on a container cycle — deploy makes the change durable)\n→ DECISION required: close-mode unset on s3git1, s3git2 — zerops_workflow action=\"close-mode\" closeMode={\"s3git1\":\"auto\",\"s3git2\":\"auto\"}\nGuidance:\n  === develop-intro ===\n  ### Development & Deploy\n\n  Infrastructure is provisioned and at least one runtime already has a\n  successful first deploy on record. You're in the edit loop: discover\n  the current state, implement the user's request, redeploy, verify.\n  === develop-strategy-review ===\n  ### DECISION — pick a close-mode now (auto-close stays BLOCKED until set)\n\n  Close-mode is `unset` on the listed services — auto-close stays blocked no matter how much you deploy + verify. Set it per in-scope service; it can precede the first deploy. This is the one call that unblocks auto-close:\n\n  ```\n  zerops_workflow action=\"close-mode\" closeMode={\"s3git1\":\"auto\"}\n  zerops_workflow action=\"close-mode\" closeMode={\"s3git2\":\"auto\"}\n  ```\n\n  Swap `auto` for the close-mode you want:\n\n  - `auto` — agent runs `zerops_deploy` directly via zcli; auto-close fires once scope-services are green. Fast for tight iteration.\n  - `manual` — **you** drive every deploy; ZCP records evidence, never deploys, auto-close stays open until you call `action=\"close\"`.\n\n  Delivery is a SEPARATE dimension from close-mode: to deliver via git push, run `action=\"git-push-setup\"` (then `zerops_deploy strategy=\"git-push\"`); CI wiring is `action=\"build-integration\"`. Both work under either close-mode — close-mode only owns the auto-close gate + iteration cadence, not how you deliver.\n\n  close-mode does NOT change what `action=\"close\"` does (always session-teardown) — it selects the per-mode iteration guidance and drives the auto-close gate.\n  === develop-change-drives-deploy ===\n  ### Every code change must reach a durable state\n\n  Iteration cadence is mode-specific:\n\n  - Dev-mode dynamic runtime: edit code in place; reload via\n    `zerops_dev_server` (no full redeploy for code-only changes).\n  - Simple / standard / local / first-deploy: every change →\n    `zerops_deploy`.\n\n  Once close-mode is `auto` and every resolved deploy\n  target is deployed + verified, the work session auto-closes.\n  === develop-dev-server-triage ===\n  ### Dev-server state triage\n\n  Before deploying, verifying, or iterating on a runtime service, run\n  the triage rather than blind-starting a process.\n\n  **Step 1 — Determine the expectation** from `runtimeClass` + `mode`\n  in the envelope:\n\n  Only `runtimeClass: dynamic` + `mode: dev` needs a manual dev-server\n  action — its idle runtime container (`run.start: zsc noop --silent`) waits\n  for `zerops_dev_server action=start`. Implicit-webserver, static, and\n  dynamic + simple/stage are platform-owned post-deploy; triage ends there.\n\n  **Step 2 — Check current state** for dev-mode dynamic:\n\n  ```\n  # container env\n  zerops_dev_server action=status hostname=\"s3git1\" port={port} healthPath=\"{path}\"\n\n  # local env — runs on your machine\n  Bash command=\"curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:{port}{path}\"\n  ```\n\n  Read the response:\n\n  - `running: true` with HTTP 2xx/3xx/4xx `healthStatus` → proceed to\n    `zerops_verify`.\n  - `running: false` with `reason: health_probe_connection_refused` →\n    start (step 3).\n  - `running: true` with `healthStatus: 5xx` → server runs but is\n    broken; read logs and response body; do NOT restart (does not\n    fix bugs). Edit code, then iterate per the mode-specific cadence\n    (dev: edit + dev-server reload; simple/standard/local: redeploy).\n\n  For workers with no HTTP surface (`port=0`, `healthPath=\"\"`), skip\n  HTTP status; call `zerops_logs` to confirm consumption.\n\n  **Step 3 — Act on the delta.**\n\n  ```\n  # container env\n  zerops_dev_server action=start hostname=\"s3git1\" command=\"{start-command}\" port={port} healthPath=\"{path}\"\n\n  # local env\n  Bash run_in_background=true command=\"{start-command}\"\n  ```\n\n  After every redeploy the dev process is gone — re-run Step 2 before\n  `zerops_verify`.\n  === develop-dev-server-triage ===\n  ### Dev-server state triage\n\n  Before deploying, verifying, or iterating on a runtime service, run\n  the triage rather than blind-starting a process.\n\n  **Step 1 — Determine the expectation** from `runtimeClass` + `mode`\n  in the envelope:\n\n  Only `runtimeClass: dynamic` + `mode: dev` needs a manual dev-server\n  action — its idle runtime container (`run.start: zsc noop --silent`) waits\n  for `zerops_dev_server action=start`. Implicit-webserver, static, and\n  dynamic + simple/stage are platform-owned post-deploy; triage ends there.\n\n  **Step 2 — Check current state** for dev-mode dynamic:\n\n  ```\n  # container env\n  zerops_dev_server action=status hostname=\"s3git2\" port={port} healthPath=\"{path}\"\n\n  # local env — runs on your machine\n  Bash command=\"curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:{port}{path}\"\n  ```\n\n  Read the response:\n\n  - `running: true` with HTTP 2xx/3xx/4xx `healthStatus` → proceed to\n    `zerops_verify`.\n  - `running: false` with `reason: health_probe_connection_refused` →\n    start (step 3).\n  - `running: true` with `healthStatus: 5xx` → server runs but is\n    broken; read logs and response body; do NOT restart (does not\n    fix bugs). Edit code, then iterate per the mode-specific cadence\n    (dev: edit + dev-server reload; simple/standard/local: redeploy).\n\n  For workers with no HTTP surface (`port=0`, `healthPath=\"\"`), skip\n  HTTP status; call `zerops_logs` to confirm consumption.\n\n  **Step 3 — Act on the delta.**\n\n  ```\n  # container env\n  zerops_dev_server action=start hostname=\"s3git2\" command=\"{start-command}\" port={port} healthPath=\"{path}\"\n\n  # local env\n  Bash run_in_background=true command=\"{start-command}\"\n  ```\n\n  After every redeploy the dev process is gone — re-run Step 2 before\n  `zerops_verify`.\n  === develop-checklist-dev-mode ===\n  ### Checklist (dev-mode dynamic-runtime services)\n\n  Applies to **dynamic runtimes only** (Node, Bun, Deno, Go, Rust, Python,\n  Ruby, Java, .NET — anything with a long-running app process under\n  manual control). For implicit-webserver runtimes (`php-apache`,\n  `php-nginx`) the implicit-webserver guidance fires instead; for static\n  runtimes the web server auto-starts and this checklist does not apply.\n\n  - Dev setup block in `zerops.yaml`: **`run.start: zsc noop --silent`**\n    (a no-op keepalive), **no** `healthCheck`. You start the real dev\n    process yourself via `zerops_dev_server action=start` after each deploy.\n  - Stage setup block (if a dev+stage pair exists): real `start:`\n    command **plus** a `healthCheck`. Stage auto-starts on deploy and\n    Zerops probes it on its configured interval.\n  === develop-dynamic-runtime-start-container ===\n  ### Dynamic-runtime dev server\n\n  Dev-mode dynamic runtime containers start running `zsc noop --silent`\n  after deploy — a no-op keepalive; no dev process is live until you start\n  one. The dev server is unsupervised, so\n  the URL 502s after any container cycle until restarted: a passing verify\n  means \"live now\", not \"durably shipped\". For an always-on service use\n  simple mode. Action family on `zerops_dev_server`:\n\n  | Action | Use | Args |\n  |---|---|---|\n  | `status` | check before `start` (idempotent) — avoids duplicate listener | `hostname port healthPath` |\n  | `start` | spawn the dev process | `hostname command port healthPath` |\n  | `restart` | survives-the-deploy config/code change | `hostname command port healthPath` |\n  | `logs` | tail recent for diagnosis | `hostname logLines=40` |\n  | `stop` | end of session, free the port | `hostname port` |\n\n  Args:\n  - `command` — the app's dev-server start command (the real long-running\n    process, e.g. `npm run dev`). NOT the `zsc noop --silent` keepalive that\n    sits in the dev block's `run.start`.\n  - `port` — `run.ports[0].port`.\n  - `healthPath` — app-owned (`/api/health`, `/status`) or `/`.\n\n  Response carries `running`, `healthStatus`, `url` (the hostname-vantage\n  address to reach the server — the probe runs localhost inside the\n  container, so the app must bind `0.0.0.0`, not loopback), `reason`, and\n  `logTail` — read these before making another call.\n\n  Don't hand-roll `ssh s3git1 \"cmd &\"`: the SSH session ends with\n  the call and kills the process. Always go through `zerops_dev_server`.\n  === develop-dynamic-runtime-start-container ===\n  ### Dynamic-runtime dev server\n\n  Dev-mode dynamic runtime containers start running `zsc noop --silent`\n  after deploy — a no-op keepalive; no dev process is live until you start\n  one. The dev server is unsupervised, so\n  the URL 502s after any container cycle until restarted: a passing verify\n  means \"live now\", not \"durably shipped\". For an always-on service use\n  simple mode. Action family on `zerops_dev_server`:\n\n  | Action | Use | Args |\n  |---|---|---|\n  | `status` | check before `start` (idempotent) — avoids duplicate listener | `hostname port healthPath` |\n  | `start` | spawn the dev process | `hostname command port healthPath` |\n  | `restart` | survives-the-deploy config/code change | `hostname command port healthPath` |\n  | `logs` | tail recent for diagnosis | `hostname logLines=40` |\n  | `stop` | end of session, free the port | `hostname port` |\n\n  Args:\n  - `command` — the app's dev-server start command (the real long-running\n    process, e.g. `npm run dev`). NOT the `zsc noop --silent` keepalive that\n    sits in the dev block's `run.start`.\n  - `port` — `run.ports[0].port`.\n  - `healthPath` — app-owned (`/api/health`, `/status`) or `/`.\n\n  Response carries `running`, `healthStatus`, `url` (the hostname-vantage\n  address to reach the server — the probe runs localhost inside the\n  container, so the app must bind `0.0.0.0`, not loopback), `reason`, and\n  `logTail` — read these before making another call.\n\n  Don't hand-roll `ssh s3git2 \"cmd &\"`: the SSH session ends with\n  the call and kills the process. Always go through `zerops_dev_server`.\n  === develop-knowledge-pointers ===\n  ### Knowledge on demand — pull extra context\n\n  When the embedded guidance isn't enough, these are the canonical lookups:\n\n  - **`zerops.yaml` schema / fields** — `zerops_knowledge query=\"zerops.yaml schema\"`\n  - **Runtime docs** (build tools, start commands, conventions) —\n    `zerops_knowledge query=\"<runtime>\"` (e.g. `nodejs`, `go`, `php-nginx`, `bun`);\n    match the service's base stack.\n  - **Env var keys** (no values, safe) — `zerops_discover includeEnvs=true`\n    (`includeEnvValues=true` only to troubleshoot).\n  - **Deeper platform topics** (infra changes, scaling, status codes,\n    managed-service categories) — `zerops_knowledge query=\"<topic>\"`.\n  === develop-auto-close-semantics ===\n  ### Work session auto-close\n\n  Auto-close fires only when EVERY in-scope service carries `closeDeployMode=auto` AND has a successful deploy + a passing verify that ran AFTER that deploy (`closeReason: auto-complete`; or `iteration-cap` at the retry ceiling — same `ClosedAt`/`CloseReason` shape). On a pair with `gitPush=configured`, the deploy evidence is the delivered push build on the build target — the same gate, fed by the watched build instead of a direct deploy. Re-deploying re-opens verify: a deploy replaces the running app version, so a verify that passed before it no longer describes what is live — re-verify after the latest deploy. `unset` / `manual` services BLOCK it: the session stays open until you set a close-mode or call `action=\"close\"` explicitly.\n\n  Scope follows session topology — standard pairs include both halves. For dev-only work pass `outOfScope=[\"<stage>\"]` on develop start; the stage half drops to a non-blocking reminder and the session closes on the dev half alone.\n  === develop-dev-server-reason-codes ===\n  ### `reason` values (DevServerResult)\n\n  When `zerops_dev_server` actions fail, the response's `reason` field\n  classifies the failure so you don't need a follow-up call to\n  diagnose. Dispatch table:\n\n  | `reason` | Meaning | Action |\n  |---|---|---|\n  | `spawn_timeout` | The remote shell did not detach; stdio handle still owned by child. | You likely hand-rolled `ssh ... \"cmd &\"` — re-run through `zerops_dev_server action=start`. |\n  | `health_probe_connection_refused` | Spawn succeeded but nothing is listening on `port`. | Check that your app binds to `0.0.0.0` (not `localhost`), that `port` matches `run.ports[0].port`, and that your start command actually starts a server. Read `logTail` for crash output. |\n  | `health_probe_http_<code>` | Server runs but returned `<code>` (e.g. 500, 404). | Do NOT restart — it does not fix bugs. Read `logTail` + response body, edit code, deploy. |\n  | `post_spawn_exit` | No-probe-mode process died after spawn (port=0/healthPath=\"\"). | `action=logs` for consumption errors; typical for worker crashes. |\n\n  Observable always: `running` (bool), `healthStatus` (HTTP status\n  when `port` set, 0 otherwise), `startMillis` (time from spawn to\n  healthy), `logTail` (last log lines). Use these to confirm state\n  without a second tool call.\n  === develop-verify-matrix ===\n  ### Per-service verify matrix\n\n  Verify every service after deploy — deploy success ≠ working app. Shape from\n  `zerops_discover`: subdomain URL = web-facing; managed / no HTTP port = non-web.\n  Run `zerops_verify` first; a check with a `recovery` field → run it, re-verify,\n  before any browser probe.\n\n  | Shape | Check |\n  |---|---|\n  | non-web (managed / worker / no HTTP port) | `zerops_verify` → `status=healthy` is the whole check |\n  | web (dynamic / static / implicit-webserver) | `zerops_verify` → judge `http_root`: `httpStatus` + `bodyText` + `consoleErrors`; healthy + a real body (not a blank shell / error page, no fatal console error) proves it |\n\n  When `bodyText`/`consoleErrors` are missing, truncated, or the page needs\n  interaction / SPA routes / non-root / auth, drive the browser **inline** with\n  `zerops_browser`. Never spawn a sub-agent, call raw `agent-browser`, or use `eval`.\n  Internal-only service (no public subdomain) → `zerops_subdomain action=\"disable\"` after deploy.\n\n  - **VERDICT: PASS** — healthy + real rendered content; proceed.\n  - **VERDICT: FAIL** — healthy infra but blank/broken/error page, or a failing check; iterate from the check's `detail` + render evidence.\n  - **VERDICT: UNCERTAIN** — no render data + URL unreachable; fall back to `zerops_verify`.\n  === develop-mode-expansion ===\n  ### Mode expansion — add a stage pair\n\n  This atom fires once per in-scope `mode: dev` or `mode: simple` (single-slot) service — for each, expanding to **standard** adds a stage sibling without touching the existing service. Expansion is an infrastructure change — it runs through the bootstrap workflow, not develop. Repeat the procedure below per service when multiple in-scope services need stage pairs.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\"\n    intent=\"expand s3git1 to standard — add stage\"\n  ```\n\n  Submit a plan that flags the existing runtime and names the new\n  stage hostname:\n\n  ```json\n  {\n    \"runtime\": {\n      \"devHostname\": \"s3git1\",\n      \"type\": \"<same type as current service>\",\n      \"isExisting\": true,\n      \"bootstrapMode\": \"standard\",\n      \"stageHostname\": \"<new-stage-hostname>\"\n    },\n    \"dependencies\": [\n      { \"hostname\": \"<existing dep>\", \"type\": \"<dep type>\", \"resolution\": \"EXISTS\" }\n    ]\n  }\n  ```\n\n  Bootstrap leaves the existing service's code and runtime container untouched,\n  creates the new stage service via `zerops_import`, and at close the\n  envelope shows both snapshots:\n\n  - the original (now `mode: standard` with `stageHostname` set,\n    `bootstrapped: true`, `deployed: true`, strategy intact);\n  - the new stage (`mode: stage`, `bootstrapped: true`,\n    `deployed: false`).\n\n  After close, run a dev→stage cross-deploy to verify the pair\n  end-to-end.\n  === develop-mode-expansion ===\n  ### Mode expansion — add a stage pair\n\n  This atom fires once per in-scope `mode: dev` or `mode: simple` (single-slot) service — for each, expanding to **standard** adds a stage sibling without touching the existing service. Expansion is an infrastructure change — it runs through the bootstrap workflow, not develop. Repeat the procedure below per service when multiple in-scope services need stage pairs.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\"\n    intent=\"expand s3git2 to standard — add stage\"\n  ```\n\n  Submit a plan that flags the existing runtime and names the new\n  stage hostname:\n\n  ```json\n  {\n    \"runtime\": {\n      \"devHostname\": \"s3git2\",\n      \"type\": \"<same type as current service>\",\n      \"isExisting\": true,\n      \"bootstrapMode\": \"standard\",\n      \"stageHostname\": \"<new-stage-hostname>\"\n    },\n    \"dependencies\": [\n      { \"hostname\": \"<existing dep>\", \"type\": \"<dep type>\", \"resolution\": \"EXISTS\" }\n    ]\n  }\n  ```\n\n  Bootstrap leaves the existing service's code and runtime container untouched,\n  creates the new stage service via `zerops_import`, and at close the\n  envelope shows both snapshots:\n\n  - the original (now `mode: standard` with `stageHostname` set,\n    `bootstrapped: true`, `deployed: true`, strategy intact);\n  - the new stage (`mode: stage`, `bootstrapped: true`,\n    `deployed: false`).\n\n  After close, run a dev→stage cross-deploy to verify the pair\n  end-to-end.\nNext:\n  ▸ Primary: Deploy s3git1 — zerops_deploy targetService=\"s3git1\"\n  · Per service:\n      - s3git1: Deploy s3git1 — zerops_deploy targetService=\"s3git1\"\n      - s3git2: Deploy s3git2 — zerops_deploy targetService=\"s3git2\"\n\n```json zcp-envelope\n{\"phase\":\"develop-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"}],\"workSession\":{\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"services\":[\"s3git1\",\"s3git2\"],\"createdAt\":\"2026-08-28T18:03:11Z\"},\"generated\":\"2026-08-28T18:03:11.731806316Z\"}\n```\n"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:11.764Z"
+    },
+    {
+      "id": "bac2f903-acc2-4c76-8cf0-943c5a319659",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "MCP tool call",
+      "payload": {
+        "itemType": "mcp_tool_call",
+        "toolCallId": "toolu_0189ZvdAzecfa5dCjkbe2Nqw",
+        "status": "completed",
+        "detail": "mcp__zerops__zerops_workflow: {\"action\":\"start\",\"workflow\":\"develop\",\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"scope\":[\"s3git1\",\"s3git2\"]}",
+        "data": {
+          "toolName": "mcp__zerops__zerops_workflow",
+          "input": {
+            "action": "start",
+            "workflow": "develop",
+            "intent": "append 'prune-live' line to README.md on s3git1 and s3git2",
+            "scope": ["s3git1", "s3git2"]
+          },
+          "result": {
+            "tool_use_id": "toolu_0189ZvdAzecfa5dCjkbe2Nqw",
+            "type": "tool_result",
+            "content": [
+              {
+                "type": "text",
+                "text": "## Status\nPhase: develop-active — intent: \"append 'prune-live' line to README.md on s3git1 and s3git2\"\nServices: s3git1, s3git2\n  - s3git1 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\n  - s3git2 (ubuntu/nodejs@22) — bootstrapped=true, mode=dev, closeMode=unset, gitPush=unconfigured, buildIntegration=none, deployed=true — base prefix ubuntu/ — write it on BOTH zerops.yaml build.base and run.base (legacy nodejs@22 + os: ubuntu ≡ ubuntu/nodejs@22; run.base rewrites the service OS on every deploy)\nDurability: s3git1, s3git2 served via zerops_dev_server (dev-mode) — live now but NOT supervised; the URL 502s after a container cycle. Use simple mode for an always-on service.\n→ Auto-close blocked: 0/2 ready, pending s3git1, s3git2. Next: zerops_deploy targetService=\"s3git1\" (un-deployed edits revert on a container cycle — deploy makes the change durable)\n→ DECISION required: close-mode unset on s3git1, s3git2 — zerops_workflow action=\"close-mode\" closeMode={\"s3git1\":\"auto\",\"s3git2\":\"auto\"}\nGuidance:\n  === develop-intro ===\n  ### Development & Deploy\n\n  Infrastructure is provisioned and at least one runtime already has a\n  successful first deploy on record. You're in the edit loop: discover\n  the current state, implement the user's request, redeploy, verify.\n  === develop-strategy-review ===\n  ### DECISION — pick a close-mode now (auto-close stays BLOCKED until set)\n\n  Close-mode is `unset` on the listed services — auto-close stays blocked no matter how much you deploy + verify. Set it per in-scope service; it can precede the first deploy. This is the one call that unblocks auto-close:\n\n  ```\n  zerops_workflow action=\"close-mode\" closeMode={\"s3git1\":\"auto\"}\n  zerops_workflow action=\"close-mode\" closeMode={\"s3git2\":\"auto\"}\n  ```\n\n  Swap `auto` for the close-mode you want:\n\n  - `auto` — agent runs `zerops_deploy` directly via zcli; auto-close fires once scope-services are green. Fast for tight iteration.\n  - `manual` — **you** drive every deploy; ZCP records evidence, never deploys, auto-close stays open until you call `action=\"close\"`.\n\n  Delivery is a SEPARATE dimension from close-mode: to deliver via git push, run `action=\"git-push-setup\"` (then `zerops_deploy strategy=\"git-push\"`); CI wiring is `action=\"build-integration\"`. Both work under either close-mode — close-mode only owns the auto-close gate + iteration cadence, not how you deliver.\n\n  close-mode does NOT change what `action=\"close\"` does (always session-teardown) — it selects the per-mode iteration guidance and drives the auto-close gate.\n  === develop-change-drives-deploy ===\n  ### Every code change must reach a durable state\n\n  Iteration cadence is mode-specific:\n\n  - Dev-mode dynamic runtime: edit code in place; reload via\n    `zerops_dev_server` (no full redeploy for code-only changes).\n  - Simple / standard / local / first-deploy: every change →\n    `zerops_deploy`.\n\n  Once close-mode is `auto` and every resolved deploy\n  target is deployed + verified, the work session auto-closes.\n  === develop-dev-server-triage ===\n  ### Dev-server state triage\n\n  Before deploying, verifying, or iterating on a runtime service, run\n  the triage rather than blind-starting a process.\n\n  **Step 1 — Determine the expectation** from `runtimeClass` + `mode`\n  in the envelope:\n\n  Only `runtimeClass: dynamic` + `mode: dev` needs a manual dev-server\n  action — its idle runtime container (`run.start: zsc noop --silent`) waits\n  for `zerops_dev_server action=start`. Implicit-webserver, static, and\n  dynamic + simple/stage are platform-owned post-deploy; triage ends there.\n\n  **Step 2 — Check current state** for dev-mode dynamic:\n\n  ```\n  # container env\n  zerops_dev_server action=status hostname=\"s3git1\" port={port} healthPath=\"{path}\"\n\n  # local env — runs on your machine\n  Bash command=\"curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:{port}{path}\"\n  ```\n\n  Read the response:\n\n  - `running: true` with HTTP 2xx/3xx/4xx `healthStatus` → proceed to\n    `zerops_verify`.\n  - `running: false` with `reason: health_probe_connection_refused` →\n    start (step 3).\n  - `running: true` with `healthStatus: 5xx` → server runs but is\n    broken; read logs and response body; do NOT restart (does not\n    fix bugs). Edit code, then iterate per the mode-specific cadence\n    (dev: edit + dev-server reload; simple/standard/local: redeploy).\n\n  For workers with no HTTP surface (`port=0`, `healthPath=\"\"`), skip\n  HTTP status; call `zerops_logs` to confirm consumption.\n\n  **Step 3 — Act on the delta.**\n\n  ```\n  # container env\n  zerops_dev_server action=start hostname=\"s3git1\" command=\"{start-command}\" port={port} healthPath=\"{path}\"\n\n  # local env\n  Bash run_in_background=true command=\"{start-command}\"\n  ```\n\n  After every redeploy the dev process is gone — re-run Step 2 before\n  `zerops_verify`.\n  === develop-dev-server-triage ===\n  ### Dev-server state triage\n\n  Before deploying, verifying, or iterating on a runtime service, run\n  the triage rather than blind-starting a process.\n\n  **Step 1 — Determine the expectation** from `runtimeClass` + `mode`\n  in the envelope:\n\n  Only `runtimeClass: dynamic` + `mode: dev` needs a manual dev-server\n  action — its idle runtime container (`run.start: zsc noop --silent`) waits\n  for `zerops_dev_server action=start`. Implicit-webserver, static, and\n  dynamic + simple/stage are platform-owned post-deploy; triage ends there.\n\n  **Step 2 — Check current state** for dev-mode dynamic:\n\n  ```\n  # container env\n  zerops_dev_server action=status hostname=\"s3git2\" port={port} healthPath=\"{path}\"\n\n  # local env — runs on your machine\n  Bash command=\"curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://localhost:{port}{path}\"\n  ```\n\n  Read the response:\n\n  - `running: true` with HTTP 2xx/3xx/4xx `healthStatus` → proceed to\n    `zerops_verify`.\n  - `running: false` with `reason: health_probe_connection_refused` →\n    start (step 3).\n  - `running: true` with `healthStatus: 5xx` → server runs but is\n    broken; read logs and response body; do NOT restart (does not\n    fix bugs). Edit code, then iterate per the mode-specific cadence\n    (dev: edit + dev-server reload; simple/standard/local: redeploy).\n\n  For workers with no HTTP surface (`port=0`, `healthPath=\"\"`), skip\n  HTTP status; call `zerops_logs` to confirm consumption.\n\n  **Step 3 — Act on the delta.**\n\n  ```\n  # container env\n  zerops_dev_server action=start hostname=\"s3git2\" command=\"{start-command}\" port={port} healthPath=\"{path}\"\n\n  # local env\n  Bash run_in_background=true command=\"{start-command}\"\n  ```\n\n  After every redeploy the dev process is gone — re-run Step 2 before\n  `zerops_verify`.\n  === develop-checklist-dev-mode ===\n  ### Checklist (dev-mode dynamic-runtime services)\n\n  Applies to **dynamic runtimes only** (Node, Bun, Deno, Go, Rust, Python,\n  Ruby, Java, .NET — anything with a long-running app process under\n  manual control). For implicit-webserver runtimes (`php-apache`,\n  `php-nginx`) the implicit-webserver guidance fires instead; for static\n  runtimes the web server auto-starts and this checklist does not apply.\n\n  - Dev setup block in `zerops.yaml`: **`run.start: zsc noop --silent`**\n    (a no-op keepalive), **no** `healthCheck`. You start the real dev\n    process yourself via `zerops_dev_server action=start` after each deploy.\n  - Stage setup block (if a dev+stage pair exists): real `start:`\n    command **plus** a `healthCheck`. Stage auto-starts on deploy and\n    Zerops probes it on its configured interval.\n  === develop-dynamic-runtime-start-container ===\n  ### Dynamic-runtime dev server\n\n  Dev-mode dynamic runtime containers start running `zsc noop --silent`\n  after deploy — a no-op keepalive; no dev process is live until you start\n  one. The dev server is unsupervised, so\n  the URL 502s after any container cycle until restarted: a passing verify\n  means \"live now\", not \"durably shipped\". For an always-on service use\n  simple mode. Action family on `zerops_dev_server`:\n\n  | Action | Use | Args |\n  |---|---|---|\n  | `status` | check before `start` (idempotent) — avoids duplicate listener | `hostname port healthPath` |\n  | `start` | spawn the dev process | `hostname command port healthPath` |\n  | `restart` | survives-the-deploy config/code change | `hostname command port healthPath` |\n  | `logs` | tail recent for diagnosis | `hostname logLines=40` |\n  | `stop` | end of session, free the port | `hostname port` |\n\n  Args:\n  - `command` — the app's dev-server start command (the real long-running\n    process, e.g. `npm run dev`). NOT the `zsc noop --silent` keepalive that\n    sits in the dev block's `run.start`.\n  - `port` — `run.ports[0].port`.\n  - `healthPath` — app-owned (`/api/health`, `/status`) or `/`.\n\n  Response carries `running`, `healthStatus`, `url` (the hostname-vantage\n  address to reach the server — the probe runs localhost inside the\n  container, so the app must bind `0.0.0.0`, not loopback), `reason`, and\n  `logTail` — read these before making another call.\n\n  Don't hand-roll `ssh s3git1 \"cmd &\"`: the SSH session ends with\n  the call and kills the process. Always go through `zerops_dev_server`.\n  === develop-dynamic-runtime-start-container ===\n  ### Dynamic-runtime dev server\n\n  Dev-mode dynamic runtime containers start running `zsc noop --silent`\n  after deploy — a no-op keepalive; no dev process is live until you start\n  one. The dev server is unsupervised, so\n  the URL 502s after any container cycle until restarted: a passing verify\n  means \"live now\", not \"durably shipped\". For an always-on service use\n  simple mode. Action family on `zerops_dev_server`:\n\n  | Action | Use | Args |\n  |---|---|---|\n  | `status` | check before `start` (idempotent) — avoids duplicate listener | `hostname port healthPath` |\n  | `start` | spawn the dev process | `hostname command port healthPath` |\n  | `restart` | survives-the-deploy config/code change | `hostname command port healthPath` |\n  | `logs` | tail recent for diagnosis | `hostname logLines=40` |\n  | `stop` | end of session, free the port | `hostname port` |\n\n  Args:\n  - `command` — the app's dev-server start command (the real long-running\n    process, e.g. `npm run dev`). NOT the `zsc noop --silent` keepalive that\n    sits in the dev block's `run.start`.\n  - `port` — `run.ports[0].port`.\n  - `healthPath` — app-owned (`/api/health`, `/status`) or `/`.\n\n  Response carries `running`, `healthStatus`, `url` (the hostname-vantage\n  address to reach the server — the probe runs localhost inside the\n  container, so the app must bind `0.0.0.0`, not loopback), `reason`, and\n  `logTail` — read these before making another call.\n\n  Don't hand-roll `ssh s3git2 \"cmd &\"`: the SSH session ends with\n  the call and kills the process. Always go through `zerops_dev_server`.\n  === develop-knowledge-pointers ===\n  ### Knowledge on demand — pull extra context\n\n  When the embedded guidance isn't enough, these are the canonical lookups:\n\n  - **`zerops.yaml` schema / fields** — `zerops_knowledge query=\"zerops.yaml schema\"`\n  - **Runtime docs** (build tools, start commands, conventions) —\n    `zerops_knowledge query=\"<runtime>\"` (e.g. `nodejs`, `go`, `php-nginx`, `bun`);\n    match the service's base stack.\n  - **Env var keys** (no values, safe) — `zerops_discover includeEnvs=true`\n    (`includeEnvValues=true` only to troubleshoot).\n  - **Deeper platform topics** (infra changes, scaling, status codes,\n    managed-service categories) — `zerops_knowledge query=\"<topic>\"`.\n  === develop-auto-close-semantics ===\n  ### Work session auto-close\n\n  Auto-close fires only when EVERY in-scope service carries `closeDeployMode=auto` AND has a successful deploy + a passing verify that ran AFTER that deploy (`closeReason: auto-complete`; or `iteration-cap` at the retry ceiling — same `ClosedAt`/`CloseReason` shape). On a pair with `gitPush=configured`, the deploy evidence is the delivered push build on the build target — the same gate, fed by the watched build instead of a direct deploy. Re-deploying re-opens verify: a deploy replaces the running app version, so a verify that passed before it no longer describes what is live — re-verify after the latest deploy. `unset` / `manual` services BLOCK it: the session stays open until you set a close-mode or call `action=\"close\"` explicitly.\n\n  Scope follows session topology — standard pairs include both halves. For dev-only work pass `outOfScope=[\"<stage>\"]` on develop start; the stage half drops to a non-blocking reminder and the session closes on the dev half alone.\n  === develop-dev-server-reason-codes ===\n  ### `reason` values (DevServerResult)\n\n  When `zerops_dev_server` actions fail, the response's `reason` field\n  classifies the failure so you don't need a follow-up call to\n  diagnose. Dispatch table:\n\n  | `reason` | Meaning | Action |\n  |---|---|---|\n  | `spawn_timeout` | The remote shell did not detach; stdio handle still owned by child. | You likely hand-rolled `ssh ... \"cmd &\"` — re-run through `zerops_dev_server action=start`. |\n  | `health_probe_connection_refused` | Spawn succeeded but nothing is listening on `port`. | Check that your app binds to `0.0.0.0` (not `localhost`), that `port` matches `run.ports[0].port`, and that your start command actually starts a server. Read `logTail` for crash output. |\n  | `health_probe_http_<code>` | Server runs but returned `<code>` (e.g. 500, 404). | Do NOT restart — it does not fix bugs. Read `logTail` + response body, edit code, deploy. |\n  | `post_spawn_exit` | No-probe-mode process died after spawn (port=0/healthPath=\"\"). | `action=logs` for consumption errors; typical for worker crashes. |\n\n  Observable always: `running` (bool), `healthStatus` (HTTP status\n  when `port` set, 0 otherwise), `startMillis` (time from spawn to\n  healthy), `logTail` (last log lines). Use these to confirm state\n  without a second tool call.\n  === develop-verify-matrix ===\n  ### Per-service verify matrix\n\n  Verify every service after deploy — deploy success ≠ working app. Shape from\n  `zerops_discover`: subdomain URL = web-facing; managed / no HTTP port = non-web.\n  Run `zerops_verify` first; a check with a `recovery` field → run it, re-verify,\n  before any browser probe.\n\n  | Shape | Check |\n  |---|---|\n  | non-web (managed / worker / no HTTP port) | `zerops_verify` → `status=healthy` is the whole check |\n  | web (dynamic / static / implicit-webserver) | `zerops_verify` → judge `http_root`: `httpStatus` + `bodyText` + `consoleErrors`; healthy + a real body (not a blank shell / error page, no fatal console error) proves it |\n\n  When `bodyText`/`consoleErrors` are missing, truncated, or the page needs\n  interaction / SPA routes / non-root / auth, drive the browser **inline** with\n  `zerops_browser`. Never spawn a sub-agent, call raw `agent-browser`, or use `eval`.\n  Internal-only service (no public subdomain) → `zerops_subdomain action=\"disable\"` after deploy.\n\n  - **VERDICT: PASS** — healthy + real rendered content; proceed.\n  - **VERDICT: FAIL** — healthy infra but blank/broken/error page, or a failing check; iterate from the check's `detail` + render evidence.\n  - **VERDICT: UNCERTAIN** — no render data + URL unreachable; fall back to `zerops_verify`.\n  === develop-mode-expansion ===\n  ### Mode expansion — add a stage pair\n\n  This atom fires once per in-scope `mode: dev` or `mode: simple` (single-slot) service — for each, expanding to **standard** adds a stage sibling without touching the existing service. Expansion is an infrastructure change — it runs through the bootstrap workflow, not develop. Repeat the procedure below per service when multiple in-scope services need stage pairs.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\"\n    intent=\"expand s3git1 to standard — add stage\"\n  ```\n\n  Submit a plan that flags the existing runtime and names the new\n  stage hostname:\n\n  ```json\n  {\n    \"runtime\": {\n      \"devHostname\": \"s3git1\",\n      \"type\": \"<same type as current service>\",\n      \"isExisting\": true,\n      \"bootstrapMode\": \"standard\",\n      \"stageHostname\": \"<new-stage-hostname>\"\n    },\n    \"dependencies\": [\n      { \"hostname\": \"<existing dep>\", \"type\": \"<dep type>\", \"resolution\": \"EXISTS\" }\n    ]\n  }\n  ```\n\n  Bootstrap leaves the existing service's code and runtime container untouched,\n  creates the new stage service via `zerops_import`, and at close the\n  envelope shows both snapshots:\n\n  - the original (now `mode: standard` with `stageHostname` set,\n    `bootstrapped: true`, `deployed: true`, strategy intact);\n  - the new stage (`mode: stage`, `bootstrapped: true`,\n    `deployed: false`).\n\n  After close, run a dev→stage cross-deploy to verify the pair\n  end-to-end.\n  === develop-mode-expansion ===\n  ### Mode expansion — add a stage pair\n\n  This atom fires once per in-scope `mode: dev` or `mode: simple` (single-slot) service — for each, expanding to **standard** adds a stage sibling without touching the existing service. Expansion is an infrastructure change — it runs through the bootstrap workflow, not develop. Repeat the procedure below per service when multiple in-scope services need stage pairs.\n\n  ```\n  zerops_workflow action=\"start\" workflow=\"bootstrap\"\n    intent=\"expand s3git2 to standard — add stage\"\n  ```\n\n  Submit a plan that flags the existing runtime and names the new\n  stage hostname:\n\n  ```json\n  {\n    \"runtime\": {\n      \"devHostname\": \"s3git2\",\n      \"type\": \"<same type as current service>\",\n      \"isExisting\": true,\n      \"bootstrapMode\": \"standard\",\n      \"stageHostname\": \"<new-stage-hostname>\"\n    },\n    \"dependencies\": [\n      { \"hostname\": \"<existing dep>\", \"type\": \"<dep type>\", \"resolution\": \"EXISTS\" }\n    ]\n  }\n  ```\n\n  Bootstrap leaves the existing service's code and runtime container untouched,\n  creates the new stage service via `zerops_import`, and at close the\n  envelope shows both snapshots:\n\n  - the original (now `mode: standard` with `stageHostname` set,\n    `bootstrapped: true`, `deployed: true`, strategy intact);\n  - the new stage (`mode: stage`, `bootstrapped: true`,\n    `deployed: false`).\n\n  After close, run a dev→stage cross-deploy to verify the pair\n  end-to-end.\nNext:\n  ▸ Primary: Deploy s3git1 — zerops_deploy targetService=\"s3git1\"\n  · Per service:\n      - s3git1: Deploy s3git1 — zerops_deploy targetService=\"s3git1\"\n      - s3git2: Deploy s3git2 — zerops_deploy targetService=\"s3git2\"\n\n```json zcp-envelope\n{\"phase\":\"develop-active\",\"environment\":\"container\",\"selfService\":{\"hostname\":\"zcp\"},\"project\":{\"id\":\"nTV3oMB2SS634ImDJnQckg\",\"name\":\"z3-eval\"},\"services\":[{\"hostname\":\"s3git1\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"},{\"hostname\":\"s3git2\",\"typeVersion\":\"ubuntu/nodejs@22\",\"runtimeClass\":\"dynamic\",\"status\":\"ACTIVE\",\"bootstrapped\":true,\"deployed\":true,\"mode\":\"dev\",\"closeDeployMode\":\"unset\",\"gitPushState\":\"unconfigured\",\"buildIntegration\":\"none\"}],\"workSession\":{\"intent\":\"append 'prune-live' line to README.md on s3git1 and s3git2\",\"services\":[\"s3git1\",\"s3git2\"],\"createdAt\":\"2026-08-28T18:03:11Z\"},\"generated\":\"2026-08-28T18:03:11.731806316Z\"}\n```\n"
+              }
+            ]
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:11.764Z"
+    },
+    {
+      "id": "e824790d-43ce-4012-8dbf-f5577a285cbd",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "Tool call started",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01UPmyx3F4TqABu62sVXji7Y",
+        "status": "inProgress",
+        "detail": "Read: {}",
+        "data": {
+          "toolName": "Read",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.449Z"
+    },
+    {
+      "id": "5e4111c8-be45-416f-a5bf-6078d8fa54aa",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01UPmyx3F4TqABu62sVXji7Y",
+        "status": "inProgress",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git1/README.md\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.894Z"
+    },
+    {
+      "id": "6e5fa3f3-7951-4846-9d05-e68ecedda704",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "Tool call started",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_012MauUfAZT62vMFmJ1hCxDo",
+        "status": "inProgress",
+        "detail": "Read: {}",
+        "data": {
+          "toolName": "Read",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.916Z"
+    },
+    {
+      "id": "147bf9d2-c9f8-4164-b369-558aa1dbe354",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_012MauUfAZT62vMFmJ1hCxDo",
+        "status": "inProgress",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git2/README.md\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.920Z"
+    },
+    {
+      "id": "30209a73-4404-4ad7-a33d-29ab949cfd3b",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 60044,
+        "lastUsedTokens": 60044,
+        "inputTokens": 59902,
+        "outputTokens": 142,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.944Z"
+    },
+    {
+      "id": "2c0ecb7a-cdaa-4849-81b3-1edba79553e0",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01UPmyx3F4TqABu62sVXji7Y",
+        "status": "inProgress",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git1/README.md\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.982Z"
+    },
+    {
+      "id": "c7f61642-f263-4a11-9a32-d74b3d422f14",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_01UPmyx3F4TqABu62sVXji7Y",
+        "status": "completed",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git1/README.md\"}",
+        "data": {
+          "toolName": "Read",
+          "input": {
+            "file_path": "/var/www/s3git1/README.md"
+          },
+          "result": {
+            "tool_use_id": "toolu_01UPmyx3F4TqABu62sVXji7Y",
+            "type": "tool_result",
+            "content": "1\t<div align=\"center\">\n2\t  <h1 align=\"center\">\n3\t    Docusaurus\n4\t    <br />\n5\t    <br />\n6\t    <a href=\"https://docusaurus.io\">\n7\t      <img src=\"https://docusaurus.io/img/slash-introducing.svg\" alt=\"Docusaurus\">\n8\t    </a>\n9\t  </h1>\n10\t</div>\n11\t\n12\t<p align=\"center\">\n13\t  <a href=\"https://x.com/docusaurus\"><img src=\"https://img.shields.io/twitter/follow/docusaurus.svg?style=social\" align=\"right\" alt=\"Twitter Follow\" /></a>\n14\t  <a href=\"#backers\" alt=\"sponsors on Open Collective\"><img src=\"https://opencollective.com/Docusaurus/backers/badge.svg\" /></a>\n15\t  <a href=\"#sponsors\" alt=\"Sponsors on Open Collective\"><img src=\"https://opencollective.com/Docusaurus/sponsors/badge.svg\" /></a>\n16\t  <a href=\"https://www.npmjs.com/package/@docusaurus/core\"><img src=\"https://img.shields.io/npm/v/@docusaurus/core.svg?style=flat\" alt=\"npm version\"></a>\n17\t  <a href=\"https://github.com/facebook/docusaurus/actions/workflows/tests.yml\"><img src=\"https://github.com/facebook/docusaurus/actions/workflows/tests.yml/badge.svg\" alt=\"GitHub Actions status\"></a>\n18\t  <a href=\"CONTRIBUTING.md#pull-requests\"><img src=\"https://img.shields.io/badge/PRs-welcome-brightgreen.svg\" alt=\"PRs Welcome\"></a>\n19\t  <a href=\"https://discord.gg/docusaurus\"><img src=\"https://img.shields.io/discord/102860784329052160.svg\" align=\"right\" alt=\"Discord Chat\" /></a>\n20\t  <a href=\"https://github.com/prettier/prettier\"><img alt=\"code style: prettier\" src=\"https://img.shields.io/badge/code_style-prettier-ff69b4.svg\"></a>\n21\t  <a href=\"#license\"><img src=\"https://img.shields.io/github/license/sourcerer-io/hall-of-fame.svg?colorB=ff0000\"></a>\n22\t  <a href=\"https://github.com/facebook/jest\"><img src=\"https://img.shields.io/badge/tested_with-jest-99424f.svg\" alt=\"Tested with Jest\"></a>\n23\t  <a href=\"https://argos-ci.com\" target=\"_blank\" rel=\"noreferrer noopener\" aria-label=\"Covered by Argos\"><img src=\"https://argos-ci.com/badge.svg\" alt=\"Covered by Argos\" width=\"133\" height=\"20\" /></a>\n24\t  <a href=\"https://gitpod.io/#https://github.com/facebook/docusaurus\"><img src=\"https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod\" alt=\"Gitpod Ready-to-Code\"/></a>\n25\t  <a href=\"https://app.netlify.com/sites/docusaurus-2/deploys\"><img src=\"https://api.netlify.com/api/v1/badges/9e1ff559-4405-4ebe-8718-5e21c0774bc8/deploy-status\" alt=\"Netlify Status\"></a>\n26\t  <a href=\"https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ffacebook%2Fdocusaurus%2Ftree%2Fmain%2Fexamples%2Fclassic&project-name=my-docusaurus-site&repo-name=my-docusaurus-site\"><img src=\"https://vercel.com/button\" alt=\"Deploy with Vercel\"/></a>\n27\t  <a href=\"https://app.netlify.com/start/deploy?repository=https://github.com/slorber/docusaurus-starter\"><img src=\"https://www.netlify.com/img/deploy/button.svg\" alt=\"Deploy to Netlify\"></a>\n28\t</p>\n29\t\n30\t## Introduction\n31\t\n32\tDocusaurus is a project for building, deploying, and maintaining open source project websites easily.\n33\t\n34\tShort on time? Check out our [5-minute tutorial ⏱️](https://tutorial.docusaurus.io)!\n35\t\n36\t**Tip**: use **[docusaurus.new](https://docusaurus.new)** to test Docusaurus immediately in a playground.\n37\t\n38\t- **Simple to Start**\n39\t\n40\t> Docusaurus is built in a way so that it can [get running](https://docusaurus.io/docs/installation) in as little time as possible. We've built Docusaurus to handle the website build process so you can focus on your project.\n41\t\n42\t- **Localizable**\n43\t\n44\t> Docusaurus ships with [localization support](https://docusaurus.io/docs/i18n/introduction) via CrowdIn. Empower and grow your international community by translating your documentation.\n45\t\n46\t- **Customizable**\n47\t\n48\t> While Docusaurus ships with the key pages and sections you need to get started, including a home page, a docs section, a [blog](https://docusaurus.io/docs/blog), and additional support pages, it is also [customizable](https://docusaurus.io/docs/creating-pages) to ensure you have a site that is [uniquely yours](https://docusaurus.io/docs/styling-layout).\n49\t\n50\t## Installation\n51\t\n52\tUse the initialization CLI to create your site:\n53\t\n54\t```bash\n55\tnpm init docusaurus@latest\n56\t```\n57\t\n58\t[Read the docs](https://docusaurus.io/docs/installation) for any further information.\n59\t\n60\t## Contributing\n61\t\n62\tWe've released Docusaurus because it helps us better scale and supports the many OSS projects at Meta. We hope that other organizations can benefit from the project. We are thankful for any contributions from the community.\n63\t\n64\t### [Code of Conduct](https://code.fb.com/codeofconduct)\n65\t\n66\tMeta has adopted a Code of Conduct that we expect project participants to adhere to. Please read [the full text](https://code.fb.com/codeofconduct) so that you can understand what actions will and will not be tolerated.\n67\t\n68\t### Contributing guide\n69\t\n70\tRead our [contributing guide](https://github.com/facebook/docusaurus/blob/main/CONTRIBUTING.md) to learn about our development process, how to propose bugfixes and improvements, and how to build and test your changes to Docusaurus.\n71\t\n72\t### Beginner-friendly bugs\n73\t\n74\tTo help you get your feet wet and get you familiar with our contribution process, we have a list of [beginner-friendly bugs](https://github.com/facebook/docusaurus/labels/good%20first%20issue) that might contain smaller issues to tackle first. This is a great place to get started.\n75\t\n76\t## Contact\n77\t\n78\tWe have a few channels for contact:\n79\t\n80\t- [Discord](https://discord.gg/docusaurus):\n81\t  - `#general` for those using Docusaurus.\n82\t  - `#contributors` for those wanting to contribute to the Docusaurus core.\n83\t- [@docusaurus](https://x.com/docusaurus) X\n84\t- [GitHub Issues](https://github.com/facebook/docusaurus/issues)\n85\t\n86\t## Contributors\n87\t\n88\tThis project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)]. <a href=\"https://github.com/facebook/docusaurus/graphs/contributors\"><img src=\"https://opencollective.com/Docusaurus/contributors.svg?width=890&button=false\" /></a>\n89\t\n90\t## Backers\n91\t\n92\tThank you to all our backers! 🙏 [Become a backer](https://opencollective.com/Docusaurus#backer)\n93\t\n94\t<a href=\"https://opencollective.com/Docusaurus#backers\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/backers.svg?width=890\"></a>\n95\t\n96\t## Sponsors\n97\t\n98\tSupport this project by becoming a sponsor. Your logo will show up here with a link to your website. [Become a sponsor](https://opencollective.com/Docusaurus#sponsor)\n99\t\n100\t<a href=\"https://opencollective.com/Docusaurus/sponsor/0/website\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/sponsor/0/avatar.svg\"></a> <a href=\"https://opencollective.com/Docusaurus/sponsor/1/website\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/sponsor/1/avatar.svg\"></a>\n101\t\n102\t## License\n103\t\n104\tDocusaurus is [MIT licensed](./LICENSE).\n105\t\n106\tThe Docusaurus documentation (e.g., `.md` files in the `/docs` folder) is [Creative Commons licensed](./LICENSE-docs).\n107\t\n108\t## Special thanks\n109\t\n110\t<p>\n111\t  <a href=\"http://www.browserstack.com/\" target=\"_blank\">\n112\t    <picture>\n113\t      <source media=\"(prefers-color-scheme: dark)\" srcset=\"./admin/img/browserstack-dark-mode-logo.svg#gh-dark-mode-only\">\n114\t      <img alt=\"BrowserStack logo\" src=\"./admin/img/browserstack-light-mode-logo.svg#gh-light-mode-only\" height=\"50px\" />\n115\t    </picture>\n116\t  </a>\n117\t</p>\n118\t\n119\t[BrowserStack](http://www.browserstack.com/) supports us with [free access for open source](https://www.browserstack.com/open-source).\n120\t\n121\t[![Rocket Validator logo](./admin/img/rocketvalidator-logo.png)](https://rocketvalidator.com/)\n122\t\n123\t[Rocket Validator](https://rocketvalidator.com/) helps us find [HTML markup and accessibility issues](https://rocketvalidator.com/stats/docusaurus.io).\n124\tguard-retest\n125\t"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.982Z"
+    },
+    {
+      "id": "d39c20df-c3c7-4460-b670-20628d052481",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_012MauUfAZT62vMFmJ1hCxDo",
+        "status": "inProgress",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git2/README.md\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.983Z"
+    },
+    {
+      "id": "fcdef727-58a4-483e-a0c1-2d0bf758a638",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "Tool call",
+      "payload": {
+        "itemType": "dynamic_tool_call",
+        "toolCallId": "toolu_012MauUfAZT62vMFmJ1hCxDo",
+        "status": "completed",
+        "detail": "Read: {\"file_path\":\"/var/www/s3git2/README.md\"}",
+        "data": {
+          "toolName": "Read",
+          "input": {
+            "file_path": "/var/www/s3git2/README.md"
+          },
+          "result": {
+            "tool_use_id": "toolu_012MauUfAZT62vMFmJ1hCxDo",
+            "type": "tool_result",
+            "content": "1\t<div align=\"center\">\n2\t  <h1 align=\"center\">\n3\t    Docusaurus\n4\t    <br />\n5\t    <br />\n6\t    <a href=\"https://docusaurus.io\">\n7\t      <img src=\"https://docusaurus.io/img/slash-introducing.svg\" alt=\"Docusaurus\">\n8\t    </a>\n9\t  </h1>\n10\t</div>\n11\t\n12\t<p align=\"center\">\n13\t  <a href=\"https://x.com/docusaurus\"><img src=\"https://img.shields.io/twitter/follow/docusaurus.svg?style=social\" align=\"right\" alt=\"Twitter Follow\" /></a>\n14\t  <a href=\"#backers\" alt=\"sponsors on Open Collective\"><img src=\"https://opencollective.com/Docusaurus/backers/badge.svg\" /></a>\n15\t  <a href=\"#sponsors\" alt=\"Sponsors on Open Collective\"><img src=\"https://opencollective.com/Docusaurus/sponsors/badge.svg\" /></a>\n16\t  <a href=\"https://www.npmjs.com/package/@docusaurus/core\"><img src=\"https://img.shields.io/npm/v/@docusaurus/core.svg?style=flat\" alt=\"npm version\"></a>\n17\t  <a href=\"https://github.com/facebook/docusaurus/actions/workflows/tests.yml\"><img src=\"https://github.com/facebook/docusaurus/actions/workflows/tests.yml/badge.svg\" alt=\"GitHub Actions status\"></a>\n18\t  <a href=\"CONTRIBUTING.md#pull-requests\"><img src=\"https://img.shields.io/badge/PRs-welcome-brightgreen.svg\" alt=\"PRs Welcome\"></a>\n19\t  <a href=\"https://discord.gg/docusaurus\"><img src=\"https://img.shields.io/discord/102860784329052160.svg\" align=\"right\" alt=\"Discord Chat\" /></a>\n20\t  <a href=\"https://github.com/prettier/prettier\"><img alt=\"code style: prettier\" src=\"https://img.shields.io/badge/code_style-prettier-ff69b4.svg\"></a>\n21\t  <a href=\"#license\"><img src=\"https://img.shields.io/github/license/sourcerer-io/hall-of-fame.svg?colorB=ff0000\"></a>\n22\t  <a href=\"https://github.com/facebook/jest\"><img src=\"https://img.shields.io/badge/tested_with-jest-99424f.svg\" alt=\"Tested with Jest\"></a>\n23\t  <a href=\"https://argos-ci.com\" target=\"_blank\" rel=\"noreferrer noopener\" aria-label=\"Covered by Argos\"><img src=\"https://argos-ci.com/badge.svg\" alt=\"Covered by Argos\" width=\"133\" height=\"20\" /></a>\n24\t  <a href=\"https://gitpod.io/#https://github.com/facebook/docusaurus\"><img src=\"https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod\" alt=\"Gitpod Ready-to-Code\"/></a>\n25\t  <a href=\"https://app.netlify.com/sites/docusaurus-2/deploys\"><img src=\"https://api.netlify.com/api/v1/badges/9e1ff559-4405-4ebe-8718-5e21c0774bc8/deploy-status\" alt=\"Netlify Status\"></a>\n26\t  <a href=\"https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ffacebook%2Fdocusaurus%2Ftree%2Fmain%2Fexamples%2Fclassic&project-name=my-docusaurus-site&repo-name=my-docusaurus-site\"><img src=\"https://vercel.com/button\" alt=\"Deploy with Vercel\"/></a>\n27\t  <a href=\"https://app.netlify.com/start/deploy?repository=https://github.com/slorber/docusaurus-starter\"><img src=\"https://www.netlify.com/img/deploy/button.svg\" alt=\"Deploy to Netlify\"></a>\n28\t</p>\n29\t\n30\t## Introduction\n31\t\n32\tDocusaurus is a project for building, deploying, and maintaining open source project websites easily.\n33\t\n34\tShort on time? Check out our [5-minute tutorial ⏱️](https://tutorial.docusaurus.io)!\n35\t\n36\t**Tip**: use **[docusaurus.new](https://docusaurus.new)** to test Docusaurus immediately in a playground.\n37\t\n38\t- **Simple to Start**\n39\t\n40\t> Docusaurus is built in a way so that it can [get running](https://docusaurus.io/docs/installation) in as little time as possible. We've built Docusaurus to handle the website build process so you can focus on your project.\n41\t\n42\t- **Localizable**\n43\t\n44\t> Docusaurus ships with [localization support](https://docusaurus.io/docs/i18n/introduction) via CrowdIn. Empower and grow your international community by translating your documentation.\n45\t\n46\t- **Customizable**\n47\t\n48\t> While Docusaurus ships with the key pages and sections you need to get started, including a home page, a docs section, a [blog](https://docusaurus.io/docs/blog), and additional support pages, it is also [customizable](https://docusaurus.io/docs/creating-pages) to ensure you have a site that is [uniquely yours](https://docusaurus.io/docs/styling-layout).\n49\t\n50\t## Installation\n51\t\n52\tUse the initialization CLI to create your site:\n53\t\n54\t```bash\n55\tnpm init docusaurus@latest\n56\t```\n57\t\n58\t[Read the docs](https://docusaurus.io/docs/installation) for any further information.\n59\t\n60\t## Contributing\n61\t\n62\tWe've released Docusaurus because it helps us better scale and supports the many OSS projects at Meta. We hope that other organizations can benefit from the project. We are thankful for any contributions from the community.\n63\t\n64\t### [Code of Conduct](https://code.fb.com/codeofconduct)\n65\t\n66\tMeta has adopted a Code of Conduct that we expect project participants to adhere to. Please read [the full text](https://code.fb.com/codeofconduct) so that you can understand what actions will and will not be tolerated.\n67\t\n68\t### Contributing guide\n69\t\n70\tRead our [contributing guide](https://github.com/facebook/docusaurus/blob/main/CONTRIBUTING.md) to learn about our development process, how to propose bugfixes and improvements, and how to build and test your changes to Docusaurus.\n71\t\n72\t### Beginner-friendly bugs\n73\t\n74\tTo help you get your feet wet and get you familiar with our contribution process, we have a list of [beginner-friendly bugs](https://github.com/facebook/docusaurus/labels/good%20first%20issue) that might contain smaller issues to tackle first. This is a great place to get started.\n75\t\n76\t## Contact\n77\t\n78\tWe have a few channels for contact:\n79\t\n80\t- [Discord](https://discord.gg/docusaurus):\n81\t  - `#general` for those using Docusaurus.\n82\t  - `#contributors` for those wanting to contribute to the Docusaurus core.\n83\t- [@docusaurus](https://x.com/docusaurus) X\n84\t- [GitHub Issues](https://github.com/facebook/docusaurus/issues)\n85\t\n86\t## Contributors\n87\t\n88\tThis project exists thanks to all the people who contribute. [[Contribute](CONTRIBUTING.md)]. <a href=\"https://github.com/facebook/docusaurus/graphs/contributors\"><img src=\"https://opencollective.com/Docusaurus/contributors.svg?width=890&button=false\" /></a>\n89\t\n90\t## Backers\n91\t\n92\tThank you to all our backers! 🙏 [Become a backer](https://opencollective.com/Docusaurus#backer)\n93\t\n94\t<a href=\"https://opencollective.com/Docusaurus#backers\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/backers.svg?width=890\"></a>\n95\t\n96\t## Sponsors\n97\t\n98\tSupport this project by becoming a sponsor. Your logo will show up here with a link to your website. [Become a sponsor](https://opencollective.com/Docusaurus#sponsor)\n99\t\n100\t<a href=\"https://opencollective.com/Docusaurus/sponsor/0/website\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/sponsor/0/avatar.svg\"></a> <a href=\"https://opencollective.com/Docusaurus/sponsor/1/website\" target=\"_blank\"><img src=\"https://opencollective.com/Docusaurus/sponsor/1/avatar.svg\"></a>\n101\t\n102\t## License\n103\t\n104\tDocusaurus is [MIT licensed](./LICENSE).\n105\t\n106\tThe Docusaurus documentation (e.g., `.md` files in the `/docs` folder) is [Creative Commons licensed](./LICENSE-docs).\n107\t\n108\t## Special thanks\n109\t\n110\t<p>\n111\t  <a href=\"http://www.browserstack.com/\" target=\"_blank\">\n112\t    <picture>\n113\t      <source media=\"(prefers-color-scheme: dark)\" srcset=\"./admin/img/browserstack-dark-mode-logo.svg#gh-dark-mode-only\">\n114\t      <img alt=\"BrowserStack logo\" src=\"./admin/img/browserstack-light-mode-logo.svg#gh-light-mode-only\" height=\"50px\" />\n115\t    </picture>\n116\t  </a>\n117\t</p>\n118\t\n119\t[BrowserStack](http://www.browserstack.com/) supports us with [free access for open source](https://www.browserstack.com/open-source).\n120\t\n121\t[![Rocket Validator logo](./admin/img/rocketvalidator-logo.png)](https://rocketvalidator.com/)\n122\t\n123\t[Rocket Validator](https://rocketvalidator.com/) helps us find [HTML markup and accessibility issues](https://rocketvalidator.com/stats/docusaurus.io).\n124\tguard-retest\n125\t"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:13.983Z"
+    },
+    {
+      "id": "268ee5b0-58ca-47e6-98eb-ec7fcd759285",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "File change started",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01MwLx6hwCGccSoLxrfwfm8E",
+        "status": "inProgress",
+        "detail": "Edit: {}",
+        "data": {
+          "toolName": "Edit",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:15.299Z"
+    },
+    {
+      "id": "c181526b-c122-42cc-8241-d323800ceb17",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01MwLx6hwCGccSoLxrfwfm8E",
+        "status": "inProgress",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git1/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.426Z"
+    },
+    {
+      "id": "ae6004cf-fe4c-4b28-8a48-3c33634b47b9",
+      "tone": "tool",
+      "kind": "tool.started",
+      "summary": "File change started",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01SXhnSvFCrxMk1ZeTgGyrSf",
+        "status": "inProgress",
+        "detail": "Edit: {}",
+        "data": {
+          "toolName": "Edit",
+          "input": {}
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.447Z"
+    },
+    {
+      "id": "19e849ed-f158-4edf-92b5-997639de40ab",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01MwLx6hwCGccSoLxrfwfm8E",
+        "status": "inProgress",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git1/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.466Z"
+    },
+    {
+      "id": "68cce5f9-c7e3-48b5-ad15-a5085d142066",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01MwLx6hwCGccSoLxrfwfm8E",
+        "status": "completed",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git1/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {
+          "toolName": "Edit",
+          "input": {
+            "file_path": "/var/www/s3git1/README.md",
+            "old_string": "guard-retest",
+            "new_string": "guard-retest\nprune-live"
+          },
+          "result": {
+            "tool_use_id": "toolu_01MwLx6hwCGccSoLxrfwfm8E",
+            "type": "tool_result",
+            "content": "The file /var/www/s3git1/README.md has been updated successfully. (file state is current in your context — no need to Read it back)"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.466Z"
+    },
+    {
+      "id": "f5dba0e8-5884-4484-87b7-b4675e3c3216",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01SXhnSvFCrxMk1ZeTgGyrSf",
+        "status": "inProgress",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git2/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.832Z"
+    },
+    {
+      "id": "ee81f50f-b95a-4cef-a99c-aecc2719f80e",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 67203,
+        "lastUsedTokens": 67203,
+        "inputTokens": 66966,
+        "outputTokens": 237,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:16.861Z"
+    },
+    {
+      "id": "33414190-709c-4e7a-b3bc-aa442b5fe456",
+      "tone": "tool",
+      "kind": "tool.updated",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01SXhnSvFCrxMk1ZeTgGyrSf",
+        "status": "inProgress",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git2/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {}
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:17.077Z"
+    },
+    {
+      "id": "cb590fc6-dfdc-445a-a23b-54f4628d97c1",
+      "tone": "tool",
+      "kind": "tool.completed",
+      "summary": "File change",
+      "payload": {
+        "itemType": "file_change",
+        "toolCallId": "toolu_01SXhnSvFCrxMk1ZeTgGyrSf",
+        "status": "completed",
+        "detail": "Edit: {\"file_path\":\"/var/www/s3git2/README.md\",\"old_string\":\"guard-retest\",\"new_string\":\"guard-retest\\nprune-live\"}",
+        "data": {
+          "toolName": "Edit",
+          "input": {
+            "file_path": "/var/www/s3git2/README.md",
+            "old_string": "guard-retest",
+            "new_string": "guard-retest\nprune-live"
+          },
+          "result": {
+            "tool_use_id": "toolu_01SXhnSvFCrxMk1ZeTgGyrSf",
+            "type": "tool_result",
+            "content": "The file /var/www/s3git2/README.md has been updated successfully. (file state is current in your context — no need to Read it back)"
+          }
+        }
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:17.077Z"
+    },
+    {
+      "id": "ca77aad8-f447-4964-bd58-e5a01c397c3f",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 67474,
+        "lastUsedTokens": 67474,
+        "inputTokens": 67427,
+        "outputTokens": 47,
+        "maxTokens": 200000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:18.745Z"
+    },
+    {
+      "id": "5c1e8b4e-97df-48ba-a909-6389656553bf",
+      "tone": "info",
+      "kind": "checkpoint.captured",
+      "summary": "Checkpoint captured",
+      "payload": {
+        "turnCount": 1,
+        "status": "ready"
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:19.798Z"
+    },
+    {
+      "id": "a06d1f0a-3ebb-47fc-a14a-9c54bcb58723",
+      "tone": "info",
+      "kind": "context-window.updated",
+      "summary": "Context window updated",
+      "payload": {
+        "usedTokens": 67474,
+        "lastUsedTokens": 67474,
+        "totalProcessedTokens": 514068,
+        "inputTokens": 67427,
+        "outputTokens": 47,
+        "maxTokens": 1000000
+      },
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "createdAt": "2026-08-28T18:03:19.798Z"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg-dbbb3786-634c-4890-967d-44e8c5bef036",
+      "turnId": null,
+      "role": "user",
+      "text": "Append a line reading prune-live to the end of /var/www/s3git1/README.md and a line reading prune-live to the end of /var/www/s3git2/README.md. Edit those two files, then stop.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:02:40.683Z",
+      "updatedAt": "2026-08-28T18:02:40.683Z"
+    },
+    {
+      "id": "assistant:b407b056-b45c-4e4d-8a12-5254034fadf2",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "I'll follow the project's Zerops workflow routing for service edits — checking session/discovery state first, then editing the two README files.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:02:56.548Z",
+      "updatedAt": "2026-08-28T18:02:56.548Z"
+    },
+    {
+      "id": "assistant:693e451a-74a1-4143-8dff-8d6a41408b93",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "Both services need adopting before I can edit them. Adopting now.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:00.182Z",
+      "updatedAt": "2026-08-28T18:03:00.182Z"
+    },
+    {
+      "id": "assistant:1532f884-d1eb-42aa-a216-dbb25efcab3e",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "s3git1 and s3git2 are two independent runtimes of the same stack, not a dev/stage pair, so I'll complete discover with explicit scope.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:02.925Z",
+      "updatedAt": "2026-08-28T18:03:02.925Z"
+    },
+    {
+      "id": "assistant:abc0aaa8-ffb6-42ab-a0c5-94b9bc453641",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "They're two independent services, not a dev/stage pair, so I'll submit that explicit plan.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:04.833Z",
+      "updatedAt": "2026-08-28T18:03:04.833Z"
+    },
+    {
+      "id": "assistant:815b5b45-26f0-4c48-b72e-24a439428a3c",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "Both services are already ACTIVE, so provision is effectively a no-op — completing that step now.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:08.552Z",
+      "updatedAt": "2026-08-28T18:03:08.552Z"
+    },
+    {
+      "id": "assistant:b5f2ed33-81bf-4b04-98fc-9c5260c7c93a",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "Both services are adopted and mounted. Now starting a develop session and editing the files.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:11.436Z",
+      "updatedAt": "2026-08-28T18:03:11.436Z"
+    },
+    {
+      "id": "assistant:53d3c672-7557-4c99-a383-01bc78348870",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "Now editing the two README.md files directly, per the user's request to stop after that.",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:13.440Z",
+      "updatedAt": "2026-08-28T18:03:13.440Z"
+    },
+    {
+      "id": "assistant:6a284fb2-3aa6-4f31-b21f-d0f4bfb6bec5",
+      "turnId": "d74d1d49-9c24-496a-a5d1-0f64232514e6",
+      "role": "assistant",
+      "text": "Both `README.md` files now end with a `prune-live` line, as requested. Stopping here per your instruction (not deploying or closing the session).",
+      "streaming": false,
+      "createdAt": "2026-08-28T18:03:18.694Z",
+      "updatedAt": "2026-08-28T18:03:18.694Z"
+    }
+  ]
+}
