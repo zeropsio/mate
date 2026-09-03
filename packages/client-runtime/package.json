@@ -155,9 +155,21 @@
       "types": "./src/zerops/activity/attribution.ts",
       "default": "./src/zerops/activity/attribution.ts"
     },
+    "./zerops/activity/buildLog": {
+      "types": "./src/zerops/activity/buildLog.ts",
+      "default": "./src/zerops/activity/buildLog.ts"
+    },
     "./zerops/activity/dto": {
       "types": "./src/zerops/activity/dto.ts",
       "default": "./src/zerops/activity/dto.ts"
+    },
+    "./zerops/activity/observe": {
+      "types": "./src/zerops/activity/observe.ts",
+      "default": "./src/zerops/activity/observe.ts"
+    },
+    "./zerops/activity/observedSteps": {
+      "types": "./src/zerops/activity/observedSteps.ts",
+      "default": "./src/zerops/activity/observedSteps.ts"
     },
     "./zerops/activity/pipelineState": {
       "types": "./src/zerops/activity/pipelineState.ts",
