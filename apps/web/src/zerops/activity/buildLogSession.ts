@@ -13,6 +13,7 @@ import {
   buildLogUrls,
   mergeBuildLogLines,
   readBuildLogItems,
+  withStreamFrom,
   type BuildLogLine,
   type BuildLogQuery,
 } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -84,6 +85,8 @@ export class BuildLogSession {
   #disposed = false;
   #socket: MinimalWebSocket | undefined;
   #wsUrl: string | undefined;
+  /** The newest line's id seen so far (backfill or stream) — reconnect asks `from` this, not a timestamp. */
+  #latestLineId: string | undefined;
   #pending: BuildLogLine[] = [];
   #flushHandle: unknown;
   /**
@@ -182,6 +185,7 @@ export class BuildLogSession {
         return;
       }
       const lines = mergeBuildLogLines([], readBuildLogItems(body));
+      this.#latestLineId = lines.at(-1)?.id;
       if (this.#live) {
         this.#publish({ lines, status: "live" });
         this.#openSocket();
@@ -203,6 +207,13 @@ export class BuildLogSession {
     ) {
       return;
     }
+    // The newest line seen so far (backfill or stream) becomes `from` on
+    // (re)connect — live-verified against the log backend to be an item id,
+    // not a timestamp, matching the GUI's own reconnect.
+    const url =
+      this.#latestLineId === undefined
+        ? this.#wsUrl
+        : withStreamFrom(this.#wsUrl, this.#latestLineId);
     let socket: MinimalWebSocket;
     try {
       // A malformed url (or a host/scheme the runtime refuses) throws
@@ -212,7 +223,7 @@ export class BuildLogSession {
       // from the close handler's reopen, and only the former sits inside an
       // enclosing try/catch) so it is reported the same way any other
       // stream failure is, and the url never propagates in a thrown error.
-      socket = new this.#WebSocketCtor(this.#wsUrl);
+      socket = new this.#WebSocketCtor(url);
     } catch {
       if (!this.#disposed) {
         this.#publish({ ...this.#snapshot, status: "error" });
@@ -271,6 +282,7 @@ export class BuildLogSession {
       }
       const lines = mergeBuildLogLines(this.#snapshot.lines, this.#pending);
       this.#pending = [];
+      this.#latestLineId = lines.at(-1)?.id ?? this.#latestLineId;
       // Keep whatever status already holds — a message can be buffered just
       // before `setLive(false)` or an error closes things down, and this
       // flush firing afterwards must not force the status back to `live`

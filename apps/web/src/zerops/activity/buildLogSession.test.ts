@@ -101,6 +101,76 @@ describe("BuildLogSession — the engine behind useBuildLog", () => {
     expect(FakeWebSocket.instances[0]?.url).toContain("/stream");
   });
 
+  /**
+   * Live-verified: reconnecting must pass the newest already-loaded line's
+   * id as `from`, not a timestamp. The socket opened straight out of the
+   * backfill carries the newest BACKFILLED line's id.
+   */
+  it("opens the first WebSocket with from set to the newest backfilled line's id", async () => {
+    const fetchStub = fakeFetch(() =>
+      okResponse({
+        items: [
+          { id: "l1", timestamp: "2026-09-02T10:00:00.000Z", content: "a", severity: 6 },
+          { id: "l2", timestamp: "2026-09-02T10:00:01.000Z", content: "b", severity: 6 },
+        ],
+      }),
+    );
+    const session = new BuildLogSession({
+      resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
+      query: QUERY,
+      fetchImpl: fetchStub.fetchImpl,
+      WebSocketCtor: FakeWebSocket,
+    });
+
+    session.start(true);
+    await vi.waitFor(() => expect(session.getSnapshot().status).toBe("live"));
+    expect(new URL(FakeWebSocket.instances[0]!.url).searchParams.get("from")).toBe("l2");
+  });
+
+  it("opens the first WebSocket with no from when the backfill found nothing", async () => {
+    const fetchStub = fakeFetch(() => okResponse({ items: [] }));
+    const session = new BuildLogSession({
+      resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
+      query: QUERY,
+      fetchImpl: fetchStub.fetchImpl,
+      WebSocketCtor: FakeWebSocket,
+    });
+
+    session.start(true);
+    await vi.waitFor(() => expect(session.getSnapshot().status).toBe("live"));
+    expect(new URL(FakeWebSocket.instances[0]!.url).searchParams.has("from")).toBe(false);
+  });
+
+  it("reopens with from advanced to the newest line seen since the initial open", async () => {
+    const fetchStub = fakeFetch(() =>
+      okResponse({
+        items: [{ id: "l1", timestamp: "2026-09-02T10:00:00.000Z", content: "a", severity: 6 }],
+      }),
+    );
+    const session = new BuildLogSession({
+      resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
+      query: QUERY,
+      fetchImpl: fetchStub.fetchImpl,
+      WebSocketCtor: FakeWebSocket,
+    });
+
+    session.start(true);
+    await vi.waitFor(() => expect(session.getSnapshot().status).toBe("live"));
+    expect(new URL(FakeWebSocket.instances[0]!.url).searchParams.get("from")).toBe("l1");
+
+    FakeWebSocket.instances[0]?.emit([
+      { id: "l2", timestamp: "2026-09-02T10:00:02.000Z", content: "b", severity: 6 },
+    ]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(session.getSnapshot().lines.map((l) => l.id)).toEqual(["l1", "l2"]);
+
+    // Server closes; the reopened socket must ask from the newest line
+    // learned from the stream, not the stale backfill-time value.
+    FakeWebSocket.instances[0]?.close();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(new URL(FakeWebSocket.instances[1]!.url).searchParams.get("from")).toBe("l2");
+  });
+
   it("buffers incoming lines and publishes at most every 100ms", async () => {
     const fetchStub = fakeFetch(() => okResponse({ items: [] }));
     const session = new BuildLogSession({
