@@ -698,7 +698,7 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
   };
 }
 
-// --- import (standalone) -------------------------------------------------------
+// --- Import (standalone) -------------------------------------------------------
 
 interface ImportRead {
   hostnames: string[];
