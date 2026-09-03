@@ -42,12 +42,31 @@ describe("buildLogUrls", () => {
     expect(wsUrl.protocol).toBe("wss:");
     expect(wsUrl.host).toBe(httpUrl.host);
     expect(wsUrl.pathname).toBe(`${httpUrl.pathname}/stream`);
-    expect(wsUrl.search).toBe(httpUrl.search);
+    // Every param but `desc` (the HTTP-only tail ordering flag) matches.
+    const httpParams = new URLSearchParams(httpUrl.search);
+    httpParams.delete("desc");
+    expect(wsUrl.search).toBe(`?${httpParams.toString()}`);
   });
 
   it("adds https:// when the access url has no protocol at all", () => {
     const { http } = buildLogUrls({ url: "proxy.example.com/api/rest/log?signature=abc" }, query);
     expect(http.startsWith("https://")).toBe(true);
+  });
+
+  /**
+   * The GUI's default tail params always send `desc=1` (trlog.store.ts's
+   * `_toStateApiParams`), and zcp's own log fetcher sets it unconditionally
+   * (logfetcher.go) — without it a log over `limit` lines backfills the
+   * OLDEST `limit` lines instead of the newest. `mergeBuildLogLines`
+   * re-sorts ascending regardless of what order the backend answers in.
+   *
+   * The live stream never carries `desc` in the GUI's own request either,
+   * so it stays off the ws url.
+   */
+  it("sends desc=1 on the HTTP backfill only, never on the ws stream", () => {
+    const { http, ws } = buildLogUrls(access, query);
+    expect(new URL(http).searchParams.get("desc")).toBe("1");
+    expect(new URL(ws).searchParams.has("desc")).toBe(false);
   });
 });
 

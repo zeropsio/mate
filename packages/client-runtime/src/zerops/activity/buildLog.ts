@@ -10,6 +10,16 @@
  * `from` = `pipelineStart − 5s`), and zcp's own verified item field names
  * (`internal/platform/logfetcher.go` `logAPIItem`: `message`, not `content`
  * — read defensively for either).
+ *
+ * Not verified against the real backend: `trlog.store.ts`'s own live
+ * stream (`_openLogStream$`) re-derives `from` on *reconnect* as the last
+ * already-loaded item's id (with `limit: 100`), not a timestamp — a
+ * stateful, catch-up-scoped param this pure function has no way to supply.
+ * `ws` here instead carries the same ISO `fromIso` the HTTP backfill uses
+ * (the point the build's pipeline started), on the assumption the log
+ * backend accepts an ISO `from` identically on both transports; any overlap
+ * this produces on reconnect is absorbed by `mergeBuildLogLines`'s
+ * dedupe-by-id, but this has not been checked against a live log backend.
  */
 
 export interface BuildLogQuery {
@@ -50,6 +60,15 @@ export function buildLogUrls(
   const wsUrl = new URL(httpUrl.toString());
   wsUrl.protocol = "wss:";
   wsUrl.pathname = `${wsUrl.pathname}/stream`;
+
+  // The HTTP backfill wants the newest `limit` lines: the GUI's default
+  // tail params always send `desc=1` (trlog.store.ts's `_toStateApiParams`)
+  // and zcp's own log fetcher sets it unconditionally (logfetcher.go) —
+  // without it, a log over `limit` lines backfills the OLDEST `limit`
+  // lines instead. `mergeBuildLogLines` re-sorts ascending regardless of
+  // what order the backend answers in. Set after cloning `wsUrl` — the
+  // GUI's live-stream request never carries `desc`, so it stays off `ws`.
+  httpUrl.searchParams.set("desc", "1");
 
   return { http: httpUrl.toString(), ws: wsUrl.toString() };
 }
