@@ -248,6 +248,58 @@ describe("BuildLogSession — the engine behind useBuildLog", () => {
     expect(session.getSnapshot().status).toBe("live");
   });
 
+  /**
+   * A malformed ws url (or a browser that refuses the scheme/host) throws
+   * synchronously from `new WebSocket(...)` — typically a SyntaxError whose
+   * message embeds the URL, which for this session is a signed, bearer-like
+   * access URL. That must never propagate as an unhandled throw (which
+   * could land it in a console/error-reporting log): catch it and report it
+   * the same way any other stream failure is reported.
+   */
+  it("goes to error status when the WebSocket constructor throws, without rethrowing", async () => {
+    const fetchStub = fakeFetch(() => okResponse({ items: [] }));
+    class ThrowingWebSocket {
+      constructor(url: string) {
+        throw new SyntaxError(`Failed to construct 'WebSocket': The URL '${url}' is invalid.`);
+      }
+    }
+    const session = new BuildLogSession({
+      resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
+      query: QUERY,
+      fetchImpl: fetchStub.fetchImpl,
+      WebSocketCtor: ThrowingWebSocket as unknown as new (url: string) => FakeWebSocket,
+    });
+
+    expect(() => session.start(true)).not.toThrow();
+    await vi.waitFor(() => expect(session.getSnapshot().status).toBe("error"));
+  });
+
+  it("goes to error status when reopening after a server close throws", async () => {
+    const fetchStub = fakeFetch(() => okResponse({ items: [] }));
+    let constructCount = 0;
+    class FlakyWebSocket extends FakeWebSocket {
+      constructor(url: string) {
+        constructCount += 1;
+        if (constructCount === 2) {
+          throw new SyntaxError(`Failed to construct 'WebSocket': The URL '${url}' is invalid.`);
+        }
+        super(url);
+      }
+    }
+    const session = new BuildLogSession({
+      resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),
+      query: QUERY,
+      fetchImpl: fetchStub.fetchImpl,
+      WebSocketCtor: FlakyWebSocket,
+    });
+
+    session.start(true);
+    await vi.waitFor(() => expect(session.getSnapshot().status).toBe("live"));
+
+    expect(() => FakeWebSocket.instances[0]?.close()).not.toThrow();
+    expect(session.getSnapshot().status).toBe("error");
+  });
+
   it("goes to error status when the backfill fetch rejects", async () => {
     const session = new BuildLogSession({
       resolveAccess: async () => ({ url: "https://log.example.com/api/rest/log?sig=1" }),

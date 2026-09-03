@@ -203,7 +203,22 @@ export class BuildLogSession {
     ) {
       return;
     }
-    const socket = new this.#WebSocketCtor(this.#wsUrl);
+    let socket: MinimalWebSocket;
+    try {
+      // A malformed url (or a host/scheme the runtime refuses) throws
+      // synchronously here — typically a SyntaxError whose own message
+      // embeds the url, which for this session is a signed access url.
+      // Caught at the source (this is called both from the initial open and
+      // from the close handler's reopen, and only the former sits inside an
+      // enclosing try/catch) so it is reported the same way any other
+      // stream failure is, and the url never propagates in a thrown error.
+      socket = new this.#WebSocketCtor(this.#wsUrl);
+    } catch {
+      if (!this.#disposed) {
+        this.#publish({ ...this.#snapshot, status: "error" });
+      }
+      return;
+    }
     socket.addEventListener("message", (event) => {
       // Proof of life — a later close gets its own fresh one-shot reopen.
       this.#reopening = false;
