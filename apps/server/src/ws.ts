@@ -140,6 +140,7 @@ import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
+import { awaitSessionEnd } from "./auth/sessionLifetime.ts";
 import {
   failEnvironmentAuthInvalid,
   failEnvironmentInternal,
@@ -2636,9 +2637,25 @@ export const websocketRpcRouteLayer = Layer.unwrap(
             ),
           ),
         );
+        // The session is verified at this door and never again for the life of
+        // the socket, so without this the membership window bounds only the
+        // NEXT connect and a revocation never reaches an open connection.
+        const endWhenSessionEnds = awaitSessionEnd({
+          sessionId: session.sessionId,
+          expiresAt: session.expiresAt,
+          changes: sessions.streamChanges,
+        }).pipe(
+          Effect.tap((reason) =>
+            Effect.logInfo("Ending a websocket whose session is no longer valid.", {
+              sessionId: session.sessionId,
+              reason,
+            }),
+          ),
+          Effect.andThen(Effect.interrupt),
+        );
         return yield* Effect.acquireUseRelease(
           sessions.markConnected(session.sessionId),
-          () => rpcWebSocketHttpEffect,
+          () => Effect.raceFirst(rpcWebSocketHttpEffect, endWhenSessionEnds),
           () => sessions.markDisconnected(session.sessionId),
         );
       }).pipe(
