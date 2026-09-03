@@ -343,6 +343,12 @@ export function reduceZeropsOperations(
     const cls = classifyZeropsCall(entry.toolName, entry.input, entry.status);
 
     if (cls === "hidden") {
+      // Hidden is a transcript-visibility verdict, not "never seen here" — the
+      // web may pass every zerops_* call through (it must, so the route-menu
+      // start's own `intent` reaches the fold below), and every one of them
+      // still has to leave the transcript. Consumed unconditionally, whether
+      // or not it ends up contributing to an operation.
+      consumedEntryIds.add(entry.id);
       if (isBootstrapRouteMenuStart(entry.input)) {
         const intent = readInputString(entry.input, "intent");
         if (intent !== undefined) {

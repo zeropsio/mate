@@ -88,7 +88,7 @@ describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
     expect(operations.some((o) => o.kind === "import")).toBe(false);
   });
 
-  it("classifies the ToolSearch-style calls, route-menu start and close-mode as hidden", () => {
+  it("classifies the ToolSearch-style calls, route-menu start and close-mode as hidden, and consumes all of them", () => {
     const toolSearchEntry = entries.find((e) => e.toolName === "ToolSearch")!;
     expect(
       classifyZeropsCall(toolSearchEntry.toolName, toolSearchEntry.input, toolSearchEntry.status),
@@ -107,6 +107,23 @@ describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
     expect(
       classifyZeropsCall(closeModeEntry.toolName, closeModeEntry.input, closeModeEntry.status),
     ).toBe("hidden");
+    // Hidden is a transcript-visibility verdict, not "unseen" — every hidden
+    // entry is consumed so the web can pass every zerops_* call through
+    // unfiltered and let the reduction alone decide what the transcript
+    // keeps, even though none of these three joins an operation.
+    expect(consumedEntryIds.has(toolSearchEntry.id)).toBe(true);
+    expect(consumedEntryIds.has(routeMenuEntry.id)).toBe(true);
+    expect(consumedEntryIds.has(closeModeEntry.id)).toBe(true);
+  });
+
+  it("consumes every hidden-classified entry in the thread", () => {
+    const hiddenIds = entries
+      .filter((e) => classifyZeropsCall(e.toolName, e.input, e.status) === "hidden")
+      .map((e) => e.id);
+    expect(hiddenIds.length).toBeGreaterThan(0);
+    for (const id of hiddenIds) {
+      expect(consumedEntryIds.has(id)).toBe(true);
+    }
   });
 
   it("classifies zerops_discover and the develop start as generic", () => {
@@ -493,6 +510,63 @@ describe("reduceZeropsOperations — kind error (a hidden/generic-shaped call th
     expect(op.kicker).toBe("Error · INTERNAL");
     expect(op.voice).toBe("Discover failed.");
     expect(op.closing).toContain("discover unavailable");
+  });
+});
+
+describe("reduceZeropsOperations — bootstrap voice from the route-menu reply", () => {
+  it("reads the intent off the hidden route-menu start that precedes start route=, and consumes it", () => {
+    const routeMenuStart: ZeropsCallEntry = {
+      id: "menu1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_workflow",
+      input: {
+        action: "start",
+        workflow: "bootstrap",
+        intent: "Nový service pro weather dashboard",
+      },
+      status: "completed",
+      resultText: JSON.stringify({
+        kind: "route-menu",
+        routeOptions: ["classic", "adopt"],
+        message: "Pick a route.",
+      }),
+    };
+    const startWithRoute: ZeropsCallEntry = {
+      id: "route1",
+      createdAt: "2026-09-01T00:00:05.000Z",
+      turnId: "t1",
+      toolName: "zerops_workflow",
+      // No intent here — the agent only sends it on the route-menu reply,
+      // exactly like the real transcripts.
+      input: { action: "start", workflow: "bootstrap", route: "classic" },
+      status: "completed",
+      resultText: JSON.stringify({
+        sessionId: "sessMenu",
+        progress: {
+          total: 3,
+          completed: 0,
+          steps: [
+            { name: "discover", status: "in_progress" },
+            { name: "provision", status: "pending" },
+            { name: "close", status: "pending" },
+          ],
+        },
+      }),
+    };
+    const { operations, consumedEntryIds } = reduceZeropsOperations([
+      routeMenuStart,
+      startWithRoute,
+    ]);
+    expect(operations).toHaveLength(1);
+    const bootstrap = operations[0]!;
+    expect(bootstrap.voice).toBe("Nový service pro weather dashboard");
+    expect(bootstrap.voiceSource).toBe("agent");
+    // The route-menu call itself never joins the operation — its intent does.
+    expect(bootstrap.anchorEntryId).toBe("route1");
+    expect(bootstrap.entryIds).toEqual(["route1"]);
+    expect(consumedEntryIds.has("menu1")).toBe(true);
+    expect(consumedEntryIds.has("route1")).toBe(true);
   });
 });
 

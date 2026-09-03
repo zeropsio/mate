@@ -105,6 +105,13 @@ export interface ZeropsOperation {
 export interface ZeropsOperationsReduction {
   /** In anchor order. */
   readonly operations: ReadonlyArray<ZeropsOperation>;
-  /** Entries that became/joined an operation. */
+  /**
+   * Entries the transcript must drop: every entry that became/joined an
+   * operation, plus every `hidden`-classified entry (`classifyZeropsCall`),
+   * whether or not it ends up contributing to one — a route-menu `start`
+   * never anchors or joins an operation itself, but it is still consumed, so
+   * the caller can pass every `zerops_*` call through unfiltered and let the
+   * reduction alone decide what the transcript keeps.
+   */
   readonly consumedEntryIds: ReadonlySet<string>;
 }
