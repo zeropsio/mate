@@ -1,0 +1,193 @@
+// @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
+import { describe, expect, it } from "vite-plus/test";
+
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import type { Observation } from "@t3tools/client-runtime/zerops/activity/observe";
+
+import type { ProjectActivitySnapshot } from "./projectActivityPoller.ts";
+import {
+  OPERATION_OBSERVATION_CEILING_MS,
+  deriveOperationObservation,
+  type DeriveOperationObservationInput,
+  type ObservationTarget,
+} from "./useOperationObservation.ts";
+
+const NOW = Date.parse("2026-09-02T10:00:00.000Z");
+
+function process(overrides: Partial<ActivityProcess>): ActivityProcess {
+  return {
+    id: "p1",
+    projectId: "proj-1",
+    serviceStackIds: ["svc-1"],
+    status: "RUNNING",
+    actionName: "stack.deploy",
+    created: "2026-09-02T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function target(overrides: Partial<ObservationTarget> = {}): ObservationTarget {
+  return {
+    key: "deploy:weatherdash:1",
+    kind: "deploy",
+    hostnames: ["weatherdash"],
+    startedAtMs: NOW,
+    running: true,
+    ...overrides,
+  };
+}
+
+const EMPTY_SNAPSHOT: ProjectActivitySnapshot = { processes: undefined, atMs: undefined };
+
+function baseInput(
+  overrides: Partial<DeriveOperationObservationInput> = {},
+): DeriveOperationObservationInput {
+  return {
+    target: target(),
+    attributable: true,
+    notAttributableReason: "no-target",
+    serviceIds: ["svc-1"],
+    projectId: "proj-1",
+    snapshot: EMPTY_SNAPSHOT,
+    previousLastRead: undefined,
+    previousHistory: undefined,
+    ...overrides,
+  };
+}
+
+describe("deriveOperationObservation — the hook's pure decision logic", () => {
+  it("off: no-target when there is no target at all", () => {
+    const result = deriveOperationObservation(baseInput({ target: null }), NOW);
+    expect(result.state).toEqual({ kind: "off", reason: "no-target" });
+    expect(result.wantsPoll).toBe(false);
+  });
+
+  it("observing (empty steps) before the first read, and wants to poll while running", () => {
+    const result = deriveOperationObservation(baseInput(), NOW + 2_000);
+    expect(result.state.kind).toBe("observing");
+    expect(result.wantsPoll).toBe(true);
+  });
+
+  it("observing after the first read lands, folding the snapshot into an attribution", () => {
+    const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
+    const snapshot: ProjectActivitySnapshot = { processes: [p], atMs: NOW };
+    const result = deriveOperationObservation(baseInput({ snapshot }), NOW);
+    expect(result.state.kind).toBe("observing");
+    expect(
+      result.state.kind === "observing" && result.state.observation.steps.length,
+    ).toBeGreaterThan(0);
+    expect(result.lastRead?.atMs).toBe(NOW);
+  });
+
+  it("remembers the last read across calls when the snapshot goes stale (no fresh processes)", () => {
+    const p = process({ appVersion: { status: "BUILDING" } });
+    const first = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
+      NOW,
+    );
+    const second = deriveOperationObservation(
+      baseInput({ snapshot: EMPTY_SNAPSHOT, previousLastRead: first.lastRead }),
+      NOW + 11_000,
+    );
+    expect(second.state.kind).toBe("stale");
+  });
+
+  it("history is kept once running flips false — the last non-empty-steps observation persists", () => {
+    const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
+    const running = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
+      NOW,
+    );
+    expect(running.history?.steps.length).toBeGreaterThan(0);
+
+    const stopped = deriveOperationObservation(
+      baseInput({
+        target: target({ running: false }),
+        snapshot: EMPTY_SNAPSHOT,
+        previousHistory: running.history,
+      }),
+      NOW + 60_000,
+    );
+    expect(stopped.history).toEqual(running.history);
+    expect(stopped.wantsPoll).toBe(false);
+  });
+
+  it("does not overwrite history with an empty-steps observation", () => {
+    const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
+    const withSteps = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [p], atMs: NOW } }),
+      NOW,
+    );
+
+    const noStepsYet = deriveOperationObservation(
+      baseInput({ snapshot: EMPTY_SNAPSHOT, previousHistory: withSteps.history }),
+      NOW + 1_000,
+    );
+    expect(noStepsYet.history).toEqual(withSteps.history);
+  });
+
+  it("stops polling once the pipeline outcome settles, even while the operation is still running", () => {
+    const settled = process({ appVersion: { status: "ACTIVE" } });
+    const result = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [settled], atMs: NOW } }),
+      NOW,
+    );
+    expect(result.state.kind === "observing" && result.state.observation.outcome).toBe("finished");
+    expect(result.wantsPoll).toBe(false);
+  });
+
+  it("stops polling once the operation is no longer running", () => {
+    const result = deriveOperationObservation(
+      baseInput({ target: target({ running: false }) }),
+      NOW,
+    );
+    expect(result.wantsPoll).toBe(false);
+  });
+
+  it("stops polling past the ceiling", () => {
+    const result = deriveOperationObservation(
+      baseInput(),
+      NOW + OPERATION_OBSERVATION_CEILING_MS + 1,
+    );
+    expect(result.wantsPoll).toBe(false);
+    expect(result.state).toEqual({ kind: "off", reason: "ceiling" });
+  });
+
+  it("off with the caller's not-attributable reason when attributable is false", () => {
+    const result = deriveOperationObservation(
+      baseInput({ attributable: false, notAttributableReason: "no-session" }),
+      NOW,
+    );
+    expect(result.state).toEqual({ kind: "off", reason: "no-session" });
+    expect(result.wantsPoll).toBe(false);
+  });
+
+  it("off: project-mismatch when the snapshot's processes belong to a different project", () => {
+    const wrong = process({ projectId: "proj-other" });
+    const result = deriveOperationObservation(
+      baseInput({ snapshot: { processes: [wrong], atMs: NOW } }),
+      NOW,
+    );
+    expect(result.state).toEqual({ kind: "off", reason: "project-mismatch" });
+  });
+
+  it("passes through the poller's own unavailableReason", () => {
+    const result = deriveOperationObservation(
+      baseInput({
+        snapshot: { processes: undefined, atMs: undefined, unavailableReason: "unauthorized" },
+      }),
+      NOW,
+    );
+    expect(result.state).toEqual({ kind: "off", reason: "unauthorized" });
+  });
+
+  it("carries an explicit previousHistory forward with no observation at all yet", () => {
+    const history: Observation = {
+      steps: [{ id: "DEPLOY", label: "Deploy", state: "running", stateLabel: "Running" }],
+      processes: [],
+      readAtMs: NOW,
+    };
+    const result = deriveOperationObservation(baseInput({ previousHistory: history }), NOW);
+    expect(result.history).toEqual(history);
+  });
+});
