@@ -1,237 +1,139 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Logger from "effect/Logger";
 import * as Ref from "effect/Ref";
 import { TestClock } from "effect/testing";
 
-import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
-import { parseZeropsTopology, type ZeropsTopologyRead } from "./zeropsTopologyParse.ts";
 import {
+  MOUNT_TABLE_PATH,
+  MountTableReadError,
   REPOSITORY_CACHE_TTL,
   makeZeropsRepositorySource,
-  selectRepositories,
+  parseMountTable,
 } from "./ZeropsRepositorySource.ts";
 
 /**
- * A `zcp studio topology` payload in the exact shape `ops.DiscoverResult`
- * marshals (`internal/ops/discover.go`): `mountPath` present only for a
- * service whose `/var/www/<hostname>` directory exists on the container.
+ * `/proc/mounts` lines for `s3git1`, `s3git2` and `weatherdash`, measured on
+ * `z3-eval` 2026-09-04 (ledger row in `verified.md`): one line per mounted dev
+ * service, shape `<host>:/var/www /var/www/<host> fuse.sshfs
+ * rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0`.
  */
-const topologyRead = (json: string): ZeropsTopologyRead => {
-  const parsed = parseZeropsTopology(json);
-  assert.isDefined(parsed);
-  return parsed;
-};
+const MEASURED_MOUNT_TABLE = [
+  "s3git1:/var/www /var/www/s3git1 fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
+  "s3git2:/var/www /var/www/s3git2 fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
+  "weatherdash:/var/www /var/www/weatherdash fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
+].join("\n");
 
-const topology = topologyRead(
-  JSON.stringify({
-    project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
-    services: [
-      {
-        hostname: "kanbandev",
-        serviceId: "aaa",
-        type: "ubuntu/nodejs@22",
-        status: "ACTIVE",
-        adoptionState: "adopted",
-        isInfrastructure: false,
-        mountPath: "/var/www/kanbandev",
-      },
-      {
-        hostname: "apidev",
-        serviceId: "bbb",
-        type: "ubuntu/go@1.22",
-        status: "ACTIVE",
-        adoptionState: "adoptable",
-        isInfrastructure: false,
-        mountPath: "/var/www/apidev",
-      },
-      {
-        hostname: "kanbanstage",
-        serviceId: "ccc",
-        type: "ubuntu/nodejs@22",
-        status: "ACTIVE",
-        adoptionState: "adopted",
-        isInfrastructure: false,
-      },
-      {
-        hostname: "db",
-        serviceId: "ddd",
-        type: "postgresql@16",
-        status: "ACTIVE",
-        adoptionState: "managed-dep",
-        isInfrastructure: true,
-        mountPath: "/var/www/db",
-      },
-    ],
-  }),
-);
+/** A probe that always answers `mounted`. */
+const alwaysMounted = (_path: string) => Effect.succeed(true);
 
-/** A reader that answers from a script, counting how often it was consulted. */
-const scriptedReader = (
-  answers: ReadonlyArray<Effect.Effect<ZeropsTopologyRead, ZeropsCliFailed | ZeropsCliNotFound>>,
-) =>
-  Effect.gen(function* () {
-    const calls = yield* Ref.make(0);
-    const read = Effect.gen(function* () {
-      const index = yield* Ref.getAndUpdate(calls, (n) => n + 1);
-      const answer = answers[Math.min(index, answers.length - 1)];
-      assert.isDefined(answer);
-      return yield* answer;
-    });
-    return { read, calls } as const;
-  });
-
-describe("selectRepositories — topology JSON to the repository set", () => {
-  it("keeps mounted runtimes and drops everything else", () => {
-    const result = selectRepositories(topology);
-    assert.strictEqual(result._tag, "available");
-    if (result._tag !== "available") {
-      return;
-    }
-    assert.deepStrictEqual(result.repositories, [
-      { host: "kanbandev", mountPath: "/var/www/kanbandev", remotePath: "/var/www" },
-      { host: "apidev", mountPath: "/var/www/apidev", remotePath: "/var/www" },
+describe("parseMountTable", () => {
+  it("lists a repository per fuse.sshfs mount under /var/www", () => {
+    assert.deepStrictEqual(parseMountTable(MEASURED_MOUNT_TABLE), [
+      { host: "s3git1", mountPath: "/var/www/s3git1" },
+      { host: "s3git2", mountPath: "/var/www/s3git2" },
+      { host: "weatherdash", mountPath: "/var/www/weatherdash" },
     ]);
   });
 
-  it("a project with no mounted runtime is available and empty, never unavailable", () => {
-    const result = selectRepositories(
-      topologyRead(
-        JSON.stringify({
-          project: { id: "p", name: "p" },
-          services: [
-            {
-              hostname: "db",
-              serviceId: "d",
-              type: "postgresql@16",
-              status: "ACTIVE",
-              isInfrastructure: true,
-            },
-          ],
-        }),
-      ),
-    );
-    assert.strictEqual(result._tag, "available");
-    if (result._tag === "available") {
-      assert.deepStrictEqual(result.repositories, []);
-    }
-  });
+  it("ignores non-sshfs mounts and mounts outside /var/www", () => {
+    const table = [
+      "overlay / overlay rw,relatime,lowerdir=/,upperdir=/upper 0 0",
+      "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0",
+      "tmpfs /var/www/scratch tmpfs rw,relatime 0 0",
+      "otherhost:/var/www /mnt/otherhost fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
+      "kanbandev:/var/www /var/www/kanbandev fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
+    ].join("\n");
 
-  it("output that is not a topology never reaches the mapper at all", () => {
-    // Parsing is zcp's CLI seam now; an unparseable answer is a ZeropsCliFailed
-    // before it gets here, which is what the source turns into `unavailable`.
-    assert.isUndefined(parseZeropsTopology("auth: no credentials\n"));
+    assert.deepStrictEqual(parseMountTable(table), [
+      { host: "kanbandev", mountPath: "/var/www/kanbandev" },
+    ]);
   });
 });
 
 describe("ZeropsRepositorySource", () => {
-  it.effect("is disabled off Zerops and never consults the reader", () =>
+  it.effect("is disabled off Zerops and never reads the mount table", () =>
     Effect.gen(function* () {
-      const reader = yield* scriptedReader([Effect.succeed(topology)]);
-      const source = yield* makeZeropsRepositorySource({ enabled: false, read: reader.read });
+      const reads = yield* Ref.make(0);
+      const source = yield* makeZeropsRepositorySource({
+        enabled: false,
+        readMountTable: Ref.update(reads, (n) => n + 1).pipe(Effect.andThen(Effect.succeed(""))),
+        probeMountpoint: alwaysMounted,
+      });
 
       const result = yield* source.list;
 
       assert.strictEqual(result._tag, "disabled");
-      assert.strictEqual(yield* Ref.get(reader.calls), 0);
+      assert.strictEqual(yield* Ref.get(reads), 0);
     }),
   );
 
-  it.effect("reads once and serves the cached answer inside the TTL", () =>
+  it.effect("drops a mount whose probe times out and keeps the others", () =>
     Effect.gen(function* () {
-      const reader = yield* scriptedReader([Effect.succeed(topology)]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
-
-      yield* source.list;
-      yield* TestClock.adjust(Duration.millis(Duration.toMillis(REPOSITORY_CACHE_TTL) - 1));
-      const second = yield* source.list;
-
-      assert.strictEqual(second._tag, "available");
-      assert.strictEqual(yield* Ref.get(reader.calls), 1);
-    }),
-  );
-
-  it.effect("re-reads once the TTL has elapsed", () =>
-    Effect.gen(function* () {
-      const reader = yield* scriptedReader([Effect.succeed(topology)]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
-
-      yield* source.list;
-      yield* TestClock.adjust(REPOSITORY_CACHE_TTL);
-      yield* source.list;
-
-      assert.strictEqual(yield* Ref.get(reader.calls), 2);
-    }),
-  );
-
-  it.effect("refresh bypasses the TTL", () =>
-    Effect.gen(function* () {
-      const reader = yield* scriptedReader([Effect.succeed(topology)]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
-
-      yield* source.list;
-      yield* source.refresh;
-
-      assert.strictEqual(yield* Ref.get(reader.calls), 2);
-    }),
-  );
-
-  it.effect("a failing topology read degrades to unavailable and names the reason", () =>
-    Effect.gen(function* () {
-      const reader = yield* scriptedReader([
-        Effect.fail(
-          new ZeropsCliFailed({ command: "zcp", reason: "zcp studio topology exited 1" }),
-        ),
-      ]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable: Effect.succeed(MEASURED_MOUNT_TABLE),
+        // The bounded probe reports a timeout as `false`, never a failure.
+        probeMountpoint: (path) => Effect.succeed(!path.endsWith("/s3git2")),
+      });
 
       const result = yield* source.list;
 
-      assert.strictEqual(result._tag, "unavailable");
-      if (result._tag === "unavailable") {
-        assert.include(result.reason, "exited 1");
+      assert.strictEqual(result._tag, "available");
+      if (result._tag === "available") {
+        assert.deepStrictEqual(
+          result.repositories.map((repository) => repository.host),
+          ["s3git1", "weatherdash"],
+        );
       }
     }),
   );
 
-  it.effect("warns once however often the topology read keeps failing", () => {
-    const messages: Array<unknown> = [];
-    const logger = Logger.make<unknown, void>((options) => {
-      messages.push(options.message);
-    });
+  it.effect(
+    "reports unavailable when the mount table cannot be read and never empties the set on that path",
+    () =>
+      Effect.gen(function* () {
+        const source = yield* makeZeropsRepositorySource({
+          enabled: true,
+          readMountTable: Effect.fail(
+            new MountTableReadError({ path: MOUNT_TABLE_PATH, cause: "EACCES" }),
+          ),
+          probeMountpoint: alwaysMounted,
+        });
 
-    return Effect.gen(function* () {
-      const reader = yield* scriptedReader([
-        Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "no credentials" })),
-      ]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
+        const result = yield* source.list;
 
-      yield* source.refresh;
-      yield* source.refresh;
-      yield* source.refresh;
+        assert.strictEqual(result._tag, "unavailable");
+        if (result._tag === "unavailable") {
+          assert.include(result.reason, MOUNT_TABLE_PATH);
+        }
+      }),
+  );
 
-      assert.strictEqual(yield* Ref.get(reader.calls), 3);
-      const warnings = messages.filter((message) =>
-        JSON.stringify(message ?? "").includes("no credentials"),
-      );
-      assert.strictEqual(warnings.length, 1);
-    }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
-  });
-
-  it.effect("recovers on a later read after an unavailable one", () =>
+  it.effect("keeps the 30 s cache and refreshes at turn start", () =>
     Effect.gen(function* () {
-      const reader = yield* scriptedReader([
-        Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "boot race" })),
-        Effect.succeed(topology),
-      ]);
-      const source = yield* makeZeropsRepositorySource({ enabled: true, read: reader.read });
+      const reads = yield* Ref.make(0);
+      const readMountTable = Ref.updateAndGet(reads, (n) => n + 1).pipe(
+        Effect.map(() => MEASURED_MOUNT_TABLE),
+      );
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable,
+        probeMountpoint: alwaysMounted,
+      });
 
-      const first = yield* source.list;
-      const second = yield* source.refresh;
+      yield* source.list;
+      yield* TestClock.adjust(Duration.millis(Duration.toMillis(REPOSITORY_CACHE_TTL) - 1));
+      yield* source.list;
+      assert.strictEqual(yield* Ref.get(reads), 1, "still inside the TTL");
 
-      assert.strictEqual(first._tag, "unavailable");
-      assert.strictEqual(second._tag, "available");
+      yield* TestClock.adjust(Duration.millis(1));
+      yield* source.list;
+      assert.strictEqual(yield* Ref.get(reads), 2, "TTL elapsed");
+
+      // A turn start calls `refresh`, which bypasses the cache unconditionally.
+      yield* source.refresh;
+      assert.strictEqual(yield* Ref.get(reads), 3);
     }),
   );
 });

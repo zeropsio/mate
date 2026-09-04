@@ -9,16 +9,20 @@
  * repository - the `mountPath` the server and the agent see, and the
  * `remotePath` git must actually run against over SSH.
  *
- * The set is read from `zcp studio topology`, never by scanning `/var/www`
- * for `.git`. The topology is a direct platform read (no Elasticsearch lag),
- * so a service that was imported a second ago is already in it, and a
- * directory that merely looks like a repository is not.
+ * The set is read from the container's own mount table (`/proc/mounts` by
+ * default), never a platform call and never a scan of `/var/www` for `.git`:
+ * a repository is a `fuse.sshfs` mount whose mountpoint is `/var/www/<host>`
+ * and whose mountpoint answers a bounded probe - the same check zcp itself
+ * runs (`stat`ing `/var/www/<hostname>`) before it will call a service
+ * "mounted". A stale mount-table line for a service that has since gone away
+ * fails the probe and is dropped, one mount at a time, without failing the
+ * whole read.
  *
  * Three outcomes, deliberately distinct:
  * - `disabled` - not a Zerops environment; nothing to enumerate, nothing to
- *   warn about, and the topology command is never run.
- * - `unavailable` - Zerops, but the topology could not be read (no
- *   credentials, `zcp` missing, a timeout). Callers degrade and name the
+ *   warn about, and the mount table is never read.
+ * - `unavailable` - Zerops, but the mount table could not be read at all
+ *   (permissions, `/proc` unmounted, ...). Callers degrade and name the
  *   reason; they must not read it as "this project has no repositories".
  * - `available` - the answer, possibly an empty list, which is the honest
  *   "no repositories yet" of a project with no mounted runtime.
@@ -29,17 +33,14 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
-
 import { ServerConfig } from "../config.ts";
-import * as ProcessRunner from "../processRunner.ts";
-import * as ZeropsCli from "./ZeropsCli.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import type { ZeropsTopologyRead } from "./zeropsTopologyParse.ts";
 
 /** Where zcp mounts every sibling service on the container. */
 export const ZEROPS_WORKSPACE_ROOT = "/var/www";
@@ -49,10 +50,23 @@ export const ZEROPS_REMOTE_REPOSITORY_PATH = "/var/www";
 
 /**
  * How long an enumeration stays good. Services are created and mounted by the
- * agent mid-turn, so the window is short; every read is a single 0.26 s
- * direct platform call, and a turn start refreshes explicitly anyway.
+ * agent mid-turn, so the window is short; a turn start refreshes explicitly
+ * anyway.
  */
 export const REPOSITORY_CACHE_TTL = Duration.seconds(30);
+
+/** The mount table this container's kernel maintains. */
+export const MOUNT_TABLE_PATH = "/proc/mounts";
+
+/** The fstype zcp mounts every dev service with. */
+const SSHFS_FSTYPE = "fuse.sshfs";
+
+/**
+ * How long a mountpoint probe may take before it is treated as a timeout, not
+ * a real answer. Matches zcp's own bound before it will report a service
+ * `mounted`.
+ */
+export const MOUNTPOINT_PROBE_TIMEOUT = Duration.seconds(2);
 
 /** One repository: a mounted dev service with its `.git` on its own disk. */
 export interface ZeropsRepository {
@@ -70,51 +84,99 @@ export type ZeropsRepositories =
   | { readonly _tag: "unavailable"; readonly reason: string }
   | { readonly _tag: "available"; readonly repositories: ReadonlyArray<ZeropsRepository> };
 
+/** The mount table could not be read at all - distinct from a stale line failing its probe. */
+export class MountTableReadError extends Schema.TaggedErrorClass<MountTableReadError>()(
+  "MountTableReadError",
+  {
+    path: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Could not read the mount table at '${this.path}'`;
+  }
+}
+
+/** A candidate mount, before its probe decides whether it is really reachable. */
+interface ZeropsMountCandidate {
+  readonly host: string;
+  readonly mountPath: string;
+}
+
 /**
- * The one dependency the source has: a topology read.
- *
- * This is `ZeropsCli.readTopology` in production. The CLI seam owns running
- * `zcp studio topology`, parsing it and telling "zcp is absent" apart from
- * "the call failed"; this module owns only what that means for the repository
- * set, so there is one implementation of the shell-out and one parser.
+ * Parses `/proc/mounts` (one line per mount: `device mountpoint fstype
+ * options dump pass`) into candidate repositories - an sshfs mount whose
+ * mountpoint is a direct child of `/var/www`. A line for any other fstype, or
+ * for an sshfs mount elsewhere, is not a repository and is dropped here;
+ * whether a candidate is REALLY reachable right now is the probe's job, not
+ * this parser's.
  */
-export type ZeropsTopologyReader = Effect.Effect<ZeropsTopologyRead, ZeropsCli.ZeropsCliError>;
+export const parseMountTable = (text: string): ReadonlyArray<ZeropsMountCandidate> => {
+  const prefix = `${ZEROPS_WORKSPACE_ROOT}/`;
+  const candidates: Array<ZeropsMountCandidate> = [];
+  for (const line of text.split("\n")) {
+    const fields = line.trim().split(/\s+/u);
+    if (fields.length < 3) {
+      continue;
+    }
+    const [, mountPoint, fsType] = fields;
+    if (fsType !== SSHFS_FSTYPE || mountPoint === undefined || !mountPoint.startsWith(prefix)) {
+      continue;
+    }
+    const host = mountPoint.slice(prefix.length);
+    if (host.length === 0 || host.includes("/")) {
+      continue;
+    }
+    candidates.push({ host, mountPath: mountPoint });
+  }
+  return candidates;
+};
+
+/**
+ * The one dependency the source has: a mount-table read.
+ *
+ * `/proc/mounts` in production. Reading it can fail outright (permissions,
+ * `/proc` unmounted); it is never expected to omit a real mount, so a
+ * successful read is trusted completely - the bounded probe is what tells a
+ * live mount from a stale line.
+ */
+export type ZeropsMountTableReader = Effect.Effect<string, MountTableReadError>;
+
+/**
+ * Whether `path` is really mounted right now. Bounded so a wedged fuse
+ * mountpoint (the disconnected-service case) cannot hang an enumeration -
+ * `stat` with a 2 s timeout in production, matching zcp's own check. Never
+ * fails: a timeout and an ordinary "not there" both answer `false`.
+ */
+export type ZeropsMountpointProbe = (path: string) => Effect.Effect<boolean>;
 
 export interface ZeropsRepositorySourceOptions {
   /** `isZeropsEnvironment(config)`, passed in so the rule has one home. */
   readonly enabled: boolean;
-  readonly read: ZeropsTopologyReader;
+  readonly readMountTable: ZeropsMountTableReader;
+  readonly probeMountpoint: ZeropsMountpointProbe;
 }
 
-/**
- * Turns `zcp studio topology` output into the repository set.
- *
- * A service qualifies when it carries a `mountPath` - which zcp emits only
- * after `stat`ing `/var/www/<hostname>` on the container, so it means "really
- * mounted right now" - and is not a managed service (`isInfrastructure`): a
- * postgres has no working tree to check point.
- */
-export const selectRepositories = (topology: ZeropsTopologyRead): ZeropsRepositories => {
-  const repositories: Array<ZeropsRepository> = [];
-  for (const service of topology.services) {
-    // `mounted`/`mountPath` are zcp's own answer — it stats `/var/www/<host>`
-    // before emitting them — so this means "really mounted right now" rather
-    // than "ought to be". A managed service has no working tree to check point.
-    if (service.isManagedService || !service.mounted) {
-      continue;
-    }
-    const mountPath = service.mountPath?.trim() ?? "";
-    if (service.hostname.length === 0 || mountPath.length === 0) {
-      continue;
-    }
-    repositories.push({
-      host: service.hostname,
-      mountPath,
-      remotePath: ZEROPS_REMOTE_REPOSITORY_PATH,
-    });
-  }
-  return { _tag: "available", repositories };
-};
+const probeCandidates = (
+  candidates: ReadonlyArray<ZeropsMountCandidate>,
+  probeMountpoint: ZeropsMountpointProbe,
+): Effect.Effect<ReadonlyArray<ZeropsRepository>> =>
+  Effect.forEach(
+    candidates,
+    (candidate) =>
+      probeMountpoint(candidate.mountPath).pipe(
+        Effect.map((mounted): ZeropsRepository | undefined =>
+          mounted
+            ? {
+                host: candidate.host,
+                mountPath: candidate.mountPath,
+                remotePath: ZEROPS_REMOTE_REPOSITORY_PATH,
+              }
+            : undefined,
+        ),
+      ),
+    { concurrency: "unbounded" },
+  ).pipe(Effect.map((probed) => probed.filter((repository) => repository !== undefined)));
 
 export interface ZeropsRepositorySourceService {
   /** The repository set, re-read when the cached one is older than the TTL. */
@@ -136,14 +198,17 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
     undefined,
   );
   // Set while an `unavailable` outcome has already been warned about, so a
-  // container without credentials logs the reason once rather than on every
-  // poll; cleared by a successful read so a later outage is heard again.
+  // container with an unreadable mount table logs the reason once rather
+  // than on every poll; cleared by a successful read so a later outage is
+  // heard again.
   const warned = yield* Ref.make(false);
   const gate = yield* Semaphore.make(1);
 
   const read = Effect.gen(function* () {
-    const outcome = yield* options.read.pipe(
-      Effect.map(selectRepositories),
+    const outcome = yield* options.readMountTable.pipe(
+      Effect.map(parseMountTable),
+      Effect.flatMap((candidates) => probeCandidates(candidates, options.probeMountpoint)),
+      Effect.map((repositories): ZeropsRepositories => ({ _tag: "available", repositories })),
       Effect.catch((error) =>
         Effect.succeed<ZeropsRepositories>({ _tag: "unavailable", reason: error.message }),
       ),
@@ -153,7 +218,7 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
       const alreadyWarned = yield* Ref.getAndSet(warned, true);
       if (!alreadyWarned) {
         yield* Effect.logWarning(
-          "Zerops topology unavailable - repositories cannot be enumerated",
+          "Zerops mount table unavailable - repositories cannot be enumerated",
           { reason: outcome.reason },
         );
       }
@@ -187,45 +252,30 @@ export class ZeropsRepositorySource extends Context.Service<
   ZeropsRepositorySourceService
 >()("t3/zerops/ZeropsRepositorySource") {}
 
-/**
- * The live source.
- *
- * It takes `ChildProcessSpawner` directly and builds its own runner rather
- * than taking the `ProcessRunner` service: the Zerops git spawner decorates
- * `ChildProcessSpawner` and needs this source to decide where a git command
- * belongs, so a source that consumed the decorated spawner would close a
- * dependency cycle. Running `zcp` on the raw spawner also keeps the one
- * command that discovers the repositories out of the path map entirely.
- */
+/** The live source, reading `/proc/mounts` and `stat`-probing each candidate. */
 export const layer = Layer.effect(
   ZeropsRepositorySource,
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const enabled = isZeropsEnvironment(config);
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    // The CLI is built here rather than taken from the context on purpose. Its
-    // own layer provides the `ProcessRunner` TAG, and this source sits below
-    // the git spawner in the graph; a memoised runner bound to the raw spawner
-    // could then reach `RepositoryIdentityResolver`, which runs git through
-    // that same tag - and git would be back on the mount. Building the runner
-    // locally keeps the shared graph untouched while still leaving one
-    // implementation of the shell-out and one parser.
-    const cli = yield* ZeropsCli.make({
-      command: "zcp",
-      baseArgs: [],
-      cwd: config.cwd,
-    }).pipe(
-      Effect.provideService(
-        ProcessRunner.ProcessRunner,
-        yield* ProcessRunner.make().pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-        ),
-      ),
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    const fileSystem = yield* FileSystem.FileSystem;
+
+    const readMountTable: ZeropsMountTableReader = fileSystem
+      .readFileString(MOUNT_TABLE_PATH)
+      .pipe(Effect.mapError((cause) => new MountTableReadError({ path: MOUNT_TABLE_PATH, cause })));
+
+    const probeMountpoint: ZeropsMountpointProbe = (path) =>
+      fileSystem.stat(path).pipe(
+        Effect.map(() => true),
+        Effect.catch(() => Effect.succeed(false)),
+        Effect.timeoutOrElse({
+          duration: MOUNTPOINT_PROBE_TIMEOUT,
+          orElse: () => Effect.succeed(false),
+        }),
+      );
+
+    return ZeropsRepositorySource.of(
+      yield* makeZeropsRepositorySource({ enabled, readMountTable, probeMountpoint }),
     );
-    const read = enabled
-      ? cli.readTopology
-      : Effect.fail(new ZeropsCli.ZeropsCliNotFound({ command: "zcp" }));
-    return ZeropsRepositorySource.of(yield* makeZeropsRepositorySource({ enabled, read }));
   }),
 );
