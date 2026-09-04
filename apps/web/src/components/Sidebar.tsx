@@ -493,8 +493,6 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   const attachmentCount =
     Math.max(composer.images.length, composer.persistedAttachments.length) +
     composer.terminalContexts.length +
-    composer.elementContexts.length +
-    composer.previewAnnotations.length +
     composer.reviewComments.length;
   const preview =
     promptPreview.length > 0

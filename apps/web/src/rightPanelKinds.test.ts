@@ -10,7 +10,6 @@ import {
 } from "./rightPanelKinds";
 
 const AVAILABLE_INPUT: RightPanelAvailabilityInput = {
-  previewSupported: true,
   projectOpen: true,
   gitRepo: true,
   serverThread: true,
@@ -25,7 +24,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the six launcher rows in their established order", () => {
+  it("keeps the five launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -37,13 +36,6 @@ describe("right panel kinds", () => {
         }),
       ),
     ).toEqual([
-      {
-        kind: "preview",
-        label: "Browser",
-        description: "Open a local app or URL.",
-        shortcut: "B",
-        unavailableHint: "Only available in the desktop app.",
-      },
       {
         kind: "terminal",
         label: "Terminal",
@@ -96,7 +88,6 @@ describe("right panel kinds", () => {
         diff: "available",
         files: "available",
         file: "available",
-        preview: "available",
         terminal: "available",
         agents: "available",
         zerops: "available",
@@ -106,7 +97,6 @@ describe("right panel kinds", () => {
       name: "marks unsupported runtime and project kinds unavailable",
       input: {
         ...AVAILABLE_INPUT,
-        previewSupported: false,
         projectOpen: false,
         gitRepo: false,
         serverThread: false,
@@ -116,7 +106,6 @@ describe("right panel kinds", () => {
         diff: "unavailable",
         files: "unavailable",
         file: "unavailable",
-        preview: "unavailable",
         terminal: "unavailable",
         agents: "available",
         zerops: "unavailable",
@@ -129,7 +118,6 @@ describe("right panel kinds", () => {
         diff: "unknown",
         files: "available",
         file: "available",
-        preview: "available",
         terminal: "available",
         agents: "available",
         zerops: "unknown",
@@ -142,7 +130,6 @@ describe("right panel kinds", () => {
         diff: "unavailable",
         files: "available",
         file: "available",
-        preview: "available",
         terminal: "available",
         agents: "available",
         zerops: "available",
@@ -155,6 +142,6 @@ describe("right panel kinds", () => {
   });
 
   it("names every retired persisted kind in one migration list", () => {
-    expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request"]);
+    expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });
 });

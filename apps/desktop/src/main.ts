@@ -43,8 +43,6 @@ import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
 import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
-import * as BrowserSession from "./preview/BrowserSession.ts";
-import * as PreviewManager from "./preview/Manager.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
 import * as DesktopZeropsSignIn from "./zerops/DesktopZeropsSignIn.ts";
 
@@ -89,12 +87,7 @@ const desktopFoundationLayer = Layer.mergeAll(
   DesktopObservability.layer,
 ).pipe(Layer.provideMerge(desktopEnvironmentLayer));
 
-const desktopPreviewLayer = PreviewManager.layer.pipe(
-  Layer.provideMerge(BrowserSession.layer),
-  Layer.provideMerge(desktopFoundationLayer),
-);
-
-const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopPreviewLayer));
+const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopFoundationLayer));
 
 const desktopApplicationLayer = Layer.mergeAll(
   DesktopLifecycle.layer,

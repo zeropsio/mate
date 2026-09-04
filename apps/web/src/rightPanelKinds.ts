@@ -6,21 +6,12 @@
  * a Git or topology answer arrives late or later becomes unavailable, and the
  * existing tab controls remain the way to close them.
  */
-export const RIGHT_PANEL_KINDS = [
-  "preview",
-  "terminal",
-  "files",
-  "file",
-  "diff",
-  "agents",
-  "zerops",
-] as const;
+export const RIGHT_PANEL_KINDS = ["terminal", "files", "file", "diff", "agents", "zerops"] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
 export type RightPanelAvailability = "available" | "unavailable" | "unknown";
 
 export interface RightPanelAvailabilityInput {
-  readonly previewSupported: boolean;
   readonly projectOpen: boolean;
   readonly gitRepo: boolean | null;
   readonly serverThread: boolean;
@@ -41,15 +32,6 @@ const projectAvailability = (input: RightPanelAvailabilityInput): RightPanelAvai
   input.projectOpen ? "available" : "unavailable";
 
 export const RIGHT_PANEL_KIND_META = {
-  preview: {
-    launcher: {
-      label: "Browser",
-      description: "Open a local app or URL.",
-      shortcut: "B",
-      unavailableHint: "Only available in the desktop app.",
-    },
-    availability: (input) => (input.previewSupported ? "available" : "unavailable"),
-  },
   terminal: {
     launcher: {
       label: "Terminal",
@@ -108,7 +90,7 @@ export const RIGHT_PANEL_KIND_META = {
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
-export const DROPPED_RIGHT_PANEL_KINDS = ["plan", "pull-request"] as const;
+export const DROPPED_RIGHT_PANEL_KINDS = ["plan", "pull-request", "preview"] as const;
 
 type RightPanelLauncherKind = {
   [Kind in RightPanelKind]: (typeof RIGHT_PANEL_KIND_META)[Kind]["launcher"] extends null

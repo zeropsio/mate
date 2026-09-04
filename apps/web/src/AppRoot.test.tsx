@@ -2,8 +2,6 @@ import { Children, isValidElement, type ReactElement, type ReactNode } from "rea
 import { RouterProvider } from "@tanstack/react-router";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ElectronBrowserHost } from "./browser/ElectronBrowserHost";
-import { PreviewAutomationHosts } from "./components/preview/PreviewAutomationHosts";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
@@ -40,12 +38,9 @@ describe("AppRoot", () => {
     },
   );
 
-  it("mounts every renderer-wide product host only after account sign-in", () => {
-    const hosts = childrenOf(ZeropsProductHosts({ status: "signed-in" }));
+  it("mounts the renderer-wide product host only after account sign-in", () => {
+    const host = ZeropsProductHosts({ status: "signed-in" });
 
-    expect(hosts).toHaveLength(3);
-    expect(isValidElement(hosts[0]) && hosts[0].type).toBe(PreviewAutomationHosts);
-    expect(isValidElement(hosts[1]) && hosts[1].type).toBe(ElectronBrowserHost);
-    expect(isValidElement(hosts[2]) && hosts[2].type).toBe(QuitHoldOverlay);
+    expect(isValidElement(host) && host.type).toBe(QuitHoldOverlay);
   });
 });

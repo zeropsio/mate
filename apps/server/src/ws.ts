@@ -21,7 +21,6 @@ import {
   ClientSurface,
   ClientWebDeployment,
   CommandId,
-  type DiscoveredLocalServerList,
   EventId,
   type EditorId,
   type FileManagerRevealKind,
@@ -33,7 +32,6 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadStreamItem,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
@@ -98,11 +96,8 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
-import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
-import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
@@ -468,7 +463,6 @@ const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
-  previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -514,8 +508,6 @@ const makeWsRpcLayer = (
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
-      const previewManager = yield* PreviewManager.PreviewManager;
-      const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
@@ -2302,86 +2294,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "terminal" },
           ),
-        [WS_METHODS.previewOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.previewOpen, previewManager.open(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewNavigate]: (input) =>
-          observeRpcEffect(WS_METHODS.previewNavigate, previewManager.navigate(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewResize]: (input) =>
-          observeRpcEffect(WS_METHODS.previewResize, previewManager.resize(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewRefresh]: (input) =>
-          observeRpcEffect(WS_METHODS.previewRefresh, previewManager.refresh(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewClose]: (input) =>
-          observeRpcEffect(WS_METHODS.previewClose, previewManager.close(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewList]: (input) =>
-          observeRpcEffect(WS_METHODS.previewList, previewManager.list(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewReportStatus]: (input) =>
-          observeRpcEffect(WS_METHODS.previewReportStatus, previewManager.reportStatus(input), {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.previewAutomationConnect]: (input) =>
-          observeRpcStreamEffect(
-            WS_METHODS.previewAutomationConnect,
-            previewAutomationBroker.connect(input),
-            { "rpc.aggregate": "preview-automation" },
-          ),
-        [WS_METHODS.previewAutomationRespond]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.previewAutomationRespond,
-            previewAutomationBroker.respond(input),
-            { "rpc.aggregate": "preview-automation" },
-          ),
-        [WS_METHODS.previewAutomationFocusHost]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.previewAutomationFocusHost,
-            previewAutomationBroker.focusHost(input),
-            { "rpc.aggregate": "preview-automation" },
-          ),
-        [WS_METHODS.subscribePreviewEvents]: (_input) =>
-          observeRpcStream(WS_METHODS.subscribePreviewEvents, previewManager.events, {
-            "rpc.aggregate": "preview",
-          }),
-        [WS_METHODS.subscribeDiscoveredLocalServers]: (input) =>
-          observeRpcStream(
-            WS_METHODS.subscribeDiscoveredLocalServers,
-            Stream.callback<DiscoveredLocalServerList>((queue) =>
-              Effect.gen(function* () {
-                const configuredUrls = input.configuredUrls ?? [];
-                yield* portDiscovery.retain;
-                const initial = yield* portDiscovery.scan(configuredUrls);
-                const initialScannedAt = DateTime.formatIso(yield* DateTime.now);
-                yield* Queue.offer(queue, {
-                  servers: initial,
-                  scannedAt: initialScannedAt,
-                  configuredUrlProbing: true,
-                });
-                yield* portDiscovery.subscribe(
-                  { configuredUrls, initialSnapshot: initial },
-                  (servers) =>
-                    Effect.gen(function* () {
-                      const scannedAt = DateTime.formatIso(yield* DateTime.now);
-                      yield* Queue.offer(queue, {
-                        servers,
-                        scannedAt,
-                        configuredUrlProbing: true,
-                      });
-                    }),
-                );
-              }),
-            ),
-            { "rpc.aggregate": "preview" },
-          ),
         [WS_METHODS.subscribeServerConfig]: (_input) =>
           observeRpcStreamEffect(
             WS_METHODS.subscribeServerConfig,
@@ -2560,111 +2472,101 @@ const makeWsRpcLayer = (
     }),
   );
 
-export const websocketRpcRouteLayer = Layer.unwrap(
+export const websocketRpcRouteLayer = HttpRouter.add(
+  "GET",
+  "/ws",
   Effect.gen(function* () {
-    const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
-    return HttpRouter.add(
-      "GET",
-      "/ws",
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const serverConfig = yield* ServerConfig.ServerConfig;
-        // Inside a Zerops project this socket is published on the public
-        // internet, so a page on any origin could otherwise open it with a
-        // stolen ticket. The origin is refused before any credential is read,
-        // so a foreign page learns nothing about whether it had one.
-        if (serverConfig.zerops !== undefined) {
-          const { allowsUpgrade } = makeZeropsOriginAllowlist(serverConfig.zerops);
-          if (
-            !allowsUpgrade({
-              origin: request.headers.origin,
-              host: request.headers.host,
-              forwardedHost: request.headers["x-forwarded-host"],
-            })
-          ) {
-            return yield* failEnvironmentOperationForbidden("origin_not_allowed");
-          }
-        }
-        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        const sessions = yield* SessionStore.SessionStore;
-        const analytics = yield* AnalyticsService.AnalyticsService;
-        const session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
-          Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
-            failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),
-          ),
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-            failEnvironmentInternal("internal_error", error),
-          ),
-        );
-        const clientOrigin = readClientConnectionOrigin(request);
-        const clientAnalyticsProps = readClientAnalyticsProps(request);
-        yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
-        yield* analytics.record("client.connected", clientAnalyticsProps);
-        const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
-          disableTracing: true,
-        }).pipe(
-          Effect.provide(
-            makeWsRpcLayer(
-              session,
-              clientOrigin,
-              clientAnalyticsProps,
-              previewAutomationBroker,
-            ).pipe(
-              Layer.provideMerge(RpcSerialization.layerJson),
-              Layer.provide(ProviderMaintenanceRunner.layer),
-              Layer.provide(ProcessRunner.layer),
-              Layer.provide(
-                SourceControlDiscovery.layer.pipe(
-                  Layer.provide(
-                    SourceControlProviderRegistry.layer.pipe(
-                      Layer.provide(
-                        Layer.mergeAll(
-                          AzureDevOpsCli.layer,
-                          BitbucketApi.layer,
-                          GitHubCli.layer,
-                          GitLabCli.layer,
-                        ),
-                      ),
-                      Layer.provideMerge(GitVcsDriver.layer),
-                      Layer.provide(
-                        VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer)),
-                      ),
-                    ),
-                  ),
-                  Layer.provide(VcsProcess.layer),
-                ),
-              ),
-            ),
-          ),
-        );
-        // The session is verified at this door and never again for the life of
-        // the socket, so without this the membership window bounds only the
-        // NEXT connect and a revocation never reaches an open connection.
-        const endWhenSessionEnds = awaitSessionEnd({
-          sessionId: session.sessionId,
-          expiresAt: session.expiresAt,
-          changes: sessions.streamChanges,
-        }).pipe(
-          Effect.tap((reason) =>
-            Effect.logInfo("Ending a websocket whose session is no longer valid.", {
-              sessionId: session.sessionId,
-              reason,
-            }),
-          ),
-          Effect.andThen(Effect.interrupt),
-        );
-        return yield* Effect.acquireUseRelease(
-          sessions.markConnected(session.sessionId),
-          () => Effect.raceFirst(rpcWebSocketHttpEffect, endWhenSessionEnds),
-          () => sessions.markDisconnected(session.sessionId),
-        );
-      }).pipe(
-        Effect.catchTags({
-          EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
-          EnvironmentOperationForbiddenError: HttpServerRespondable.toResponse,
-          EnvironmentInternalError: HttpServerRespondable.toResponse,
-        }),
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const serverConfig = yield* ServerConfig.ServerConfig;
+    // Inside a Zerops project this socket is published on the public
+    // internet, so a page on any origin could otherwise open it with a
+    // stolen ticket. The origin is refused before any credential is read,
+    // so a foreign page learns nothing about whether it had one.
+    if (serverConfig.zerops !== undefined) {
+      const { allowsUpgrade } = makeZeropsOriginAllowlist(serverConfig.zerops);
+      if (
+        !allowsUpgrade({
+          origin: request.headers.origin,
+          host: request.headers.host,
+          forwardedHost: request.headers["x-forwarded-host"],
+        })
+      ) {
+        return yield* failEnvironmentOperationForbidden("origin_not_allowed");
+      }
+    }
+    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+    const sessions = yield* SessionStore.SessionStore;
+    const analytics = yield* AnalyticsService.AnalyticsService;
+    const session = yield* serverAuth.authenticateWebSocketUpgrade(request).pipe(
+      Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
+        failEnvironmentAuthInvalid(EnvironmentAuth.serverAuthCredentialReason(error)),
+      ),
+      Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+        failEnvironmentInternal("internal_error", error),
       ),
     );
-  }),
+    const clientOrigin = readClientConnectionOrigin(request);
+    const clientAnalyticsProps = readClientAnalyticsProps(request);
+    yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
+    yield* analytics.record("client.connected", clientAnalyticsProps);
+    const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
+      disableTracing: true,
+    }).pipe(
+      Effect.provide(
+        makeWsRpcLayer(session, clientOrigin, clientAnalyticsProps).pipe(
+          Layer.provideMerge(RpcSerialization.layerJson),
+          Layer.provide(ProviderMaintenanceRunner.layer),
+          Layer.provide(ProcessRunner.layer),
+          Layer.provide(
+            SourceControlDiscovery.layer.pipe(
+              Layer.provide(
+                SourceControlProviderRegistry.layer.pipe(
+                  Layer.provide(
+                    Layer.mergeAll(
+                      AzureDevOpsCli.layer,
+                      BitbucketApi.layer,
+                      GitHubCli.layer,
+                      GitLabCli.layer,
+                    ),
+                  ),
+                  Layer.provideMerge(GitVcsDriver.layer),
+                  Layer.provide(
+                    VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer)),
+                  ),
+                ),
+              ),
+              Layer.provide(VcsProcess.layer),
+            ),
+          ),
+        ),
+      ),
+    );
+    // The session is verified at this door and never again for the life of
+    // the socket, so without this the membership window bounds only the
+    // NEXT connect and a revocation never reaches an open connection.
+    const endWhenSessionEnds = awaitSessionEnd({
+      sessionId: session.sessionId,
+      expiresAt: session.expiresAt,
+      changes: sessions.streamChanges,
+    }).pipe(
+      Effect.tap((reason) =>
+        Effect.logInfo("Ending a websocket whose session is no longer valid.", {
+          sessionId: session.sessionId,
+          reason,
+        }),
+      ),
+      Effect.andThen(Effect.interrupt),
+    );
+    return yield* Effect.acquireUseRelease(
+      sessions.markConnected(session.sessionId),
+      () => Effect.raceFirst(rpcWebSocketHttpEffect, endWhenSessionEnds),
+      () => sessions.markDisconnected(session.sessionId),
+    );
+  }).pipe(
+    Effect.catchTags({
+      EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+      EnvironmentOperationForbiddenError: HttpServerRespondable.toResponse,
+      EnvironmentInternalError: HttpServerRespondable.toResponse,
+    }),
+  ),
 );

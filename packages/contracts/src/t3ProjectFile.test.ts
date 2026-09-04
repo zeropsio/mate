@@ -16,8 +16,6 @@ describe("T3ProjectFile", () => {
           command: "pnpm dev",
           icon: "play",
           runOnWorktreeCreate: false,
-          previewUrl: "http://localhost:3000",
-          autoOpenPreview: true,
         },
         { name: "Test", command: "pnpm test" },
       ],
@@ -41,6 +39,23 @@ describe("T3ProjectFile", () => {
 
     expect(decoded.iconPath).toBe("assets/logo.svg");
     expect(decoded.scripts?.[0]).toEqual({ name: "Dev", command: "pnpm dev" });
+  });
+
+  it("project file decodes a script carrying previewUrl and autoOpenPreview", () => {
+    const decoded = decode({
+      scripts: [
+        {
+          name: "Dev",
+          command: "pnpm dev",
+          previewUrl: "http://localhost:3000",
+          autoOpenPreview: true,
+        },
+      ],
+    });
+
+    expect(decoded.scripts?.[0]).toEqual({ name: "Dev", command: "pnpm dev" });
+    expect(decoded.scripts?.[0]).not.toHaveProperty("previewUrl");
+    expect(decoded.scripts?.[0]).not.toHaveProperty("autoOpenPreview");
   });
 
   it("rejects scripts without a command", () => {

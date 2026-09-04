@@ -1,7 +1,5 @@
 import { RouterProvider } from "@tanstack/react-router";
 
-import { ElectronBrowserHost } from "./browser/ElectronBrowserHost";
-import { PreviewAutomationHosts } from "./components/preview/PreviewAutomationHosts";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
@@ -14,13 +12,7 @@ import {
 export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionStatus }) {
   if (status !== "signed-in") return null;
 
-  return (
-    <>
-      <PreviewAutomationHosts />
-      <ElectronBrowserHost />
-      <QuitHoldOverlay />
-    </>
-  );
+  return <QuitHoldOverlay />;
 }
 
 function SignedInProductHosts() {

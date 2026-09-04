@@ -202,6 +202,14 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("serve accepts --no-browser", () =>
+    Effect.gen(function* () {
+      const { output } = yield* captureStdout(runCli(["serve", "--help"]));
+
+      assert.include(output, "no-browser");
+    }),
+  );
+
   it.effect("executes auth pairing subcommands and redacts secrets from list output", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(

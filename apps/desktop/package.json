@@ -19,9 +19,7 @@
     "effect": "catalog:",
     "electron": "41.5.0",
     "electron-store": "^8.2.0",
-    "electron-updater": "^6.6.2",
-    "playwright-core": "1.60.0",
-    "react-grab": "^0.1.32"
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
@@ -29,7 +27,6 @@
     "acorn": "8.16.0",
     "cross-env": "^10.1.0",
     "electron-builder": "26.15.6",
-    "tailwindcss": "^4.0.0",
     "vite-plus": "catalog:"
   },
   "productName": "Zerops Mate (Alpha)"

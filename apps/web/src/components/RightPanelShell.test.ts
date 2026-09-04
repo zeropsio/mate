@@ -2,7 +2,7 @@ import { jsx } from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { getPreviewPanelMaxWidth, PreviewPanelShell } from "./PreviewPanelShell";
+import { getPreviewPanelMaxWidth, PreviewPanelShell } from "./RightPanelShell";
 
 describe("getPreviewPanelMaxWidth", () => {
   it("allows the panel to use 70% of an ultra-wide viewport without a pixel ceiling", () => {

@@ -66,6 +66,28 @@ describe("ClientSettings word wrap", () => {
   });
 });
 
+describe("settings decode a document carrying the removed browser keys", () => {
+  it("server settings decode a document carrying the removed browser keys", () => {
+    const decoded = decodeServerSettings({ enableAgentBrowserAccess: false });
+
+    expect(decoded).not.toHaveProperty("enableAgentBrowserAccess");
+  });
+
+  it("client settings decode a document carrying the removed browser keys", () => {
+    const decoded = decodeClientSettings({
+      browserDefaultViewport: { _tag: "fill" },
+      browserDefaultZoomFactor: 1.5,
+      browserDefaultAppearance: "dark",
+      browserAutoShowFloatingPreview: false,
+    });
+
+    expect(decoded).not.toHaveProperty("browserDefaultViewport");
+    expect(decoded).not.toHaveProperty("browserDefaultZoomFactor");
+    expect(decoded).not.toHaveProperty("browserDefaultAppearance");
+    expect(decoded).not.toHaveProperty("browserAutoShowFloatingPreview");
+  });
+});
+
 describe("ClientSettings glass opacity", () => {
   it("defaults to a readable translucent surface", () => {
     expect(decodeClientSettings({}).glassOpacity).toBe(80);

@@ -200,7 +200,7 @@ describe("rightPanelStore", () => {
           "env-1:thread-A": {
             activeSurfaceId: "terminal",
             surfaces: [
-              { id: "browser:tab-a", kind: "preview", resourceId: "tab-a" },
+              { id: "diff", kind: "diff" },
               { id: "terminal", kind: "terminal" },
             ],
           },
@@ -211,10 +211,49 @@ describe("rightPanelStore", () => {
         "env-1:thread-A": {
           isOpen: false,
           activeSurfaceId: null,
-          surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
+          surfaces: [{ id: "diff", kind: "diff" }],
         },
       },
       zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
+    });
+  });
+
+  it("drops persisted preview surfaces and does not reopen an empty panel", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "browser:tab-a",
+            surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
+          },
+          "env-1:thread-B": {
+            isOpen: true,
+            activeSurfaceId: "browser:tab-a",
+            surfaces: [
+              { id: "browser:tab-a", kind: "preview", resourceId: "tab-a" },
+              { id: "diff", kind: "diff" },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: false,
+          activeSurfaceId: null,
+          surfaces: [],
+        },
+        "env-1:thread-B": {
+          isOpen: true,
+          activeSurfaceId: "diff",
+          surfaces: [{ id: "diff", kind: "diff" }],
+        },
+      },
+      zeropsDefaultHandledByThreadKey: {
+        "env-1:thread-A": true,
+        "env-1:thread-B": true,
+      },
     });
   });
 
@@ -414,15 +453,15 @@ describe("rightPanelStore", () => {
   });
 
   it("open sets the active panel for a thread", () => {
-    useRightPanelStore.getState().open(refA, "preview");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("preview");
+    useRightPanelStore.getState().open(refA, "diff");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
   });
 
   it("opening a different kind keeps both surfaces and activates the new one", () => {
     useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().open(refA, "preview");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("preview");
+    useRightPanelStore.getState().open(refA, "diff");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
     expect(
       selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
     ).toHaveLength(2);
@@ -577,7 +616,7 @@ describe("rightPanelStore", () => {
   });
 
   it("toggle to a different kind switches active", () => {
-    useRightPanelStore.getState().toggle(refA, "preview");
+    useRightPanelStore.getState().toggle(refA, "diff");
     useRightPanelStore.getState().toggle(refA, "agents");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
   });
@@ -591,19 +630,6 @@ describe("rightPanelStore", () => {
   it("close on never-opened thread is a no-op", () => {
     useRightPanelStore.getState().close(refA);
     expect(useRightPanelStore.getState().byThreadKey).toEqual({});
-  });
-
-  it("tracks one surface per browser session", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openBrowser(refA, "tab-b");
-
-    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
-    expect(state.surfaces.map((surface) => surface.id)).toEqual(["browser:tab-a", "browser:tab-b"]);
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
-      id: "browser:tab-b",
-      kind: "preview",
-      resourceId: "tab-b",
-    });
   });
 
   it("tracks one surface per terminal session", () => {
@@ -679,12 +705,12 @@ describe("rightPanelStore", () => {
   });
 
   it("closing the active surface activates a neighboring surface", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
+    useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
     useRightPanelStore.getState().closeSurface(refA, "terminal:term-1");
 
     expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
-      "browser:tab-a",
+      "diff",
     );
   });
 
@@ -700,7 +726,7 @@ describe("rightPanelStore", () => {
   });
 
   it("closing other surfaces keeps the selected surface active", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
+    useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
 
@@ -722,21 +748,21 @@ describe("rightPanelStore", () => {
   });
 
   it("closing surfaces to the right activates the selected surface when active was removed", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
+    useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
 
-    useRightPanelStore.getState().closeSurfacesToRight(refA, "browser:tab-a");
+    useRightPanelStore.getState().closeSurfacesToRight(refA, "diff");
 
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: true,
-      activeSurfaceId: "browser:tab-a",
-      surfaces: [{ id: "browser:tab-a", kind: "preview", resourceId: "tab-a" }],
+      activeSurfaceId: "diff",
+      surfaces: [{ id: "diff", kind: "diff" }],
     });
   });
 
   it("closing all surfaces closes the panel", () => {
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
+    useRightPanelStore.getState().open(refA, "diff");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
 
     useRightPanelStore.getState().closeAllSurfaces(refA);
@@ -746,18 +772,5 @@ describe("rightPanelStore", () => {
       activeSurfaceId: null,
       surfaces: [],
     });
-  });
-
-  it("reconciles browser surfaces without deleting other surface kinds", () => {
-    useRightPanelStore.getState().openTerminal(refA, "term-1");
-    useRightPanelStore.getState().openBrowser(refA, "tab-a");
-    useRightPanelStore.getState().openBrowser(refA, "tab-b");
-    useRightPanelStore.getState().reconcileBrowserSurfaces(refA, ["tab-b", "tab-c"]);
-
-    expect(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces.map(
-        (surface) => surface.id,
-      ),
-    ).toEqual(["terminal:term-1", "browser:tab-b", "browser:tab-c"]);
   });
 });

@@ -66,9 +66,7 @@ import { useClientSettings } from "../hooks/useSettings";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAttachedTerminalSession } from "../state/terminalSessions";
 import { serverEnvironment } from "../state/server";
-import { previewEnvironment } from "../state/preview";
 import { terminalEnvironment } from "../state/terminal";
-import { openTerminalLinkInPreview } from "./preview/openTerminalLinkInPreview";
 import { useAtomCommand } from "../state/use-atom-command";
 import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
 import {
@@ -400,9 +398,6 @@ export function TerminalViewport({
     serverConfig?.availableEditors ?? [],
   );
   const openTerminalPath = useEffectEvent((target: string) => openInPreferredEditor(target));
-  const openPreview = useAtomCommand(previewEnvironment.open, {
-    reportFailure: false,
-  });
   const runTerminalWrite = useAtomCommand(terminalEnvironment.write, {
     reportFailure: false,
   });
@@ -802,14 +797,7 @@ export function TerminalViewport({
               );
             });
           };
-          void openTerminalLinkInPreview({
-            url: text,
-            position: { x: event.clientX, y: event.clientY },
-            threadRef,
-            openPreview,
-            localApi,
-            fallbackToBrowser,
-          });
+          fallbackToBrowser();
           return;
         }
         const target = resolvePathLinkTarget(text, cwd);

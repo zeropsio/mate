@@ -306,6 +306,24 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("Claude adapter query options carry no mcpServers entry", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      assert.equal(createInput?.options.mcpServers, undefined);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("retains Claude session startup causes without exposing their messages", () => {
     const cause = new Error("credential material that must remain in the cause chain");
     const layer = Layer.effect(

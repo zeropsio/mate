@@ -14,36 +14,13 @@ import {
 } from "./projectScripts";
 
 describe("projectScripts helpers", () => {
-  it("builds scripts with preview settings", () => {
-    expect(
-      buildProjectScript("dev", {
-        name: "Dev server",
-        command: "pnpm dev",
-        icon: "debug",
-        runOnWorktreeCreate: false,
-        previewUrl: "http://localhost:5733",
-        autoOpenPreview: true,
-      }),
-    ).toEqual({
-      id: "dev",
-      name: "Dev server",
-      command: "pnpm dev",
-      icon: "debug",
-      runOnWorktreeCreate: false,
-      previewUrl: "http://localhost:5733",
-      autoOpenPreview: true,
-    });
-  });
-
-  it("omits preview settings when no preview URL is configured", () => {
+  it("builds a script from its input fields", () => {
     expect(
       buildProjectScript("test", {
         name: "Test",
         command: "pnpm test",
         icon: "test",
         runOnWorktreeCreate: false,
-        previewUrl: null,
-        autoOpenPreview: false,
       }),
     ).toEqual({
       id: "test",

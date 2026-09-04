@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   ArchiveIcon,
-  BlocksIcon,
   BotIcon,
   CloudIcon,
   GitBranchIcon,
@@ -50,7 +49,6 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/appearance": PaletteIcon,
   "/settings/keybindings": KeyboardIcon,
   "/settings/providers": BotIcon,
-  "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/zerops": CloudIcon,
