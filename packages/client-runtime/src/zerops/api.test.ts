@@ -522,11 +522,17 @@ describe("ZeropsApiClient project reads", () => {
     // The restart alone was the whole of "enable" and could not work: zcp
     // registers no mate step at all without this key, so the container came back
     // in the identical state it was restarted out of.
-    const stub = recordingFetch((request) =>
-      request.url.endsWith("/env")
+    let envCalls = 0;
+    const stub = recordingFetch((request) => {
+      if (!request.url.endsWith("/env")) {
+        return jsonResponse(200, { id: "process-1" });
+      }
+      envCalls += 1;
+      // The read-back (the 2nd /env read) sees the flag the POST just wrote.
+      return envCalls === 1
         ? jsonResponse(200, { items: [{ id: "e1", key: "VSCODE_PASSWORD", content: "x" }] })
-        : jsonResponse(200, { id: "process-1" }),
-    );
+        : jsonResponse(200, { items: [{ id: "e2", key: "ZCP_MATE_ENABLED", content: "1" }] });
+    });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
@@ -535,6 +541,7 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
     ]);
     // `sensitive` is required on every service userData write — the platform
@@ -550,9 +557,37 @@ describe("ZeropsApiClient project reads", () => {
     // The platform exposes create and delete for a single key, no update, so an
     // upsert is delete-then-create. The bulk env-file PUT is not an option: it
     // replaces the whole file and drops every other var the user set.
+    let envCalls = 0;
+    const stub = recordingFetch((request) => {
+      if (!request.url.endsWith("/env")) {
+        return jsonResponse(200, { id: "process-1" });
+      }
+      envCalls += 1;
+      return envCalls === 1
+        ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_MATE_ENABLED", content: "0" }] })
+        : jsonResponse(200, { items: [{ id: "e10", key: "ZCP_MATE_ENABLED", content: "1" }] });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.enableZeropsMate("service-1");
+
+    expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
+      `DELETE ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user-data/e9`,
+      `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
+      `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
+    ]);
+  });
+
+  it("retries the create when the read-back misses the flag", async () => {
+    // The create can race the platform's own read path. A read-back that
+    // still misses the flag gets exactly one more create attempt, not an
+    // unbounded retry loop, before the container restarts either way.
     const stub = recordingFetch((request) =>
       request.url.endsWith("/env")
-        ? jsonResponse(200, { items: [{ id: "e9", key: "ZCP_MATE_ENABLED", content: "0" }] })
+        ? jsonResponse(200, { items: [{ id: "e1", key: "VSCODE_PASSWORD", content: "x" }] })
         : jsonResponse(200, { id: "process-1" }),
     );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -562,7 +597,8 @@ describe("ZeropsApiClient project reads", () => {
 
     expect(stub.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
-      `DELETE ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user-data/e9`,
+      `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
+      `GET ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/env`,
       `POST ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/user-data`,
       `PUT ${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/service-1/restart`,
     ]);

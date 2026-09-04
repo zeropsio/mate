@@ -802,6 +802,16 @@ export class ZeropsApiClient {
     return body.items ?? [];
   }
 
+  /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
+  async #createMateFlag(serviceId: string): Promise<void> {
+    await this.#request(`/service-stack/${serviceId}/user-data`, {
+      method: "POST",
+      // `sensitive` is required on every service userData write — the
+      // platform rejects a body without it as "field is required".
+      body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
+    });
+  }
+
   /**
    * Turns Zerops Mate on for a container that is not serving it: write the
    * flag, then restart.
@@ -824,6 +834,10 @@ export class ZeropsApiClient {
    * that is merely away (from a browser the two are indistinguishable): a
    * yaml-baked key cannot be deleted at all, so a needless delete-then-create
    * would turn a working container into an error.
+   *
+   * The create can race the platform's own read path, so it is followed by
+   * one read-back; a miss there gets exactly one more create attempt, never
+   * an unbounded retry loop, before the container restarts either way.
    */
   async enableZeropsMate(serviceId: string): Promise<void> {
     const current = (await this.#serviceEnv(serviceId)).find(
@@ -834,12 +848,14 @@ export class ZeropsApiClient {
       if (current) {
         await this.#request(`/user-data/${current.id}`, { method: "DELETE" });
       }
-      await this.#request(`/service-stack/${serviceId}/user-data`, {
-        method: "POST",
-        // `sensitive` is required on every service userData write — the
-        // platform rejects a body without it as "field is required".
-        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
-      });
+      await this.#createMateFlag(serviceId);
+
+      const after = (await this.#serviceEnv(serviceId)).find(
+        (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
+      );
+      if (!after || !readsAsEnabled(after.content)) {
+        await this.#createMateFlag(serviceId);
+      }
     }
 
     await this.restartService(serviceId);
