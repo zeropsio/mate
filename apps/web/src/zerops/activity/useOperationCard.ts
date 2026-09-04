@@ -27,9 +27,11 @@ import type {
   ZeropsOperationPhase,
   ZeropsOperationStep,
 } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import type { ObservedRegion } from "../../components/zerops/ZeropsOperationCard";
+import { useZeropsTopology } from "../useZeropsFeeds.ts";
 import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
 
 const OBSERVED_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
@@ -68,6 +70,28 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
     startedAtMs: Date.parse(operation.startedAt),
     running: operation.phase === "running",
   };
+}
+
+/**
+ * The dev-server card's "Open" link, resolved from the client's own topology
+ * view by hostname — never from the tool result (`reduce.ts`'s
+ * `buildDevServerOperation` leaves `operation.links` empty on purpose; see
+ * its doc note). `undefined` before the topology view has loaded, for any
+ * other operation kind, when no service in the view matches the operation's
+ * hostname, or when the matching service has no subdomain of its own.
+ */
+export function devServerUrlFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  if (operation.kind !== "devServer" || topology === undefined) {
+    return undefined;
+  }
+  const hostname = operation.target?.hostname;
+  if (hostname === undefined) {
+    return undefined;
+  }
+  return topology.services.find((service) => service.hostname === hostname)?.subdomainUrl;
 }
 
 type CardStep = ZeropsOperationStep & { readonly durationMs?: number };
@@ -129,20 +153,32 @@ export function deriveObservedStepsRegion(
   };
 }
 
+export interface OperationCardRegions {
+  readonly observed?: ObservedRegion;
+  readonly devServerUrl?: string;
+}
+
 export function useOperationCard(
   operation: ZeropsOperation,
   environmentId: EnvironmentId | null,
-): ObservedRegion | undefined {
+): OperationCardRegions {
   const target = observationTargetFor(operation);
   const { state, history, buildLog } = useOperationObservation(target, environmentId);
+  const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+
+  const devServerUrl = devServerUrlFor(operation, topology);
+  const devServerUrlField = devServerUrl === undefined ? {} : { devServerUrl };
 
   const region = deriveObservedStepsRegion(operation.phase, state, history, Date.now());
   if (region === undefined) {
-    return undefined;
+    return devServerUrlField;
   }
   if (region.buildLogQuery === undefined) {
-    return { steps: region.steps, provenance: region.provenance };
+    return {
+      observed: { steps: region.steps, provenance: region.provenance },
+      ...devServerUrlField,
+    };
   }
 
   const open = manualOpen ?? buildLog.status === "live";
@@ -152,5 +188,8 @@ export function useOperationCard(
     open,
     status: buildLog.status,
   });
-  return { steps: region.steps, provenance: region.provenance, log };
+  return {
+    observed: { steps: region.steps, provenance: region.provenance, log },
+    ...devServerUrlField,
+  };
 }

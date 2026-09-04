@@ -36,7 +36,17 @@ import { zeropsStripState } from "./strip.ts";
 import type { ZeropsTopologyView } from "./topology.ts";
 
 const expected: Readonly<Record<string, unknown>> = expectedJson;
-const CARD_KINDS = ["deploy", "error", "import", "mount", "plan", "subdomain", "verify"] as const;
+const CARD_KINDS = [
+  "browser",
+  "deploy",
+  "devServer",
+  "error",
+  "import",
+  "mount",
+  "plan",
+  "subdomain",
+  "verify",
+] as const;
 const STRIP_TONES = ["active", "done", "idle", "waiting"] as const;
 const decodeScene = Schema.decodeUnknownSync(ShowcaseSceneJson);
 

@@ -7,8 +7,13 @@ import type {
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
-import { deriveObservedStepsRegion, observationTargetFor } from "./useOperationCard.ts";
+import {
+  deriveObservedStepsRegion,
+  devServerUrlFor,
+  observationTargetFor,
+} from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
 
@@ -89,6 +94,96 @@ describe("observationTargetFor — building the ObservationTarget from an operat
     for (const kind of ["bootstrap", "mount", "env", "error"] as const) {
       expect(observationTargetFor(operation({ kind }))).toBeNull();
     }
+  });
+});
+
+function topology(overrides: Partial<ZeropsTopologyView> = {}): ZeropsTopologyView {
+  return {
+    project: { id: "proj-1", name: "z3-eval" },
+    services: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+describe("devServerUrlFor — the Open link from the topology view", () => {
+  it("resolves the dev-server Open link from the topology view by hostname", () => {
+    const view = topology({
+      services: [
+        {
+          hostname: "apidev",
+          serviceId: "svc-1",
+          type: "nodejs@22",
+          status: "ACTIVE",
+          group: "runtimes",
+          transient: false,
+          subdomainUrl: "https://apidev-26a7-3000.prg1.zerops.app",
+          ports: [],
+        },
+      ],
+    });
+    const op = operation({ kind: "devServer", target: { hostname: "apidev" } });
+    expect(devServerUrlFor(op, view)).toBe("https://apidev-26a7-3000.prg1.zerops.app");
+  });
+
+  it("is undefined for a non-devServer operation, even with a matching service", () => {
+    const view = topology({
+      services: [
+        {
+          hostname: "weatherdash",
+          serviceId: "svc-1",
+          type: "nodejs@22",
+          status: "ACTIVE",
+          group: "runtimes",
+          transient: false,
+          subdomainUrl: "https://weatherdash-26a7.prg1.zerops.app",
+          ports: [],
+        },
+      ],
+    });
+    const op = operation({ kind: "deploy", target: { hostname: "weatherdash" } });
+    expect(devServerUrlFor(op, view)).toBeUndefined();
+  });
+
+  it("is undefined when the topology view has not loaded yet", () => {
+    const op = operation({ kind: "devServer", target: { hostname: "apidev" } });
+    expect(devServerUrlFor(op, undefined)).toBeUndefined();
+  });
+
+  it("is undefined when no service in the topology matches the operation's hostname", () => {
+    const view = topology({
+      services: [
+        {
+          hostname: "other",
+          serviceId: "svc-2",
+          type: "nodejs@22",
+          status: "ACTIVE",
+          group: "runtimes",
+          transient: false,
+          ports: [],
+        },
+      ],
+    });
+    const op = operation({ kind: "devServer", target: { hostname: "apidev" } });
+    expect(devServerUrlFor(op, view)).toBeUndefined();
+  });
+
+  it("is undefined when the matching service has no subdomainUrl", () => {
+    const view = topology({
+      services: [
+        {
+          hostname: "apidev",
+          serviceId: "svc-1",
+          type: "nodejs@22",
+          status: "ACTIVE",
+          group: "runtimes",
+          transient: false,
+          ports: [],
+        },
+      ],
+    });
+    const op = operation({ kind: "devServer", target: { hostname: "apidev" } });
+    expect(devServerUrlFor(op, view)).toBeUndefined();
   });
 });
 

@@ -570,7 +570,9 @@
       "cards-malformed:generic",
       "cards-over-cap:generic",
       "cards-running:generic",
-      "cards-command:generic"
+      "cards-command:generic",
+      "cards-dev-server:devServer",
+      "cards-browser:browser"
     ]
   },
   "web:cards#withoutOptionals": {
@@ -610,7 +612,9 @@
       "cards-malformed:generic",
       "cards-over-cap:generic",
       "cards-running:generic",
-      "cards-command:generic"
+      "cards-command:generic",
+      "cards-dev-server:generic",
+      "cards-browser:generic"
     ]
   },
   "web:cards#withUnknownShape": {
@@ -650,7 +654,9 @@
       "cards-malformed:generic",
       "cards-over-cap:generic",
       "cards-running:generic",
-      "cards-command:generic"
+      "cards-command:generic",
+      "cards-dev-server:devServer",
+      "cards-browser:browser"
     ]
   }
 }

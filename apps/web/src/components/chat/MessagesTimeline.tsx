@@ -1279,12 +1279,13 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
   row: Extract<TimelineRow, { kind: "operation" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const observed = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  const { devServerUrl, observed } = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ZeropsOperationCard
         operation={row.operation}
         {...(observed === undefined ? {} : { observed })}
+        {...(devServerUrl === undefined ? {} : { devServerUrl })}
       />
     </div>
   );
