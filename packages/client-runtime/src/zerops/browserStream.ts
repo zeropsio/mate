@@ -63,8 +63,10 @@ export function mapCanvasPointToDevicePixels(
  */
 export interface ZeropsBrowserStreamState {
   readonly status: ZeropsBrowserStreamStatus;
-  /** The page the daemon last reported, once known. */
+  /** The page the daemon last reported, once known (its active tab's `url`). */
   readonly url?: string;
+  /** The active tab's title, once known. */
+  readonly title?: string;
   /** The most recent frame while `status` is `"live"`; absent otherwise — a stale frame from a prior session never lingers as "current". */
   readonly frame?: ZeropsBrowserFrame;
 }
@@ -81,12 +83,18 @@ export function foldBrowserStreamEvent(
   }
   return {
     status: event.status,
-    // Sticky: a reconnect/state event with no URL of its own keeps showing
-    // the last known page rather than blanking the "what page" line.
+    // Sticky: a reconnect/tab-update event that carries only part of the
+    // page info keeps showing the rest of the last known page rather than
+    // blanking the "what page" line.
     ...(event.url !== undefined
       ? { url: event.url }
       : state.url !== undefined
         ? { url: state.url }
+        : {}),
+    ...(event.title !== undefined
+      ? { title: event.title }
+      : state.title !== undefined
+        ? { title: state.title }
         : {}),
     ...(event.status === "live" ? { frame: state.frame } : {}),
   };

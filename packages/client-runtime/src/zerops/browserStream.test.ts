@@ -65,8 +65,14 @@ describe("foldBrowserStreamEvent", () => {
   const stateEvent = (
     status: "no-browser" | "connecting" | "live",
     url?: string,
+    title?: string,
   ): ZeropsBrowserStreamEvent =>
-    ({ type: "state", status, ...(url !== undefined ? { url } : {}) }) as ZeropsBrowserStreamEvent;
+    ({
+      type: "state",
+      status,
+      ...(url !== undefined ? { url } : {}),
+      ...(title !== undefined ? { title } : {}),
+    }) as ZeropsBrowserStreamEvent;
 
   it("starts as no-browser", () => {
     expect(INITIAL_BROWSER_STREAM_STATE).toEqual({ status: "no-browser" });
@@ -96,6 +102,28 @@ describe("foldBrowserStreamEvent", () => {
     const state: ZeropsBrowserStreamState = { status: "live", url: "https://example.com/" };
     const next = foldBrowserStreamEvent(state, stateEvent("connecting"));
     expect(next).toEqual({ status: "connecting", url: "https://example.com/" });
+  });
+
+  it("carries the active tab's title alongside its url", () => {
+    const next = foldBrowserStreamEvent(
+      INITIAL_BROWSER_STREAM_STATE,
+      stateEvent("live", "https://example.com/", "Example"),
+    );
+    expect(next).toEqual({ status: "live", url: "https://example.com/", title: "Example" });
+  });
+
+  it("keeps the last known title across a state event that carries none", () => {
+    const state: ZeropsBrowserStreamState = {
+      status: "live",
+      url: "https://example.com/",
+      title: "Example",
+    };
+    const next = foldBrowserStreamEvent(state, stateEvent("connecting"));
+    expect(next).toEqual({
+      status: "connecting",
+      url: "https://example.com/",
+      title: "Example",
+    });
   });
 
   it("a live state event keeps the current frame", () => {

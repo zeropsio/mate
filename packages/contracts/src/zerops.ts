@@ -407,14 +407,15 @@ export type ZeropsBrowserFrame = typeof ZeropsBrowserFrame.Type;
 
 /**
  * A state transition, published on first subscribe and whenever the relay's
- * connection to the daemon changes. `url` rides along once known (the
- * daemon's own navigation message, or `~/.agent-browser/default.target`) so
+ * connection to the daemon, or the daemon's own reported tab, changes. `url`/
+ * `title` ride along once known (the daemon's own `tabs`/`url` messages) so
  * the panel can say what page the agent is looking at without a second read.
  */
 export const ZeropsBrowserStateEvent = Schema.Struct({
   type: Schema.Literal("state"),
   status: ZeropsBrowserStreamStatus,
   url: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
 });
 export type ZeropsBrowserStateEvent = typeof ZeropsBrowserStateEvent.Type;
 
@@ -422,20 +423,35 @@ export type ZeropsBrowserStateEvent = typeof ZeropsBrowserStateEvent.Type;
 export const ZeropsBrowserStreamEvent = Schema.Union([ZeropsBrowserFrame, ZeropsBrowserStateEvent]);
 export type ZeropsBrowserStreamEvent = typeof ZeropsBrowserStreamEvent.Type;
 
-/** A pointer event from the panel's canvas, already mapped to device pixels by the client (`packages/client-runtime/src/zerops/browserStream.ts`). */
+/**
+ * A pointer event from the panel's canvas, already mapped to device pixels
+ * by the client (`packages/client-runtime/src/zerops/browserStream.ts`).
+ * `eventType`/`button`/`clickCount` mirror CDP's `Input.dispatchMouseEvent`
+ * vocabulary verbatim (agent-browser's own streaming reference,
+ * `/usr/lib/node_modules/agent-browser/skill-data/core/references/streaming.md`
+ * on the rig) — the relay forwards these fields as-is, no translation. A
+ * canvas click is two events, `mousePressed` then `mouseReleased`, both
+ * `clickCount: 1`.
+ */
 export const ZeropsBrowserMouseInput = Schema.Struct({
   kind: Schema.Literal("mouse"),
-  action: Schema.Literals(["move", "down", "up", "click"]),
+  eventType: Schema.Literals(["mouseMoved", "mousePressed", "mouseReleased"]),
   x: Schema.Number,
   y: Schema.Number,
-  button: Schema.optional(Schema.Literals(["left", "middle", "right"])),
+  button: Schema.optional(Schema.Literals(["left", "middle", "right", "none"])),
+  clickCount: Schema.optional(Schema.Number),
 });
 export type ZeropsBrowserMouseInput = typeof ZeropsBrowserMouseInput.Type;
 
-/** A keyboard event from the panel. `text` carries a printable character (composition-safe); `key` carries a named key (`Enter`, `Backspace`, `ArrowLeft`, ...). */
+/**
+ * A keyboard event from the panel, CDP vocabulary (see
+ * {@link ZeropsBrowserMouseInput}'s doc comment). `text` carries a printable
+ * character (composition-safe); `key` carries a named key (`Enter`,
+ * `Backspace`, `ArrowLeft`, ...).
+ */
 export const ZeropsBrowserKeyboardInput = Schema.Struct({
   kind: Schema.Literal("keyboard"),
-  action: Schema.Literals(["down", "up"]),
+  eventType: Schema.Literals(["keyDown", "keyUp", "char"]),
   key: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
 });

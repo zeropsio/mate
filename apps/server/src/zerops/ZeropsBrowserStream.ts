@@ -6,9 +6,11 @@
  * zcp learns nothing (§0 rule 3): this reads `~/.agent-browser/default.stream`
  * — a bare localhost port number the daemon itself publishes — fresh on
  * every connect attempt, and writes nothing back to it or to zcp. The daemon
- * socket is localhost-only and unauthenticated by design; the mate server is
- * its only client, and the WebSocket's own scopes (`AuthOrchestrationReadScope`
- * for the subscription, `AuthOrchestrationOperateScope` for input —
+ * socket is localhost-only and unauthenticated by design; it refuses a
+ * browser-origin client with 403 (its own CORS-style guard), but accepts the
+ * mate server, which — being Node, not a browser — sends no `Origin` header
+ * at all. The WebSocket's own scopes (`AuthOrchestrationReadScope` for the
+ * subscription, `AuthOrchestrationOperateScope` for input —
  * `apps/server/src/auth/RpcAuthorization.ts`) are the authorization for
  * everyone else.
  *
@@ -19,23 +21,48 @@
  * re-reading the port file every attempt, so a daemon that comes back on a
  * new port is picked up without restarting mate.
  *
- * ## Unmeasured: the daemon's own message shapes
+ * ## Wire shapes — agent-browser's own streaming reference
  *
- * No browser was open on the `z3-eval` rig at build time (verified.md,
- * 2026-09-04), so `parseAgentBrowserMessage`/`toDaemonInputMessage` below are
- * a documented GUESS at the daemon's wire shape, built from
- * `agent-browser stream --help` and the team's own measured summary (frames
- * are JSON with base64 JPEG plus device dimensions and scroll offset; input
- * goes back as `input_mouse`/`input_keyboard`/`input_touch`; the daemon
- * emits URL messages on navigation) — never from a live capture. The relay
- * and reconnect machinery around them does not depend on getting the exact
- * field names right; only frame/URL delivery and the ack seq number do. A
- * live pass must correct this doc comment and the two functions together.
+ * Cited from `/usr/lib/node_modules/agent-browser/skill-data/core/references/streaming.md`
+ * on the rig, plus a live capture through `?pacing=ack&maxFps=5` (verified.md,
+ * 2026-09-04). Server→client, every message JSON with `type`:
+ * - `frame`: `{type:"frame", seq, data:"<base64 jpeg>", metadata:{deviceWidth,
+ *   deviceHeight, pageScaleFactor, offsetTop, scrollOffsetX, scrollOffsetY,
+ *   timestamp}}` — `seq` is monotonic and stable across relaunches; a static
+ *   page produces exactly one frame, never a steady stream, so the panel
+ *   shows the LAST frame rather than expecting continuous delivery.
+ * - `status`: connection/engine/recording/screencasting/viewport info, sent
+ *   on connect and on change.
+ * - `tabs`: the open tabs, each `{active, label, tabId, targetId, title,
+ *   type, url}` — the active one's `url`/`title` is this relay's source for
+ *   "what page" (`url` on its own arrives only on navigation).
+ * - `console`: page console output — not read here; this slice has no
+ *   console surface.
+ *
+ * Client→daemon, CDP `Input.dispatch*Event` vocabulary verbatim (see
+ * `packages/contracts/src/zerops.ts`'s `ZeropsBrowserMouseInput`/
+ * `ZeropsBrowserKeyboardInput` doc comments): `input_mouse`/`input_keyboard`/
+ * `input_touch` (touch unused — no touch UI in this slice), `config`, `ack`.
+ *
+ * ## Ack pacing is FORWARDED, never generated on receipt
+ *
+ * The reference is explicit: "with a proxy in the path, forward the
+ * renderer's acks; acks generated on receipt leave frames queued on the far
+ * side" — and acks are cumulative. So a frame's `{"type":"ack","seq":N}` is
+ * sent to the daemon only when THIS relay's own downstream consumer (the
+ * mate client, over the RPC subscription's own Ack flow control — spec
+ * §5.5) actually pulls that frame off the stream, inside {@link subscribe}'s
+ * `Stream.mapEffect` — never inside the daemon-message handler itself. A
+ * client that stops acking simply stops receiving new frames (the daemon
+ * pauses, since it never gets the ack it is waiting for) while `status`/
+ * `tabs`/`url` keep flowing untouched.
  */
 import * as NodeOS from "node:os";
 
 import type {
+  ZeropsBrowserFrame,
   ZeropsBrowserInput,
+  ZeropsBrowserStateEvent,
   ZeropsBrowserStreamEvent,
   ZeropsBrowserStreamStatus,
 } from "@t3tools/contracts";
@@ -97,49 +124,84 @@ type SocketEvent =
   | { readonly _tag: "close" }
   | { readonly _tag: "error"; readonly error: unknown };
 
-interface ParsedDaemonMessage {
-  readonly event: ZeropsBrowserStreamEvent;
-  /** Present on a frame message that carries its own sequence number — echoed straight back as `{"type":"ack","seq":N}` (`pacing=ack`). */
+/** One event published internally — `ackSeq`, present only for a frame, is consumed by {@link subscribe}'s per-subscriber ack forwarding, never exposed on the public {@link ZeropsBrowserStreamEvent}. */
+interface InternalEvent {
+  readonly public: ZeropsBrowserStreamEvent;
   readonly ackSeq?: number;
 }
+
+/** The daemon message kinds this relay acts on; everything else (`status`, `console`, unrecognized) is silently ignored. */
+type DaemonMessage =
+  | { readonly kind: "frame"; readonly seq: number; readonly frame: ZeropsBrowserFrame }
+  | { readonly kind: "page"; readonly url?: string; readonly title?: string }
+  | { readonly kind: "ignored" };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const readString = (value: unknown): string | undefined =>
+  typeof value === "string" ? value : undefined;
+
+const readNumber = (value: unknown): number | undefined =>
+  typeof value === "number" ? value : undefined;
+
 const decodeJsonUnknown = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Unknown));
 
-/** See the module doc comment's "Unmeasured" section. */
-const parseAgentBrowserMessage = (raw: string): ParsedDaemonMessage | undefined => {
+/** See the module doc comment's "Wire shapes" section. */
+const parseAgentBrowserMessage = (raw: string): DaemonMessage => {
   const decoded = decodeJsonUnknown(raw);
   if (Result.isFailure(decoded)) {
-    return undefined;
+    return { kind: "ignored" };
   }
   const parsed = decoded.success;
   if (!isRecord(parsed)) {
-    return undefined;
+    return { kind: "ignored" };
   }
-  if (parsed.type === "frame" && typeof parsed.data === "string") {
-    const width = typeof parsed.width === "number" ? parsed.width : 0;
-    const height = typeof parsed.height === "number" ? parsed.height : 0;
-    const scrollX = typeof parsed.scrollX === "number" ? parsed.scrollX : undefined;
-    const scrollY = typeof parsed.scrollY === "number" ? parsed.scrollY : undefined;
-    const seq = typeof parsed.seq === "number" ? parsed.seq : undefined;
+  if (parsed.type === "frame") {
+    const data = readString(parsed.data);
+    const seq = readNumber(parsed.seq);
+    if (data === undefined || seq === undefined) {
+      return { kind: "ignored" };
+    }
+    const metadata = isRecord(parsed.metadata) ? parsed.metadata : undefined;
+    const width = readNumber(metadata?.deviceWidth) ?? 0;
+    const height = readNumber(metadata?.deviceHeight) ?? 0;
+    const scrollX = readNumber(metadata?.scrollOffsetX);
+    const scrollY = readNumber(metadata?.scrollOffsetY);
     return {
-      event: {
+      kind: "frame",
+      seq,
+      frame: {
         type: "frame",
-        data: parsed.data,
+        data,
         width,
         height,
         ...(scrollX !== undefined ? { scrollX } : {}),
         ...(scrollY !== undefined ? { scrollY } : {}),
       },
-      ...(seq !== undefined ? { ackSeq: seq } : {}),
     };
   }
-  if (parsed.type === "url" && typeof parsed.url === "string") {
-    return { event: { type: "state", status: "live", url: parsed.url } };
+  if (parsed.type === "tabs" && Array.isArray(parsed.tabs)) {
+    const active = parsed.tabs.find(
+      (tab): tab is Record<string, unknown> => isRecord(tab) && tab.active === true,
+    );
+    const url = readString(active?.url);
+    const title = readString(active?.title);
+    return url === undefined && title === undefined
+      ? { kind: "ignored" }
+      : {
+          kind: "page",
+          ...(url !== undefined ? { url } : {}),
+          ...(title !== undefined ? { title } : {}),
+        };
   }
-  return undefined;
+  if (parsed.type === "url") {
+    const url = readString(parsed.url);
+    return url === undefined ? { kind: "ignored" } : { kind: "page", url };
+  }
+  // `status` and `console` are real, recognized daemon messages this relay
+  // does not act on — ignored, not an error.
+  return { kind: "ignored" };
 };
 
 const ConfigMessage = Schema.Struct({
@@ -152,20 +214,19 @@ const encodeConfigMessage = Schema.encodeSync(Schema.fromJsonString(ConfigMessag
 const AckMessage = Schema.Struct({ type: Schema.Literal("ack"), seq: Schema.Number });
 const encodeAckMessage = Schema.encodeSync(Schema.fromJsonString(AckMessage));
 
-/** See the module doc comment's "Unmeasured" section. */
 const DaemonMouseInputMessage = Schema.Struct({
   type: Schema.Literal("input_mouse"),
-  action: Schema.Literals(["move", "down", "up", "click"]),
+  eventType: Schema.Literals(["mouseMoved", "mousePressed", "mouseReleased"]),
   x: Schema.Number,
   y: Schema.Number,
-  button: Schema.optional(Schema.Literals(["left", "middle", "right"])),
+  button: Schema.optional(Schema.Literals(["left", "middle", "right", "none"])),
+  clickCount: Schema.optional(Schema.Number),
 });
 const encodeDaemonMouseInput = Schema.encodeSync(Schema.fromJsonString(DaemonMouseInputMessage));
 
-/** See the module doc comment's "Unmeasured" section. */
 const DaemonKeyboardInputMessage = Schema.Struct({
   type: Schema.Literal("input_keyboard"),
-  action: Schema.Literals(["down", "up"]),
+  eventType: Schema.Literals(["keyDown", "keyUp", "char"]),
   key: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
 });
@@ -177,34 +238,47 @@ const toDaemonInputMessage = (input: ZeropsBrowserInput): string =>
   input.kind === "mouse"
     ? encodeDaemonMouseInput({
         type: "input_mouse",
-        action: input.action,
+        eventType: input.eventType,
         x: input.x,
         y: input.y,
         ...(input.button !== undefined ? { button: input.button } : {}),
+        ...(input.clickCount !== undefined ? { clickCount: input.clickCount } : {}),
       })
     : encodeDaemonKeyboardInput({
         type: "input_keyboard",
-        action: input.action,
+        eventType: input.eventType,
         ...(input.key !== undefined ? { key: input.key } : {}),
         ...(input.text !== undefined ? { text: input.text } : {}),
       });
 
 export const make = (options: ZeropsBrowserStreamOptions) =>
   Effect.gen(function* () {
-    const events = yield* PubSub.unbounded<ZeropsBrowserStreamEvent>();
+    const events = yield* PubSub.unbounded<InternalEvent>();
     const subscriberCount = yield* Ref.make(0);
     const connectionFiber = yield* Ref.make<Fiber.Fiber<void, never> | undefined>(undefined);
     const activeSocket = yield* Ref.make<BrowserSocket | undefined>(undefined);
     const lastStatus = yield* Ref.make<ZeropsBrowserStreamStatus>("no-browser");
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
 
-    const publish = (event: ZeropsBrowserStreamEvent) =>
+    const publishState = (patch: {
+      readonly status?: ZeropsBrowserStreamStatus;
+      readonly url?: string;
+      readonly title?: string;
+    }) =>
       Effect.gen(function* () {
-        if (event.type === "state") {
-          yield* Ref.set(lastStatus, event.status);
-        }
-        yield* PubSub.publish(events, event);
+        const status = patch.status ?? (yield* Ref.get(lastStatus));
+        yield* Ref.set(lastStatus, status);
+        const event: ZeropsBrowserStateEvent = {
+          type: "state",
+          status,
+          ...(patch.url !== undefined ? { url: patch.url } : {}),
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+        };
+        yield* PubSub.publish(events, { public: event });
       });
+
+    const publishFrame = (frame: ZeropsBrowserFrame, seq: number) =>
+      PubSub.publish(events, { public: frame, ackSeq: seq });
 
     const closeSocketQuietly = (socket: BrowserSocket | undefined) =>
       Effect.sync(() => {
@@ -222,15 +296,16 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         }
       });
 
-    const handleDaemonMessage = (socket: BrowserSocket, raw: string): Effect.Effect<void> =>
+    const handleDaemonMessage = (raw: string): Effect.Effect<void> =>
       Effect.gen(function* () {
         const parsedMessage = parseAgentBrowserMessage(raw);
-        if (parsedMessage === undefined) {
-          return;
-        }
-        yield* publish(parsedMessage.event);
-        if (parsedMessage.ackSeq !== undefined) {
-          socket.send(encodeAckMessage({ type: "ack", seq: parsedMessage.ackSeq }));
+        if (parsedMessage.kind === "frame") {
+          yield* publishFrame(parsedMessage.frame, parsedMessage.seq);
+        } else if (parsedMessage.kind === "page") {
+          yield* publishState({
+            ...(parsedMessage.url !== undefined ? { url: parsedMessage.url } : {}),
+            ...(parsedMessage.title !== undefined ? { title: parsedMessage.title } : {}),
+          });
         }
       });
 
@@ -257,12 +332,12 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         }
 
         socket.send(encodeConfigMessage({ type: "config", maxFps: 10, pacing: "ack" }));
-        yield* publish({ type: "state", status: "live" });
+        yield* publishState({ status: "live" });
 
         yield* Stream.fromQueue(queue).pipe(
           Stream.mapEffect((socketEvent) =>
             socketEvent._tag === "message"
-              ? handleDaemonMessage(socket, socketEvent.raw).pipe(Effect.as(true))
+              ? handleDaemonMessage(socketEvent.raw).pipe(Effect.as(true))
               : Effect.succeed(false),
           ),
           Stream.takeWhile((keepGoing) => keepGoing),
@@ -281,9 +356,9 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         const port = yield* options.readStreamPort;
         let becameLive = false;
         if (port === undefined) {
-          yield* publish({ type: "state", status: "no-browser" });
+          yield* publishState({ status: "no-browser" });
         } else {
-          yield* publish({ type: "state", status: "connecting" });
+          yield* publishState({ status: "connecting" });
           becameLive = yield* runOneConnection(port);
         }
         if (becameLive) {
@@ -295,6 +370,16 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         yield* Effect.sleep(Duration.millis(delayMs));
       }
     });
+
+    /** Sent from inside {@link subscribe}'s own stream, only once a subscriber actually pulls the frame — see the module doc comment. */
+    const ackDaemonFrame = (seq: number): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const socket = yield* Ref.get(activeSocket);
+        if (socket === undefined) {
+          return;
+        }
+        socket.send(encodeAckMessage({ type: "ack", seq }));
+      });
 
     const subscribe: Effect.Effect<
       Stream.Stream<ZeropsBrowserStreamEvent>,
@@ -324,8 +409,18 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
           yield* Ref.set(activeSocket, undefined);
         }),
       );
-      const initialEvent: ZeropsBrowserStreamEvent = { type: "state", status: initialStatus };
-      return Stream.concat(Stream.make(initialEvent), Stream.fromSubscription(subscription));
+      const initialEvent: InternalEvent = { public: { type: "state", status: initialStatus } };
+      const rawStream = Stream.concat(
+        Stream.make(initialEvent),
+        Stream.fromSubscription(subscription),
+      );
+      return rawStream.pipe(
+        Stream.mapEffect((internal) =>
+          internal.ackSeq !== undefined
+            ? Effect.as(ackDaemonFrame(internal.ackSeq), internal.public)
+            : Effect.succeed(internal.public),
+        ),
+      );
     });
 
     const sendInput = (input: ZeropsBrowserInput): Effect.Effect<void> =>

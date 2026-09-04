@@ -64,7 +64,8 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   };
 
   const handlePointer =
-    (action: "down" | "up" | "move") => (event: PointerEvent<HTMLCanvasElement>) => {
+    (eventType: "mousePressed" | "mouseReleased" | "mouseMoved") =>
+    (event: PointerEvent<HTMLCanvasElement>) => {
       if (frame === undefined) {
         return;
       }
@@ -78,11 +79,22 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         },
         frame,
       );
-      sendInput({ kind: "mouse", action, x: point.x, y: point.y, button: "left" });
+      sendInput({
+        kind: "mouse",
+        eventType,
+        x: point.x,
+        y: point.y,
+        button: "left",
+        ...(eventType === "mouseMoved" ? {} : { clickCount: 1 }),
+      });
     };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
-    sendInput({ kind: "keyboard", action: "down", key: event.key });
+    sendInput({ kind: "keyboard", eventType: "keyDown", key: event.key });
+  };
+
+  const handleKeyUp = (event: KeyboardEvent<HTMLCanvasElement>) => {
+    sendInput({ kind: "keyboard", eventType: "keyUp", key: event.key });
   };
 
   const drivingLabel = driving.agentDriving
@@ -137,9 +149,10 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
             className="absolute inset-0 h-full w-full"
             data-zerops-browser-input-disabled={driving.inputDisabled}
             onKeyDown={handleKeyDown}
-            onPointerDown={handlePointer("down")}
-            onPointerMove={handlePointer("move")}
-            onPointerUp={handlePointer("up")}
+            onKeyUp={handleKeyUp}
+            onPointerDown={handlePointer("mousePressed")}
+            onPointerMove={handlePointer("mouseMoved")}
+            onPointerUp={handlePointer("mouseReleased")}
             style={{ cursor: driving.inputDisabled ? "not-allowed" : "default" }}
             tabIndex={driving.inputDisabled ? -1 : 0}
           />
