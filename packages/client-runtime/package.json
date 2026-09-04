@@ -243,6 +243,10 @@
       "types": "./src/zerops/serviceMap.ts",
       "default": "./src/zerops/serviceMap.ts"
     },
+    "./zerops/session": {
+      "types": "./src/zerops/session.ts",
+      "default": "./src/zerops/session.ts"
+    },
     "./zerops/strip": {
       "types": "./src/zerops/strip.ts",
       "default": "./src/zerops/strip.ts"

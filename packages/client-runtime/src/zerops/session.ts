@@ -1,13 +1,52 @@
 /**
- * Persistence for the Zerops session and the remembered org/project selection,
- * behind an injectable storage adapter so mobile can back it with secure
- * storage and web with `localStorage` without either owning the encoding.
+ * The Zerops session — its shape, the predicates over it, and its persistence
+ * together with the remembered org/project selection, behind an injectable
+ * storage adapter so mobile can back it with secure storage and web with
+ * `localStorage` without either owning the encoding.
+ *
+ * This module never imports the REST client: the connection layer reads the
+ * stored session through it, and render-only surfaces reach the connection
+ * layer, so anything here must stay free of calls that can mutate a project.
  *
  * Session and selection live under separate versioned keys: signing out must
  * not forget which project the account was working in.
  */
 
-import { isUsableZeropsSession, isZeropsSession, type ZeropsSession } from "./api.ts";
+/** The Zerops account session as the platform returns it and the client stores it. */
+export interface ZeropsSession {
+  readonly accessToken: string;
+  readonly refreshToken?: string;
+  readonly expiresAt?: string;
+  readonly expiresIn?: number;
+  readonly userId?: string;
+  readonly tokenType?: string;
+  /** Set when the account has 2FA enabled; the values are method names ("TOTP"). */
+  readonly twoFAMethods?: ReadonlyArray<string>;
+  /** True only once the second factor has been presented. */
+  readonly twoFAVerified?: boolean;
+  /** One-time secret returned when a recovery code was consumed; never persisted. */
+  readonly newRecoveryToken?: string;
+}
+
+export function requiresZeropsTwoFactor(session: ZeropsSession | null | undefined): boolean {
+  return !!(
+    session &&
+    session.twoFAMethods &&
+    session.twoFAMethods.length > 0 &&
+    session.twoFAVerified !== true
+  );
+}
+
+export function isZeropsSession(value: unknown): value is ZeropsSession {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<ZeropsSession>;
+  return typeof session.accessToken === "string" && session.accessToken.trim().length > 0;
+}
+
+/** A session that is usable for API calls: present and past any second factor. */
+export function isUsableZeropsSession(value: unknown): value is ZeropsSession {
+  return isZeropsSession(value) && !requiresZeropsTwoFactor(value);
+}
 
 /** The narrowest shape both backends satisfy — get/set/remove, async. */
 export interface ZeropsStorageAdapter {

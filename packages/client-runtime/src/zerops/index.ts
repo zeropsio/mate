@@ -3,9 +3,6 @@ export {
   ZeropsApiClient,
   ZeropsApiError,
   buildZeropsContainerUrl,
-  isUsableZeropsSession,
-  isZeropsSession,
-  requiresZeropsTwoFactor,
   zeropsClientsFromUser,
   zeropsRegionFromPublicZone,
   type ListProjectsOptions,
@@ -19,7 +16,6 @@ export {
   type ZeropsRegistrationResponse,
   type ZeropsService,
   type ZeropsServicePort,
-  type ZeropsSession,
   type ZeropsUser,
 } from "./api.ts";
 
@@ -37,10 +33,14 @@ export {
   clearZeropsSession,
   loadZeropsSelection,
   loadZeropsSession,
+  isUsableZeropsSession,
+  isZeropsSession,
   parseZeropsSession,
+  requiresZeropsTwoFactor,
   saveZeropsSelection,
   saveZeropsSession,
   type ZeropsSelection,
+  type ZeropsSession,
   type ZeropsStorageAdapter,
 } from "./session.ts";
 

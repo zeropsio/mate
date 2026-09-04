@@ -42,7 +42,7 @@ import {
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
-import { loadZeropsSession } from "@t3tools/client-runtime/zerops";
+import { loadZeropsSession } from "@t3tools/client-runtime/zerops/session";
 import { browserZeropsStorage } from "../zerops/storage";
 import { connectionStorageLayer } from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";

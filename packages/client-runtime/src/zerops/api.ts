@@ -25,25 +25,16 @@ import {
   buildZeropsRegistrationBody,
   type ZeropsRegistrationInput,
 } from "./registration.ts";
+import {
+  isUsableZeropsSession,
+  isZeropsSession,
+  requiresZeropsTwoFactor,
+  type ZeropsSession,
+} from "./session.ts";
 
 export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
-
-export interface ZeropsSession {
-  readonly accessToken: string;
-  readonly refreshToken?: string;
-  readonly expiresAt?: string;
-  readonly expiresIn?: number;
-  readonly userId?: string;
-  readonly tokenType?: string;
-  /** Set when the account has 2FA enabled; the values are method names ("TOTP"). */
-  readonly twoFAMethods?: ReadonlyArray<string>;
-  /** True only once the second factor has been presented. */
-  readonly twoFAVerified?: boolean;
-  /** One-time secret returned when a recovery code was consumed; never persisted. */
-  readonly newRecoveryToken?: string;
-}
 
 export interface ZeropsClientMembership {
   readonly id: string;
@@ -195,26 +186,6 @@ export class ZeropsApiError extends Error {
     this.status = status;
     this.code = code;
   }
-}
-
-export function requiresZeropsTwoFactor(session: ZeropsSession | null | undefined): boolean {
-  return !!(
-    session &&
-    session.twoFAMethods &&
-    session.twoFAMethods.length > 0 &&
-    session.twoFAVerified !== true
-  );
-}
-
-export function isZeropsSession(value: unknown): value is ZeropsSession {
-  if (!value || typeof value !== "object") return false;
-  const session = value as Partial<ZeropsSession>;
-  return typeof session.accessToken === "string" && session.accessToken.trim().length > 0;
-}
-
-/** A session that is usable for API calls: present and past any second factor. */
-export function isUsableZeropsSession(value: unknown): value is ZeropsSession {
-  return isZeropsSession(value) && !requiresZeropsTwoFactor(value);
 }
 
 /**

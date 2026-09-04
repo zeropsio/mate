@@ -5,11 +5,10 @@ import {
   ZeropsApiClient,
   ZeropsApiError,
   buildZeropsContainerUrl,
-  requiresZeropsTwoFactor,
   zeropsClientsFromUser,
   zeropsRegionFromPublicZone,
-  type ZeropsSession,
 } from "./api.ts";
+import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
   accessToken: "access-1",
