@@ -61,14 +61,12 @@ const CLAUDE_FIXTURE_NAMES = [
 ] as const;
 
 const jsonlCases: ReadonlyArray<GoldenCase> = [
-  ...CLAUDE_FIXTURE_NAMES.map(
-    (name): GoldenCase => ({
-      driver: "claude",
-      name,
-      record: () => replayClaude(loadFixture(NodePath.join(fixturesRoot, "claude"), name)),
-      timeoutMs: 20_000,
-    }),
-  ),
+  ...CLAUDE_FIXTURE_NAMES.map((name): GoldenCase => ({
+    driver: "claude",
+    name,
+    record: () => replayClaude(loadFixture(NodePath.join(fixturesRoot, "claude"), name)),
+    timeoutMs: 20_000,
+  })),
   {
     driver: "codex",
     name: "multi-agent-wire",

@@ -107,11 +107,10 @@ export const make = (options: ZeropsCliOptions) =>
           outputMode: "truncate",
         })
         .pipe(
-          Effect.mapError(
-            (cause): ZeropsCliError =>
-              cause._tag === "ProcessSpawnError"
-                ? spawnErrorToCliError(command, cause.cause)
-                : new ZeropsCliFailed({ command, reason: cause.message }),
+          Effect.mapError((cause): ZeropsCliError =>
+            cause._tag === "ProcessSpawnError"
+              ? spawnErrorToCliError(command, cause.cause)
+              : new ZeropsCliFailed({ command, reason: cause.message }),
           ),
           Effect.flatMap((result) => {
             if (result.code !== 0) {
