@@ -187,6 +187,10 @@
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"
     },
+    "./zerops/candidateLoading": {
+      "types": "./src/zerops/candidateLoading.ts",
+      "default": "./src/zerops/candidateLoading.ts"
+    },
     "./zerops/candidates": {
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
@@ -207,6 +211,10 @@
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"
     },
+    "./zerops/errors": {
+      "types": "./src/zerops/errors.ts",
+      "default": "./src/zerops/errors.ts"
+    },
     "./zerops/operations": {
       "types": "./src/zerops/operations/index.ts",
       "default": "./src/zerops/operations/index.ts"
@@ -226,6 +234,10 @@
     "./zerops/handover": {
       "types": "./src/zerops/handover.ts",
       "default": "./src/zerops/handover.ts"
+    },
+    "./zerops/identityExchange": {
+      "types": "./src/zerops/identityExchange.ts",
+      "default": "./src/zerops/identityExchange.ts"
     },
     "./zerops/provisioning": {
       "types": "./src/zerops/provisioning.ts",
