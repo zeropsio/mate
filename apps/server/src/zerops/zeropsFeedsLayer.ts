@@ -13,25 +13,14 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
-import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 
-/**
- * `ZeropsAgentAuth.layer` reaches provider internals only through
- * `ProviderInstances` (`spi/providerInstances.ts`) — discharged here rather
- * than in `ZeropsAgentAuth.ts` itself, leaving `ProviderRegistry` (which
- * `ProviderInstances.layer` still requires) to bubble up and be satisfied by
- * the SAME shared, memoized instance `server.ts`'s runtime composition
- * already provides everywhere else (never a second provider registry).
- */
-const ZeropsAgentAuthLive = ZeropsAgentAuth.layer.pipe(Layer.provide(providerInstancesLayer));
-
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
-  ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuthLive)),
+  ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuth.layer)),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

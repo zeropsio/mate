@@ -9,10 +9,6 @@ import {
 } from "./ZeropsAgentAuth.ts";
 import type { AgentAuthProbeSpawn } from "./ZeropsAgentAuthVerify.ts";
 
-// `agentDefaultInstanceId` moved to `../spi/providerInstances.ts` (owned SPI
-// capability — this module no longer imports `provider/**` at all,
-// methodology §3.2); its own tests moved to `providerInstances.test.ts`.
-
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
 // `vscode-bootstrap-welcome.js`'s `computeAgentState`. `credVerifiable` is
 // dropped here: both agents this feed reports on (claude-code, codex) always
