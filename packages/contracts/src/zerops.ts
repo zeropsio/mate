@@ -1,14 +1,11 @@
 /**
  * Zerops feeds — the additive contract slice the Zerops-aware client renders from.
  *
- * Two independent feeds, neither derived from the other:
- *
- * - **topology** (`ZeropsTopologySnapshot`) — what exists in the Zerops project,
- *   read from `zcp studio topology`. One per server: a mate environment is one
- *   Zerops project.
- * - **lifecycle** (`ZeropsLifecycle`) — where the agent is, reduced per thread
- *   from the `workflow.StateEnvelope` that zcp's workflow-aware tool results
- *   carry. One per thread.
+ * **lifecycle** (`ZeropsLifecycle`) — where the agent is, reduced per thread
+ * from the `workflow.StateEnvelope` that zcp's workflow-aware tool results
+ * carry. One per thread. What exists in the Zerops project is no longer a
+ * server feed: the client reads it directly with its own Zerops token and
+ * projects it client-side (`packages/client-runtime/src/zerops/topology.ts`).
  *
  * Nothing here mutates: the client renders state, the agent mutates through MCP.
  *
@@ -34,105 +31,6 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ServerProviderAuthStatus } from "./server.ts";
-
-// ---------------------------------------------------------------------------
-// Topology
-// ---------------------------------------------------------------------------
-
-/**
- * The POC's service taxonomy (`runtimes | data | infrastructure`), rebuilt from
- * what `zcp studio topology` carries. The POC grouped on the Zerops API's
- * `serviceStackTypeCategory`, which the topology JSON does not include.
- */
-export const ZeropsServiceGroup = Schema.Literals(["runtimes", "data", "infrastructure"]);
-export type ZeropsServiceGroup = typeof ZeropsServiceGroup.Type;
-
-/** zcp's six-state adoption classification. Open vocabulary — see the file header. */
-export const ZeropsAdoptionState = Schema.String;
-export type ZeropsAdoptionState = typeof ZeropsAdoptionState.Type;
-
-export const KNOWN_ZEROPS_ADOPTION_STATES = [
-  "adopted",
-  "resumable",
-  "adoptable",
-  "managed-dep",
-  "zcp-self",
-  "bootstrapping",
-] as const;
-
-/**
- * Platform service statuses that are settled. Everything else is treated as
- * transient — a status the platform adds later costs one extra poll, whereas
- * the inverse mistake leaves a service frozen mid-transition on screen.
- */
-export const SETTLED_ZEROPS_SERVICE_STATUSES = [
-  "ACTIVE",
-  "RUNNING",
-  "STOPPED",
-  "READY_TO_DEPLOY",
-  "FAILED",
-  "DELETED",
-  "ACTION_FAILED",
-  "CONTAINER_FAILED",
-  "REPAIR_FAILED",
-] as const;
-
-export const ZeropsService = Schema.Struct({
-  hostname: TrimmedNonEmptyString,
-  serviceId: Schema.String,
-  /** Type-version as the platform reports it, e.g. `nodejs@22`, `postgresql:single@18`. */
-  type: Schema.String,
-  status: Schema.String,
-  group: ZeropsServiceGroup,
-  adoptionState: ZeropsAdoptionState,
-  /** True for databases/caches/search/messaging/storage — zcp's `isInfrastructure` flag. */
-  isManagedService: Schema.Boolean,
-  /** True while `status` is not one of {@link SETTLED_ZEROPS_SERVICE_STATUSES}. */
-  transient: Schema.Boolean,
-  /** Whether zcp has this service sshfs-mounted; `mountPath` is zcp's own answer. */
-  mounted: Schema.Boolean,
-  mountPath: Schema.optional(Schema.String),
-  subdomainEnabled: Schema.optional(Schema.Boolean),
-  subdomainUrl: Schema.optional(Schema.String),
-});
-export type ZeropsService = typeof ZeropsService.Type;
-
-export const ZeropsProject = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: Schema.optional(Schema.String),
-});
-export type ZeropsProject = typeof ZeropsProject.Type;
-
-/**
- * `available: false` means this is not a Zerops environment (no `zcp` binary) —
- * the feed is off and that is not an error. `degraded: true` means zcp is here
- * but the last read failed; the feed keeps retrying and `services` holds the
- * last good read.
- */
-export const ZeropsTopologySnapshot = Schema.Struct({
-  available: Schema.Boolean,
-  degraded: Schema.Boolean,
-  /** Why the feed is unavailable or degraded. Absent when neither. */
-  reason: Schema.optional(Schema.String),
-  project: Schema.optional(ZeropsProject),
-  services: Schema.Array(ZeropsService),
-  /** Advisory notes zcp attached to the read (adoptable services, live activity). */
-  warnings: Schema.Array(Schema.String),
-  /**
-   * Whether the push channel (`zcp studio watch`) is currently connected.
-   *
-   * `true` — service add/delete reaches the map within about a second.
-   * `false` — the doorbell is down and the feed has fallen back to polling, so
-   * the map is still correct but lags by a few seconds; worth showing.
-   * Absent — there is no doorbell to report on, because the feed is
-   * unavailable. `false` would read as "the doorbell is down", a different claim.
-   */
-  doorbellConnected: Schema.optional(Schema.Boolean),
-  /** When this server produced the snapshot. */
-  readAt: Schema.DateTimeUtc,
-});
-export type ZeropsTopologySnapshot = typeof ZeropsTopologySnapshot.Type;
 
 // ---------------------------------------------------------------------------
 // StateEnvelope mirror — zcp `internal/workflow/envelope.go`
@@ -413,7 +311,7 @@ export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
 
 /**
  * `available: false` means this is not a Zerops environment — the feed is off
- * and that is not an error, mirroring {@link ZeropsTopologySnapshot}.
+ * and that is not an error.
  */
 export const ZeropsAgentAuthSnapshot = Schema.Struct({
   available: Schema.Boolean,

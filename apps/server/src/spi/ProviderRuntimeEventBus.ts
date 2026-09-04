@@ -135,9 +135,9 @@ export const ProviderRuntimeEventBusLive = Layer.effect(
  * A test double that serves a caller-supplied stream instead of subscribing
  * to a real `ProviderService`, run through the same enrichment
  * `ProviderRuntimeEventBusLive` applies. For a test that builds
- * `ZeropsLifecycle.layer` / `ZeropsTopology.layer` directly (rather than
- * calling their `make` escape hatch) and needs `ProviderRuntimeEventBus`
- * satisfied without standing up the provider layer.
+ * `ZeropsLifecycle.layer` directly (rather than calling its `make` escape
+ * hatch) and needs `ProviderRuntimeEventBus` satisfied without standing up
+ * the provider layer.
  */
 export const ProviderRuntimeEventBusTest = {
   make: (events: Stream.Stream<SpiEvent>): Layer.Layer<ProviderRuntimeEventBus> =>

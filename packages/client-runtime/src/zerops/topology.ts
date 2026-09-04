@@ -47,10 +47,10 @@ export interface ZeropsTopologyView {
 }
 
 // ---------------------------------------------------------------------------
-// Grouping — ported from `apps/server/src/zerops/zeropsServiceTaxonomy.ts`
-// (S4 deletes that copy once this projection is the map's only source).
-// That file grouped `zcp studio topology`'s `adoptionState`/`isInfrastructure`
-// fields, which this REST read does not carry; the same three groups are
+// Grouping — this is now the map's only source. The server's own copy
+// (`apps/server/src/zerops/zeropsServiceTaxonomy.ts`, which grouped `zcp
+// studio topology`'s `adoptionState`/`isInfrastructure` fields) is deleted;
+// those fields do not exist on this REST read, so the same three groups are
 // rebuilt here from `serviceStackTypeInfo` instead.
 // ---------------------------------------------------------------------------
 

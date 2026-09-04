@@ -499,10 +499,7 @@ const FORBIDDEN_PROTECTED_BINDING_NAMES = new Map<string, string>([
 // Mirrors apps/server/src/auth/RpcAuthorization.ts:94–107. Mutability is
 // authored there and is never inferred from a `subscribe` prefix or verb.
 const PROTECTED_WS_READ_METHODS = new Set([
-  "zeropsTopologyGet",
-  "zeropsTopologyRefresh",
   "zeropsLifecycleGet",
-  "subscribeZeropsTopology",
   "subscribeZeropsLifecycle",
   "subscribeZeropsAgentAuth",
 ]);
@@ -1182,8 +1179,8 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     Effect.gen(function* () {
       const fixture = yield* makeProtectedRootFixture({
         "components/Root.tsx": [
-          "export const subscription = WS_METHODS.subscribeZeropsTopology;",
-          "export const refresh = WS_METHODS.zeropsTopologyRefresh;",
+          "export const subscription = WS_METHODS.subscribeZeropsLifecycle;",
+          "export const read = WS_METHODS.zeropsLifecycleGet;",
         ].join("\n"),
       });
 

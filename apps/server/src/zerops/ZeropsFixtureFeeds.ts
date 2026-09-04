@@ -4,7 +4,6 @@ import type {
   ZeropsAgentId,
   ZeropsAgentLoginState,
   ZeropsLifecycle as ZeropsLifecycleSnapshot,
-  ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
 import { ZeropsAgentLoginError } from "@t3tools/contracts";
 import {
@@ -34,7 +33,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsTopology from "./ZeropsTopology.ts";
 
 const strictParseOptions = {
   errors: "all",
@@ -154,33 +152,7 @@ const replaySteps = <Snapshot>(
     { discard: true },
   );
 
-const topologyContentSignature = (snapshot: ZeropsTopologySnapshot): string =>
-  JSON.stringify([
-    snapshot.available,
-    snapshot.degraded,
-    snapshot.reason ?? null,
-    snapshot.project ?? null,
-    snapshot.services,
-    snapshot.warnings,
-    snapshot.doorbellConnected ?? null,
-  ]);
-
 const jsonContentSignature = (snapshot: unknown): string => JSON.stringify(snapshot);
-
-const makeTopology = (scene: ShowcaseScene) =>
-  Effect.gen(function* () {
-    const publisher = yield* makeSnapshotPublisher(scene.topology, topologyContentSignature);
-    yield* replaySteps(scene, (step) => step.topology, publisher.publishIfChanged).pipe(
-      Effect.forkScoped,
-    );
-
-    return {
-      latest: publisher.latest,
-      changes: publisher.changes,
-      subscribe: publisher.subscribe,
-      refresh: publisher.publishCurrent,
-    } satisfies ZeropsTopology.ZeropsTopology["Service"];
-  });
 
 const emptyLifecycle = (threadId: ThreadId): ZeropsLifecycleSnapshot => ({
   threadId,
@@ -377,9 +349,6 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
     } satisfies ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   });
 
-const topologyLayer = (scene: ShowcaseScene) =>
-  Layer.effect(ZeropsTopology.ZeropsTopology, makeTopology(scene));
-
 const lifecycleLayer = (scene: ShowcaseScene) =>
   Layer.effect(ZeropsLifecycle.ZeropsLifecycle, makeLifecycle(scene));
 
@@ -392,7 +361,6 @@ const agentLoginLayer = (scene: ShowcaseScene) =>
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   return Layer.mergeAll(
-    topologyLayer(scene),
     lifecycleLayer(scene),
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
   );

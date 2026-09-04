@@ -70,12 +70,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.providerUploadFeedback]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeVcsStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeResourceTelemetry]: AuthOrchestrationReadScope,
-  // Every Zerops feed method is a READ: the topology comes from a read-only
-  // `zcp studio topology`, and `refresh` only re-runs that read. Mutating the
-  // project stays the agent's job through MCP, never a client RPC.
-  [WS_METHODS.zeropsTopologyGet]: AuthOrchestrationReadScope,
-  [WS_METHODS.zeropsTopologyRefresh]: AuthOrchestrationReadScope,
-  [WS_METHODS.subscribeZeropsTopology]: AuthOrchestrationReadScope,
+  // Every Zerops feed method is a READ. Mutating the project stays the
+  // agent's job through MCP, never a client RPC.
   [WS_METHODS.zeropsLifecycleGet]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsAgentAuth]: AuthOrchestrationReadScope,

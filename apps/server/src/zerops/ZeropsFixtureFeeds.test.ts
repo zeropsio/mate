@@ -13,7 +13,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
 import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsTopology from "./ZeropsTopology.ts";
 
 const serviceMapScene = loadShowcaseScene("web:service-map-live");
 const noZeropsScene = loadShowcaseScene("web:no-zerops");
@@ -82,14 +81,12 @@ const absoluteLoginStepScene: ShowcaseScene = {
 const withFixtureFeeds = <A>(
   scene: ShowcaseScene,
   use: (feeds: {
-    readonly topology: ZeropsTopology.ZeropsTopology["Service"];
     readonly lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
     readonly agentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
     readonly agentLogin: ZeropsAgentLogin.ZeropsAgentLogin["Service"];
   }) => Effect.Effect<A, never, Scope.Scope>,
 ) =>
   Effect.all({
-    topology: ZeropsTopology.ZeropsTopology,
     lifecycle: ZeropsLifecycle.ZeropsLifecycle,
     agentAuth: ZeropsAgentAuth.ZeropsAgentAuth,
     agentLogin: ZeropsAgentLogin.ZeropsAgentLogin,
@@ -99,14 +96,12 @@ const advanceTestClock = (ms: number) =>
   TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
 
 it.effect("subscribes with every scene snapshot as the latest value", () =>
-  withFixtureFeeds(serviceMapScene, ({ topology, lifecycle, agentAuth, agentLogin }) =>
+  withFixtureFeeds(serviceMapScene, ({ lifecycle, agentAuth, agentLogin }) =>
     Effect.gen(function* () {
-      const topologySubscription = yield* topology.subscribe;
       const lifecycleSubscription = yield* lifecycle.subscribe(serviceMapScene.lifecycle.threadId);
       const authSubscription = yield* agentAuth.subscribe;
       const loginSubscription = yield* agentLogin.subscribe;
 
-      assert.deepEqual(topologySubscription.latest, serviceMapScene.topology);
       assert.deepEqual(lifecycleSubscription.latest, serviceMapScene.lifecycle);
       assert.deepEqual(authSubscription.latest, serviceMapScene.agentAuth);
       assert.equal(
@@ -117,95 +112,6 @@ it.effect("subscribes with every scene snapshot as the latest value", () =>
     }),
   ),
 );
-
-it.effect("publishes each scripted step after its relative delay", () => {
-  const first = {
-    ...serviceMapScene.topology,
-    warnings: ["first scripted topology"],
-  };
-  const second = {
-    ...serviceMapScene.topology,
-    warnings: ["second scripted topology"],
-  };
-  const scene: ShowcaseScene = {
-    ...serviceMapScene,
-    steps: [
-      { afterMs: 100, topology: first },
-      { afterMs: 200, topology: second },
-    ],
-  };
-
-  return withFixtureFeeds(scene, ({ topology }) =>
-    Effect.gen(function* () {
-      const subscription = yield* topology.subscribe;
-      const published = yield* subscription.changes.pipe(
-        Stream.take(2),
-        Stream.runCollect,
-        Effect.forkChild,
-      );
-      yield* Effect.yieldNow;
-
-      yield* advanceTestClock(100);
-      assert.deepEqual((yield* topology.latest).warnings, first.warnings);
-      yield* advanceTestClock(200);
-
-      assert.deepEqual(
-        Array.from(yield* Fiber.join(published)).map((snapshot) => snapshot.warnings),
-        [first.warnings, second.warnings],
-      );
-    }),
-  );
-});
-
-it.effect("refresh republishes the current topology snapshot", () =>
-  withFixtureFeeds(serviceMapScene, ({ topology }) =>
-    Effect.gen(function* () {
-      const subscription = yield* topology.subscribe;
-      const published = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-
-      const refreshed = yield* topology.refresh;
-      const change = Option.getOrThrow(yield* Fiber.join(published));
-
-      assert.deepEqual(refreshed, serviceMapScene.topology);
-      assert.deepEqual(change, serviceMapScene.topology);
-    }),
-  ),
-);
-
-it.effect("updates readAt without publishing unchanged topology content", () => {
-  const reread = {
-    ...serviceMapScene.topology,
-    readAt: DateTime.makeUnsafe("2026-08-30T12:00:01.000Z"),
-  };
-  const changed = {
-    ...reread,
-    warnings: ["content changed"],
-  };
-  const scene: ShowcaseScene = {
-    ...serviceMapScene,
-    steps: [
-      { afterMs: 100, topology: reread },
-      { afterMs: 100, topology: changed },
-    ],
-  };
-
-  return withFixtureFeeds(scene, ({ topology }) =>
-    Effect.gen(function* () {
-      const subscription = yield* topology.subscribe;
-      const firstPublished = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-
-      yield* advanceTestClock(100);
-      assert.deepEqual((yield* topology.latest).readAt, reread.readAt);
-      yield* advanceTestClock(100);
-
-      assert.deepEqual(Option.getOrThrow(yield* Fiber.join(firstPublished)).warnings, [
-        "content changed",
-      ]);
-    }),
-  );
-});
 
 it.effect("login follows the clock and rechecks auth when it succeeds", () =>
   withFixtureFeeds(serviceMapScene, ({ agentAuth, agentLogin }) =>

@@ -2,8 +2,8 @@
  * The Zerops feeds as one layer, so the server's runtime composition takes a
  * single line for both.
  *
- * The topology, lifecycle, and authorization feeds are independent by design,
- * so a failure in one never blanks the others. `ZeropsAgentLogin` is the one
+ * The lifecycle and authorization feeds are independent by design, so a
+ * failure in one never blanks the other. `ZeropsAgentLogin` is the one
  * exception: it calls `ZeropsAgentAuth.recheckNow` on a login success, so its
  * layer retains the authorization service it receives. `ws.ts` and the login
  * module therefore share the SAME `ZeropsAgentAuth` instance.
@@ -18,7 +18,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsTopology from "./ZeropsTopology.ts";
 
 /**
  * `ZeropsAgentAuth.layer` reaches provider internals only through
@@ -31,7 +30,6 @@ import * as ZeropsTopology from "./ZeropsTopology.ts";
 const ZeropsAgentAuthLive = ZeropsAgentAuth.layer.pipe(Layer.provide(providerInstancesLayer));
 
 const liveLayer = Layer.mergeAll(
-  ZeropsTopology.layer,
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
   ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuthLive)),
 );

@@ -12,9 +12,9 @@ import {
 } from "@t3tools/shared/showcaseScenes";
 
 import * as ServerConfig from "../config.ts";
+import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { loadFixtureScene } from "./ZeropsFixtureFeeds.ts";
 import { selectZeropsFeedsLayer, ZeropsLayerLive } from "./zeropsFeedsLayer.ts";
-import * as ZeropsTopology from "./ZeropsTopology.ts";
 
 const encodeScene = Schema.encodeSync(Schema.fromJsonString(ShowcaseSceneJson));
 
@@ -26,9 +26,12 @@ it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
       if (selected.kind !== "fixture") {
         return;
       }
-      const topology = yield* ZeropsTopology.ZeropsTopology.pipe(Effect.provide(selected.layer));
+      const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth.pipe(Effect.provide(selected.layer));
 
-      assert.equal((yield* topology.latest).project?.name, "Zerops Showcase");
+      assert.deepEqual(
+        (yield* agentAuth.latest).agents.map((agent) => agent.agentId),
+        ["claude-code", "codex"],
+      );
     }),
   );
 
@@ -45,15 +48,18 @@ it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
       // `Layer.unwrap` retains the live branch's requirements in its static
       // type; this configured branch proves they are not requested at runtime.
       // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off
-      const topology = yield* ZeropsTopology.ZeropsTopology.pipe(
+      const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth.pipe(
         Effect.provide(ZeropsLayerLive),
         Effect.orDie,
       ) as Effect.Effect<
-        ZeropsTopology.ZeropsTopology["Service"],
+        ZeropsAgentAuth.ZeropsAgentAuth["Service"],
         never,
         ServerConfig.ServerConfig
       >;
-      assert.equal((yield* topology.latest).project?.name, "Zerops Showcase");
+      assert.deepEqual(
+        (yield* agentAuth.latest).agents.map((agent) => agent.agentId),
+        ["claude-code", "codex"],
+      );
     }).pipe(
       Effect.provide(
         Layer.effect(
@@ -80,7 +86,7 @@ it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {
 
       const loaded = yield* loadFixtureScene(path);
       assert.equal(loaded.id, source.id);
-      assert.deepEqual(loaded.topology, source.topology);
+      assert.deepEqual(loaded.topologySource, source.topologySource);
     }),
   );
 

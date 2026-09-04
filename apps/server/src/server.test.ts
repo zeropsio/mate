@@ -131,7 +131,6 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
-import * as ZeropsTopology from "./zerops/ZeropsTopology.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -434,16 +433,6 @@ const makeBrowserOtlpPayload = (spanName: string) =>
     return JSON.parse(request.body) as OtlpTracer.TraceData;
   });
 
-/** What the Zerops topology feed reports on a machine with no `zcp` installed. */
-const unavailableZeropsTopology = {
-  available: false,
-  degraded: false,
-  reason: "The zcp binary is not available",
-  services: [],
-  warnings: [],
-  readAt: DateTime.makeUnsafe(0),
-} as const;
-
 /** What the agent auth feed reports outside a Zerops environment. */
 const unavailableZeropsAgentAuth = {
   available: false,
@@ -460,7 +449,6 @@ const unavailableZeropsAgentLogin = {
 const buildAppUnderTest = (options?: {
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   fixtureZeropsLayer?: Layer.Layer<
-    | ZeropsTopology.ZeropsTopology
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
@@ -505,7 +493,6 @@ const buildAppUnderTest = (options?: {
     desktopTelemetryReceiver?: Partial<
       DesktopTelemetryReceiver.DesktopTelemetryReceiver["Service"]
     >;
-    zeropsTopology?: Partial<ZeropsTopology.ZeropsTopology["Service"]>;
     zeropsLifecycle?: Partial<ZeropsLifecycle.ZeropsLifecycle["Service"]>;
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
@@ -514,8 +501,7 @@ const buildAppUnderTest = (options?: {
   Effect.gen(function* () {
     if (
       options?.fixtureZeropsLayer !== undefined &&
-      (options.layers?.zeropsTopology !== undefined ||
-        options.layers?.zeropsLifecycle !== undefined ||
+      (options.layers?.zeropsLifecycle !== undefined ||
         options.layers?.zeropsAgentAuth !== undefined ||
         options.layers?.zeropsAgentLogin !== undefined)
     ) {
@@ -940,19 +926,10 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         options?.fixtureZeropsLayer ??
           Layer.mergeAll(
-            // A test machine has no `zcp`, which is exactly the shape the real feed
-            // reports there: unavailable, no errors. Mocked rather than built so the
-            // suite does not spawn a doomed child process per test.
-            Layer.mock(ZeropsTopology.ZeropsTopology)({
-              latest: Effect.succeed(unavailableZeropsTopology),
-              changes: Stream.empty,
-              subscribe: Effect.succeed({
-                latest: unavailableZeropsTopology,
-                changes: Stream.empty,
-              }),
-              refresh: Effect.succeed(unavailableZeropsTopology),
-              ...options?.layers?.zeropsTopology,
-            }),
+            // A test machine is not a Zerops environment, which is exactly the
+            // shape the real feeds report there: unavailable, no errors. Mocked
+            // rather than built so the suite does not spawn a doomed child
+            // process per test.
             Layer.mock(ZeropsLifecycle.ZeropsLifecycle)({
               get: (threadId) => Effect.succeed({ threadId, recentTools: [] }),
               subscribe: (threadId) =>
@@ -5265,23 +5242,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("answers zerops.topology.get over the websocket", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest();
-
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const snapshot = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.zeropsTopologyGet]({})),
-      );
-
-      // Off a Zerops container this is the honest answer, and it must not be an
-      // error: a non-Zerops environment simply has no topology feed.
-      assert.equal(snapshot.available, false);
-      assert.equal(snapshot.services.length, 0);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("streams all four fixture feeds through the real Zerops RPC handlers", () =>
+  it.effect("streams all three fixture feeds through the real Zerops RPC handlers", () =>
     Effect.gen(function* () {
       const scene = loadShowcaseScene("web:agent-auth-attention");
       yield* buildAppUnderTest({
@@ -5294,10 +5255,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           Effect.all(
             {
-              topology: client[WS_METHODS.subscribeZeropsTopology]({}).pipe(
-                Stream.runHead,
-                Effect.map(Option.getOrThrow),
-              ),
               lifecycle: client[WS_METHODS.subscribeZeropsLifecycle]({
                 threadId: scene.lifecycle.threadId,
               }).pipe(Stream.runHead, Effect.map(Option.getOrThrow)),
@@ -5316,7 +5273,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
 
-      assert.deepEqual(snapshots.topology, scene.topology);
       assert.deepEqual(snapshots.lifecycle, scene.lifecycle);
       assert.deepEqual(
         snapshots.agentAuth,
@@ -5326,140 +5282,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         }),
       );
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
-  );
-
-  it.effect("pushes when the change is driven by a refresh RPC on the same socket", () =>
-    Effect.gen(function* () {
-      // The live failure shape: the publish is triggered from inside an RPC
-      // handler's fiber (zerops.topology.refresh), not from the doorbell, and
-      // the subscription that misses it is on the very same socket.
-      const reads = yield* Ref.make(0);
-      const topology = yield* ZeropsTopology.make({
-        isZeropsEnvironment: true,
-        toolEvents: Stream.empty,
-        cli: {
-          readTopology: Ref.updateAndGet(reads, (n) => n + 1).pipe(
-            Effect.map((attempt) => ({
-              project: { id: "p", name: "z3-eval" },
-              services:
-                attempt <= 1
-                  ? [
-                      {
-                        hostname: "s6live3",
-                        serviceId: "svc-1",
-                        type: "valkey:single@7.2",
-                        status: "ACTIVE",
-                        group: "data" as const,
-                        adoptionState: "managed-dep",
-                        isManagedService: true,
-                        transient: false,
-                        mounted: false,
-                      },
-                    ]
-                  : [],
-              warnings: [],
-            })),
-          ),
-          watchDoorbell: () => Effect.never,
-          markAgentOAuth: () => Effect.die("markAgentOAuth is not used by ZeropsTopology"),
-        },
-      });
-
-      yield* buildAppUnderTest({ layers: { zeropsTopology: topology } });
-      const wsUrl = yield* getWsServerUrl("/ws");
-
-      const frames = yield* Queue.unbounded<number>();
-      yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            yield* Stream.runForEach(client[WS_METHODS.subscribeZeropsTopology]({}), (snapshot) =>
-              Queue.offer(frames, snapshot.services.length),
-            ).pipe(Effect.forkChild);
-            assert.equal(yield* Queue.take(frames), 1);
-
-            // Read 2 drops the service, so this refresh publishes.
-            const refreshed = yield* client[WS_METHODS.zeropsTopologyRefresh]({});
-            assert.equal(refreshed.services.length, 0);
-
-            assert.equal(yield* Queue.take(frames), 0);
-          }),
-        ),
-      );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("pushes a changed topology to an open websocket subscription", () =>
-    Effect.gen(function* () {
-      // A REAL topology feed over a fake zcp, so the whole path is exercised:
-      // doorbell -> refresh -> publish -> PubSub -> RPC stream -> the wire.
-      // The live symptom was one frame and then silence, and nothing between
-      // the service and the socket had a test.
-      const reads = yield* Ref.make(0);
-      const onDoorbell = yield* Ref.make<
-        ((event: { readonly type: string }) => Effect.Effect<void>) | undefined
-      >(undefined);
-      const attached = yield* Deferred.make<void>();
-      const running = yield* Deferred.make<void>();
-
-      const topology = yield* ZeropsTopology.make({
-        isZeropsEnvironment: true,
-        toolEvents: Stream.empty,
-        cli: {
-          readTopology: Ref.updateAndGet(reads, (n) => n + 1).pipe(
-            Effect.map((attempt) => ({
-              project: { id: "p", name: "z3-eval" },
-              services:
-                attempt === 1
-                  ? []
-                  : [
-                      {
-                        hostname: "s6live1",
-                        serviceId: "svc-1",
-                        type: "valkey:single@7.2",
-                        status: "ACTIVE",
-                        group: "data" as const,
-                        adoptionState: "managed-dep",
-                        isManagedService: true,
-                        transient: false,
-                        mounted: false,
-                      },
-                    ],
-              warnings: [],
-            })),
-          ),
-          watchDoorbell: (handler) =>
-            Ref.set(onDoorbell, handler).pipe(
-              Effect.andThen(Deferred.succeed(attached, undefined)),
-              Effect.andThen(Deferred.await(running)),
-            ),
-          markAgentOAuth: () => Effect.die("markAgentOAuth is not used by ZeropsTopology"),
-        },
-      });
-
-      yield* buildAppUnderTest({ layers: { zeropsTopology: topology } });
-      const wsUrl = yield* getWsServerUrl("/ws");
-
-      const frames = yield* Queue.unbounded<number>();
-      yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            yield* Stream.runForEach(client[WS_METHODS.subscribeZeropsTopology]({}), (snapshot) =>
-              Queue.offer(frames, snapshot.services.length),
-            ).pipe(Effect.forkChild);
-
-            // Taking the first frame is the receipt that the subscription is
-            // live on the wire; only then can the doorbell ring meaningfully.
-            assert.equal(yield* Queue.take(frames), 0);
-
-            yield* Deferred.await(attached);
-            const ring = yield* Ref.get(onDoorbell);
-            yield* ring === undefined ? Effect.void : ring({ type: "topology-changed" });
-
-            assert.equal(yield* Queue.take(frames), 1);
-          }),
-        ),
-      );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("answers zerops.lifecycle.get for a thread over the websocket", () =>

@@ -152,7 +152,6 @@ import {
   ZeropsAgentLoginStartResult,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
-  ZeropsTopologySnapshot,
 } from "./zerops.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
@@ -259,8 +258,6 @@ export const WS_METHODS = {
   sourceControlPublishRepository: "sourceControl.publishRepository",
 
   // Zerops feeds
-  zeropsTopologyGet: "zerops.topology.get",
-  zeropsTopologyRefresh: "zerops.topology.refresh",
   zeropsLifecycleGet: "zerops.lifecycle.get",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
@@ -274,7 +271,6 @@ export const WS_METHODS = {
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
-  subscribeZeropsTopology: "subscribeZeropsTopology",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
 } as const;
@@ -770,25 +766,6 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
   stream: true,
 });
 
-export const WsZeropsTopologyGetRpc = Rpc.make(WS_METHODS.zeropsTopologyGet, {
-  payload: Schema.Struct({}),
-  success: ZeropsTopologySnapshot,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsZeropsTopologyRefreshRpc = Rpc.make(WS_METHODS.zeropsTopologyRefresh, {
-  payload: Schema.Struct({}),
-  success: ZeropsTopologySnapshot,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsSubscribeZeropsTopologyRpc = Rpc.make(WS_METHODS.subscribeZeropsTopology, {
-  payload: Schema.Struct({}),
-  success: ZeropsTopologySnapshot,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
 export const WsZeropsLifecycleGetRpc = Rpc.make(WS_METHODS.zeropsLifecycleGet, {
   payload: ZeropsLifecycleGetInput,
   success: ZeropsLifecycle,
@@ -894,9 +871,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeAuthAccessRpc,
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
-  WsZeropsTopologyGetRpc,
-  WsZeropsTopologyRefreshRpc,
-  WsSubscribeZeropsTopologyRpc,
   WsZeropsLifecycleGetRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
