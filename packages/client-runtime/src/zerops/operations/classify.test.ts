@@ -148,6 +148,24 @@ describe("classifyZeropsCall — mutating zerops_* tools are cards", () => {
   }
 });
 
+describe("classifyZeropsCall — dev_server and browser", () => {
+  it("classifies both tools as card-capable", () => {
+    expect(
+      classifyZeropsCall("zerops_dev_server", { action: "start", hostname: "apidev" }, "completed"),
+    ).toBe("card");
+    expect(
+      classifyZeropsCall("zerops_browser", { url: "https://apidev.example.com" }, "completed"),
+    ).toBe("card");
+  });
+
+  it("is a card for both when the call fails", () => {
+    expect(classifyZeropsCall("zerops_dev_server", { action: "start" }, "failed")).toBe("card");
+    expect(classifyZeropsCall("zerops_browser", { url: "https://example.com" }, "failed")).toBe(
+      "card",
+    );
+  });
+});
+
 describe("classifyZeropsCall — generic zerops_* tools", () => {
   const cases = [
     "zerops_discover",

@@ -93,6 +93,8 @@ const CARD_ZEROPS_TOOLS: ReadonlySet<string> = new Set([
   "zerops_scale",
   "zerops_manage",
   "zerops_env",
+  "zerops_dev_server",
+  "zerops_browser",
 ]);
 
 /**

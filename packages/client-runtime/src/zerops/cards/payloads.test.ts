@@ -266,6 +266,140 @@ describe("decodeZeropsCard — import, mount, subdomain, plan", () => {
   });
 });
 
+describe("decodeZeropsCard — dev server", () => {
+  /** `internal/ops/dev_server.go` `DevServerResult`. */
+  it("decodes a dev_server start result into hostname, port and status", () => {
+    expect(
+      card("zerops_dev_server", {
+        action: "start",
+        hostname: "apidev",
+        running: true,
+        port: 3000,
+        healthPath: "/",
+        healthStatus: 200,
+        startMillis: 4200,
+        logTail: "server listening on :3000\n",
+        logFile: "/tmp/zcp-dev-server.log",
+        url: "http://apidev:3000/",
+        message: "dev server on apidev:3000 is healthy (started in 4.2s)",
+      }),
+    ).toEqual({
+      kind: "devServer",
+      action: "start",
+      hostname: "apidev",
+      running: true,
+      port: 3000,
+      url: "http://apidev:3000/",
+      healthStatus: 200,
+      message: "dev server on apidev:3000 is healthy (started in 4.2s)",
+      logTail: "server listening on :3000\n",
+    });
+  });
+
+  it("decodes a failed start (running=false) with its reason, and no url", () => {
+    expect(
+      card("zerops_dev_server", {
+        action: "start",
+        hostname: "apidev",
+        running: false,
+        port: 3000,
+        reason: "health_probe_timeout",
+        message: "dev server on apidev:3000 did not become healthy in time",
+      }),
+    ).toEqual({
+      kind: "devServer",
+      action: "start",
+      hostname: "apidev",
+      running: false,
+      port: 3000,
+      reason: "health_probe_timeout",
+      message: "dev server on apidev:3000 did not become healthy in time",
+    });
+  });
+
+  it("has no card when the document is missing the required fields", () => {
+    expect(card("zerops_dev_server", { hostname: "apidev" })).toBeUndefined();
+  });
+});
+
+describe("decodeZeropsCard — browser", () => {
+  /** `internal/ops/browser.go` `BrowserBatchResult`. */
+  it("decodes a browser result into url, counts and steps; tolerates a missing screenshot", () => {
+    expect(
+      card("zerops_browser", {
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        steps: [
+          { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
+          { command: ["snapshot", "-i", "-c"], success: true },
+          {
+            command: ["click", "@e1"],
+            success: false,
+            error: "no element matched @e1",
+            errorKind: "selector-not-found",
+          },
+          { command: ["errors"], success: true, result: [] },
+          { command: ["console"], success: true, result: [] },
+          { command: ["network", "requests"], success: true, result: [] },
+          { command: ["close"], success: true },
+        ],
+        errorsOutput: ["TypeError: x is not a function"],
+        consoleOutput: [
+          { type: "log", text: "hello" },
+          { type: "error", text: "failed to fetch" },
+        ],
+        networkOutput: [
+          { url: "https://kanbandev-26a7.prg1.zerops.app/api", method: "GET", status: 500 },
+        ],
+        durationMs: 2400,
+        forkRecoveryAttempted: false,
+      }),
+    ).toEqual({
+      kind: "browser",
+      url: "https://kanbandev-26a7.prg1.zerops.app",
+      consoleErrorCount: 1,
+      pageErrorCount: 1,
+      failedRequestCount: 1,
+      forkRecoveryAttempted: false,
+      hasScreenshot: false,
+      steps: [
+        { label: "open https://kanbandev-26a7.prg1.zerops.app", success: true },
+        { label: "snapshot -i -c", success: true },
+        { label: "click @e1", success: false, errorKind: "selector-not-found" },
+        { label: "errors", success: true },
+        { label: "console", success: true },
+        { label: "network requests", success: true },
+        { label: "close", success: true },
+      ],
+    });
+  });
+
+  it("carries a screenshot flag and the forkRecoveryAttempted/message fields", () => {
+    expect(
+      card("zerops_browser", {
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        steps: [{ command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true }],
+        screenshot: { width: 1280, height: 720 },
+        forkRecoveryAttempted: true,
+        message: "Chrome wedged behind CDP (signal: Target closed). Full reset ran automatically.",
+      }),
+    ).toEqual({
+      kind: "browser",
+      url: "https://kanbandev-26a7.prg1.zerops.app",
+      consoleErrorCount: 0,
+      pageErrorCount: 0,
+      failedRequestCount: 0,
+      forkRecoveryAttempted: true,
+      hasScreenshot: true,
+      message: "Chrome wedged behind CDP (signal: Target closed). Full reset ran automatically.",
+      steps: [{ label: "open https://kanbandev-26a7.prg1.zerops.app", success: true }],
+    });
+  });
+
+  it("has no card when the document has no url", () => {
+    expect(card("zerops_browser", { steps: [] })).toBeUndefined();
+  });
+});
+
 describe("decodeZeropsCard — errors", () => {
   /** `internal/tools/errwire.go` `ErrorWire`; never carries an envelope. */
   it("reads a structured error whatever tool it came from", () => {

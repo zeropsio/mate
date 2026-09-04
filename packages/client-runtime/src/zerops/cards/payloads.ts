@@ -11,6 +11,7 @@
  */
 import {
   type ZeropsCardSource,
+  readBoolean,
   readNumber,
   readRecord,
   readRecordArray,
@@ -93,6 +94,33 @@ export type ZeropsCardPayload =
       readonly completed: number;
       readonly total: number;
       readonly steps: ReadonlyArray<{ readonly name: string; readonly status: string }>;
+    }
+  | {
+      readonly kind: "devServer";
+      readonly action: string;
+      readonly hostname: string;
+      readonly running: boolean;
+      readonly port?: number;
+      readonly url?: string;
+      readonly healthStatus?: number;
+      readonly message?: string;
+      readonly reason?: string;
+      readonly logTail?: string;
+    }
+  | {
+      readonly kind: "browser";
+      readonly url: string;
+      readonly consoleErrorCount: number;
+      readonly pageErrorCount: number;
+      readonly failedRequestCount: number;
+      readonly hasScreenshot: boolean;
+      readonly forkRecoveryAttempted: boolean;
+      readonly message?: string;
+      readonly steps: ReadonlyArray<{
+        readonly label: string;
+        readonly success: boolean;
+        readonly errorKind?: string;
+      }>;
     };
 
 const checkLines = (value: unknown): ReadonlyArray<ZeropsCheckLine> =>
@@ -293,6 +321,89 @@ function decodePlan(document: Record<string, unknown>): ZeropsCardPayload | unde
   };
 }
 
+/** `internal/ops/dev_server.go` `DevServerResult`. Same shape for every action (start/stop/status/logs/restart). */
+function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload | undefined {
+  const action = readString(document.action);
+  const hostname = readString(document.hostname);
+  const running = readBoolean(document.running);
+  if (action === undefined || hostname === undefined || running === undefined) {
+    return undefined;
+  }
+  return {
+    kind: "devServer",
+    action,
+    hostname,
+    running,
+    ...optional("port", readNumber(document.port)),
+    ...optional("url", readString(document.url)),
+    ...optional("healthStatus", readNumber(document.healthStatus)),
+    ...optional("message", readString(document.message)),
+    ...optional("reason", readString(document.reason)),
+    ...optional("logTail", readString(document.logTail)),
+  };
+}
+
+/** One `BrowserStepResult` — `internal/ops/browser.go`. */
+function browserSteps(value: unknown): ReadonlyArray<{
+  readonly label: string;
+  readonly success: boolean;
+  readonly errorKind?: string;
+}> {
+  return readRecordArray(value).flatMap((entry) => {
+    const command = readStringArray(entry.command);
+    if (command.length === 0) {
+      return [];
+    }
+    return [
+      {
+        label: command.join(" "),
+        success: entry.success === true,
+        ...optional("errorKind", readString(entry.errorKind)),
+      },
+    ];
+  });
+}
+
+/**
+ * `errorsOutput` / `consoleOutput` stay `json.RawMessage` on the Go side — the
+ * exact agent-browser wrapper shape was never confirmed live (S7 brief). Both
+ * are read tolerantly as a bare array; a shape this build does not recognise
+ * counts as zero rather than failing the whole card.
+ */
+function countArrayLike(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+/** A console entry counts as an error when its `type` or `level` field says so. */
+function countConsoleErrors(value: unknown): number {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+  return value.filter((entry) => {
+    const record = readRecord(entry);
+    return record !== undefined && (record.type === "error" || record.level === "error");
+  }).length;
+}
+
+/** `internal/ops/browser.go` `BrowserBatchResult`. */
+function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | undefined {
+  const url = readString(document.url);
+  if (url === undefined) {
+    return undefined;
+  }
+  return {
+    kind: "browser",
+    url,
+    consoleErrorCount: countConsoleErrors(document.consoleOutput),
+    pageErrorCount: countArrayLike(document.errorsOutput),
+    failedRequestCount: readRecordArray(document.networkOutput).length,
+    hasScreenshot: readRecord(document.screenshot) !== undefined,
+    forkRecoveryAttempted: document.forkRecoveryAttempted === true,
+    ...optional("message", readString(document.message)),
+    steps: browserSteps(document.steps),
+  };
+}
+
 /**
  * Which decoder a tool's result goes to.
  *
@@ -310,6 +421,8 @@ const DECODERS: Record<
   zerops_subdomain: decodeSubdomain,
   zerops_verify: decodeVerify,
   zerops_workflow: decodePlan,
+  zerops_dev_server: decodeDevServer,
+  zerops_browser: decodeBrowser,
 };
 
 /**
