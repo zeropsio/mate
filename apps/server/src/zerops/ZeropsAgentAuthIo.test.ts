@@ -46,8 +46,8 @@ interface FakeProviderAuth {
 /**
  * A fake targeted provider refresh: records every call, in order, by agent
  * id, and answers with whatever `answer` returns for that agent — the real
- * per-instance `refreshInstance` + `auth.status` lookup lives only in
- * `ZeropsAgentAuth.layer`.
+ * `auth.status` lookup lives only in `ZeropsAgentAuth.layer`
+ * (`layerVerifyAgentAuth`).
  */
 const makeFakeProviderAuth = (answer: (agentId: ZeropsAgentId) => ServerProviderAuthStatus) =>
   Effect.gen(function* () {

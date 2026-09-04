@@ -26,16 +26,14 @@
  * live-verified to report `authenticated` for Claude Code off
  * `~/.claude.json`'s account section alone, even with the credential
  * artifact itself absent. Instead `refreshProviderAuth` (injected at
- * {@link layer}) runs each agent CLI's OWN status command
- * (`ZeropsAgentAuthVerify.verifyAgentAuth` — `claude auth status` /
- * `codex login status`, the same argv-list spawn shape {@link ZeropsCli}
- * uses for `zcp`) and reduces its answer to `providerAuth`; that is what
- * gates `mark-oauth`. The provider registry's `refreshInstance` is still
- * called alongside it, but only as a best-effort cache warm for the
- * driver picker upstream owns — never as a source of truth here, and never
- * something a failure of it can break. The picker itself may still lag up
- * to `CAPABILITIES_PROBE_TTL` (~5 min) behind a logout; that lag is
- * upstream's own cache, not a bug in this feed.
+ * {@link layer}, composed by {@link layerVerifyAgentAuth}) runs each agent
+ * CLI's OWN status command (`ZeropsAgentAuthVerify.verifyAgentAuth` —
+ * `claude auth status` / `codex login status`, the same argv-list spawn
+ * shape {@link ZeropsCli} uses for `zcp`) and reduces its answer to
+ * `providerAuth`; that is what gates `mark-oauth`. Nothing else runs
+ * alongside that probe (audit C3): the provider driver picker's own cache
+ * may lag up to `CAPABILITIES_PROBE_TTL` (~5 min) behind a logout, and that
+ * lag is upstream's own concern, accepted as-is — spec-mate.md §8.1.
  */
 import * as NodeOS from "node:os";
 
@@ -63,13 +61,16 @@ import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import { ZeropsCli, type ZeropsCliError } from "./ZeropsCli.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
-import { spawnAgentAuthProbe, verifyAgentAuth } from "./ZeropsAgentAuthVerify.ts";
+import {
+  spawnAgentAuthProbe,
+  verifyAgentAuth,
+  type AgentAuthProbeSpawn,
+} from "./ZeropsAgentAuthVerify.ts";
 
 /** The two agents this feed reports on (docs/spec-welcome-mode.md §3: only agents with a verified probe). */
 export const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
@@ -612,31 +613,32 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     } satisfies ZeropsAgentAuth["Service"];
   });
 
+/**
+ * The layer's real verification collaborator: each agent's own CLI status
+ * probe (`ZeropsAgentAuthVerify.verifyAgentAuth`), nothing else (audit C3 —
+ * the provider registry's `refreshInstance` used to run alongside it as a
+ * best-effort picker-cache warm; dropped, since the picker's own cache may
+ * lag and that lag is accepted as-is, spec-mate.md §8.1). Exported
+ * separately from {@link layer} so this composition is directly testable
+ * against a fake {@link AgentAuthProbeSpawn} without standing up
+ * `ZeropsCli`/`ProcessRunner` layers.
+ */
+export const layerVerifyAgentAuth =
+  (spawn: AgentAuthProbeSpawn) =>
+  (agentId: ZeropsAgentId): Effect.Effect<ServerProviderAuthStatus> =>
+    verifyAgentAuth(agentId, spawn);
+
 export const layer = Layer.effect(
   ZeropsAgentAuth,
   Effect.gen(function* () {
     const cli = yield* ZeropsCli;
-    const providerInstances = yield* ProviderInstances;
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const config = yield* ServerConfig;
     const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
 
-    /**
-     * Best-effort cache warm for the provider driver picker (owned SPI
-     * capability, `spi/providerInstances.ts` — this module never imports
-     * `provider/**` directly, methodology §3.2) — never a source of truth
-     * here (see the module header's "How it verifies"), so a failure is
-     * swallowed rather than let it disturb this feed's own check.
-     */
-    const refreshProviderCache = (agentId: ZeropsAgentId): Effect.Effect<void> =>
-      providerInstances.refreshForAgent(agentId).pipe(Effect.ignore);
-
-    const refreshProviderAuth = (agentId: ZeropsAgentId): Effect.Effect<ServerProviderAuthStatus> =>
-      verifyAgentAuth(agentId, spawnProbe).pipe(Effect.tap(() => refreshProviderCache(agentId)));
-
     return yield* make({
       cli,
-      refreshProviderAuth,
+      refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
       isZeropsEnvironment: isZeropsEnvironment(config),
