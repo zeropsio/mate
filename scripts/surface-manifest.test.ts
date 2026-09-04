@@ -193,6 +193,7 @@ const decodeSurfaceManifest = Schema.decodeUnknownSync(SurfaceManifest, strictPa
 const EXPECTED_SURFACE_IDS = [
   "zerops-session",
   "zerops-panel",
+  "zerops-browser-panel",
   "zerops-service-map",
   "zerops-quick-actions",
   "zerops-agent-auth-card",

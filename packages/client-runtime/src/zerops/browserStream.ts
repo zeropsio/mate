@@ -91,3 +91,47 @@ export function foldBrowserStreamEvent(
     ...(event.status === "live" ? { frame: state.frame } : {}),
   };
 }
+
+/** The minimal shape of one `ZeropsLifecycle.recentTools` entry this module reads. */
+export interface RecentToolEntry {
+  readonly toolName: string;
+  readonly status: string;
+}
+
+export interface BrowserDrivingState {
+  /** The agent has an in-progress `zerops_browser` call right now. */
+  readonly agentDriving: boolean;
+  /** The viewer sent input in the last {@link USER_DRIVING_WINDOW_MS}. */
+  readonly userDriving: boolean;
+  /** `agentDriving && !takeOver` — the panel's own input-capture gate. */
+  readonly inputDisabled: boolean;
+}
+
+/** How long the panel keeps showing "you're driving" after the viewer's last input. */
+export const USER_DRIVING_WINDOW_MS = 2000;
+
+/**
+ * Pure: derives the panel's "who is driving" / input-capture state from the
+ * thread's lifecycle feed (the agent's most recent tool call), the viewer's
+ * own take-over toggle, and when the viewer last sent input. The agent is
+ * "driving" exactly when its OWN most recent recorded tool call is a
+ * `zerops_browser` call still `inProgress` — a completed or failed one, or
+ * any other tool since, means the agent has moved on.
+ */
+export function resolveBrowserDrivingState(input: {
+  readonly recentTools: ReadonlyArray<RecentToolEntry>;
+  readonly takeOver: boolean;
+  readonly lastUserInputAtMs: number | undefined;
+  readonly nowMs: number;
+}): BrowserDrivingState {
+  const last = input.recentTools.at(-1);
+  const agentDriving = last?.toolName === "zerops_browser" && last.status === "inProgress";
+  const userDriving =
+    input.lastUserInputAtMs !== undefined &&
+    input.nowMs - input.lastUserInputAtMs < USER_DRIVING_WINDOW_MS;
+  return {
+    agentDriving,
+    userDriving,
+    inputDisabled: agentDriving && !input.takeOver,
+  };
+}

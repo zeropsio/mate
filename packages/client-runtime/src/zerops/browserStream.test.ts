@@ -6,6 +6,7 @@ import {
   frameImageSrc,
   INITIAL_BROWSER_STREAM_STATE,
   mapCanvasPointToDevicePixels,
+  resolveBrowserDrivingState,
   type ZeropsBrowserStreamState,
 } from "./browserStream.ts";
 
@@ -101,5 +102,84 @@ describe("foldBrowserStreamEvent", () => {
     const state: ZeropsBrowserStreamState = { status: "live", frame: frame() };
     const next = foldBrowserStreamEvent(state, stateEvent("live", "https://example.com/"));
     expect(next).toEqual({ status: "live", url: "https://example.com/", frame: frame() });
+  });
+});
+
+describe("resolveBrowserDrivingState", () => {
+  const NOW = Date.parse("2026-09-04T12:00:00.000Z");
+
+  it("panel disables input while the agent drives and enables it on take-over", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [{ toolName: "zerops_browser", status: "inProgress" }],
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving.agentDriving).toBe(true);
+    expect(driving.inputDisabled).toBe(true);
+
+    const tookOver = resolveBrowserDrivingState({
+      recentTools: [{ toolName: "zerops_browser", status: "inProgress" }],
+      takeOver: true,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(tookOver.agentDriving).toBe(true);
+    expect(tookOver.inputDisabled).toBe(false);
+  });
+
+  it("input stays enabled when the agent's browser call already completed", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [{ toolName: "zerops_browser", status: "completed" }],
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving.agentDriving).toBe(false);
+    expect(driving.inputDisabled).toBe(false);
+  });
+
+  it("input stays enabled when the agent's most recent call is a different tool", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [
+        { toolName: "zerops_browser", status: "inProgress" },
+        { toolName: "zerops_deploy", status: "inProgress" },
+      ],
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving.agentDriving).toBe(false);
+    expect(driving.inputDisabled).toBe(false);
+  });
+
+  it("reports the viewer as driving within the window after their last input", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [],
+      takeOver: false,
+      lastUserInputAtMs: NOW - 500,
+      nowMs: NOW,
+    });
+    expect(driving.userDriving).toBe(true);
+  });
+
+  it("the viewer stops driving once the window elapses", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [],
+      takeOver: false,
+      lastUserInputAtMs: NOW - 2001,
+      nowMs: NOW,
+    });
+    expect(driving.userDriving).toBe(false);
+  });
+
+  it("no recent tools at all: nobody is driving, input stays enabled", () => {
+    const driving = resolveBrowserDrivingState({
+      recentTools: [],
+      takeOver: false,
+      lastUserInputAtMs: undefined,
+      nowMs: NOW,
+    });
+    expect(driving).toEqual({ agentDriving: false, userDriving: false, inputDisabled: false });
   });
 });

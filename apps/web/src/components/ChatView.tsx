@@ -149,6 +149,7 @@ import {
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -3294,6 +3295,10 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "zerops");
   }, [activeThreadRef]);
+  const addBrowserSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "browser");
+  }, [activeThreadRef]);
   const activeZeropsEnvironmentId = activeThreadRef === null ? null : activeThreadRef.environmentId;
   const zeropsTopology = useZeropsTopology(activeZeropsEnvironmentId);
   const zeropsAgentAuth = useZeropsAgentAuth(activeZeropsEnvironmentId);
@@ -6411,6 +6416,9 @@ function ChatViewContent(props: ChatViewProps) {
       case "zerops":
         addZeropsSurface();
         return;
+      case "browser":
+        addBrowserSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -6465,6 +6473,8 @@ function ChatViewContent(props: ChatViewProps) {
                   threadRef={zeropsChrome.threadRef}
                 />
               );
+            case "browser":
+              return <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />;
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
