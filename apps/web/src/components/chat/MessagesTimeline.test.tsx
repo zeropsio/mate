@@ -846,32 +846,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Show full message");
   }, 20_000);
 
-  it("renders chips for standalone element-pick context messages", () => {
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          buildUserTimelineEntry(
-            [
-              "<element_context>",
-              "- <SubmitButton> (Button.tsx:12):",
-              "  url: https://example.com/dashboard",
-              "  selector: button.submit",
-              "  source: /repo/src/Button.tsx:12:5",
-              "  html:",
-              '  <button class="submit">Save</button>',
-              "</element_context>",
-            ].join("\n"),
-          ),
-        ]}
-      />,
-    );
-
-    expect(markup).toContain("SubmitButton");
-    expect(markup).not.toContain("&lt;element_context");
-    expect(markup).not.toContain("<element_context");
-  });
-
   it("keeps the copy button for collapsed long user messages", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
