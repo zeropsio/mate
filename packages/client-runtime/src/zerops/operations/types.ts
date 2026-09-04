@@ -82,7 +82,11 @@ export interface ZeropsOperation {
   readonly subject: string;
   /** e.g. "Deploy · weatherdash", "New service · weatherdash", "Verify · s3git1". */
   readonly kicker: string;
-  /** Opening line: `input.intent` verbatim, else the phrase producer. */
+  /**
+   * Opening line: for `bootstrap`, the session's own `intent` verbatim when
+   * present, else the phrase producer; every other kind is always the phrase
+   * producer — zcp ships no per-call `intent` on any other tool.
+   */
   readonly voice: string;
   readonly voiceSource: "agent" | "mate";
   /** e.g. "Deploying" | "Deployed" | "Failed" | "Checking" | … */

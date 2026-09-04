@@ -482,15 +482,27 @@ function settledAtFor(group: OperationGroup, phase: ZeropsOperationPhase): strin
   return latest.settledAt ?? latest.createdAt;
 }
 
-function voiceFor(
+/**
+ * The bootstrap opening line: the founder's / route-menu reply's own `intent`
+ * verbatim when present, else the phrase producer. Every other kind has no
+ * per-call `intent` on the wire at all — those sites call `operationVoice`
+ * directly instead.
+ */
+function bootstrapVoiceFor(
   intentInput: string | undefined,
-  kind: ZeropsOperationKind,
   subject: string,
 ): { voice: string; voiceSource: "agent" | "mate" } {
   const trimmed = intentInput?.trim();
   if (trimmed !== undefined && trimmed.length > 0 && trimmed.length <= 300) {
     return { voice: trimmed, voiceSource: "agent" };
   }
+  return { voice: operationVoice("bootstrap", subject), voiceSource: "mate" };
+}
+
+function mateVoiceFor(
+  kind: ZeropsOperationKind,
+  subject: string,
+): { voice: string; voiceSource: "agent" | "mate" } {
   return { voice: operationVoice(kind, subject), voiceSource: "mate" };
 }
 
@@ -531,11 +543,7 @@ function buildDeployOperation(group: OperationGroup): ZeropsOperation {
           : "done";
   const subject =
     pickFirst(readInputString(entry.input, "targetService"), card?.target) ?? "the service";
-  const { voice, voiceSource } = voiceFor(
-    readInputString(entry.input, "intent"),
-    "deploy",
-    subject,
-  );
+  const { voice, voiceSource } = mateVoiceFor("deploy", subject);
   const settledAt = settledAtFor(group, phase);
 
   // decodeZeropsCard never returns a "deploy" card once the tool call itself
@@ -633,11 +641,7 @@ function buildVerifyOperation(group: OperationGroup): ZeropsOperation {
   const inputHostname = readInputString(entry.input, "serviceHostname");
   const isAllServices = inputHostname === undefined;
   const subject = inputHostname ?? "all services";
-  const { voice, voiceSource } = voiceFor(
-    readInputString(entry.input, "intent"),
-    "verify",
-    subject,
-  );
+  const { voice, voiceSource } = mateVoiceFor("verify", subject);
   const settledAt = settledAtFor(group, phase);
 
   const steps: ZeropsOperationStep[] = (card?.checks ?? []).map((check) =>
@@ -764,11 +768,7 @@ function buildImportOperation(group: OperationGroup): ZeropsOperation {
           : "done";
   const subject = read.hostnames.length > 0 ? read.hostnames.join(", ") : "the services";
   const target = read.hostnames[0];
-  const { voice, voiceSource } = voiceFor(
-    readInputString(entry.input, "intent"),
-    "import",
-    subject,
-  );
+  const { voice, voiceSource } = mateVoiceFor("import", subject);
   const settledAt = settledAtFor(group, phase);
 
   const closing =
@@ -826,7 +826,7 @@ function buildMountOperation(group: OperationGroup): ZeropsOperation {
     entry.status === "failed" ? "failed" : entry.status === "inProgress" ? "running" : "done";
   const hostnames = card?.mounts.map((m) => m.hostname) ?? [];
   const subject = hostnames.length > 0 ? hostnames.join(", ") : "the services";
-  const { voice, voiceSource } = voiceFor(readInputString(entry.input, "intent"), "mount", subject);
+  const { voice, voiceSource } = mateVoiceFor("mount", subject);
   const settledAt = settledAtFor(group, phase);
 
   const steps: ZeropsOperationStep[] = (card?.mounts ?? []).map((mount) =>
@@ -879,11 +879,7 @@ function buildSubdomainOperation(group: OperationGroup): ZeropsOperation {
   const subject =
     pickFirst(readInputString(entry.input, "serviceHostname"), card?.hostname) ?? "the service";
   const action = pickFirst(readInputString(entry.input, "action"), card?.action) ?? "enable";
-  const { voice, voiceSource } = voiceFor(
-    readInputString(entry.input, "intent"),
-    "subdomain",
-    subject,
-  );
+  const { voice, voiceSource } = mateVoiceFor("subdomain", subject);
   const settledAt = settledAtFor(group, phase);
 
   const closing =
@@ -965,7 +961,7 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
   const phase: ZeropsOperationPhase =
     entry.status === "failed" ? "failed" : entry.status === "inProgress" ? "running" : "done";
   const subject = readSimpleSubject(entry.input, decoded.document) ?? "the service";
-  const { voice, voiceSource } = voiceFor(readInputString(entry.input, "intent"), kind, subject);
+  const { voice, voiceSource } = mateVoiceFor(kind, subject);
   const settledAt = settledAtFor(group, phase);
 
   const rawMessage =
@@ -1191,7 +1187,7 @@ function buildBootstrapOperation(group: OperationGroup): ZeropsOperation {
           ? `New services · ${targetHostnames.length}`
           : "New service";
 
-  const { voice, voiceSource } = voiceFor(group.bootstrapIntent, "bootstrap", subject);
+  const { voice, voiceSource } = bootstrapVoiceFor(group.bootstrapIntent, subject);
 
   const errorInfo = errorInfoFor(latestCall.entry, latestCall.decoded);
 

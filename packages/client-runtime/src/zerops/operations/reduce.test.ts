@@ -776,6 +776,54 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
   });
 });
 
+describe("reduceZeropsOperations — no per-call intent (zcp ships none)", () => {
+  // zcp never sends a per-call `intent` on these tools — only the bootstrap
+  // founder / route-menu reply carries one (captured as `bootstrapIntent`).
+  // A stray `intent` key on any other call must not be read as the agent's
+  // voice; the phrase producer still wins.
+  const cases: ReadonlyArray<{ name: string; entry: ZeropsCallEntry }> = [
+    {
+      name: "deploy",
+      entry: {
+        id: "ni-deploy",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash", intent: "Deploy weatherdash" },
+        status: "completed",
+      },
+    },
+    {
+      name: "verify",
+      entry: {
+        id: "ni-verify",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_verify",
+        input: { serviceHostname: "weatherdash", intent: "Verify weatherdash" },
+        status: "completed",
+      },
+    },
+    {
+      name: "mount",
+      entry: {
+        id: "ni-mount",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_mount",
+        input: { action: "mount", hostname: "db", intent: "Mount db" },
+        status: "completed",
+      },
+    },
+  ];
+
+  it.each(cases)("$name ignores a stray input.intent: voiceSource stays mate", ({ entry }) => {
+    const { operations } = reduceZeropsOperations([entry]);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]!.voiceSource).toBe("mate");
+  });
+});
+
 describe("reduceZeropsOperations — neutral status word for an undecoded result", () => {
   // The verify case is pinned against the real fixture in the
   // verify-and-refused-deploy describe block above (its first verify call

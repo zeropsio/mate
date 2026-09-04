@@ -1,8 +1,10 @@
 /**
  * The phrase producer — English, short, second person absent (Mate speaks
- * about the project, never to it). Used whenever the agent did not supply its
- * own `voice` line, and always for `statusWord` / `closing`, since those are
- * result-driven rather than agent-authored.
+ * about the project, never to it). Used for every operation kind's `voice`
+ * except `bootstrap`, where the session's own `intent` wins when present —
+ * zcp ships no per-call `intent` on any other tool. Always used for
+ * `statusWord` / `closing`, since those are result-driven rather than
+ * agent-authored.
  *
  * Never render a raw enum in a label: every raw status a card shows goes
  * through `statusWord` first.
