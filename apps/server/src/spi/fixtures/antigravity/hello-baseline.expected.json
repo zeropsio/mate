@@ -1,0 +1,176 @@
+[
+  {
+    "type": "session.started",
+    "eventId": "evt-0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "payload": {
+      "resume": {
+        "agentCapabilities": {
+          "auth": {
+            "logout": {}
+          },
+          "loadSession": true,
+          "promptCapabilities": {
+            "embeddedContext": true,
+            "image": true
+          },
+          "sessionCapabilities": {
+            "resume": {}
+          }
+        },
+        "agentInfo": {
+          "name": "antigravity-acp",
+          "version": "mock"
+        },
+        "authMethods": [
+          {
+            "id": "oauth-personal",
+            "name": "Sign in with Google"
+          }
+        ],
+        "protocolVersion": 1
+      }
+    }
+  },
+  {
+    "type": "session.state.changed",
+    "eventId": "evt-1",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "payload": {
+      "state": "ready",
+      "reason": "Antigravity ACP session ready"
+    }
+  },
+  {
+    "type": "thread.started",
+    "eventId": "evt-2",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "payload": {
+      "providerThreadId": "mock-session-1"
+    }
+  },
+  {
+    "type": "turn.started",
+    "eventId": "evt-3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "model": "gemini-test-low"
+    }
+  },
+  {
+    "type": "turn.plan.updated",
+    "eventId": "evt-4",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "plan": [
+        {
+          "step": "Inspect mock ACP state",
+          "status": "completed"
+        },
+        {
+          "step": "Implement the requested change",
+          "status": "inProgress"
+        }
+      ]
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "plan",
+          "entries": [
+            {
+              "content": "Inspect mock ACP state",
+              "priority": "high",
+              "status": "completed"
+            },
+            {
+              "content": "Implement the requested change",
+              "priority": "high",
+              "status": "in_progress"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "item.started",
+    "eventId": "evt-5",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress"
+    }
+  },
+  {
+    "type": "content.delta",
+    "eventId": "evt-6",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "hello from mock"
+    },
+    "raw": {
+      "source": "acp.jsonrpc",
+      "method": "session/update",
+      "payload": {
+        "sessionId": "mock-session-1",
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "hello from mock"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-7",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed"
+    }
+  },
+  {
+    "type": "turn.completed",
+    "eventId": "evt-8",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "provider": "antigravity",
+    "threadId": "spi-replay-antigravity-thread",
+    "turnId": "turn-0",
+    "payload": {
+      "state": "completed",
+      "stopReason": "end_turn"
+    }
+  }
+]

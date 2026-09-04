@@ -1,0 +1,5 @@
+{
+  "driver": "antigravity",
+  "notes": "No static wire capture: Antigravity speaks ACP over a real child process. This 'fixture' is recorded live each run by spawning apps/server/scripts/acp-mock-agent.ts (driven only by T3_ACP_ANTIGRAVITY=1, which starts the mock in Antigravity's profile: mode 'default', model 'gemini-test-low' — see AntigravityDriver.test.ts, AntigravityAdapter.test.ts) through the real, unmodified makeAntigravityAdapter. makeRuntime/withProcess skip production's install/profile/Google-auth machinery (AntigravityDriver.ts) — irrelevant to a scripted mock peer — and spawn the mock directly through the same makeAntigravityAcpRuntime seam. Fixed scenario: startSession(model:'gemini-test-low') -> sendTurn('hello mock') -> collect until turn.completed plus a short quiescence window (a trailing item.completed can arrive after turn.completed). See apps/server/src/spi/replay/acpReplay.ts (recordAntigravityBaseline).",
+  "synthetic": true
+}

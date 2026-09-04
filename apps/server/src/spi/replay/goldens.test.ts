@@ -22,7 +22,11 @@ import { extractZeropsEnvelope } from "../../zerops/zeropsEnvelope.ts";
 import { applyToolCall } from "../toolCall.ts";
 import { replayClaude } from "./claudeReplay.ts";
 import { replayCodex } from "./codexReplay.ts";
-import { recordCursorBaseline, recordGrokBaseline } from "./acpReplay.ts";
+import {
+  recordAntigravityBaseline,
+  recordCursorBaseline,
+  recordGrokBaseline,
+} from "./acpReplay.ts";
 import { recordOpenCodeBaseline } from "./openCodeReplay.ts";
 import { checkOrUpdateGolden, describeFirstDivergence, expectedPathFor } from "./goldenCheck.ts";
 import { loadFixture } from "./loader.ts";
@@ -76,13 +80,19 @@ const jsonlCases: ReadonlyArray<GoldenCase> = [
   },
 ];
 
-// Cursor/Grok/OpenCode: no static wire capture exists to replay from (ACP
-// drivers speak to a real child process, OpenCode to an SDK client); each
-// "fixture" carries only meta.json documenting the fixed live scenario its
-// record() function drives — see acpReplay.ts / openCodeReplay.ts.
+// Cursor/Grok/Antigravity/OpenCode: no static wire capture exists to replay
+// from (ACP drivers speak to a real child process, OpenCode to an SDK
+// client); each "fixture" carries only meta.json documenting the fixed live
+// scenario its record() function drives — see acpReplay.ts / openCodeReplay.ts.
 const liveCases: ReadonlyArray<GoldenCase> = [
   { driver: "cursor", name: "hello-baseline", record: recordCursorBaseline, timeoutMs: 30_000 },
   { driver: "grok", name: "hello-baseline", record: recordGrokBaseline, timeoutMs: 30_000 },
+  {
+    driver: "antigravity",
+    name: "hello-baseline",
+    record: recordAntigravityBaseline,
+    timeoutMs: 30_000,
+  },
   { driver: "opencode", name: "hello-baseline", record: recordOpenCodeBaseline, timeoutMs: 15_000 },
 ];
 
