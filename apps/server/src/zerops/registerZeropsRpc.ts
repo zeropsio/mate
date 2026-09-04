@@ -19,6 +19,7 @@ import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 
 type ZeropsRpcTag =
@@ -26,7 +27,9 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
   | typeof WS_METHODS.subscribeZeropsLifecycle
-  | typeof WS_METHODS.subscribeZeropsAgentAuth;
+  | typeof WS_METHODS.subscribeZeropsAgentAuth
+  | typeof WS_METHODS.subscribeZeropsBrowserStream
+  | typeof WS_METHODS.zeropsBrowserInput;
 
 type ZeropsRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: ZeropsRpcTag }>;
 
@@ -45,6 +48,7 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsLifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
+  readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   /** `ws.ts`'s own scope-checked, metrics/trace-instrumented wrapper — same one every other RPC in the router goes through. */
   readonly observeRpcEffect: <A, E, R>(
     method: string,
@@ -60,8 +64,14 @@ export interface RegisterZeropsRpcDeps {
 
 /** Registers the five Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
-  const { zeropsLifecycle, zeropsAgentAuth, zeropsAgentLogin, observeRpcEffect, observeRpcStream } =
-    deps;
+  const {
+    zeropsLifecycle,
+    zeropsAgentAuth,
+    zeropsAgentLogin,
+    zeropsBrowserStream,
+    observeRpcEffect,
+    observeRpcStream,
+  } = deps;
 
   return {
     [WS_METHODS.zeropsLifecycleGet]: (input) =>
@@ -123,5 +133,17 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
         ),
         { "rpc.aggregate": "zerops" },
       ),
+    [WS_METHODS.subscribeZeropsBrowserStream]: (_input) =>
+      observeRpcStream(
+        WS_METHODS.subscribeZeropsBrowserStream,
+        Stream.unwrap(zeropsBrowserStream.subscribe),
+        {
+          "rpc.aggregate": "zerops",
+        },
+      ),
+    [WS_METHODS.zeropsBrowserInput]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input), {
+        "rpc.aggregate": "zerops",
+      }),
   } satisfies ZeropsRpcHandlers;
 };

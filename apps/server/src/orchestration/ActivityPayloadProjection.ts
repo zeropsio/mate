@@ -30,10 +30,15 @@ function readStoredZeropsResult(value: unknown): ZeropsActivityResult | undefine
   if (stored.resultText !== undefined && typeof stored.resultText !== "string") {
     return undefined;
   }
+  const images: ZeropsActivityResult["images"] = Array.isArray(stored.images)
+    ? (stored.images as ZeropsActivityResult["images"])
+    : undefined;
   return {
     toolName: stored.toolName,
     ...(stored.resultText === undefined ? {} : { resultText: stored.resultText }),
     ...(stored.truncated === true ? { truncated: true } : {}),
+    ...(images === undefined ? {} : { images }),
+    ...(stored.imagesDropped === true ? { imagesDropped: true } : {}),
   };
 }
 

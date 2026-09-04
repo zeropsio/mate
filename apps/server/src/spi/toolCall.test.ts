@@ -131,6 +131,44 @@ describe("readToolCall — Claude", () => {
     expect(result.kind === "toolCall" && result.call.result?.failed).toBe(true);
   });
 
+  it("reads an image content block alongside text (e.g. a zerops_browser screenshot)", () => {
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          toolName: "mcp__zerops__zerops_browser",
+          content: [
+            { type: "text", text: "## Screenshot\n" },
+            { type: "image", mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.text).toBe("## Screenshot\n");
+    expect(result.kind === "toolCall" && result.call.result?.images).toEqual([
+      { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+    ]);
+    expect(result.kind === "toolCall" && result.call.result?.imagesDropped).toBeUndefined();
+  });
+
+  it("drops an image content block over the 256 KB base64 cap and flags it, keeping the text", () => {
+    const oversized = "A".repeat(256 * 1024 + 1);
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          content: [
+            { type: "text", text: "still here" },
+            { type: "image", mimeType: "image/jpeg", data: oversized },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.text).toBe("still here");
+    expect(result.kind === "toolCall" && result.call.result?.images).toBeUndefined();
+    expect(result.kind === "toolCall" && result.call.result?.imagesDropped).toBe(true);
+  });
+
   it("reads a started call, which carries no result", () => {
     const result = readToolCall(
       itemEvent({ type: "item.started", data: claudeToolCallData({ started: true }) }),
@@ -176,6 +214,26 @@ describe("readToolCall — Codex", () => {
       }),
     );
     expect(result.kind === "toolCall" && result.call.result?.failed).toBe(true);
+  });
+
+  it("reads an image content block alongside text (e.g. a zerops_browser screenshot)", () => {
+    const result = readToolCall(
+      itemEvent({
+        provider: "codex",
+        itemType: "mcp_tool_call",
+        data: codexToolCallData({
+          tool: "zerops_browser",
+          content: [
+            { type: "text", text: "## Screenshot\n" },
+            { type: "image", mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.images).toEqual([
+      { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+    ]);
   });
 
   it("reads a started call, which carries no result", () => {

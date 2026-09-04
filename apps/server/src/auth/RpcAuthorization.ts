@@ -80,6 +80,11 @@ export const RPC_REQUIRED_SCOPES = {
   // read.
   [WS_METHODS.zeropsAgentLoginStart]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginCancel]: AuthTerminalOperateScope,
+  // Viewing the container's browser is a read, like every other Zerops feed;
+  // clicking/typing into it is a real action on the user's behalf — the same
+  // authority as any other environment-mutating RPC.
+  [WS_METHODS.subscribeZeropsBrowserStream]: AuthOrchestrationReadScope,
+  [WS_METHODS.zeropsBrowserInput]: AuthOrchestrationOperateScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsPull]: AuthOrchestrationOperateScope,
   [WS_METHODS.gitRunStackedAction]: AuthOrchestrationOperateScope,

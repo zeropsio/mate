@@ -134,6 +134,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
+import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -458,6 +459,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
+    | ZeropsBrowserStreamModule.ZeropsBrowserStream
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -502,6 +504,7 @@ const buildAppUnderTest = (options?: {
     zeropsLifecycle?: Partial<ZeropsLifecycle.ZeropsLifecycle["Service"]>;
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
+    zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -994,6 +997,14 @@ const buildAppUnderTest = (options?: {
                   }),
                 ),
               ...options?.layers?.zeropsAgentLogin,
+            }),
+            // A test machine has no agent-browser daemon — mocked to
+            // `no-browser` so the suite never opens a real socket or reads
+            // `~/.agent-browser/default.stream`.
+            Layer.mock(ZeropsBrowserStreamModule.ZeropsBrowserStream)({
+              subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
+              sendInput: () => Effect.void,
+              ...options?.layers?.zeropsBrowserStream,
             }),
           ),
       ),
@@ -5838,6 +5849,53 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           codex: scene.agentLogin.codex,
         }),
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("subscribeZeropsBrowserStream applies flow control (Ack after every Chunk)", () =>
+    Effect.gen(function* () {
+      // A real (non-mocked) service instance publishing "no-browser" forever
+      // (`readStreamPort` never resolves, `reconnectDelaysMs: [0]`) so a
+      // real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
+      // per-request Ack loop the effect-rpc protocol requires (spec-mate.md
+      // §5.5) actually runs over the real websocket, not just proof the
+      // handler exists — a client that never acked would receive exactly
+      // one Chunk and stall.
+      const browserStream = yield* ZeropsBrowserStreamModule.make({
+        readStreamPort: Effect.succeed(undefined),
+        connect: () => {
+          throw new Error("unreachable: readStreamPort never resolves a port");
+        },
+        reconnectDelaysMs: [0],
+      });
+      yield* buildAppUnderTest({
+        layers: {
+          zeropsBrowserStream: {
+            subscribe: browserStream.subscribe,
+            sendInput: browserStream.sendInput,
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const events = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.subscribeZeropsBrowserStream]({}).pipe(
+            Stream.take(3),
+            Stream.runCollect,
+          ),
+        ),
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: "5 seconds",
+          orElse: () => Effect.die(new Error("Timed out waiting for browser stream chunks")),
+        }),
+      );
+
+      assert.equal(events.length, 3);
+      for (const event of events) {
+        assert.deepEqual(event, { type: "state", status: "no-browser" });
+      }
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 

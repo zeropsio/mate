@@ -371,3 +371,79 @@ export class ZeropsAgentLoginError extends Schema.TaggedErrorClass<ZeropsAgentLo
     return this.detail;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Browser surface (S8b) — the live view of the agent-browser daemon
+// ---------------------------------------------------------------------------
+
+/**
+ * `no-browser` — the daemon's published port file is absent or unparsable
+ * (no session, or the container restarted). `connecting` — a port was read
+ * and a socket to the daemon is being opened/re-opened. `live` — frames are
+ * flowing. Never a fourth "error" value: a socket failure re-reads the port
+ * and retries with backoff, landing back on one of these three (spec-mate.md
+ * §0 rule 3 — zcp sets nothing here; the port file is the only signal).
+ */
+export const ZeropsBrowserStreamStatus = Schema.Literals(["no-browser", "connecting", "live"]);
+export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
+
+/**
+ * One relayed frame, verbatim — the server never re-encodes the daemon's own
+ * JPEG. `width`/`height` are the frame's device-pixel dimensions (for the
+ * panel's canvas and for mapping a click back to device coordinates);
+ * `scrollX`/`scrollY` are the page's current scroll offset when the daemon
+ * reports one.
+ */
+export const ZeropsBrowserFrame = Schema.Struct({
+  type: Schema.Literal("frame"),
+  /** Base64 JPEG, relayed as received. */
+  data: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
+  scrollX: Schema.optional(Schema.Number),
+  scrollY: Schema.optional(Schema.Number),
+});
+export type ZeropsBrowserFrame = typeof ZeropsBrowserFrame.Type;
+
+/**
+ * A state transition, published on first subscribe and whenever the relay's
+ * connection to the daemon changes. `url` rides along once known (the
+ * daemon's own navigation message, or `~/.agent-browser/default.target`) so
+ * the panel can say what page the agent is looking at without a second read.
+ */
+export const ZeropsBrowserStateEvent = Schema.Struct({
+  type: Schema.Literal("state"),
+  status: ZeropsBrowserStreamStatus,
+  url: Schema.optional(Schema.String),
+});
+export type ZeropsBrowserStateEvent = typeof ZeropsBrowserStateEvent.Type;
+
+/** The one stream `subscribeZeropsBrowserStream` publishes: state transitions interleaved with frames. */
+export const ZeropsBrowserStreamEvent = Schema.Union([ZeropsBrowserFrame, ZeropsBrowserStateEvent]);
+export type ZeropsBrowserStreamEvent = typeof ZeropsBrowserStreamEvent.Type;
+
+/** A pointer event from the panel's canvas, already mapped to device pixels by the client (`packages/client-runtime/src/zerops/browserStream.ts`). */
+export const ZeropsBrowserMouseInput = Schema.Struct({
+  kind: Schema.Literal("mouse"),
+  action: Schema.Literals(["move", "down", "up", "click"]),
+  x: Schema.Number,
+  y: Schema.Number,
+  button: Schema.optional(Schema.Literals(["left", "middle", "right"])),
+});
+export type ZeropsBrowserMouseInput = typeof ZeropsBrowserMouseInput.Type;
+
+/** A keyboard event from the panel. `text` carries a printable character (composition-safe); `key` carries a named key (`Enter`, `Backspace`, `ArrowLeft`, ...). */
+export const ZeropsBrowserKeyboardInput = Schema.Struct({
+  kind: Schema.Literal("keyboard"),
+  action: Schema.Literals(["down", "up"]),
+  key: Schema.optional(Schema.String),
+  text: Schema.optional(Schema.String),
+});
+export type ZeropsBrowserKeyboardInput = typeof ZeropsBrowserKeyboardInput.Type;
+
+/** `zeropsBrowserInput`'s RPC payload — one input event, client → daemon. */
+export const ZeropsBrowserInput = Schema.Union([
+  ZeropsBrowserMouseInput,
+  ZeropsBrowserKeyboardInput,
+]);
+export type ZeropsBrowserInput = typeof ZeropsBrowserInput.Type;

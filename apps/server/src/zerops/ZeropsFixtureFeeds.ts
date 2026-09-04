@@ -32,6 +32,7 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
+import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 
 const strictParseOptions = {
@@ -358,10 +359,30 @@ const agentAuthLayer = (scene: ShowcaseScene) =>
 const agentLoginLayer = (scene: ShowcaseScene) =>
   Layer.effect(ZeropsAgentLoginModule.ZeropsAgentLogin, makeAgentLogin(scene));
 
+/**
+ * A fixture/showcase run never has a real agent-browser daemon and must
+ * never touch the real filesystem or open a real socket (determinism) — this
+ * always reports `no-browser`. Reuses {@link ZeropsBrowserStreamModule.make}
+ * (rather than a bespoke stub) so the reported behavior is provably the same
+ * "port unresolvable" path the live service exercises; `connect` is asserted
+ * unreachable since `readStreamPort` never resolves to a port.
+ */
+const browserStreamLayer = () =>
+  Layer.effect(
+    ZeropsBrowserStreamModule.ZeropsBrowserStream,
+    ZeropsBrowserStreamModule.make({
+      readStreamPort: Effect.succeed(undefined),
+      connect: () => {
+        throw new Error("ZeropsBrowserStream fixture: connect is unreachable (always no-browser)");
+      },
+    }),
+  );
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   return Layer.mergeAll(
     lifecycleLayer(scene),
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
+    browserStreamLayer(),
   );
 };
