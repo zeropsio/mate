@@ -49,13 +49,28 @@
  * The reference is explicit: "with a proxy in the path, forward the
  * renderer's acks; acks generated on receipt leave frames queued on the far
  * side" — and acks are cumulative. So a frame's `{"type":"ack","seq":N}` is
- * sent to the daemon only when THIS relay's own downstream consumer (the
+ * sent to the daemon only when a subscriber's own downstream consumer (the
  * mate client, over the RPC subscription's own Ack flow control — spec
- * §5.5) actually pulls that frame off the stream, inside {@link subscribe}'s
+ * §5.5) actually pulls a frame off its stream, inside {@link subscribe}'s
  * `Stream.mapEffect` — never inside the daemon-message handler itself. A
  * client that stops acking simply stops receiving new frames (the daemon
  * pauses, since it never gets the ack it is waiting for) while `status`/
  * `tabs`/`url` keep flowing untouched.
+ *
+ * ## Multiple subscribers never duplicate acks or pile up frames
+ *
+ * Frames are never queued as payloads on the shared bus: a frame publishes
+ * only a lightweight "changed" marker (`InternalEvent`'s `"frameChanged"`
+ * kind), and each subscriber's own `Stream.mapEffect` re-reads whatever the
+ * CURRENT frame is (`latestFrame`) at the moment it consumes that marker —
+ * so a subscriber that fell behind and is holding a backlog of stale
+ * markers converges on the single latest frame instead of replaying every
+ * intermediate one, and never emits the same frame to itself twice in a row
+ * (`lastEmittedSeq`, per subscriber). The daemon-facing ack is deduplicated
+ * globally (`lastAckedSeq`, shared): acks are cumulative, so whichever
+ * subscriber's pull reaches a given seq first is the only one that sends
+ * anything for it — a second, slower subscriber's later pull of the same
+ * (already-superseded) seq is a no-op.
  */
 import * as NodeOS from "node:os";
 
@@ -66,6 +81,7 @@ import type {
   ZeropsBrowserStreamEvent,
   ZeropsBrowserStreamStatus,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -78,7 +94,8 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import type * as Scope from "effect/Scope";
+import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 /**
@@ -104,6 +121,8 @@ export interface ZeropsBrowserStreamOptions {
   readonly connect: ConnectSocket;
   /** Backoff schedule while a subscriber remains and the daemon is unreachable; the last entry repeats. Defaults to {@link DEFAULT_RECONNECT_DELAYS_MS}. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
+  /** How long a connection must stay open to count as recovered (resets backoff to the first delay). Defaults to {@link DEFAULT_CONNECTION_STABLE_THRESHOLD_MS}. */
+  readonly connectionStableThresholdMs?: number;
 }
 
 export class ZeropsBrowserStream extends Context.Service<
@@ -118,17 +137,27 @@ export class ZeropsBrowserStream extends Context.Service<
 
 const DEFAULT_RECONNECT_DELAYS_MS = [200, 500, 1000, 2000, 5000] as const;
 
+/** A connection open for less than this never resets backoff — otherwise a daemon that opens then immediately closes (repeatedly) would spin with no delay at all between attempts. */
+export const DEFAULT_CONNECTION_STABLE_THRESHOLD_MS = 5000;
+
+/** Pure: whether a connection that stayed open for `openedForMs` counts as recovered. */
+export const isConnectionStable = (openedForMs: number, thresholdMs: number): boolean =>
+  openedForMs >= thresholdMs;
+
 type SocketEvent =
   | { readonly _tag: "open" }
   | { readonly _tag: "message"; readonly raw: string }
   | { readonly _tag: "close" }
   | { readonly _tag: "error"; readonly error: unknown };
 
-/** One event published internally — `ackSeq`, present only for a frame, is consumed by {@link subscribe}'s per-subscriber ack forwarding, never exposed on the public {@link ZeropsBrowserStreamEvent}. */
-interface InternalEvent {
-  readonly public: ZeropsBrowserStreamEvent;
-  readonly ackSeq?: number;
-}
+/**
+ * One event published on the shared bus. A frame publishes only a
+ * "changed" marker, never the frame itself — see the module doc comment's
+ * "Multiple subscribers" section.
+ */
+type InternalEvent =
+  | { readonly kind: "state"; readonly event: ZeropsBrowserStateEvent }
+  | { readonly kind: "frameChanged" };
 
 /** The daemon message kinds this relay acts on; everything else (`status`, `console`, unrecognized) is silently ignored. */
 type DaemonMessage =
@@ -166,6 +195,7 @@ const parseAgentBrowserMessage = (raw: string): DaemonMessage => {
     const metadata = isRecord(parsed.metadata) ? parsed.metadata : undefined;
     const width = readNumber(metadata?.deviceWidth) ?? 0;
     const height = readNumber(metadata?.deviceHeight) ?? 0;
+    const pageScaleFactor = readNumber(metadata?.pageScaleFactor);
     const scrollX = readNumber(metadata?.scrollOffsetX);
     const scrollY = readNumber(metadata?.scrollOffsetY);
     return {
@@ -176,6 +206,7 @@ const parseAgentBrowserMessage = (raw: string): DaemonMessage => {
         data,
         width,
         height,
+        ...(pageScaleFactor !== undefined ? { pageScaleFactor } : {}),
         ...(scrollX !== undefined ? { scrollX } : {}),
         ...(scrollY !== undefined ? { scrollY } : {}),
       },
@@ -256,9 +287,40 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
     const events = yield* PubSub.unbounded<InternalEvent>();
     const subscriberCount = yield* Ref.make(0);
     const connectionFiber = yield* Ref.make<Fiber.Fiber<void, never> | undefined>(undefined);
+    // Serializes every subscribe-start (0→1: fork) and subscribe-end (1→0:
+    // interrupt) transition so a resubscribe racing the outgoing unsubscribe
+    // can never fork a new loop and then have the FINISHING subscriber's
+    // finalizer interrupt that new fiber instead of its own (a bare
+    // check-then-act on separate Refs would allow exactly that race).
+    const lifecycleMutex = yield* Semaphore.make(1);
+    // Set only once the socket has genuinely reached OPEN (never while
+    // CONNECTING) — Node's WebSocket throws synchronously on `send` before
+    // that, which would otherwise surface as a thrown defect from inside a
+    // subscriber's own Stream and kill its subscription.
     const activeSocket = yield* Ref.make<BrowserSocket | undefined>(undefined);
-    const lastStatus = yield* Ref.make<ZeropsBrowserStreamStatus>("no-browser");
+    const lastState = yield* Ref.make<ZeropsBrowserStateEvent>({
+      type: "state",
+      status: "no-browser",
+    });
+    const latestFrame = yield* Ref.make<
+      { readonly seq: number; readonly frame: ZeropsBrowserFrame } | undefined
+    >(undefined);
+    /** Shared across every subscriber — acks are cumulative, so the daemon only ever needs the highest seq any subscriber has reached. */
+    const lastAckedSeq = yield* Ref.make<number | undefined>(undefined);
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
+    const stableThresholdMs =
+      options.connectionStableThresholdMs ?? DEFAULT_CONNECTION_STABLE_THRESHOLD_MS;
+
+    const sendQuietly = (socket: BrowserSocket, data: string): Effect.Effect<void> =>
+      Effect.sync(() => {
+        try {
+          socket.send(data);
+        } catch {
+          // Best-effort — a send raced with the socket closing or a
+          // reconnect; the connection loop already notices the close/error
+          // and retries, so this never needs to propagate.
+        }
+      });
 
     const publishState = (patch: {
       readonly status?: ZeropsBrowserStreamStatus;
@@ -266,19 +328,39 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       readonly title?: string;
     }) =>
       Effect.gen(function* () {
-        const status = patch.status ?? (yield* Ref.get(lastStatus));
-        yield* Ref.set(lastStatus, status);
+        const current = yield* Ref.get(lastState);
+        const status = patch.status ?? current.status;
         const event: ZeropsBrowserStateEvent = {
           type: "state",
           status,
-          ...(patch.url !== undefined ? { url: patch.url } : {}),
-          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          // Sticky: every published state event carries the complete known
+          // page info, not just what this particular patch changed — a late
+          // subscriber's own initial read (below) then never has to guess.
+          ...(patch.url !== undefined
+            ? { url: patch.url }
+            : current.url !== undefined
+              ? { url: current.url }
+              : {}),
+          ...(patch.title !== undefined
+            ? { title: patch.title }
+            : current.title !== undefined
+              ? { title: current.title }
+              : {}),
         };
-        yield* PubSub.publish(events, { public: event });
+        yield* Ref.set(lastState, event);
+        if (status !== "live") {
+          // A stale frame from a previous session must never be handed to a
+          // subscriber that joins after the connection has already dropped.
+          yield* Ref.set(latestFrame, undefined);
+        }
+        yield* PubSub.publish(events, { kind: "state", event });
       });
 
     const publishFrame = (frame: ZeropsBrowserFrame, seq: number) =>
-      PubSub.publish(events, { public: frame, ackSeq: seq });
+      Effect.gen(function* () {
+        yield* Ref.set(latestFrame, { seq, frame });
+        yield* PubSub.publish(events, { kind: "frameChanged" });
+      });
 
     const closeSocketQuietly = (socket: BrowserSocket | undefined) =>
       Effect.sync(() => {
@@ -309,8 +391,8 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         }
       });
 
-    /** One connection attempt: opens the socket, relays until it closes. Returns whether it ever reached `live`. */
-    const runOneConnection = (port: number): Effect.Effect<boolean> =>
+    /** One connection attempt: opens the socket, relays until it closes. Returns how long it stayed open, in ms (`0` when it never even opened). */
+    const runOneConnection = (port: number): Effect.Effect<number> =>
       Effect.gen(function* () {
         const queue = yield* Queue.unbounded<SocketEvent>();
         const socket = options.connect(`ws://127.0.0.1:${port}/?pacing=ack&maxFps=10`);
@@ -322,16 +404,19 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
           });
         socket.onclose = () => Queue.offerUnsafe(queue, { _tag: "close" });
         socket.onerror = (error) => Queue.offerUnsafe(queue, { _tag: "error", error });
-        yield* Ref.set(activeSocket, socket);
 
         const first = yield* Queue.take(queue);
         if (first._tag !== "open") {
           yield* closeSocketQuietly(socket);
-          yield* Ref.set(activeSocket, undefined);
-          return false;
+          return 0;
         }
 
-        socket.send(encodeConfigMessage({ type: "config", maxFps: 10, pacing: "ack" }));
+        const openedAt = yield* Clock.currentTimeMillis;
+        yield* Ref.set(activeSocket, socket);
+        yield* sendQuietly(
+          socket,
+          encodeConfigMessage({ type: "config", maxFps: 10, pacing: "ack" }),
+        );
         yield* publishState({ status: "live" });
 
         yield* Stream.fromQueue(queue).pipe(
@@ -346,7 +431,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
         yield* closeSocketQuietly(socket);
         yield* Ref.set(activeSocket, undefined);
-        return true;
+        return (yield* Clock.currentTimeMillis) - openedAt;
       });
 
     /** Runs for as long as at least one subscriber exists — forked on 0→1, interrupted on 1→0. */
@@ -354,14 +439,14 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       let attempt = 0;
       while (true) {
         const port = yield* options.readStreamPort;
-        let becameLive = false;
+        let openedForMs = 0;
         if (port === undefined) {
           yield* publishState({ status: "no-browser" });
         } else {
           yield* publishState({ status: "connecting" });
-          becameLive = yield* runOneConnection(port);
+          openedForMs = yield* runOneConnection(port);
         }
-        if (becameLive) {
+        if (isConnectionStable(openedForMs, stableThresholdMs)) {
           attempt = 0;
           continue;
         }
@@ -371,14 +456,19 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       }
     });
 
-    /** Sent from inside {@link subscribe}'s own stream, only once a subscriber actually pulls the frame — see the module doc comment. */
+    /** Sent from inside a subscriber's own stream, only once THAT subscriber actually pulls the marker — see the module doc comment's "Ack pacing" section. Deduplicated across subscribers via `lastAckedSeq` (acks are cumulative). */
     const ackDaemonFrame = (seq: number): Effect.Effect<void> =>
       Effect.gen(function* () {
+        const already = yield* Ref.get(lastAckedSeq);
+        if (already !== undefined && seq <= already) {
+          return;
+        }
+        yield* Ref.set(lastAckedSeq, seq);
         const socket = yield* Ref.get(activeSocket);
         if (socket === undefined) {
           return;
         }
-        socket.send(encodeAckMessage({ type: "ack", seq }));
+        yield* sendQuietly(socket, encodeAckMessage({ type: "ack", seq }));
       });
 
     const subscribe: Effect.Effect<
@@ -387,39 +477,76 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       Scope.Scope
     > = Effect.gen(function* () {
       const subscription = yield* PubSub.subscribe(events);
-      const initialStatus = yield* Ref.get(lastStatus);
-      const count = yield* Ref.updateAndGet(subscriberCount, (n) => n + 1);
-      if (count === 1) {
-        const fiber = yield* Effect.forkDetach(connectionLoop);
-        yield* Ref.set(connectionFiber, fiber);
-      }
-      yield* Effect.addFinalizer(() =>
+      const initialState = yield* Ref.get(lastState);
+      const initialFrame = yield* Ref.get(latestFrame);
+
+      yield* lifecycleMutex.withPermits(1)(
         Effect.gen(function* () {
-          const remaining = yield* Ref.updateAndGet(subscriberCount, (n) => n - 1);
-          if (remaining > 0) {
-            return;
+          const count = yield* Ref.updateAndGet(subscriberCount, (n) => n + 1);
+          if (count === 1) {
+            const fiber = yield* Effect.forkDetach(connectionLoop);
+            yield* Ref.set(connectionFiber, fiber);
           }
-          const fiber = yield* Ref.get(connectionFiber);
-          yield* Ref.set(connectionFiber, undefined);
-          if (fiber !== undefined) {
-            yield* Fiber.interrupt(fiber);
-          }
-          const socket = yield* Ref.get(activeSocket);
-          yield* closeSocketQuietly(socket);
-          yield* Ref.set(activeSocket, undefined);
         }),
       );
-      const initialEvent: InternalEvent = { public: { type: "state", status: initialStatus } };
+      yield* Effect.addFinalizer(() =>
+        lifecycleMutex.withPermits(1)(
+          Effect.gen(function* () {
+            const remaining = yield* Ref.updateAndGet(subscriberCount, (n) => n - 1);
+            if (remaining > 0) {
+              return;
+            }
+            const fiber = yield* Ref.get(connectionFiber);
+            yield* Ref.set(connectionFiber, undefined);
+            if (fiber !== undefined) {
+              yield* Fiber.interrupt(fiber);
+            }
+            const socket = yield* Ref.get(activeSocket);
+            yield* closeSocketQuietly(socket);
+            yield* Ref.set(activeSocket, undefined);
+          }),
+        ),
+      );
+
+      // A late subscriber gets the current status AND, when one is already
+      // known, the current frame right behind it — a static page produces
+      // exactly one frame ever, so waiting for a fresh one could mean
+      // waiting forever.
+      const initialEvents: ReadonlyArray<InternalEvent> = [
+        { kind: "state", event: initialState },
+        ...(initialFrame !== undefined ? [{ kind: "frameChanged" as const }] : []),
+      ];
       const rawStream = Stream.concat(
-        Stream.make(initialEvent),
+        Stream.fromIterable(initialEvents),
         Stream.fromSubscription(subscription),
       );
+
+      // Per-subscriber: the seq this subscriber last actually emitted, so a
+      // backlog of "frameChanged" markers this subscriber fell behind on
+      // converges on the single latest frame instead of re-emitting every
+      // intermediate one.
+      const lastEmittedSeq = yield* Ref.make<number | undefined>(undefined);
+
       return rawStream.pipe(
-        Stream.mapEffect((internal) =>
-          internal.ackSeq !== undefined
-            ? Effect.as(ackDaemonFrame(internal.ackSeq), internal.public)
-            : Effect.succeed(internal.public),
-        ),
+        Stream.mapEffect((internal): Effect.Effect<ZeropsBrowserStreamEvent | undefined> => {
+          if (internal.kind === "state") {
+            return Effect.succeed(internal.event);
+          }
+          return Effect.gen(function* () {
+            const current = yield* Ref.get(latestFrame);
+            if (current === undefined) {
+              return undefined;
+            }
+            const already = yield* Ref.get(lastEmittedSeq);
+            if (already === current.seq) {
+              return undefined;
+            }
+            yield* Ref.set(lastEmittedSeq, current.seq);
+            yield* ackDaemonFrame(current.seq);
+            return current.frame;
+          });
+        }),
+        Stream.filter((event): event is ZeropsBrowserStreamEvent => event !== undefined),
       );
     });
 
@@ -431,7 +558,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
           // `live`, so this is a race at worst, never a user-visible error.
           return;
         }
-        socket.send(toDaemonInputMessage(input));
+        yield* sendQuietly(socket, toDaemonInputMessage(input));
       });
 
     return { subscribe, sendInput } satisfies ZeropsBrowserStream["Service"];

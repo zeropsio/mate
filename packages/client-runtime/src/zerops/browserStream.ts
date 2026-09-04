@@ -32,24 +32,32 @@ export interface DevicePoint {
 
 /**
  * Maps a pointer position on the displayed `<canvas>` (CSS pixels) to the
- * page-absolute device-pixel position the daemon's input dispatch expects:
- * scales by the ratio between the frame's own device dimensions and the
- * canvas's displayed size (the canvas is drawn at CSS size, the frame is
- * device-pixel size — a HiDPI display or a resized panel makes these
- * differ), then adds the frame's current scroll offset so the result is
- * stable across scroll position, not just viewport-relative. Falls back to
- * scale `1` when the canvas reports a zero dimension (not yet laid out)
- * rather than producing `Infinity`/`NaN`.
+ * CSS-viewport coordinates CDP's `Input.dispatchMouseEvent` expects: scales
+ * by the ratio between the frame's own captured-image pixel dimensions and
+ * the canvas's displayed size (the canvas is drawn at CSS size, the frame is
+ * captured-image size — a HiDPI display or a resized panel makes these
+ * differ), then divides by the page's current zoom level (`pageScaleFactor`,
+ * defaults to `1`) so a pinch-zoomed page still lands the click in the right
+ * place.
+ *
+ * Never adds scroll: CDP's own mouse dispatch is already viewport-relative,
+ * not page-absolute — adding the page's scroll offset would land every
+ * click on a scrolled page too far down (`frame.scrollX`/`scrollY` are
+ * carried for display/telemetry only, never folded into this mapping).
+ *
+ * Falls back to scale `1` when the canvas reports a zero dimension (not yet
+ * laid out) rather than producing `Infinity`/`NaN`.
  */
 export function mapCanvasPointToDevicePixels(
   point: CanvasPoint,
-  frame: Pick<ZeropsBrowserFrame, "width" | "height" | "scrollX" | "scrollY">,
+  frame: Pick<ZeropsBrowserFrame, "width" | "height" | "pageScaleFactor">,
 ): DevicePoint {
   const scaleX = point.canvasWidth > 0 ? frame.width / point.canvasWidth : 1;
   const scaleY = point.canvasHeight > 0 ? frame.height / point.canvasHeight : 1;
+  const pageScaleFactor = frame.pageScaleFactor ?? 1;
   return {
-    x: point.x * scaleX + (frame.scrollX ?? 0),
-    y: point.y * scaleY + (frame.scrollY ?? 0),
+    x: (point.x * scaleX) / pageScaleFactor,
+    y: (point.y * scaleY) / pageScaleFactor,
   };
 }
 

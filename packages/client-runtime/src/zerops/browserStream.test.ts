@@ -25,15 +25,39 @@ describe("frameImageSrc", () => {
 });
 
 describe("mapCanvasPointToDevicePixels", () => {
-  it("maps a canvas click to device pixels with the frame's scale and scroll", () => {
-    // Canvas displayed at half the frame's device size (e.g. a HiDPI
-    // display), and the page scrolled 100/50 px.
+  it("maps a canvas click to viewport CSS pixels with the frame's scale and zoom", () => {
+    // Canvas displayed at half the frame's captured-image size (e.g. a
+    // HiDPI display), and the page pinch-zoomed to 2x.
     const point = mapCanvasPointToDevicePixels(
       { canvasWidth: 320, canvasHeight: 180, x: 100, y: 50 },
-      frame({ width: 640, height: 360, scrollX: 100, scrollY: 50 }),
+      frame({ width: 640, height: 360, pageScaleFactor: 2 }),
     );
-    // scale = 640/320 = 2, 360/180 = 2 → (100*2 + 100, 50*2 + 50)
-    expect(point).toEqual({ x: 300, y: 150 });
+    // scale = 640/320 = 2, 360/180 = 2 → (100*2, 50*2) / 2 (the zoom)
+    expect(point).toEqual({ x: 100, y: 50 });
+  });
+
+  it("never adds the frame's scroll offset to a click's coordinates (CDP dispatch is already viewport-relative)", () => {
+    const point = mapCanvasPointToDevicePixels(
+      { canvasWidth: 640, canvasHeight: 360, x: 100, y: 50 },
+      frame({ width: 640, height: 360, scrollX: 500, scrollY: 900 }),
+    );
+    expect(point).toEqual({ x: 100, y: 50 });
+  });
+
+  it("divides by the page's zoom level (pageScaleFactor) at identity canvas scale", () => {
+    const point = mapCanvasPointToDevicePixels(
+      { canvasWidth: 640, canvasHeight: 360, x: 100, y: 50 },
+      frame({ width: 640, height: 360, pageScaleFactor: 4 }),
+    );
+    expect(point).toEqual({ x: 25, y: 12.5 });
+  });
+
+  it("defaults pageScaleFactor to 1 when the frame does not report one", () => {
+    const point = mapCanvasPointToDevicePixels(
+      { canvasWidth: 640, canvasHeight: 360, x: 100, y: 50 },
+      frame({ width: 640, height: 360 }),
+    );
+    expect(point).toEqual({ x: 100, y: 50 });
   });
 
   it("is the identity mapping when the canvas is drawn at the frame's own device size with no scroll", () => {

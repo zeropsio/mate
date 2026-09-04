@@ -1,10 +1,21 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
-import { make, type BrowserSocket, type ConnectSocket } from "./ZeropsBrowserStream.ts";
+import {
+  isConnectionStable,
+  make,
+  type BrowserSocket,
+  type ConnectSocket,
+} from "./ZeropsBrowserStream.ts";
 
 const decodeJsonString = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJsonUnknown = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -260,6 +271,7 @@ describe("ZeropsBrowserStream", () => {
               data: "AAAA",
               width: 1280,
               height: 720,
+              pageScaleFactor: 1,
               scrollX: 0,
               scrollY: 0,
             });
@@ -411,5 +423,360 @@ describe("ZeropsBrowserStream", () => {
         }),
       );
     }),
+  );
+
+  it.effect("an ack or input during reconnect never ends the subscription", () =>
+    Effect.gen(function* () {
+      const sockets: Array<FakeBrowserSocket> = [];
+      let throwOnSend = false;
+      const connect: ConnectSocket = () => {
+        const socket = makeFakeSocket();
+        const realSend = socket.send.bind(socket);
+        // Mirrors a real Node WebSocket: `send` throws synchronously while
+        // the socket is not OPEN (e.g. a stale reference kept past a
+        // reconnect, or the daemon's own CONNECTING window).
+        socket.send = (data: string) => {
+          if (throwOnSend) {
+            throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+          }
+          realSend(data);
+        };
+        sockets.push(socket);
+        queueMicrotask(() => socket.onopen?.());
+        return socket;
+      };
+      const service = yield* make({
+        readStreamPort: Effect.succeed(44831),
+        connect,
+        reconnectDelaysMs: [0],
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const stream = yield* service.subscribe;
+          const pull = yield* Stream.toPull(stream);
+
+          let live = false;
+          while (!live) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") live = true;
+            }
+          }
+
+          throwOnSend = true;
+          // A send that throws must not propagate as a defect and kill the
+          // subscription — sendInput swallows it (best-effort).
+          yield* service.sendInput({ kind: "mouse", eventType: "mousePressed", x: 1, y: 2 });
+
+          // A frame arriving while sends throw: pulling it triggers the
+          // (also throwing) daemon ack — the pull itself must still
+          // succeed and hand back the frame.
+          sockets[0]!.onmessage?.({ data: frameMessage(1) });
+          let sawFrame = false;
+          while (!sawFrame) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "frame") sawFrame = true;
+            }
+          }
+          expect(sawFrame).toBe(true);
+
+          throwOnSend = false;
+          // The subscription is provably still alive afterward.
+          sockets[0]!.onmessage?.({ data: frameMessage(2) });
+          let sawSecondFrame = false;
+          while (!sawSecondFrame) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "frame") sawSecondFrame = true;
+            }
+          }
+          expect(sawSecondFrame).toBe(true);
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "two subscribers, one stalled: the daemon sees one ack per seq and the stalled one holds at most one frame",
+    () =>
+      Effect.gen(function* () {
+        const sockets: Array<FakeBrowserSocket> = [];
+        const service = yield* make({
+          readStreamPort: Effect.succeed(44831),
+          connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
+        });
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const fast = yield* service.subscribe;
+            const fastPull = yield* Stream.toPull(fast);
+            let fastLive = false;
+            while (!fastLive) {
+              const chunk = yield* fastPull;
+              for (const event of chunk) {
+                if (event.type === "state" && event.status === "live") fastLive = true;
+              }
+            }
+
+            yield* Effect.scoped(
+              Effect.gen(function* () {
+                const stalled = yield* service.subscribe;
+                const stalledPull = yield* Stream.toPull(stalled);
+                let stalledLive = false;
+                while (!stalledLive) {
+                  const chunk = yield* stalledPull;
+                  for (const event of chunk) {
+                    if (event.type === "state" && event.status === "live") stalledLive = true;
+                  }
+                }
+
+                sockets[0]!.sent.length = 0;
+                sockets[0]!.onmessage?.({ data: frameMessage(1) });
+                sockets[0]!.onmessage?.({ data: frameMessage(2) });
+                sockets[0]!.onmessage?.({ data: frameMessage(3) });
+
+                // The fast subscriber drains all three — one ack per DISTINCT
+                // seq is sent to the daemon as it does.
+                let fastFrameCount = 0;
+                while (fastFrameCount < 3) {
+                  const chunk = yield* fastPull;
+                  fastFrameCount += chunk.filter((event) => event.type === "frame").length;
+                }
+
+                // The stalled subscriber finally pulls, having never
+                // consumed any of the three individually — it must land on
+                // exactly the single latest frame, never a backlog of three.
+                const stalledChunk = yield* stalledPull;
+                const stalledFrames = stalledChunk.filter((event) => event.type === "frame");
+                expect(stalledFrames).toHaveLength(1);
+
+                const ackSeqs = sockets[0]!.sent
+                  .map((line) => decodeJsonString(line))
+                  .filter(
+                    (message): message is { type: "ack"; seq: number } =>
+                      typeof message === "object" &&
+                      message !== null &&
+                      (message as { type?: unknown }).type === "ack",
+                  )
+                  .map((message) => message.seq);
+                // One ack per distinct seq — never duplicated across the two
+                // subscribers independently pulling the same seq.
+                expect(ackSeqs).toEqual([...new Set(ackSeqs)]);
+                expect(new Set(ackSeqs)).toEqual(new Set([1, 2, 3]));
+              }),
+            );
+          }),
+        );
+      }),
+  );
+
+  describe("isConnectionStable", () => {
+    it("a connection open for less than the threshold never counts as recovered", () => {
+      expect(isConnectionStable(0, 5000)).toBe(false);
+      expect(isConnectionStable(4999, 5000)).toBe(false);
+    });
+
+    it("a connection open for the threshold or more counts as recovered", () => {
+      expect(isConnectionStable(5000, 5000)).toBe(true);
+      expect(isConnectionStable(10_000, 5000)).toBe(true);
+    });
+  });
+
+  it.effect(
+    "does not reset backoff for a connection that closes before the stability threshold",
+    () =>
+      Effect.gen(function* () {
+        let connectCount = 0;
+        const connect: ConnectSocket = () => {
+          connectCount += 1;
+          const socket = makeFakeSocket();
+          queueMicrotask(() => {
+            socket.onopen?.();
+            queueMicrotask(() => socket.onclose?.());
+          });
+          return socket;
+        };
+        const service = yield* make({
+          readStreamPort: Effect.succeed(44831),
+          connect,
+          reconnectDelaysMs: [1000],
+          connectionStableThresholdMs: 5000,
+        });
+
+        // Lets queued microtasks (the fake socket's open-then-close) and the
+        // connection loop's own fiber steps settle, without depending on
+        // consuming the subscription's own Stream (whose delivery timing to
+        // THIS test fiber is a separate concern from the loop's own
+        // progress — the loop runs regardless of whether anyone reads from
+        // the unbounded PubSub it publishes to).
+        const settle = Effect.gen(function* () {
+          for (let i = 0; i < 10; i++) {
+            yield* Effect.yieldNow;
+          }
+        });
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            // Only the subscription's side effect (forking the connection
+            // loop) matters here — the returned Stream itself is unused.
+            const stream = yield* service.subscribe;
+            void stream;
+
+            yield* settle;
+            expect(connectCount).toBe(1);
+
+            // The loop is now asleep waiting out the 1000ms backoff before
+            // its next attempt. Advancing by less than that must not
+            // produce a new connect — proving backoff was never reset to
+            // zero by the short-lived connection.
+            yield* TestClock.adjust(Duration.millis(500));
+            yield* settle;
+            expect(connectCount).toBe(1);
+
+            // Advancing past the full delay releases the next attempt.
+            yield* TestClock.adjust(Duration.millis(600));
+            yield* settle;
+            expect(connectCount).toBe(2);
+          }),
+        );
+      }),
+  );
+
+  it.effect("resets backoff once a connection stays open past the stability threshold", () =>
+    Effect.gen(function* () {
+      const sockets: Array<FakeBrowserSocket> = [];
+      const service = yield* make({
+        readStreamPort: Effect.succeed(44831),
+        connect: fakeConnect(sockets),
+        reconnectDelaysMs: [1000],
+        connectionStableThresholdMs: 5000,
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const stream = yield* service.subscribe;
+          const pull = yield* Stream.toPull(stream);
+          let live = false;
+          while (!live) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") live = true;
+            }
+          }
+          const openedAt = yield* Clock.currentTimeMillis;
+
+          // Stays open past the threshold, then drops.
+          yield* TestClock.adjust(Duration.millis(5001));
+          sockets[0]!.onclose?.();
+
+          // No 1000ms backoff wait this time — the very next thing
+          // published is a fresh "connecting", available without any
+          // further clock advance.
+          let connecting = false;
+          while (!connecting) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "connecting") connecting = true;
+            }
+          }
+          const reconnectedAt = yield* Clock.currentTimeMillis;
+          expect(reconnectedAt - openedAt).toBe(5001);
+        }),
+      );
+    }),
+  );
+
+  it.effect("a late subscriber gets the current frame right after the current state", () =>
+    Effect.gen(function* () {
+      const sockets: Array<FakeBrowserSocket> = [];
+      const service = yield* make({
+        readStreamPort: Effect.succeed(44831),
+        connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const first = yield* service.subscribe;
+          const firstPull = yield* Stream.toPull(first);
+          let live = false;
+          while (!live) {
+            const chunk = yield* firstPull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") live = true;
+            }
+          }
+          // A static page: exactly one frame, no further repaint.
+          sockets[0]!.onmessage?.({ data: frameMessage(1) });
+          let sawFrame = false;
+          while (!sawFrame) {
+            const chunk = yield* firstPull;
+            for (const event of chunk) {
+              if (event.type === "frame") sawFrame = true;
+            }
+          }
+
+          // A second subscriber joins afterward and must see the SAME
+          // frame right after its own initial state — never wait for a
+          // repaint that is never coming.
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const second = yield* service.subscribe;
+              const events = yield* Stream.take(second, 2).pipe(Stream.runCollect);
+              expect(events[0]).toMatchObject({ type: "state", status: "live" });
+              expect(events[1]).toMatchObject({ type: "frame" });
+            }),
+          );
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "a resubscribe racing the outgoing unsubscribe never loses or duplicates the connection",
+    () =>
+      Effect.gen(function* () {
+        const sockets: Array<FakeBrowserSocket> = [];
+        const service = yield* make({
+          readStreamPort: Effect.succeed(44831),
+          connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
+        });
+
+        const scopeA = yield* Scope.make();
+        const streamA = yield* Effect.provideService(service.subscribe, Scope.Scope, scopeA);
+        yield* Stream.takeUntil(
+          streamA,
+          (event) => event.type === "state" && event.status === "live",
+        ).pipe(Stream.runCollect);
+
+        // Force the exact race the fix closes: A's unsubscribe finalizer and
+        // B's fresh subscribe run concurrently, so without the shared mutex
+        // the finalizer's "remaining === 0 → fork a new loop's fiber" could
+        // read B's just-forked fiber instead of A's own.
+        const scopeB = yield* Scope.make();
+        const closeAFiber = yield* Effect.forkChild(Scope.close(scopeA, Exit.succeed(undefined)));
+        const subscribeBFiber = yield* Effect.forkChild(
+          Effect.provideService(service.subscribe, Scope.Scope, scopeB),
+        );
+        yield* Fiber.join(closeAFiber);
+        const streamB = yield* Fiber.join(subscribeBFiber);
+
+        const eventsB = yield* Stream.takeUntil(
+          streamB,
+          (event) => event.type === "state" && event.status === "live",
+        ).pipe(Stream.runCollect);
+        expect(eventsB.some((event) => event.type === "state" && event.status === "live")).toBe(
+          true,
+        );
+        // At most one extra reconnect from the hand-off — never a runaway
+        // leak of parallel connections from the race.
+        expect(sockets.length).toBeLessThanOrEqual(3);
+
+        yield* Scope.close(scopeB, Exit.succeed(undefined));
+      }),
   );
 });

@@ -81,10 +81,17 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
    * below — a server without this method (0.2.5 and older) fails the
    * subscription outright, and the panel needs to tell that apart from a
    * successful "no-browser" state.
+   *
+   * `idleTtlMs` is a few seconds, not the family default of five minutes:
+   * the server keeps the daemon connection open for as long as ANY
+   * subscriber is attached, so leaving this atom mounted at the default TTL
+   * would hold that connection open for minutes after the viewer has
+   * navigated away from the panel.
    */
   const browserStream = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:zerops:browserStream",
     tag: WS_METHODS.subscribeZeropsBrowserStream,
+    idleTtlMs: 5_000,
     transform: (stream) =>
       stream.pipe(
         Stream.mapAccum(

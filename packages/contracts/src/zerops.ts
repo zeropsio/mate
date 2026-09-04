@@ -389,10 +389,13 @@ export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
 
 /**
  * One relayed frame, verbatim — the server never re-encodes the daemon's own
- * JPEG. `width`/`height` are the frame's device-pixel dimensions (for the
- * panel's canvas and for mapping a click back to device coordinates);
- * `scrollX`/`scrollY` are the page's current scroll offset when the daemon
- * reports one.
+ * JPEG. `width`/`height` are the captured image's own pixel dimensions (for
+ * the panel's canvas); `pageScaleFactor` is the page's current zoom level —
+ * dividing a click's image-pixel position by it gives the CSS-viewport
+ * coordinates CDP's `Input.dispatchMouseEvent` expects (defaults to `1` when
+ * absent, i.e. no zoom). `scrollX`/`scrollY` are the page's current scroll
+ * offset, carried for display/telemetry only — CDP's own input dispatch is
+ * viewport-relative and never needs them added to a click's coordinates.
  */
 export const ZeropsBrowserFrame = Schema.Struct({
   type: Schema.Literal("frame"),
@@ -400,6 +403,7 @@ export const ZeropsBrowserFrame = Schema.Struct({
   data: Schema.String,
   width: Schema.Number,
   height: Schema.Number,
+  pageScaleFactor: Schema.optional(Schema.Number),
   scrollX: Schema.optional(Schema.Number),
   scrollY: Schema.optional(Schema.Number),
 });

@@ -13,7 +13,10 @@
  * purely to capture pointer/keyboard input at the frame's own coordinate
  * space (`mapCanvasPointToDevicePixels`). Input is disabled while the agent
  * has an in-progress `zerops_browser` call, unless the viewer has toggled
- * "take over" (`resolveBrowserDrivingState`).
+ * "take over" (`resolveBrowserDrivingState`) — that toggle itself resets the
+ * moment the agent starts a FRESH `zerops_browser` call, so a stale
+ * take-over from a previous turn never silently leaves input enabled for
+ * the next one.
  */
 import type { ScopedThreadRef, ZeropsBrowserInput } from "@t3tools/contracts";
 import {
@@ -34,12 +37,23 @@ export interface ZeropsBrowserPanelProps {
   readonly initialTakeOver?: boolean;
 }
 
+/** A printable single character carries CDP's `text` field alongside `key` (e.g. "a"); a named key (`Enter`, `ArrowLeft`, ...) carries `key` only. */
+function keyText(key: string): string | undefined {
+  return key.length === 1 ? key : undefined;
+}
+
 export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowserPanelProps) {
   const environmentId = threadRef?.environmentId ?? null;
   const read = useZeropsBrowserStream(environmentId);
   const lifecycle = useZeropsLifecycle(environmentId, threadRef?.threadId ?? null);
   const [takeOver, setTakeOver] = useState(initialTakeOver ?? false);
   const lastUserInputAtRef = useRef<number | undefined>(undefined);
+  const isPointerDownRef = useRef(false);
+  // `undefined` means "no prior render observed yet" — distinct from a real
+  // `false`, so mounting straight into an already-in-progress agent call
+  // (e.g. a take-over restored from a prior session) is never mistaken for
+  // a FRESH false→true transition and does not spuriously reset takeOver.
+  const previousAgentDrivingRef = useRef<boolean | undefined>(undefined);
   const sendInputCommand = useAtomCommand(zeropsCommands.browserInput, "zerops browser input");
 
   const driving = resolveBrowserDrivingState({
@@ -48,6 +62,15 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
     lastUserInputAtMs: lastUserInputAtRef.current,
     nowMs: Date.now(),
   });
+
+  // A FRESH agent call reclaims control by default — a take-over from the
+  // agent's PREVIOUS zerops_browser call must never silently carry forward
+  // and leave input enabled for the next one. Adjusting state during render
+  // from a computed transition is the standard React pattern for this.
+  if (driving.agentDriving && previousAgentDrivingRef.current === false && takeOver) {
+    setTakeOver(false);
+  }
+  previousAgentDrivingRef.current = driving.agentDriving;
 
   if (environmentId === null) {
     return null;
@@ -66,6 +89,17 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   const handlePointer =
     (eventType: "mousePressed" | "mouseReleased" | "mouseMoved") =>
     (event: PointerEvent<HTMLCanvasElement>) => {
+      if (eventType === "mousePressed") {
+        isPointerDownRef.current = true;
+      } else if (eventType === "mouseReleased") {
+        isPointerDownRef.current = false;
+      } else if (!isPointerDownRef.current) {
+        // A bare hover carries nothing CDP needs for this slice (no
+        // hover-triggered UI to drive) and would otherwise fire one
+        // operate-scope RPC per pixel of mouse movement — only forward
+        // moves made while dragging.
+        return;
+      }
       if (frame === undefined) {
         return;
       }
@@ -84,16 +118,28 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         eventType,
         x: point.x,
         y: point.y,
-        button: "left",
+        // A hover/drag move carries no button; CDP's own "none" value,
+        // never "left" — sending "left" on every move would read as
+        // dragging on every hover.
+        button: eventType === "mouseMoved" ? "none" : "left",
         ...(eventType === "mouseMoved" ? {} : { clickCount: 1 }),
       });
     };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
-    sendInput({ kind: "keyboard", eventType: "keyDown", key: event.key });
+    // The canvas owns the keystroke while it has focus — Space/arrows/Tab
+    // must drive the REMOTE page, never scroll or tab around mate's own.
+    event.preventDefault();
+    sendInput({
+      kind: "keyboard",
+      eventType: "keyDown",
+      key: event.key,
+      ...(keyText(event.key) !== undefined ? { text: keyText(event.key) } : {}),
+    });
   };
 
   const handleKeyUp = (event: KeyboardEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
     sendInput({ kind: "keyboard", eventType: "keyUp", key: event.key });
   };
 
