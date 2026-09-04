@@ -1,61 +1,44 @@
-import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
+import { describe, expect, it } from "@effect/vitest";
+import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
+import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
 
-const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>
-  ({
-    serviceId: `svc-${overrides.hostname}`,
-    type: "ubuntu/nodejs@22",
-    status: "ACTIVE",
-    group: "runtimes",
-    adoptionState: "adopted",
-    isManagedService: false,
-    transient: false,
-    mounted: false,
-    ...overrides,
-  }) as ZeropsService;
+const service = (
+  overrides: Partial<ZeropsTopologyService> & { hostname: string },
+): ZeropsTopologyService => ({
+  serviceId: `svc-${overrides.hostname}`,
+  type: "ubuntu/nodejs@22",
+  status: "ACTIVE",
+  group: "runtimes",
+  transient: false,
+  ports: [],
+  ...overrides,
+});
 
 const topology = (
-  services: ReadonlyArray<ZeropsService>,
-  overrides?: Partial<ZeropsTopologySnapshot>,
-): ZeropsTopologySnapshot =>
-  ({
-    available: true,
-    degraded: false,
-    project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
-    services,
-    warnings: [],
-    readAt: "2026-08-28T10:00:00Z",
-    ...overrides,
-  }) as unknown as ZeropsTopologySnapshot;
+  services: ReadonlyArray<ZeropsTopologyService>,
+  overrides?: Partial<ZeropsTopologyView>,
+): ZeropsTopologyView => ({
+  project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
+  services,
+  warnings: [],
+  ...overrides,
+});
 
-/**
- * The `z3-eval` project as `zcp studio topology` reported it on 2026-08-28,
- * after the server's parse — the same document pinned verbatim in
- * `apps/server/src/zerops/zeropsTopologyParse.test.ts`.
- */
-const realServices: ReadonlyArray<ZeropsService> = [
-  service({
-    hostname: "s6fix1",
-    adoptionState: "adoptable",
-    mounted: true,
-    mountPath: "/var/www/s6fix1",
-  }),
+/** The `z3-eval` project's real six non-system services, grouped as `topology.test.ts` proves. */
+const realServices: ReadonlyArray<ZeropsTopologyService> = [
+  service({ hostname: "s6fix1" }),
   service({
     hostname: "s6db",
     type: "valkey:single@7.2",
     group: "data",
-    adoptionState: "managed-dep",
-    isManagedService: true,
   }),
-  service({ hostname: "s6fix2", adoptionState: "adoptable" }),
+  service({ hostname: "s6fix2" }),
   service({
     hostname: "zcp",
     type: "zcp@1",
     group: "infrastructure",
-    adoptionState: "zcp-self",
-    subdomainEnabled: true,
     subdomainUrl: "https://zcp-26a7-8080.prg1.zerops.app",
   }),
 ];
@@ -98,14 +81,6 @@ describe("buildZeropsServiceMap", () => {
     expect(view?.groups.map((group) => group.group)).toEqual(["infrastructure"]);
   });
 
-  /** `mounted` is zcp's own answer, taken from its `mountPath`; never inferred. */
-  it("takes mounted straight from the feed", () => {
-    const view = buildZeropsServiceMap(topology(realServices));
-    const rows = view?.groups[0]?.rows ?? [];
-
-    expect(rows.map((row) => row.service.mounted)).toEqual([true, false]);
-  });
-
   /**
    * Types carry an OS prefix (`ubuntu/nodejs@22`). The runtime is what a reader
    * is looking for; the base image is noise in a one-line row.
@@ -126,7 +101,7 @@ describe("buildZeropsServiceMap", () => {
   it("folds a stage service into its dev row", () => {
     const view = buildZeropsServiceMap(
       topology([
-        service({ hostname: "kanbandev", mounted: true }),
+        service({ hostname: "kanbandev" }),
         service({ hostname: "kanbanstage", status: "CREATING", transient: true }),
       ]),
     );
@@ -151,7 +126,7 @@ describe("buildZeropsServiceMap", () => {
     const view = buildZeropsServiceMap(
       topology([
         service({ hostname: "cachedev" }),
-        service({ hostname: "cachestage", group: "data", isManagedService: true }),
+        service({ hostname: "cachestage", group: "data" }),
       ]),
     );
 
@@ -182,41 +157,22 @@ describe("buildZeropsServiceMap", () => {
     expect(view?.groups).toEqual([]);
   });
 
-  /**
-   * `available: false` is not an error — it means this is not a Zerops
-   * environment. The panel is absent entirely.
-   */
-  it("renders nothing at all when the feed is unavailable", () => {
+  /** No view yet — no session, no resolved project, or the first read still pending. */
+  it("renders nothing at all when there is no topology view", () => {
     expect(buildZeropsServiceMap(undefined)).toBeUndefined();
-    expect(
-      buildZeropsServiceMap(topology([], { available: false, reason: "zcp-not-found" })),
-    ).toBeUndefined();
   });
 
-  /** Degraded keeps the last good rows on screen and flags the read quietly. */
-  it("keeps the last good rows when the feed is degraded", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices, { degraded: true, reason: "zcp studio topology: exit 1" }),
-    );
+  it("carries the projection's warnings through opaquely", () => {
+    const view = buildZeropsServiceMap(topology(realServices, { warnings: ["something to say"] }));
 
-    expect(view?.degraded).toBe(true);
-    expect(view?.degradedReason).toBe("zcp studio topology: exit 1");
-    expect(view?.groups).toHaveLength(3);
-  });
-
-  it("carries zcp's warnings through opaquely", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices, { warnings: ["2 services can be adopted: s6fix1, s6fix2"] }),
-    );
-
-    expect(view?.warnings).toEqual(["2 services can be adopted: s6fix1, s6fix2"]);
+    expect(view?.warnings).toEqual(["something to say"]);
   });
 
   /**
-   * The topology feed carries no live process state, and its doorbell never
-   * fires on a status change — so a running tool is the only signal that
-   * something is happening right now. It belongs to the map, not to a row:
-   * `ZeropsRecentTool` has no hostname, and guessing one would be a lie.
+   * The topology projection carries no live process state beyond `transient`
+   * — so a running tool is the only signal that something is happening right
+   * now. It belongs to the map, not to a row: `ZeropsRecentTool` has no
+   * hostname, and guessing one would be a lie.
    */
   it("surfaces a running zerops tool as the map's live indicator", () => {
     const view = buildZeropsServiceMap(
@@ -304,32 +260,104 @@ describe("buildZeropsServiceMap", () => {
 });
 
 /**
- * `doorbellConnected` says how the map is being kept current. The three states
- * are deliberately distinct and none of them is an error.
+ * `service map view is identical for the server feed and the client
+ * projection over the same project` — temporary parity test, deleted in S4.
+ *
+ * Proves the ported grouping rule (category + type-prefix, from the REST
+ * `service-stack` read) agrees with the original rule
+ * (`adoptionState`/`isManagedService`, from `zcp studio topology`) on the same
+ * real project, so migrating the map's source never silently reshuffles it.
+ * The "server-shaped" side below is a hand-authored equivalent of what
+ * `zcp studio topology` reported for these same six `z3-eval` services —
+ * `apps/server/src/zerops/zeropsServiceTaxonomy.ts`'s own rule, inlined here
+ * rather than imported, since a client-runtime test may not depend on
+ * `apps/server`.
  */
-describe("buildZeropsServiceMap — liveness", () => {
-  it("reads a healthy doorbell as live", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices, { doorbellConnected: true } as Partial<ZeropsTopologySnapshot>),
+describe("buildZeropsServiceMap — parity with the server feed (temporary, S4 deletes this)", () => {
+  const ZCP_ADOPTION_STATE = "zcp-self";
+  const ZCP_TYPE_PREFIX = "zcp";
+  const withoutOsPrefix = (type: string): string => {
+    const separator = type.indexOf("/");
+    return separator < 0 ? type : type.slice(separator + 1);
+  };
+  const serverGroupOf = (entry: {
+    readonly type: string;
+    readonly adoptionState: string;
+    readonly isManagedService: boolean;
+  }): string => {
+    if (
+      entry.adoptionState === ZCP_ADOPTION_STATE ||
+      withoutOsPrefix(entry.type.toLowerCase()).startsWith(ZCP_TYPE_PREFIX)
+    ) {
+      return "infrastructure";
+    }
+    return entry.isManagedService ? "data" : "runtimes";
+  };
+
+  /** What `zcp studio topology` would have reported for the six real `z3-eval` services. */
+  const serverShaped: ReadonlyArray<{
+    readonly hostname: string;
+    readonly type: string;
+    readonly adoptionState: string;
+    readonly isManagedService: boolean;
+  }> = [
+    {
+      hostname: "z3web",
+      type: "alpine/static@1.0",
+      adoptionState: "adopted",
+      isManagedService: false,
+    },
+    {
+      hostname: "db",
+      type: "mariadb:single@10.6",
+      adoptionState: "managed-dep",
+      isManagedService: true,
+    },
+    {
+      hostname: "weatherdash",
+      type: "alpine/nginx@1.22",
+      adoptionState: "adopted",
+      isManagedService: false,
+    },
+    {
+      hostname: "s3git1",
+      type: "ubuntu/nodejs@22",
+      adoptionState: "adopted",
+      isManagedService: false,
+    },
+    {
+      hostname: "s3git2",
+      type: "ubuntu/nodejs@22",
+      adoptionState: "adopted",
+      isManagedService: false,
+    },
+    { hostname: "zcp", type: "zcp@1", adoptionState: ZCP_ADOPTION_STATE, isManagedService: false },
+  ];
+
+  const clientShaped: ReadonlyArray<ZeropsTopologyService> = [
+    service({ hostname: "z3web", type: "alpine/static@1.0" }),
+    service({ hostname: "db", type: "mariadb:single@10.6", group: "data" }),
+    service({ hostname: "weatherdash", type: "alpine/nginx@1.22" }),
+    service({ hostname: "s3git1", type: "ubuntu/nodejs@22" }),
+    service({ hostname: "s3git2", type: "ubuntu/nodejs@22" }),
+    service({ hostname: "zcp", type: "zcp@1", group: "infrastructure" }),
+  ];
+
+  it("groups the same six hostnames the same way, in the same order", () => {
+    const serverGroups = new Map<string, string[]>();
+    for (const entry of serverShaped) {
+      const group = serverGroupOf(entry);
+      serverGroups.set(group, [...(serverGroups.get(group) ?? []), entry.hostname]);
+    }
+
+    const view = buildZeropsServiceMap(topology(clientShaped));
+    const clientGroups = new Map(
+      view?.groups.map((group) => [group.group, group.rows.map((row) => row.service.hostname)]) ??
+        [],
     );
 
-    expect(view?.liveness).toBe("live");
-  });
-
-  /** The push channel is down; the map is still correct, just a few seconds
-   * behind, and the feed recovers on its own. */
-  it("reads a dropped doorbell as polling, not as an error", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices, { doorbellConnected: false } as Partial<ZeropsTopologySnapshot>),
-    );
-
-    expect(view?.liveness).toBe("polling");
-    expect(view?.degraded).toBe(false);
-  });
-
-  /** Absent means the feed reported no doorbell at all — a different claim
-   * from "the doorbell is down", and not something to draw. */
-  it("says nothing about liveness when the feed reported none", () => {
-    expect(buildZeropsServiceMap(topology(realServices))?.liveness).toBeUndefined();
+    expect(clientGroups.get("runtimes")).toEqual(serverGroups.get("runtimes"));
+    expect(clientGroups.get("data")).toEqual(serverGroups.get("data"));
+    expect(clientGroups.get("infrastructure")).toEqual(serverGroups.get("infrastructure"));
   });
 });

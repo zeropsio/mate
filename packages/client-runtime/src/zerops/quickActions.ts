@@ -8,7 +8,7 @@
  * reaches the Zerops API, and `ZeropsQuickActions.test.tsx` pins that the
  * component cannot.
  */
-import type { ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
+import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
 
 export interface ZeropsQuickAction {
   readonly id: string;
@@ -19,25 +19,21 @@ export interface ZeropsQuickAction {
 /** Types that already provide a cache, so "Add Redis" would be noise. */
 const CACHE_TYPE = /^(valkey|redis|keydb)[:@]/u;
 
-/**
- * The service a quick action should talk about: a mounted runtime if there is
- * one — that is where the user's code lives — else any runtime.
- */
-function primaryRuntime(services: ReadonlyArray<ZeropsService>): ZeropsService | undefined {
-  const runtimes = services.filter(
-    (service) => service.group === "runtimes" && service.adoptionState !== "zcp-self",
-  );
-  return runtimes.find((service) => service.mounted) ?? runtimes[0];
+/** The service a quick action should talk about: the project's first runtime. */
+function primaryRuntime(
+  services: ReadonlyArray<ZeropsTopologyService>,
+): ZeropsTopologyService | undefined {
+  return services.find((service) => service.group === "runtimes");
 }
 
 export function zeropsQuickActions(
-  topology: ZeropsTopologySnapshot | undefined,
+  topology: ZeropsTopologyView | undefined,
 ): ReadonlyArray<ZeropsQuickAction> {
-  if (topology === undefined || !topology.available) {
+  if (topology === undefined) {
     return [];
   }
 
-  const services = topology.services.filter((service) => service.adoptionState !== "zcp-self");
+  const services = topology.services.filter((service) => service.group !== "infrastructure");
   if (services.length === 0) {
     // Nothing exists yet, so the only useful prompt is the one that starts it.
     return [

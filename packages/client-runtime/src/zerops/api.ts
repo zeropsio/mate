@@ -210,6 +210,27 @@ export function buildZeropsContainerUrl(
 }
 
 /**
+ * The public subdomain origin of one of a service's ports, or `undefined`
+ * when this port has none — the service itself has subdomain access turned
+ * off, the port carries no HTTP scheme, or the project has no public
+ * subdomain at all (a project's `publicZone`/`zeropsSubdomainHost` come from
+ * `fetchProject`, never from the lighter project embedded in a service-stack
+ * list read).
+ */
+export function servicePortOrigin(
+  project: ZeropsProject,
+  service: ZeropsService,
+  port: ZeropsServicePort,
+): string | undefined {
+  if (service.subdomainAccess !== true) return undefined;
+  if (port.scheme !== "http" && port.scheme !== "https") return undefined;
+  if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
+  const region = zeropsRegionFromPublicZone(project.publicZone);
+  if (!region) return undefined;
+  return buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, region);
+}
+
+/**
  * Every org the account is an active member of. An account can belong to
  * several; callers select one exact membership before loading scoped data.
  */
@@ -592,6 +613,63 @@ export class ZeropsApiClient {
       { clearSessionOnUnauthorized: false },
     );
     return { url: response.url.replace(/^GET\s+/, "") };
+  }
+
+  /**
+   * `POST /web-socket/login` — trades the account's current access token for a
+   * short-lived `webSocketToken`, the credential the platform push channel's
+   * upgrade URL carries (`docs/internals/zerops/verified.md` "platform
+   * websocket from a browser origin"). Goes through `#request`, so a `401`
+   * here is retried once after the client's normal refresh, the same as any
+   * other authenticated call.
+   */
+  async exchangeWebSocketToken(): Promise<{ readonly webSocketToken: string }> {
+    const session = this.#session;
+    if (!session) {
+      throw new ZeropsApiError(
+        "Sign in to Zerops before opening a live connection.",
+        "expired-session",
+        401,
+      );
+    }
+    return this.#request<{ readonly webSocketToken: string }>("/web-socket/login", {
+      method: "POST",
+      body: JSON.stringify({ token: session.accessToken }),
+    });
+  }
+
+  /**
+   * `POST /{entity}/search` with the fields that turn a plain search into a
+   * push subscription routed to an already-open platform-websocket receiver:
+   * `receiverId` names that socket, `subscriptionName` and `wsOutputType`
+   * choose membership pushes (`"list"`, current `items` returned) or
+   * status-change pushes (`"update"`, `disableOutput: true`, no items
+   * returned). Verified protocol: `docs/internals/zerops/verified.md`.
+   */
+  async subscribeProjectSearch(
+    entity: "service-stack" | "process",
+    options: {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly receiverId: string;
+      readonly mode: "list" | "update";
+    },
+  ): Promise<unknown> {
+    const subscriptionEntity = entity === "service-stack" ? "ServiceStack" : "Process";
+    return this.#request(`/${entity}/search`, {
+      method: "POST",
+      body: JSON.stringify({
+        search: [
+          { name: "clientId", operator: "eq", value: options.orgId },
+          { name: "projectId", operator: "eq", value: options.projectId },
+        ],
+        sort: [],
+        subscriptionName: `${subscriptionEntity}__${options.mode}-subscription`,
+        receiverId: options.receiverId,
+        wsOutputType: options.mode === "list" ? "listStream" : "updateStream",
+        ...(options.mode === "update" ? { disableOutput: true } : {}),
+      }),
+    });
   }
 
   /**

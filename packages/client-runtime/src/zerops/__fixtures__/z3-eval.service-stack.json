@@ -1,0 +1,1094 @@
+{
+  "count": 7,
+  "total": 7,
+  "limit": 20,
+  "offset": 0,
+  "list": [
+    {
+      "id": "hrbN8zrlSdi8U7r9bfkMBw",
+      "status": "ACTIVE",
+      "name": "z3web",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Static",
+        "serviceStackTypeCategory": "USER",
+        "serviceStackTypeVersionName": "alpine/static@1.0"
+      },
+      "serviceStackTypeId": "static",
+      "serviceStackTypeVersionId": "alpine_static",
+      "base": "alpine/static@1.0",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 1,
+            "memoryGBytes": 0.25,
+            "diskGBytes": 1
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.10000000149011612,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 0.0625,
+            "memoryPercent": 0
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 3,
+          "minContainerCount": 1
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": null,
+            "memoryGBytes": null,
+            "diskGBytes": null
+          },
+          "minResource": {
+            "cpuCoreCount": null,
+            "memoryGBytes": 0.25,
+            "diskGBytes": null
+          },
+          "minFreeResource": {
+            "cpuCoreCount": null,
+            "cpuCorePercent": null,
+            "memoryGBytes": null,
+            "memoryPercent": null
+          },
+          "cpuMode": null,
+          "startCpuCoreCount": null,
+          "swapEnabled": null
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [
+        {
+          "protocol": "tcp",
+          "port": 80,
+          "description": "",
+          "scheme": "http"
+        }
+      ],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-31T09:06:10Z",
+      "lastUpdate": "2026-09-01T08:30:35Z",
+      "mode": null,
+      "customPortsEnabled": true,
+      "subdomainAccess": true,
+      "reloadAvailable": true,
+      "versionNumber": "v1.0.0",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": {
+        "id": "mTAhFAorQnWA4H2d7hJ9vw",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "serviceStackId": "hrbN8zrlSdi8U7r9bfkMBw",
+        "build": {
+          "serviceStackId": "r2nNW0aSQXiBb7vpXojzkQ",
+          "serviceStackName": "buildz3webv1788251250",
+          "serviceStackTypeVersionId": "ubuntu_build_runtime",
+          "serviceStackTypeVersionName": null,
+          "pipelineStart": "2026-09-01T08:27:30.313513891Z",
+          "pipelineFinish": "2026-09-01T08:30:34.306530244Z",
+          "pipelineFailed": null,
+          "containerCreationStart": "2026-09-01T08:27:32.372433326Z",
+          "startDate": "2026-09-01T08:27:41.399255275Z",
+          "endDate": "2026-09-01T08:29:52.370939954Z",
+          "cacheSnapshotId": null
+        },
+        "source": "CLI",
+        "sequence": 14,
+        "status": "ACTIVE",
+        "userDataList": [],
+        "created": "2026-09-01T08:27:18Z",
+        "lastUpdate": "2026-09-01T08:30:34Z",
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-09-01T08:30:34Z",
+        "publicGitSource": null
+      },
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "xgBk3KdoRVWBNBHAPQGoKg",
+      "status": "ACTIVE",
+      "name": "db",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "MariaDB",
+        "serviceStackTypeCategory": "STANDARD",
+        "serviceStackTypeVersionName": "mariadb:single@10.6"
+      },
+      "serviceStackTypeId": "mariadb",
+      "serviceStackTypeVersionId": "mariadb_v10_6_single",
+      "base": "mariadb:single@10.6",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 1,
+            "memoryGBytes": 0.25,
+            "diskGBytes": 1
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.10000000149011612,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 0.125,
+            "memoryPercent": 0
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [
+        {
+          "protocol": "tcp",
+          "port": 3306,
+          "description": "",
+          "scheme": "mysql"
+        }
+      ],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-29T14:21:04Z",
+      "lastUpdate": "2026-08-29T14:21:17Z",
+      "mode": "NON_HA",
+      "customPortsEnabled": true,
+      "subdomainAccess": false,
+      "reloadAvailable": false,
+      "versionNumber": "v10.6.16",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": null,
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "EmWgeZ4rTiK0Ajpm8iH83A",
+      "status": "ACTIVE",
+      "name": "weatherdash",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Nginx static",
+        "serviceStackTypeCategory": "USER",
+        "serviceStackTypeVersionName": "alpine/nginx@1.22"
+      },
+      "serviceStackTypeId": "nginx",
+      "serviceStackTypeVersionId": "alpine_nginx_v1_22",
+      "base": "alpine/nginx@1.22",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 1,
+            "memoryGBytes": 0.125,
+            "diskGBytes": 1
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.10000000149011612,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 0.0625,
+            "memoryPercent": 0
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 3,
+          "minContainerCount": 1
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [
+        {
+          "protocol": "tcp",
+          "port": 80,
+          "description": "",
+          "scheme": "http"
+        }
+      ],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-28T18:21:50Z",
+      "lastUpdate": "2026-09-04T12:41:25Z",
+      "mode": null,
+      "customPortsEnabled": true,
+      "subdomainAccess": true,
+      "reloadAvailable": true,
+      "versionNumber": "v1.22.1",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": {
+        "id": "tvqzbN3NRAOlBdq5z7zMJw",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "serviceStackId": "EmWgeZ4rTiK0Ajpm8iH83A",
+        "build": {
+          "serviceStackId": "makmWzfnQUOjhgcbiePpqg",
+          "serviceStackName": "buildweatherdashv1788444856",
+          "serviceStackTypeVersionId": "alpine_build_runtime",
+          "serviceStackTypeVersionName": null,
+          "pipelineStart": "2026-09-03T14:14:16.824671109Z",
+          "pipelineFinish": "2026-09-03T14:15:20.570792797Z",
+          "pipelineFailed": null,
+          "containerCreationStart": "2026-09-03T14:14:19.164292357Z",
+          "startDate": "2026-09-03T14:14:27.140086848Z",
+          "endDate": "2026-09-03T14:14:27.911363525Z",
+          "cacheSnapshotId": null
+        },
+        "source": "CLI",
+        "sequence": 3,
+        "status": "ACTIVE",
+        "userDataList": [],
+        "created": "2026-09-03T14:14:16Z",
+        "lastUpdate": "2026-09-03T14:15:20Z",
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-09-03T14:15:20Z",
+        "publicGitSource": null
+      },
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "WoZZVTdQQVAktp8eRIAmMQ",
+      "status": "ACTIVE",
+      "name": "s3git1",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Node.js",
+        "serviceStackTypeCategory": "USER",
+        "serviceStackTypeVersionName": "ubuntu/nodejs@22"
+      },
+      "serviceStackTypeId": "nodejs",
+      "serviceStackTypeVersionId": "ubuntu_nodejs_v22",
+      "base": "ubuntu/nodejs@22",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 1,
+            "memoryGBytes": 0.125,
+            "diskGBytes": 1
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.10000000149011612,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 0.0625,
+            "memoryPercent": 0
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 3,
+          "minContainerCount": 1
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-28T15:29:29Z",
+      "lastUpdate": "2026-08-28T15:30:14Z",
+      "mode": null,
+      "customPortsEnabled": true,
+      "subdomainAccess": false,
+      "reloadAvailable": true,
+      "versionNumber": "v22.22.3",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": {
+        "id": "LxKsFvL4ThakQwrsEAQkDQ",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "serviceStackId": "WoZZVTdQQVAktp8eRIAmMQ",
+        "build": null,
+        "source": "NONE",
+        "sequence": 1,
+        "status": "ACTIVE",
+        "userDataList": [],
+        "created": "2026-08-28T15:29:29Z",
+        "lastUpdate": "2026-08-28T15:30:14Z",
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-08-28T15:30:14Z",
+        "publicGitSource": null
+      },
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "NrNspHPfSWqbHHpwcN0Ryg",
+      "status": "ACTIVE",
+      "name": "s3git2",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Node.js",
+        "serviceStackTypeCategory": "USER",
+        "serviceStackTypeVersionName": "ubuntu/nodejs@22"
+      },
+      "serviceStackTypeId": "nodejs",
+      "serviceStackTypeVersionId": "ubuntu_nodejs_v22",
+      "base": "ubuntu/nodejs@22",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 1,
+            "memoryGBytes": 0.125,
+            "diskGBytes": 1
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.10000000149011612,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 0.0625,
+            "memoryPercent": 0
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 3,
+          "minContainerCount": 1
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": {
+          "maxContainerCount": null,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-28T15:29:29Z",
+      "lastUpdate": "2026-08-28T15:30:14Z",
+      "mode": null,
+      "customPortsEnabled": true,
+      "subdomainAccess": false,
+      "reloadAvailable": true,
+      "versionNumber": "v22.22.3",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": {
+        "id": "auGaF0niSneRmqfSBat5DQ",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "serviceStackId": "NrNspHPfSWqbHHpwcN0Ryg",
+        "build": null,
+        "source": "NONE",
+        "sequence": 1,
+        "status": "ACTIVE",
+        "userDataList": [],
+        "created": "2026-08-28T15:29:29Z",
+        "lastUpdate": "2026-08-28T15:30:14Z",
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-08-28T15:30:14Z",
+        "publicGitSource": null
+      },
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "gt7tJZjDSk2zyH5XvNeAQQ",
+      "status": "ACTIVE",
+      "name": "zcp",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Zerops Control Plane",
+        "serviceStackTypeCategory": "USER",
+        "serviceStackTypeVersionName": "zcp@1"
+      },
+      "serviceStackTypeId": "zcp",
+      "serviceStackTypeVersionId": "zcp_v1",
+      "base": "zcp@1",
+      "isSystem": false,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": 3,
+            "memoryGBytes": 6,
+            "diskGBytes": 100
+          },
+          "minResource": {
+            "cpuCoreCount": 2,
+            "memoryGBytes": 2,
+            "diskGBytes": 2
+          },
+          "minFreeResource": {
+            "cpuCoreCount": 0.25,
+            "cpuCorePercent": 0,
+            "memoryGBytes": 2,
+            "memoryPercent": 10
+          },
+          "cpuMode": "SHARED",
+          "startCpuCoreCount": 2,
+          "swapEnabled": true
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 1,
+          "minContainerCount": 1
+        }
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": {
+          "maxResource": {
+            "cpuCoreCount": null,
+            "memoryGBytes": null,
+            "diskGBytes": null
+          },
+          "minResource": {
+            "cpuCoreCount": null,
+            "memoryGBytes": 2,
+            "diskGBytes": null
+          },
+          "minFreeResource": {
+            "cpuCoreCount": null,
+            "cpuCorePercent": null,
+            "memoryGBytes": null,
+            "memoryPercent": null
+          },
+          "cpuMode": null,
+          "startCpuCoreCount": null,
+          "swapEnabled": null
+        },
+        "horizontalAutoscaling": {
+          "maxContainerCount": 1,
+          "minContainerCount": null
+        }
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": "zeropsio/zcp",
+      "recipeSourceUrl": null,
+      "ports": [
+        {
+          "protocol": "tcp",
+          "port": 8080,
+          "description": "",
+          "scheme": "http"
+        }
+      ],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-28T10:56:53Z",
+      "lastUpdate": "2026-09-02T12:19:23Z",
+      "mode": null,
+      "customPortsEnabled": true,
+      "subdomainAccess": true,
+      "reloadAvailable": true,
+      "versionNumber": "v1",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": {
+        "id": "Tq0oiHs2SDWyc04trczJdQ",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "serviceStackId": "gt7tJZjDSk2zyH5XvNeAQQ",
+        "build": {
+          "serviceStackId": "BpWZZCIeTgaj7KBH2nrhGg",
+          "serviceStackName": "buildzcpv1787914639",
+          "serviceStackTypeVersionId": "ubuntu_build_runtime",
+          "serviceStackTypeVersionName": null,
+          "pipelineStart": "2026-08-28T10:57:19.930679667Z",
+          "pipelineFinish": "2026-08-28T10:58:10.022753561Z",
+          "pipelineFailed": null,
+          "containerCreationStart": "2026-08-28T10:57:25.395348152Z",
+          "startDate": "2026-08-28T10:57:33.52186889Z",
+          "endDate": "2026-08-28T10:57:34.383530658Z",
+          "cacheSnapshotId": null
+        },
+        "source": "GIT",
+        "sequence": 1,
+        "status": "ACTIVE",
+        "userDataList": [],
+        "created": "2026-08-28T10:56:53Z",
+        "lastUpdate": "2026-09-02T12:18:53Z",
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-08-28T10:58:10Z",
+        "publicGitSource": null
+      },
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    },
+    {
+      "id": "yhemdZ8CRVCGvAqa4OfnTA",
+      "status": "ACTIVE",
+      "name": "core",
+      "serviceStackTypeInfo": {
+        "serviceStackTypeName": "Core",
+        "serviceStackTypeCategory": "CORE",
+        "serviceStackTypeVersionName": "core:single@2"
+      },
+      "serviceStackTypeId": "core",
+      "serviceStackTypeVersionId": "core_v2_single",
+      "base": "core:single@2",
+      "isSystem": true,
+      "startOnProjectStart": true,
+      "githubIntegration": null,
+      "gitlabIntegration": null,
+      "autoscalingProfileId": null,
+      "currentAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": null
+      },
+      "customAutoscaling": {
+        "verticalAutoscaling": null,
+        "horizontalAutoscaling": null
+      },
+      "buildCache": null,
+      "cdnEnabled": false,
+      "nestId": "prg1",
+      "recipeSource": null,
+      "recipeSourceUrl": null,
+      "ports": [],
+      "requestedPorts": {
+        "isActive": false,
+        "requestedPorts": []
+      },
+      "created": "2026-08-28T10:56:49Z",
+      "lastUpdate": "2026-08-28T10:57:17Z",
+      "mode": "single",
+      "customPortsEnabled": false,
+      "subdomainAccess": false,
+      "reloadAvailable": false,
+      "versionNumber": "",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "mode": "LIGHT",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null,
+        "userRoles": [
+          {
+            "id": "qr16AwWOSjA62tin9b8QBQ",
+            "clientUserId": "XFdPBfGtTpSV4MAZMOTS1g",
+            "roleCode": "ADMIN"
+          }
+        ]
+      },
+      "userData": [],
+      "activeAppVersion": null,
+      "coreService": {
+        "id": "yhemdZ8CRVCGvAqa4OfnTA",
+        "status": "ACTIVE",
+        "name": "core",
+        "serviceStackTypeInfo": {
+          "serviceStackTypeName": "Core",
+          "serviceStackTypeCategory": "CORE",
+          "serviceStackTypeVersionName": "core:single@2"
+        },
+        "serviceStackTypeId": "core",
+        "serviceStackTypeVersionId": "core_v2_single",
+        "base": "core:single@2",
+        "isSystem": true,
+        "startOnProjectStart": true,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "autoscalingProfileId": null,
+        "currentAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "customAutoscaling": {
+          "verticalAutoscaling": null,
+          "horizontalAutoscaling": null
+        },
+        "buildCache": null,
+        "cdnEnabled": false,
+        "nestId": "prg1",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "autoscalingProfileOverrides": null
+    }
+  ]
+}

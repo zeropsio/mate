@@ -6,6 +6,7 @@
 import {
   type OrchestrationThreadActivity,
   SETTLED_ZEROPS_SERVICE_STATUSES,
+  type ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
 import {
   listShowcaseScenes,
@@ -32,6 +33,7 @@ import { decodeZeropsCard } from "./cards/payloads.ts";
 import { zeropsQuickActions } from "./quickActions.ts";
 import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
 import { zeropsStripState } from "./strip.ts";
+import type { ZeropsTopologyView } from "./topology.ts";
 
 const expected: Readonly<Record<string, unknown>> = expectedJson;
 const CARD_KINDS = ["deploy", "error", "import", "mount", "plan", "subdomain", "verify"] as const;
@@ -77,13 +79,49 @@ function expectKnownPhaseTotality(scene: ShowcaseScene): void {
   }
 }
 
+/**
+ * TEMPORARY, deleted once the scene contract itself moves to a captured
+ * `service-stack`/`process` pair (a follow-up slice, not S3): reshapes the
+ * still-server-shaped `zcp studio topology` scene snapshot
+ * (`ZeropsTopologySnapshot`, still read by `apps/server/src/zerops/
+ * ZeropsFixtureFeeds.ts` until S4 deletes that feed) into the client
+ * projection's `ZeropsTopologyView`, so this contract can exercise
+ * `serviceMap.ts`/`quickActions.ts`'s new input type without a second,
+ * parallel scene fixture. Drops `mounted`/`adoptionState`/`isManagedService`
+ * — exactly the fields S3 stops rendering.
+ */
+function viewFromScene(snapshot: ZeropsTopologySnapshot): ZeropsTopologyView | undefined {
+  if (!snapshot.available) return undefined;
+  const project = snapshot.project;
+  return {
+    project: {
+      id: project?.id ?? scenePlaceholderProjectId,
+      name: project?.name ?? "Showcase",
+      ...(project?.status === undefined ? {} : { status: project.status }),
+    },
+    services: snapshot.services.map((service) => ({
+      hostname: service.hostname,
+      serviceId: service.serviceId,
+      type: service.type,
+      status: service.status,
+      group: service.group,
+      transient: service.transient,
+      ...(service.subdomainUrl === undefined ? {} : { subdomainUrl: service.subdomainUrl }),
+      ports: [],
+    })),
+    warnings: snapshot.warnings,
+  };
+}
+const scenePlaceholderProjectId = "showcase-project";
+
 function scenePresentation(scene: ShowcaseScene) {
-  const map = buildZeropsServiceMap(scene.topology, scene.lifecycle);
+  const view = viewFromScene(scene.topology);
+  const map = buildZeropsServiceMap(view, scene.lifecycle);
   const strips = sceneLifecycles(scene).flatMap(({ lifecycle }) =>
     [false, true].map((pendingUserInput) => zeropsStripState(lifecycle, { pendingUserInput })),
   );
 
-  for (const service of scene.topology.services) {
+  for (const service of view?.services ?? []) {
     const tone = serviceStatusTone(service);
     const known = SETTLED_ZEROPS_SERVICE_STATUSES.some((status) => status === service.status);
     expect(["error", "outline", "warning"]).toContain(tone);
@@ -144,17 +182,15 @@ function scenePresentation(scene: ShowcaseScene) {
         ? { kind: "hidden" }
         : {
             kind: "visible",
-            degraded: map.degraded,
             groups: map.groups.map((group) => group.title),
-            liveness: map.liveness ?? null,
-            serviceTones: scene.topology.services.map(
+            serviceTones: (view?.services ?? []).map(
               (service) => `${service.hostname}:${service.status}:${serviceStatusTone(service)}`,
             ),
           },
     strips: strips.map((strip) => (strip === undefined ? null : `${strip.tone}:${strip.label}`)),
     agents,
     agentAuthNeedsAttention: zeropsAgentAuthNeedsAttention(scene.agentAuth),
-    quickActions: zeropsQuickActions(scene.topology).map(({ id, label }) => `${id}:${label}`),
+    quickActions: zeropsQuickActions(view).map(({ id, label }) => `${id}:${label}`),
     cards: cards.map(({ activityId, kind }) => `${activityId}:${kind}`),
   };
 }

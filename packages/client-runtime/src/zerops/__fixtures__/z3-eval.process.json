@@ -1,0 +1,313 @@
+{
+  "count": 4,
+  "total": 4,
+  "limit": 20,
+  "offset": 0,
+  "list": [
+    {
+      "id": "UMU0uD7dQmyu7vPX5BAurA",
+      "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "serviceStackId": "EmWgeZ4rTiK0Ajpm8iH83A",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "serviceStacks": [
+        {
+          "id": "EmWgeZ4rTiK0Ajpm8iH83A",
+          "created": "2026-08-28T18:21:50Z",
+          "lastUpdate": "2026-09-04T12:26:44Z",
+          "projectId": "nTV3oMB2SS634ImDJnQckg",
+          "serviceStackTypeId": "nginx",
+          "serviceStackTypeVersionId": "alpine_nginx_v1_22",
+          "driverId": "runtime",
+          "name": "weatherdash",
+          "serviceStackTypeInfo": {
+            "serviceStackTypeName": "Nginx static",
+            "serviceStackTypeCategory": "USER",
+            "serviceStackTypeVersionName": "alpine/nginx@1.22"
+          },
+          "ports": [
+            {
+              "protocol": "tcp",
+              "port": 80,
+              "description": "",
+              "scheme": "http"
+            }
+          ]
+        }
+      ],
+      "status": "FINISHED",
+      "sequence": 3,
+      "createdByUser": {
+        "type": "USER",
+        "id": "SbbWs0jmQyeElIA0T9qUxw",
+        "email": "k.hemza@seznam.cz",
+        "firstName": "Karlos",
+        "fullName": "Karlos",
+        "avatar": {
+          "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+          "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+          "externalAvatarUrl": null
+        }
+      },
+      "canceledByUser": null,
+      "actionName": "stack.restart",
+      "created": "2026-09-04T12:41:00.728Z",
+      "lastUpdate": "2026-09-04T12:41:25.404Z",
+      "started": "2026-09-04T12:41:00.74Z",
+      "finished": "2026-09-04T12:41:25.369Z",
+      "createdBySystem": false,
+      "appVersion": null,
+      "publicMeta": null,
+      "error": null
+    },
+    {
+      "id": "Us7AByMSQUWzMCBFTZ2Fzg",
+      "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "serviceStackId": "EmWgeZ4rTiK0Ajpm8iH83A",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "serviceStacks": [
+        {
+          "id": "EmWgeZ4rTiK0Ajpm8iH83A",
+          "created": "2026-08-28T18:21:50Z",
+          "lastUpdate": "2026-09-03T14:15:22Z",
+          "projectId": "nTV3oMB2SS634ImDJnQckg",
+          "serviceStackTypeId": "nginx",
+          "serviceStackTypeVersionId": "alpine_nginx_v1_22",
+          "driverId": "runtime",
+          "name": "weatherdash",
+          "serviceStackTypeInfo": {
+            "serviceStackTypeName": "Nginx static",
+            "serviceStackTypeCategory": "USER",
+            "serviceStackTypeVersionName": "alpine/nginx@1.22"
+          },
+          "ports": [
+            {
+              "protocol": "tcp",
+              "port": 80,
+              "description": "",
+              "scheme": "http"
+            }
+          ]
+        }
+      ],
+      "status": "FINISHED",
+      "sequence": 2,
+      "createdByUser": {
+        "type": "USER",
+        "id": "SbbWs0jmQyeElIA0T9qUxw",
+        "email": "k.hemza@seznam.cz",
+        "firstName": "Karlos",
+        "fullName": "Karlos",
+        "avatar": {
+          "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+          "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+          "externalAvatarUrl": null
+        }
+      },
+      "canceledByUser": null,
+      "actionName": "stack.restart",
+      "created": "2026-09-04T12:26:27.623Z",
+      "lastUpdate": "2026-09-04T12:26:43.67Z",
+      "started": "2026-09-04T12:26:27.635Z",
+      "finished": "2026-09-04T12:26:43.637Z",
+      "createdBySystem": false,
+      "appVersion": null,
+      "publicMeta": null,
+      "error": null
+    },
+    {
+      "id": "obj0pFQISWe9B8Ay7IdnXg",
+      "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "serviceStackId": "yhemdZ8CRVCGvAqa4OfnTA",
+      "project": null,
+      "serviceStacks": [
+        {
+          "id": "yhemdZ8CRVCGvAqa4OfnTA",
+          "created": "2026-08-28T10:56:49Z",
+          "lastUpdate": "2026-08-28T10:57:17Z",
+          "projectId": "nTV3oMB2SS634ImDJnQckg",
+          "serviceStackTypeId": "core",
+          "serviceStackTypeVersionId": "core_v2_single",
+          "driverId": "core_single",
+          "name": "core",
+          "serviceStackTypeInfo": {
+            "serviceStackTypeName": "Core",
+            "serviceStackTypeCategory": "CORE",
+            "serviceStackTypeVersionName": "core:single@2"
+          },
+          "ports": []
+        }
+      ],
+      "status": "FINISHED",
+      "sequence": 20,
+      "createdByUser": {
+        "type": "SYSTEM",
+        "id": "AQoKAgMOAwcDCAIJBAcKAg",
+        "email": "zerops@zerops.io",
+        "firstName": "zerops",
+        "fullName": "zerops",
+        "avatar": null
+      },
+      "canceledByUser": null,
+      "actionName": "zL7Master.checkDomains",
+      "created": "2026-09-04T09:15:50.099Z",
+      "lastUpdate": "2026-09-04T09:15:50.259Z",
+      "started": "2026-09-04T09:15:50.109Z",
+      "finished": "2026-09-04T09:15:50.227Z",
+      "createdBySystem": false,
+      "appVersion": null,
+      "publicMeta": null,
+      "error": null
+    },
+    {
+      "id": "MJBB3BhQR3uYMvuAea7cqw",
+      "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+      "projectId": "nTV3oMB2SS634ImDJnQckg",
+      "serviceStackId": "EmWgeZ4rTiK0Ajpm8iH83A",
+      "project": {
+        "id": "nTV3oMB2SS634ImDJnQckg",
+        "clientId": "BkC8AGjFQMyFrLbzjHoE9g",
+        "name": "z3-eval",
+        "description": "",
+        "tagList": [],
+        "status": "ACTIVE",
+        "created": "2026-08-28T10:56:49Z",
+        "lastUpdate": "2026-08-28T10:57:18Z",
+        "recipeSource": null,
+        "recipeSourceUrl": null
+      },
+      "serviceStacks": [
+        {
+          "id": "EmWgeZ4rTiK0Ajpm8iH83A",
+          "created": "2026-08-28T18:21:50Z",
+          "lastUpdate": "2026-08-28T18:25:13Z",
+          "projectId": "nTV3oMB2SS634ImDJnQckg",
+          "serviceStackTypeId": "nginx",
+          "serviceStackTypeVersionId": "alpine_nginx_v1_22",
+          "driverId": "runtime",
+          "name": "weatherdash",
+          "serviceStackTypeInfo": {
+            "serviceStackTypeName": "Nginx static",
+            "serviceStackTypeCategory": "USER",
+            "serviceStackTypeVersionName": "alpine/nginx@1.22"
+          },
+          "ports": [
+            {
+              "protocol": "tcp",
+              "port": 80,
+              "description": "",
+              "scheme": "http"
+            }
+          ]
+        },
+        {
+          "id": "makmWzfnQUOjhgcbiePpqg",
+          "created": "2026-09-03T14:14:16Z",
+          "lastUpdate": "2026-09-03T14:14:16Z",
+          "projectId": "nTV3oMB2SS634ImDJnQckg",
+          "serviceStackTypeId": "build_runtime",
+          "serviceStackTypeVersionId": "alpine_build_runtime",
+          "driverId": "runtime",
+          "name": "buildweatherdashv1788444856",
+          "serviceStackTypeInfo": {
+            "serviceStackTypeName": "build runtime",
+            "serviceStackTypeCategory": "BUILD",
+            "serviceStackTypeVersionName": "alpine/build_runtime"
+          },
+          "ports": []
+        }
+      ],
+      "status": "FINISHED",
+      "sequence": 1,
+      "createdByUser": {
+        "type": "USER",
+        "id": "SbbWs0jmQyeElIA0T9qUxw",
+        "email": "k.hemza@seznam.cz",
+        "firstName": "Karlos",
+        "fullName": "Karlos",
+        "avatar": {
+          "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+          "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+          "externalAvatarUrl": null
+        }
+      },
+      "canceledByUser": null,
+      "actionName": "stack.build",
+      "created": "2026-09-03T14:14:16.636Z",
+      "lastUpdate": "2026-09-03T14:15:23.086Z",
+      "started": "2026-09-03T14:14:16.679Z",
+      "finished": "2026-09-03T14:15:23.058Z",
+      "createdBySystem": false,
+      "appVersion": {
+        "id": "tvqzbN3NRAOlBdq5z7zMJw",
+        "serviceStackId": "EmWgeZ4rTiK0Ajpm8iH83A",
+        "projectId": "nTV3oMB2SS634ImDJnQckg",
+        "status": "ACTIVE",
+        "source": "CLI",
+        "os": "alpine",
+        "base": "alpine/nginx@1.22",
+        "sequence": 3,
+        "name": "mate-observe-check",
+        "created": "2026-09-03T14:14:16Z",
+        "build": {
+          "serviceStackId": "makmWzfnQUOjhgcbiePpqg",
+          "serviceStackName": "buildweatherdashv1788444856",
+          "serviceStackTypeVersionId": "alpine_build_runtime",
+          "serviceStackTypeVersionName": null,
+          "pipelineStart": "2026-09-03T14:14:16.824671109Z",
+          "pipelineFinish": "2026-09-03T14:15:20.570792797Z",
+          "pipelineFailed": null,
+          "containerCreationStart": "2026-09-03T14:14:19.164292357Z",
+          "startDate": "2026-09-03T14:14:27.140086848Z",
+          "endDate": "2026-09-03T14:14:27.911363525Z",
+          "cacheSnapshotId": null
+        },
+        "prepareCustomRuntime": null,
+        "githubIntegration": null,
+        "gitlabIntegration": null,
+        "createdByUser": {
+          "type": "USER",
+          "id": "SbbWs0jmQyeElIA0T9qUxw",
+          "email": "k.hemza@seznam.cz",
+          "firstName": "Karlos",
+          "fullName": "Karlos",
+          "avatar": {
+            "largeAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-large.jpg?v=1777877677",
+            "smallAvatarUrl": "https://storage-prg1.zerops.io/4g-avatar/SbbWs0jmQyeElIA0T9qUxw-small.jpg?v=1777877677",
+            "externalAvatarUrl": null
+          }
+        },
+        "activationDate": "2026-09-03T14:15:20.621367472Z",
+        "publicGitSource": null,
+        "configContent": "build:\n    base: alpine/nodejs@22\n    deployFiles: .\nrun:\n    os: alpine\n    base: alpine/nginx@1.22\n    ports:\n        - port: 80\n          httpSupport: true\n",
+        "zeropsYamlJson": "{\n\t\t\"build\": {\n\t\t\t\"base\": [\n\t\t\t\t\"alpine/nodejs@22\"\n\t\t\t],\n\t\t\t\"deployFiles\": [\n\t\t\t\t\".\"\n\t\t\t],\n\t\t\t\"cache\": null\n\t\t},\n\t\t\"run\": {\n\t\t\t\"os\": \"alpine\",\n\t\t\t\"base\": \"alpine/nginx@1.22\",\n\t\t\t\"ports\": [\n\t\t\t\t{\n\t\t\t\t\t\"port\": 80,\n\t\t\t\t\t\"httpSupport\": true\n\t\t\t\t}\n\t\t\t]\n\t\t}\n\t}"
+      },
+      "publicMeta": null,
+      "error": null
+    }
+  ]
+}

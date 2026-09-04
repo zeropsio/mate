@@ -5,8 +5,11 @@ import {
   ZeropsApiClient,
   ZeropsApiError,
   buildZeropsContainerUrl,
+  servicePortOrigin,
   zeropsClientsFromUser,
   zeropsRegionFromPublicZone,
+  type ZeropsProject,
+  type ZeropsService,
 } from "./api.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
@@ -70,6 +73,51 @@ describe("buildZeropsContainerUrl", () => {
     expect(buildZeropsContainerUrl("zcp", "24cb", 8080, "prg1")).toBe(
       "https://zcp-24cb-8080.prg1.zerops.app",
     );
+  });
+});
+
+describe("servicePortOrigin", () => {
+  const project: ZeropsProject = {
+    id: "p1",
+    name: "z3-eval",
+    status: "ACTIVE",
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "26a7",
+  };
+  const service: ZeropsService = {
+    id: "s1",
+    name: "weatherdash",
+    status: "ACTIVE",
+    subdomainAccess: true,
+  };
+
+  it("composes the origin for a subdomain-enabled http port", () => {
+    expect(servicePortOrigin(project, service, { port: 80, scheme: "http" })).toBe(
+      "https://weatherdash-26a7-80.prg1.zerops.app",
+    );
+  });
+
+  it("has no origin when the service's subdomain access is off", () => {
+    expect(
+      servicePortOrigin(
+        project,
+        { ...service, subdomainAccess: false },
+        { port: 80, scheme: "http" },
+      ),
+    ).toBeUndefined();
+  });
+
+  it("has no origin for a non-http port even when subdomain access is on", () => {
+    expect(servicePortOrigin(project, service, { port: 3306, scheme: "mysql" })).toBeUndefined();
+  });
+
+  it("has no origin when the project carries no public subdomain", () => {
+    expect(
+      servicePortOrigin({ id: "p1", name: "z3-eval", status: "ACTIVE" }, service, {
+        port: 80,
+        scheme: "http",
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -731,6 +779,91 @@ describe("ZeropsApiClient.fetchProjectLogAccess", () => {
     expect((error as ZeropsApiError).kind).toBe("expired-session");
     expect(onSessionChange).not.toHaveBeenCalled();
     expect(client.session).toEqual(SESSION);
+  });
+});
+
+describe("ZeropsApiClient.exchangeWebSocketToken", () => {
+  it("trades the access token for a webSocketToken", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { webSocketToken: "ws-token-1" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.exchangeWebSocketToken();
+
+    expect(result).toEqual({ webSocketToken: "ws-token-1" });
+    expect(stub.requests[0]?.method).toBe("POST");
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/web-socket/login`,
+    );
+    expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ token: SESSION.accessToken });
+  });
+
+  it("refuses without a session rather than calling the platform", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { webSocketToken: "ws-token-1" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    const error = await client.exchangeWebSocketToken().catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(stub.requests).toHaveLength(0);
+  });
+});
+
+describe("ZeropsApiClient.subscribeProjectSearch", () => {
+  it("posts a list subscription for ServiceStack", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("service-stack", {
+      orgId: "org-1",
+      projectId: "proj-1",
+      receiverId: "receiver-1",
+      mode: "list",
+    });
+
+    expect(stub.requests[0]?.method).toBe("POST");
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/search`,
+    );
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      search: [
+        { name: "clientId", operator: "eq", value: "org-1" },
+        { name: "projectId", operator: "eq", value: "proj-1" },
+      ],
+      sort: [],
+      subscriptionName: "ServiceStack__list-subscription",
+      receiverId: "receiver-1",
+      wsOutputType: "listStream",
+    });
+  });
+
+  it("posts an update subscription for Process with disableOutput", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("process", {
+      orgId: "org-1",
+      projectId: "proj-1",
+      receiverId: "receiver-1",
+      mode: "update",
+    });
+
+    expect(stub.requests[0]?.url).toBe(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/process/search`);
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      search: [
+        { name: "clientId", operator: "eq", value: "org-1" },
+        { name: "projectId", operator: "eq", value: "proj-1" },
+      ],
+      sort: [],
+      subscriptionName: "Process__update-subscription",
+      receiverId: "receiver-1",
+      wsOutputType: "updateStream",
+      disableOutput: true,
+    });
   });
 });
 

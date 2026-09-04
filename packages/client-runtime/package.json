@@ -251,6 +251,10 @@
       "types": "./src/zerops/registrationHandoff.ts",
       "default": "./src/zerops/registrationHandoff.ts"
     },
+    "./zerops/platformWatch": {
+      "types": "./src/zerops/platformWatch.ts",
+      "default": "./src/zerops/platformWatch.ts"
+    },
     "./zerops/serviceMap": {
       "types": "./src/zerops/serviceMap.ts",
       "default": "./src/zerops/serviceMap.ts"
@@ -266,6 +270,10 @@
     "./zerops/statusPresentation": {
       "types": "./src/zerops/statusPresentation.ts",
       "default": "./src/zerops/statusPresentation.ts"
+    },
+    "./zerops/topology": {
+      "types": "./src/zerops/topology.ts",
+      "default": "./src/zerops/topology.ts"
     }
   },
   "scripts": {
