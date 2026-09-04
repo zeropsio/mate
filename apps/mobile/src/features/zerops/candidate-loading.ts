@@ -1,7 +1,8 @@
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+
+export { loadOrganizationProjects } from "@t3tools/client-runtime/zerops/candidateLoading";
 
 export const MOBILE_ZEROPS_HEALTH_TIMEOUT_MS = 8_000;
 
@@ -50,29 +51,4 @@ export async function probeCandidateHealth(
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
-}
-
-export async function loadOrganizationProjects(
-  organizationIds: ReadonlyArray<string>,
-  load: (organizationId: string) => Promise<ReadonlyArray<ZeropsProject>>,
-): Promise<{
-  readonly projects: ReadonlyArray<ZeropsProject>;
-  readonly failures: ReadonlyArray<{ readonly organizationId: string; readonly cause: unknown }>;
-}> {
-  const outcomes = await Promise.allSettled(
-    organizationIds.map(async (organizationId) => ({
-      organizationId,
-      projects: await load(organizationId),
-    })),
-  );
-  const projects: ZeropsProject[] = [];
-  const failures: Array<{ organizationId: string; cause: unknown }> = [];
-  outcomes.forEach((outcome, index) => {
-    if (outcome.status === "fulfilled") {
-      projects.push(...outcome.value.projects);
-      return;
-    }
-    failures.push({ organizationId: organizationIds[index] ?? "unknown", cause: outcome.reason });
-  });
-  return { projects, failures };
 }

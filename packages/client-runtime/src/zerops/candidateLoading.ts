@@ -86,7 +86,8 @@ export async function loadOrganizationProjects(
   return { projects, failures };
 }
 
-async function resolveWithConcurrency<T>(
+/** Runs `run` over `items`, never more than `limit` calls in flight at once. */
+export async function resolveWithConcurrency<T>(
   items: ReadonlyArray<T>,
   limit: number,
   isCancelled: () => boolean,
