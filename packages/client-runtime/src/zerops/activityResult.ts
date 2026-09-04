@@ -11,6 +11,14 @@
  * nothing, and every absent or unrecognised shape has the same meaning to a
  * caller — no text, render the generic tool block.
  */
+/** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot). */
+export interface ZeropsActivityResultImage {
+  readonly mimeType: string;
+  readonly data: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export interface ZeropsActivityResult {
   /** Tool name without the `mcp__<server>__` prefix, e.g. `zerops_deploy`. */
   readonly toolName: string;
@@ -21,10 +29,41 @@ export interface ZeropsActivityResult {
   readonly resultText?: string;
   /** The server had text but it was too large to send. Never a partial text. */
   readonly truncated?: boolean;
+  /** Image content blocks the result carried (e.g. a `zerops_browser` screenshot). */
+  readonly images?: ReadonlyArray<ZeropsActivityResultImage>;
+  /** At least one image was dropped for exceeding its own cap. */
+  readonly imagesDropped?: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** A malformed entry is dropped rather than failing the whole array — one bad image must not blank every other field this reader carries. */
+function readImages(value: unknown): ReadonlyArray<ZeropsActivityResultImage> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const images: ZeropsActivityResultImage[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const { mimeType, data, width, height } = entry;
+    if (typeof mimeType !== "string" || mimeType.length === 0) {
+      continue;
+    }
+    if (typeof data !== "string" || data.length === 0) {
+      continue;
+    }
+    images.push({
+      mimeType,
+      data,
+      ...(typeof width === "number" ? { width } : {}),
+      ...(typeof height === "number" ? { height } : {}),
+    });
+  }
+  return images.length > 0 ? images : undefined;
+}
 
 /**
  * The Zerops result on an activity payload's `data`, or undefined when there is
@@ -45,9 +84,12 @@ export function readZeropsActivityResult(data: unknown): ZeropsActivityResult | 
   if (typeof toolName !== "string" || toolName.length === 0) {
     return undefined;
   }
+  const images = readImages(zerops.images);
   return {
     toolName,
     ...(typeof zerops.resultText === "string" ? { resultText: zerops.resultText } : {}),
     ...(zerops.truncated === true ? { truncated: true } : {}),
+    ...(images !== undefined ? { images } : {}),
+    ...(zerops.imagesDropped === true ? { imagesDropped: true } : {}),
   };
 }

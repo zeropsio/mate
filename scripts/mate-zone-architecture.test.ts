@@ -502,6 +502,7 @@ const PROTECTED_WS_READ_METHODS = new Set([
   "zeropsLifecycleGet",
   "subscribeZeropsLifecycle",
   "subscribeZeropsAgentAuth",
+  "subscribeZeropsBrowserStream",
 ]);
 const PROTECTED_WS_ALLOWED_COMMAND_METHODS = new Set([
   "zeropsAgentLoginStart",

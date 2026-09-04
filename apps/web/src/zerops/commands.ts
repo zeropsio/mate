@@ -3,6 +3,7 @@
  *
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
+ * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  *
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
@@ -25,5 +26,10 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsAgentLoginCancel,
   });
 
-  return { agentLoginStart, agentLoginCancel };
+  const browserInput = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:browserInput",
+    tag: WS_METHODS.zeropsBrowserInput,
+  });
+
+  return { agentLoginStart, agentLoginCancel, browserInput };
 }

@@ -2132,6 +2132,7 @@ export function deriveZeropsOperations(
         ? { resultText: entry.zeropsResult.resultText }
         : {}),
       ...(entry.zeropsResult?.truncated === true ? { truncated: true } : {}),
+      ...(entry.zeropsResult?.images !== undefined ? { images: entry.zeropsResult.images } : {}),
     });
   }
   return reduceZeropsOperations(callEntries);

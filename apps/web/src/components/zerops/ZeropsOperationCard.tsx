@@ -127,10 +127,10 @@ export function ZeropsOperationCard(props: {
   readonly devServerUrl?: string;
   /**
    * `browser` only: the screenshot the caller resolved from the provider's
-   * own tool-result image content, when the SPI event carries one — as of
-   * this slice `apps/server/src/spi/toolCall.ts` reads only text content
-   * blocks, so nothing supplies this prop yet and the card renders without
-   * a thumbnail.
+   * own tool-result image content, when the SPI event carries one
+   * (`browserScreenshotFor`, `useOperationCard.ts`, S8b) — a provider that
+   * drops the image content block (unmeasured per provider as of S8b)
+   * leaves this absent and the card renders without a thumbnail.
    */
   readonly browserScreenshot?: BrowserScreenshot;
   /** For tests; defaults to `Date.now()` via a 1 s tick while running. */

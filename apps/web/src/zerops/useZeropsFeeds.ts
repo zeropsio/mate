@@ -25,8 +25,12 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
 } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
+import {
+  INITIAL_BROWSER_STREAM_STATE,
+  type ZeropsBrowserStreamState,
+} from "@t3tools/client-runtime/zerops/browserStream";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
 
@@ -61,4 +65,27 @@ export function useZeropsAgentAuth(
   return useAtomValue(
     environmentId === null ? EMPTY_ATOM : zeropsFeeds.agentAuthValue({ environmentId, input: {} }),
   );
+}
+
+/**
+ * `undefined` — no environment, nothing to show. `"unavailable"` — the
+ * subscription itself failed (a server without `subscribeZeropsBrowserStream`,
+ * 0.2.5 and older): the panel says so, never an error toast. Otherwise the
+ * accumulated `{status, url, frame}` snapshot (`foldBrowserStreamEvent`).
+ */
+export type ZeropsBrowserStreamRead = ZeropsBrowserStreamState | "unavailable" | undefined;
+
+export function useZeropsBrowserStream(
+  environmentId: EnvironmentId | null,
+): ZeropsBrowserStreamRead {
+  const result = useAtomValue(
+    environmentId === null ? EMPTY_ATOM : zeropsFeeds.browserStream({ environmentId, input: {} }),
+  );
+  if (environmentId === null || result === undefined) {
+    return undefined;
+  }
+  if (AsyncResult.isFailure(result)) {
+    return "unavailable";
+  }
+  return AsyncResult.getOrElse(result, () => INITIAL_BROWSER_STREAM_STATE);
 }

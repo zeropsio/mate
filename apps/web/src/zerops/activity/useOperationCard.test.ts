@@ -10,6 +10,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations"
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import {
+  browserScreenshotFor,
   deriveObservedStepsRegion,
   devServerUrlFor,
   observationTargetFor,
@@ -105,6 +106,22 @@ function topology(overrides: Partial<ZeropsTopologyView> = {}): ZeropsTopologyVi
     ...overrides,
   };
 }
+
+describe("browserScreenshotFor — the thumbnail from a browser operation's own screenshot", () => {
+  it("resolves the screenshot for a browser operation that has one", () => {
+    const screenshot = { src: "data:image/jpeg;base64,AAAA", width: 640, height: 360 };
+    expect(browserScreenshotFor(operation({ kind: "browser", screenshot }))).toEqual(screenshot);
+  });
+
+  it("is undefined for a browser operation with no screenshot", () => {
+    expect(browserScreenshotFor(operation({ kind: "browser" }))).toBeUndefined();
+  });
+
+  it("is undefined for a non-browser operation even if it somehow carried a screenshot field", () => {
+    const screenshot = { src: "data:image/jpeg;base64,AAAA" };
+    expect(browserScreenshotFor(operation({ kind: "deploy", screenshot }))).toBeUndefined();
+  });
+});
 
 describe("devServerUrlFor — the Open link from the topology view", () => {
   it("resolves the dev-server Open link from the topology view by hostname", () => {

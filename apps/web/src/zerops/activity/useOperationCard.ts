@@ -30,7 +30,10 @@ import type {
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
-import type { ObservedRegion } from "../../components/zerops/ZeropsOperationCard";
+import type {
+  BrowserScreenshot,
+  ObservedRegion,
+} from "../../components/zerops/ZeropsOperationCard";
 import { useZeropsTopology } from "../useZeropsFeeds.ts";
 import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
 
@@ -153,9 +156,15 @@ export function deriveObservedStepsRegion(
   };
 }
 
+/** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
+export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreenshot | undefined {
+  return operation.kind === "browser" ? operation.screenshot : undefined;
+}
+
 export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
   readonly devServerUrl?: string;
+  readonly browserScreenshot?: BrowserScreenshot;
 }
 
 export function useOperationCard(
@@ -169,15 +178,18 @@ export function useOperationCard(
 
   const devServerUrl = devServerUrlFor(operation, topology);
   const devServerUrlField = devServerUrl === undefined ? {} : { devServerUrl };
+  const browserScreenshot = browserScreenshotFor(operation);
+  const browserScreenshotField = browserScreenshot === undefined ? {} : { browserScreenshot };
 
   const region = deriveObservedStepsRegion(operation.phase, state, history, Date.now());
   if (region === undefined) {
-    return devServerUrlField;
+    return { ...devServerUrlField, ...browserScreenshotField };
   }
   if (region.buildLogQuery === undefined) {
     return {
       observed: { steps: region.steps, provenance: region.provenance },
       ...devServerUrlField,
+      ...browserScreenshotField,
     };
   }
 
@@ -191,5 +203,6 @@ export function useOperationCard(
   return {
     observed: { steps: region.steps, provenance: region.provenance, log },
     ...devServerUrlField,
+    ...browserScreenshotField,
   };
 }

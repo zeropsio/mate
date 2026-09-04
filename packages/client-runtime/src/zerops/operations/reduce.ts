@@ -1164,10 +1164,21 @@ function buildBrowserOperation(group: OperationGroup): ZeropsOperation {
             })
           : "Finished.";
 
+  const firstImage = entry.images?.[0];
+  const screenshot =
+    firstImage !== undefined
+      ? {
+          src: `data:${firstImage.mimeType};base64,${firstImage.data}`,
+          ...(firstImage.width !== undefined ? { width: firstImage.width } : {}),
+          ...(firstImage.height !== undefined ? { height: firstImage.height } : {}),
+        }
+      : undefined;
+
   return {
     ...baseFields(group),
     kind: "browser",
     phase,
+    ...(screenshot !== undefined ? { screenshot } : {}),
     ...(settledAt !== undefined ? { settledAt } : {}),
     subject,
     kicker: `${KIND_LABEL.browser} · ${subject}`,
