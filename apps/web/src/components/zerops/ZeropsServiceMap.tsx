@@ -6,7 +6,7 @@
  * owns every change to the project, and the one action offered here opens a URL
  * the feed already carries.
  */
-import { ExternalLinkIcon, FolderOpenIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 
 import type {
   ZeropsServiceMapGroup,
@@ -14,8 +14,9 @@ import type {
   ZeropsServiceRow,
   ZeropsServiceTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { ZeropsService } from "@t3tools/contracts";
-import { Chip, FlatCard, LivenessLine, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
+import type { ProjectTopologyLiveness } from "../../zerops/projectTopologyWatcher";
+import { FlatCard, LivenessLine, MicroLabel, MintPanel, StatusDot } from "./primitives";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok"> = {
   error: "failed",
@@ -29,7 +30,7 @@ function ServiceLine({
   typeLabel,
   nameLabel,
 }: {
-  service: ZeropsService;
+  service: ZeropsTopologyService;
   tone: ZeropsServiceTone;
   typeLabel?: string;
   nameLabel?: string;
@@ -53,16 +54,6 @@ function ServiceLine({
         pulse={service.transient}
         tone={STATUS_TONE[tone]}
       />
-      {service.mounted ? (
-        <span className="inline-flex min-w-0 max-w-full items-start gap-1 text-muted-foreground">
-          <FolderOpenIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-          <Chip
-            className="min-w-0 max-w-full whitespace-normal break-all"
-            label={service.mountPath ?? "mounted"}
-            tone="off"
-          />
-        </span>
-      ) : null}
       {service.subdomainUrl === undefined ? null : (
         <a
           className="inline-flex items-center gap-1 text-xs font-medium text-info-foreground hover:underline"
@@ -79,7 +70,10 @@ function ServiceLine({
 }
 
 function ServiceRow({ row }: { row: ZeropsServiceRow }) {
-  const isControlPlane = row.service.adoptionState === "zcp-self";
+  // `adoptionState` is gone (a `zcp studio topology`-only fact); the
+  // infrastructure group is, by the client projection's own grouping rule,
+  // the zcp container and nothing else.
+  const isControlPlane = row.service.group === "infrastructure";
   const content = (
     <>
       <ServiceLine
@@ -139,27 +133,33 @@ function ServiceGroup({ group }: { group: ZeropsServiceMapGroup }) {
   );
 }
 
-export function ZeropsServiceMap({ view }: { view: ZeropsServiceMapView | undefined }) {
-  // No feed, or not a Zerops environment: the panel is absent, not empty.
+export function ZeropsServiceMap({
+  view,
+  liveness,
+  error,
+}: {
+  readonly view: ZeropsServiceMapView | undefined;
+  /** The platform-websocket connection's own state — `useProjectTopology`'s signal, not the view's. */
+  readonly liveness?: ProjectTopologyLiveness | undefined;
+  /** The most recent `listProjectServices` read's failure, if the last one failed. */
+  readonly error?: string | undefined;
+}) {
+  // No view yet — no session, no resolved project, or the first read still pending.
   if (view === undefined) {
     return null;
   }
 
   return (
     <div className="space-y-4" data-zerops-service-map>
-      {view.degraded ? (
-        <LivenessLine
-          data-zerops-map-degraded="true"
-          label={view.degradedReason ?? "Last read failed · retrying"}
-          state="last-read-failed"
-        />
-      ) : view.liveness === "live" ? (
+      {error !== undefined ? (
+        <LivenessLine data-zerops-map-degraded="true" label={error} state="last-read-failed" />
+      ) : liveness === "live" ? (
         <LivenessLine
           data-zerops-map-liveness="live"
           label="Live · updated just now"
           state="live"
         />
-      ) : view.liveness === "polling" ? (
+      ) : liveness === "polling" ? (
         <LivenessLine
           data-zerops-map-liveness="polling"
           label="Live updates reconnecting · polling"

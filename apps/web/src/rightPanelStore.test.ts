@@ -151,18 +151,6 @@ describe("rightPanelStore", () => {
     expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({});
   });
 
-  it("remembers unavailable topology without opening a panel", () => {
-    useRightPanelStore.getState().ensureZeropsDefault(refA, {
-      topology: "unavailable",
-      usesSheet: false,
-    });
-
-    expect(useRightPanelStore.getState().byThreadKey).toEqual({});
-    expect(useRightPanelStore.getState().zeropsDefaultHandledByThreadKey).toEqual({
-      "env-1:thread-A": true,
-    });
-  });
-
   it("migrates prior panel choices as already handled and preserves persisted markers", () => {
     expect(
       migratePersistedRightPanelState({

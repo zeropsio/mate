@@ -3,8 +3,8 @@ import {
   ThreadId,
   type ScopedThreadRef,
   type ZeropsAgentAuthSnapshot,
-  type ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import * as DateTime from "effect/DateTime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -13,8 +13,20 @@ const buttonState = vi.hoisted(() => ({
   handlers: new Map<string, () => void>(),
 }));
 
+interface TopologySnapshot {
+  readonly view: ZeropsTopologyView | undefined;
+  readonly liveness: "live" | "polling" | undefined;
+  readonly lastReadAt: number | undefined;
+  readonly error: string | undefined;
+}
+
 const feedState = vi.hoisted(() => ({
-  topology: undefined as ZeropsTopologySnapshot | undefined,
+  topology: {
+    view: undefined,
+    liveness: undefined,
+    lastReadAt: undefined,
+    error: undefined,
+  } as TopologySnapshot,
 }));
 
 const actions = vi.hoisted(() => ({
@@ -23,8 +35,11 @@ const actions = vi.hoisted(() => ({
   terminalSurface: null as string | null,
 }));
 
+vi.mock("../../zerops/useProjectTopology", () => ({
+  useProjectTopology: () => feedState.topology,
+}));
+
 vi.mock("../../zerops/useZeropsFeeds", () => ({
-  useZeropsTopology: () => feedState.topology,
   useZeropsLifecycle: () => undefined,
   useZeropsAgentAuth: () => {
     throw new Error("ZeropsPanel must not consult the agent-auth feed");
@@ -71,13 +86,22 @@ const THREAD_REF: ScopedThreadRef = {
   threadId: ThreadId.make("thread-1"),
 };
 
-const TOPOLOGY: ZeropsTopologySnapshot = {
-  available: true,
-  degraded: false,
+const VIEW: ZeropsTopologyView = {
+  project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
   services: [],
   warnings: [],
-  readAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
 };
+
+const resolved = (
+  view: ZeropsTopologyView | undefined,
+  overrides: Partial<Omit<TopologySnapshot, "view">> = {},
+): TopologySnapshot => ({
+  view,
+  liveness: "live",
+  lastReadAt: 1_756_382_400_000,
+  error: undefined,
+  ...overrides,
+});
 
 const AGENT_AUTH: ZeropsAgentAuthSnapshot = {
   available: true,
@@ -140,34 +164,31 @@ beforeEach(() => {
   actions.signIn.mockReset();
   actions.terminalSurface = null;
   buttonState.handlers.clear();
+  feedState.topology = {
+    view: undefined,
+    liveness: undefined,
+    lastReadAt: undefined,
+    error: undefined,
+  };
 });
 
 /**
- * The map is absent for two different reasons and they must not share a
- * sentence. The panel's tab is persisted per thread, so a reload renders this
- * surface before the first snapshot arrives — and "not a Zerops project" then
- * is a confident lie about the very project the user is looking at, told for
- * the second or so before the feed answers.
+ * The client can no longer tell "still resolving which project this is"
+ * apart from "never will" (that was `zcp studio topology`'s `available:
+ * false`, a fact only the container's own zcp binary could state), so one
+ * honest, non-committal message covers the whole absent-view case.
  */
 describe("ZeropsPanelPlaceholder", () => {
-  it("says it is still reading while the first snapshot is in flight", () => {
-    const html = renderToStaticMarkup(<ZeropsPanelPlaceholder waiting />);
+  it("says it is reading the project", () => {
+    const html = renderToStaticMarkup(<ZeropsPanelPlaceholder />);
 
     expect(html).toContain("Reading the project");
-    expect(html).not.toContain("not a Zerops project");
-  });
-
-  it("says there is no Zerops here only once the feed has answered", () => {
-    const html = renderToStaticMarkup(<ZeropsPanelPlaceholder waiting={false} />);
-
-    expect(html).toContain("This environment is not a Zerops project.");
-    expect(html).not.toContain("Reading the project");
   });
 });
 
 describe("ZeropsPanel agent authorization ownership", () => {
   it("centers dense project content at a readable maximum width", () => {
-    feedState.topology = TOPOLOGY;
+    feedState.topology = resolved(VIEW);
     const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
 
     expect(html).toContain("mx-auto");
@@ -178,25 +199,25 @@ describe("ZeropsPanel agent authorization ownership", () => {
     {
       name: "no card when handed null even though the auth feed reports attention",
       agentAuthCard: null,
-      topology: TOPOLOGY,
+      view: VIEW,
       rendersCard: false,
     },
     {
       name: "a resolver-owned snapshot",
       agentAuthCard: AGENT_AUTH,
-      topology: TOPOLOGY,
+      view: VIEW,
       rendersCard: true,
     },
     {
       name: "a resolver-owned snapshot before topology answers",
       agentAuthCard: AGENT_AUTH,
-      topology: undefined,
+      view: undefined,
       rendersCard: true,
     },
   ])(
     "renders authorization exactly once inside the project panel: $name",
-    ({ agentAuthCard, topology, rendersCard }) => {
-      feedState.topology = topology;
+    ({ agentAuthCard, view, rendersCard }) => {
+      feedState.topology = view === undefined ? resolved(undefined) : resolved(view);
       const html = renderToStaticMarkup(
         <ZeropsPanel agentAuthCard={agentAuthCard} threadRef={THREAD_REF} />,
       );
@@ -215,15 +236,15 @@ describe("ZeropsPanel agent authorization ownership", () => {
     {
       name: "not authorized while topology is pending",
       snapshot: AGENT_AUTH,
-      topology: undefined,
+      topology: resolved(undefined),
       label: "Sign in to Codex",
       expectedSignIn: false,
       expectedCancel: false,
     },
     {
-      name: "login in progress while topology is degraded",
+      name: "login in progress while the last read failed",
       snapshot: LOGIN_IN_PROGRESS,
-      topology: { ...TOPOLOGY, degraded: true, reason: "last read failed" },
+      topology: resolved(VIEW, { error: "last read failed" }),
       label: "Cancel",
       expectedSignIn: false,
       expectedCancel: true,
@@ -231,7 +252,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
     {
       name: "authorized",
       snapshot: AUTHORIZED,
-      topology: TOPOLOGY,
+      topology: resolved(VIEW),
       label: null,
       expectedSignIn: false,
       expectedCancel: false,
@@ -239,7 +260,7 @@ describe("ZeropsPanel agent authorization ownership", () => {
     {
       name: "cancelled login returns to sign in",
       snapshot: CANCELLED,
-      topology: TOPOLOGY,
+      topology: resolved(VIEW),
       label: "Sign in to Codex",
       expectedSignIn: false,
       expectedCancel: false,

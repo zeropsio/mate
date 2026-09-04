@@ -207,11 +207,11 @@ export function useOperationObservation(
 
   const serviceIds = useMemo(() => serviceIdsFor(target, topology?.services), [target, topology]);
 
-  const projectId = topology?.project?.id;
+  const projectId = topology?.project.id;
   const signedIn = session !== null && session.status === "signed-in";
   const attributable =
     signedIn &&
-    topology?.available === true &&
+    topology !== undefined &&
     target !== null &&
     serviceIds.length > 0 &&
     projectId !== undefined;

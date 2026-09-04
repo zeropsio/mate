@@ -1,42 +1,51 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsLifecycle, ZeropsService, ZeropsTopologySnapshot } from "@t3tools/contracts";
+import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
+import type {
+  ZeropsTopologyService,
+  ZeropsTopologyView,
+} from "@t3tools/client-runtime/zerops/topology";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 
-const service = (overrides: Partial<ZeropsService> & { hostname: string }): ZeropsService =>
-  ({
-    serviceId: `svc-${overrides.hostname}`,
-    type: "ubuntu/nodejs@22",
-    status: "ACTIVE",
-    group: "runtimes",
-    adoptionState: "adopted",
-    isManagedService: false,
-    transient: false,
-    mounted: false,
-    ...overrides,
-  }) as ZeropsService;
+const service = (
+  overrides: Partial<ZeropsTopologyService> & { hostname: string },
+): ZeropsTopologyService => ({
+  serviceId: `svc-${overrides.hostname}`,
+  type: "ubuntu/nodejs@22",
+  status: "ACTIVE",
+  group: "runtimes",
+  transient: false,
+  ports: [],
+  ...overrides,
+});
 
 const topology = (
-  services: ReadonlyArray<ZeropsService>,
-  overrides?: Partial<ZeropsTopologySnapshot>,
-): ZeropsTopologySnapshot =>
-  ({
-    available: true,
-    degraded: false,
-    project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
-    services,
-    warnings: [],
-    readAt: new Date("2026-08-28T10:00:00Z"),
-    ...overrides,
-  }) as unknown as ZeropsTopologySnapshot;
+  services: ReadonlyArray<ZeropsTopologyService>,
+  overrides?: Partial<ZeropsTopologyView>,
+): ZeropsTopologyView => ({
+  project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
+  services,
+  warnings: [],
+  ...overrides,
+});
 
 const render = (
-  snapshot: ZeropsTopologySnapshot | undefined,
-  lifecycle?: ZeropsLifecycle,
+  view: ZeropsTopologyView | undefined,
+  options?: {
+    readonly lifecycle?: ZeropsLifecycle;
+    readonly liveness?: "live" | "polling";
+    readonly error?: string;
+  },
 ): string =>
-  renderToStaticMarkup(<ZeropsServiceMap view={buildZeropsServiceMap(snapshot, lifecycle)} />);
+  renderToStaticMarkup(
+    <ZeropsServiceMap
+      error={options?.error}
+      liveness={options?.liveness}
+      view={buildZeropsServiceMap(view, options?.lifecycle)}
+    />,
+  );
 
 const classNamesForText = (html: string, text: string): ReadonlyArray<string> => {
   const escapedText = text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -48,24 +57,12 @@ const classNamesForText = (html: string, text: string): ReadonlyArray<string> =>
 describe("ZeropsServiceMap", () => {
   it("renders liveness and semantic groups with shared primitives", () => {
     const html = render(
-      topology(
-        [
-          service({ hostname: "kanbandev", mounted: true, mountPath: "/var/www/kanbandev" }),
-          service({
-            hostname: "db",
-            type: "postgresql:single@18",
-            group: "data",
-            isManagedService: true,
-          }),
-          service({
-            hostname: "zcp",
-            type: "ubuntu/zcp@1",
-            group: "infrastructure",
-            adoptionState: "zcp-self",
-          }),
-        ],
-        { doorbellConnected: true },
-      ),
+      topology([
+        service({ hostname: "kanbandev" }),
+        service({ hostname: "db", type: "postgresql:single@18", group: "data" }),
+        service({ hostname: "zcp", type: "ubuntu/zcp@1", group: "infrastructure" }),
+      ]),
+      { liveness: "live" },
     );
 
     const runtimesAt = html.indexOf("Runtimes");
@@ -82,28 +79,14 @@ describe("ZeropsServiceMap", () => {
     expect(html).toContain("nodejs@22");
     expect(html).toContain("postgresql:single@18");
     expect(html).not.toContain("data-zerops-service-transient");
-    // The mount path itself is the badge's text: where a service is mounted is
-    // the useful half, and a bare "mounted" hid it behind a hover.
-    expect(html).toContain("/var/www/kanbandev");
   });
 
-  it("wraps long service identity and mount paths without hiding status or links", () => {
+  it("wraps long service identity without hiding status or links", () => {
     const hostname = "application-runtime-with-a-hostname-too-long-for-the-right-panel";
     const typeLabel = "nodejs-with-an-unusually-long-runtime-type@2026.09.01";
-    const mountPath =
-      "/var/www/application-runtime/storage/a-mount-path-too-long-for-the-right-panel";
     const subdomainUrl = "https://application-runtime.prg1.zerops.app";
     const html = render(
-      topology([
-        service({
-          hostname,
-          type: `ubuntu/${typeLabel}`,
-          mounted: true,
-          mountPath,
-          subdomainEnabled: true,
-          subdomainUrl,
-        }),
-      ]),
+      topology([service({ hostname, type: `ubuntu/${typeLabel}`, subdomainUrl })]),
     );
 
     expect(classNamesForText(html, hostname)).toEqual(
@@ -112,30 +95,10 @@ describe("ZeropsServiceMap", () => {
     expect(classNamesForText(html, typeLabel)).toEqual(
       expect.arrayContaining(["min-w-0", "max-w-full", "break-words"]),
     );
-    expect(classNamesForText(html, mountPath)).toEqual(
-      expect.arrayContaining(["min-w-0", "max-w-full", "break-all"]),
-    );
     expect(html).not.toContain("truncate");
     expect(html).toContain("ACTIVE");
     expect(html).toContain(`href="${subdomainUrl}"`);
     expect(html).toContain("Open");
-  });
-
-  it("preserves degraded last-good rows and quiet absence copy", () => {
-    const degraded = render(
-      topology([service({ hostname: "kanbandev" })], {
-        degraded: true,
-        reason: "zcp studio topology: exit 1",
-      }),
-    );
-    const empty = render(topology([]));
-
-    expect(degraded).toContain('data-zerops-liveness="last-read-failed"');
-    expect(degraded).toContain("zcp studio topology: exit 1");
-    expect(degraded).toContain("kanbandev");
-    expect(empty).toContain("data-zerops-map-empty");
-    expect(empty).toContain("No services yet");
-    expect(empty).not.toContain("data-zerops-service-group");
   });
 
   it("offers Open for a service that has a subdomain", () => {
@@ -143,7 +106,6 @@ describe("ZeropsServiceMap", () => {
       topology([
         service({
           hostname: "kanbandev",
-          subdomainEnabled: true,
           subdomainUrl: "https://kanbandev-26a7-3000.prg1.zerops.app",
         }),
       ]),
@@ -193,15 +155,17 @@ describe("ZeropsServiceMap", () => {
 
   it("names a running tool as a phrase, not a spinner", () => {
     const html = render(topology([service({ hostname: "kanbandev" })]), {
-      threadId: "thread-a",
-      recentTools: [
-        {
-          toolName: "zerops_deploy",
-          status: "inProgress",
-          at: new Date("2026-08-28T10:01:00Z"),
-        },
-      ],
-    } as unknown as ZeropsLifecycle);
+      lifecycle: {
+        threadId: "thread-a",
+        recentTools: [
+          {
+            toolName: "zerops_deploy",
+            status: "inProgress",
+            at: new Date("2026-08-28T10:01:00Z"),
+          },
+        ],
+      } as unknown as ZeropsLifecycle,
+    });
 
     expect(html).toContain('data-zerops-running-tool="zerops_deploy"');
     expect(html).toContain("zerops_deploy running");
@@ -215,32 +179,24 @@ describe("ZeropsServiceMap", () => {
     expect(html).not.toContain("Runtimes");
   });
 
-  /**
-   * `available: false` means this is not a Zerops environment. The panel must
-   * be absent — an empty-state card would tell a plain T3 user about a product
-   * they are not using.
-   */
-  it("renders nothing at all when there is no Zerops here", () => {
+  /** No view yet — no session, no resolved project, or the first read still pending. */
+  it("renders nothing at all when there is no view", () => {
     expect(render(undefined)).toBe("");
-    expect(render(topology([], { available: false, reason: "zcp-not-found" }))).toBe("");
   });
 
-  it("flags a degraded read quietly, keeping the last good rows", () => {
-    const html = render(
-      topology([service({ hostname: "kanbandev" })], {
-        degraded: true,
-        reason: "zcp studio topology: exit 1",
-      }),
-    );
+  it("flags the last failed read quietly, keeping the last good rows", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), {
+      error: "Network error contacting Zerops.",
+    });
 
     expect(html).toContain("data-zerops-map-degraded");
-    expect(html).toContain("zcp studio topology: exit 1");
+    expect(html).toContain("Network error contacting Zerops.");
     expect(html).toContain("kanbandev");
   });
 
-  it("shows zcp's warnings", () => {
+  it("carries the projection's warnings through opaquely", () => {
     const html = render(
-      topology([service({ hostname: "s6fix1", adoptionState: "adoptable" })], {
+      topology([service({ hostname: "s6fix1" })], {
         warnings: ["2 services can be adopted: s6fix1, s6fix2"],
       }),
     );
@@ -250,33 +206,35 @@ describe("ZeropsServiceMap", () => {
 });
 
 describe("ZeropsServiceMap — liveness", () => {
-  const withDoorbell = (doorbellConnected?: boolean): string =>
-    render(
-      topology(
-        [service({ hostname: "kanbandev" })],
-        (doorbellConnected === undefined
-          ? {}
-          : { doorbellConnected }) as Partial<ZeropsTopologySnapshot>,
-      ),
-    );
-
-  it("shows live liveness first while push updates are connected", () => {
-    const html = withDoorbell(true);
+  it("shows live liveness first while the platform websocket is connected", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "live" });
 
     expect(html).toContain('data-zerops-map-liveness="live"');
     expect(html).toContain('data-zerops-liveness="live"');
   });
 
-  it("mentions polling quietly when push updates have dropped", () => {
-    const html = withDoorbell(false);
+  it("mentions polling quietly when the platform websocket is down", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "polling" });
 
     expect(html).toContain('data-zerops-map-liveness="polling"');
     expect(html).toContain("reconnecting");
-    // Quiet, not alarming: this is not the degraded banner.
+    // Quiet, not alarming: this is not the last-read-failed banner.
     expect(html).not.toContain("data-zerops-map-degraded");
   });
 
-  it("says nothing when the feed reported no doorbell at all", () => {
-    expect(withDoorbell()).not.toContain("data-zerops-map-liveness");
+  it("says nothing when the hook reports no liveness at all", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]));
+
+    expect(html).not.toContain("data-zerops-map-liveness");
+  });
+
+  it("shows the last-read-failed banner over liveness when both are present", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), {
+      liveness: "live",
+      error: "Network error contacting Zerops.",
+    });
+
+    expect(html).toContain("data-zerops-map-degraded");
+    expect(html).not.toContain('data-zerops-map-liveness="live"');
   });
 });

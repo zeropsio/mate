@@ -1,15 +1,13 @@
-import {
-  EnvironmentId,
-  ProjectId,
-  ThreadId,
-  type ZeropsService,
-  type ZeropsTopologySnapshot,
-} from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import type {
+  ZeropsTopologyService,
+  ZeropsTopologyView,
+} from "@t3tools/client-runtime/zerops/topology";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const feedState = vi.hoisted(() => ({
-  topologies: new Map<string, ZeropsTopologySnapshot | undefined>(),
+  topologies: new Map<string, ZeropsTopologyView | undefined>(),
 }));
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
@@ -76,28 +74,22 @@ function maxNestedButtonDepth(markup: string): number {
   return maxDepth;
 }
 
-const service = (hostname: string): ZeropsService =>
-  ({
-    hostname,
-    serviceId: `service-${hostname}`,
-    type: "ubuntu/nodejs@22",
-    status: "ACTIVE",
-    group: "runtimes",
-    adoptionState: "adopted",
-    isManagedService: false,
-    transient: false,
-    mounted: false,
-  }) as ZeropsService;
+const service = (hostname: string): ZeropsTopologyService => ({
+  hostname,
+  serviceId: `service-${hostname}`,
+  type: "ubuntu/nodejs@22",
+  status: "ACTIVE",
+  group: "runtimes",
+  transient: false,
+  ports: [],
+});
 
-function topology(projectName: string, serviceCount: number): ZeropsTopologySnapshot {
+function topology(projectName: string, serviceCount: number): ZeropsTopologyView {
   return {
-    available: true,
-    degraded: false,
     project: { id: "zerops-project-one", name: projectName, status: "ACTIVE" },
     services: Array.from({ length: serviceCount }, (_, index) => service(`service-${index + 1}`)),
     warnings: [],
-    readAt: new Date("2026-09-01T08:00:00.000Z"),
-  } as unknown as ZeropsTopologySnapshot;
+  };
 }
 
 describe("SidebarProjectTree", () => {
@@ -368,11 +360,11 @@ describe("SidebarProjectTree", () => {
   });
 
   it("keeps non-Zerops fallbacks and non-generic logical project names", () => {
-    feedState.topologies.set(environmentId, {
-      ...topology("Ignored project", 0),
-      available: false,
-      project: undefined,
-    });
+    // No view for this environment — no Zerops session, no resolved project,
+    // or the first read still pending. The old "available: false" case (a
+    // definite "not a Zerops environment") is no longer distinguishable from
+    // this one; see `ZeropsPanelPlaceholder`'s doc comment.
+    feedState.topologies.set(environmentId, undefined);
     const genericFallbackBranches: readonly SidebarProjectThreadBranch<FixtureThread>[] = [
       { ...branches[0]!, displayName: "www" },
     ];

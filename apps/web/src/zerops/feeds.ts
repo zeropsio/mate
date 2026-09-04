@@ -1,14 +1,18 @@
 /**
- * The three Zerops server feeds, as atoms.
+ * The two remaining server-fed Zerops feeds, as atoms.
  *
- * - **topology** — one per environment (a mate environment is one Zerops
- *   project): what exists, for the service map.
  * - **lifecycle** — one per thread: where the agent is, for the strip and the
  *   cards.
  * - **agentAuth** — one per environment: which agent CLIs are signed in, for
  *   the sign-in card (S7 plan D1/D3).
  *
- * All three are read-only, and all three are *snapshot*-typed rather than
+ * Topology moved off this file (S3): the service map is now a client-side
+ * projection read directly from the Zerops API (`useProjectTopology.ts`),
+ * websocket-signalled by the platform's own push channel rather than a mate
+ * server feed. `useZeropsTopology` (`useZeropsFeeds.ts`) is now a thin read
+ * of that hook, not of an atom here.
+ *
+ * Both remaining feeds are read-only and *snapshot*-typed rather than
  * delta-typed: every emission is the whole state. That is what makes a
  * reconnect free — `subscribeDynamic` re-invokes the RPC on the new session
  * and the first emission is a fresh snapshot, so there is no re-`get` to
@@ -27,15 +31,9 @@ import type {
   ThreadId,
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
-  ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-
-export interface ZeropsTopologyTarget {
-  readonly environmentId: EnvironmentId;
-  readonly input: Record<string, never>;
-}
 
 export interface ZeropsLifecycleTarget {
   readonly environmentId: EnvironmentId;
@@ -53,11 +51,6 @@ const targetKey = (target: {
 }): string => JSON.stringify([target.environmentId, target.input]);
 
 export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>) {
-  const topology = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-    label: "environment-data:zerops:topology",
-    tag: WS_METHODS.subscribeZeropsTopology,
-  });
-
   const lifecycle = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:zerops:lifecycle",
     tag: WS_METHODS.subscribeZeropsLifecycle,
@@ -75,13 +68,6 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
    * with `available: false`. A spinner or an error banner for a panel that is
    * simply not applicable would be worse than rendering nothing.
    */
-  const topologyValue = Atom.family((key: string) => {
-    const [environmentId, input] = JSON.parse(key) as [EnvironmentId, Record<string, never>];
-    return Atom.make((get): ZeropsTopologySnapshot | undefined =>
-      Option.getOrUndefined(AsyncResult.value(get(topology({ environmentId, input })))),
-    ).pipe(Atom.withLabel(`zerops:topology-value:${key}`));
-  });
-
   const lifecycleValue = Atom.family((key: string) => {
     const [environmentId, input] = JSON.parse(key) as [
       EnvironmentId,
@@ -100,10 +86,8 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
   });
 
   return {
-    topology,
     lifecycle,
     agentAuth,
-    topologyValue: (target: ZeropsTopologyTarget) => topologyValue(targetKey(target)),
     lifecycleValue: (target: ZeropsLifecycleTarget) => lifecycleValue(targetKey(target)),
     agentAuthValue: (target: ZeropsAgentAuthTarget) => agentAuthValue(targetKey(target)),
   };

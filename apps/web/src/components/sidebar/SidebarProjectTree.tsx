@@ -1,5 +1,6 @@
 import { ChevronDownIcon, FolderIcon, ServerIcon } from "lucide-react";
-import type { EnvironmentId, ProjectId, ZeropsTopologySnapshot } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ReactNode } from "react";
 
 import type {
@@ -75,7 +76,7 @@ export function SidebarProjectTree<TThread extends SidebarProjectTreeThread>(
 
 function SidebarProjectMemberTopology(props: {
   readonly environmentId: EnvironmentId;
-  readonly children: (topology: ZeropsTopologySnapshot | undefined) => ReactNode;
+  readonly children: (topology: ZeropsTopologyView | undefined) => ReactNode;
 }) {
   return props.children(useZeropsTopology(props.environmentId));
 }
@@ -84,7 +85,7 @@ function SidebarProjectTopologyMembers<TThread extends SidebarProjectTreeThread>
   readonly projects: ReadonlyArray<SidebarProjectThreadBranch<TThread>>;
   readonly members: ReadonlyArray<SidebarProjectThreadBranch<TThread>["members"][number]>;
   readonly memberIndex: number;
-  readonly topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>;
+  readonly topologyByMember: ReadonlyMap<string, ZeropsTopologyView | undefined>;
   readonly treeProps: SidebarProjectTreeProps<TThread>;
 }): ReactNode {
   const member = props.members[props.memberIndex];
@@ -130,14 +131,14 @@ function isGenericWorkspaceLabel(label: string): boolean {
 
 function hasAvailableZeropsTopology<TThread extends SidebarProjectTreeThread>(
   project: SidebarProjectThreadBranch<TThread>,
-  topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>,
+  topologyByMember: ReadonlyMap<string, ZeropsTopologyView | undefined>,
 ): boolean {
-  return project.members.some((member) => topologyByMember.get(member.key)?.available === true);
+  return project.members.some((member) => topologyByMember.get(member.key) !== undefined);
 }
 
 function coalesceGenericZeropsProjects<TThread extends SidebarProjectTreeThread>(
   projects: ReadonlyArray<SidebarProjectThreadBranch<TThread>>,
-  topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>,
+  topologyByMember: ReadonlyMap<string, ZeropsTopologyView | undefined>,
 ): ReadonlyArray<SidebarProjectThreadBranch<TThread>> {
   const genericProjects = projects.filter(
     (project) =>
@@ -162,7 +163,7 @@ function coalesceGenericZeropsProjects<TThread extends SidebarProjectTreeThread>
 
 function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
   readonly project: SidebarProjectThreadBranch<TThread>;
-  readonly topologyByMember: ReadonlyMap<string, ZeropsTopologySnapshot | undefined>;
+  readonly topologyByMember: ReadonlyMap<string, ZeropsTopologyView | undefined>;
   readonly treeProps: SidebarProjectTreeProps<TThread>;
 }) {
   const { project, topologyByMember, treeProps } = props;
@@ -203,7 +204,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
           {project.members.map((member) => {
             const topology = topologyByMember.get(member.key);
             const topologyProjectName =
-              topology?.available === true ? nonEmptyLabel(topology.project?.name) : null;
+              topology === undefined ? null : nonEmptyLabel(topology.project.name);
             const memberDisplayName = topologyProjectName ?? member.displayName;
             const memberContainsActiveThread = member.threads.some(
               (thread) => treeProps.getThreadKey(thread) === treeProps.activeThreadKey,
@@ -214,9 +215,9 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
               member.workspaceLabel !== memberDisplayName &&
               (topologyProjectName === null || !isGenericWorkspaceLabel(member.workspaceLabel));
             const meta =
-              topology?.available === true
-                ? `${topology.services.length} ${topology.services.length === 1 ? "service" : "services"} · zcp`
-                : `${member.threads.length} ${member.threads.length === 1 ? "thread" : "threads"}`;
+              topology === undefined
+                ? `${member.threads.length} ${member.threads.length === 1 ? "thread" : "threads"}`
+                : `${topology.services.length} ${topology.services.length === 1 ? "service" : "services"} · zcp`;
             const compactThread =
               treeProps.renderWorkspaceThreadAction === undefined
                 ? null

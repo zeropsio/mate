@@ -6,15 +6,20 @@
  * command wiring.
  */
 import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
-import type {
-  ScopedThreadRef,
-  ZeropsAgentAuthSnapshot,
-  ZeropsTopologySnapshot,
-} from "@t3tools/contracts";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
 export interface ZeropsChatChrome {
   readonly threadRef: ScopedThreadRef | null;
-  readonly panel: "available" | "unavailable" | "unknown";
+  /**
+   * `"unavailable"` is gone: that was `zcp studio topology`'s `available:
+   * false`, a permanent fact only the container's own zcp binary could
+   * state. `useProjectTopology` has no equivalent — a project ref that never
+   * resolves and one still in flight look identical from here, and every
+   * mate environment is a Zerops project by construction
+   * (`docs/spec-mate.md` §9.3).
+   */
+  readonly panel: "available" | "unknown";
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   readonly projectName: string | null;
 }
@@ -22,7 +27,7 @@ export interface ZeropsChatChrome {
 export function resolveZeropsChatChrome(
   threadRef: ScopedThreadRef | null,
   input: {
-    readonly topology: ZeropsTopologySnapshot | undefined;
+    readonly topology: ZeropsTopologyView | undefined;
     readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
   },
 ): ZeropsChatChrome {
@@ -35,16 +40,9 @@ export function resolveZeropsChatChrome(
     };
   }
 
-  // `available: false` is the feed's plain answer that there is no zcp here,
-  // not an error. The right-panel launcher adapter reads this tri-state.
-  const panel =
-    input.topology === undefined
-      ? "unknown"
-      : input.topology.available
-        ? "available"
-        : "unavailable";
+  const panel = input.topology === undefined ? "unknown" : "available";
   const agentAuth = input.agentAuth;
-  const topologyProjectName = input.topology?.project?.name.trim();
+  const topologyProjectName = input.topology?.project.name.trim();
 
   return {
     threadRef,

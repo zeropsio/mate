@@ -54,16 +54,6 @@ describe("resolveDefaultZeropsPanel", () => {
       },
       expected: "wait",
     },
-    {
-      name: "remembers when Zerops is unavailable",
-      input: {
-        topology: "unavailable" as const,
-        usesSheet: false,
-        handled: false,
-        hasPriorPanelChoice: false,
-      },
-      expected: "remember",
-    },
   ])("$name", ({ input, expected }) => {
     expect(resolveDefaultZeropsPanel(input)).toBe(expected);
   });

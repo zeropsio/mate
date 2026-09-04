@@ -3,9 +3,8 @@ import {
   ThreadId,
   type ScopedThreadRef,
   type ZeropsAgentAuthSnapshot,
-  type ZeropsTopologySnapshot,
 } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveZeropsChatChrome } from "./chatChrome.ts";
@@ -15,15 +14,12 @@ const THREAD_REF: ScopedThreadRef = {
   threadId: ThreadId.make("thread-1"),
 };
 
-const topology = (
-  available: boolean,
-  overrides: Partial<ZeropsTopologySnapshot> = {},
-): ZeropsTopologySnapshot => ({
-  available,
-  degraded: false,
+const topology = (overrides: Partial<ZeropsTopologyView> = {}): ZeropsTopologyView => ({
+  // Blank by default so the generic CASES table's "projectName: null" default
+  // holds; only the dedicated project-name test below names a real project.
+  project: { id: "project-1", name: "", status: "ACTIVE" },
   services: [],
   warnings: [],
-  readAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
   ...overrides,
 });
 
@@ -62,12 +58,7 @@ const THREADS = [
 
 const TOPOLOGIES = [
   { label: "before topology answers", value: undefined, panel: "unknown" },
-  {
-    label: "when Zerops is unavailable",
-    value: topology(false),
-    panel: "unavailable",
-  },
-  { label: "when Zerops is available", value: topology(true), panel: "available" },
+  { label: "when Zerops is available", value: topology(), panel: "available" },
 ] as const;
 
 const AUTH_STATES = [
@@ -111,14 +102,14 @@ describe("resolveZeropsChatChrome", () => {
   it("uses the trimmed Zerops project name only when topology is available", () => {
     expect(
       resolveZeropsChatChrome(THREAD_REF, {
-        topology: topology(true, { project: { id: "project-1", name: "  zerops-xyz  " } }),
+        topology: topology({ project: { id: "project-1", name: "  zerops-xyz  " } }),
         agentAuth: NO_ATTENTION,
       }).projectName,
     ).toBe("zerops-xyz");
 
     expect(
       resolveZeropsChatChrome(THREAD_REF, {
-        topology: topology(false, { project: { id: "project-1", name: "stale-name" } }),
+        topology: undefined,
         agentAuth: NO_ATTENTION,
       }).projectName,
     ).toBeNull();

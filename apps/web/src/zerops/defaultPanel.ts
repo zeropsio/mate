@@ -19,9 +19,6 @@ export function resolveDefaultZeropsPanel(
   if (input.handled) {
     return "wait";
   }
-  // The feed defines unavailable as a permanent fact for this environment.
-  // Persist it so a later accidental transition cannot claim the panel.
-  if (input.topology === "unavailable") return "remember";
   if (input.usesSheet || input.topology === "unknown") return "wait";
   return input.hasPriorPanelChoice ? "remember" : "open";
 }

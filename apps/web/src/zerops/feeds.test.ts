@@ -1,10 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentId, ThreadId, WS_METHODS } from "@t3tools/contracts";
-import type {
-  ZeropsAgentAuthSnapshot,
-  ZeropsLifecycle,
-  ZeropsTopologySnapshot,
-} from "@t3tools/contracts";
+import type { ZeropsAgentAuthSnapshot, ZeropsLifecycle } from "@t3tools/contracts";
 import { EnvironmentRegistry, EnvironmentSupervisor } from "@t3tools/client-runtime/connection";
 import { type RpcSession } from "@t3tools/client-runtime/rpc";
 import * as Effect from "effect/Effect";
@@ -19,29 +15,6 @@ import { createZeropsFeedAtoms } from "./feeds";
 const ENVIRONMENT_ID = EnvironmentId.make("env-zerops-1");
 const THREAD_A = ThreadId.make("thread-a");
 const THREAD_B = ThreadId.make("thread-b");
-
-const snapshot = (
-  services: ReadonlyArray<string>,
-  overrides?: Record<string, unknown>,
-): ZeropsTopologySnapshot =>
-  ({
-    available: true,
-    degraded: false,
-    services: services.map((hostname) => ({
-      hostname,
-      serviceId: `id-${hostname}`,
-      type: "ubuntu/nodejs@22",
-      status: "ACTIVE",
-      group: "runtimes",
-      adoptionState: "adopted",
-      isManagedService: false,
-      transient: false,
-      mounted: true,
-    })),
-    warnings: [],
-    readAt: new Date("2026-08-28T10:00:00Z"),
-    ...overrides,
-  }) as unknown as ZeropsTopologySnapshot;
 
 const lifecycleOf = (threadId: ThreadId): ZeropsLifecycle =>
   ({ threadId, recentTools: [] }) as unknown as ZeropsLifecycle;
@@ -76,19 +49,11 @@ const agentAuthSnapshot = (
  */
 const makeHarness = Effect.gen(function* () {
   const calls: string[] = [];
-  const topologyRef = yield* SubscriptionRef.make(Option.none<ZeropsTopologySnapshot>());
   const lifecycleRef = yield* SubscriptionRef.make(Option.none<ZeropsLifecycle>());
   const agentAuthRef = yield* SubscriptionRef.make(Option.none<ZeropsAgentAuthSnapshot>());
 
   const makeSession = (): RpcSession => {
     const client = {
-      [WS_METHODS.subscribeZeropsTopology]: () => {
-        calls.push("topology");
-        return SubscriptionRef.changes(topologyRef).pipe(
-          Stream.filter(Option.isSome),
-          Stream.map((value) => value.value),
-        );
-      },
       [WS_METHODS.subscribeZeropsLifecycle]: (input: { readonly threadId: string }) => {
         calls.push(`lifecycle:${input.threadId}`);
         return SubscriptionRef.changes(lifecycleRef).pipe(
@@ -141,8 +106,6 @@ const makeHarness = Effect.gen(function* () {
     calls,
     registry,
     feeds: createZeropsFeedAtoms(Atom.runtime(layer)),
-    publishTopology: (value: ZeropsTopologySnapshot) =>
-      SubscriptionRef.set(topologyRef, Option.some(value)),
     publishLifecycle: (value: ZeropsLifecycle) =>
       SubscriptionRef.set(lifecycleRef, Option.some(value)),
     publishAgentAuth: (value: ZeropsAgentAuthSnapshot) =>
@@ -168,76 +131,6 @@ const until = <A>(read: () => A, holds: (value: A) => boolean): Effect.Effect<A>
 const present = <A>(value: A | undefined): boolean => value !== undefined;
 
 describe("createZeropsFeedAtoms", () => {
-  it.live("delivers the topology snapshot the server publishes", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness;
-      const atom = rig.feeds.topologyValue({ environmentId: ENVIRONMENT_ID, input: {} });
-      rig.registry.mount(atom);
-
-      yield* rig.publishTopology(snapshot(["kanbandev"]));
-      const value = yield* until(() => rig.registry.get(atom), present);
-
-      expect(value?.services.map((service) => service.hostname)).toEqual(["kanbandev"]);
-    }).pipe(Effect.scoped),
-  );
-
-  it.live("replaces the snapshot on the next publish", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness;
-      const atom = rig.feeds.topologyValue({ environmentId: ENVIRONMENT_ID, input: {} });
-      rig.registry.mount(atom);
-
-      yield* rig.publishTopology(snapshot(["kanbandev"]));
-      yield* until(() => rig.registry.get(atom), present);
-      yield* rig.publishTopology(snapshot(["kanbandev", "kanbanstage"]));
-
-      const value = yield* until(
-        () => rig.registry.get(atom),
-        (snap) => snap?.services.length === 2,
-      );
-      expect(value?.services.map((service) => service.hostname)).toEqual([
-        "kanbandev",
-        "kanbanstage",
-      ]);
-    }).pipe(Effect.scoped),
-  );
-
-  /**
-   * The brief requires the feeds to survive a reconnect and re-`get` on connect.
-   * They do, but not through anything this file owns: `subscribeDynamic`
-   * switch-maps over the supervisor's session, so a new session re-invokes the
-   * same RPC — and both Zerops methods answer with a whole snapshot rather than
-   * a delta, which is what makes that re-invocation the re-`get`.
-   *
-   * Pinned rather than assumed, because the failure would be silent: the
-   * service map would simply freeze on stale rows after every reconnect.
-   */
-  it.live("re-subscribes after a reconnect and takes the fresh snapshot", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness;
-      const atom = rig.feeds.topologyValue({ environmentId: ENVIRONMENT_ID, input: {} });
-      rig.registry.mount(atom);
-
-      yield* rig.publishTopology(snapshot(["kanbandev"]));
-      yield* until(() => rig.registry.get(atom), present);
-      expect(rig.calls.filter((call) => call === "topology")).toHaveLength(1);
-
-      yield* rig.reconnect;
-      yield* until(
-        () => rig.calls.filter((call) => call === "topology").length,
-        (count) => count === 2,
-      );
-      expect(rig.calls.filter((call) => call === "topology")).toHaveLength(2);
-
-      yield* rig.publishTopology(snapshot(["kanbandev", "db"]));
-      const value = yield* until(
-        () => rig.registry.get(atom),
-        (snap) => snap?.services.length === 2,
-      );
-      expect(value?.services.map((service) => service.hostname)).toEqual(["kanbandev", "db"]);
-    }).pipe(Effect.scoped),
-  );
-
   it.live("keeps two threads' lifecycles apart", () =>
     Effect.gen(function* () {
       const rig = yield* makeHarness;
@@ -266,26 +159,12 @@ describe("createZeropsFeedAtoms", () => {
    * `available: false` means "this is not a Zerops environment" — the panel is
    * absent and nothing is wrong. It must reach the UI as a value, never as an
    * error, or a plain T3 environment would grow an error banner.
-   */
-  it.live("passes an unavailable feed through as a value, not a failure", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness;
-      const atom = rig.feeds.topologyValue({ environmentId: ENVIRONMENT_ID, input: {} });
-      rig.registry.mount(atom);
-
-      yield* rig.publishTopology(snapshot([], { available: false, reason: "zcp-not-found" }));
-      const value = yield* until(() => rig.registry.get(atom), present);
-
-      expect(value?.available).toBe(false);
-      expect(value?.reason).toBe("zcp-not-found");
-    }).pipe(Effect.scoped),
-  );
-
-  /**
-   * Third feed, same shape as topology (one per environment, snapshot-typed):
-   * `createEnvironmentRpcSubscriptionAtomFamily` already carries the
-   * reconnect/re-subscribe behavior generically, pinned once above — this
-   * just checks the agent-auth wiring reaches it.
+   *
+   * Third feed, same shape as the lifecycle one (one per environment,
+   * snapshot-typed): `createEnvironmentRpcSubscriptionAtomFamily` already
+   * carries the reconnect/re-subscribe behavior generically, pinned once
+   * above via the lifecycle feed — this just checks the agent-auth wiring
+   * reaches it.
    */
   it.live("delivers the agent auth snapshot the server publishes", () =>
     Effect.gen(function* () {
@@ -310,6 +189,38 @@ describe("createZeropsFeedAtoms", () => {
       yield* rig.publishAgentAuth(agentAuthSnapshot({ available: false, agents: [] }));
       const value = yield* until(() => rig.registry.get(atom), present);
 
+      expect(value?.available).toBe(false);
+    }).pipe(Effect.scoped),
+  );
+
+  /**
+   * The reconnect-resubscribe behavior pinned for topology up through S2 now
+   * has no topology feed to exercise it on; the agent-auth subscription is
+   * the same generic machinery (`createEnvironmentRpcSubscriptionAtomFamily`)
+   * so this keeps that behavior covered without topology's own atom.
+   */
+  it.live("re-subscribes after a reconnect and takes the fresh snapshot", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const atom = rig.feeds.agentAuthValue({ environmentId: ENVIRONMENT_ID, input: {} });
+      rig.registry.mount(atom);
+
+      yield* rig.publishAgentAuth(agentAuthSnapshot());
+      yield* until(() => rig.registry.get(atom), present);
+      expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(1);
+
+      yield* rig.reconnect;
+      yield* until(
+        () => rig.calls.filter((call) => call === "agentAuth").length,
+        (count) => count === 2,
+      );
+      expect(rig.calls.filter((call) => call === "agentAuth")).toHaveLength(2);
+
+      yield* rig.publishAgentAuth(agentAuthSnapshot({ available: false, agents: [] }));
+      const value = yield* until(
+        () => rig.registry.get(atom),
+        (snap) => snap?.available === false,
+      );
       expect(value?.available).toBe(false);
     }).pipe(Effect.scoped),
   );

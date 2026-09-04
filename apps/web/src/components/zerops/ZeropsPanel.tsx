@@ -13,7 +13,8 @@ import { zeropsQuickActions } from "@t3tools/client-runtime/zerops/quickActions"
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
-import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
@@ -29,7 +30,7 @@ export function ZeropsPanel({
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | undefined;
 }) {
-  const topology = useZeropsTopology(threadRef?.environmentId ?? null);
+  const topology = useProjectTopology(threadRef?.environmentId ?? null);
   const lifecycle = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
     threadRef?.threadId ?? null,
@@ -39,7 +40,7 @@ export function ZeropsPanel({
   >(null);
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
-  const view = buildZeropsServiceMap(topology, lifecycle);
+  const view = buildZeropsServiceMap(topology.view, lifecycle);
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,
@@ -47,12 +48,14 @@ export function ZeropsPanel({
   const panelSections =
     view === undefined
       ? {
-          body: <ZeropsPanelPlaceholder waiting={topology === undefined} />,
+          body: <ZeropsPanelPlaceholder />,
           quickActions: null,
         }
       : {
-          body: <ZeropsServiceMap view={view} />,
-          quickActions: <ZeropsQuickActions actions={zeropsQuickActions(topology)} />,
+          body: (
+            <ZeropsServiceMap error={topology.error} liveness={topology.liveness} view={view} />
+          ),
+          quickActions: <ZeropsQuickActions actions={zeropsQuickActions(topology.view)} />,
         };
 
   return (
@@ -91,17 +94,18 @@ export function ZeropsPanel({
 }
 
 /**
- * Two different reasons the map is absent, and they must not share a sentence.
- *
- * The panel's tab is persisted per thread, so a reload can render this surface
- * before the first snapshot has arrived. Saying "not a Zerops project" then
- * would be a confident lie about the very project the user is looking at, told
- * for the second or so before the feed answers.
+ * The client can no longer tell "still resolving which project this is" apart
+ * from "never will" — that distinction was `zcp studio topology`'s
+ * `available: false`, a fact only the container's own zcp binary could state.
+ * `useProjectTopology` has no equivalent signal (a project ref that never
+ * resolves and one still in flight look identical from here), and every mate
+ * environment is a Zerops project by construction (`docs/spec-mate.md` §9.3),
+ * so one honest, non-committal message covers both.
  */
-export function ZeropsPanelPlaceholder({ waiting }: { readonly waiting: boolean }) {
+export function ZeropsPanelPlaceholder() {
   return (
     <p className="text-muted-foreground text-sm" data-zerops-panel-placeholder>
-      {waiting ? "Reading the project…" : "This environment is not a Zerops project."}
+      Reading the project…
     </p>
   );
 }
