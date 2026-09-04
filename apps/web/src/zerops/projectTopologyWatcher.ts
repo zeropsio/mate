@@ -16,10 +16,16 @@
  * the already-cached service list and the shared process poller's latest
  * snapshot — no extra REST call, since nothing about a service changed.
  */
-import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import {
+  ZeropsApiError,
+  type ZeropsApiClient,
+  type ZeropsProject,
+  type ZeropsService,
+} from "@t3tools/client-runtime/zerops";
 import { loadZeropsCandidates } from "@t3tools/client-runtime/zerops/candidateLoading";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  forgetEnvironmentProjectRef,
   lookupEnvironmentProjectRef,
   rememberEnvironmentProjectRef,
   type EnvironmentProjectRef,
@@ -39,6 +45,8 @@ import { pollerFor } from "./activity/useProjectActivity.ts";
 const CHANGED_DEBOUNCE_MS = 300;
 const DISCONNECTED_POLL_TRANSIENT_MS = 5_000;
 const DISCONNECTED_POLL_IDLE_MS = 30_000;
+/** How long a hidden tab keeps its live socket open before the watcher closes it and falls back to polling. */
+const HIDDEN_CLOSE_AFTER_MS = 60_000;
 
 export type ProjectTopologyLiveness = "live" | "polling";
 
@@ -69,6 +77,8 @@ export interface ProjectTopologyWatcherOptions {
   readonly clearTimer?: (handle: unknown) => void;
   readonly isHidden?: () => boolean;
   readonly makeReceiverId?: () => string;
+  /** Registers a tab-visibility listener, returning its unsubscribe. Defaults to `document`'s `visibilitychange`. */
+  readonly onVisibilityChange?: (callback: () => void) => () => void;
 }
 
 function errorMessage(cause: unknown): string {
@@ -95,6 +105,7 @@ export class ProjectTopologyWatcher {
   readonly #clearTimer: (handle: unknown) => void;
   readonly #isHidden: () => boolean;
   readonly #makeReceiverId: () => string;
+  readonly #onVisibilityChange: (callback: () => void) => () => void;
 
   readonly #listeners = new Set<() => void>();
   #snapshot: ProjectTopologySnapshot = EMPTY_SNAPSHOT;
@@ -107,11 +118,18 @@ export class ProjectTopologyWatcher {
   #watch: PlatformWatch | undefined;
   #unsubscribeWatch: (() => void) | undefined;
   #unsubscribePoller: (() => void) | undefined;
+  #unsubscribeVisibility: (() => void) | undefined;
+  #hiddenTimeoutHandle: unknown;
+  #closedForHidden = false;
   #pollHandle: unknown;
   #debounceHandle: unknown;
   #disposed = false;
   /** Bumped on every stop, so a start left over from a stopped subscription becomes a no-op past its next await. */
   #generation = 0;
+  /** `#resolveRef` short-circuits to a miss once a match has already run and found nothing — a fresh attempt only happens for a new watcher instance (rebuilt on client change). */
+  #matchMissed = false;
+  /** Only the latest `#readNow` call may publish — an overlapping earlier one that resolves later is stale. */
+  #readSequence = 0;
 
   constructor(options: ProjectTopologyWatcherOptions) {
     this.#environmentId = options.environmentId;
@@ -124,6 +142,13 @@ export class ProjectTopologyWatcher {
     this.#clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as number));
     this.#isHidden = options.isHidden ?? (() => typeof document !== "undefined" && document.hidden);
     this.#makeReceiverId = options.makeReceiverId ?? (() => crypto.randomUUID());
+    this.#onVisibilityChange =
+      options.onVisibilityChange ??
+      ((callback) => {
+        if (typeof document === "undefined") return () => undefined;
+        document.addEventListener("visibilitychange", callback);
+        return () => document.removeEventListener("visibilitychange", callback);
+      });
   }
 
   getSnapshot(): ProjectTopologySnapshot {
@@ -160,6 +185,12 @@ export class ProjectTopologyWatcher {
    * `platformWatch.ts`'s own generation guard).
    */
   async #start(myGeneration: number): Promise<void> {
+    // Published up front — before either await below — so a resubscribe
+    // reports "polling" (never a stale "live" left over from a prior span)
+    // for every moment until the socket actually proves itself connected.
+    this.#publish({ liveness: "polling" });
+    this.#unsubscribeVisibility = this.#onVisibilityChange(() => this.#onHiddenChanged());
+
     if (this.#ref === undefined) {
       const ref = await this.#resolveRef();
       if (this.#disposed || myGeneration !== this.#generation) return;
@@ -170,26 +201,46 @@ export class ProjectTopologyWatcher {
       this.#ref = ref;
     }
 
-    if (this.#project === undefined) {
-      const projectId = this.#ref.projectId;
-      this.#project = await this.#client
-        .fetchProject(projectId)
-        .catch((): ZeropsProject => ({ id: projectId, name: projectId, status: "UNKNOWN" }));
-      if (this.#disposed || myGeneration !== this.#generation) return;
-    }
-
     this.#openWatch(this.#ref);
     this.#subscribeProcessPoller(this.#ref.projectId);
     await this.#readNow();
     if (this.#disposed || myGeneration !== this.#generation) return;
-    this.#publish({ liveness: this.#snapshot.liveness ?? "polling" });
     this.#scheduleNextDisconnectedPoll();
   }
 
   async #resolveRef(): Promise<EnvironmentProjectRef | undefined> {
     const remembered = await lookupEnvironmentProjectRef(this.#storage, this.#environmentId);
     if (remembered !== undefined) return remembered;
-    return this.#runMatchOnce();
+    if (this.#matchMissed) return undefined;
+    const ref = await this.#runMatchOnce();
+    if (ref === undefined) this.#matchMissed = true;
+    return ref;
+  }
+
+  /**
+   * Fetches the project once, but only caches success — a failed read is
+   * retried on the next `#readNow` rather than pinned forever to a placeholder
+   * `UNKNOWN` project. A 403/404 means the remembered ref itself is stale
+   * (the project was deleted, or access was revoked): forget it and clear
+   * `#ref` so the next start re-runs the origin match instead of retrying a
+   * lookup that can never succeed.
+   */
+  async #ensureProject(): Promise<void> {
+    if (this.#project !== undefined || this.#ref === undefined) return;
+    const projectId = this.#ref.projectId;
+    try {
+      this.#project = await this.#client.fetchProject(projectId);
+    } catch (cause) {
+      if (this.#disposed) return;
+      if (
+        cause instanceof ZeropsApiError &&
+        (cause.kind === "forbidden" || cause.kind === "not-found")
+      ) {
+        await forgetEnvironmentProjectRef(this.#storage, this.#environmentId);
+        this.#ref = undefined;
+      }
+      this.#publish({ error: errorMessage(cause) });
+    }
   }
 
   #runMatchOnce(): Promise<EnvironmentProjectRef | undefined> {
@@ -223,9 +274,12 @@ export class ProjectTopologyWatcher {
       return undefined;
     }
 
+    // No disposed check inside the loop: this promise is shared
+    // (`matchInFlightByEnvironment`) across every watcher instance for this
+    // environment — the instance that kicked it off being disposed must not
+    // resolve `undefined` for another instance still sharing the same match.
     const connectedOrigins = new Map([[origin, this.#environmentId]]);
     for (const organization of organizations) {
-      if (this.#disposed) return undefined;
       let candidates;
       try {
         ({ candidates } = await loadZeropsCandidates(this.#client, {
@@ -259,7 +313,7 @@ export class ProjectTopologyWatcher {
       if (event.type === "connected") {
         this.#publish({ liveness: "live" });
         this.#stopDisconnectedPollLoop();
-        void this.#readNow();
+        this.#scheduleDebouncedRead();
       } else if (event.type === "disconnected") {
         this.#publish({ liveness: "polling" });
         this.#scheduleNextDisconnectedPoll();
@@ -316,15 +370,27 @@ export class ProjectTopologyWatcher {
   }
 
   async #readNow(): Promise<void> {
-    if (this.#ref === undefined || this.#disposed) return;
+    if (this.#disposed) return;
+    // A prior failed project fetch is not cached — retry it as part of every
+    // read attempt, exactly once per call, until it succeeds.
+    if (this.#project === undefined) {
+      await this.#ensureProject();
+      if (this.#disposed) return;
+    }
+    if (this.#ref === undefined || this.#project === undefined) return;
+
+    // Overlapping reads can resolve out of order (a poll firing while a
+    // debounced read is still in flight): only the most recently started
+    // read may publish.
+    const mySequence = (this.#readSequence += 1);
     try {
       const services = await this.#client.listProjectServices(this.#ref.projectId);
-      if (this.#disposed) return;
+      if (this.#disposed || mySequence !== this.#readSequence) return;
       this.#servicesCache = services;
       this.#recomputeView();
       this.#publish({ lastReadAt: this.#now(), error: undefined });
     } catch (cause) {
-      if (this.#disposed) return;
+      if (this.#disposed || mySequence !== this.#readSequence) return;
       this.#publish({ error: errorMessage(cause) });
     }
   }
@@ -343,10 +409,51 @@ export class ProjectTopologyWatcher {
     this.#watch = undefined;
     this.#unsubscribePoller?.();
     this.#unsubscribePoller = undefined;
+    this.#unsubscribeVisibility?.();
+    this.#unsubscribeVisibility = undefined;
+    if (this.#hiddenTimeoutHandle !== undefined) {
+      this.#clearTimer(this.#hiddenTimeoutHandle);
+      this.#hiddenTimeoutHandle = undefined;
+    }
+    this.#closedForHidden = false;
     this.#stopDisconnectedPollLoop();
     if (this.#debounceHandle !== undefined) {
       this.#clearTimer(this.#debounceHandle);
       this.#debounceHandle = undefined;
+    }
+  }
+
+  /**
+   * A hidden tab keeps its live socket for `HIDDEN_CLOSE_AFTER_MS` (a brief
+   * tab-switch should not thrash the connection), then closes it and falls
+   * back to disconnected polling — the same posture a genuinely dead socket
+   * gets. Coming back visible reopens the socket immediately and reads once,
+   * or simply cancels the pending close if it never fired.
+   */
+  #onHiddenChanged(): void {
+    if (this.#disposed) return;
+    if (this.#isHidden()) {
+      if (this.#hiddenTimeoutHandle !== undefined || this.#closedForHidden) return;
+      this.#hiddenTimeoutHandle = this.#setTimer(() => {
+        this.#hiddenTimeoutHandle = undefined;
+        this.#closedForHidden = true;
+        this.#unsubscribeWatch?.();
+        this.#unsubscribeWatch = undefined;
+        this.#watch?.close();
+        this.#watch = undefined;
+        this.#publish({ liveness: "polling" });
+        this.#scheduleNextDisconnectedPoll();
+      }, HIDDEN_CLOSE_AFTER_MS);
+      return;
+    }
+    if (this.#hiddenTimeoutHandle !== undefined) {
+      this.#clearTimer(this.#hiddenTimeoutHandle);
+      this.#hiddenTimeoutHandle = undefined;
+    }
+    if (this.#closedForHidden && this.#ref !== undefined) {
+      this.#closedForHidden = false;
+      this.#openWatch(this.#ref);
+      this.#scheduleDebouncedRead();
     }
   }
 }

@@ -27,6 +27,7 @@ import {
   type ZeropsStorageAdapter,
   type ZeropsUser,
 } from "@t3tools/client-runtime/zerops";
+import { forgetAllEnvironmentProjectRefs } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import {
   createContext,
   useCallback,
@@ -284,6 +285,7 @@ export function ZeropsSessionProvider({
       },
       signOut: async () => {
         await client.logout();
+        await forgetAllEnvironmentProjectRefs(storage);
         setLastRegistration(null);
       },
       lastRegistration,
@@ -299,6 +301,7 @@ export function ZeropsSessionProvider({
       organizations,
       selectOrganization,
       status,
+      storage,
       user,
     ],
   );
