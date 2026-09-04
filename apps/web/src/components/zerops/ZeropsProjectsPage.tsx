@@ -22,9 +22,11 @@ import {
   shouldAutoEnterProvisioning,
 } from "@t3tools/client-runtime/zerops/autoEnterProvisioning";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
+import { browserZeropsStorage } from "~/zerops/storage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
@@ -116,7 +118,16 @@ export function ZeropsProjectScopeHeader() {
  * waiting" — picking a candidate, filling in the create form — is
  * caller-specific and stays with the caller.
  */
-export function useZeropsProjectConnection(): {
+/**
+ * @param orgId The organization scope this connection runs in, so a
+ * successful exchange can remember which project and organization the new
+ * environment resolves to (`environmentProjectRef.ts`, source `"connect"`) —
+ * the client-side service map has no other way to learn this once the read
+ * moves off the mate server. `null` while the scope is not yet resolved
+ * simply skips remembering; the environment falls back to the one-time
+ * origin match later.
+ */
+export function useZeropsProjectConnection(orgId: string | null): {
   readonly creatingIn: string | null;
   readonly setCreatingIn: (clientId: string | null) => void;
   readonly provisioning: ReturnType<typeof useZeropsProvisioning>;
@@ -149,6 +160,14 @@ export function useZeropsProjectConnection(): {
           setConnectError(result.error);
           return;
         }
+        const projectId = provisioning.state?.projectId;
+        if (projectId && orgId) {
+          await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {
+            projectId,
+            orgId,
+            source: "connect",
+          });
+        }
         provisioning.cancel();
         setCreatingIn(null);
         await navigate({ to: "/" });
@@ -156,7 +175,7 @@ export function useZeropsProjectConnection(): {
         setConnectingOrigin(null);
       }
     },
-    [exchangeZeropsIdentity, navigate, provisioning],
+    [exchangeZeropsIdentity, navigate, orgId, provisioning],
   );
 
   const readyOrigin =
@@ -223,7 +242,7 @@ function ZeropsProjectsContent() {
     retryProjectConnection,
     connectContainer,
     resetConnectingTarget,
-  } = useZeropsProjectConnection();
+  } = useZeropsProjectConnection(activeOrganization?.id ?? null);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const navigate = useNavigate();
   // The server that served this page gets one automatic identity exchange.

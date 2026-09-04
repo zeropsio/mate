@@ -118,7 +118,7 @@ function ZeropsNewProjectContent() {
   } = useZeropsSession();
   const navigate = useNavigate();
   const { provisioning, connectError, connectingOrigin, retryProjectConnection, setCreatingIn } =
-    useZeropsProjectConnection();
+    useZeropsProjectConnection(activeOrganization?.id ?? null);
 
   const [step, setStep] = useState<ZeropsNewProjectStep>("project");
   const [name, setName] = useState("zerops-mate");

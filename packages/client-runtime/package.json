@@ -227,6 +227,10 @@
       "types": "./src/zerops/operations/__fixtures__/callEntries.ts",
       "default": "./src/zerops/operations/__fixtures__/callEntries.ts"
     },
+    "./zerops/environmentProjectRef": {
+      "types": "./src/zerops/environmentProjectRef.ts",
+      "default": "./src/zerops/environmentProjectRef.ts"
+    },
     "./zerops/firstPrompt": {
       "types": "./src/zerops/firstPrompt.ts",
       "default": "./src/zerops/firstPrompt.ts"
