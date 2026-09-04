@@ -36,6 +36,9 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 
 - `vp test run <file>` — targeted tests for what you touched, never the repo-wide suite.
 - Package `typecheck` (scoped to the package you changed), never repo-wide.
+- Before a push: `vp check` on the touched files; a deletion must also pass
+  `node scripts/check-guard-exceptions.ts` and `vp test run scripts/surface-manifest.test.ts` — CI's
+  Check job reconciles the guard ledgers and `docs/internals/zerops/surfaces.json` against the tree.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
