@@ -216,6 +216,15 @@ export function buildZeropsContainerUrl(
  * subdomain at all (a project's `publicZone`/`zeropsSubdomainHost` come from
  * `fetchProject`, never from the lighter project embedded in a service-stack
  * list read).
+ *
+ * Port 80 measured (z3-eval, 2026-09-04) with NO port segment in the origin
+ * — `https://weatherdash-26a7.prg1.zerops.app/` is 200,
+ * `https://weatherdash-26a7-80.prg1.zerops.app/` is 502. Any other port
+ * keeps its segment, matching `buildZeropsContainerUrl` (and
+ * `candidates.ts`'s `containerOrigin`, which only ever asks for the zcp
+ * container's 8080 and must keep working unchanged) — measured the same day:
+ * `https://zcp-26a7-8080.prg1.zerops.app/` is 200,
+ * `https://zcp-26a7.prg1.zerops.app/` is 502.
  */
 export function servicePortOrigin(
   project: ZeropsProject,
@@ -227,7 +236,9 @@ export function servicePortOrigin(
   if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
   const region = zeropsRegionFromPublicZone(project.publicZone);
   if (!region) return undefined;
-  return buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, region);
+  return port.port === 80
+    ? `https://${service.name}-${project.zeropsSubdomainHost}.${region}.zerops.app`
+    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, region);
 }
 
 /**
@@ -619,29 +630,49 @@ export class ZeropsApiClient {
    * `POST /web-socket/login` — trades the account's current access token for a
    * short-lived `webSocketToken`, the credential the platform push channel's
    * upgrade URL carries (`docs/internals/zerops/verified.md` "platform
-   * websocket from a browser origin"). Goes through `#request`, so a `401`
-   * here is retried once after the client's normal refresh, the same as any
-   * other authenticated call.
+   * websocket from a browser origin", `token` the measured field name — a
+   * live probe succeeded with it; `frontend-legacy`'s own `accessToken`
+   * naming is unmeasured against this endpoint, so it is not sent).
    *
-   * The body carries the access token under both `token` (zcp's own watcher,
-   * `internal/dataconsole/watch/watch.go`, and a live probe that succeeded
-   * with it) and `accessToken` (`frontend-legacy` `websocket.api.ts`'s
-   * `auth$`) — the two known clients of this endpoint disagree on the field
-   * name, so both are sent rather than betting on one.
+   * Retries a `401` itself rather than going through `#request`'s own retry:
+   * that retry re-sends the exact `init.body` string it was given, so it
+   * would resend the STALE token in the body under the FRESH one in the
+   * `Authorization` header. Building the body fresh per attempt is the fix.
+   * `clearSessionOnUnauthorized: false` on every attempt, matching
+   * `fetchProjectProcesses`: this backs a background reconnect
+   * (`platformWatch.ts`), not a user-initiated action, so its own 401 must
+   * never sign the whole UI out from under something else using the session.
    */
   async exchangeWebSocketToken(): Promise<{ readonly webSocketToken: string }> {
-    const session = this.#session;
-    if (!session) {
-      throw new ZeropsApiError(
-        "Sign in to Zerops before opening a live connection.",
-        "expired-session",
-        401,
+    const attempt = (): Promise<{ readonly webSocketToken: string }> => {
+      const session = this.#session;
+      if (!session) {
+        throw new ZeropsApiError(
+          "Sign in to Zerops before opening a live connection.",
+          "expired-session",
+          401,
+        );
+      }
+      return this.#request<{ readonly webSocketToken: string }>(
+        "/web-socket/login",
+        { method: "POST", body: JSON.stringify({ token: session.accessToken }) },
+        { retryAfterRefresh: false, clearSessionOnUnauthorized: false },
       );
+    };
+
+    try {
+      return await attempt();
+    } catch (cause) {
+      if (
+        !(cause instanceof ZeropsApiError) ||
+        cause.kind !== "expired-session" ||
+        !this.#session?.refreshToken
+      ) {
+        throw cause;
+      }
+      await this.#refreshSession(false);
+      return attempt();
     }
-    return this.#request<{ readonly webSocketToken: string }>("/web-socket/login", {
-      method: "POST",
-      body: JSON.stringify({ token: session.accessToken, accessToken: session.accessToken }),
-    });
   }
 
   /**
@@ -653,13 +684,19 @@ export class ZeropsApiClient {
    * returned). Verified protocol: `docs/internals/zerops/verified.md`.
    *
    * A `process` subscription additionally excludes the L7 load-balancer's own
-   * housekeeping processes and narrows to the statuses each mode cares about
-   * — `frontend-legacy` `process-base.effect.ts`'s `listSubscribe`/
-   * `updateSubscribe` calls, ported verbatim (their `clientId`-only search
-   * become `clientId eq` **and** `projectId eq` here: the official app scopes
-   * to the whole account, this client to one project). A `service-stack`
+   * housekeeping processes — `frontend-legacy` `process-base.effect.ts`'s
+   * `listSubscribe`/`updateSubscribe` calls, ported verbatim (their
+   * `clientId`-only search become `clientId eq` **and** `projectId eq` here:
+   * the official app scopes to the whole account, this client to one
+   * project). Only the LIST subscription narrows further to `status in
+   * [RUNNING, PENDING]` (also ported verbatim): the UPDATE subscription must
+   * see every status transition, FINISHED/FAILED/CANCELED included, or a
+   * process settling would never push a signal. A `service-stack`
    * subscription carries no such extra terms — `service-stack-base.effect.ts`
    * passes none either.
+   *
+   * `clearSessionOnUnauthorized: false`, matching `exchangeWebSocketToken`:
+   * a background reconnect's own 401 must never sign the whole UI out.
    */
   async subscribeProjectSearch(
     entity: "service-stack" | "process",
@@ -680,27 +717,26 @@ export class ZeropsApiClient {
       { name: "projectId", operator: "eq", value: options.projectId },
     ];
     if (entity === "process") {
-      search.push(
-        {
-          name: "status",
-          operator: "in",
-          value:
-            options.mode === "list" ? ["RUNNING", "PENDING"] : ["RUNNING", "PENDING", "FINISHED"],
-        },
-        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
-      );
+      if (options.mode === "list") {
+        search.push({ name: "status", operator: "in", value: ["RUNNING", "PENDING"] });
+      }
+      search.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
     }
-    return this.#request(`/${entity}/search`, {
-      method: "POST",
-      body: JSON.stringify({
-        search,
-        sort: [],
-        subscriptionName: `${subscriptionEntity}__${options.mode}-subscription`,
-        receiverId: options.receiverId,
-        wsOutputType: options.mode === "list" ? "listStream" : "updateStream",
-        ...(options.mode === "update" ? { disableOutput: true } : {}),
-      }),
-    });
+    return this.#request(
+      `/${entity}/search`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          search,
+          sort: [],
+          subscriptionName: `${subscriptionEntity}__${options.mode}-subscription`,
+          receiverId: options.receiverId,
+          wsOutputType: options.mode === "list" ? "listStream" : "updateStream",
+          ...(options.mode === "update" ? { disableOutput: true } : {}),
+        }),
+      },
+      { clearSessionOnUnauthorized: false },
+    );
   }
 
   /**

@@ -91,10 +91,26 @@ describe("servicePortOrigin", () => {
     subdomainAccess: true,
   };
 
-  it("composes the origin for a subdomain-enabled http port", () => {
+  /**
+   * Measured (z3-eval, 2026-09-04): port 80 carries NO port segment in the
+   * origin — `https://weatherdash-26a7.prg1.zerops.app/` is 200,
+   * `https://weatherdash-26a7-80.prg1.zerops.app/` is 502.
+   */
+  it("composes the origin for a subdomain-enabled http port on 80 with no port segment", () => {
     expect(servicePortOrigin(project, service, { port: 80, scheme: "http" })).toBe(
-      "https://weatherdash-26a7-80.prg1.zerops.app",
+      "https://weatherdash-26a7.prg1.zerops.app",
     );
+  });
+
+  /**
+   * Measured the same day: a non-default port keeps its segment —
+   * `https://zcp-26a7-8080.prg1.zerops.app/` is 200,
+   * `https://zcp-26a7.prg1.zerops.app/` is 502.
+   */
+  it("composes the origin for a subdomain-enabled http port on a non-default port with the port segment", () => {
+    expect(
+      servicePortOrigin(project, { ...service, name: "zcp" }, { port: 8080, scheme: "http" }),
+    ).toBe("https://zcp-26a7-8080.prg1.zerops.app");
   });
 
   it("has no origin when the service's subdomain access is off", () => {
@@ -796,10 +812,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/web-socket/login`,
     );
     expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      token: SESSION.accessToken,
-      accessToken: SESSION.accessToken,
-    });
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ token: SESSION.accessToken });
   });
 
   it("refuses without a session rather than calling the platform", async () => {
@@ -811,6 +824,59 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(error).toBeInstanceOf(ZeropsApiError);
     expect((error as ZeropsApiError).kind).toBe("expired-session");
     expect(stub.requests).toHaveLength(0);
+  });
+
+  it("the login exchange retry after a refresh carries the refreshed token in the body and never clears the session", async () => {
+    const refreshedSession: ZeropsSession = {
+      accessToken: "access-2",
+      refreshToken: "refresh-2",
+      expiresIn: 432_000,
+      userId: "user-1",
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/web-socket/login")) {
+        return request.authorization === `Bearer ${SESSION.accessToken}`
+          ? jsonResponse(401, { error: { code: "unauthorized" } })
+          : jsonResponse(200, { webSocketToken: "ws-token-1" });
+      }
+      if (request.url.includes("/auth/refresh")) {
+        return jsonResponse(200, refreshedSession);
+      }
+      return jsonResponse(500, { error: { code: "unexpected" } });
+    });
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const result = await client.exchangeWebSocketToken();
+
+    expect(result).toEqual({ webSocketToken: "ws-token-1" });
+    const loginRequests = stub.requests.filter((request) =>
+      request.url.includes("/web-socket/login"),
+    );
+    expect(loginRequests).toHaveLength(2);
+    expect(JSON.parse(loginRequests[0]?.body ?? "{}")).toEqual({ token: SESSION.accessToken });
+    expect(JSON.parse(loginRequests[1]?.body ?? "{}")).toEqual({
+      token: refreshedSession.accessToken,
+    });
+    expect(loginRequests[1]?.authorization).toBe(`Bearer ${refreshedSession.accessToken}`);
+    expect(client.session?.accessToken).toBe(refreshedSession.accessToken);
+    // The session changed (refreshed), it was never cleared.
+    expect(onSessionChange).not.toHaveBeenCalledWith(null);
+  });
+
+  it("rejects on a 401 with no refresh token, but never clears the held session", async () => {
+    const stub = recordingFetch(() => jsonResponse(401, { error: { code: "unauthorized" } }));
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession({ accessToken: "access-1", userId: "user-1" });
+
+    const error = await client.exchangeWebSocketToken().catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(client.session?.accessToken).toBe("access-1");
   });
 });
 
@@ -843,7 +909,11 @@ describe("ZeropsApiClient.subscribeProjectSearch", () => {
     });
   });
 
-  it("posts an update subscription for Process with disableOutput", async () => {
+  /**
+   * No `status` filter on the UPDATE subscription: FINISHED/FAILED/CANCELED
+   * must still push a signal, or a process settling would go unnoticed.
+   */
+  it("posts an update subscription for Process with disableOutput and no status filter", async () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
@@ -860,7 +930,6 @@ describe("ZeropsApiClient.subscribeProjectSearch", () => {
       search: [
         { name: "clientId", operator: "eq", value: "org-1" },
         { name: "projectId", operator: "eq", value: "proj-1" },
-        { name: "status", operator: "in", value: ["RUNNING", "PENDING", "FINISHED"] },
         { name: "executorTag", operator: "ne", value: "L7_MASTER" },
       ],
       sort: [],

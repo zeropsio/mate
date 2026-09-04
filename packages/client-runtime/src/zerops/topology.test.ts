@@ -94,8 +94,10 @@ describe("projectTopology — subdomain origin", () => {
     const view = projectTopology(subdomainProject, realServices, []);
     const byHostname = new Map(view.services.map((service) => [service.hostname, service]));
 
+    // Port 80 (weatherdash) carries no port segment; a non-default port (zcp,
+    // 8080) keeps it — measured against z3-eval, see `servicePortOrigin`.
     expect(byHostname.get("weatherdash")?.subdomainUrl).toBe(
-      "https://weatherdash-26a7-80.prg1.zerops.app",
+      "https://weatherdash-26a7.prg1.zerops.app",
     );
     expect(byHostname.get("zcp")?.subdomainUrl).toBe("https://zcp-26a7-8080.prg1.zerops.app");
   });

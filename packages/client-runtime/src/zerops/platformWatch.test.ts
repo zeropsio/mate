@@ -268,7 +268,7 @@ describe("openPlatformWatch", () => {
     watch.close();
   });
 
-  it("reconnects immediately, with no backoff, the first time a ping's pong never arrives", async () => {
+  it("backs off (not immediately) when a connection dies before its first pong ever arrives", async () => {
     const client = fakeClient();
     const sockets: FakeSocket[] = [];
     const events: PlatformWatchEvent[] = [];
@@ -293,9 +293,104 @@ describe("openPlatformWatch", () => {
     await vi.advanceTimersByTimeAsync(8_000);
     expect(events).toContainEqual({ type: "disconnected" });
 
-    // No backoff on this first reconnect attempt — the new socket appears at +0ms.
-    // (A further 1ms, not another 0ms: a timer scheduled for exactly "now" only
-    // fires once fake time actually moves past that instant.)
+    // No pong ever answered this connection, so it backs off (1s) rather than
+    // reconnecting immediately — otherwise a server that always closes before
+    // the first pong would be hammered at zero delay forever.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(sockets).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(2);
+
+    watch.close();
+  });
+
+  it("reconnects immediately once a pong has proven the connection alive, then backs off if the next attempt also dies before a pong", async () => {
+    const client = fakeClient();
+    const sockets: FakeSocket[] = [];
+    const events: PlatformWatchEvent[] = [];
+    const watch = watchHelper({
+      client,
+      orgId: "org-1",
+      projectId: "proj-1",
+      makeSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    watch.events.subscribe((event) => events.push(event));
+
+    await vi.advanceTimersByTimeAsync(0);
+    await connectSocket(sockets, 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events).toContainEqual({ type: "connected" });
+
+    // Answer the first ping: this connection has now proven itself alive.
+    sockets[0]!.receive({ type: "pong" });
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    // The second ping's pong never comes: dead 8s later.
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(events.filter((event) => event.type === "disconnected")).toHaveLength(1);
+
+    // Immediate reconnect — no backoff — because a pong DID answer this connection.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(2);
+
+    // The reconnect attempt itself never gets a pong either, and dies the same way.
+    await connectSocket(sockets, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(events.filter((event) => event.type === "disconnected")).toHaveLength(2);
+
+    // This time it backs off (1s): the new attempt never proved itself alive either.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(sockets).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(3);
+
+    watch.close();
+  });
+
+  it("does not emit connected when the socket closes during the subscribe loop, and backs off instead", async () => {
+    const client = fakeClient();
+    const sockets: FakeSocket[] = [];
+    const events: PlatformWatchEvent[] = [];
+    const watch = watchHelper({
+      client,
+      orgId: "org-1",
+      projectId: "proj-1",
+      makeSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    watch.events.subscribe((event) => events.push(event));
+
+    // The socket closes as soon as the first subscribe call goes out — after the
+    // greeting, so it lands on the new per-connection close tracker, not the
+    // (already-settled, now-inert) greeting-wait handler.
+    let firstSubscribeCall = true;
+    const baseSubscribe = client.subscribeProjectSearch.bind(client);
+    client.subscribeProjectSearch = async (entity, options) => {
+      if (firstSubscribeCall) {
+        firstSubscribeCall = false;
+        sockets[0]!.simulateServerClose();
+      }
+      return baseSubscribe(entity, options);
+    };
+
+    await vi.advanceTimersByTimeAsync(0);
+    await connectSocket(sockets, 0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(events).not.toContainEqual({ type: "connected" });
+    expect(client.searches.length).toBeGreaterThan(0);
+
+    // Backs off: no pong was ever received for this dead attempt.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(sockets).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(sockets).toHaveLength(2);
 
@@ -372,8 +467,10 @@ describe("openPlatformWatch", () => {
     expect(client.searches).toHaveLength(4);
     expect(client.logins).toBe(1);
 
+    // A pong first, so this connection has proven itself alive and the close
+    // below reconnects immediately rather than backing off.
+    sockets[0]!.receive({ type: "pong" });
     sockets[0]!.simulateServerClose();
-    // Immediate reconnect, no backoff — see the note in the pong-timeout test above.
     await vi.advanceTimersByTimeAsync(1);
 
     expect(sockets).toHaveLength(2);

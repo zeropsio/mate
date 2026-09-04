@@ -23,11 +23,16 @@
  *    (`websocket.effect.ts`'s `timer(0, 15000)`); each ping opens its own 8s
  *    deadline for a `{"type":"pong"}` reply — only a pong satisfies it, no
  *    other message does. A deadline that elapses declares the socket dead.
- * 5. On death: close, reconnect immediately with a fresh login and a fresh
- *    `receiverId` (`app.effect.ts`'s `_onZefWsClosed$`, no delay), and
- *    re-subscribe all four. If THAT reconnect attempt itself fails (the
- *    login call, the greeting, or a subscribe call), back off from there —
- *    1s doubling to 30s — before trying again.
+ * 5. On death: close, and reconnect with a fresh login and a fresh
+ *    `receiverId`. Immediately (`app.effect.ts`'s `_onZefWsClosed$`, no
+ *    delay) only if this connection had proven itself alive — at least one
+ *    pong answered since it connected. A connection that dies before its
+ *    first pong ever arrives (the server closing right after the greeting,
+ *    say) instead backs off — 1s doubling to 30s — so a server that keeps
+ *    doing that is not hammered at zero delay forever; the same backoff
+ *    covers a reconnect ATTEMPT itself failing (the login call, the
+ *    greeting, or a subscribe call). The backoff resets to 1s only once a
+ *    pong actually answers a ping, not merely on reaching "connected".
  *
  * **A push is a signal, never data**: an inbound `{"type":"search",
  * "subscriptionName":…, "data":{…}}` message is decoded no further than
@@ -158,6 +163,8 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
   let backoffMs = BACKOFF_START_MS;
   /** Bumped on every (re)connect attempt so a stale attempt's async work is a no-op once superseded. */
   let generation = 0;
+  /** Reset per connection attempt; set (once) the first pong answers a ping — see `goDead`. */
+  let receivedPongSinceConnect = false;
 
   const emit = (event: PlatformWatchEvent): void => {
     for (const listener of listeners) listener(event);
@@ -200,15 +207,28 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
     }, delay);
   };
 
-  /** A connection that WAS up just died (pong timeout, or the socket itself closed/errored) — try again right away. */
+  /**
+   * A connection that WAS up just died (pong timeout, or the socket itself
+   * closed/errored). Reconnects immediately only once this connection had
+   * proven itself alive (a pong answered at least one ping first); a
+   * connection that never got that far backs off instead, through the same
+   * `scheduleReconnect` a failed reconnect ATTEMPT uses — otherwise a server
+   * that keeps closing right after the greeting would be hammered at zero
+   * delay forever.
+   */
   const goDead = (myGeneration: number): void => {
     if (closed || myGeneration !== generation) return;
+    const reconnectImmediately = receivedPongSinceConnect;
     teardownSocket();
     emit({ type: "disconnected" });
-    reconnectHandle = timers.setTimer(() => {
-      reconnectHandle = undefined;
-      void connect();
-    }, 0);
+    if (reconnectImmediately) {
+      reconnectHandle = timers.setTimer(() => {
+        reconnectHandle = undefined;
+        void connect();
+      }, 0);
+    } else {
+      scheduleReconnect(myGeneration);
+    }
   };
 
   const startHeartbeat = (myGeneration: number): void => {
@@ -247,6 +267,10 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
     const message = readMessage(data);
     if (message.type === "pong") {
       pongDeadlineHandle = clearHandle(pongDeadlineHandle);
+      if (!receivedPongSinceConnect) {
+        receivedPongSinceConnect = true;
+        backoffMs = BACKOFF_START_MS;
+      }
       return;
     }
     if (message.type === "search" && message.subscriptionName !== undefined) {
@@ -298,6 +322,14 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
       return;
     }
 
+    // The greeting's own `onclose` already settled (or never will again, its
+    // `settled` guard makes it inert) — track a close during the subscribe
+    // loop itself, since nothing else observes the socket in this window.
+    let closedDuringSubscribe = false;
+    nextSocket.onclose = () => {
+      closedDuringSubscribe = true;
+    };
+
     try {
       // Membership (list) for both entities, then status (update) for both —
       // matches the measured protocol's own grouping, not an entity-major one.
@@ -318,12 +350,20 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
       return;
     }
     if (closed || myGeneration !== generation) return;
+    if (closedDuringSubscribe) {
+      teardownSocket();
+      scheduleReconnect(myGeneration);
+      return;
+    }
 
     nextSocket.onmessage = (event) => onMessage(myGeneration, event.data);
     nextSocket.onclose = () => goDead(myGeneration);
     nextSocket.onerror = () => goDead(myGeneration);
 
-    backoffMs = BACKOFF_START_MS;
+    // NOT `backoffMs = BACKOFF_START_MS` here: that reset happens only once a
+    // pong actually answers a ping (see `onMessage`), so a connection that
+    // reaches here but dies before its first pong still backs off next time.
+    receivedPongSinceConnect = false;
     startHeartbeat(myGeneration);
     startProcessListResubscribe(myGeneration, receiverId);
     emit({ type: "connected" });
