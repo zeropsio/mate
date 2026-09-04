@@ -448,3 +448,12 @@ agent.
 in another — re-stash from the one that still works. The contents never get printed or
 committed.
 **Real fix** S7 — OAuth inside mate's own terminal, credential-file watch, `zcp agent mark-oauth`.
+
+---
+
+### H-25 · A login session's stall timer is a detached fiber that is never interrupted · in place
+
+**Where** `apps/server/src/zerops/ZeropsAgentLogin.ts` — the per-session stall timer is `Effect.forkDetach`ed and `dispose` only removes the session from the active map and unsubscribes its output listener; the module header explains why.
+**Why** This pinned Effect build has a scheduler bug when a `Stream.debounce`-driven fiber is interrupted through a scope close or a racing second fiber (the same class of issue `ZeropsAgentAuth.ts`'s header describes and works around).
+**Blast radius** One dead fiber per login attempt: it checks the session's identity token before every action and goes inert once the token no longer matches, so the leak is bounded by the number of user-initiated agent logins, not by reconnects.
+**Real fix** Interrupt the timer fiber in `dispose` once the Effect upgrade past the scheduler bug lands; then this entry is paid back.
