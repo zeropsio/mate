@@ -3,12 +3,11 @@ import {
   serviceStatusTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
-import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
 import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
 import { callEntriesFromActivities } from "@t3tools/client-runtime/zerops/operations/fixtures";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
-import type { ZeropsTopologySnapshot } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -28,41 +27,13 @@ import {
   StatusDot,
 } from "./primitives";
 
-/**
- * TEMPORARY, deleted once the scene contract itself moves to a captured
- * `service-stack`/`process` pair (a follow-up slice, not S3): reshapes the
- * still-server-shaped `zcp studio topology` scene snapshot
- * (`ZeropsTopologySnapshot`, still read by `apps/server/src/zerops/
- * ZeropsFixtureFeeds.ts` until S4 deletes that feed) into the client
- * projection's `ZeropsTopologyView`. Mirrors the identical adapter in
- * `packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts`.
- */
-function viewFromScene(snapshot: ZeropsTopologySnapshot): ZeropsTopologyView | undefined {
-  if (!snapshot.available) return undefined;
-  const project = snapshot.project;
-  return {
-    project: {
-      id: project?.id ?? "showcase-project",
-      name: project?.name ?? "Showcase",
-      ...(project?.status === undefined ? {} : { status: project.status }),
-    },
-    services: snapshot.services.map((service) => ({
-      hostname: service.hostname,
-      serviceId: service.serviceId,
-      type: service.type,
-      status: service.status,
-      group: service.group,
-      transient: service.transient,
-      ...(service.subdomainUrl === undefined ? {} : { subdomainUrl: service.subdomainUrl }),
-      ports: [],
-    })),
-    warnings: snapshot.warnings,
-  };
-}
-
 it.each(listShowcaseScenes())("$id renders through the web presentation components", (scene) => {
   const markup: Array<string> = [];
-  const topologyView = viewFromScene(scene.topology);
+  const topologyView = projectTopology(
+    scene.topologySource.project,
+    scene.topologySource.services,
+    scene.topologySource.processes,
+  );
   const map = buildZeropsServiceMap(topologyView, scene.lifecycle);
   const mapMarkup = renderToStaticMarkup(<ZeropsServiceMap view={map} />);
   markup.push(mapMarkup);
@@ -70,7 +41,7 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
     expect(mapMarkup, "an unavailable topology is intentionally hidden").toBe("");
   } else {
     expect(mapMarkup).toContain("data-zerops-service-map");
-    for (const service of topologyView?.services ?? []) {
+    for (const service of topologyView.services) {
       expect(mapMarkup).toContain(service.status);
       expect(mapMarkup).toContain(`data-zerops-service-tone="${serviceStatusTone(service)}"`);
       if (service.transient) {
@@ -123,7 +94,10 @@ it("renders the complete primitive probe from existing showcase facts", () => {
   };
 
   for (const scene of scenes) {
-    if (!scene.topology.available) addProbe("off", scene.title);
+    // "web:no-zerops" is the one scripted scene standing in for an
+    // environment outside Zerops mode - the closest surviving proxy for what
+    // used to be the topology feed's `available: false`.
+    if (scene.id === "web:no-zerops") addProbe("off", scene.title);
     for (const tool of scene.lifecycle.recentTools) {
       if (tool.status === "inProgress") addProbe("busy", `${tool.toolName} running`);
     }
@@ -132,10 +106,10 @@ it("renders the complete primitive probe from existing showcase facts", () => {
         addProbe("attention", `${agent.agentId} needs authorization`);
       }
     }
-    for (const service of scene.topology.services) {
+    for (const service of scene.topologySource.services) {
       addProbe(
         /FAIL/u.test(service.status) ? "failed" : "ok",
-        `${service.hostname} ${service.status.toLowerCase()}`,
+        `${service.name} ${service.status.toLowerCase()}`,
       );
     }
   }
@@ -148,16 +122,16 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     ])
     .join("\n");
   const processMarkup = scenes
-    .filter((scene) => scene.topology.services.length > 0)
+    .filter((scene) => scene.topologySource.services.length > 0)
     .map((scene) =>
       renderToStaticMarkup(
         <ProcessSteps
-          steps={scene.topology.services.map((service) => ({
-            id: `${scene.id}:${service.hostname}`,
-            label: service.hostname,
+          steps={scene.topologySource.services.map((service) => ({
+            id: `${scene.id}:${service.name}`,
+            label: service.name,
             state: /FAIL/u.test(service.status)
               ? ("failed" as const)
-              : service.transient
+              : service.status === "CREATING"
                 ? ("running" as const)
                 : ("done" as const),
             stateLabel: service.status.toLowerCase(),
@@ -167,14 +141,12 @@ it("renders the complete primitive probe from existing showcase facts", () => {
     )
     .join("\n");
   const livenessMarkup = scenes
-    .map((scene) => {
-      if (!scene.topology.available) return renderToStaticMarkup(<LivenessLine state="absent" />);
-      return scene.topology.doorbellConnected === false
-        ? renderToStaticMarkup(
-            <LivenessLine label={scene.topology.reason ?? scene.title} state="doorbell-down" />,
-          )
-        : renderToStaticMarkup(<LivenessLine label={scene.title} state="live" />);
-    })
+    .map((scene) =>
+      // The doorbell/availability liveness distinction lived on the deleted
+      // server topology feed; the client projection carries no equivalent
+      // signal, so every scripted scene renders as simply "live" here.
+      renderToStaticMarkup(<LivenessLine label={scene.title} state="live" />),
+    )
     .join("\n");
   const primitivesMarkup = scenes
     .flatMap((scene) => [

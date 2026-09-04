@@ -7,18 +7,14 @@
     "recordedAt": "2026-08-30T12:00:00.000Z",
     "from": "authored"
   },
-  "topology": {
-    "available": true,
-    "degraded": false,
+  "topologySource": {
     "project": {
       "id": "showcase-project",
       "name": "Zerops Showcase",
       "status": "ACTIVE"
     },
     "services": [],
-    "warnings": [],
-    "doorbellConnected": true,
-    "readAt": "2026-08-30T12:00:00.000Z"
+    "processes": []
   },
   "lifecycle": {
     "threadId": "cards-thread",

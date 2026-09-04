@@ -7,10 +7,8 @@ import { ShowcaseSceneJson, type ShowcaseScene } from "./schema.ts";
 
 const UNKNOWN_FIELD = "newerShape";
 const UNKNOWN_SERVICE_STATUS = "FUTURE_STATUS";
-const UNKNOWN_ADOPTION_STATE = "future-adoption";
 const UNKNOWN_PHASE = "future-phase";
 const UNKNOWN_IDLE_SCENARIO = "future-idle";
-const UNKNOWN_SERVICE_GROUP = "future-service-group";
 const UNKNOWN_AGENT_ID = "future-agent";
 const UNKNOWN_AGENT_AUTH_STATE = "future-auth-state";
 const UNKNOWN_AGENT_LOGIN_PHASE = "future-login-phase";
@@ -167,15 +165,9 @@ function mapActivityResults(scene: unknown, mode: VariantMode): void {
 
 function futureTopologyService() {
   return {
-    hostname: "futuredev",
-    serviceId: "future-service",
-    type: "nodejs@future",
+    id: "future-service",
+    name: "futuredev",
     status: UNKNOWN_SERVICE_STATUS,
-    group: "runtimes",
-    adoptionState: UNKNOWN_ADOPTION_STATE,
-    isManagedService: false,
-    transient: true,
-    mounted: false,
   };
 }
 
@@ -198,24 +190,6 @@ function futureEnvelope() {
     services: [futureEnvelopeService()],
     generated: "2026-08-30T12:00:00.000Z",
   };
-}
-
-function ensureTopologyService(
-  scene: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  if (!isRecord(scene.topology)) {
-    return undefined;
-  }
-  const services = Array.isArray(scene.topology.services)
-    ? scene.topology.services
-    : (scene.topology.services = []);
-  const service = services.find(isRecord);
-  if (service !== undefined) {
-    return service;
-  }
-  const created = futureTopologyService();
-  services.push(created);
-  return created;
 }
 
 function ensureEnvelope(scene: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -256,21 +230,19 @@ function ensureAgent(scene: Record<string, unknown>): Record<string, unknown> | 
 }
 
 function addUnknownOpenValues(scene: unknown): void {
-  if (!isRecord(scene) || !isRecord(scene.topology) || !isRecord(scene.lifecycle)) {
+  if (!isRecord(scene) || !isRecord(scene.topologySource) || !isRecord(scene.lifecycle)) {
     return;
   }
 
-  const topologyServices = Array.isArray(scene.topology.services)
-    ? scene.topology.services
-    : (scene.topology.services = []);
+  const topologyServices = Array.isArray(scene.topologySource.services)
+    ? scene.topologySource.services
+    : (scene.topologySource.services = []);
   if (topologyServices.length === 0) {
     topologyServices.push(futureTopologyService());
   }
   for (const service of topologyServices) {
     if (isRecord(service)) {
       service.status = UNKNOWN_SERVICE_STATUS;
-      service.adoptionState = UNKNOWN_ADOPTION_STATE;
-      service.transient = true;
     }
   }
 
@@ -318,18 +290,6 @@ export function withUnknownClosedAgentAuthState(scene: ShowcaseScene): unknown {
   const agent = ensureAgent(encoded);
   if (agent !== undefined) {
     agent.state = UNKNOWN_AGENT_AUTH_STATE;
-  }
-  return encoded;
-}
-
-/** JSON-ready scene that must fail decoding because service group is a closed vocabulary. */
-export function withUnknownClosedServiceGroup(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (isRecord(encoded)) {
-    const service = ensureTopologyService(encoded);
-    if (service !== undefined) {
-      service.group = UNKNOWN_SERVICE_GROUP;
-    }
   }
   return encoded;
 }

@@ -11,7 +11,6 @@ import {
   withUnknownClosedAgentAuthState,
   withUnknownClosedAgentId,
   withUnknownClosedAgentLoginPhase,
-  withUnknownClosedServiceGroup,
   withUnknownClosedToolStatus,
   withUnknownShape,
 } from "./variants.ts";
@@ -53,9 +52,11 @@ describe("showcase scene variants", () => {
     const decoded = decodeScene(encoded);
 
     expect(encoded.steps).toBeUndefined();
-    expect(decoded.topology.project).toBeUndefined();
-    expect(decoded.topology.reason).toBeUndefined();
-    expect(decoded.topology.doorbellConnected).toBeUndefined();
+    expect(decoded.topologySource.project.publicZone).toBeUndefined();
+    expect(decoded.topologySource.project.zeropsSubdomainHost).toBeUndefined();
+    expect(decoded.topologySource.services.every((service) => service.isSystem === undefined)).toBe(
+      true,
+    );
     expect(decoded.lifecycle.envelope).toBeUndefined();
     expect(decoded.lifecycle.updatedAt).toBeUndefined();
     expect(decoded.agentAuth.reason).toBeUndefined();
@@ -82,12 +83,9 @@ describe("showcase scene variants", () => {
 
     expect(encoded.newerShape).toBe(true);
     expect(asRecord(encoded.source).newerShape).toBe(true);
-    expect(asRecord(encoded.topology).newerShape).toBe(true);
-    expect(decoded.topology.services.every((service) => service.status === "FUTURE_STATUS")).toBe(
-      true,
-    );
+    expect(asRecord(encoded.topologySource).newerShape).toBe(true);
     expect(
-      decoded.topology.services.every((service) => service.adoptionState === "future-adoption"),
+      decoded.topologySource.services.every((service) => service.status === "FUTURE_STATUS"),
     ).toBe(true);
     expect(decoded.lifecycle.envelope?.phase).toBe("future-phase");
     expect(decoded.lifecycle.envelope?.idleScenario).toBe("future-idle");
@@ -98,7 +96,6 @@ describe("showcase scene variants", () => {
   });
 
   const closedEnumVariants = [
-    ["group", withUnknownClosedServiceGroup],
     ["agentId", withUnknownClosedAgentId],
     ["state", withUnknownClosedAgentAuthState],
     ["phase", withUnknownClosedAgentLoginPhase],

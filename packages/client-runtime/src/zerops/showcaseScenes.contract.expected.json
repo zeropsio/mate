@@ -29,7 +29,7 @@
   "web:service-map-live#withoutOptionals": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["apidev:ACTIVE:outline", "db:RUNNING:outline", "zcp:ACTIVE:outline"]
     },
     "strips": [null, null],
@@ -50,7 +50,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:service-map-live#withUnknownShape": {
@@ -114,7 +114,7 @@
   "web:service-map-degraded#withoutOptionals": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["apidev:FAILED:error", "db:CREATING:warning", "zcp:ACTIVE:outline"]
     },
     "strips": [null, null],
@@ -135,7 +135,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:service-map-degraded#withUnknownShape": {
@@ -171,32 +171,38 @@
   },
   "web:no-zerops": {
     "map": {
-      "kind": "hidden"
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
     },
     "strips": [null, null],
     "agents": [],
     "agentAuthNeedsAttention": false,
-    "quickActions": [],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:no-zerops#withoutOptionals": {
     "map": {
-      "kind": "hidden"
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
     },
     "strips": [null, null],
     "agents": [],
     "agentAuthNeedsAttention": false,
-    "quickActions": [],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:no-zerops#withUnknownShape": {
     "map": {
-      "kind": "hidden"
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": ["idle:future-phase", "waiting:waiting for you"],
     "agents": [],
     "agentAuthNeedsAttention": false,
-    "quickActions": [],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:lifecycle-active": {
@@ -261,7 +267,7 @@
   "web:lifecycle-active#withUnknownShape": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": [
@@ -287,7 +293,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:lifecycle-waiting": {
@@ -347,7 +353,7 @@
   "web:lifecycle-waiting#withUnknownShape": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": ["idle:future-phase", "waiting:waiting for you"],
@@ -368,7 +374,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:agent-auth-attention": {
@@ -428,7 +434,7 @@
   "web:agent-auth-attention#withUnknownShape": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": ["idle:future-phase", "waiting:waiting for you"],
@@ -449,7 +455,7 @@
       }
     ],
     "agentAuthNeedsAttention": true,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:agent-auth-ok": {
@@ -509,7 +515,7 @@
   "web:agent-auth-ok#withUnknownShape": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": ["idle:future-phase", "waiting:waiting for you"],
@@ -530,7 +536,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": []
   },
   "web:cards": {
@@ -620,7 +626,7 @@
   "web:cards#withUnknownShape": {
     "map": {
       "kind": "visible",
-      "groups": ["Runtimes"],
+      "groups": ["Infrastructure"],
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": ["idle:future-phase", "waiting:waiting for you"],
@@ -641,7 +647,7 @@
       }
     ],
     "agentAuthNeedsAttention": false,
-    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "quickActions": ["bootstrap:Build something"],
     "cards": [
       "cards-deploy:deploy",
       "cards-verify:verify",

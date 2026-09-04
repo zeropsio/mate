@@ -7,13 +7,14 @@
     "recordedAt": "2026-08-30T12:00:00.000Z",
     "from": "authored"
   },
-  "topology": {
-    "available": false,
-    "degraded": false,
-    "reason": "Not a Zerops environment",
+  "topologySource": {
+    "project": {
+      "id": "showcase-project",
+      "name": "Zerops Showcase",
+      "status": "ACTIVE"
+    },
     "services": [],
-    "warnings": [],
-    "readAt": "2026-08-30T12:00:00.000Z"
+    "processes": []
   },
   "lifecycle": {
     "threadId": "showcase-thread",

@@ -3,11 +3,7 @@
  * desktop share these adapters. Mobile is deferred until its S5-3 Zerops surfaces exist, and the
  * relay adapter presents thread-status awareness rather than any Zerops scene field.
  */
-import {
-  type OrchestrationThreadActivity,
-  SETTLED_ZEROPS_SERVICE_STATUSES,
-  type ZeropsTopologySnapshot,
-} from "@t3tools/contracts";
+import { type OrchestrationThreadActivity } from "@t3tools/contracts";
 import {
   listShowcaseScenes,
   type ShowcaseScene,
@@ -33,7 +29,7 @@ import { decodeZeropsCard } from "./cards/payloads.ts";
 import { zeropsQuickActions } from "./quickActions.ts";
 import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
 import { zeropsStripState } from "./strip.ts";
-import type { ZeropsTopologyView } from "./topology.ts";
+import { projectTopology } from "./topology.ts";
 
 const expected: Readonly<Record<string, unknown>> = expectedJson;
 const CARD_KINDS = [
@@ -49,6 +45,24 @@ const CARD_KINDS = [
 ] as const;
 const STRIP_TONES = ["active", "done", "idle", "waiting"] as const;
 const decodeScene = Schema.decodeUnknownSync(ShowcaseSceneJson);
+
+/**
+ * Mirrors `topology.ts`'s own private settled-status set: a status outside it
+ * makes a service `transient`, so `serviceStatusTone` falls back to the
+ * "warning" tone below. Kept local rather than exported from the client
+ * projection - this file is the one place that still needs to name it.
+ */
+const SETTLED_STATUSES: ReadonlySet<string> = new Set([
+  "ACTIVE",
+  "RUNNING",
+  "STOPPED",
+  "READY_TO_DEPLOY",
+  "FAILED",
+  "DELETED",
+  "ACTION_FAILED",
+  "CONTAINER_FAILED",
+  "REPAIR_FAILED",
+]);
 
 function activityPayload(activity: OrchestrationThreadActivity) {
   return Predicate.isObject(activity.payload) && !Array.isArray(activity.payload)
@@ -89,51 +103,20 @@ function expectKnownPhaseTotality(scene: ShowcaseScene): void {
   }
 }
 
-/**
- * TEMPORARY, deleted once the scene contract itself moves to a captured
- * `service-stack`/`process` pair (a follow-up slice, not S3): reshapes the
- * still-server-shaped `zcp studio topology` scene snapshot
- * (`ZeropsTopologySnapshot`, still read by `apps/server/src/zerops/
- * ZeropsFixtureFeeds.ts` until S4 deletes that feed) into the client
- * projection's `ZeropsTopologyView`, so this contract can exercise
- * `serviceMap.ts`/`quickActions.ts`'s new input type without a second,
- * parallel scene fixture. Drops `mounted`/`adoptionState`/`isManagedService`
- * — exactly the fields S3 stops rendering.
- */
-function viewFromScene(snapshot: ZeropsTopologySnapshot): ZeropsTopologyView | undefined {
-  if (!snapshot.available) return undefined;
-  const project = snapshot.project;
-  return {
-    project: {
-      id: project?.id ?? scenePlaceholderProjectId,
-      name: project?.name ?? "Showcase",
-      ...(project?.status === undefined ? {} : { status: project.status }),
-    },
-    services: snapshot.services.map((service) => ({
-      hostname: service.hostname,
-      serviceId: service.serviceId,
-      type: service.type,
-      status: service.status,
-      group: service.group,
-      transient: service.transient,
-      ...(service.subdomainUrl === undefined ? {} : { subdomainUrl: service.subdomainUrl }),
-      ports: [],
-    })),
-    warnings: snapshot.warnings,
-  };
-}
-const scenePlaceholderProjectId = "showcase-project";
-
 function scenePresentation(scene: ShowcaseScene) {
-  const view = viewFromScene(scene.topology);
+  const view = projectTopology(
+    scene.topologySource.project,
+    scene.topologySource.services,
+    scene.topologySource.processes,
+  );
   const map = buildZeropsServiceMap(view, scene.lifecycle);
   const strips = sceneLifecycles(scene).flatMap(({ lifecycle }) =>
     [false, true].map((pendingUserInput) => zeropsStripState(lifecycle, { pendingUserInput })),
   );
 
-  for (const service of view?.services ?? []) {
+  for (const service of view.services) {
     const tone = serviceStatusTone(service);
-    const known = SETTLED_ZEROPS_SERVICE_STATUSES.some((status) => status === service.status);
+    const known = SETTLED_STATUSES.has(service.status);
     expect(["error", "outline", "warning"]).toContain(tone);
     if (!known && !/FAIL/u.test(service.status)) {
       expect(tone, `${scene.id}: unknown service status must use the warning fallback`).toBe(
@@ -193,7 +176,7 @@ function scenePresentation(scene: ShowcaseScene) {
         : {
             kind: "visible",
             groups: map.groups.map((group) => group.title),
-            serviceTones: (view?.services ?? []).map(
+            serviceTones: view.services.map(
               (service) => `${service.hostname}:${service.status}:${serviceStatusTone(service)}`,
             ),
           },
