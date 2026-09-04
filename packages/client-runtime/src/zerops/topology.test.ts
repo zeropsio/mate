@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ActivityProcess } from "./activity/dto.ts";
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { projectTopology } from "./topology.ts";
+import { projectTopology, zcpServiceIdFor } from "./topology.ts";
 import processFixture from "./__fixtures__/z3-eval.process.json" with { type: "json" };
 import serviceStackFixture from "./__fixtures__/z3-eval.service-stack.json" with { type: "json" };
 
@@ -123,5 +123,29 @@ describe("projectTopology — project", () => {
     const view = projectTopology(project, [], []);
 
     expect(view.project).toEqual({ id: project.id, name: project.name, status: "ACTIVE" });
+  });
+});
+
+describe("zcpServiceIdFor", () => {
+  it("names the infrastructure zcp service and nothing else", () => {
+    const view = projectTopology(project, realServices, []);
+
+    expect(zcpServiceIdFor(view)).toBe("gt7tJZjDSk2zyH5XvNeAQQ");
+
+    // A runtime service happens to be named "zcp" (a user rename) — the
+    // helper reads the type prefix, never the hostname, so a decoy must not
+    // be picked.
+    const decoy: ZeropsService = {
+      ...realServices[0]!,
+      id: "decoy-id",
+      name: "zcp",
+      serviceStackTypeInfo: {
+        serviceStackTypeVersionName: "nodejs@22",
+        serviceStackTypeCategory: "USER",
+      },
+    };
+    const decoyView = projectTopology(project, [decoy], []);
+
+    expect(zcpServiceIdFor(decoyView)).toBeUndefined();
   });
 });
