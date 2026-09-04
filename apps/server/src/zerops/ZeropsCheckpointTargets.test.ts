@@ -1,13 +1,23 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodePath from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
-import type { CheckpointRef } from "@t3tools/contracts";
+import { ThreadId, type CheckpointRef } from "@t3tools/contracts";
 import { VcsProcessExitError } from "@t3tools/contracts";
 
-import type * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
+import type * as CheckpointStoreTypes from "../checkpointing/CheckpointStore.ts";
 import type * as VcsProcess from "../vcs/VcsProcess.ts";
 import type { ZeropsRepositories, ZeropsRepository } from "./ZeropsRepositorySource.ts";
+import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import * as VcsProcessLayer from "../vcs/VcsProcess.ts";
+import * as ServerConfig from "../config.ts";
 import {
   checkpointRefForThreadTurn,
   checkpointRefsPrefixForThread,
@@ -23,6 +33,22 @@ import {
   resolvePruneTargets,
   restoreAcrossTargets,
 } from "./ZeropsCheckpointTargets.ts";
+
+const RealServerConfigLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
+  prefix: "t3-zerops-checkpoint-targets-test-",
+});
+const RealVcsProcessLayer = VcsProcessLayer.layer.pipe(Layer.provide(NodeServices.layer));
+const RealVcsDriverLayer = VcsDriverRegistry.layer.pipe(Layer.provide(RealVcsProcessLayer));
+const RealCheckpointStoreLayer = CheckpointStore.layer.pipe(
+  Layer.provideMerge(RealVcsDriverLayer),
+  Layer.provideMerge(NodeServices.layer),
+);
+const RealFanOutLayer = RealCheckpointStoreLayer.pipe(
+  Layer.provideMerge(RealVcsProcessLayer),
+  Layer.provideMerge(RealVcsDriverLayer),
+  Layer.provideMerge(RealServerConfigLayer),
+  Layer.provideMerge(NodeServices.layer),
+);
 
 const kanban: ZeropsRepository = {
   host: "kanbandev",
@@ -171,7 +197,7 @@ const makeStore = (options?: {
         ),
       deleteCheckpointRefs: (input: { readonly cwd: string }) =>
         record("deleteCheckpointRefs", input.cwd).pipe(Effect.asVoid),
-    } as unknown as CheckpointStore.CheckpointStore["Service"];
+    } as unknown as CheckpointStoreTypes.CheckpointStore["Service"];
     return { service, calls } as const;
   });
 
@@ -205,13 +231,16 @@ const makeVcsProcess = (
 const diffFor = (path: string) =>
   `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -0,0 +1 @@\n+one\n`;
 
+/** `captureAcrossTargets` reads numstat, not a patch - one addition, no deletions. */
+const numstatFor = (path: string) => `1\t0\t${path}\0`;
+
 const targets = [
   { cwd: "/var/www/kanbandev", prefix: "kanbandev/" },
   { cwd: "/var/www/apidev", prefix: "apidev/" },
 ];
 
 const fanOut = (
-  store: { readonly service: CheckpointStore.CheckpointStore["Service"] },
+  store: { readonly service: CheckpointStoreTypes.CheckpointStore["Service"] },
   vcs: { readonly service: VcsProcess.VcsProcess["Service"] },
 ) => ({ store: store.service, vcsProcess: vcs.service });
 
@@ -278,8 +307,8 @@ describe("captureAcrossTargets", () => {
     Effect.gen(function* () {
       const store = yield* makeStore({
         diffByCwd: {
-          "/var/www/kanbandev": diffFor("src/board.ts"),
-          "/var/www/apidev": diffFor("main.go"),
+          "/var/www/kanbandev": numstatFor("src/board.ts"),
+          "/var/www/apidev": numstatFor("main.go"),
         },
       });
       const vcs = yield* makeVcsProcess();
@@ -301,6 +330,68 @@ describe("captureAcrossTargets", () => {
       assert.deepStrictEqual(result.skipped, []);
     }).pipe(Effect.runPromise));
 
+  // A repository whose turn diff exceeds diffCheckpoints' patch-format output
+  // cap must still summarise every file it touched - a 10MB+ diff, not just
+  // the large file, silently losing every entry (not merely the large file's)
+  // is the bug this reproduces against the un-migrated unified-diff parser.
+  it("summarises every file even when one repository's turn diff is oversized", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const tmp = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "zerops-checkpoint-targets-large-",
+      });
+      const vcsProcess = yield* VcsProcessLayer.VcsProcess;
+      const git = (args: ReadonlyArray<string>) =>
+        vcsProcess.run({
+          operation: "ZeropsCheckpointTargets.test.git",
+          command: "git",
+          cwd: tmp,
+          args,
+          timeoutMs: 10_000,
+        });
+      yield* git(["init"]);
+      yield* git(["config", "user.email", "test@test.com"]);
+      yield* git(["config", "user.name", "Test"]);
+      yield* fileSystem.writeFileString(NodePath.join(tmp, "README.md"), "# test\n");
+      yield* git(["add", "."]);
+      yield* git(["commit", "-m", "initial commit"]);
+
+      const checkpointStore = yield* CheckpointStore.CheckpointStore;
+      const threadId = ThreadId.make("thread-zerops-checkpoint-targets-large");
+      const fromCheckpointRef = checkpointRefForThreadTurn(threadId, 0);
+      const toCheckpointRef = checkpointRefForThreadTurn(threadId, 1);
+      yield* checkpointStore.captureCheckpoint({ cwd: tmp, checkpointRef: fromCheckpointRef });
+
+      yield* fileSystem.writeFileString(NodePath.join(tmp, "README.md"), "v2\n");
+      const largeFileLineCount = 25_000;
+      yield* fileSystem.writeFileString(
+        NodePath.join(tmp, "large.txt"),
+        `${"payload".repeat(64)}\n`.repeat(largeFileLineCount),
+      );
+      yield* checkpointStore.captureCheckpoint({ cwd: tmp, checkpointRef: toCheckpointRef });
+
+      const result = yield* captureAcrossTargets(
+        { store: checkpointStore, vcsProcess },
+        {
+          targets: [{ cwd: tmp, prefix: "" }],
+          fromCheckpointRef,
+          toCheckpointRef,
+        },
+      );
+
+      assert.deepStrictEqual(result.captured, [tmp]);
+      assert.deepStrictEqual(result.files.map((file) => file.path).toSorted(), [
+        "README.md",
+        "large.txt",
+      ]);
+      // The full-patch format truncates at CHECKPOINT_DIFF_MAX_OUTPUT_BYTES
+      // (10MB, this file's diff exceeds it) and the unified-diff parser then
+      // under-reports the cut-off file's own line count instead of failing
+      // loudly - a silently wrong summary, not just a missing one.
+      const largeFile = result.files.find((file) => file.path === "large.txt");
+      assert.strictEqual(largeFile?.additions, largeFileLineCount);
+    }).pipe(Effect.scoped, Effect.provide(RealFanOutLayer), Effect.runPromise));
+
   it("names the turn with one ref in every repository, which is what keeps the projection flat", () =>
     Effect.gen(function* () {
       const refs: Array<string> = [];
@@ -311,7 +402,7 @@ describe("captureAcrossTargets", () => {
           refs.push(input.checkpointRef);
           return store.service.captureCheckpoint(input as never);
         },
-      } as unknown as CheckpointStore.CheckpointStore["Service"];
+      } as unknown as CheckpointStoreTypes.CheckpointStore["Service"];
       const vcs = yield* makeVcsProcess();
 
       yield* captureAcrossTargets(
@@ -335,7 +426,7 @@ describe("captureAcrossTargets", () => {
     Effect.gen(function* () {
       const store = yield* makeStore({
         failDiff: new Set(["/var/www/kanbandev"]),
-        diffByCwd: { "/var/www/apidev": diffFor("main.go") },
+        diffByCwd: { "/var/www/apidev": numstatFor("main.go") },
       });
       const vcs = yield* makeVcsProcess();
 
@@ -361,7 +452,7 @@ describe("captureAcrossTargets", () => {
     Effect.gen(function* () {
       const store = yield* makeStore({
         failCapture: new Set(["/var/www/kanbandev"]),
-        diffByCwd: { "/var/www/apidev": diffFor("main.go") },
+        diffByCwd: { "/var/www/apidev": numstatFor("main.go") },
       });
       const vcs = yield* makeVcsProcess();
 
@@ -399,7 +490,7 @@ describe("captureAcrossTargets", () => {
 
   it("refuses only the repository whose untracked set overflows the probe", () =>
     Effect.gen(function* () {
-      const store = yield* makeStore({ diffByCwd: { "/var/www/apidev": diffFor("main.go") } });
+      const store = yield* makeStore({ diffByCwd: { "/var/www/apidev": numstatFor("main.go") } });
       const vcs = yield* makeVcsProcess(new Set(["/var/www/kanbandev"]));
 
       const result = yield* captureAcrossTargets(fanOut(store, vcs), {

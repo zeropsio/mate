@@ -28,7 +28,7 @@ import * as Effect from "effect/Effect";
 import { CheckpointRef, type ThreadId } from "@t3tools/contracts";
 
 import type * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
-import { parseTurnDiffFilesFromUnifiedDiff } from "../checkpointing/Diffs.ts";
+import { parseTurnDiffFilesFromNumstat } from "../checkpointing/Diffs.ts";
 import { checkpointRefsPrefixForThread } from "../checkpointing/Utils.ts";
 import type * as VcsProcess from "../vcs/VcsProcess.ts";
 import type { ZeropsRepositories } from "./ZeropsRepositorySource.ts";
@@ -377,10 +377,11 @@ export const captureAcrossTargets = (
             toCheckpointRef: input.toCheckpointRef,
             fallbackFromToHead: false,
             ignoreWhitespace: false,
+            format: "numstat",
           })
           .pipe(
-            Effect.map((patch) => ({
-              files: parseTurnDiffFilesFromUnifiedDiff(patch),
+            Effect.map((numstat) => ({
+              files: parseTurnDiffFilesFromNumstat(numstat),
               reason: "",
             })),
             Effect.catch((error) => Effect.succeed({ files: [], reason: error.message })),
