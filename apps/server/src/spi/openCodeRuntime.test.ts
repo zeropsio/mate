@@ -27,7 +27,9 @@ const makeFakeShape = (): OpenCodeRuntimeShape => ({
   runOpenCodeCommand: unusedMember,
   createOpenCodeSdkClient: (input) => ({ __fakeBaseUrl: input.baseUrl }) as never,
   loadOpenCodeInventory: unusedMember,
+  loadOpenCodeSkills: unusedMember,
   loadInventoryFromCli: unusedMember,
+  loadSkillsFromCli: unusedMember,
 });
 
 describe("openCodeRuntimeCapability", () => {

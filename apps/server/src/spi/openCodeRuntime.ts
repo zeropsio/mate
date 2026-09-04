@@ -2,17 +2,18 @@
  * openCodeRuntime — the owned, narrow OpenCode capability
  * `textGeneration/OpenCodeTextGeneration.ts` uses, cut down from the
  * driver's full `OpenCodeRuntimeShape` (`provider/opencodeRuntime.ts`,
- * 6 members: server lifecycle, CLI passthrough, and inventory loading) plus
- * the shared local-server lifecycle owner (`provider/OpenCodeServerOwner.ts`,
+ * 8 members: server lifecycle, CLI passthrough, and inventory/skill loading)
+ * plus the shared local-server lifecycle owner (`provider/OpenCodeServerOwner.ts`,
  * a per-instance `Context.Service` the driver constructs and provides).
  * `OpenCodeTextGeneration.ts` only ever connects to an externally-configured
  * server (`connectToOpenCodeServer`), borrows the shared local server
  * (`openCodeServerOwnerCapability`'s `withServer`), and talks to either over
- * the SDK client (`createOpenCodeSdkClient`) — the other three driver members
+ * the SDK client (`createOpenCodeSdkClient`) — the other five driver members
  * (`startOpenCodeServerProcess`, `runOpenCodeCommand`, `loadOpenCodeInventory`,
- * `loadInventoryFromCli`) serve other callers (the shared server owner spawns
- * its own process directly from the ported zone; the OpenCode provider check
- * loads inventory) and are deliberately NOT part of this capability.
+ * `loadOpenCodeSkills`, `loadInventoryFromCli`, `loadSkillsFromCli`) serve
+ * other callers (the shared server owner spawns its own process directly
+ * from the ported zone; the OpenCode provider check loads inventory/skills)
+ * and are deliberately NOT part of this capability.
  *
  * `openCodeRuntimeCapability` is an Effect whose R channel is still exactly
  * `OpenCodeRuntime.OpenCodeRuntime` (the driver's own Context.Service tag) —
@@ -144,8 +145,12 @@ export const OpenCodeRuntimeCapabilityTest = {
         Effect.die("OpenCodeRuntimeCapabilityTest double: runOpenCodeCommand not configured"),
       loadOpenCodeInventory: () =>
         Effect.die("OpenCodeRuntimeCapabilityTest double: loadOpenCodeInventory not configured"),
+      loadOpenCodeSkills: () =>
+        Effect.die("OpenCodeRuntimeCapabilityTest double: loadOpenCodeSkills not configured"),
       loadInventoryFromCli: () =>
         Effect.die("OpenCodeRuntimeCapabilityTest double: loadInventoryFromCli not configured"),
+      loadSkillsFromCli: () =>
+        Effect.die("OpenCodeRuntimeCapabilityTest double: loadSkillsFromCli not configured"),
     } satisfies OpenCodeRuntime["Service"]),
 };
 

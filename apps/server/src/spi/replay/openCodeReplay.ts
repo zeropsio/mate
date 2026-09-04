@@ -146,8 +146,12 @@ const replayOpenCodeRuntime: OpenCodeRuntimeShape = {
     }) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
   loadOpenCodeInventory: () =>
     Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeInventory is not used")),
+  loadOpenCodeSkills: () =>
+    Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeSkills is not used")),
   loadInventoryFromCli: () =>
     Effect.die(new Error("replayOpenCodeRuntime.loadInventoryFromCli is not used")),
+  loadSkillsFromCli: () =>
+    Effect.die(new Error("replayOpenCodeRuntime.loadSkillsFromCli is not used")),
 };
 
 /**
