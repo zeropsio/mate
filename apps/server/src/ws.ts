@@ -118,6 +118,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
+import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
@@ -1826,22 +1827,13 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",
           }),
-        [WS_METHODS.zeropsLifecycleGet]: (input) =>
-          observeRpcEffect(WS_METHODS.zeropsLifecycleGet, zeropsLifecycle.get(input.threadId), {
-            "rpc.aggregate": "zerops",
-          }),
-        [WS_METHODS.zeropsAgentLoginStart]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.zeropsAgentLoginStart,
-            zeropsAgentLogin.start(input.agentId, input.threadId),
-            { "rpc.aggregate": "zerops" },
-          ),
-        [WS_METHODS.zeropsAgentLoginCancel]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.zeropsAgentLoginCancel,
-            zeropsAgentLogin.cancel(input.agentId),
-            { "rpc.aggregate": "zerops" },
-          ),
+        ...registerZeropsRpc({
+          zeropsLifecycle,
+          zeropsAgentAuth,
+          zeropsAgentLogin,
+          observeRpcEffect,
+          observeRpcStream,
+        }),
         [WS_METHODS.serverSignalProcess]: (input) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",
@@ -2401,52 +2393,6 @@ const makeWsRpcLayer = (
               ),
             ),
             { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
-          observeRpcStream(
-            WS_METHODS.subscribeZeropsLifecycle,
-            Stream.unwrap(
-              Effect.map(zeropsLifecycle.subscribe(input.threadId), ({ latest, changes }) =>
-                Stream.concat(Stream.make(latest), changes),
-              ),
-            ),
-            { "rpc.aggregate": "zerops" },
-          ),
-        [WS_METHODS.subscribeZeropsAgentAuth]: (_input) =>
-          observeRpcStream(
-            WS_METHODS.subscribeZeropsAgentAuth,
-            // Merges `ZeropsAgentAuth`'s snapshot with `ZeropsAgentLogin`'s
-            // per-agent login state (S7 follow-up F8) into the ONE stream
-            // the client reads. Subscribing to both FIRST (each returning
-            // its own value-at-subscribe-time bundled with a live change
-            // stream — the same subscribe-before-snapshot race the two
-            // feeds' own `subscribe` already guards against) avoids a gap
-            // between reading an initial value and starting to listen; a
-            // later change from EITHER source re-reads both feeds' `latest`
-            // fresh rather than trusting a stale captured value, since a
-            // `Stream.merge`'d change only tells us SOMETHING moved, not
-            // which side.
-            Stream.unwrap(
-              Effect.gen(function* () {
-                const authSub = yield* zeropsAgentAuth.subscribe;
-                const loginSub = yield* zeropsAgentLogin.subscribe;
-                const recombine = Effect.zip(zeropsAgentAuth.latest, zeropsAgentLogin.latest).pipe(
-                  Effect.map(([snapshot, logins]) =>
-                    ZeropsAgentLoginModule.mergeAgentAuthLogin(snapshot, logins),
-                  ),
-                );
-                const initial = ZeropsAgentLoginModule.mergeAgentAuthLogin(
-                  authSub.latest,
-                  loginSub.latest,
-                );
-                const changes = Stream.merge(
-                  Stream.map(authSub.changes, () => undefined),
-                  Stream.map(loginSub.changes, () => undefined),
-                ).pipe(Stream.mapEffect(() => recombine));
-                return Stream.concat(Stream.make(initial), changes);
-              }),
-            ),
-            { "rpc.aggregate": "zerops" },
           ),
       });
     }),
