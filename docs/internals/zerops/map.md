@@ -79,7 +79,8 @@ than assembling host strings by hand.
 
 ## URL derivation
 
-`https://{service}-{subdomainPrefix}-{port}.{region}.zerops.app`
+`https://{service}-{subdomainPrefix}-{port}.{region}.zerops.app` — and for port 80 the port segment is
+omitted: `https://{service}-{subdomainPrefix}.{region}.zerops.app` (measured 2026-09-04, `verified.md`)
 
 `subdomainPrefix` comes from the project's `zeropsSubdomainHost`, which returns a **bare prefix**
 with no domain, so it cannot supply the region. The region comes from the project's `publicZone`
