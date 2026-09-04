@@ -46,7 +46,6 @@ it("formats pairing listings without exposing the secret token", () => {
     [
       {
         id: "pairing-1",
-        credential: "secret-pairing-token",
         subject: "one-time-token",
         label: "Phone",
         scopes: ["orchestration:read"],
