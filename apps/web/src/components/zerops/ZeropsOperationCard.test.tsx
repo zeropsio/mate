@@ -135,6 +135,128 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
   });
 });
 
+describe("ZeropsOperationCard — dev server", () => {
+  const runningEntry: ZeropsCallEntry = {
+    id: "dev1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    startedAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_dev_server",
+    input: { action: "start", hostname: "apidev" },
+    status: "completed",
+    resultText: JSON.stringify({
+      action: "start",
+      hostname: "apidev",
+      running: true,
+      port: 3000,
+    }),
+  };
+  const operation = reduceZeropsOperations([runningEntry]).operations[0]!;
+
+  it("renders the dev-server card with an Open link only when a subdomain URL is supplied", () => {
+    const withoutUrl = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(withoutUrl).not.toContain("Open");
+    expect(withoutUrl).toContain("dev server running on apidev:3000.");
+
+    const withUrl = renderToStaticMarkup(
+      <ZeropsOperationCard
+        devServerUrl="https://apidev-26a7-3000.prg1.zerops.app"
+        operation={operation}
+      />,
+    );
+    expect(withUrl).toContain("Open");
+    expect(withUrl).toContain("https://apidev-26a7-3000.prg1.zerops.app");
+  });
+
+  it("ignores a devServerUrl prop for a non-devServer operation", () => {
+    const deployEntry: ZeropsCallEntry = {
+      id: "dev2",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "completed",
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+    };
+    const deployOperation = reduceZeropsOperations([deployEntry]).operations[0]!;
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        devServerUrl="https://apidev-26a7-3000.prg1.zerops.app"
+        operation={deployOperation}
+      />,
+    );
+    expect(html).not.toContain("apidev-26a7-3000.prg1.zerops.app");
+  });
+});
+
+describe("ZeropsOperationCard — browser", () => {
+  const entry: ZeropsCallEntry = {
+    id: "brw1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    startedAt: "2026-09-01T00:00:00.000Z",
+    turnId: "t1",
+    toolName: "zerops_browser",
+    input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+    status: "completed",
+    resultText: JSON.stringify({
+      url: "https://kanbandev-26a7.prg1.zerops.app",
+      steps: [
+        { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
+        {
+          command: ["click", "@e1"],
+          success: false,
+          error: "no element matched @e1",
+          errorKind: "selector-not-found",
+        },
+        { command: ["close"], success: true },
+      ],
+      errorsOutput: ["TypeError: x is not a function"],
+      consoleOutput: [{ type: "error", text: "failed to fetch" }],
+      networkOutput: [],
+    }),
+  };
+  const operation = reduceZeropsOperations([entry]).operations[0]!;
+
+  it("renders the browser card with counts and the step list; thumbnail only when an image is present", () => {
+    const withoutImage = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(withoutImage).toContain("1 console error, 1 page error, 0 failed requests");
+    expect(withoutImage).toContain("open https://kanbandev-26a7.prg1.zerops.app");
+    expect(withoutImage).toContain("click @e1");
+    expect(withoutImage).not.toContain("data-zerops-browser-thumbnail");
+
+    const withImage = renderToStaticMarkup(
+      <ZeropsOperationCard
+        browserScreenshot={{ src: "data:image/png;base64,AAAA", width: 1280, height: 720 }}
+        operation={operation}
+      />,
+    );
+    expect(withImage).toContain("data-zerops-browser-thumbnail");
+    expect(withImage).toContain("data:image/png;base64,AAAA");
+  });
+
+  it("ignores a browserScreenshot prop for a non-browser operation", () => {
+    const deployEntry: ZeropsCallEntry = {
+      id: "brw2",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "completed",
+      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+    };
+    const deployOperation = reduceZeropsOperations([deployEntry]).operations[0]!;
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        browserScreenshot={{ src: "data:image/png;base64,AAAA" }}
+        operation={deployOperation}
+      />,
+    );
+    expect(html).not.toContain("data-zerops-browser-thumbnail");
+  });
+});
+
 describe("ZeropsOperationCard — empty body", () => {
   it("renders no ProcessSteps and no placeholder text when there are no steps and no observed region", () => {
     const entry: ZeropsCallEntry = {

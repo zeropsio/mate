@@ -426,6 +426,66 @@
         "turnId": "cards-turn",
         "sequence": 12,
         "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-dev-server",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Started apidev dev server",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-dev-server",
+              "tool": "zerops_dev_server",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"action\":\"start\",\"hostname\":\"apidev\",\"running\":true,\"port\":3000,\"heal"
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_dev_server",
+              "resultText": "{\"action\":\"start\",\"hostname\":\"apidev\",\"running\":true,\"port\":3000,\"healthPath\":\"/\",\"healthStatus\":200,\"startMillis\":4200,\"url\":\"http://apidev:3000/\",\"message\":\"dev server on apidev:3000 is healthy (started in 4.2s)\"}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 13,
+        "createdAt": "2026-08-30T12:00:00.000Z"
+      },
+      {
+        "id": "cards-browser",
+        "tone": "tool",
+        "kind": "tool.completed",
+        "summary": "Checked apidev subdomain",
+        "payload": {
+          "itemType": "mcp_tool_call",
+          "status": "completed",
+          "data": {
+            "item": {
+              "type": "mcpToolCall",
+              "id": "tool-browser",
+              "tool": "zerops_browser",
+              "server": "zerops",
+              "status": "completed",
+              "arguments": {},
+              "result": {
+                "content": "{\"url\":\"https://apidev-26a7-3000.prg1.zerops.app\",\"steps\":[{\"command\":[\""
+              }
+            },
+            "zerops": {
+              "toolName": "zerops_browser",
+              "resultText": "{\"url\":\"https://apidev-26a7-3000.prg1.zerops.app\",\"steps\":[{\"command\":[\"open\",\"https://apidev-26a7-3000.prg1.zerops.app\"],\"success\":true},{\"command\":[\"snapshot\",\"-i\",\"-c\"],\"success\":true},{\"command\":[\"errors\"],\"success\":true},{\"command\":[\"console\"],\"success\":true},{\"command\":[\"network\",\"requests\"],\"success\":true},{\"command\":[\"close\"],\"success\":true}],\"errorsOutput\":[],\"consoleOutput\":[],\"networkOutput\":[],\"durationMs\":1800,\"forkRecoveryAttempted\":false}"
+            }
+          }
+        },
+        "turnId": "cards-turn",
+        "sequence": 14,
+        "createdAt": "2026-08-30T12:00:00.000Z"
       }
     ]
   },

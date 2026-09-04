@@ -109,13 +109,34 @@ function UrlChip({ label, url }: { readonly label: string; readonly url: string 
   );
 }
 
+export interface BrowserScreenshot {
+  readonly src: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export function ZeropsOperationCard(props: {
   readonly operation: ZeropsOperation;
   readonly observed?: ObservedRegion;
+  /**
+   * `devServer` only: the subdomain URL resolved by the timeline's own
+   * topology view (client-topology-view — server feed, not the tool result).
+   * Never sourced from `operation.links`, which stays empty for this kind:
+   * see `reduce.ts`'s `buildDevServerOperation` doc note.
+   */
+  readonly devServerUrl?: string;
+  /**
+   * `browser` only: the screenshot the caller resolved from the provider's
+   * own tool-result image content, when the SPI event carries one — as of
+   * this slice `apps/server/src/spi/toolCall.ts` reads only text content
+   * blocks, so nothing supplies this prop yet and the card renders without
+   * a thumbnail.
+   */
+  readonly browserScreenshot?: BrowserScreenshot;
   /** For tests; defaults to `Date.now()` via a 1 s tick while running. */
   readonly now?: number;
 }): JSX.Element {
-  const { observed, operation } = props;
+  const { browserScreenshot, devServerUrl, observed, operation } = props;
   const tone = operationTone(operation);
   const isRunning = operation.phase === "running";
   useTick(props.now === undefined && isRunning);
@@ -123,9 +144,17 @@ export function ZeropsOperationCard(props: {
   const durationText = headerDurationText(operation, now);
 
   const stepsForBody: ReadonlyArray<ProcessStep> = observed?.steps ?? operation.steps;
-  const hasBody = stepsForBody.length > 0 || observed !== undefined;
+  const thumbnail =
+    operation.kind === "browser" && browserScreenshot !== undefined ? browserScreenshot : undefined;
+  const hasBody = stepsForBody.length > 0 || observed !== undefined || thumbnail !== undefined;
+
+  const openLink =
+    operation.kind === "devServer" && devServerUrl !== undefined
+      ? { label: "Open", url: devServerUrl }
+      : undefined;
+  const links = openLink !== undefined ? [openLink, ...operation.links] : operation.links;
   const hasFooter =
-    operation.closing !== undefined || operation.links.length > 0 || operation.detail !== undefined;
+    operation.closing !== undefined || links.length > 0 || operation.detail !== undefined;
 
   return (
     <FlatCard
@@ -162,6 +191,16 @@ export function ZeropsOperationCard(props: {
 
       {hasBody ? (
         <div className="space-y-3 px-3 py-3 text-xs leading-relaxed">
+          {thumbnail !== undefined ? (
+            <img
+              alt="Screenshot"
+              className="max-h-40 w-full rounded-md border border-[var(--zerops-flat-card-border)] object-contain"
+              data-zerops-browser-thumbnail
+              {...(thumbnail.height !== undefined ? { height: thumbnail.height } : {})}
+              src={thumbnail.src}
+              {...(thumbnail.width !== undefined ? { width: thumbnail.width } : {})}
+            />
+          ) : null}
           {stepsForBody.length > 0 ? (
             <ProcessSteps aria-label={`${operation.kicker} progress`} steps={stepsForBody} />
           ) : null}
@@ -181,9 +220,9 @@ export function ZeropsOperationCard(props: {
               {operation.closing}
             </p>
           ) : null}
-          {operation.links.length > 0 ? (
+          {links.length > 0 ? (
             <div aria-label="URLs" className="flex flex-wrap gap-1.5">
-              {operation.links.map((link) => (
+              {links.map((link) => (
                 <UrlChip key={link.url} label={link.label} url={link.url} />
               ))}
             </div>
