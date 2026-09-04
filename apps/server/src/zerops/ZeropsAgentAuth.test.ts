@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildSnapshot, computeAgentAuthState } from "./ZeropsAgentAuth.ts";
+import { buildSnapshot, computeAgentAuthState, toZembedEnv } from "./ZeropsAgentAuth.ts";
 
 // `agentDefaultInstanceId` moved to `../spi/providerInstances.ts` (owned SPI
 // capability — this module no longer imports `provider/**` at all,
@@ -86,5 +86,27 @@ describe("buildSnapshot", () => {
       UNKNOWN_PROVIDER_AUTH,
     );
     expect(snapshot.agents.every((agent) => agent.providerAuth === "unknown")).toBe(true);
+  });
+});
+
+// Spec §0, MA-7: the env store is the platform's whole service env, secrets
+// included. The reader keeps the two agent-flag prefixes and nothing else, so
+// no other value of that file ever sits in this module's memory.
+describe("toZembedEnv", () => {
+  it("keeps only the agent flag keys; a store carrying ZCP_API_KEY and VSCODE_PASSWORD yields neither", () => {
+    expect(
+      toZembedEnv({
+        ZCP_AGENT_OAUTH_CLAUDE: "true",
+        ZCP_AGENT_TOKEN_CODEX: "tok",
+        ZCP_API_KEY: "secret",
+        VSCODE_PASSWORD: "pw",
+        hostname: "zcp",
+        ZCP_AGENT_OAUTH_NUMERIC: 1,
+      }),
+    ).toEqual({ ZCP_AGENT_OAUTH_CLAUDE: "true", ZCP_AGENT_TOKEN_CODEX: "tok" });
+  });
+
+  it.each([null, [], "x", 1, undefined])("reads a non-object document (%s) as no store", (doc) => {
+    expect(toZembedEnv(doc)).toBeUndefined();
   });
 });

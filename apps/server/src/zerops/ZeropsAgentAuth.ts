@@ -107,7 +107,7 @@ export const computeAgentAuthState = (inputs: {
   return inputs.credPresent ? "local-only" : "not-authorized";
 };
 
-/** The zembed env store, decoded loosely: only string values are ever read from it. */
+/** The agent flag keys of the zembed env store — never any other key of that file (spec §0, MA-7). */
 export type ZembedEnv = Readonly<Record<string, string>>;
 
 /**
@@ -257,13 +257,19 @@ interface FeedState {
   readonly lastPublished: ZeropsAgentAuthSnapshot | undefined;
 }
 
-const toZembedEnv = (parsed: unknown): ZembedEnv | undefined => {
+/** Only these prefixes leave the file: the store also carries `ZCP_API_KEY` and `VSCODE_PASSWORD`, which mate never reads (spec §0 touchpoints, MA-7). */
+const ZEMBED_FLAG_PREFIXES = ["ZCP_AGENT_OAUTH_", "ZCP_AGENT_TOKEN_"] as const;
+
+export const toZembedEnv = (parsed: unknown): ZembedEnv | undefined => {
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return undefined;
   }
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value === "string") {
+    if (
+      typeof value === "string" &&
+      ZEMBED_FLAG_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
       out[key] = value;
     }
   }
