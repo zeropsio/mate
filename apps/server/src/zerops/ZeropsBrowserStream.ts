@@ -66,11 +66,15 @@
  * so a subscriber that fell behind and is holding a backlog of stale
  * markers converges on the single latest frame instead of replaying every
  * intermediate one, and never emits the same frame to itself twice in a row
- * (`lastEmittedSeq`, per subscriber). The daemon-facing ack is deduplicated
- * globally (`lastAckedSeq`, shared): acks are cumulative, so whichever
- * subscriber's pull reaches a given seq first is the only one that sends
- * anything for it — a second, slower subscriber's later pull of the same
- * (already-superseded) seq is a no-op.
+ * (`lastEmittedFrame`, per subscriber, compared by OBJECT IDENTITY rather
+ * than `seq` — a restarted daemon renumbers `seq` from scratch, and a
+ * number-only comparison would silently drop a new frame that happens to
+ * land on a seq a subscriber already saw last session). The daemon-facing
+ * ack is deduplicated globally (`lastAckedSeq`, shared, reset alongside
+ * `latestFrame` whenever the connection leaves `live`): acks are cumulative,
+ * so whichever subscriber's pull reaches a given seq first is the only one
+ * that sends anything for it — a second, slower subscriber's later pull of
+ * the same (already-superseded) seq is a no-op.
  */
 import * as NodeOS from "node:os";
 
@@ -158,6 +162,9 @@ type SocketEvent =
 type InternalEvent =
   | { readonly kind: "state"; readonly event: ZeropsBrowserStateEvent }
   | { readonly kind: "frameChanged" };
+
+/** One shared instance — the marker carries no per-publish data, so every publish reuses the same reference instead of allocating a fresh object per backlog entry. */
+const FRAME_CHANGED_EVENT: InternalEvent = { kind: "frameChanged" };
 
 /** The daemon message kinds this relay acts on; everything else (`status`, `console`, unrecognized) is silently ignored. */
 type DaemonMessage =
@@ -352,6 +359,10 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
           // A stale frame from a previous session must never be handed to a
           // subscriber that joins after the connection has already dropped.
           yield* Ref.set(latestFrame, undefined);
+          // A restarted daemon renumbers `seq` from scratch — leaving the
+          // PREVIOUS session's high-water mark here would suppress every ack
+          // for the new session (`seq <= already`) and freeze the view.
+          yield* Ref.set(lastAckedSeq, undefined);
         }
         yield* PubSub.publish(events, { kind: "state", event });
       });
@@ -359,7 +370,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
     const publishFrame = (frame: ZeropsBrowserFrame, seq: number) =>
       Effect.gen(function* () {
         yield* Ref.set(latestFrame, { seq, frame });
-        yield* PubSub.publish(events, { kind: "frameChanged" });
+        yield* PubSub.publish(events, FRAME_CHANGED_EVENT);
       });
 
     const closeSocketQuietly = (socket: BrowserSocket | undefined) =>
@@ -456,14 +467,15 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       }
     });
 
-    /** Sent from inside a subscriber's own stream, only once THAT subscriber actually pulls the marker — see the module doc comment's "Ack pacing" section. Deduplicated across subscribers via `lastAckedSeq` (acks are cumulative). */
+    /** Sent from inside a subscriber's own stream, only once THAT subscriber actually pulls the marker — see the module doc comment's "Ack pacing" section. Deduplicated across subscribers via `lastAckedSeq` (acks are cumulative): the compare-and-set is one `Ref.modify` so two subscribers' concurrent pulls of the same seq can never both read "not yet acked" before either writes. */
     const ackDaemonFrame = (seq: number): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const already = yield* Ref.get(lastAckedSeq);
-        if (already !== undefined && seq <= already) {
+        const shouldAck = yield* Ref.modify(lastAckedSeq, (already) =>
+          already !== undefined && seq <= already ? [false, already] : [true, seq],
+        );
+        if (!shouldAck) {
           return;
         }
-        yield* Ref.set(lastAckedSeq, seq);
         const socket = yield* Ref.get(activeSocket);
         if (socket === undefined) {
           return;
@@ -504,6 +516,12 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
             const socket = yield* Ref.get(activeSocket);
             yield* closeSocketQuietly(socket);
             yield* Ref.set(activeSocket, undefined);
+            // The NEXT first subscriber reads `lastState`/`latestFrame` as
+            // its own initial snapshot (above) — without this, it would
+            // briefly see this torn-down session's stale "live" state and
+            // frame before the fresh connection even starts `connecting`.
+            yield* Ref.set(lastState, { type: "state", status: "no-browser" });
+            yield* Ref.set(latestFrame, undefined);
           }),
         ),
       );
@@ -514,18 +532,22 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       // waiting forever.
       const initialEvents: ReadonlyArray<InternalEvent> = [
         { kind: "state", event: initialState },
-        ...(initialFrame !== undefined ? [{ kind: "frameChanged" as const }] : []),
+        ...(initialFrame !== undefined ? [FRAME_CHANGED_EVENT] : []),
       ];
       const rawStream = Stream.concat(
         Stream.fromIterable(initialEvents),
         Stream.fromSubscription(subscription),
       );
 
-      // Per-subscriber: the seq this subscriber last actually emitted, so a
-      // backlog of "frameChanged" markers this subscriber fell behind on
-      // converges on the single latest frame instead of re-emitting every
-      // intermediate one.
-      const lastEmittedSeq = yield* Ref.make<number | undefined>(undefined);
+      // Per-subscriber: the FRAME OBJECT this subscriber last actually
+      // emitted (not its seq) — a reconnected daemon renumbers `seq` from
+      // scratch, and comparing by number alone would silently drop a new
+      // frame that happens to land on a seq this subscriber already saw in
+      // the PREVIOUS session. `parseAgentBrowserMessage` allocates a fresh
+      // object per frame, so identity is exact: also converges a backlog of
+      // "frameChanged" markers this subscriber fell behind on down to the
+      // single latest frame instead of re-emitting every intermediate one.
+      const lastEmittedFrame = yield* Ref.make<ZeropsBrowserFrame | undefined>(undefined);
 
       return rawStream.pipe(
         Stream.mapEffect((internal): Effect.Effect<ZeropsBrowserStreamEvent | undefined> => {
@@ -537,11 +559,11 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
             if (current === undefined) {
               return undefined;
             }
-            const already = yield* Ref.get(lastEmittedSeq);
-            if (already === current.seq) {
+            const already = yield* Ref.get(lastEmittedFrame);
+            if (already === current.frame) {
               return undefined;
             }
-            yield* Ref.set(lastEmittedSeq, current.seq);
+            yield* Ref.set(lastEmittedFrame, current.frame);
             yield* ackDaemonFrame(current.seq);
             return current.frame;
           });

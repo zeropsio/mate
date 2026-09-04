@@ -55,15 +55,29 @@ function findByAttribute(tree: unknown, attribute: string) {
 interface FakePointerEvent {
   readonly currentTarget: {
     getBoundingClientRect(): { width: number; height: number; left: number; top: number };
+    setPointerCapture(pointerId: number): void;
   };
   readonly clientX: number;
   readonly clientY: number;
+  readonly pointerId: number;
 }
 
 const RECT = { width: 640, height: 360, left: 0, top: 0 };
 
-function fakePointerEvent(clientX: number, clientY: number): FakePointerEvent {
-  return { currentTarget: { getBoundingClientRect: () => RECT }, clientX, clientY };
+function fakePointerEvent(
+  clientX: number,
+  clientY: number,
+  options?: { readonly pointerId?: number; readonly onCapture?: (pointerId: number) => void },
+): FakePointerEvent {
+  return {
+    currentTarget: {
+      getBoundingClientRect: () => RECT,
+      setPointerCapture: (pointerId) => options?.onCapture?.(pointerId),
+    },
+    clientX,
+    clientY,
+    pointerId: options?.pointerId ?? 1,
+  };
 }
 
 function fakeKeyboardEvent(key: string) {
@@ -175,7 +189,7 @@ describe("ZeropsBrowserPanel", () => {
     );
   });
 
-  it("sends a hover move as button none, never left — a hover is not a drag", () => {
+  it("sends a drag move as button left, matching press/release (only drags are ever forwarded, so button:none would read as a hover and break drag-select)", () => {
     feedState.browserStream = { status: "live", frame: FRAME };
     feedState.lifecycle = undefined;
     hooks.beginRender();
@@ -188,7 +202,7 @@ describe("ZeropsBrowserPanel", () => {
 
     expect(commandSpy).toHaveBeenCalledTimes(1);
     const input = commandSpy.mock.calls[0]![0].input;
-    expect(input).toMatchObject({ kind: "mouse", eventType: "mouseMoved", button: "none" });
+    expect(input).toMatchObject({ kind: "mouse", eventType: "mouseMoved", button: "left" });
   });
 
   it("does not forward a hover move made without a button down (only drags are throttled through)", () => {
@@ -219,6 +233,57 @@ describe("ZeropsBrowserPanel", () => {
     }
     expect(commandSpy.mock.calls[0]![0].input.eventType).toBe("mousePressed");
     expect(commandSpy.mock.calls[1]![0].input.eventType).toBe("mouseReleased");
+  });
+
+  it("captures the pointer on press so a drag's release still lands here even if it leaves the canvas first", () => {
+    feedState.browserStream = { status: "live", frame: FRAME };
+    feedState.lifecycle = undefined;
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const canvas = findByAttribute(tree, "data-zerops-browser-input-disabled")!;
+
+    const captured: number[] = [];
+    pointerHandler(
+      canvas,
+      "onPointerDown",
+    )(
+      fakePointerEvent(10, 10, {
+        pointerId: 7,
+        onCapture: (pointerId) => captured.push(pointerId),
+      }),
+    );
+
+    expect(captured).toEqual([7]);
+  });
+
+  it("a cancelled pointer capture stops the drag so the next move is not forwarded", () => {
+    feedState.browserStream = { status: "live", frame: FRAME };
+    feedState.lifecycle = undefined;
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const canvas = findByAttribute(tree, "data-zerops-browser-input-disabled")!;
+
+    pointerHandler(canvas, "onPointerDown")(fakePointerEvent(10, 10));
+    pointerHandler(canvas, "onPointerCancel")(fakePointerEvent(10, 10));
+    commandSpy.mockClear();
+    pointerHandler(canvas, "onPointerMove")(fakePointerEvent(20, 20));
+
+    expect(commandSpy).not.toHaveBeenCalled();
+  });
+
+  it("the pointer leaving the canvas stops the drag so the next move is not forwarded", () => {
+    feedState.browserStream = { status: "live", frame: FRAME };
+    feedState.lifecycle = undefined;
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const canvas = findByAttribute(tree, "data-zerops-browser-input-disabled")!;
+
+    pointerHandler(canvas, "onPointerDown")(fakePointerEvent(10, 10));
+    pointerHandler(canvas, "onPointerLeave")(fakePointerEvent(10, 10));
+    commandSpy.mockClear();
+    pointerHandler(canvas, "onPointerMove")(fakePointerEvent(20, 20));
+
+    expect(commandSpy).not.toHaveBeenCalled();
   });
 
   it("keyDown carries text for a printable character and prevents mate's own default", () => {

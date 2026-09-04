@@ -735,6 +735,122 @@ describe("ZeropsBrowserStream", () => {
     }),
   );
 
+  it.effect("a daemon whose seq restarts lower after a reconnect is acked again", () =>
+    Effect.gen(function* () {
+      const sockets: Array<FakeBrowserSocket> = [];
+      const service = yield* make({
+        readStreamPort: Effect.succeed(44831),
+        connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
+      });
+
+      const ackSeqsOf = (socket: FakeBrowserSocket) =>
+        socket.sent
+          .map((line) => decodeJsonString(line))
+          .filter(
+            (message): message is { type: "ack"; seq: number } =>
+              typeof message === "object" &&
+              message !== null &&
+              (message as { type?: unknown }).type === "ack",
+          );
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const stream = yield* service.subscribe;
+          const pull = yield* Stream.toPull(stream);
+
+          let live = false;
+          while (!live) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") live = true;
+            }
+          }
+
+          // First session: a high seq, acked normally.
+          sockets[0]!.onmessage?.({ data: frameMessage(100) });
+          let sawFirstFrame = false;
+          while (!sawFirstFrame) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "frame") sawFirstFrame = true;
+            }
+          }
+          expect(ackSeqsOf(sockets[0]!)).toEqual([{ type: "ack", seq: 100 }]);
+
+          // The daemon restarts: the connection drops and a fresh one comes
+          // up, its own seq counting starting over from a LOW number.
+          sockets[0]!.onclose?.();
+          let reconnectedLive = false;
+          while (!reconnectedLive) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") reconnectedLive = true;
+            }
+          }
+          expect(sockets.length).toBe(2);
+
+          sockets[1]!.onmessage?.({ data: frameMessage(1) });
+          let sawSecondFrame = false;
+          while (!sawSecondFrame) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "frame") sawSecondFrame = true;
+            }
+          }
+          // Without resetting `lastAckedSeq` on reconnect, `1 <= 100` would
+          // suppress this ack forever and freeze the view.
+          expect(ackSeqsOf(sockets[1]!)).toEqual([{ type: "ack", seq: 1 }]);
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "the next first subscriber after everyone leaves never sees the previous session's stale live state or frame",
+    () =>
+      Effect.gen(function* () {
+        const sockets: Array<FakeBrowserSocket> = [];
+        const service = yield* make({
+          readStreamPort: Effect.succeed(44831),
+          connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
+        });
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const stream = yield* service.subscribe;
+            const pull = yield* Stream.toPull(stream);
+            let live = false;
+            while (!live) {
+              const chunk = yield* pull;
+              for (const event of chunk) {
+                if (event.type === "state" && event.status === "live") live = true;
+              }
+            }
+            sockets[0]!.onmessage?.({ data: frameMessage(1) });
+            let sawFrame = false;
+            while (!sawFrame) {
+              const chunk = yield* pull;
+              for (const event of chunk) {
+                if (event.type === "frame") sawFrame = true;
+              }
+            }
+          }),
+        );
+        // The scope above just closed — the last subscriber left and the
+        // finalizer's teardown ran.
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const stream = yield* service.subscribe;
+            const first = yield* Stream.take(stream, 1).pipe(Stream.runCollect);
+            expect(first[0]).toEqual({ type: "state", status: "no-browser" });
+          }),
+        );
+      }),
+  );
+
   it.effect(
     "a resubscribe racing the outgoing unsubscribe never loses or duplicates the connection",
     () =>

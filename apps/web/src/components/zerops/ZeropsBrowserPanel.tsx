@@ -91,13 +91,18 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
     (event: PointerEvent<HTMLCanvasElement>) => {
       if (eventType === "mousePressed") {
         isPointerDownRef.current = true;
+        // Keeps every later move/up event targeting this canvas even once
+        // the pointer strays outside its bounds mid-drag — without this, a
+        // release outside the canvas never reaches `mouseReleased` below and
+        // `isPointerDownRef` is stuck `true`.
+        event.currentTarget.setPointerCapture(event.pointerId);
       } else if (eventType === "mouseReleased") {
         isPointerDownRef.current = false;
       } else if (!isPointerDownRef.current) {
         // A bare hover carries nothing CDP needs for this slice (no
         // hover-triggered UI to drive) and would otherwise fire one
         // operate-scope RPC per pixel of mouse movement — only forward
-        // moves made while dragging.
+        // moves made while a button is held.
         return;
       }
       if (frame === undefined) {
@@ -118,13 +123,19 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         eventType,
         x: point.x,
         y: point.y,
-        // A hover/drag move carries no button; CDP's own "none" value,
-        // never "left" — sending "left" on every move would read as
-        // dragging on every hover.
-        button: eventType === "mouseMoved" ? "none" : "left",
+        // A move only ever reaches here while a button is held (the guard
+        // above) — it IS a drag, so it carries the same "left" CDP reads
+        // press/release with; sending "none" here reads as a hover and
+        // breaks drag-select, sliders, and drag-and-drop on the remote page.
+        button: "left",
         ...(eventType === "mouseMoved" ? {} : { clickCount: 1 }),
       });
     };
+
+  /** Belt-and-suspenders for a lost/cancelled pointer capture (e.g. a touch gesture cancel) — `setPointerCapture` above is what makes a normal release outside the canvas still land on `mouseReleased`. */
+  const resetPointerDown = () => {
+    isPointerDownRef.current = false;
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
     // The canvas owns the keystroke while it has focus — Space/arrows/Tab
@@ -196,7 +207,9 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
             data-zerops-browser-input-disabled={driving.inputDisabled}
             onKeyDown={handleKeyDown}
             onKeyUp={handleKeyUp}
+            onPointerCancel={resetPointerDown}
             onPointerDown={handlePointer("mousePressed")}
+            onPointerLeave={resetPointerDown}
             onPointerMove={handlePointer("mouseMoved")}
             onPointerUp={handlePointer("mouseReleased")}
             style={{ cursor: driving.inputDisabled ? "not-allowed" : "default" }}
