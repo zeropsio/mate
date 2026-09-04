@@ -622,6 +622,12 @@ export class ZeropsApiClient {
    * websocket from a browser origin"). Goes through `#request`, so a `401`
    * here is retried once after the client's normal refresh, the same as any
    * other authenticated call.
+   *
+   * The body carries the access token under both `token` (zcp's own watcher,
+   * `internal/dataconsole/watch/watch.go`, and a live probe that succeeded
+   * with it) and `accessToken` (`frontend-legacy` `websocket.api.ts`'s
+   * `auth$`) — the two known clients of this endpoint disagree on the field
+   * name, so both are sent rather than betting on one.
    */
   async exchangeWebSocketToken(): Promise<{ readonly webSocketToken: string }> {
     const session = this.#session;
@@ -634,7 +640,7 @@ export class ZeropsApiClient {
     }
     return this.#request<{ readonly webSocketToken: string }>("/web-socket/login", {
       method: "POST",
-      body: JSON.stringify({ token: session.accessToken }),
+      body: JSON.stringify({ token: session.accessToken, accessToken: session.accessToken }),
     });
   }
 
@@ -645,6 +651,15 @@ export class ZeropsApiClient {
    * choose membership pushes (`"list"`, current `items` returned) or
    * status-change pushes (`"update"`, `disableOutput: true`, no items
    * returned). Verified protocol: `docs/internals/zerops/verified.md`.
+   *
+   * A `process` subscription additionally excludes the L7 load-balancer's own
+   * housekeeping processes and narrows to the statuses each mode cares about
+   * — `frontend-legacy` `process-base.effect.ts`'s `listSubscribe`/
+   * `updateSubscribe` calls, ported verbatim (their `clientId`-only search
+   * become `clientId eq` **and** `projectId eq` here: the official app scopes
+   * to the whole account, this client to one project). A `service-stack`
+   * subscription carries no such extra terms — `service-stack-base.effect.ts`
+   * passes none either.
    */
   async subscribeProjectSearch(
     entity: "service-stack" | "process",
@@ -656,13 +671,29 @@ export class ZeropsApiClient {
     },
   ): Promise<unknown> {
     const subscriptionEntity = entity === "service-stack" ? "ServiceStack" : "Process";
+    const search: Array<{
+      readonly name: string;
+      readonly operator: string;
+      readonly value: unknown;
+    }> = [
+      { name: "clientId", operator: "eq", value: options.orgId },
+      { name: "projectId", operator: "eq", value: options.projectId },
+    ];
+    if (entity === "process") {
+      search.push(
+        {
+          name: "status",
+          operator: "in",
+          value:
+            options.mode === "list" ? ["RUNNING", "PENDING"] : ["RUNNING", "PENDING", "FINISHED"],
+        },
+        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
+      );
+    }
     return this.#request(`/${entity}/search`, {
       method: "POST",
       body: JSON.stringify({
-        search: [
-          { name: "clientId", operator: "eq", value: options.orgId },
-          { name: "projectId", operator: "eq", value: options.projectId },
-        ],
+        search,
         sort: [],
         subscriptionName: `${subscriptionEntity}__${options.mode}-subscription`,
         receiverId: options.receiverId,

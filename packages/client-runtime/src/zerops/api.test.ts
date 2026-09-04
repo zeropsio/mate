@@ -796,7 +796,10 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/web-socket/login`,
     );
     expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ token: SESSION.accessToken });
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      token: SESSION.accessToken,
+      accessToken: SESSION.accessToken,
+    });
   });
 
   it("refuses without a session rather than calling the platform", async () => {
@@ -857,6 +860,8 @@ describe("ZeropsApiClient.subscribeProjectSearch", () => {
       search: [
         { name: "clientId", operator: "eq", value: "org-1" },
         { name: "projectId", operator: "eq", value: "proj-1" },
+        { name: "status", operator: "in", value: ["RUNNING", "PENDING", "FINISHED"] },
+        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
       ],
       sort: [],
       subscriptionName: "Process__update-subscription",
@@ -864,6 +869,57 @@ describe("ZeropsApiClient.subscribeProjectSearch", () => {
       wsOutputType: "updateStream",
       disableOutput: true,
     });
+  });
+
+  /**
+   * Ported from `frontend-legacy` `process-base.effect.ts`'s
+   * `listSubscribe`/`updateSubscribe` calls: the list subscription's status
+   * filter is narrower than the update one's — a finished process should
+   * stop appearing as a membership add, but its status change still needs to
+   * reach the update stream.
+   */
+  it("narrows the Process list subscription's status filter and excludes the L7 load balancer", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("process", {
+      orgId: "org-1",
+      projectId: "proj-1",
+      receiverId: "receiver-1",
+      mode: "list",
+    });
+
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      search: [
+        { name: "clientId", operator: "eq", value: "org-1" },
+        { name: "projectId", operator: "eq", value: "proj-1" },
+        { name: "status", operator: "in", value: ["RUNNING", "PENDING"] },
+        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
+      ],
+      sort: [],
+      subscriptionName: "Process__list-subscription",
+      receiverId: "receiver-1",
+      wsOutputType: "listStream",
+    });
+  });
+
+  it("carries no extra filter terms for a ServiceStack subscription", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("service-stack", {
+      orgId: "org-1",
+      projectId: "proj-1",
+      receiverId: "receiver-1",
+      mode: "update",
+    });
+
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
+      { name: "clientId", operator: "eq", value: "org-1" },
+      { name: "projectId", operator: "eq", value: "proj-1" },
+    ]);
   });
 });
 

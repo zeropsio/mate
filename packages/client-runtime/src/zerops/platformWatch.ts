@@ -3,18 +3,31 @@
  * socket factory and timers, no network of its own.
  *
  * Verified protocol (`docs/internals/zerops/verified.md` "platform websocket
- * from a browser origin"):
+ * from a browser origin", cross-checked against `frontend-legacy`'s own
+ * client — `libs/zef/src/websocket/*`, `apps/zerops/src/modules/core/
+ * {process-base,service-stack-base}/*.effect.ts`, `apps/zerops/src/modules/
+ * app/app.effect.ts`):
  * 1. `client.exchangeWebSocketToken()` (`POST /web-socket/login`) trades the
  *    account's access token for a short-lived `webSocketToken`.
  * 2. Connect `wss://<api host>/api/rest/public/web-socket/<receiverId>/<webSocketToken>`.
  *    The server greets with `{"type":"SocketSuccess"}`.
  * 3. Once greeted, four `client.subscribeProjectSearch` calls route pushes to
  *    this receiver: ServiceStack list, Process list, ServiceStack update,
- *    Process update — in that order.
- * 4. `{"type":"ping"}` every 15s, expect `{"type":"pong"}`. No message at all
- *    for 2×15s + 5s = 35s means the socket is dead.
- * 5. On death: close, back off (1s doubling to 30s), reconnect with a fresh
- *    login and a fresh `receiverId`, and re-subscribe all four.
+ *    Process update — in that order. The Process **list** subscription alone
+ *    is re-issued every 160s on the same receiver, matching
+ *    `process-base.effect.ts`'s `timer(0, 160000)` (subscription expiry,
+ *    kept quiet — never a `changed` signal); the other three are one-shot
+ *    per connection, matching `service-stack-base.effect.ts` and the Process
+ *    **update** subscription there, neither of which is ever re-issued.
+ * 4. `{"type":"ping"}` every 15s starting immediately on connect
+ *    (`websocket.effect.ts`'s `timer(0, 15000)`); each ping opens its own 8s
+ *    deadline for a `{"type":"pong"}` reply — only a pong satisfies it, no
+ *    other message does. A deadline that elapses declares the socket dead.
+ * 5. On death: close, reconnect immediately with a fresh login and a fresh
+ *    `receiverId` (`app.effect.ts`'s `_onZefWsClosed$`, no delay), and
+ *    re-subscribe all four. If THAT reconnect attempt itself fails (the
+ *    login call, the greeting, or a subscribe call), back off from there —
+ *    1s doubling to 30s — before trying again.
  *
  * **A push is a signal, never data**: an inbound `{"type":"search",
  * "subscriptionName":…, "data":{…}}` message is decoded no further than
@@ -26,7 +39,8 @@
 import { DEFAULT_ZEROPS_API_BASE } from "./api.ts";
 
 const PING_INTERVAL_MS = 15_000;
-const DEAD_AFTER_MS = 2 * PING_INTERVAL_MS + 5_000;
+const PONG_TIMEOUT_MS = 8_000;
+const PROCESS_LIST_RESUBSCRIBE_MS = 160_000;
 const BACKOFF_START_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
 
@@ -137,7 +151,9 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
   let closed = false;
   let socket: PlatformWatchSocket | undefined;
   let pingHandle: unknown;
-  let watchdogHandle: unknown;
+  /** The current ping's 8s "did a pong answer it" deadline — cleared by a pong, never by any other message. */
+  let pongDeadlineHandle: unknown;
+  let resubscribeHandle: unknown;
   let reconnectHandle: unknown;
   let backoffMs = BACKOFF_START_MS;
   /** Bumped on every (re)connect attempt so a stale attempt's async work is a no-op once superseded. */
@@ -147,19 +163,16 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
     for (const listener of listeners) listener(event);
   };
 
+  const clearHandle = (handle: unknown): undefined => {
+    if (handle !== undefined) timers.clearTimer(handle);
+    return undefined;
+  };
+
   const clearAllTimers = (): void => {
-    if (pingHandle !== undefined) {
-      timers.clearTimer(pingHandle);
-      pingHandle = undefined;
-    }
-    if (watchdogHandle !== undefined) {
-      timers.clearTimer(watchdogHandle);
-      watchdogHandle = undefined;
-    }
-    if (reconnectHandle !== undefined) {
-      timers.clearTimer(reconnectHandle);
-      reconnectHandle = undefined;
-    }
+    pingHandle = clearHandle(pingHandle);
+    pongDeadlineHandle = clearHandle(pongDeadlineHandle);
+    resubscribeHandle = clearHandle(resubscribeHandle);
+    reconnectHandle = clearHandle(reconnectHandle);
   };
 
   const teardownSocket = (): void => {
@@ -171,16 +184,12 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
       socket.close();
       socket = undefined;
     }
-    if (pingHandle !== undefined) {
-      timers.clearTimer(pingHandle);
-      pingHandle = undefined;
-    }
-    if (watchdogHandle !== undefined) {
-      timers.clearTimer(watchdogHandle);
-      watchdogHandle = undefined;
-    }
+    pingHandle = clearHandle(pingHandle);
+    pongDeadlineHandle = clearHandle(pongDeadlineHandle);
+    resubscribeHandle = clearHandle(resubscribeHandle);
   };
 
+  /** Backed-off retry — only for a reconnect ATTEMPT that itself failed (login, greeting, or a subscribe call). */
   const scheduleReconnect = (myGeneration: number): void => {
     if (closed || myGeneration !== generation) return;
     const delay = backoffMs;
@@ -191,32 +200,55 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
     }, delay);
   };
 
+  /** A connection that WAS up just died (pong timeout, or the socket itself closed/errored) — try again right away. */
   const goDead = (myGeneration: number): void => {
     if (closed || myGeneration !== generation) return;
     teardownSocket();
     emit({ type: "disconnected" });
-    scheduleReconnect(myGeneration);
-  };
-
-  const resetWatchdog = (myGeneration: number): void => {
-    if (watchdogHandle !== undefined) timers.clearTimer(watchdogHandle);
-    watchdogHandle = timers.setTimer(() => goDead(myGeneration), DEAD_AFTER_MS);
+    reconnectHandle = timers.setTimer(() => {
+      reconnectHandle = undefined;
+      void connect();
+    }, 0);
   };
 
   const startHeartbeat = (myGeneration: number): void => {
     const tick = (): void => {
       if (closed || myGeneration !== generation || socket === undefined) return;
       socket.send(JSON.stringify({ type: "ping" }));
+      pongDeadlineHandle = clearHandle(pongDeadlineHandle);
+      pongDeadlineHandle = timers.setTimer(() => goDead(myGeneration), PONG_TIMEOUT_MS);
       pingHandle = timers.setTimer(tick, PING_INTERVAL_MS);
     };
-    pingHandle = timers.setTimer(tick, PING_INTERVAL_MS);
-    resetWatchdog(myGeneration);
+    tick();
+  };
+
+  /** Keeps the Process list subscription's server-side registration from expiring — never a `changed` signal. */
+  const startProcessListResubscribe = (myGeneration: number, receiverId: string): void => {
+    const tick = (): void => {
+      if (closed || myGeneration !== generation) return;
+      void options.client
+        .subscribeProjectSearch("process", {
+          orgId: options.orgId,
+          projectId: options.projectId,
+          receiverId,
+          mode: "list",
+        })
+        .catch(() => {
+          // A missed refresh is not fatal — the subscription lapses at worst,
+          // and the next ping/pong cycle is what actually judges the socket.
+        });
+      resubscribeHandle = timers.setTimer(tick, PROCESS_LIST_RESUBSCRIBE_MS);
+    };
+    resubscribeHandle = timers.setTimer(tick, PROCESS_LIST_RESUBSCRIBE_MS);
   };
 
   const onMessage = (myGeneration: number, data: string): void => {
     if (closed || myGeneration !== generation) return;
-    resetWatchdog(myGeneration);
     const message = readMessage(data);
+    if (message.type === "pong") {
+      pongDeadlineHandle = clearHandle(pongDeadlineHandle);
+      return;
+    }
     if (message.type === "search" && message.subscriptionName !== undefined) {
       emit({ type: "changed", subscriptionName: message.subscriptionName });
     }
@@ -293,6 +325,7 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
 
     backoffMs = BACKOFF_START_MS;
     startHeartbeat(myGeneration);
+    startProcessListResubscribe(myGeneration, receiverId);
     emit({ type: "connected" });
   }
 

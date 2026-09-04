@@ -232,7 +232,7 @@ describe("openPlatformWatch", () => {
     watch.close();
   });
 
-  it("pings every 15s and reconnects with backoff when pongs stop", async () => {
+  it("pings immediately on connect and every 15s after, as long as pongs answer", async () => {
     const client = fakeClient();
     const sockets: FakeSocket[] = [];
     const events: PlatformWatchEvent[] = [];
@@ -245,7 +245,6 @@ describe("openPlatformWatch", () => {
         sockets.push(socket);
         return socket;
       },
-      makeReceiverId: () => `receiver-${sockets.length}`,
     });
     watch.events.subscribe((event) => events.push(event));
 
@@ -254,18 +253,95 @@ describe("openPlatformWatch", () => {
     await connectSocket(sockets, 0);
     await vi.advanceTimersByTimeAsync(0);
     expect(events).toContainEqual({ type: "connected" });
-
-    await vi.advanceTimersByTimeAsync(15_000);
+    // The first ping goes out immediately on connect, before the 15s timer.
     expect(sockets[0]!.sent).toEqual([JSON.stringify({ type: "ping" })]);
 
-    // No pong ever answers: 2×15s + 5s = 35s of silence declares the socket dead.
-    await vi.advanceTimersByTimeAsync(20_000);
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      sockets[0]!.receive({ type: "pong" });
+      await vi.advanceTimersByTimeAsync(15_000);
+    }
+
+    expect(sockets[0]!.sent).toHaveLength(4);
+    expect(events).not.toContainEqual({ type: "disconnected" });
+    expect(sockets).toHaveLength(1);
+
+    watch.close();
+  });
+
+  it("reconnects immediately, with no backoff, the first time a ping's pong never arrives", async () => {
+    const client = fakeClient();
+    const sockets: FakeSocket[] = [];
+    const events: PlatformWatchEvent[] = [];
+    const watch = watchHelper({
+      client,
+      orgId: "org-1",
+      projectId: "proj-1",
+      makeSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    watch.events.subscribe((event) => events.push(event));
+
+    await vi.advanceTimersByTimeAsync(0);
+    await connectSocket(sockets, 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events).toContainEqual({ type: "connected" });
+
+    // The first ping's pong never comes: dead 8s later, not the brief's 2×15s+5s.
+    await vi.advanceTimersByTimeAsync(8_000);
     expect(events).toContainEqual({ type: "disconnected" });
 
-    // Backoff starts at 1s.
-    await vi.advanceTimersByTimeAsync(1_000);
-    await vi.advanceTimersByTimeAsync(0);
+    // No backoff on this first reconnect attempt — the new socket appears at +0ms.
+    // (A further 1ms, not another 0ms: a timer scheduled for exactly "now" only
+    // fires once fake time actually moves past that instant.)
+    await vi.advanceTimersByTimeAsync(1);
     expect(sockets).toHaveLength(2);
+
+    watch.close();
+  });
+
+  it("re-issues the Process list subscription every 160s on the same receiverId, without a changed signal", async () => {
+    const client = fakeClient();
+    const sockets: FakeSocket[] = [];
+    const events: PlatformWatchEvent[] = [];
+    const watch = watchHelper({
+      client,
+      orgId: "org-1",
+      projectId: "proj-1",
+      makeSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+      makeReceiverId: () => "receiver-1",
+    });
+    watch.events.subscribe((event) => events.push(event));
+
+    await vi.advanceTimersByTimeAsync(0);
+    await connectSocket(sockets, 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.searches).toHaveLength(4);
+
+    // Keep the socket alive across the wait so only the resubscribe timer is under test.
+    for (let cycle = 0; cycle < 10; cycle += 1) {
+      sockets[0]!.receive({ type: "pong" });
+      await vi.advanceTimersByTimeAsync(15_000);
+    }
+    // 150s of ping/pong elapsed; the 160s resubscribe has not fired yet.
+    expect(client.searches).toHaveLength(4);
+
+    sockets[0]!.receive({ type: "pong" });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(client.searches).toHaveLength(5);
+    expect(client.searches[4]).toEqual({
+      entity: "process",
+      options: { orgId: "org-1", projectId: "proj-1", receiverId: "receiver-1", mode: "list" },
+    });
+    expect(events.some((event) => event.type === "changed")).toBe(false);
+    expect(sockets).toHaveLength(1);
 
     watch.close();
   });
@@ -297,9 +373,9 @@ describe("openPlatformWatch", () => {
     expect(client.logins).toBe(1);
 
     sockets[0]!.simulateServerClose();
-    await vi.advanceTimersByTimeAsync(1_000);
+    // Immediate reconnect, no backoff — see the note in the pong-timeout test above.
+    await vi.advanceTimersByTimeAsync(1);
 
-    await vi.advanceTimersByTimeAsync(0);
     expect(sockets).toHaveLength(2);
     await connectSocket(sockets, 1);
     await vi.advanceTimersByTimeAsync(0);
