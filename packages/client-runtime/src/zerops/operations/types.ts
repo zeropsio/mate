@@ -45,6 +45,8 @@ export type ZeropsOperationKind =
   | "scale"
   | "manage"
   | "env"
+  | "devServer"
+  | "browser"
   | "error";
 
 export type ZeropsOperationPhase = "running" | "done" | "failed";

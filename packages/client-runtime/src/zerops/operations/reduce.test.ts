@@ -774,6 +774,139 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     // the message composed the closing — it is not repeated in detail
     expect(op.detail).toBeUndefined();
   });
+
+  it("a dev_server start result: subject, Open-worthy hostname:port closing, one step", () => {
+    const entry: ZeropsCallEntry = {
+      id: "dev1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_dev_server",
+      input: { action: "start", hostname: "apidev" },
+      status: "completed",
+      resultText: JSON.stringify({
+        action: "start",
+        hostname: "apidev",
+        running: true,
+        port: 3000,
+        healthStatus: 200,
+        startMillis: 4200,
+        url: "http://apidev:3000/",
+        message: "dev server on apidev:3000 is healthy",
+      }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("devServer");
+    expect(op.phase).toBe("done");
+    expect(op.subject).toBe("apidev");
+    expect(op.statusWord).toBe("Running");
+    expect(op.closing).toBe("dev server running on apidev:3000.");
+    expect(op.links).toEqual([]);
+    expect(op.steps).toHaveLength(1);
+    expect(op.steps[0]!.state).toBe("done");
+    expect(op.target).toEqual({ hostname: "apidev" });
+  });
+
+  it("a dev_server start result that never came up: Not running statusWord, a failed step", () => {
+    const entry: ZeropsCallEntry = {
+      id: "dev2",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_dev_server",
+      input: { action: "start", hostname: "apidev" },
+      status: "completed",
+      resultText: JSON.stringify({
+        action: "start",
+        hostname: "apidev",
+        running: false,
+        port: 3000,
+        reason: "health_probe_timeout",
+        message: "dev server on apidev:3000 did not become healthy in time",
+      }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("devServer");
+    expect(op.statusWord).toBe("Not running");
+    expect(op.closing).toBe("apidev did not come up.");
+    expect(op.steps[0]!.state).toBe("failed");
+    expect(op.steps[0]!.note).toContain("Health probe timeout");
+  });
+
+  it("a dev_server stop result: closing says stopped, never claims an Open link", () => {
+    const entry: ZeropsCallEntry = {
+      id: "dev3",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_dev_server",
+      input: { action: "stop", hostname: "apidev" },
+      status: "completed",
+      resultText: JSON.stringify({ action: "stop", hostname: "apidev", running: false }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.closing).toBe("apidev stopped.");
+    expect(op.links).toEqual([]);
+  });
+
+  it("a browser result: subject the url, closing with the three counts, steps from the batch", () => {
+    const entry: ZeropsCallEntry = {
+      id: "brw1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_browser",
+      input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+      status: "completed",
+      resultText: JSON.stringify({
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        steps: [
+          { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
+          {
+            command: ["click", "@e1"],
+            success: false,
+            error: "no element matched @e1",
+            errorKind: "selector-not-found",
+          },
+          { command: ["close"], success: true },
+        ],
+        errorsOutput: ["TypeError: x is not a function"],
+        consoleOutput: [{ type: "error", text: "failed to fetch" }],
+        networkOutput: [],
+      }),
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("browser");
+    expect(op.subject).toBe("https://kanbandev-26a7.prg1.zerops.app");
+    expect(op.statusWord).toBe("Checked");
+    expect(op.closing).toBe(
+      "checked https://kanbandev-26a7.prg1.zerops.app. 1 console error, 1 page error, 0 failed requests.",
+    );
+    expect(op.steps.map((s) => s.label)).toEqual([
+      "open https://kanbandev-26a7.prg1.zerops.app",
+      "click @e1",
+      "close",
+    ]);
+    expect(op.steps[1]!.state).toBe("failed");
+    expect(op.steps[1]!.note).toBe("Selector not found");
+  });
+
+  it("a browser result whose text is not JSON classifies as generic, never as an error card", () => {
+    const entry: ZeropsCallEntry = {
+      id: "brw2",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_browser",
+      input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+      status: "completed",
+      resultText: "## Browser walk\n\nEverything looks fine.",
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.kind).toBe("browser");
+    expect(op.statusWord).toBe("Done");
+    expect(op.closing).toBe("Finished.");
+  });
 });
 
 describe("reduceZeropsOperations — no per-call intent (zcp ships none)", () => {

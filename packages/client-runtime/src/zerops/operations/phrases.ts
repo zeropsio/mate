@@ -75,6 +75,8 @@ export function humanizeToolName(toolName: string): string {
 export interface OperationStatusWordContext {
   readonly resultStatus?: string | undefined;
   readonly action?: string | undefined;
+  /** `devServer` only: the decoded card's own `running` field. */
+  readonly running?: boolean | undefined;
 }
 
 const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
@@ -112,7 +114,10 @@ export function operationStatusWord(
       case "scale":
       case "manage":
       case "env":
+      case "devServer":
         return "Working";
+      case "browser":
+        return "Checking";
       case "bootstrap":
         return "In progress";
       case "error":
@@ -148,6 +153,10 @@ export function operationStatusWord(
     case "manage":
     case "env":
       return PAST_PARTICIPLE[kind]!;
+    case "devServer":
+      return context.running === false ? "Not running" : "Running";
+    case "browser":
+      return "Checked";
     case "bootstrap":
       return "Complete";
     case "error":
@@ -202,6 +211,10 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
       return `${DELETE_SCALE_MANAGE_ENV_VOICE[kind]} ${subject}.`;
     case "env":
       return `Updating environment of ${subject}.`;
+    case "devServer":
+      return `Managing the dev server on ${subject}.`;
+    case "browser":
+      return `Checking ${subject}.`;
     case "bootstrap":
       return `Setting up ${subject}.`;
     case "error":
@@ -223,6 +236,46 @@ export interface OperationClosingContext {
   readonly action?: string | undefined;
   readonly message?: string | undefined;
   readonly messageFirstParagraph?: string | undefined;
+  /** `devServer` only. */
+  readonly hostname?: string | undefined;
+  readonly port?: number | undefined;
+  readonly running?: boolean | undefined;
+  /** `browser` only. */
+  readonly url?: string | undefined;
+  readonly consoleErrorCount?: number | undefined;
+  readonly pageErrorCount?: number | undefined;
+  readonly failedRequestCount?: number | undefined;
+}
+
+/** "1 thing" vs "2 things" — the small plural forms these closings need. */
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function devServerClosing(context: OperationClosingContext): string {
+  const host = context.hostname ?? "the dev server";
+  if (context.action === "stop") {
+    return `${host} stopped.`;
+  }
+  if (context.action === "logs") {
+    return `Read the ${host} log.`;
+  }
+  if (context.running === false) {
+    return `${host} did not come up.`;
+  }
+  return context.port !== undefined
+    ? `dev server running on ${host}:${context.port}.`
+    : `dev server running on ${host}.`;
+}
+
+function browserClosing(context: OperationClosingContext): string {
+  const target = context.url ?? "the page";
+  const counts = [
+    plural(context.consoleErrorCount ?? 0, "console error"),
+    plural(context.pageErrorCount ?? 0, "page error"),
+    plural(context.failedRequestCount ?? 0, "failed request"),
+  ].join(", ");
+  return `checked ${target}. ${counts}.`;
 }
 
 /** The closing line, once `phase !== "running"` — outcome + the one thing the user needs. */
@@ -260,6 +313,10 @@ export function operationClosing(
     case "manage":
     case "env":
       return context.message ?? context.summary ?? "Finished.";
+    case "devServer":
+      return devServerClosing(context);
+    case "browser":
+      return browserClosing(context);
     case "bootstrap":
       return context.messageFirstParagraph ?? "Bootstrap complete.";
     case "error":

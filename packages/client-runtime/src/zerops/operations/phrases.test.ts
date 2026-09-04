@@ -121,6 +121,14 @@ describe("operationStatusWord — running phase", () => {
     expect(operationStatusWord("subdomain", "running", { action: "enable" })).toBe("Enabling");
     expect(operationStatusWord("subdomain", "running", { action: "disable" })).toBe("Disabling");
   });
+
+  it("devServer running is Working", () => {
+    expect(operationStatusWord("devServer", "running")).toBe("Working");
+  });
+
+  it("browser running is Checking", () => {
+    expect(operationStatusWord("browser", "running")).toBe("Checking");
+  });
 });
 
 describe("operationStatusWord — done phase", () => {
@@ -142,6 +150,16 @@ describe("operationStatusWord — done phase", () => {
 
   it("bootstrap done is Complete", () => {
     expect(operationStatusWord("bootstrap", "done")).toBe("Complete");
+  });
+
+  it("devServer done is Running, or Not running when the card says running=false", () => {
+    expect(operationStatusWord("devServer", "done")).toBe("Running");
+    expect(operationStatusWord("devServer", "done", { running: false })).toBe("Not running");
+    expect(operationStatusWord("devServer", "done", { running: true })).toBe("Running");
+  });
+
+  it("browser done is Checked", () => {
+    expect(operationStatusWord("browser", "done")).toBe("Checked");
   });
 });
 

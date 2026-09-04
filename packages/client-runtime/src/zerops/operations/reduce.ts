@@ -176,6 +176,8 @@ const CARD_TOOL_KINDS: Readonly<Record<string, ZeropsOperationKind>> = {
   zerops_scale: "scale",
   zerops_manage: "manage",
   zerops_env: "env",
+  zerops_dev_server: "devServer",
+  zerops_browser: "browser",
 };
 
 /**
@@ -410,6 +412,8 @@ const KIND_LABEL: Readonly<Record<Exclude<ZeropsOperationKind, "bootstrap" | "er
   scale: "Scale",
   manage: "Manage",
   env: "Env",
+  devServer: "Dev server",
+  browser: "Browser",
 };
 
 function pickFirst(...values: ReadonlyArray<string | undefined>): string | undefined {
@@ -454,6 +458,10 @@ function buildOperation(group: OperationGroup): ZeropsOperation {
     case "manage":
     case "env":
       return buildSimpleOperation(group);
+    case "devServer":
+      return buildDevServerOperation(group);
+    case "browser":
+      return buildBrowserOperation(group);
     case "error":
       return buildErrorOperation(group);
   }
@@ -1012,6 +1020,183 @@ function buildSimpleOperation(group: OperationGroup): ZeropsOperation {
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
   };
+}
+
+// --- dev server -------------------------------------------------------------------
+
+/** Humanizes `reason` (e.g. `health_probe_timeout`) into "Health probe timeout". */
+function devServerStepNote(
+  card: Extract<ZeropsCardPayload, { kind: "devServer" }>,
+): string | undefined {
+  if (card.reason !== undefined) {
+    return sentenceCase(card.reason);
+  }
+  if (card.healthStatus !== undefined) {
+    return `HTTP ${card.healthStatus}`;
+  }
+  return undefined;
+}
+
+const DEV_SERVER_STEP_LABEL: Readonly<Record<string, string>> = {
+  start: "Start",
+  stop: "Stop",
+  restart: "Restart",
+  status: "Health check",
+  logs: "Logs",
+};
+
+/**
+ * The one step's PASS/FAIL goal depends on the action: start/restart/status
+ * want `running=true`, stop wants `running=false` — a successful stop
+ * reporting `running=false` is the step succeeding, not failing.
+ */
+function devServerStepSucceeded(action: string, running: boolean): boolean {
+  return action === "stop" ? !running : running;
+}
+
+function buildDevServerOperation(group: OperationGroup): ZeropsOperation {
+  const { entry, decoded } = group.entries[0]!;
+  const errorInfo = errorInfoFor(entry, decoded);
+  const card = decoded.card?.kind === "devServer" ? decoded.card : undefined;
+  const phase: ZeropsOperationPhase =
+    entry.status === "failed" ? "failed" : entry.status === "inProgress" ? "running" : "done";
+  const subject =
+    pickFirst(readInputString(entry.input, "hostname"), card?.hostname) ?? "the dev server";
+  const action = pickFirst(readInputString(entry.input, "action"), card?.action) ?? "start";
+  const { voice, voiceSource } = mateVoiceFor("devServer", subject);
+  const settledAt = settledAtFor(group, phase);
+
+  const steps: ZeropsOperationStep[] =
+    card !== undefined
+      ? [
+          buildStep(
+            "dev-server",
+            DEV_SERVER_STEP_LABEL[card.action] ?? sentenceCase(card.action),
+            devServerStepSucceeded(card.action, card.running) ? "ACTIVE" : "FAILED",
+            devServerStepNote(card),
+          ),
+        ]
+      : [];
+
+  const closing =
+    phase === "running"
+      ? undefined
+      : phase === "failed"
+        ? operationClosing("devServer", "failed", {
+            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
+          })
+        : card !== undefined
+          ? operationClosing("devServer", "done", {
+              hostname: card.hostname,
+              port: card.port,
+              running: card.running,
+              action: card.action,
+            })
+          : "Finished.";
+
+  return {
+    ...baseFields(group),
+    kind: "devServer",
+    phase,
+    ...(settledAt !== undefined ? { settledAt } : {}),
+    subject,
+    kicker: `${KIND_LABEL.devServer} · ${subject}`,
+    voice,
+    voiceSource,
+    statusWord: gatedStatusWord(
+      "devServer",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+      { running: card?.running, action },
+    ),
+    ...(closing !== undefined ? { closing } : {}),
+    steps,
+    // The subdomain URL is not part of this result — it comes from the
+    // client's own topology view as a prop the timeline supplies, never
+    // baked into the operation here.
+    links: [],
+    ...detailField([
+      card?.logTail,
+      errorInfo?.diagnostic,
+      errorInfo?.suggestion,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
+    ]),
+    target: { hostname: subject },
+    hasResult: decoded.document !== undefined,
+  };
+}
+
+// --- browser ------------------------------------------------------------------------
+
+function buildBrowserOperation(group: OperationGroup): ZeropsOperation {
+  const { entry, decoded } = group.entries[0]!;
+  const errorInfo = errorInfoFor(entry, decoded);
+  const card = decoded.card?.kind === "browser" ? decoded.card : undefined;
+  const phase: ZeropsOperationPhase =
+    entry.status === "failed" ? "failed" : entry.status === "inProgress" ? "running" : "done";
+  const subject = pickFirst(readInputString(entry.input, "url"), card?.url) ?? "the page";
+  const { voice, voiceSource } = mateVoiceFor("browser", subject);
+  const settledAt = settledAtFor(group, phase);
+
+  const steps: ZeropsOperationStep[] = (card?.steps ?? []).map((step, index) =>
+    buildStep(
+      `step-${index}`,
+      step.label,
+      step.success ? "ACTIVE" : "FAILED",
+      browserStepNote(step),
+    ),
+  );
+
+  const closing =
+    phase === "running"
+      ? undefined
+      : phase === "failed"
+        ? operationClosing("browser", "failed", {
+            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
+          })
+        : card !== undefined
+          ? operationClosing("browser", "done", {
+              url: card.url,
+              consoleErrorCount: card.consoleErrorCount,
+              pageErrorCount: card.pageErrorCount,
+              failedRequestCount: card.failedRequestCount,
+            })
+          : "Finished.";
+
+  return {
+    ...baseFields(group),
+    kind: "browser",
+    phase,
+    ...(settledAt !== undefined ? { settledAt } : {}),
+    subject,
+    kicker: `${KIND_LABEL.browser} · ${subject}`,
+    voice,
+    voiceSource,
+    statusWord: gatedStatusWord(
+      "browser",
+      phase,
+      card !== undefined,
+      entry.resultText !== undefined,
+    ),
+    ...(closing !== undefined ? { closing } : {}),
+    steps,
+    links: [],
+    ...detailField([
+      card?.message,
+      errorInfo?.diagnostic,
+      errorInfo?.suggestion,
+      decoded.card === undefined ? undecodedDetail(entry) : undefined,
+    ]),
+    hasResult: decoded.document !== undefined,
+  };
+}
+
+function browserStepNote(step: {
+  readonly success: boolean;
+  readonly errorKind?: string;
+}): string | undefined {
+  return step.success || step.errorKind === undefined ? undefined : sentenceCase(step.errorKind);
 }
 
 // --- error (failed generic/hidden zerops call) -----------------------------------
