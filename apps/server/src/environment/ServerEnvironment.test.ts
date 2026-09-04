@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -134,6 +135,54 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         ),
       );
       expect(prefixed.basePath).toBe("/mate");
+    }),
+  );
+
+  // Additive, contract C-5: a Zerops container states which project it
+  // belongs to (a fact it already owns through the env contract, non-secret)
+  // — absent everywhere else, including a plain `t3 serve`.
+  it.effect("carries the Zerops project id only inside a Zerops container", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-zerops-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+
+      const outsideZerops = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+      );
+      expect(outsideZerops.zerops).toBeUndefined();
+
+      const insideZerops = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(
+              ServerConfig.layer({
+                ...config,
+                zerops: {
+                  projectId: "nTV3oMB2SS634ImDJnQckg",
+                  apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
+                  allowedOrigins: [],
+                  membershipTtl: Duration.seconds(900),
+                  publicOrigin: undefined,
+                },
+              }),
+            ),
+          ),
+        ),
+      );
+      expect(insideZerops.zerops).toEqual({ projectId: "nTV3oMB2SS634ImDJnQckg" });
     }),
   );
 

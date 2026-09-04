@@ -78,6 +78,17 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
+/**
+ * The Zerops project this container belongs to — a fact the env contract
+ * already owns (`T3CODE_ZEROPS_PROJECT_ID`, spec-mate.md §2.3) and states
+ * non-secretly here. Present only in Zerops mode; absent everywhere else,
+ * including on a server too old to have this field at all.
+ */
+export const ExecutionEnvironmentZerops = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+});
+export type ExecutionEnvironmentZerops = typeof ExecutionEnvironmentZerops.Type;
+
 export const ExecutionEnvironmentDescriptor = Schema.Struct({
   environmentId: EnvironmentId,
   label: TrimmedNonEmptyString,
@@ -89,6 +100,8 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
       different prefix is talking to a server that answers but is not the one it
       thinks — the SPA catch-all makes that silent, so the prefix is stated. */
   basePath: Schema.optionalKey(Schema.String),
+  /** See {@link ExecutionEnvironmentZerops}. */
+  zerops: Schema.optionalKey(ExecutionEnvironmentZerops),
 });
 export type ExecutionEnvironmentDescriptor = typeof ExecutionEnvironmentDescriptor.Type;
 

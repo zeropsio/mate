@@ -167,6 +167,9 @@ export const make = Effect.gen(function* () {
     },
     serverVersion: packageJson.version,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
+    ...(serverConfig.zerops === undefined
+      ? {}
+      : { zerops: { projectId: serverConfig.zerops.projectId } }),
     capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy),
   };
 
