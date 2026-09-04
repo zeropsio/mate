@@ -3,10 +3,12 @@ import {
   serviceStatusTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
 import { callEntriesFromActivities } from "@t3tools/client-runtime/zerops/operations/fixtures";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { ZeropsTopologySnapshot } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -26,16 +28,49 @@ import {
   StatusDot,
 } from "./primitives";
 
+/**
+ * TEMPORARY, deleted once the scene contract itself moves to a captured
+ * `service-stack`/`process` pair (a follow-up slice, not S3): reshapes the
+ * still-server-shaped `zcp studio topology` scene snapshot
+ * (`ZeropsTopologySnapshot`, still read by `apps/server/src/zerops/
+ * ZeropsFixtureFeeds.ts` until S4 deletes that feed) into the client
+ * projection's `ZeropsTopologyView`. Mirrors the identical adapter in
+ * `packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts`.
+ */
+function viewFromScene(snapshot: ZeropsTopologySnapshot): ZeropsTopologyView | undefined {
+  if (!snapshot.available) return undefined;
+  const project = snapshot.project;
+  return {
+    project: {
+      id: project?.id ?? "showcase-project",
+      name: project?.name ?? "Showcase",
+      ...(project?.status === undefined ? {} : { status: project.status }),
+    },
+    services: snapshot.services.map((service) => ({
+      hostname: service.hostname,
+      serviceId: service.serviceId,
+      type: service.type,
+      status: service.status,
+      group: service.group,
+      transient: service.transient,
+      ...(service.subdomainUrl === undefined ? {} : { subdomainUrl: service.subdomainUrl }),
+      ports: [],
+    })),
+    warnings: snapshot.warnings,
+  };
+}
+
 it.each(listShowcaseScenes())("$id renders through the web presentation components", (scene) => {
   const markup: Array<string> = [];
-  const map = buildZeropsServiceMap(scene.topology, scene.lifecycle);
+  const topologyView = viewFromScene(scene.topology);
+  const map = buildZeropsServiceMap(topologyView, scene.lifecycle);
   const mapMarkup = renderToStaticMarkup(<ZeropsServiceMap view={map} />);
   markup.push(mapMarkup);
   if (map === undefined) {
     expect(mapMarkup, "an unavailable topology is intentionally hidden").toBe("");
   } else {
     expect(mapMarkup).toContain("data-zerops-service-map");
-    for (const service of scene.topology.services) {
+    for (const service of topologyView?.services ?? []) {
       expect(mapMarkup).toContain(service.status);
       expect(mapMarkup).toContain(`data-zerops-service-tone="${serviceStatusTone(service)}"`);
       if (service.transient) {
