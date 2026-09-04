@@ -1,17 +1,36 @@
 /**
- * The React-facing read of one environment's service map — a thin
- * `useSyncExternalStore` wrapper over a per-environment singleton
- * {@link ProjectTopologyWatcher}, so every consumer in a thread (the panel,
- * the strip, quick actions) shares one platform-websocket connection and one
- * REST reader instead of racing its own.
+ * Mounts and reads one environment's service-map watcher.
+ *
+ * This is the WRITER half of the read/write split
+ * `scripts/mate-zone-architecture.test.ts` ("protected roots render only")
+ * requires: the watcher needs the mutating Zerops REST client
+ * (`@t3tools/client-runtime/zerops`), so this hook — and everything it
+ * imports — must never be reachable from a protected root
+ * (`ZeropsServiceMap.tsx`, `ZeropsLifecycleStrip.tsx`,
+ * `ZeropsOperationCard.tsx`, `ZeropsQuickActions.tsx`). It runs only in
+ * non-protected hosts that already render whenever those roots do —
+ * `ChatView.tsx`, `ZeropsPanel.tsx` — and publishes into
+ * `../state/zerops.ts`'s `projectTopologyViewAtom`, a plain read-only atom
+ * `useZeropsFeeds.ts`'s `useZeropsTopology` reads with no import of this
+ * file, the watcher, candidate loading, or `api.ts` at all.
+ *
+ * One {@link ProjectTopologyWatcher} per environment regardless of how many
+ * hosts mount this hook — `watcherFor` ref-counts it exactly like
+ * `activity/useProjectActivity.ts`'s `pollerFor` — so two hosts open at once
+ * (e.g. `ChatView` and `ZeropsPanel`) publish to, and every reader reads
+ * from, the very same atom value.
  */
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/platformWatch";
-import { useCallback, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { useEffect } from "react";
+import { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useEnvironment } from "../state/environments";
+import { projectTopologyViewAtom } from "../state/zerops";
 import { ProjectTopologyWatcher, type ProjectTopologySnapshot } from "./projectTopologyWatcher.ts";
 import { browserZeropsStorage } from "./storage.ts";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -82,9 +101,11 @@ const EMPTY_SNAPSHOT: ProjectTopologySnapshot = {
   error: undefined,
 };
 
+const EMPTY_ATOM = Atom.make(EMPTY_SNAPSHOT).pipe(Atom.withLabel("zerops:project-topology-empty"));
+
 /**
  * `environmentId === null`, no Zerops session, or no resolvable environment
- * yet renders nothing and subscribes to nothing.
+ * yet mounts no watcher and reads the atom's untouched empty snapshot.
  */
 export function useProjectTopology(environmentId: EnvironmentId | null): ProjectTopologySnapshot {
   const session = useZeropsSessionOptional();
@@ -92,20 +113,16 @@ export function useProjectTopology(environmentId: EnvironmentId | null): Project
   const client = session?.client ?? null;
   const displayUrl = environment?.displayUrl ?? null;
 
-  const subscribe = useCallback(
-    (listener: () => void) =>
-      environmentId === null || client === null
-        ? () => undefined
-        : watcherFor(environmentId, client, displayUrl).subscribe(listener),
-    [environmentId, client, displayUrl],
-  );
-  const getSnapshot = useCallback(
-    () =>
-      environmentId === null || client === null
-        ? EMPTY_SNAPSHOT
-        : watcherFor(environmentId, client, displayUrl).getSnapshot(),
-    [environmentId, client, displayUrl],
-  );
+  useEffect(() => {
+    if (environmentId === null || client === null) return;
+    const watcher = watcherFor(environmentId, client, displayUrl);
+    const atom = projectTopologyViewAtom(environmentId);
+    const publish = () => {
+      appAtomRegistry.set(atom, watcher.getSnapshot());
+    };
+    publish();
+    return watcher.subscribe(publish);
+  }, [environmentId, client, displayUrl]);
 
-  return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_SNAPSHOT);
+  return useAtomValue(environmentId === null ? EMPTY_ATOM : projectTopologyViewAtom(environmentId));
 }

@@ -1,17 +1,22 @@
 /**
  * Component-facing reads of the Zerops feeds.
  *
- * `useZeropsLifecycle`/`useZeropsAgentAuth` return `undefined` until the
- * first snapshot arrives, and stay `undefined` forever in a non-Zerops
- * environment. Callers render nothing in that case — there is no loading or
- * error state worth showing for a panel that does not apply here, and a live
- * snapshot says so for itself with `available: false`.
+ * Every read here returns `undefined` until the first snapshot arrives, and
+ * stays `undefined` forever in a non-Zerops environment. Callers render
+ * nothing in that case — there is no loading or error state worth showing
+ * for a panel that does not apply here.
  *
- * `useZeropsTopology` is different: topology is no longer a mate-server feed
- * (S3) — it is a thin read of `useProjectTopology`'s own view, a client-side
- * projection of the Zerops API. A caller that also needs liveness or the
- * last-read error (the service map panel) reads `useProjectTopology`
- * directly instead.
+ * `useZeropsTopology` is a PURE atom read, deliberately: it must never import
+ * `useProjectTopology`, the watcher, candidate loading, or `api.ts` — the
+ * design-system rule a protected root's whole module graph must satisfy
+ * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
+ * and every file in this one is reachable from `ZeropsServiceMap.tsx`,
+ * `ZeropsLifecycleStrip.tsx`, `ZeropsOperationCard.tsx`,
+ * `ZeropsQuickActions.tsx`). `useProjectTopology` is the WRITER for the atom
+ * this reads (`../state/zerops.ts`'s `projectTopologyViewAtom`); it runs only
+ * in non-protected hosts (`ChatView.tsx`, `ZeropsPanel.tsx`), which is also
+ * where a caller that needs liveness or the last-read error reads it
+ * directly instead of through this thin view-only read.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -23,8 +28,7 @@ import type {
 import { Atom } from "effect/unstable/reactivity";
 
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
-import { zeropsFeeds } from "../state/zerops";
-import { useProjectTopology } from "./useProjectTopology";
+import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
 
 /**
  * Selected when there is no environment or thread to read. Hooks cannot be
@@ -36,7 +40,8 @@ const EMPTY_ATOM = Atom.make(undefined).pipe(Atom.withLabel("zerops:feed-empty")
 export function useZeropsTopology(
   environmentId: EnvironmentId | null,
 ): ZeropsTopologyView | undefined {
-  return useProjectTopology(environmentId).view;
+  return useAtomValue(environmentId === null ? EMPTY_ATOM : projectTopologyViewAtom(environmentId))
+    ?.view;
 }
 
 export function useZeropsLifecycle(
