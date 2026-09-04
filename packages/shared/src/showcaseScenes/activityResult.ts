@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-/** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot), already under the 256 KB base64 cap — `apps/server/src/spi/toolCall.ts`'s `readContentImages`. */
+/** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot), already under the 1 MiB base64 cap — `apps/server/src/spi/toolCall.ts`'s `readContentImages`. */
 export const ZeropsActivityResultImage = Schema.Struct({
   mimeType: Schema.NonEmptyString,
   data: Schema.NonEmptyString,

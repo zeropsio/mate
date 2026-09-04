@@ -87,11 +87,15 @@ const readContentText = (content: unknown): string | undefined => {
 
 /**
  * A `{data}` base64 string over this many UTF-16 code units is dropped
- * rather than carried — 256 KB (SPI-8b, S8b brief), independent of
+ * rather than carried — 1 MiB. Live-measured 2026-09-04 (verified.md):
+ * Claude Code forwarding a `zerops_browser` screenshot at the default
+ * viewport (1280×577 PNG) put ~301 KB of base64 on the wire, so the
+ * originally-specified 256 KB cap (S8b brief) would have dropped every real
+ * thumbnail; raised with headroom. Independent of
  * {@link ZEROPS_RESULT_TEXT_LIMIT}-style text caps, which live one layer up
  * in `apps/server/src/zerops/zeropsActivityResult.ts`.
  */
-const MAX_IMAGE_BASE64_LENGTH = 256 * 1024;
+const MAX_IMAGE_BASE64_LENGTH = 1024 * 1024;
 
 interface ContentImagesResult {
   readonly images: ReadonlyArray<SpiToolCallImage>;
@@ -99,11 +103,20 @@ interface ContentImagesResult {
 }
 
 /**
- * MCP image content blocks (`{type: "image", mimeType, data}`) in a result's
- * `content` array — the `zerops_browser` screenshot is the first consumer. A
- * bare string `content` (Claude's shorthand) carries no image blocks. An
- * over-cap image is dropped, never truncated (a half-decoded JPEG is
- * useless); `dropped` records that at least one was.
+ * MCP image content blocks in a result's `content` array — the
+ * `zerops_browser` screenshot is the first consumer. A bare string `content`
+ * (Claude's shorthand) carries no image blocks. An over-cap image is
+ * dropped, never truncated (a half-decoded PNG is useless); `dropped`
+ * records that at least one was.
+ *
+ * Two shapes, read defensively:
+ * - **Claude** (Agent SDK, live-measured 2026-09-04 — verified.md): mirrors
+ *   Anthropic's own `ImageBlockParam`, `{type: "image", source: {type:
+ *   "base64", media_type, data}}` — nested under `source`, and it carries no
+ *   width/height (the model only ever reported dimensions as prose).
+ * - **Codex**: UNMEASURED. The raw MCP protocol's own `ImageContent` is flat
+ *   (`{type: "image", data, mimeType}`), so that is read as the fallback —
+ *   never live-verified against Codex's `mcpToolCall` item's own result.
  */
 const readContentImages = (content: unknown): ContentImagesResult => {
   if (!Array.isArray(content)) {
@@ -115,8 +128,9 @@ const readContentImages = (content: unknown): ContentImagesResult => {
     if (!isRecord(block) || block.type !== "image") {
       continue;
     }
-    const data = readString(block.data);
-    const mimeType = readString(block.mimeType);
+    const source = isRecord(block.source) ? block.source : undefined;
+    const data = readString(source?.data) ?? readString(block.data);
+    const mimeType = readString(source?.media_type) ?? readString(block.mimeType);
     if (data === undefined || mimeType === undefined) {
       continue;
     }
