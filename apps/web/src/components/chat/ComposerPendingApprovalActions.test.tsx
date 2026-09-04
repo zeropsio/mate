@@ -134,6 +134,31 @@ describe("ComposerPendingApprovalActions", () => {
     });
   });
 
+  it("marks an option that carries a provider warning", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerPendingApprovalActions
+        requestId={ApprovalRequestId.make("approval-1")}
+        isResponding={false}
+        options={[
+          { decision: "accept", label: "Allow once" },
+          {
+            decision: "acceptForSession",
+            label: "Allow for this thread",
+            warning: "Untrusted files could re-run this action without asking.",
+          },
+          { decision: "decline", label: "Deny" },
+        ]}
+        onRespondToApproval={async () => undefined}
+      />,
+    );
+
+    expect(markup).toContain(
+      'aria-description="Untrusted files could re-run this action without asking."',
+    );
+    expect(markup).toContain("text-warning");
+    expect(markup).toContain("Allow for this thread");
+  });
+
   it("wraps provider-supplied approval labels without hiding their text", () => {
     const label = "Allow ".repeat(40).trim();
     const markup = renderToStaticMarkup(

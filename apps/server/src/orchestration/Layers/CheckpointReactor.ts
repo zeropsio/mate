@@ -783,6 +783,8 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    yield* providerService.assertConversationRollbackSupported(event.payload.threadId);
+
     const restore = yield* restoreAcrossTargets(checkpointStore, {
       targets: revertTargets,
       checkpointRef: targetCheckpointRef,

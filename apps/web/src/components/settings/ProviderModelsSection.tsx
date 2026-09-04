@@ -111,6 +111,7 @@ export function ProviderModelsSection({
   }, [favoriteModelSet, modelOrder, models]);
 
   const handleAdd = () => {
+    if (driverKind === "antigravity") return;
     const normalized = normalizeCustomModelSlug(input);
     if (!normalized) {
       setError("Enter a model slug.");
@@ -379,29 +380,33 @@ export function ProviderModelsSection({
         })}
       </div>
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <Input
-          id={`provider-instance-${instanceId}-custom-model`}
-          value={input}
-          onChange={(event) => {
-            setInput(event.target.value);
-            if (error) setError(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            handleAdd();
-          }}
-          placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : "model-slug"}
-          spellCheck={false}
-        />
-        <Button className="shrink-0" variant="outline" onClick={handleAdd}>
-          <PlusIcon className="size-3.5" />
-          Add
-        </Button>
-      </div>
+      {driverKind === "antigravity" ? null : (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <Input
+            id={`provider-instance-${instanceId}-custom-model`}
+            value={input}
+            onChange={(event) => {
+              setInput(event.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              handleAdd();
+            }}
+            placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : "model-slug"}
+            spellCheck={false}
+          />
+          <Button className="shrink-0" variant="outline" onClick={handleAdd}>
+            <PlusIcon className="size-3.5" />
+            Add
+          </Button>
+        </div>
+      )}
 
-      {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
+      {driverKind !== "antigravity" && error ? (
+        <p className="mt-2 text-xs text-destructive">{error}</p>
+      ) : null}
     </div>
   );
 }

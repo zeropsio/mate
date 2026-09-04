@@ -96,7 +96,7 @@ describe("ComposerPendingUserInputPanel", () => {
  */
 describe("ComposerPendingUserInputPanel — answering affordances", () => {
   const render = (
-    answers: Record<string, { selectedOptionLabels: string[]; customAnswer: string }>,
+    answers: Record<string, { selectedOptionValues: string[]; customAnswer: string }>,
   ) =>
     renderToStaticMarkup(
       <ComposerPendingUserInputPanel
@@ -132,7 +132,7 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
 
   it("reads the typed answer back once there is one", () => {
     const html = render({
-      "question-1": { selectedOptionLabels: [], customAnswer: "Neither — start over" },
+      "question-1": { selectedOptionValues: [], customAnswer: "Neither — start over" },
     });
 
     expect(html).toContain('data-pending-user-input-other="answered"');
@@ -143,7 +143,7 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
    * read as chosen. */
   it("does not show an option as selected while a typed answer stands", () => {
     const html = render({
-      "question-1": { selectedOptionLabels: ["Incremental"], customAnswer: "Neither" },
+      "question-1": { selectedOptionValues: ["Incremental"], customAnswer: "Neither" },
     });
 
     expect(html).toContain('data-pending-user-input-other="answered"');
@@ -185,7 +185,7 @@ describe("ComposerPendingUserInputPanel — answering affordances", () => {
         pendingUserInputs={[multiQuestionPrompt]}
         respondingRequestIds={[]}
         answers={{
-          "question-multi": { selectedOptionLabels: ["API"], customAnswer: "" },
+          "question-multi": { selectedOptionValues: ["API"], customAnswer: "" },
         }}
         questionIndex={0}
         onToggleOption={() => {}}

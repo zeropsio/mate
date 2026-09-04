@@ -312,6 +312,14 @@
     "expires": "never"
   },
   {
+    "path": "apps/mobile/src/features/settings/SettingsProviderSetupRouteScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed (native stack header colours; upstream port 06336460c, intake 2026-09-04)",
+    "expires": "never"
+  },
+  {
     "path": "apps/mobile/src/features/terminal/terminalTheme.ts",
     "kind": "Literal",
     "fingerprint": "\"#0a0a0a\"",

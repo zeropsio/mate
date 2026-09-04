@@ -65,4 +65,18 @@ Use the nested help pages for the available pairing and session commands.
 - Pairing credentials can leak through browser history, screenshots, logs, or copy and paste.
 - Revoke credentials or sessions you no longer trust.
 
+## Antigravity Google Sign-In
+
+Antigravity runs and saves its Google credentials on the selected environment. You can install it
+and sign in from a remote web, desktop, or mobile client without an SSH login.
+
+Start in **Settings** → **Providers** on web or desktop. On mobile, open **Settings** →
+**Environments**, expand the environment, then choose **Set up Antigravity**.
+
+After Google sign-in, a remote browser usually reaches a `127.0.0.1` page that cannot load. Copy
+that full address into the return URL field in the same Zerops Mate client and confirm. Keep the
+address unchanged, and do not paste the return URL into a thread or bug report.
+
+See [Antigravity setup](./providers-antigravity.md) for installation, expiry, and account changes.
+
 For server updates, see [Keeping Zerops Mate Current](./updating.md).
