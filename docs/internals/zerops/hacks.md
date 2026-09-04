@@ -26,7 +26,9 @@ a project, not just `zcp`, so the fix uses that instead.
 
 ---
 
-### H-02 · Pairing is minted behind a long-lived shared secret · in place
+### H-02 · Pairing is minted behind a long-lived shared secret · superseded (2026-09-04)
+
+**Superseded** by the Zerops-identity door (spec §3.2, decision D1): nothing is minted any more. A project member exchanges their own Zerops token at `POST /api/auth/zerops-identity`; the `/z3-pair` location, the sidecar on 127.0.0.1:3774 and the rate-limit zone are gone from zcp. The text below is the POC record.
 
 **Where** `zcp` — `location = /z3-pair/{{.Password}}` in
 `internal/content/templates/nginx.conf.tmpl`, mirroring the existing `/zcp-auth/{{.Password}}`
@@ -61,7 +63,9 @@ membership. Then revocation is per-user and nothing is shared.
 
 ---
 
-### H-03 · Pairing credential carried out by hand over SSH · in place
+### H-03 · Pairing credential carried out by hand over SSH · superseded (2026-09-04)
+
+**Superseded** by the Zerops-identity door (spec §3.2): no credential leaves the container, by hand or otherwise. The text below is the POC record.
 
 **Where** `poc/pair.sh`; mobile's Settings → Zerops connect form.
 **Why** Nothing mints the credential automatically yet, so a human SSHes in and copies it out.
@@ -248,7 +252,9 @@ H-17 for the same reasoning applied to the web mounts panel.
 
 ---
 
-### H-15 · The `/z3-pair` mint response uses `Access-Control-Allow-Origin: *` · in place
+### H-15 · The `/z3-pair` mint response uses `Access-Control-Allow-Origin: *` · superseded (2026-09-04)
+
+**Superseded**: the `/z3-pair` endpoint no longer exists (spec §3.2). The door's own origin policy is the allowlist in spec §3.4. The text below is the POC record.
 
 **Where** `zcp` — `internal/z3sidecar/z3sidecar.go`'s `handleMint`
 **Why** The caller is the mate web app, a different origin than the container, so the mint response
@@ -267,7 +273,9 @@ meaningful. Wildcard CORS on a shared-secret URL is not worth narrowing on its o
 
 ---
 
-### H-16 · `/z3-pair`'s rate limit may collapse to one shared bucket behind the Zerops L7 · in place
+### H-16 · `/z3-pair`'s rate limit may collapse to one shared bucket behind the Zerops L7 · superseded (2026-09-04)
+
+**Superseded**: the `/z3-pair` location and its `limit_req` zone no longer exist (spec §3.2). The text below is the POC record.
 
 **Where** `zcp` — `limit_req_zone $binary_remote_addr zone=z3pair:10m rate=10r/s;` +
 `limit_req zone=z3pair burst=20 nodelay;` in `internal/content/templates/nginx.conf.tmpl`

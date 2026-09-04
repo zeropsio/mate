@@ -15,8 +15,9 @@ What the POC leaves behind, in order of value:
    Zerops entry point, and why there. Renames and recolours are excluded on purpose.
 3. **Functional facts** learnt while writing the Zerops modules — recorded here, the code stays
    at the tag as a reference. None of it is ported: the mint/pairing chain is replaced by D1
-   (Zerops identity), the picker and sign-in are rebuilt in S4, mounts become the topology feed
-   in S6 (`../../../../zcp/plans/z3-brief-2026-08-28.md`).
+   (Zerops identity, spec §3), the picker and sign-in are rebuilt on the client (spec §4), the
+   service map is a client projection of the Zerops API and the mounted set is read from the
+   container's mount table (spec §0, §5.1, §6.1).
 4. **Nothing else.** The branding commits (`poc(brand): …`), the `poc/*.mjs` codemods, the theme
    palettes, icons, wordmarks, README rewrites and the `t3code` → Zerops string changes have no
    carry-over value; the one fact they produced (brand teal `#00b1a3` on white fails AA, hence
@@ -127,7 +128,8 @@ read every org`). Membership is what S0.1 / S1 build on.
 
 ## What the POC did NOT find out
 
-Still open after the POC, now owned by S0 (`../../../../zcp/plans/z3-brief-2026-08-28.md §6`):
+Still open after the POC; each was measured afterwards and lives in `verified.md` (the S0 section,
+2026-08-28) or `questions.md`:
 membership proof endpoint (S0.1), restart = upgrade (S0.2), git cost over sshfs vs ssh
 (S0.3/S0.4, `questions.md` Q-05), base path under nginx (S0.5), registration API (S0.7),
 two clients on one container (S0.9, Q-07), history durability (S0.10), envelope extraction
