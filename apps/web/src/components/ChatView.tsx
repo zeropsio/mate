@@ -154,6 +154,7 @@ import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";
+import { useZcpRestart } from "../zerops/useZcpRestart";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -2009,6 +2010,7 @@ function ChatViewContent(props: ChatViewProps) {
     hasMultipleRegisteredEnvironments && activeThread
       ? `${environmentById.get(activeThread.environmentId)?.label ?? serverConfig?.environment.label ?? activeThread.environmentId} server`
       : "server";
+  const zcpRestart = useZcpRestart(activeThread?.environmentId ?? null);
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2051,6 +2053,33 @@ function ChatViewContent(props: ChatViewProps) {
       });
     }
     if (activeThread && showVersionMismatchBanner && versionMismatch && versionMismatchDismissKey) {
+      const restartActions = !zcpRestart.available ? undefined : zcpRestart.state === "confirm" ? (
+        <>
+          <Button size="xs" onClick={zcpRestart.confirm}>
+            Restart
+          </Button>
+          <Button size="xs" variant="outline" onClick={zcpRestart.cancel}>
+            Keep running
+          </Button>
+        </>
+      ) : zcpRestart.state === "restarting" ? (
+        <Button size="xs" disabled>
+          Restarting the container…
+        </Button>
+      ) : (
+        <Button size="xs" onClick={zcpRestart.request}>
+          Restart to install
+        </Button>
+      );
+      const restartDescription = !zcpRestart.available
+        ? serverUpdateGuidance(versionMismatchServerLabel)
+        : zcpRestart.state === "confirm"
+          ? "Running threads stop. Restart now?"
+          : zcpRestart.state === "restarting"
+            ? "It comes back with the release zcp pins; reconnect in about a minute."
+            : zcpRestart.state === "failed"
+              ? (zcpRestart.error ?? serverUpdateGuidance(versionMismatchServerLabel))
+              : serverUpdateGuidance(versionMismatchServerLabel);
       items.push({
         id: `server-version:${activeThread.environmentId}`,
         variant: "default",
@@ -2076,7 +2105,8 @@ function ChatViewContent(props: ChatViewProps) {
             </TooltipPopup>
           </Tooltip>
         ),
-        description: serverUpdateGuidance(versionMismatchServerLabel),
+        description: restartDescription,
+        ...(restartActions ? { actions: restartActions } : {}),
         dismissLabel: "Dismiss version notice",
         onDismiss: () => {
           dismissVersionMismatch(versionMismatchDismissKey);
@@ -2096,6 +2126,12 @@ function ChatViewContent(props: ChatViewProps) {
     versionMismatchDismissKey,
     versionMismatchServerLabel,
     activeThread,
+    zcpRestart.available,
+    zcpRestart.state,
+    zcpRestart.error,
+    zcpRestart.request,
+    zcpRestart.confirm,
+    zcpRestart.cancel,
   ]);
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
   const unlockedSelectedProvider = resolveSelectableProvider(
