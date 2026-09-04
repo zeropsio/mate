@@ -520,15 +520,10 @@ const SHARED_RUNTIME_READ_SCOPE_METHODS = new Map<string, ReadonlySet<string>>([
 ]);
 
 const LATENCY_CLASSIFICATION_ONLY_OPERATE_METHODS = new Map<string, ReadonlySet<string>>([
-  // These operate-scope tokens appear only as latency-classification Set members at requestLatencyState.ts:31,33–35, never as calls.
+  // These operate-scope tokens appear only as latency-classification Set members at requestLatencyState.ts:33–35, never as calls.
   [
     "apps/web/src/rpc/requestLatencyState.ts",
-    new Set([
-      "previewAutomationConnect",
-      "serverUpdateProvider",
-      "serverRefreshProviders",
-      "serverUpdateServer",
-    ]),
+    new Set(["serverUpdateProvider", "serverRefreshProviders", "serverUpdateServer"]),
   ],
 ]);
 
@@ -1635,9 +1630,8 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
       const fixture = yield* makeProtectedRootFixture({
         "components/Root.tsx":
           'import { tracked } from "../rpc/requestLatencyState";\nimport { invoked } from "../rpc/invoker";\nexport const Root = [tracked, invoked];\n',
-        "rpc/requestLatencyState.ts":
-          "export const tracked = WS_METHODS.previewAutomationConnect;\n",
-        "rpc/invoker.ts": "export const invoked = WS_METHODS.previewAutomationConnect;\n",
+        "rpc/requestLatencyState.ts": "export const tracked = WS_METHODS.serverUpdateProvider;\n",
+        "rpc/invoker.ts": "export const invoked = WS_METHODS.serverUpdateProvider;\n",
       });
 
       const violations = yield* walkProtectedRoot(fixture.rootFile, fixture.webSrcDir);
@@ -1647,7 +1641,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           root: "apps/web/src/components/Root.tsx",
           file: "apps/web/src/rpc/invoker.ts",
           reason:
-            "WS_METHODS.previewAutomationConnect is not in the reviewed read or allowed-command set",
+            "WS_METHODS.serverUpdateProvider is not in the reviewed read or allowed-command set",
         },
       ]);
     }).pipe(Effect.scoped),
