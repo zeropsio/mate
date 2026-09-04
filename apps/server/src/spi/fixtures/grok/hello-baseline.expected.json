@@ -48,7 +48,10 @@
           }
         },
         "agentCapabilities": {
-          "loadSession": true
+          "loadSession": true,
+          "sessionCapabilities": {
+            "resume": {}
+          }
         },
         "protocolVersion": 1
       }
