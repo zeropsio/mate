@@ -1,11 +1,7 @@
 /**
- * The fetching shell around `deriveZeropsCandidates`: reads the active
- * clientUser scope, caps concurrency, and re-renders as each project's
- * services arrive.
- *
- * `listAccessibleClientProjects` prefers the lag-free direct organization
- * read and falls back to the GUI's permission-filtered project search only
- * for restricted memberships (Developer/Guest).
+ * Web wiring around the shared `loadZeropsCandidates` fetch shell: reads the
+ * active clientUser scope, feeds it in as the single organization to load
+ * across, and re-renders as each project's services arrive.
  */
 
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -15,7 +11,7 @@ import type {
 } from "@t3tools/client-runtime/connection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
 import {
@@ -23,14 +19,12 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import { useZeropsSession, zeropsErrorMessage } from "./ZeropsSessionProvider";
-
-/** How many projects' service lists are read at once. */
-const RESOLUTION_CONCURRENCY = 4;
-
-type ServicesOutcome =
-  | { readonly status: "resolved"; readonly services: ReadonlyArray<ZeropsService> }
-  | { readonly status: "failed" };
+import {
+  loadZeropsCandidates,
+  type ZeropsCandidateServiceOutcome,
+} from "@t3tools/client-runtime/zerops/candidateLoading";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -68,25 +62,11 @@ function zeropsConnectionsByOrigin(
   return byOrigin;
 }
 
-async function resolveWithConcurrency<T>(
-  items: ReadonlyArray<T>,
-  limit: number,
-  isCancelled: () => boolean,
-  run: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      if (isCancelled()) return;
-      const index = cursor;
-      cursor += 1;
-      const item = items[index];
-      if (item === undefined) return;
-      await run(item);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-}
+// The fetch shell derives its own final candidate list too, but this hook
+// keeps its own progressive derivation (below) so a project can render the
+// moment its services arrive rather than waiting for the whole load — the
+// shell is given a stable empty map here since that derivation is unused.
+const NO_CONNECTED_ORIGINS = new Map<string, EnvironmentId>();
 
 export function useZeropsCandidates(): {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
@@ -97,7 +77,9 @@ export function useZeropsCandidates(): {
   const { activeOrganization, client, organizationStatus, status } = useZeropsSession();
   const { environments } = useEnvironments();
   const [projects, setProjects] = useState<ReadonlyArray<ZeropsProject>>([]);
-  const [services, setServices] = useState<ReadonlyMap<string, ServicesOutcome>>(new Map());
+  const [services, setServices] = useState<ReadonlyMap<string, ZeropsCandidateServiceOutcome>>(
+    new Map(),
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
@@ -123,33 +105,30 @@ export function useZeropsCandidates(): {
     setProjects([]);
     setServices(new Map());
 
-    void (async () => {
-      try {
-        const list = await client.listAccessibleClientProjects(organizationId);
+    loadZeropsCandidates(client, {
+      organizationIds: [organizationId],
+      connectedOrigins: NO_CONNECTED_ORIGINS,
+      isCancelled,
+      onProjectsLoaded: (loaded) => {
         if (isCancelled()) return;
-        setProjects(list);
-
-        await resolveWithConcurrency(
-          list.filter((project) => project.status === "ACTIVE"),
-          RESOLUTION_CONCURRENCY,
-          isCancelled,
-          async (project) => {
-            const outcome: ServicesOutcome = await client
-              .listProjectServices(project.id)
-              .then((resolved) => ({ status: "resolved" as const, services: resolved }))
-              .catch(() => ({ status: "failed" as const }));
-            if (isCancelled()) return;
-            setServices((current) => new Map(current).set(project.id, outcome));
-          },
-        );
+        setProjects(loaded);
+      },
+      onServiceOutcome: (project, outcome) => {
         if (isCancelled()) return;
+        setServices((current) => new Map(current).set(project.id, outcome));
+      },
+    })
+      .then((result) => {
+        if (isCancelled()) return;
+        const failure = result.failures[0];
+        if (failure) setError(zeropsErrorMessage(failure.cause));
         setIsLoading(false);
-      } catch (cause) {
+      })
+      .catch((cause: unknown) => {
         if (isCancelled()) return;
         setError(zeropsErrorMessage(cause));
         setIsLoading(false);
-      }
-    })();
+      });
 
     return () => {
       generationRef.current += 1;

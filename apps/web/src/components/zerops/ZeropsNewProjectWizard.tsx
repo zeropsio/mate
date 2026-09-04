@@ -18,6 +18,7 @@ import {
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -31,7 +32,7 @@ import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { isElectron } from "../../env";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
-import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { MicroLabel } from "./primitives";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";

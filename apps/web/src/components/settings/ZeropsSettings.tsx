@@ -7,10 +7,11 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { zeropsOrganizationRoleLabel } from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";

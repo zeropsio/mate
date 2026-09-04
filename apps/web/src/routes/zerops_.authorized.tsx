@@ -8,13 +8,14 @@
  */
 
 import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
-import { useZeropsSession, zeropsErrorMessage } from "../zerops/ZeropsSessionProvider";
+import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
 export const Route = createFileRoute("/zerops_/authorized")({
   // Read in `beforeLoad`, not in the component: this runs before anything

@@ -5,10 +5,11 @@
  */
 
 import { isZeropsCaptchaRejection } from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useRef, useState, type ReactNode } from "react";
 
 import { Spinner } from "../../ui/spinner";
-import { useZeropsSession, zeropsErrorMessage } from "~/zerops/ZeropsSessionProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsTurnstile } from "~/zerops/turnstile";
 
 import { ZeropsProjectsPage } from "../ZeropsProjectsPage";

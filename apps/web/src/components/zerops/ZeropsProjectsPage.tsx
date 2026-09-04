@@ -22,17 +22,14 @@ import {
   shouldAutoEnterProvisioning,
 } from "@t3tools/client-runtime/zerops/autoEnterProvisioning";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
-import {
-  useZeropsSession,
-  zeropsErrorMessage,
-  type ZeropsSessionStatus,
-} from "~/zerops/ZeropsSessionProvider";
+import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
 
 import { MicroLabel } from "./primitives";

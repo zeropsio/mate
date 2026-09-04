@@ -13,9 +13,9 @@
  */
 import type { DesktopBridge } from "@t3tools/contracts";
 import type { ZeropsHandoverOutcome } from "@t3tools/client-runtime/zerops/handover";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { completeZeropsHandover, mintZeropsHandoverNonce } from "./handover";
-import { zeropsErrorMessage } from "./ZeropsSessionProvider";
 
 export type ZeropsNativeSignInState =
   | { readonly kind: "idle" }
