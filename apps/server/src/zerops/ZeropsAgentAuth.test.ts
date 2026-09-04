@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import * as Effect from "effect/Effect";
-
-import {
-  buildSnapshot,
-  computeAgentAuthState,
-  layerVerifyAgentAuth,
-  toZembedEnv,
-} from "./ZeropsAgentAuth.ts";
-import type { AgentAuthProbeSpawn } from "./ZeropsAgentAuthVerify.ts";
+import { buildSnapshot, computeAgentAuthState, toZembedEnv } from "./ZeropsAgentAuth.ts";
 
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
 // `vscode-bootstrap-welcome.js`'s `computeAgentState`. `credVerifiable` is
@@ -111,21 +103,5 @@ describe("toZembedEnv", () => {
 
   it.each([null, [], "x", 1, undefined])("reads a non-object document (%s) as no store", (doc) => {
     expect(toZembedEnv(doc)).toBeUndefined();
-  });
-});
-
-// Audit C3: the provider registry's own `refreshInstance` used to run
-// alongside this probe as a best-effort picker-cache warm — dropped; the
-// picker's own cache may lag, spec-mate.md §8.1.
-describe("layerVerifyAgentAuth", () => {
-  it("verification spawns only the CLI status command", async () => {
-    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
-    const spawn: AgentAuthProbeSpawn = (command, args) => {
-      calls.push({ command, args });
-      return Effect.succeed({ stdout: '{"loggedIn":true}', stderr: "", code: 0 });
-    };
-    const status = await Effect.runPromise(layerVerifyAgentAuth(spawn)("claude-code"));
-    expect(status).toBe("authenticated");
-    expect(calls).toEqual([{ command: "claude", args: ["auth", "status"] }]);
   });
 });

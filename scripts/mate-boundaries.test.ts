@@ -4,13 +4,13 @@
 // never grows a layer for mate (rule 3). This is a source scan, not an AST:
 // every `zcp` argv in the zone is written as `[...baseArgs, "<verb>", …]`
 // (ZeropsCli.ts), so a literal-sequence match is exact.
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
 
-const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
 const ZONE = "apps/server/src/zerops";
 const ALLOWED_ARGV = "agent mark-oauth";
 
@@ -19,9 +19,9 @@ const ZCP_ARGV_PATTERN = /\[\s*\.\.\.baseArgs\s*,\s*((?:"[^"\n]*"\s*,\s*)*"[^"\n
 
 function collectSourceFiles(dir: string): ReadonlyArray<string> {
   const files: Array<string> = [];
-  for (const entry of readdirSync(dir)) {
-    const entryPath = join(dir, entry);
-    if (statSync(entryPath).isDirectory()) {
+  for (const entry of NodeFS.readdirSync(dir)) {
+    const entryPath = NodePath.join(dir, entry);
+    if (NodeFS.statSync(entryPath).isDirectory()) {
       files.push(...collectSourceFiles(entryPath));
     } else if (/\.tsx?$/u.test(entry) && !/\.test\.tsx?$/u.test(entry)) {
       files.push(entryPath);
@@ -45,9 +45,9 @@ export function collectZcpSpawns(source: string, file: string): ReadonlyArray<Zc
 }
 
 function scanZone(): ReadonlyArray<ZcpSpawn> {
-  const zoneDir = join(repoRoot, ZONE);
+  const zoneDir = NodePath.join(repoRoot, ZONE);
   return collectSourceFiles(zoneDir).flatMap((path) =>
-    collectZcpSpawns(readFileSync(path, "utf8"), relative(repoRoot, path)),
+    collectZcpSpawns(NodeFS.readFileSync(path, "utf8"), NodePath.relative(repoRoot, path)),
   );
 }
 

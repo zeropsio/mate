@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Layer from "effect/Layer";
 
 import * as ProcessRunner from "../processRunner.ts";
+import { layerVerifyAgentAuth } from "./ZeropsAgentAuth.ts";
 import {
   parseClaudeAuthStatus,
   parseCodexLoginStatus,
@@ -180,5 +181,23 @@ describe("spawnAgentAuthProbe (real ProcessRunner)", () => {
         expect(parseClaudeAuthStatus(outcomeResult.stdout)).toBe("unknown");
       }),
     ),
+  );
+});
+
+// Audit C3: the provider registry's own `refreshInstance` used to run
+// alongside this probe as a best-effort picker-cache warm — dropped; the
+// picker's own cache may lag, spec-mate.md §8.1.
+describe("layerVerifyAgentAuth", () => {
+  it.effect("verification spawns only the CLI status command", () =>
+    Effect.gen(function* () {
+      const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+      const spawn: AgentAuthProbeSpawn = (command, args) => {
+        calls.push({ command, args });
+        return Effect.succeed({ stdout: '{"loggedIn":true}', stderr: "", code: 0 });
+      };
+      const status = yield* layerVerifyAgentAuth(spawn)("claude-code");
+      expect(status).toBe("authenticated");
+      expect(calls).toEqual([{ command: "claude", args: ["auth", "status"] }]);
+    }),
   );
 });

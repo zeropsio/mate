@@ -83,7 +83,8 @@
       "providers": ["claude-code", "codex"],
       "connectionModes": ["zerops-door", "manual-link"],
       "contracts": [
-        "subscribeZeropsTopology",
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/platformWatch",
         "subscribeZeropsLifecycle",
         "subscribeZeropsAgentAuth"
       ],
@@ -138,7 +139,11 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door", "manual-link"],
-      "contracts": ["subscribeZeropsTopology", "subscribeZeropsLifecycle"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/platformWatch",
+        "subscribeZeropsLifecycle"
+      ],
       "reverseStates": [
         {
           "action": "Open service link",
@@ -184,7 +189,10 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door", "manual-link"],
-      "contracts": ["subscribeZeropsTopology"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/platformWatch"
+      ],
       "reverseStates": [
         {
           "action": "Prefill composer",
