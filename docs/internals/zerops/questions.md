@@ -69,30 +69,3 @@ declare a flat `utilization` and no `unifiedWindows`, so a newer CLI may emit th
 **How to answer** On `z3-eval` with a signed-in Claude subscription, run one turn and diff the Limits
 tab before/after against `claude --version`; if it does not move, decide between porting a
 `unifiedWindows` reader into the normaliser (a ported-zone divergence) and waiting for the CLI.
-
----
-
-### Q-16 · Why does a persisted draft in a Zerops environment lose its project?
-
-**Blocks** the header's "New thread in acme-docs-dev" for that environment: it reuses the remembered
-draft (`/draft/ddc56cd7…`), whose composer says "Choose a project above to start a thread" while the
-same page's breadcrumb and headline name `acme-docs-dev` from the topology — two answers on one screen.
-
-**What is known** (2026-09-05) The draft record persists in `t3code:composer-drafts:v1` with its
-`projectId`. After the local session was revoked and re-paired (a full reload),
-`useProject(scopeProjectRef(environmentId, projectId))` returned null for that draft, while a server
-thread in the same environment (`/a5c9…/fff9…`) and a fresh thread in `Acme Docs - stage` both
-resolved their project and showed the normal placeholder. Whether the project id changed (a dev
-container's state is ephemeral across a restart) or the environment's project list had not loaded is
-not established; the header's name comes from the Zerops API, not from that list, which is why it
-still reads right. Later the same day: the draft record reads `projectId: "/var/www"`, and on the
-thread route in the same environment the header's `activeProjectCwd` is `/var/www` while on the
-draft route it is `null`; the draft page's own project picker lists `a5c9…:/var/www` among its
-entries — the project is in `useProjects()` while `useProject(ref)` misses. Not a changed id, then;
-a lookup that misses for a reason the DOM cannot show.
-
-**How to answer** Read the draft's `projectId` out of `t3code:composer-drafts:v1` and compare it with
-the environment's current project list (the `environmentShell` snapshot). Then decide whether a draft
-in a Zerops environment should re-attach to that environment's one project instead of asking to
-"choose a project above" — one environment is one project by construction (spec §9.3), so the
-question is one the product should never put to a person.
