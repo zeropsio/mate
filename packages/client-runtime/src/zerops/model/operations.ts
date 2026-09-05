@@ -97,23 +97,35 @@ function targetKeyFor(call: ZeropsCall): string {
   );
 }
 
+/**
+ * The most recent call that produced or joined ANY card — bootstrap or
+ * standalone — regardless of which typed collection it landed in. R8's join
+ * requires "no other card operation lies between them" (C §1.5), so the
+ * retry fold must see a bootstrap card that intervened between two same-turn
+ * failures of one standalone kind+target, not just the last standalone call.
+ */
+interface LastCardTouch {
+  readonly kind: ZeropsOperationKind;
+  readonly targetKey: string | undefined;
+  readonly call: ZeropsCall;
+}
+
 function foldStandalone(
   call: ZeropsCall,
   kind: Exclude<ZeropsOperationKind, "bootstrap">,
   groups: StandaloneGroup[],
+  lastCard: LastCardTouch | undefined,
 ): void {
   const targetKey = targetKeyFor(call);
-  const last = groups[groups.length - 1];
-  const lastCall = last?.calls[last.calls.length - 1];
   const joinsRetry =
     call.status === "failed" &&
-    last !== undefined &&
-    last.kind === kind &&
-    last.targetKey === targetKey &&
-    lastCall?.status === "failed" &&
-    lastCall.turnId === call.turnId;
+    lastCard !== undefined &&
+    lastCard.kind === kind &&
+    lastCard.targetKey === targetKey &&
+    lastCard.call.status === "failed" &&
+    lastCard.call.turnId === call.turnId;
   if (joinsRetry) {
-    last!.calls.push(call);
+    groups[groups.length - 1]!.calls.push(call);
     return;
   }
   groups.push({ kind, targetKey, calls: [call] });
@@ -360,6 +372,7 @@ export function reduceZeropsOperations(
   };
   const standaloneGroups: StandaloneGroup[] = [];
   const genericCalls: ZeropsCall[] = [];
+  let lastCard: LastCardTouch | undefined;
 
   for (const call of ordered) {
     if (call.agentInternal) {
@@ -385,6 +398,7 @@ export function reduceZeropsOperations(
     if (kind === "bootstrap") {
       foldBootstrap(call, bootstrapState);
       bootstrapState.pendingIntent = undefined;
+      lastCard = { kind, targetKey: undefined, call };
       continue;
     }
     if (
@@ -393,9 +407,11 @@ export function reduceZeropsOperations(
       importJoinsOpenGroup(call, bootstrapState.open)
     ) {
       bootstrapState.open.joinedImports.push({ call, decoded: decodeCall(call) });
+      lastCard = { kind: "bootstrap", targetKey: undefined, call };
       continue;
     }
-    foldStandalone(call, kind, standaloneGroups);
+    foldStandalone(call, kind, standaloneGroups, lastCard);
+    lastCard = { kind, targetKey: targetKeyFor(call), call };
   }
 
   const operations = [

@@ -520,6 +520,42 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
     expect(operations[1]!.phase).toBe("done");
     expect(operations[1]!.attempts).toBe(1);
   });
+
+  it("a bootstrap card between two same-turn failures of one target breaks the R8 join", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "d1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
+      },
+      {
+        id: "w1",
+        createdAt: "2026-09-01T00:01:00.000Z",
+        toolName: "zerops_workflow",
+        input: { action: "start", workflow: "bootstrap", route: "adopt" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "WORKFLOW_ACTIVE", error: "already running" }),
+      },
+      {
+        id: "d2",
+        createdAt: "2026-09-01T00:02:00.000Z",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "API_ERROR", error: "boom again" }),
+      },
+    ]);
+    const deploys = operations.filter((o) => o.kind === "deploy");
+    // d1 and d2 stay two separate deploy operations — the bootstrap attempt
+    // in between (no open session, so it founds its own card) means d2 is
+    // not a retry of d1.
+    expect(deploys).toHaveLength(2);
+    expect(deploys[0]!.callIds).toEqual(["d1"]);
+    expect(deploys[1]!.callIds).toEqual(["d2"]);
+  });
 });
 
 // ---- declined / stopped: not "done" ----
