@@ -1,0 +1,146 @@
+/**
+ * Which of four things a tool call becomes in the client: a card the
+ * operations reducer folds into a `ZeropsOperation`, a generic transcript
+ * row, hidden from the timeline entirely, or — while still `inProgress` with
+ * no arguments yet — not renderable at all (§2.3 R4).
+ *
+ * `toolName` is already normalized (no `mcp__<server>__` prefix) — see
+ * `ZeropsCall`. Evaluated once, on the merged call, never per row (R4): a
+ * `zerops_workflow` whose completed row has `action=complete` cannot be
+ * classified `generic` from a `{}` started row and end up as a work row
+ * beside its own card.
+ */
+import type { ZeropsCallStatus } from "./types.ts";
+
+export type ZeropsCallClass = "hidden" | "generic" | "card" | "pending-unclassifiable";
+
+/** Tool calls that never contribute a transcript row, on any status. */
+export const TIMELINE_HIDDEN_TOOL_NAMES: ReadonlySet<string> = new Set(["ToolSearch", "Skill"]);
+
+const HIDDEN_WORKFLOW_ACTIONS: ReadonlySet<string> = new Set(["status", "list", "close-mode"]);
+
+const BOOTSTRAP_CONTINUATION_ACTIONS: ReadonlySet<string> = new Set([
+  "complete",
+  "skip",
+  "resume",
+  "reset",
+]);
+
+/** Tools whose classification needs real arguments — a `{}` input cannot yet be read. */
+const PENDING_UNCLASSIFIABLE_TOOLS: ReadonlySet<string> = new Set([
+  "zerops_workflow",
+  "zerops_mount",
+]);
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
+
+const isEmptyInput = (input: Record<string, unknown> | undefined): boolean =>
+  input === undefined || Object.keys(input).length === 0;
+
+/** `action=start workflow=bootstrap` with a route already chosen — the bootstrap session's founder. */
+export function isBootstrapStartWithRoute(input: Record<string, unknown> | undefined): boolean {
+  const action = readString(input?.action);
+  const workflow = readString(input?.workflow);
+  const route = readString(input?.route);
+  return action === "start" && workflow === "bootstrap" && route !== undefined;
+}
+
+/** `action=start workflow=bootstrap` with no route yet — the route-menu reply, hidden from the timeline. */
+export function isBootstrapRouteMenuStart(input: Record<string, unknown> | undefined): boolean {
+  const action = readString(input?.action);
+  const workflow = readString(input?.workflow);
+  const route = readString(input?.route);
+  return action === "start" && workflow === "bootstrap" && route === undefined;
+}
+
+/**
+ * A `zerops_workflow` call that is part of a bootstrap session's lifecycle —
+ * the single source of truth both `classifyZeropsCall` (hidden/generic/card)
+ * and the operations reducer (which calls become kind `bootstrap`, on any
+ * status) read to agree on what a bootstrap call is.
+ *
+ * The route-menu reply is excluded explicitly: it has `workflow: "bootstrap"`
+ * too, but it is never itself a session call — successfully it is the hidden
+ * menu prompt, and on failure (no session ever established) it is its own
+ * `error` operation, never a bootstrap one.
+ */
+export function isBootstrapSessionCall(input: Record<string, unknown> | undefined): boolean {
+  if (isBootstrapRouteMenuStart(input)) {
+    return false;
+  }
+  if (isBootstrapStartWithRoute(input)) {
+    return true;
+  }
+  const action = readString(input?.action);
+  if (action !== undefined && BOOTSTRAP_CONTINUATION_ACTIONS.has(action)) {
+    return true;
+  }
+  return readString(input?.workflow) === "bootstrap";
+}
+
+/** Called only when the call did not fail — the caller returns "card" on failure first. */
+function classifyZeropsWorkflow(input: Record<string, unknown> | undefined): ZeropsCallClass {
+  const action = readString(input?.action);
+  if (action !== undefined && HIDDEN_WORKFLOW_ACTIONS.has(action)) {
+    return "hidden";
+  }
+  if (isBootstrapRouteMenuStart(input)) {
+    return "hidden";
+  }
+  return isBootstrapSessionCall(input) ? "card" : "generic";
+}
+
+/** Called only when the call did not fail — the caller returns "card" on failure first. */
+function classifyZeropsMount(input: Record<string, unknown> | undefined): ZeropsCallClass {
+  return readString(input?.action) === "status" ? "hidden" : "card";
+}
+
+const CARD_ZEROPS_TOOLS: ReadonlySet<string> = new Set([
+  "zerops_deploy",
+  "zerops_deploy_batch",
+  "zerops_import",
+  "zerops_verify",
+  "zerops_subdomain",
+  "zerops_delete",
+  "zerops_scale",
+  "zerops_manage",
+  "zerops_env",
+  "zerops_dev_server",
+  "zerops_browser",
+]);
+
+/**
+ * Whether a call becomes a hidden row, a generic transcript row, a card the
+ * operations reducer folds, or nothing yet — never which `ZeropsOperationKind`
+ * it is; that is the reducer's own job, since folding needs more than this.
+ */
+export function classifyZeropsCall(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+  status: ZeropsCallStatus,
+): ZeropsCallClass {
+  if (!toolName.startsWith("zerops_")) {
+    return TIMELINE_HIDDEN_TOOL_NAMES.has(toolName) ? "hidden" : "generic";
+  }
+  if (status === "failed") {
+    return "card";
+  }
+  if (
+    PENDING_UNCLASSIFIABLE_TOOLS.has(toolName) &&
+    isEmptyInput(input) &&
+    (status === "inProgress" || status === "interrupted")
+  ) {
+    // Still running with no arguments: cannot yet be read at all. Once
+    // orphaned with no arguments ever having arrived, it is shown honestly —
+    // as a generic row, never silently forever-pending (§2.6 F3 h/g).
+    return status === "inProgress" ? "pending-unclassifiable" : "generic";
+  }
+  if (toolName === "zerops_workflow") {
+    return classifyZeropsWorkflow(input);
+  }
+  if (toolName === "zerops_mount") {
+    return classifyZeropsMount(input);
+  }
+  return CARD_ZEROPS_TOOLS.has(toolName) ? "card" : "generic";
+}
