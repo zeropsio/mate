@@ -50,6 +50,5 @@
  */
 .mate-lockup {
   display: block;
-  overflow: visible;
   color: var(--foreground);
 }

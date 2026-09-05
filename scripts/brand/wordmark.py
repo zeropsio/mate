@@ -1,9 +1,12 @@
 """Derive the 'mate' wordmark outlines for the lockup, in the mark's own units.
 
 Sora SemiBold (wght 600), lowercase, letter-spacing -0.015 em, shaped with
-HarfBuzz (kern on). Scaled so the x-height equals the window height (34.13),
-baseline on the window floor (y = 42.75), first stem two strokes (2 x 7.9)
-right of the mark's right edge (x = 42.74).
+HarfBuzz (kern on). The word reads small beside a large mark, the proportion
+the owner set from the reference lockup (2026-09-05): x-height three eighths
+of the mark's height (19.5 of 52), the x-height band centred on the mark
+(baseline y = 35.75), and the first stem's ink six tenths of the mark's height
+(31.2) right of the mark's right edge (x = 42.74) -- measured to the ink, so the
+m's side bearing is taken off the pen origin.
 """
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
@@ -24,10 +27,14 @@ face = hb.Face(open("Sora-600.ttf", "rb").read()); font = hb.Font(face)
 buf = hb.Buffer(); buf.add_str("mate"); buf.guess_segment_properties()
 hb.shape(font, buf, {"kern": True, "liga": True})
 
-WINDOW_H, STROKE, MARK_RIGHT, FLOOR = 34.13, 7.9, 42.74, 42.75
-scale = WINDOW_H / xh
+MARK_H, MARK_RIGHT = 52.0, 42.74
+X_HEIGHT, GAP = 0.375 * MARK_H, 0.6 * MARK_H
+FLOOR = MARK_H / 2 + X_HEIGHT / 2
+scale = X_HEIGHT / xh
 tracking = -0.015 * upem
-x0 = MARK_RIGHT + 2 * STROKE
+first = order[buf.glyph_infos[0].codepoint]
+lsb_pen = BoundsPen(gs); gs[first].draw(lsb_pen)
+x0 = MARK_RIGHT + GAP - lsb_pen.bounds[0] * scale
 pen_x = 0.0; glyphs = []; ink_right = 0.0; ink_top = 99.0
 fmt = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")
 for i, (info, pos) in enumerate(zip(buf.glyph_infos, buf.glyph_positions)):
