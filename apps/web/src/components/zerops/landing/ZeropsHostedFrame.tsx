@@ -23,7 +23,11 @@ import { cn } from "~/lib/utils";
 import { MateLockup } from "../../MateLockup";
 import { ScrollArea } from "../../ui/scroll-area";
 import { SidebarInset, useOptionalSidebar } from "../../ui/sidebar";
-import { WorkspacePageContainer, type WorkspacePageWidth } from "../../WorkspacePageContainer";
+import {
+  WorkspacePageContainer,
+  workspacePageWidthClass,
+  type WorkspacePageWidth,
+} from "../../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../../WorkspacePageHeader";
 
 export function ZeropsHostedFrame({
@@ -47,24 +51,34 @@ export function ZeropsHostedFrame({
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
+        {/* The bar's own padding goes; its content sits in the page's column,
+            so the lockup lines up with the title and the account with the
+            title row's action, at every width. */}
         <WorkspacePageHeader
-          className={cn(standalone && "border-b border-border")}
+          className={cn("px-0 sm:px-0", standalone && "border-b border-border")}
           data-zerops-frame={standalone ? "standalone" : "shell"}
           electron={isElectron}
         >
-          {standalone ? (
-            <Link
-              aria-label={APP_BASE_NAME}
-              className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
-              to="/"
-            >
-              <MateLockup decorative className="h-6 w-auto" />
-            </Link>
-          ) : null}
-          {breadcrumb ?? null}
-          {actions === undefined ? null : (
-            <div className="ms-auto flex min-w-0 items-center gap-2">{actions}</div>
-          )}
+          <div
+            className={cn(
+              "mx-auto flex h-full w-full min-w-0 items-center gap-3 px-5 sm:px-6",
+              workspacePageWidthClass(width),
+            )}
+          >
+            {standalone ? (
+              <Link
+                aria-label={APP_BASE_NAME}
+                className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+                to="/"
+              >
+                <MateLockup decorative className="h-4.5 w-auto" />
+              </Link>
+            ) : null}
+            {breadcrumb ?? null}
+            {actions === undefined ? null : (
+              <div className="ms-auto flex min-w-0 items-center gap-2">{actions}</div>
+            )}
+          </div>
         </WorkspacePageHeader>
 
         {centered ? (

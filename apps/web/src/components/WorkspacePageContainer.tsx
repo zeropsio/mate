@@ -10,6 +10,11 @@ const WIDTH_CLASS: Record<WorkspacePageWidth, string> = {
   expanded: "max-w-6xl",
 };
 
+/** The width class a page's bar uses to line its edges up with the content below. */
+export function workspacePageWidthClass(width: WorkspacePageWidth): string {
+  return WIDTH_CLASS[width];
+}
+
 /** Shared content frame for workspace pages. */
 export function WorkspacePageContainer({
   width = "readable",

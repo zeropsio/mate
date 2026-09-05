@@ -67,6 +67,7 @@ describe("ZeropsHostedFrame", () => {
         <p>page</p>
       </ZeropsHostedFrame>,
     );
-    expect(page).toContain("max-w-5xl");
+    // The bar's content shares the page's column, so its edges line up with the content's.
+    expect(page.match(/max-w-5xl/gu)).toHaveLength(2);
   });
 });

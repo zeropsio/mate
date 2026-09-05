@@ -108,7 +108,11 @@ export function ZeropsOrganizationSwitcher({
         if (membershipId) onSelect(membershipId);
       }}
     >
-      <SelectTrigger aria-label="Active Zerops organization" className="max-w-72 min-w-0" size="sm">
+      <SelectTrigger
+        aria-label="Active Zerops organization"
+        className="w-auto max-w-72 min-w-0"
+        size="sm"
+      >
         <Building2Icon className="size-4 shrink-0 text-muted-foreground" />
         <SelectValue>
           <span className="flex min-w-0 items-baseline gap-2">
