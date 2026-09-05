@@ -26,7 +26,8 @@ export interface ZeropsEnvironmentCreationProps {
     | { readonly kind: "done" }
     | { readonly kind: "failed"; readonly error: string; readonly projectExists: boolean };
   readonly onDismiss: () => void;
-  readonly nowMs?: number;
+  /** The clock, so a running step's duration ticks; the caller owns the timer. */
+  readonly nowMs: number;
 }
 
 const STATE_LABEL = {
@@ -61,7 +62,7 @@ export function ZeropsEnvironmentCreation({
   progress,
   outcome,
   onDismiss,
-  nowMs = Date.now(),
+  nowMs,
 }: ZeropsEnvironmentCreationProps) {
   return (
     <section

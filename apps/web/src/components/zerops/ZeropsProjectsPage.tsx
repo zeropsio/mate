@@ -311,6 +311,19 @@ function ZeropsProjectsContent() {
 
   const [toolError, setToolError] = useState<string | null>(null);
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
+  // Ticks once a second while a creation runs, so the checklist's durations
+  // move; stops the moment it settles.
+  const [creationNowMs, setCreationNowMs] = useState(() => Date.now());
+  const creationRunning = creation !== null && creation.outcome === undefined;
+  useEffect(() => {
+    if (!creationRunning) return;
+    const timer = setInterval(() => {
+      setCreationNowMs(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [creationRunning]);
   const groupTree = buildZeropsGroupTree(candidates);
 
   /**
@@ -353,6 +366,7 @@ function ZeropsProjectsContent() {
       }
 
       setToolError(null);
+      setCreationNowMs(Date.now());
       setCreation({ name, progress: plan.steps.map((step) => ({ step, state: "queued" })) });
       const outcome = await runEnvironmentCreation({
         clientId: activeOrganization.id,
@@ -612,6 +626,7 @@ function ZeropsProjectsContent() {
       {creation === null ? null : (
         <ZeropsEnvironmentCreation
           name={creation.name}
+          nowMs={creationNowMs}
           onDismiss={() => {
             setCreation(null);
           }}
