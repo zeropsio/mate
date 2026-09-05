@@ -4,8 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
+  mateSetupOffered,
   zeropsReasonSentence,
-  zeropsRowActionTone,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic";
@@ -117,6 +117,25 @@ describe("deriveZeropsRowAction", () => {
         ),
       ).toEqual({ kind: "none" });
     });
+
+    it.each(["dev", "devstage", undefined] as const)(
+      "is offered where a Mate belongs — a %s environment",
+      (role) => {
+        expect(
+          deriveZeropsRowAction({ candidate: bare, health: undefined, can: ALL, role }),
+        ).toEqual({ kind: "set-up-mate", label: "Set up Mate" });
+      },
+    );
+
+    it.each(["stage", "prod"] as const)(
+      "is not offered to a %s environment, which gets its code from dev",
+      (role) => {
+        expect(
+          deriveZeropsRowAction({ candidate: bare, health: undefined, can: ALL, role }),
+        ).toEqual({ kind: "none" });
+        expect(mateSetupOffered(role)).toBe(false);
+      },
+    );
   });
 
   it("never offers a verb the caller cannot perform", () => {
@@ -174,8 +193,8 @@ describe("deriveZeropsRowPresentation", () => {
         undefined,
       ),
     );
-    expect(presentation.status).toEqual({ label: "No agent", tone: "off" });
-    expect(presentation.detail).toBe("No Zerops Mate container in this project.");
+    expect(presentation.status).toEqual({ label: "No Mate", tone: "off" });
+    expect(presentation.detail).toBe("No Mate in this environment.");
   });
 
   it("carries the bucket's own reason for a project on its way in or out of reach", () => {
@@ -244,18 +263,5 @@ describe("zeropsReasonSentence", () => {
     expect(deriveZeropsRowPresentation(input(stopped, undefined)).detail).toBe(
       "The container is stopped.",
     );
-  });
-});
-
-describe("zeropsRowActionTone", () => {
-  it("keeps blue for the one verb that reaches an agent now", () => {
-    expect(zeropsRowActionTone("connect")).toBe("primary");
-  });
-
-  it("outlines navigation and greys the chores", () => {
-    expect(zeropsRowActionTone("open")).toBe("outline");
-    for (const kind of ["enable", "set-up-mate", "wait"] as const) {
-      expect(zeropsRowActionTone(kind)).toBe("secondary");
-    }
   });
 });

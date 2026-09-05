@@ -61,6 +61,6 @@ describe("MateFace", () => {
     expect(renderToStaticMarkup(<MateFace size="sm" state="idle" tint="sand" />)).toContain(
       "size-5",
     );
-    expect(renderToStaticMarkup(<MateFace state="idle" tint="sand" />)).toContain("size-9");
+    expect(renderToStaticMarkup(<MateFace state="idle" tint="sand" />)).toContain("size-7");
   });
 });

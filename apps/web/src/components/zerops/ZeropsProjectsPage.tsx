@@ -10,11 +10,12 @@ import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connect
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { MateMarkState } from "@t3tools/shared/brand";
 import { RotateCcwIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   newestProvisioningCandidate,
   shouldAutoEnterProvisioning,
@@ -26,29 +27,46 @@ import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registra
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import {
+  useZeropsCandidates,
+  type ZeropsCandidatePresentation,
+} from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  assignCandidateMateTints,
+  botDisplayName,
   buildZeropsGroupTree,
   canCreateEnvironment,
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
+  hasMateContainer,
   planEnvironmentCreation,
   readZeropsGroupTags,
   runEnvironmentCreation,
   type EnvironmentCreationStepProgress,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
+  type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { Pill, StatusDot } from "./primitives";
+import {
+  ZeropsEmptySeat,
+  ZeropsEnvironmentRow,
+  ZeropsMateSeat,
+  ZeropsMateVerb,
+  ZeropsMateWord,
+} from "./ZeropsEnvironmentRow";
+import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -60,7 +78,7 @@ import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
-import { ZeropsGroupTree } from "./ZeropsGroupTree";
+import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
   type ZeropsRowAction,
@@ -68,7 +86,6 @@ import {
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   isZeropsToolCandidate,
-  zeropsRowActionTone,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -142,27 +159,49 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 
 /**
  * The page's title row. The one creating action sits here, beside the title,
- * where a reader looks for it — not under a list it has to scroll past.
+ * where a reader looks for it — not under a list it has to scroll past — and
+ * the reload beside it, as a glyph. No sentence under the title: the projects
+ * below say what the page is.
  */
-export function ZeropsEnvironmentsHeader({
+export function ZeropsProjectsHeader({
   onCreate,
+  onRefresh,
+  refreshing = false,
 }: {
   readonly onCreate?: (() => void) | undefined;
+  readonly onRefresh?: (() => void) | undefined;
+  readonly refreshing?: boolean;
 }) {
   return (
     <div
-      className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3"
+      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3"
       data-zerops-project-scope="true"
     >
-      <div className="min-w-0 space-y-1">
-        <h1 className="text-xl font-medium text-foreground">Environments</h1>
-        <p className="text-sm text-muted-foreground">
-          Every environment in the account, the agent in each one, and what it needs next.
-        </p>
+      <h1 className="text-xl font-medium text-foreground">Projects</h1>
+      <div className="flex items-center gap-2">
+        {onRefresh === undefined ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label="Refresh"
+                  className="text-muted-foreground"
+                  disabled={refreshing}
+                  onClick={onRefresh}
+                  size="icon"
+                  variant="ghost"
+                />
+              }
+            >
+              <RotateCcwIcon className="size-4" />
+            </TooltipTrigger>
+            <TooltipPopup>Refresh</TooltipPopup>
+          </Tooltip>
+        )}
+        {onCreate === undefined ? null : (
+          <Pill className="shrink-0" label="New project" onClick={onCreate} />
+        )}
       </div>
-      {onCreate === undefined ? null : (
-        <Pill className="shrink-0" label="New environment" onClick={onCreate} />
-      )}
     </div>
   );
 }
@@ -344,12 +383,17 @@ function ZeropsProjectsContent() {
     };
   }, [creationRunning]);
   const groupTree = buildZeropsGroupTree(candidates);
-  const environmentCount = candidates.filter((candidate) => candidate.service !== undefined).length;
+  const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
+  const activity = useZeropsAgentActivity();
   const pageError = connectError ?? error;
-  const rowInput = (candidate: ZeropsCandidate): ZeropsRowInput => ({
+  const rowInput = (
+    candidate: ZeropsCandidate,
+    role?: ZeropsEnvironmentRole | undefined,
+  ): ZeropsRowInput => ({
     candidate,
     health: candidateHealth.get(candidate.key),
     can: { open: true, connect: true, enable: true, wait: true, setUpMate: true },
+    ...(role === undefined ? {} : { role }),
   });
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
@@ -465,6 +509,156 @@ function ZeropsProjectsContent() {
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
     [],
   );
+
+  /**
+   * The face a Mate wears: the state of its conversation when its socket is
+   * up, else asleep — a container that is not connected is the Zerops mark.
+   */
+  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
+    if (candidate.group !== "connected" || candidate.environmentId === undefined) return "sleep";
+    return activity.get(candidate.environmentId)?.face ?? "idle";
+  };
+
+  /**
+   * The row's quiet actions: the Mate's name when there is a Mate, and where
+   * the environment sits in its project.
+   */
+  const renderEnvironmentMenu = (
+    candidate: ZeropsCandidatePresentation,
+    tags: ZeropsGroupTags,
+    mate: boolean,
+  ): React.ReactNode => {
+    if (isZeropsToolCandidate(candidate)) return undefined;
+    return (
+      <ZeropsProjectMenu
+        actions={[
+          ...(mate
+            ? [
+                {
+                  id: "rename-agent",
+                  label: "Rename Mate",
+                  onSelect: () => {
+                    setRowDialog({ kind: "rename-agent", candidate });
+                  },
+                },
+              ]
+            : []),
+          {
+            id: "move",
+            label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
+            onSelect: () => {
+              setRowDialog({ kind: "move", candidate });
+            },
+          },
+          ...(tags.groupId === undefined
+            ? []
+            : [
+                {
+                  id: "leave",
+                  label: "Leave the project",
+                  onSelect: () => {
+                    void moveProject(candidate, { kind: "none" });
+                  },
+                },
+              ]),
+        ]}
+        label={`More for ${candidate.project.name}`}
+      />
+    );
+  };
+
+  /**
+   * What a Mate is up to, as one phrase in the activity column: the status
+   * word, then what it is on, then the one verb that would change things —
+   * "Ready · Connect". Connected, the words are the thread's own
+   * (`agentActivity`); otherwise they are the row logic's, which already
+   * knows about the probe and the socket.
+   */
+  const renderMateActivity = (
+    candidate: ZeropsCandidatePresentation,
+    presentation: ZeropsRowPresentation,
+    action: ZeropsRowAction,
+    live: ZeropsAgentActivity | undefined,
+    busy: boolean,
+  ): React.ReactNode => {
+    const dot = (
+      <span aria-hidden="true" className="text-muted-foreground/50">
+        ·
+      </span>
+    );
+    if (candidate.group === "connected") {
+      return (
+        <>
+          {live?.status ? (
+            <ZeropsMateWord
+              className={live.status.colorClass}
+              label={live.status.label}
+              pulse={live.status.pulse}
+            />
+          ) : (
+            <ZeropsMateWord label="Idle" tone="off" />
+          )}
+          {live?.subject === undefined ? null : (
+            <>
+              {dot}
+              <span
+                className="min-w-0 truncate text-muted-foreground"
+                data-zerops-surface="mate-subject"
+              >
+                {live.subject}
+              </span>
+            </>
+          )}
+        </>
+      );
+    }
+    const word = (
+      <ZeropsMateWord
+        label={presentation.status.label}
+        pulse={presentation.status.pulse ?? presentation.status.tone === "busy"}
+        tone={presentation.status.tone}
+      />
+    );
+    switch (action.kind) {
+      case "connect":
+      case "enable":
+      case "wait":
+        return (
+          <>
+            {word}
+            {dot}
+            <ZeropsMateVerb
+              disabled={busy}
+              label={action.label}
+              onClick={() => {
+                runRowAction(candidate, action.kind);
+              }}
+            />
+          </>
+        );
+      default:
+        return (
+          <>
+            {word}
+            {presentation.detail === undefined ? null : (
+              <>
+                {dot}
+                <span
+                  className={
+                    presentation.detailIsError
+                      ? "min-w-0 truncate text-[var(--zerops-status-failed-text)]"
+                      : "min-w-0 truncate text-muted-foreground"
+                  }
+                  data-zerops-surface="mate-subject"
+                >
+                  {presentation.detail}
+                </span>
+              </>
+            )}
+          </>
+        );
+    }
+  };
 
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
   const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
@@ -817,24 +1011,12 @@ function ZeropsProjectsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {isLoading ? (
-            <>
-              <Spinner className="size-3.5" />
-              <span>Reading your environments…</span>
-            </>
-          ) : (
-            <span>
-              {environmentCount} {environmentCount === 1 ? "environment" : "environments"}
-            </span>
-          )}
+      {isLoading && candidates.length === 0 ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+          <Spinner className="size-3.5" />
+          <span>Reading your projects…</span>
         </div>
-        <Button size="sm" variant="ghost" onClick={refresh} disabled={isLoading}>
-          <RotateCcwIcon className="size-4" />
-          Refresh
-        </Button>
-      </div>
+      ) : null}
       {pageError === null ? null : (
         <div
           className="rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
@@ -844,54 +1026,78 @@ function ZeropsProjectsContent() {
         </div>
       )}
       <ZeropsGroupTree
-        getKey={(candidate: ZeropsCandidate) => candidate.key}
-        getName={(candidate: ZeropsCandidate) => candidate.project.name}
-        getAgentName={(candidate: ZeropsCandidate) => {
-          const bot = readZeropsGroupTags(candidate.project.tagList).bot?.trim();
-          return bot === undefined || bot.length === 0 ? undefined : bot;
-        }}
         creating={creationRunning}
+        getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         onCreateEnvironment={requestEnvironment}
         onCreateTool={() => {
           void createTool();
         }}
-        isBusy={(candidate: ZeropsCandidate) => busyKeys.has(candidate.key)}
-        renderMenu={(candidate: ZeropsCandidate) => {
-          if (isZeropsToolCandidate(candidate)) return null;
+        renderEnvironment={(candidate: ZeropsCandidatePresentation, role) => {
+          const input = rowInput(candidate, role);
+          const presentation = deriveZeropsRowPresentation(input);
+          const action = deriveZeropsRowAction(input);
           const tags = readZeropsGroupTags(candidate.project.tagList);
-          const actions = [
-            ...(candidate.service === undefined
-              ? []
-              : [
-                  {
-                    id: "rename-agent",
-                    label: "Rename agent",
-                    onSelect: () => {
-                      setRowDialog({ kind: "rename-agent", candidate });
-                    },
-                  },
-                ]),
-            {
-              id: "move",
-              label: tags.groupId === undefined ? "Move to a group" : "Change group or role",
-              onSelect: () => {
-                setRowDialog({ kind: "move", candidate });
-              },
-            },
-            ...(tags.groupId === undefined
-              ? []
-              : [
-                  {
-                    id: "leave",
-                    label: "Leave the group",
-                    onSelect: () => {
-                      void moveProject(candidate, { kind: "none" });
-                    },
-                  },
-                ]),
-          ];
+          const mate = hasMateContainer(candidate);
+          const connected = candidate.group === "connected";
+          const busy = busyKeys.has(candidate.key);
+          const live =
+            connected && candidate.environmentId !== undefined
+              ? activity.get(candidate.environmentId)
+              : undefined;
+          const open =
+            connected && candidate.environmentId !== undefined
+              ? () => {
+                  runRowAction(candidate, "open");
+                }
+              : undefined;
+          // The project itself is the row's concern; a Mate's state is the
+          // activity's. Only a project on its way in, or out of reach, gets a word.
+          const projectTrouble =
+            candidate.group === "provisioning" ||
+            (candidate.group === "unavailable" && candidate.missingContainer !== true);
           return (
-            <ZeropsProjectMenu actions={actions} label={`More for ${candidate.project.name}`} />
+            <ZeropsEnvironmentRow
+              activity={
+                mate ? renderMateActivity(candidate, presentation, action, live, busy) : undefined
+              }
+              busy={busy}
+              environmentName={candidate.project.name}
+              menu={renderEnvironmentMenu(candidate, tags, mate)}
+              opens={open !== undefined}
+              roleLabel={environmentRoleLabel(role)}
+              routes={candidate.routes}
+              seat={
+                mate ? (
+                  <ZeropsMateSeat
+                    face={mateFace(candidate)}
+                    name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+                    onOpen={open}
+                    tint={tints.get(candidate.project.id) ?? "slate"}
+                  />
+                ) : action.kind === "set-up-mate" ? (
+                  <ZeropsEmptySeat
+                    disabled={busy}
+                    label={busy ? "Setting up…" : action.label}
+                    onClick={() => {
+                      runRowAction(candidate, action.kind);
+                    }}
+                  />
+                ) : (
+                  <ZeropsEmptySeat />
+                )
+              }
+              status={
+                projectTrouble ? (
+                  <StatusDot
+                    label={presentation.status.label}
+                    tone={presentation.status.tone}
+                    {...(presentation.status.pulse === undefined
+                      ? {}
+                      : { pulse: presentation.status.pulse })}
+                  />
+                ) : null
+              }
+            />
           );
         }}
         renderGroupMenu={(group: ZeropsGroup) => (
@@ -899,7 +1105,7 @@ function ZeropsProjectsContent() {
             actions={[
               {
                 id: "rename-group",
-                label: "Rename group",
+                label: "Rename project",
                 onSelect: () => {
                   setRowDialog({ kind: "rename-group", group });
                 },
@@ -908,73 +1114,27 @@ function ZeropsProjectsContent() {
             label={`More for ${group.name}`}
           />
         )}
-        renderStatus={(candidate: ZeropsCandidate) => {
-          const { status } = deriveZeropsRowPresentation(rowInput(candidate));
-          return (
-            <StatusDot
-              label={status.label}
-              tone={status.tone}
-              {...(status.pulse === undefined ? {} : { pulse: status.pulse })}
-            />
-          );
-        }}
-        renderDetail={(candidate: ZeropsCandidate) => {
-          if (isZeropsToolCandidate(candidate)) return null;
-          const presentation = deriveZeropsRowPresentation(rowInput(candidate));
-          if (presentation.detail === undefined) return null;
-          return (
-            <span
-              className={
-                presentation.detailIsError ? "text-[var(--zerops-status-failed-text)]" : undefined
-              }
-            >
-              {presentation.detail}
-            </span>
-          );
-        }}
-        renderAction={(candidate: ZeropsCandidate) => {
-          const action = deriveZeropsRowAction(rowInput(candidate));
-          switch (action.kind) {
-            case "none":
-              return null;
-            case "pending":
-              // The probe has not answered: the verb's place is held by a
-              // pill-shaped skeleton, so the answer fills a shape that was
-              // already there instead of pushing a button into the row.
-              return (
-                <Skeleton
-                  className="h-8 w-24 rounded-[var(--zerops-pill-radius)]"
-                  data-zerops-row-pending="true"
-                />
-              );
-            case "starting":
-              return <span className="text-xs text-muted-foreground">{action.label}</span>;
-            default:
-              return (
-                <span className="animate-zerops-appear motion-reduce:animate-none">
-                  <Pill
-                    data-zerops-primary-action={action.label}
-                    disabled={busyKeys.has(candidate.key)}
-                    label={action.label}
-                    onClick={() => {
-                      runRowAction(candidate, action.kind);
-                    }}
-                    size="sm"
-                    tone={zeropsRowActionTone(action.kind)}
-                  />
-                </span>
-              );
-          }
-        }}
-        renderToolStatus={(candidate: ZeropsCandidate) => {
+        renderTool={(candidate: ZeropsCandidatePresentation, kind) => {
           // A tool has no Mate container and never will, so the environment
           // classifier's verdict is meaningless here. The platform's own
           // project status is the honest answer.
           const active = candidate.project.status === "ACTIVE";
           return (
-            <StatusDot
-              label={active ? "Ready" : candidate.project.status}
-              tone={active ? "ok" : "attention"}
+            <ZeropsEnvironmentRow
+              activity={
+                <ZeropsMateWord
+                  label={active ? "Ready" : candidate.project.status}
+                  tone={active ? "ok" : "attention"}
+                />
+              }
+              environmentName={candidate.project.name}
+              roleLabel="Tool"
+              routes={candidate.routes}
+              seat={
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                  {TOOL_LABEL[kind]}
+                </span>
+              }
             />
           );
         }}
@@ -987,7 +1147,7 @@ function ZeropsProjectsContent() {
         <ZeropsRenameDialog
           initialValue={readZeropsGroupTags(rowDialog.candidate.project.tagList).bot ?? ""}
           key={`rename-agent:${rowDialog.candidate.key}`}
-          label="Agent's name"
+          label="Mate's name"
           onCancel={() => {
             setRowDialog(null);
           }}
@@ -1001,7 +1161,7 @@ function ZeropsProjectsContent() {
           }}
           open
           submitLabel="Rename"
-          title={`Rename the agent in ${rowDialog.candidate.project.name}`}
+          title={`Rename the Mate in ${rowDialog.candidate.project.name}`}
           validate={(value) => {
             const current = readZeropsGroupTags(rowDialog.candidate.project.tagList).bot;
             return validateBotName(value, takenBotNames, current === undefined ? {} : { current });
@@ -1010,10 +1170,10 @@ function ZeropsProjectsContent() {
       ) : null}
       {rowDialog?.kind === "rename-group" ? (
         <ZeropsRenameDialog
-          description="The name is written onto every environment in the group."
+          description="The name is written onto every environment in the project."
           initialValue={rowDialog.group.nameSource === "id" ? "" : rowDialog.group.name}
           key={`rename-group:${rowDialog.group.groupId}`}
-          label="Group name"
+          label="Project name"
           onCancel={() => {
             setRowDialog(null);
           }}
@@ -1027,8 +1187,8 @@ function ZeropsProjectsContent() {
           }}
           open
           submitLabel="Rename"
-          title={rowDialog.group.nameSource === "id" ? "Name this group" : "Rename the group"}
-          validate={(value) => (value.trim().length === 0 ? "Give the group a name." : undefined)}
+          title={rowDialog.group.nameSource === "id" ? "Name this project" : "Rename the project"}
+          validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
         />
       ) : null}
       {rowDialog?.kind === "move" ? (
@@ -1109,6 +1269,7 @@ function ZeropsProjectsContent() {
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
+  const { isLoading, refresh } = useZeropsCandidates();
   const navigate = useNavigate();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
@@ -1131,10 +1292,12 @@ export function ZeropsProjectsPage() {
       }
     >
       {scoped ? (
-        <ZeropsEnvironmentsHeader
+        <ZeropsProjectsHeader
           onCreate={() => {
             void navigate({ to: "/zerops/new" });
           }}
+          onRefresh={refresh}
+          refreshing={isLoading}
         />
       ) : null}
       <ZeropsProjectsContent />

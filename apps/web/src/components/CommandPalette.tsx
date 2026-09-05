@@ -1339,7 +1339,7 @@ function OpenCommandPaletteDialog(props: {
     () => [
       {
         value: "environments",
-        label: "Environments",
+        label: "Projects",
         items: addProjectEnvironmentItems,
       },
     ],

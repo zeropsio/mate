@@ -398,18 +398,18 @@ export function ZeropsNewProjectWizard() {
         <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
           <WorkspaceBreadcrumbItem>
             <Link className="hover:text-foreground" to="/zerops">
-              Environments
+              Projects
             </Link>
           </WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator />
-          <WorkspaceBreadcrumbItem current>New environment</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbItem current>New project</WorkspaceBreadcrumbItem>
         </WorkspaceBreadcrumb>
       }
     >
       <div className="space-y-1" data-zerops-project-scope="true">
-        <h1 className="text-xl font-medium text-foreground">New environment</h1>
+        <h1 className="text-xl font-medium text-foreground">New project</h1>
         <p className="text-sm text-muted-foreground">
-          A Zerops project with a Zerops Mate container in it.
+          A dev environment with a Mate in it. Stage and production come later, from here.
         </p>
       </div>
       <ZeropsNewProjectContent />

@@ -13,7 +13,7 @@ import {
   connectionStatusText,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import { readZeropsToolKind } from "@t3tools/client-runtime/zerops";
+import { readZeropsToolKind, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -26,6 +26,8 @@ export interface ZeropsRowInput {
   readonly candidate: ZeropsRowCandidate;
   /** Absent = the health probe has not answered yet. */
   readonly health: ZeropsContainerHealth | undefined;
+  /** The environment's role in its project, when it has one. */
+  readonly role?: ZeropsEnvironmentRole | undefined;
   /** Which verbs the caller can actually perform; a verb it cannot is never offered. */
   readonly can: {
     readonly open: boolean;
@@ -92,23 +94,15 @@ export function zeropsReasonSentence(reason: string): string {
   return /[.!?]$/u.test(sentence) ? sentence : `${sentence}.`;
 }
 
-export type ZeropsRowActionTone = "primary" | "secondary" | "outline";
-
 /**
- * How loud a row's verb is. On a list of twenty rows, blue is for the one
- * verb that reaches an agent right now; a setup chore is grey; opening an
- * already-connected environment is navigation and only outlined. The page's
- * one primary action, New environment, keeps blue to itself otherwise.
+ * Whether an environment without a Mate is offered one. A Mate is a coding
+ * agent with a shell in the environment; that is what a dev box is for, and
+ * not what stage or production are for — those get their code from dev, not
+ * from an agent typing into them. An environment with no role is not
+ * judged: it may well be somebody's dev box.
  */
-export function zeropsRowActionTone(kind: ZeropsRowAction["kind"]): ZeropsRowActionTone {
-  switch (kind) {
-    case "connect":
-      return "primary";
-    case "open":
-      return "outline";
-    default:
-      return "secondary";
-  }
+export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boolean {
+  return role !== "stage" && role !== "prod";
 }
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
@@ -125,12 +119,12 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
   }
   if (candidate.group === "unavailable") {
     // A project that merely has no container is not unavailable; it has no
-    // agent, which for a production environment is the default and not a
+    // Mate, which for a production environment is the default and not a
     // fault. The reason stays as the detail.
     if (candidate.missingContainer === true && !isZeropsToolCandidate(candidate)) {
       return {
-        status: { label: "No agent", tone: "off" },
-        detail: "No Zerops Mate container in this project.",
+        status: { label: "No Mate", tone: "off" },
+        detail: "No Mate in this environment.",
       };
     }
     return {
@@ -193,7 +187,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 }
 
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
-  const { candidate, health, can } = input;
+  const { candidate, health, can, role } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
 
   switch (candidate.group) {
@@ -202,7 +196,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
     case "provisioning":
       return can.wait ? { kind: "wait", label: "Wait for it" } : { kind: "none" };
     case "unavailable":
-      return candidate.missingContainer === true && can.setUpMate
+      return candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)
         ? { kind: "set-up-mate", label: "Set up Mate" }
         : { kind: "none" };
     case "ready":

@@ -11,7 +11,11 @@ import type {
 } from "@t3tools/client-runtime/connection";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  derivePublicRoutes,
+  type ZeropsProject,
+  type ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
 import {
@@ -32,6 +36,13 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
   readonly connection?: EnvironmentConnectionPresentation;
+  /**
+   * Where the environment is reachable from outside, read off the same
+   * service list the candidate came from. Absent while that list is unread
+   * (a project whose services failed to load), so a row can tell "unknown"
+   * from "none".
+   */
+  readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
 }
 
 /** Authenticated environments keyed by origin, so a derived container origin can be matched. */
@@ -148,23 +159,29 @@ export function useZeropsCandidates(): {
   );
 
   const candidates = useMemo(() => {
-    const derived: ZeropsCandidate[] = [];
+    const derived: ZeropsCandidatePresentation[] = [];
     for (const project of projects) {
       if (project.status !== "ACTIVE") {
         // The derivation short-circuits on the project's own status; a
-        // non-active project's services are never fetched or read.
-        derived.push(...deriveZeropsCandidates(project, null, connectedOrigins));
+        // non-active project's services are never fetched or read, and a
+        // project that is not up has no route yet.
+        derived.push(
+          ...deriveZeropsCandidates(project, null, connectedOrigins).map((candidate) => ({
+            ...candidate,
+            routes: [],
+          })),
+        );
         continue;
       }
       const outcome = services.get(project.id);
       // Still resolving: omitted while `isLoading` is true, so the list grows
       // rather than showing a per-row spinner.
       if (!outcome) continue;
+      const resolved = outcome.status === "resolved" ? outcome.services : null;
+      const routes = resolved === null ? undefined : derivePublicRoutes(project, resolved);
       derived.push(
-        ...deriveZeropsCandidates(
-          project,
-          outcome.status === "resolved" ? outcome.services : null,
-          connectedOrigins,
+        ...deriveZeropsCandidates(project, resolved, connectedOrigins).map((candidate) =>
+          routes === undefined ? candidate : { ...candidate, routes },
         ),
       );
     }

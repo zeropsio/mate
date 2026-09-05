@@ -1,19 +1,21 @@
 /**
- * The group tree — the left menu of the settled model.
+ * The projects screen's shape — the settled model, laid out.
  *
  * One user-facing project ("Beviro CRM") is a **group**; each Zerops project
- * inside it is an **environment**: one container, one agent, one conversation.
- * Account-level tools (Gitea) sit in their own section, never inside a group,
- * because a tool the whole account shares has no dev/stage/production axis and
- * putting it in a group would make that group own the account's git host.
+ * inside it is an **environment** — dev, stage, production. An environment
+ * with a Mate container has a **Mate** in it: one agent, one conversation, a
+ * name a person addresses. A project is one table: a row per environment in
+ * role order, the Mate leading the rows it lives in and the empty seat
+ * leading the rest, with the same columns in every project so the whole page
+ * lines up. Account-level tools (Gitea) sit in their own table, never inside
+ * a project, because a tool the whole account shares has no
+ * dev/stage/production axis.
  *
- * Structural only. It renders the shape and the words that are its own (role,
- * group summary) and takes every environment's status as an injected slot —
- * `candidates.ts` already classifies containers and the picker already phrases
- * them, so a status table here would be a third opinion about one fact (R5).
- *
- * Grouping, ordering, naming and the tools split are all
- * `buildZeropsGroupTree`; this file decides none of them.
+ * Structural only. It renders the shape and the words that are its own (the
+ * heading, the summary, the column names, the create affordances) and takes
+ * every row as an injected slot — who lives where and what they are doing is
+ * the caller's to phrase (R5). Grouping, ordering, naming and the tools split
+ * are all `buildZeropsGroupTree`; this file decides none of them.
  */
 
 import type { ReactNode } from "react";
@@ -25,7 +27,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 
 import { cn } from "~/lib/utils";
-import { MicroLabel } from "./primitives";
+import { ZeropsEnvironmentTableHeader } from "./ZeropsEnvironmentRow";
 import {
   creatableRoles,
   environmentRoleLabel,
@@ -37,18 +39,10 @@ export interface ZeropsGroupTreeProps<T> {
   readonly view: ZeropsGroupTreeView<T>;
   /** Stable list key for one environment carrier. */
   readonly getKey: (item: T) => string;
-  /** What this environment is called in the tree. */
-  readonly getName: (item: T) => string;
-  /** The row's status — owned by the caller, never by this tree. */
-  readonly renderStatus: (item: T) => ReactNode;
-  /**
-   * A tool's status, which is a different question from an environment's.
-   * A tool has no Mate container by design, so the environment classifier
-   * calls it unavailable and names a container it was never supposed to have.
-   * Falls back to {@link renderStatus} for a caller that has nothing better.
-   */
-  readonly renderToolStatus?: (item: T) => ReactNode;
-  readonly onSelect?: (item: T) => void;
+  /** An environment's row — a `ZeropsEnvironmentRow`. Everything in it is the caller's. */
+  readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
+  /** A tool's row — a different question from an environment's. */
+  readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
   /** Absent hides every create affordance — used where the tree is read-only. */
   readonly onCreateEnvironment?: (groupId: string, role: ZeropsEnvironmentRole) => void;
   /** Absent hides the tools section's own action. */
@@ -59,136 +53,77 @@ export interface ZeropsGroupTreeProps<T> {
    * button that vanishes under the pointer reads as a bug.
    */
   readonly creating?: boolean;
-  /**
-   * The agent's name, when the environment has one. Leads the row: on this
-   * screen the project name still matters (it is what the Zerops GUI shows),
-   * so the two sit side by side rather than one replacing the other.
-   */
-  readonly getAgentName?: (item: T) => string | undefined;
-  /** One muted line under the name — an error, health prose, or a reason. */
-  readonly renderDetail?: (item: T) => ReactNode;
-  /** The row's one action, in its own right-aligned cell after the status. */
-  readonly renderAction?: (item: T) => ReactNode;
-  /** Marks the row busy while its action runs. */
-  readonly isBusy?: (item: T) => boolean;
-  /** The row's secondary actions, after the action cell — rename, move, and so on. */
-  readonly renderMenu?: (item: T) => ReactNode;
-  /** A group's own actions, beside its header. */
+  /** A group's own actions, beside its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
   readonly className?: string;
 }
 
 const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
-function Section({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+const ADD_BUTTON_CLASS =
+  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
+
+function Heading({
+  name,
+  placeholder = false,
+  summary,
+  menu,
+  muted = false,
+}: {
+  readonly name: string;
+  readonly placeholder?: boolean;
+  readonly summary?: string;
+  readonly menu?: ReactNode;
+  readonly muted?: boolean;
+}) {
   return (
-    <section className="flex flex-col gap-1">
-      <MicroLabel className="px-2">{label}</MicroLabel>
-      {children}
-    </section>
+    <header className="group/project flex min-w-0 items-baseline gap-2">
+      <h2
+        className={cn(
+          "min-w-0 truncate text-[15px] font-semibold tracking-tight",
+          muted ? "text-muted-foreground" : "text-foreground",
+          placeholder && "font-normal text-muted-foreground italic",
+        )}
+      >
+        {name}
+      </h2>
+      {summary === undefined ? null : (
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>
+      )}
+      {menu === undefined || menu === null ? null : (
+        <span className="-my-1.5 self-center opacity-0 transition-opacity group-hover/project:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+          {menu}
+        </span>
+      )}
+    </header>
   );
 }
 
-function Row({
-  name,
-  agentName,
-  badge,
-  status,
-  detail,
-  action,
-  menu,
-  busy = false,
-  reserveAction = false,
-  reserveMenu = false,
-  onSelect,
+/** A table: the shared header, hairline-divided rows, and a quiet footer. */
+function Table({
+  children,
+  footer,
+  lead,
+  surface,
 }: {
-  readonly name: string;
-  readonly agentName?: string | undefined;
-  readonly badge?: string | null;
-  readonly status?: ReactNode;
-  readonly detail?: ReactNode;
-  readonly action?: ReactNode;
-  readonly menu?: ReactNode;
-  readonly busy?: boolean;
-  /**
-   * Keep the action and menu cells even when this row has nothing to put in
-   * them: health answers arrive row by row, and a pill appearing must not
-   * move anything around it.
-   */
-  readonly reserveAction?: boolean;
-  readonly reserveMenu?: boolean;
-  readonly onSelect?: () => void;
+  readonly children: ReactNode;
+  readonly footer?: ReactNode;
+  readonly lead?: string;
+  readonly surface: string;
 }) {
-  // The name is the clickable part, so an action button can sit beside it
-  // without nesting one button in another.
-  const title = (
-    <>
-      {agentName === undefined ? (
-        <span className="truncate">{name}</span>
-      ) : (
-        <>
-          <span className="truncate font-medium">{agentName}</span>
-          <span className="truncate text-[var(--muted-foreground)]">{name}</span>
-        </>
-      )}
-    </>
-  );
-
   return (
     <div
-      aria-busy={busy || undefined}
-      // 51 px: the name line, a detail line, the paddings and the border — so a
-      // row with a detail and a row without are the same height, and a line
-      // arriving or leaving moves nothing below it.
-      className="flex min-h-[3.1875rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-2 py-1.5 sm:flex-nowrap"
-      data-zerops-project-row="true"
+      className="flex flex-col divide-y divide-border/40 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card"
+      data-zerops-surface={surface}
+      role="table"
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          {onSelect ? (
-            <button
-              className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onSelect}
-              type="button"
-            >
-              {title}
-            </button>
-          ) : (
-            <span className="flex min-w-0 items-center gap-2">{title}</span>
-          )}
-          {badge ? (
-            <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-              {badge}
-            </span>
-          ) : null}
+      <ZeropsEnvironmentTableHeader {...(lead === undefined ? {} : { lead })} />
+      {children}
+      {footer === undefined ? null : (
+        <div className="flex flex-wrap items-center gap-1 px-1.5 py-1" role="row">
+          {footer}
         </div>
-        {detail ? (
-          <div className="min-w-0 truncate text-xs text-[var(--muted-foreground)]">{detail}</div>
-        ) : null}
-      </div>
-      {/* Fixed cells, so every row's status, action and menu line up down the
-          page and a row keeps its shape while its answers arrive. */}
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="flex w-40 shrink-0 items-center" data-zerops-row-cell="status">
-          {status}
-        </div>
-        {reserveAction ? (
-          <div
-            className="flex w-44 shrink-0 items-center justify-end"
-            data-zerops-row-cell="action"
-          >
-            {action}
-          </div>
-        ) : null}
-        {reserveMenu ? (
-          <div
-            className="flex w-8 shrink-0 items-center justify-center"
-            data-zerops-row-cell="menu"
-          >
-            {menu}
-          </div>
-        ) : null}
-      </div>
+      )}
     </div>
   );
 }
@@ -196,152 +131,121 @@ function Row({
 export function ZeropsGroupTree<T>({
   view,
   getKey,
-  getName,
-  renderStatus,
-  renderToolStatus,
-  onSelect,
+  renderEnvironment,
+  renderTool,
   onCreateEnvironment,
   onCreateTool,
   creating = false,
-  getAgentName,
-  renderDetail,
-  renderAction,
-  isBusy,
-  renderMenu,
   renderGroupMenu,
   className,
 }: ZeropsGroupTreeProps<T>) {
-  const reserved = {
-    reserveAction: renderAction !== undefined,
-    reserveMenu: renderMenu !== undefined,
-  };
-  const rowExtras = (item: T) => ({
-    ...reserved,
-    ...(getAgentName === undefined ? {} : { agentName: getAgentName(item) }),
-    ...(renderDetail === undefined ? {} : { detail: renderDetail(item) }),
-    ...(renderAction === undefined ? {} : { action: renderAction(item) }),
-    ...(isBusy === undefined ? {} : { busy: isBusy(item) }),
-    ...(renderMenu === undefined ? {} : { menu: renderMenu(item) }),
-    ...(onSelect ? { onSelect: () => onSelect(item) } : {}),
-  });
   return (
     <nav
-      aria-label="Projects and environments"
-      className={cn("flex flex-col gap-4", className)}
+      aria-label="Projects, their Mates and environments"
+      className={cn("flex flex-col gap-8", className)}
       data-zerops-surface="group-tree"
     >
-      {view.groups.map(({ group, environments }) => (
-        <section
-          className="flex flex-col gap-1"
-          data-zerops-group={group.groupId}
-          key={group.groupId}
-        >
-          <header className="flex flex-col gap-0.5 px-2">
-            <span className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "min-w-0 truncate text-sm font-medium",
-                  groupNameIsPlaceholder(group) && "text-[var(--muted-foreground)] italic",
-                )}
-              >
-                {group.name}
-              </span>
-              {renderGroupMenu === undefined ? null : renderGroupMenu(group)}
-            </span>
-            {/* Visible rather than a tooltip: it is an invitation to name the
-                group, and it disappears the moment one does. */}
-            {groupNameIsPlaceholder(group) ? (
-              <span className="text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-                This group has no name yet
-              </span>
-            ) : null}
-            <span className="text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-              {groupSummaryLabel(group)}
-            </span>
-          </header>
-
-          {environments.map(({ item, role }) => (
-            <Row
-              badge={environmentRoleLabel(role)}
-              key={getKey(item)}
-              name={getName(item)}
-              status={renderStatus(item)}
-              {...rowExtras(item)}
-            />
-          ))}
-
-          {onCreateEnvironment
-            ? creatableRoles(group).map((role) => (
-                <button
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
-                  disabled={creating}
-                  key={role}
-                  onClick={() => onCreateEnvironment(group.groupId, role)}
-                  type="button"
-                >
-                  <span aria-hidden="true">+</span>
-                  <span>Add {environmentRoleLabel(role)?.toLowerCase()}</span>
-                </button>
-              ))
-            : null}
-        </section>
-      ))}
+      {view.groups.map(({ group, environments }) => {
+        const missing = onCreateEnvironment ? creatableRoles(group) : [];
+        return (
+          <section
+            className="flex flex-col gap-2.5"
+            data-zerops-group={group.groupId}
+            key={group.groupId}
+          >
+            <div className="flex flex-col gap-0.5">
+              <Heading
+                menu={renderGroupMenu?.(group)}
+                name={group.name}
+                placeholder={groupNameIsPlaceholder(group)}
+                summary={groupSummaryLabel(group)}
+              />
+              {/* Visible rather than a tooltip: it is an invitation to name the
+                  project, and it disappears the moment one does. */}
+              {groupNameIsPlaceholder(group) ? (
+                <span className="text-xs text-muted-foreground">This project has no name yet</span>
+              ) : null}
+            </div>
+            <Table
+              footer={
+                missing.length > 0 ? (
+                  <span className="contents" data-zerops-surface="add-roles">
+                    {missing.map((role) => (
+                      <button
+                        className={ADD_BUTTON_CLASS}
+                        disabled={creating}
+                        key={role}
+                        onClick={() => onCreateEnvironment?.(group.groupId, role)}
+                        type="button"
+                      >
+                        <span aria-hidden="true">+</span>
+                        <span>Add {environmentRoleLabel(role)?.toLowerCase()}</span>
+                      </button>
+                    ))}
+                  </span>
+                ) : undefined
+              }
+              surface="environment-rows"
+            >
+              {environments.map(({ item, role }) => (
+                <div className="contents" key={getKey(item)}>
+                  {renderEnvironment(item, role)}
+                </div>
+              ))}
+            </Table>
+          </section>
+        );
+      })}
 
       {view.ungrouped.length > 0 ? (
-        // "Ungrouped" is a distinction, so it is drawn only when there is a
-        // group to be distinct from; an account of loose projects is a list.
-        view.groups.length > 0 ? (
-          <Section label="Ungrouped">
+        // "Ungrouped" is a distinction, so it is named only when there is a
+        // project to be distinct from; an account of loose environments is a list.
+        <section className="flex flex-col gap-2.5" data-zerops-ungrouped="true">
+          {view.groups.length > 0 ? <Heading muted name="Ungrouped" /> : null}
+          <Table surface="environment-rows">
             {view.ungrouped.map((item) => (
-              <Row
-                key={getKey(item)}
-                name={getName(item)}
-                status={renderStatus(item)}
-                {...rowExtras(item)}
-              />
+              <div className="contents" key={getKey(item)}>
+                {renderEnvironment(item, undefined)}
+              </div>
             ))}
-          </Section>
-        ) : (
-          <div className="flex flex-col">
-            {view.ungrouped.map((item) => (
-              <Row
-                key={getKey(item)}
-                name={getName(item)}
-                status={renderStatus(item)}
-                {...rowExtras(item)}
-              />
-            ))}
-          </div>
-        )
+          </Table>
+        </section>
       ) : null}
 
       {/* Account-level, so last: a tool belongs to no group and to no
           environment's dev/stage/production axis. */}
       {view.tools.length > 0 || onCreateTool ? (
-        <Section label="Tools">
-          {view.tools.map(({ item, kind }) => (
-            <Row
-              key={getKey(item)}
-              name={TOOL_LABEL[kind]}
-              status={(renderToolStatus ?? renderStatus)(item)}
-              {...reserved}
-              {...(renderDetail === undefined ? {} : { detail: renderDetail(item) })}
-              {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
-            />
-          ))}
-          {onCreateTool && view.tools.every((tool) => tool.kind !== "gitea") ? (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
-              disabled={creating}
-              onClick={() => onCreateTool("gitea")}
-              type="button"
+        <section className="flex flex-col gap-2.5" data-zerops-tools="true">
+          <Heading muted name="Tools" />
+          {view.tools.length > 0 || onCreateTool ? (
+            <Table
+              footer={
+                onCreateTool && view.tools.every((tool) => tool.kind !== "gitea") ? (
+                  <button
+                    className={ADD_BUTTON_CLASS}
+                    disabled={creating}
+                    onClick={() => onCreateTool("gitea")}
+                    type="button"
+                  >
+                    <span aria-hidden="true">+</span>
+                    <span>Add {TOOL_LABEL.gitea}</span>
+                  </button>
+                ) : undefined
+              }
+              lead="Tool"
+              surface="tool-rows"
             >
-              <span aria-hidden="true">+</span>
-              <span>Add Gitea</span>
-            </button>
+              {view.tools.map(({ item, kind }) => (
+                <div className="contents" key={getKey(item)}>
+                  {renderTool(item, kind)}
+                </div>
+              ))}
+            </Table>
           ) : null}
-        </Section>
+        </section>
       ) : null}
     </nav>
   );
 }
+
+export { TOOL_LABEL };

@@ -16,12 +16,12 @@ const SIZE_CLASS: Record<MateFaceSize, string> = {
   dot: "size-3.5",
   /** Beside a name in a row of text. */
   sm: "size-5",
-  /** The card's avatar. */
-  md: "size-9",
+  /** The card's avatar, beside a 14 px name. */
+  md: "size-7",
 };
 
 /** Strokes stay legible at every size: they are set in pixels, not in the box. */
-const STROKE_PX: Record<MateFaceSize, number> = { dot: 1.25, sm: 1.5, md: 2 };
+const STROKE_PX: Record<MateFaceSize, number> = { dot: 1.25, sm: 1.5, md: 1.75 };
 
 const TINT_CLASS: Record<MateTintId, string> = {
   coral: "fill-[var(--zerops-mate-tint-coral)]",
