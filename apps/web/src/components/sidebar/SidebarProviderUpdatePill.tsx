@@ -4,7 +4,7 @@ import type { ServerProvider } from "@t3tools/contracts";
 import { CircleCheckIcon, DownloadIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
-import { primaryServerProvidersAtom } from "../../state/server";
+import { primaryEnvironmentIsZeropsAtom, primaryServerProvidersAtom } from "../../state/server";
 import {
   getProviderUpdateSidebarPillView,
   type ProviderUpdateSidebarPillView,
@@ -39,9 +39,14 @@ function latestProviderCheckedAt(
   );
 }
 
+const EMPTY_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+
 export function SidebarProviderUpdatePill() {
   const navigate = useNavigate();
-  const providers = useAtomValue(primaryServerProvidersAtom);
+  const allProviders = useAtomValue(primaryServerProvidersAtom);
+  // zcp updates the agent CLIs on a Zerops container; nothing to pill about.
+  const primaryIsZerops = useAtomValue(primaryEnvironmentIsZeropsAtom);
+  const providers = primaryIsZerops ? EMPTY_PROVIDERS : allProviders;
   const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [renderedView, setRenderedView] = useState<ProviderUpdateSidebarPillView | null>(null);
   const [pendingView, setPendingView] = useState<ProviderUpdateSidebarPillView | null>(null);

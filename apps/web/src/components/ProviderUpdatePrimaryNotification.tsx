@@ -4,7 +4,11 @@ import { DownloadIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 
-import { primaryServerProvidersAtom, serverEnvironment } from "../state/server";
+import {
+  primaryEnvironmentIsZeropsAtom,
+  primaryServerProvidersAtom,
+  serverEnvironment,
+} from "../state/server";
 import { usePrimaryEnvironment } from "../state/environments";
 import { useDismissedProviderUpdateNotificationKeys } from "../providerUpdateDismissal";
 import { PROVIDER_ICON_BY_PROVIDER } from "./chat/providerIconUtils";
@@ -124,7 +128,14 @@ export function ProviderUpdatePrimaryNotification() {
     };
   }, []);
 
-  const updateProviders = useMemo(() => collectProviderUpdateCandidates(providers), [providers]);
+  // On a Zerops container the agent CLIs are zcp's to update — its install
+  // step picks up the current release on restart — so an advisory here would
+  // ask the person to do by hand what the platform does for them.
+  const primaryIsZerops = useAtomValue(primaryEnvironmentIsZeropsAtom);
+  const updateProviders = useMemo(
+    () => (primaryIsZerops ? [] : collectProviderUpdateCandidates(providers)),
+    [primaryIsZerops, providers],
+  );
   const notificationKey = useMemo(
     () => providerUpdateNotificationKey(updateProviders),
     [updateProviders],

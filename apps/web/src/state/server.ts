@@ -76,6 +76,15 @@ export const primaryServerSettingsAtom = Atom.make(
   (get): ServerSettings => get(primaryServerConfigAtom)?.settings ?? DEFAULT_SERVER_SETTINGS,
 ).pipe(Atom.withLabel("web-primary-server-settings"));
 
+/**
+ * Whether the primary environment is a Zerops container. Read off the server's
+ * own descriptor, which carries the project id when it runs under zcp — the
+ * one predicate that is the server's word rather than client bookkeeping.
+ */
+export const primaryEnvironmentIsZeropsAtom = Atom.make(
+  (get): boolean => get(primaryServerConfigAtom)?.environment.zerops !== undefined,
+).pipe(Atom.withLabel("web-primary-environment-is-zerops"));
+
 export const primaryServerProvidersAtom = Atom.make(
   (get): ReadonlyArray<ServerProvider> =>
     get(primaryServerConfigAtom)?.providers ?? EMPTY_SERVER_PROVIDERS,
