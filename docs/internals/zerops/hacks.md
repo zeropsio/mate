@@ -457,3 +457,12 @@ committed.
 **Why** This pinned Effect build has a scheduler bug when a `Stream.debounce`-driven fiber is interrupted through a scope close or a racing second fiber (the same class of issue `ZeropsAgentAuth.ts`'s header describes and works around).
 **Blast radius** One dead fiber per login attempt: it checks the session's identity token before every action and goes inert once the token no longer matches, so the leak is bounded by the number of user-initiated agent logins, not by reconnects.
 **Real fix** Interrupt the timer fiber in `dispose` once the Effect upgrade past the scheduler bug lands; then this entry is paid back.
+
+---
+
+### H-26 · Every group reads as the `go-hello-world` recipe · in place
+
+**Where** `apps/web/src/zerops/recipeStore.ts` — the web app's recipe store is `makeMockZeropsRecipeStore` with `fallbackRecipes`, so a group nobody has published a recipe for answers with the seed's dev / stage / prod tiers under its own group id.
+**Why** The store zcp writes (`recipeStore.ts`, "zcp writes, this client reads") does not exist yet, and without a recipe `canCreateEnvironment` refuses every role — the "Add stage" / "Add production" buttons on a live group would do nothing. With the fallback, environment creation runs end to end against a real account today.
+**Blast radius** Any environment created from a live group gets the `go-hello-world` application, not that group's own. The fallback cannot rename a group (its record's name is the group id; display names come from the seed and the `mate:name:` tag), so the group tree is unaffected.
+**Real fix** Point `zeropsRecipeStore` at the platform store once zcp publishes recipes into it, and drop `fallbackRecipes` from `makeMockZeropsRecipeStore`; the seed stays for the showcase.

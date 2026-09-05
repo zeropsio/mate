@@ -117,14 +117,29 @@ export function recipeServicesYaml(yaml: string): string {
  */
 export function makeMockZeropsRecipeStore(
   seed: ReadonlyArray<ZeropsGroupRecord> = [],
+  options: {
+    /**
+     * Recipes every unseeded group answers with — hacks.md H-26. The store
+     * zcp will write does not exist yet, so without this no live group could
+     * create anything; with it, every group reads as if zcp had published
+     * these for it. The record's name is the id, so a fallback can never
+     * rename a group: display names come from the seed and the tags alone.
+     */
+    readonly fallbackRecipes?: ZeropsGroupRecord["recipes"];
+  } = {},
 ): ZeropsRecipeStore {
   const records = new Map<string, ZeropsGroupRecord>(
     seed.map((record) => [record.groupId, record]),
   );
+  const fallback = options.fallbackRecipes;
 
   return {
     listGroups: () => Promise.resolve([...records.values()]),
-    readGroup: (groupId) => Promise.resolve(records.get(groupId)),
+    readGroup: (groupId) =>
+      Promise.resolve(
+        records.get(groupId) ??
+          (fallback === undefined ? undefined : { groupId, name: groupId, recipes: fallback }),
+      ),
     writeGroup: (record) => {
       records.set(record.groupId, record);
       return Promise.resolve();
