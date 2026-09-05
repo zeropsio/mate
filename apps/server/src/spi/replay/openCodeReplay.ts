@@ -134,10 +134,22 @@ const replayOpenCodeRuntime: OpenCodeRuntimeShape = {
         list: async () => ({ data: [] }),
       },
       event: {
-        subscribe: async () => ({
+        subscribe: async (_body?: unknown, options?: { readonly signal?: AbortSignal }) => ({
           stream: (async function* () {
             for (const event of CANNED_EVENTS) {
               yield event;
+            }
+            // A real OpenCode SSE connection stays open until the server
+            // process ends or the caller aborts the fetch. Returning here
+            // would look like an unexpected disconnect to the adapter's
+            // reconnect/session.exited handling, so wait for the same
+            // AbortSignal the adapter tears the subscription down with
+            // instead of letting the generator run out of canned events.
+            const signal = options?.signal;
+            if (signal && !signal.aborted) {
+              await new Promise<void>((resolve) => {
+                signal.addEventListener("abort", () => resolve(), { once: true });
+              });
             }
           })(),
         }),
