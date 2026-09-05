@@ -243,6 +243,10 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
   let baseStatus: ZeropsCallStatus = "inProgress";
   let settledRow: Row | undefined;
   if (completedRows.length > 0) {
+    // Two `tool.completed` rows for one call (a redelivery, a duplicate
+    // completion) should not happen, but when it does a failure always wins
+    // over an ambiguous success rather than "whichever completed row arrived
+    // last" (R2's "terminal wins" is otherwise silent on this case).
     const failedCompleted = completedRows.find((row) => rowStatus(row) === "failed");
     const winner = failedCompleted ?? completedRows[completedRows.length - 1]!;
     baseStatus = rowStatus(winner) ?? "completed";
