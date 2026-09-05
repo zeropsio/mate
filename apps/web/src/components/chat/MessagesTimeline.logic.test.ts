@@ -2417,4 +2417,69 @@ describe("computeStableMessagesTimelineRows", () => {
     const changed = computeStableMessagesTimelineRows(changedRows, initial);
     expect(changed.result[0]).not.toBe(initial.result[0]);
   });
+
+  it("does not reuse an operation row when only a step's own state changes", () => {
+    const operation = (overrides: Partial<ZeropsOperation> = {}): ZeropsOperation => ({
+      key: "call:op-steps",
+      kind: "bootstrap",
+      phase: "running",
+      anchorAt: "2026-01-01T00:00:00Z",
+      anchorActivityId: "op-steps",
+      turnId: null,
+      subject: "kanbandev",
+      kicker: "Bootstrap · kanbandev",
+      voice: "Setting up kanbandev.",
+      voiceSource: "mate",
+      statusWord: "Working",
+      steps: [
+        { id: "discover", label: "Discover", state: "done", stateLabel: "Done" },
+        { id: "provision", label: "Provision", state: "running", stateLabel: "Running" },
+        { id: "deploy", label: "Deploy", state: "queued", stateLabel: "Waiting" },
+      ],
+      links: [],
+      callIds: ["op-steps"],
+      attempts: 1,
+      hasResult: false,
+      ...overrides,
+    });
+
+    const createRows = (op: ZeropsOperation) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "zerops:call:op-steps",
+            kind: "operation",
+            createdAt: op.anchorAt,
+            operation: op,
+          },
+        ],
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+
+    const firstRows = createRows(operation());
+    const initial = computeStableMessagesTimelineRows(firstRows, { byId: new Map(), result: [] });
+
+    // Same phase, same attempts/settledAt/hasResult, same step COUNT — only
+    // the middle step's own `state` (and `stateLabel`) advances.
+    const secondRows = createRows(
+      operation({
+        steps: [
+          { id: "discover", label: "Discover", state: "done", stateLabel: "Done" },
+          { id: "provision", label: "Provision", state: "done", stateLabel: "Done" },
+          { id: "deploy", label: "Deploy", state: "queued", stateLabel: "Waiting" },
+        ],
+      }),
+    );
+
+    const updated = computeStableMessagesTimelineRows(secondRows, initial);
+    expect(updated.result[0]).not.toBe(initial.result[0]);
+    expect(
+      updated.result[0]?.kind === "operation"
+        ? updated.result[0].operation.steps[1]?.state
+        : undefined,
+    ).toBe("done");
+  });
 });

@@ -1209,18 +1209,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       const bo = b as typeof a;
       // The model rebuilds every `ZeropsOperation` fresh on each derive
       // (no per-operation cache), so object identity always reports
-      // "changed" — compare the fields a render actually depends on
-      // instead, the same way `work-toggle` below does for its own
-      // freshly-built summary.
-      return (
-        a.createdAt === bo.createdAt &&
-        a.operation.key === bo.operation.key &&
-        a.operation.phase === bo.operation.phase &&
-        a.operation.attempts === bo.operation.attempts &&
-        a.operation.settledAt === bo.operation.settledAt &&
-        a.operation.hasResult === bo.operation.hasResult &&
-        a.operation.steps.length === bo.operation.steps.length
-      );
+      // "changed" — deep-compare the whole entity instead, the same way
+      // `work` below does for its own freshly-built `groupedEntries`.
+      return a.createdAt === bo.createdAt && Equal.equals(a.operation, bo.operation);
     }
 
     case "generic-call": {
