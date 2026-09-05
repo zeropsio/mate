@@ -459,6 +459,18 @@ function ZeropsProjectsContent() {
             )}
           </span>
         )}
+        renderToolStatus={(candidate: ZeropsCandidate) => {
+          // A tool has no Mate container and never will, so the environment
+          // classifier's verdict is meaningless here. The platform's own
+          // project status is the honest answer.
+          const active = candidate.project.status === "ACTIVE";
+          return (
+            <StatusDot
+              label={active ? "Ready" : candidate.project.status}
+              tone={active ? "ok" : "attention"}
+            />
+          );
+        }}
         view={buildZeropsGroupTree(candidates)}
       />
       {toolError === null ? null : (

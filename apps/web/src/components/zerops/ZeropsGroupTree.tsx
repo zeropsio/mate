@@ -40,6 +40,13 @@ export interface ZeropsGroupTreeProps<T> {
   readonly getName: (item: T) => string;
   /** The row's status — owned by the caller, never by this tree. */
   readonly renderStatus: (item: T) => ReactNode;
+  /**
+   * A tool's status, which is a different question from an environment's.
+   * A tool has no Mate container by design, so the environment classifier
+   * calls it unavailable and names a container it was never supposed to have.
+   * Falls back to {@link renderStatus} for a caller that has nothing better.
+   */
+  readonly renderToolStatus?: (item: T) => ReactNode;
   readonly onSelect?: (item: T) => void;
   /** Absent hides every create affordance — used where the tree is read-only. */
   readonly onCreateEnvironment?: (groupId: string, role: ZeropsEnvironmentRole) => void;
@@ -98,6 +105,7 @@ export function ZeropsGroupTree<T>({
   getKey,
   getName,
   renderStatus,
+  renderToolStatus,
   onSelect,
   onCreateEnvironment,
   onCreateTool,
@@ -168,7 +176,7 @@ export function ZeropsGroupTree<T>({
             <Row
               key={getKey(item)}
               name={TOOL_LABEL[kind]}
-              status={renderStatus(item)}
+              status={(renderToolStatus ?? renderStatus)(item)}
               {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
             />
           ))}

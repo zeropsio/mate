@@ -162,3 +162,19 @@ describe("ZeropsGroupTree", () => {
     expect(html).not.toContain("Ungrouped");
   });
 });
+
+describe("tool status", () => {
+  it("asks the caller a different question for a tool than for an environment", () => {
+    const html = render([GITEA], {
+      renderStatus: () => <span>ENV-STATUS</span>,
+      renderToolStatus: () => <span>TOOL-STATUS</span>,
+    });
+    expect(html).toContain("TOOL-STATUS");
+    expect(html).not.toContain("ENV-STATUS");
+  });
+
+  it("falls back to the environment status when the caller has nothing better", () => {
+    const html = render([GITEA], { renderStatus: () => <span>ENV-STATUS</span> });
+    expect(html).toContain("ENV-STATUS");
+  });
+});
