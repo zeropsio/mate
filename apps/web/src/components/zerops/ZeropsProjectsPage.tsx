@@ -34,10 +34,26 @@ import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
 
-import { MicroLabel } from "./primitives";
+import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+
+import { MicroLabel, StatusDot } from "./primitives";
+import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
+
+/**
+ * The four-way classification `candidates.ts` already made, projected onto a
+ * dot. Deliberately a projection and not a new status table: the picker below
+ * owns the detailed phrasing (health, connection errors, retries), and this
+ * tree only needs to say which of those four buckets a row is in.
+ */
+const CANDIDATE_STATUS = {
+  connected: { label: "Connected", tone: "ok" },
+  ready: { label: "Ready", tone: "off" },
+  provisioning: { label: "Starting", tone: "busy" },
+  unavailable: { label: "Unavailable", tone: "attention" },
+} as const;
 
 export function autoConnectServedZeropsEnvironment(input: {
   readonly attempted: { current: boolean };
@@ -267,6 +283,28 @@ function ZeropsProjectsContent() {
     [provisioning, resetConnectingTarget, setConnectError, setCreatingIn],
   );
 
+  const [toolError, setToolError] = useState<string | null>(null);
+
+  /**
+   * Stands Gitea up as its own tagged project. Two platform calls with the
+   * user's own token and no container is read — the same shape every other
+   * creation in this model has.
+   */
+  const createTool = useCallback(async () => {
+    if (!activeOrganization) return;
+    setToolError(null);
+    try {
+      await client.createToolProject({
+        clientId: activeOrganization.id,
+        kind: "gitea",
+        name: "Gitea",
+      });
+      refresh();
+    } catch (cause) {
+      setToolError(zeropsErrorMessage(cause));
+    }
+  }, [activeOrganization, client, refresh]);
+
   useEffect(() => {
     autoConnectServedZeropsEnvironment({
       attempted: autoConnectingRef,
@@ -390,6 +428,31 @@ function ZeropsProjectsContent() {
           void selectOrganization(membershipId);
         }}
       />
+      <ZeropsGroupTree
+        getKey={(candidate: ZeropsCandidate) => candidate.key}
+        getName={(candidate: ZeropsCandidate) => candidate.project.name}
+        onCreateTool={() => {
+          void createTool();
+        }}
+        onSelect={(candidate: ZeropsCandidate) => {
+          if (candidate.environmentId) {
+            rememberZeropsEnvironment(String(candidate.environmentId));
+            void navigate({ to: "/" });
+            return;
+          }
+          if (candidate.containerOrigin) startWaitFor(candidate);
+        }}
+        renderStatus={(candidate: ZeropsCandidate) => (
+          <StatusDot
+            label={CANDIDATE_STATUS[candidate.group].label}
+            tone={CANDIDATE_STATUS[candidate.group].tone}
+          />
+        )}
+        view={buildZeropsGroupTree(candidates)}
+      />
+      {toolError === null ? null : (
+        <p className="text-sm text-[var(--zerops-status-failed)]">{toolError}</p>
+      )}
       <ZeropsProjectPicker
         busyCandidateKeys={
           enablingCandidateKey === null ? undefined : new Set([enablingCandidateKey])

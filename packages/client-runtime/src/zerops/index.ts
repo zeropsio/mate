@@ -129,3 +129,11 @@ export {
   type EnvironmentCreationPlan,
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
+export {
+  buildZeropsGroupTree,
+  type ZeropsGroupTreeEnvironment,
+  type ZeropsGroupTreeGroup,
+  type ZeropsGroupTreeTool,
+  type ZeropsGroupTreeView,
+  type ZeropsProjectCarrier,
+} from "./groupTree.ts";
