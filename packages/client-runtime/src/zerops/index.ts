@@ -16,6 +16,8 @@ export {
   type ZeropsRegistrationResponse,
   type ZeropsService,
   type ZeropsServicePort,
+  type ZeropsCurrentStat,
+  type ZeropsStatPair,
   type ZeropsUser,
 } from "./api.ts";
 

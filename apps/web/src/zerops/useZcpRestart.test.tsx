@@ -125,14 +125,21 @@ function viewWithZcpService(): ZeropsTopologyView {
         status: "ACTIVE",
         group: "infrastructure",
         transient: false,
+        routes: [],
         ports: [],
       },
     ],
+    usageRead: false,
   };
 }
 
 function viewWithoutZcpService(): ZeropsTopologyView {
-  return { project: { id: "proj-1", name: "kanban" }, warnings: [], services: [] };
+  return {
+    project: { id: "proj-1", name: "kanban" },
+    warnings: [],
+    services: [],
+    usageRead: false,
+  };
 }
 
 afterEach(() => {

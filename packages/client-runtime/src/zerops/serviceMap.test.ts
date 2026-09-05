@@ -1,7 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
-import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
+import {
+  buildZeropsServiceMap,
+  formatAmount,
+  serviceStatusTone,
+  zeropsPortLabel,
+  zeropsServiceFacts,
+  zeropsServiceMetrics,
+  zeropsStatusWord,
+} from "./serviceMap.ts";
 import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
 
 const service = (
@@ -12,6 +20,7 @@ const service = (
   status: "ACTIVE",
   group: "runtimes",
   transient: false,
+  routes: [],
   ports: [],
   ...overrides,
 });
@@ -23,6 +32,7 @@ const topology = (
   project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
   services,
   warnings: [],
+  usageRead: false,
   ...overrides,
 });
 
@@ -54,6 +64,13 @@ describe("serviceStatusTone", () => {
     ["REPAIR_FAILED", false, "error"],
     ["CREATING", true, "warning"],
     ["ACTIVE", false, "outline"],
+    ["RUNNING", false, "outline"],
+    ["STOPPED", false, "muted"],
+    ["SERVICE_STOPPED", false, "muted"],
+    ["READY_TO_DEPLOY", false, "muted"],
+    ["DELETED", false, "muted"],
+    // In flight outranks settled-but-off: a stopping service is busy.
+    ["STOPPED", true, "warning"],
   ] as const)("maps %s (transient=%s) to %s", (status, transient, tone) => {
     expect(serviceStatusTone(service({ hostname: "app", status, transient }))).toBe(tone);
   });
@@ -227,5 +244,243 @@ describe("buildZeropsServiceMap", () => {
     );
 
     expect(view?.groups[0]?.rows[0]?.production).toEqual([]);
+  });
+});
+
+describe("buildZeropsServiceMap — the row's identity", () => {
+  const rowFor = (entry: ZeropsTopologyService) =>
+    buildZeropsServiceMap(topology([entry]))?.groups[0]?.rows[0];
+
+  it("names a service by its hostname, with its type-version as the one meta segment", () => {
+    const row = rowFor(service({ hostname: "kanbandev" }));
+
+    expect(row?.title).toBe("kanbandev");
+    expect(row?.meta).toEqual([{ id: "type", label: "nodejs@22" }]);
+    expect(row).not.toHaveProperty("portLabel");
+  });
+
+  it("shows the declared ports after the name", () => {
+    const row = rowFor(
+      service({
+        hostname: "api",
+        ports: [
+          { port: 80, scheme: "http" },
+          { port: 443, scheme: "https" },
+        ],
+      }),
+    );
+
+    expect(row?.portLabel).toBe(":80, :443");
+  });
+
+  it("names the control plane by its glossary word, hostname and port first in the meta line", () => {
+    const row = rowFor(
+      service({
+        hostname: "zcp",
+        type: "zcp@1",
+        group: "infrastructure",
+        typeName: "Zerops Control Plane",
+        version: "v1",
+        deploy: { source: "GIT" },
+        ports: [{ port: 8080, scheme: "http" }],
+      }),
+    );
+
+    expect(row?.title).toBe("Zerops Control Plane");
+    expect(row).not.toHaveProperty("portLabel");
+    expect(row?.meta).toEqual([
+      { id: "hostname", label: "zcp:8080" },
+      { id: "deploy", label: "Deployed from Git" },
+    ]);
+  });
+
+  it("links every row to its own page in the Zerops dashboard", () => {
+    const row = rowFor(service({ hostname: "kanbandev", serviceId: "EmWgeZ4rTiK0Ajpm8iH83A" }));
+
+    expect(row?.dashboardUrl).toBe("https://app.zerops.io/service-stack/EmWgeZ4rTiK0Ajpm8iH83A");
+  });
+
+  it("carries the live strip once usage is known", () => {
+    const row = rowFor(
+      service({
+        hostname: "app",
+        usage: {
+          containers: 1,
+          cores: { used: 0.076, limit: 2 },
+          memoryGb: { used: 0.512, limit: 2.625 },
+          diskGb: { used: 0.161, limit: 2 },
+        },
+      }),
+    );
+
+    expect(row?.metrics.map((metric) => metric.id)).toEqual([
+      "containers",
+      "cores",
+      "memory",
+      "disk",
+    ]);
+  });
+});
+
+describe("zeropsStatusWord", () => {
+  it.each([
+    ["ACTIVE", "Active"],
+    ["READY_TO_DEPLOY", "Ready to deploy"],
+    ["CONTAINER_FAILED", "Container failed"],
+    ["SOME_NEW_THING", "Some new thing"],
+  ])("reads %s as %s", (status, word) => {
+    expect(zeropsStatusWord(status)).toBe(word);
+  });
+
+  it("rides on the row", () => {
+    const row = buildZeropsServiceMap(
+      topology([service({ hostname: "app", status: "READY_TO_DEPLOY" })]),
+    )?.groups[0]?.rows[0];
+
+    expect(row?.statusLabel).toBe("Ready to deploy");
+  });
+});
+
+describe("zeropsPortLabel", () => {
+  it("is absent for a service with no ports", () => {
+    expect(zeropsPortLabel(service({ hostname: "worker" }))).toBeUndefined();
+  });
+});
+
+describe("formatAmount", () => {
+  it.each([
+    [2, "2"],
+    [2.625, "2.63"],
+    [0.5, "0.5"],
+    [0.375, "0.38"],
+    [0.10000000149011612, "0.1"],
+    [100, "100"],
+  ])("prints %s as %s", (value, expected) => {
+    expect(formatAmount(value)).toBe(expected);
+  });
+});
+
+describe("zeropsServiceMetrics", () => {
+  it("lays a service's allocation out as the dashboard's strip, with how much is in use", () => {
+    expect(
+      zeropsServiceMetrics({
+        containers: 1,
+        cores: { used: 0.076, limit: 2 },
+        memoryGb: { used: 0.512, limit: 2.625 },
+        diskGb: { used: 0.161, limit: 2 },
+      }),
+    ).toEqual([
+      { id: "containers", label: "container", value: "1" },
+      { id: "cores", label: "Cores", value: "2", fraction: 0.038 },
+      { id: "memory", label: "RAM", value: "2.63", unit: "GB", fraction: 0.512 / 2.625 },
+      { id: "disk", label: "Disk", value: "2", unit: "GB", fraction: 0.0805 },
+    ]);
+  });
+
+  it("pluralises the containers and clamps a fraction to one", () => {
+    const metrics = zeropsServiceMetrics({
+      containers: 3,
+      cores: { used: 4, limit: 3 },
+      memoryGb: { used: 0, limit: 0 },
+      diskGb: { used: 1, limit: 3 },
+    });
+
+    expect(metrics[0]).toEqual({ id: "containers", label: "containers", value: "3" });
+    expect(metrics[1]?.fraction).toBe(1);
+    // Nothing to fill when the allocation is zero.
+    expect(metrics[2]).not.toHaveProperty("fraction");
+  });
+
+  it("is empty when usage is unknown", () => {
+    expect(zeropsServiceMetrics(undefined)).toEqual([]);
+  });
+});
+
+describe("zeropsServiceFacts", () => {
+  it("states the type by its display name and exact version", () => {
+    const facts = zeropsServiceFacts(
+      service({ hostname: "app", typeName: "Node.js", version: "v22.22.3" }),
+    );
+
+    expect(facts).toEqual([{ id: "type", label: "Node.js v22.22.3" }]);
+  });
+
+  it("states the type by its name alone when the version is unknown", () => {
+    expect(zeropsServiceFacts(service({ hostname: "app", typeName: "Node.js" }))).toEqual([
+      { id: "type", label: "Node.js" },
+    ]);
+  });
+
+  it("falls back to the type-version when the platform gave no display name", () => {
+    expect(zeropsServiceFacts(service({ hostname: "app", type: "ubuntu/go@1.22" }))).toEqual([
+      { id: "type", label: "go@1.22" },
+    ]);
+  });
+
+  it.each([
+    ["CLI", "Deployed from CLI"],
+    ["GIT", "Deployed from Git"],
+    ["GITHUB", "Deployed from GitHub"],
+    ["GITLAB", "Deployed from GitLab"],
+    ["GUI", "Uploaded in the GUI"],
+    ["SOMETHING_NEW", "Deployed"],
+  ])("phrases a %s deploy as %s, dated at its activation", (source, label) => {
+    const facts = zeropsServiceFacts(
+      service({
+        hostname: "app",
+        typeName: "Node.js",
+        deploy: { source, activatedAt: "2026-09-01T08:30:34Z" },
+      }),
+    );
+
+    expect(facts[1]).toEqual({ id: "deploy", label, at: "2026-09-01T08:30:34Z" });
+  });
+
+  it("names the branch and short commit of a git deploy", () => {
+    const facts = zeropsServiceFacts(
+      service({
+        hostname: "app",
+        typeName: "Node.js",
+        deploy: { source: "GITHUB", branch: "main", commit: "abc1234def5678" },
+      }),
+    );
+
+    expect(facts[1]?.label).toBe("Deployed from GitHub · main@abc1234");
+  });
+
+  it("names a tag, or the version's own name, when there is no branch", () => {
+    expect(
+      zeropsServiceFacts(
+        service({
+          hostname: "app",
+          typeName: "Node.js",
+          deploy: { source: "GITHUB", tag: "v2.0.0" },
+        }),
+      )[1]?.label,
+    ).toBe("Deployed from GitHub · v2.0.0");
+    expect(
+      zeropsServiceFacts(
+        service({
+          hostname: "app",
+          typeName: "Node.js",
+          deploy: { source: "CLI", name: "hotfix" },
+        }),
+      )[1]?.label,
+    ).toBe("Deployed from CLI · hotfix");
+  });
+
+  it("does not repeat the row's title as a type fact", () => {
+    const zcp = service({
+      hostname: "zcp",
+      type: "zcp@1",
+      group: "infrastructure",
+      typeName: "Zerops Control Plane",
+      version: "v1",
+      deploy: { source: "GIT" },
+    });
+
+    expect(zeropsServiceFacts(zcp, "Zerops Control Plane").map((fact) => fact.id)).toEqual([
+      "deploy",
+    ]);
   });
 });

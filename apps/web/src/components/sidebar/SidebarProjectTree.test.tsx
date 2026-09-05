@@ -82,6 +82,7 @@ const service = (hostname: string): ZeropsTopologyService => ({
   group: "runtimes",
   transient: false,
   ports: [],
+  routes: [],
 });
 
 function topology(projectName: string, serviceCount: number): ZeropsTopologyView {
@@ -89,6 +90,7 @@ function topology(projectName: string, serviceCount: number): ZeropsTopologyView
     project: { id: "zerops-project-one", name: projectName, status: "ACTIVE" },
     services: Array.from({ length: serviceCount }, (_, index) => service(`service-${index + 1}`)),
     warnings: [],
+    usageRead: false,
   };
 }
 

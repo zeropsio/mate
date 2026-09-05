@@ -5,6 +5,7 @@ import {
   type ZeropsApiClient,
   type ZeropsProject,
   type ZeropsService,
+  type ZeropsCurrentStat,
 } from "@t3tools/client-runtime/zerops";
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/platformWatch";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops/session";
@@ -64,16 +65,20 @@ interface FakeClientOptions {
   readonly projectsByOrg?: Readonly<Record<string, ReadonlyArray<ZeropsProject>>>;
   /** projectId -> services, for the origin-match fallback's candidate derivation. */
   readonly servicesByProject?: Readonly<Record<string, ReadonlyArray<ZeropsService>>>;
+  /** The current-stats answer, or a thrower to simulate a failed read. */
+  readonly usage?: ReadonlyArray<ZeropsCurrentStat> | (() => never);
 }
 
 function fakeClient(options: FakeClientOptions = {}): {
   readonly client: ZeropsApiClient;
   readonly listProjectServicesCalls: number;
+  readonly searchCurrentStatsCalls: ReadonlyArray<{ clientId: string; projectId: string }>;
   readonly fetchOrganizationsCalls: number;
   readonly loadCandidatesOrgCalls: string[];
 } {
   const state = {
     listProjectServicesCalls: 0,
+    searchCurrentStatsCalls: [] as Array<{ clientId: string; projectId: string }>,
     fetchOrganizationsCalls: 0,
     loadCandidatesOrgCalls: [] as string[],
   };
@@ -83,6 +88,11 @@ function fakeClient(options: FakeClientOptions = {}): {
     listProjectServices: async (projectId: string) => {
       state.listProjectServicesCalls += 1;
       return options.servicesByProject?.[projectId] ?? options.services ?? [];
+    },
+    searchCurrentStats: async (clientId: string, projectId: string) => {
+      state.searchCurrentStatsCalls.push({ clientId, projectId });
+      if (typeof options.usage === "function") options.usage();
+      return options.usage ?? [];
     },
     fetchProjectProcesses: async () => ({ list: [] }),
     exchangeWebSocketToken: async () => ({ webSocketToken: "ws-token" }),
@@ -100,6 +110,9 @@ function fakeClient(options: FakeClientOptions = {}): {
     client,
     get listProjectServicesCalls() {
       return state.listProjectServicesCalls;
+    },
+    get searchCurrentStatsCalls() {
+      return state.searchCurrentStatsCalls;
     },
     get fetchOrganizationsCalls() {
       return state.fetchOrganizationsCalls;
@@ -709,5 +722,108 @@ describe("ProjectTopologyWatcher", () => {
     expect(watcher.getSnapshot().view?.services.map((s) => s.hostname)).toEqual(["db"]);
 
     unsubscribe();
+  });
+  it("reads a service's live allocation with the topology and again every 30s while visible", async () => {
+    const project: ZeropsProject = {
+      id: "proj-1",
+      name: "z3-eval",
+      status: "ACTIVE",
+      clientId: "client-1",
+    };
+    const fake = fakeClient({
+      project,
+      services: [service({ id: "s1", name: "api" })],
+      usage: [
+        {
+          serviceStackId: "s1",
+          containerId: "c1",
+          vCpu: { used: 0.1, limit: 1 },
+          ramGBytes: { used: 0.2, limit: 0.5 },
+          diskGBytes: { used: 0.3, limit: 1 },
+        },
+      ],
+    });
+    const storage = fakeStorage();
+    await rememberEnvironmentProjectRef(storage, ENV, {
+      projectId: "proj-1",
+      orgId: "org-1",
+      source: "connect",
+    });
+    let hidden = false;
+    const { options, sockets } = watcherOptions({
+      client: fake.client,
+      storage,
+      isHidden: () => hidden,
+    });
+    const watcher = new ProjectTopologyWatcher(options);
+    const unsubscribe = watcher.subscribe(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.searchCurrentStatsCalls).toEqual([{ clientId: "client-1", projectId: "proj-1" }]);
+    expect(watcher.getSnapshot().view?.usageRead).toBe(true);
+    expect(watcher.getSnapshot().view?.services[0]?.usage).toEqual({
+      containers: 1,
+      cores: { used: 0.1, limit: 1 },
+      memoryGb: { used: 0.2, limit: 0.5 },
+      diskGb: { used: 0.3, limit: 1 },
+    });
+
+    // Live socket: the topology is not re-read, the usage still is.
+    await connectSocket(sockets[0]!);
+    await vi.advanceTimersByTimeAsync(300);
+    const topologyReads = fake.listProjectServicesCalls;
+    const usageReads = fake.searchCurrentStatsCalls.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fake.listProjectServicesCalls).toBe(topologyReads);
+    expect(fake.searchCurrentStatsCalls.length).toBe(usageReads + 1);
+
+    // Hidden: the clock keeps ticking but nothing is read.
+    hidden = true;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fake.searchCurrentStatsCalls.length).toBe(usageReads + 1);
+
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fake.searchCurrentStatsCalls.length).toBe(usageReads + 1);
+  });
+
+  it("leaves usage unknown without a client id, and a failed read never fails the topology", async () => {
+    const storage = fakeStorage();
+    await rememberEnvironmentProjectRef(storage, ENV, {
+      projectId: "proj-1",
+      orgId: "org-1",
+      source: "connect",
+    });
+
+    const withoutClient = fakeClient({
+      project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
+      services: [service({ id: "s1", name: "api" })],
+    });
+    const first = new ProjectTopologyWatcher(
+      watcherOptions({ client: withoutClient.client, storage }).options,
+    );
+    const stopFirst = first.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(withoutClient.searchCurrentStatsCalls).toEqual([]);
+    expect(first.getSnapshot().view?.usageRead).toBe(false);
+    stopFirst();
+
+    const failing = fakeClient({
+      project: { id: "proj-1", name: "z3-eval", status: "ACTIVE", clientId: "client-1" },
+      services: [service({ id: "s1", name: "api" })],
+      usage: () => {
+        throw new Error("stats down");
+      },
+    });
+    const second = new ProjectTopologyWatcher(
+      watcherOptions({ client: failing.client, storage }).options,
+    );
+    const stopSecond = second.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failing.searchCurrentStatsCalls).toHaveLength(1);
+    expect(second.getSnapshot().view?.services).toHaveLength(1);
+    expect(second.getSnapshot().error).toBeUndefined();
+    expect(second.getSnapshot().view?.usageRead).toBe(false);
+    stopSecond();
   });
 });

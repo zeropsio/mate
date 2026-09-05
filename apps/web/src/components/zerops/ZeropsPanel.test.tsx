@@ -90,6 +90,7 @@ const VIEW: ZeropsTopologyView = {
   project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
   services: [],
   warnings: [],
+  usageRead: false,
 };
 
 const resolved = (

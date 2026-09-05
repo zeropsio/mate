@@ -136,6 +136,65 @@ export interface ZeropsServicePort {
   readonly httpSupport?: boolean;
 }
 
+/** One `used`/`limit` pair of a current-stats item, in the unit its field name says. */
+export interface ZeropsStatPair {
+  readonly used: number;
+  readonly limit: number;
+}
+
+/**
+ * One item of `POST /current-stats/group-by-search` — a container's live
+ * allocation when grouped by `containerId`. `vCpu` is the shared-CPU pair
+ * (`cpu` is the dedicated one and reads `0/0` on a shared service).
+ * Measured on `acme-docs-dev` 2026-09-06 (`verified.md`).
+ */
+export interface ZeropsCurrentStat {
+  readonly clientId?: string;
+  readonly projectId?: string;
+  readonly serviceStackId: string;
+  readonly serviceId?: string;
+  readonly containerId?: string;
+  readonly cpu?: ZeropsStatPair;
+  readonly vCpu?: ZeropsStatPair;
+  readonly ramGBytes?: ZeropsStatPair;
+  readonly diskGBytes?: ZeropsStatPair;
+}
+
+/**
+ * A git integration as the Zerops GUI's own service-stack template reads it
+ * (`service-stack-info-chips.component.html`); every captured fixture carries
+ * `null` here, so the field names are the GUI's, not a measurement.
+ */
+export interface ZeropsGitIntegration {
+  readonly isActive?: boolean;
+  readonly eventType?: string;
+  readonly branchName?: string | null;
+  readonly tagName?: string | null;
+  readonly commit?: string | null;
+  readonly repositoryFullName?: string | null;
+}
+
+/**
+ * The deploy a service is running (`activeAppVersion`), as the list read
+ * embeds it. `source` is `CLI`, `GIT`, `GITHUB`, `GITLAB`, `GUI` or `NONE`
+ * (a runtime that has never been deployed still carries an `ACTIVE`
+ * `NONE` version — measured on `z3-eval`'s `s3git1`).
+ */
+export interface ZeropsAppVersion {
+  readonly id?: string;
+  readonly name?: string | null;
+  readonly status?: string;
+  readonly source?: string;
+  readonly created?: string;
+  readonly lastUpdate?: string;
+  readonly githubIntegration?: ZeropsGitIntegration | null;
+  readonly gitlabIntegration?: ZeropsGitIntegration | null;
+  readonly publicGitSource?: {
+    readonly branchName?: string | null;
+    readonly repositoryUrl?: string | null;
+  } | null;
+}
+
 export interface ZeropsService {
   readonly id: string;
   readonly name: string;
@@ -148,6 +207,15 @@ export interface ZeropsService {
     readonly serviceStackTypeVersionName?: string;
     readonly serviceStackTypeCategory?: string;
   };
+  /** The exact runtime version, `v22.22.3` for a `nodejs@22`; empty on the core service. */
+  readonly versionNumber?: string;
+  /** `HA` or `NON_HA` on a managed service; `null` on a runtime. */
+  readonly mode?: string | null;
+  readonly created?: string;
+  readonly lastUpdate?: string;
+  readonly activeAppVersion?: ZeropsAppVersion | null;
+  readonly githubIntegration?: ZeropsGitIntegration | null;
+  readonly gitlabIntegration?: ZeropsGitIntegration | null;
 }
 
 /** One record from `GET /service-stack/{id}/env`. */
@@ -747,6 +815,34 @@ export class ZeropsApiClient {
       `/project/${projectId}/service-stack`,
     );
     return response.list ?? [];
+  }
+
+  /**
+   * `POST /current-stats/group-by-search` — every container's live
+   * allocation in a project, the read behind the Zerops dashboard's own
+   * "1 container · Cores · RAM · Disk" strip. The `clientId` filter is
+   * required (a search without it answers `400 clientId: not defined`);
+   * grouping by container is what lets a caller count containers per stack.
+   * Measured 2026-09-06 (`verified.md`).
+   */
+  async searchCurrentStats(
+    clientId: string,
+    projectId: string,
+  ): Promise<ReadonlyArray<ZeropsCurrentStat>> {
+    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsCurrentStat> }>(
+      "/current-stats/group-by-search",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          search: [
+            { name: "clientId", operator: "eq", value: clientId },
+            { name: "projectId", operator: "eq", value: projectId },
+          ],
+          groupBy: "containerId",
+        }),
+      },
+    );
+    return response.items ?? [];
   }
 
   fetchService(serviceId: string): Promise<ZeropsService> {

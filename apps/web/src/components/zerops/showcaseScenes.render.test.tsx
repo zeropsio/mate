@@ -1,6 +1,7 @@
 import {
   buildZeropsServiceMap,
   serviceStatusTone,
+  zeropsStatusWord,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
@@ -41,7 +42,7 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
   } else {
     expect(mapMarkup).toContain("data-zerops-service-map");
     for (const service of topologyView.services) {
-      expect(mapMarkup).toContain(service.status);
+      expect(mapMarkup).toContain(zeropsStatusWord(service.status));
       expect(mapMarkup).toContain(`data-zerops-service-tone="${serviceStatusTone(service)}"`);
       if (service.transient) {
         expect(mapMarkup).toContain("data-zerops-service-transient");

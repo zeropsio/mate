@@ -20,6 +20,14 @@ const project: ZeropsProject = { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", 
 
 const WEATHERDASH_ID = "EmWgeZ4rTiK0Ajpm8iH83A";
 
+const service = (
+  overrides: Partial<ZeropsService> & { id: string; name: string },
+): ZeropsService => ({
+  status: "ACTIVE",
+  isSystem: false,
+  ...overrides,
+});
+
 describe("projectTopology — grouping", () => {
   it("groups a captured project into runtime, data and infrastructure", () => {
     const view = projectTopology(project, realServices, []);
@@ -147,5 +155,228 @@ describe("zcpServiceIdFor", () => {
     const decoyView = projectTopology(project, [decoy], []);
 
     expect(zcpServiceIdFor(decoyView)).toBeUndefined();
+  });
+});
+
+describe("projectTopology — what the list read already knows about a service", () => {
+  const byHostname = () => {
+    const view = projectTopology(project, realServices, []);
+    return new Map(view.services.map((service) => [service.hostname, service]));
+  };
+
+  it("carries the type's display name, the exact version and the timestamps", () => {
+    const z3web = byHostname().get("z3web");
+
+    expect(z3web?.typeName).toBe("Static");
+    expect(z3web?.version).toBe("v1.0.0");
+    expect(z3web?.createdAt).toBe("2026-08-31T09:06:10Z");
+    expect(z3web?.updatedAt).toBe("2026-09-01T08:30:35Z");
+    expect(byHostname().get("db")?.typeName).toBe("MariaDB");
+    expect(byHostname().get("db")?.version).toBe("v10.6.16");
+  });
+
+  it("names the managed service's mode and leaves a runtime's absent", () => {
+    expect(byHostname().get("db")?.mode).toBe("NON_HA");
+    expect(byHostname().get("z3web")).not.toHaveProperty("mode");
+  });
+
+  it("carries the running deploy with its source and activation time", () => {
+    expect(byHostname().get("z3web")?.deploy).toEqual({
+      source: "CLI",
+      activatedAt: "2026-09-01T08:30:34Z",
+    });
+    expect(byHostname().get("zcp")?.deploy?.source).toBe("GIT");
+  });
+
+  it("has no deploy for a managed service, nor for a runtime that was never deployed", () => {
+    expect(byHostname().get("db")).not.toHaveProperty("deploy");
+    // `s3git1` carries an ACTIVE app version whose source is NONE.
+    expect(byHostname().get("s3git1")).not.toHaveProperty("deploy");
+  });
+
+  it("reads a git deploy's branch, commit and repository off the integration", () => {
+    const view = projectTopology(
+      project,
+      [
+        {
+          id: "svc-git",
+          name: "api",
+          status: "ACTIVE",
+          activeAppVersion: {
+            source: "GITHUB",
+            lastUpdate: "2026-09-05T10:00:00Z",
+            githubIntegration: {
+              eventType: "BRANCH",
+              branchName: "main",
+              commit: "abc1234def",
+              repositoryFullName: "acme/api",
+            },
+          },
+        },
+      ],
+      [],
+    );
+
+    expect(view.services[0]?.deploy).toEqual({
+      source: "GITHUB",
+      activatedAt: "2026-09-05T10:00:00Z",
+      branch: "main",
+      commit: "abc1234def",
+      repository: "acme/api",
+    });
+  });
+});
+
+describe("projectTopology — public routes", () => {
+  const subdomainProject: ZeropsProject = {
+    ...project,
+    publicZone: "fte2334ab.prg1-zerops.zone",
+    zeropsSubdomainHost: "26a7",
+  };
+
+  it("lists every subdomain-enabled http port as a route, host without its scheme", () => {
+    const view = projectTopology(
+      subdomainProject,
+      [
+        service({
+          id: "svc-web",
+          name: "web",
+          subdomainAccess: true,
+          ports: [
+            { port: 80, scheme: "http" },
+            { port: 3000, scheme: "http" },
+            { port: 5432, scheme: "tcp" },
+          ],
+        }),
+      ],
+      [],
+    );
+
+    expect(view.services[0]?.routes).toEqual([
+      { port: 80, url: "https://web-26a7.prg1.zerops.app", host: "web-26a7.prg1.zerops.app" },
+      {
+        port: 3000,
+        url: "https://web-26a7-3000.prg1.zerops.app",
+        host: "web-26a7-3000.prg1.zerops.app",
+      },
+    ]);
+    expect(view.services[0]?.subdomainUrl).toBe("https://web-26a7.prg1.zerops.app");
+  });
+
+  it("has no routes for a service without subdomain access", () => {
+    const view = projectTopology(subdomainProject, realServices, []);
+
+    expect(view.services.find((entry) => entry.hostname === "db")?.routes).toEqual([]);
+  });
+});
+
+/**
+ * `POST /current-stats/group-by-search` grouped by container for
+ * `acme-docs-dev`, captured 2026-09-06: the zcp container and the core
+ * service's, with the ids the project's service list carries.
+ */
+const liveStats = [
+  {
+    serviceStackId: "svc-core",
+    containerId: "LVu1pkB8R2ayMzJ3yBMYsA",
+    cpu: { limit: 0, used: 0 },
+    vCpu: { limit: 1, used: 0.036 },
+    ramGBytes: { limit: 0.375, used: 0.164 },
+    diskGBytes: { limit: 1, used: 0.002 },
+  },
+  {
+    serviceStackId: "svc-zcp",
+    containerId: "Uy8sS5dCS2K3uBeU97yQCg",
+    cpu: { limit: 0, used: 0 },
+    vCpu: { limit: 2, used: 0.076 },
+    ramGBytes: { limit: 2.625, used: 0.512 },
+    diskGBytes: { limit: 2, used: 0.161 },
+  },
+];
+
+describe("projectTopology — live usage", () => {
+  const zcp = service({
+    id: "svc-zcp",
+    name: "zcp",
+    serviceStackTypeInfo: {
+      serviceStackTypeVersionName: "zcp@1",
+      serviceStackTypeCategory: "USER",
+    },
+  });
+  const app = service({
+    id: "svc-app",
+    name: "app",
+    serviceStackTypeInfo: {
+      serviceStackTypeVersionName: "ubuntu/nodejs@22",
+      serviceStackTypeCategory: "USER",
+    },
+  });
+
+  it("attaches a service's container allocation, and says the read has answered", () => {
+    const view = projectTopology(project, [zcp, app], [], liveStats);
+
+    expect(view.usageRead).toBe(true);
+    expect(view.services.find((entry) => entry.hostname === "zcp")?.usage).toEqual({
+      containers: 1,
+      cores: { used: 0.076, limit: 2 },
+      memoryGb: { used: 0.512, limit: 2.625 },
+      diskGb: { used: 0.161, limit: 2 },
+    });
+  });
+
+  it("leaves usage absent for a service with no container, once the read has answered", () => {
+    const view = projectTopology(project, [zcp, app], [], liveStats);
+
+    expect(view.services.find((entry) => entry.hostname === "app")).not.toHaveProperty("usage");
+  });
+
+  it("says the read has not answered when no stats were given", () => {
+    const view = projectTopology(project, [zcp], []);
+
+    expect(view.usageRead).toBe(false);
+    expect(view.services[0]).not.toHaveProperty("usage");
+  });
+
+  it("sums a highly available service over its containers and counts them", () => {
+    const container = (id: string) => ({
+      serviceStackId: "svc-db",
+      containerId: id,
+      cpu: { limit: 0, used: 0 },
+      vCpu: { limit: 1, used: 0.1 },
+      ramGBytes: { limit: 0.5, used: 0.2 },
+      diskGBytes: { limit: 1, used: 0.3 },
+    });
+    const view = projectTopology(
+      project,
+      [service({ id: "svc-db", name: "db" })],
+      [],
+      [container("c1"), container("c2"), container("c3")],
+    );
+
+    expect(view.services[0]?.usage).toEqual({
+      containers: 3,
+      cores: { used: 0.30000000000000004, limit: 3 },
+      memoryGb: { used: 0.6000000000000001, limit: 1.5 },
+      diskGb: { used: 0.8999999999999999, limit: 3 },
+    });
+  });
+
+  it("counts dedicated cores alongside shared ones", () => {
+    const view = projectTopology(
+      project,
+      [service({ id: "svc-app", name: "app" })],
+      [],
+      [
+        {
+          serviceStackId: "svc-app",
+          cpu: { limit: 2, used: 1.5 },
+          vCpu: { limit: 0, used: 0 },
+          ramGBytes: { limit: 1, used: 0.5 },
+          diskGBytes: { limit: 1, used: 0.5 },
+        },
+      ],
+    );
+
+    expect(view.services[0]?.usage?.cores).toEqual({ used: 1.5, limit: 2 });
   });
 });

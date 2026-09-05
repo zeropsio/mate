@@ -138,6 +138,7 @@ function topology(overrides: Partial<ZeropsTopologyView> = {}): ZeropsTopologyVi
     project: { id: "proj-1", name: "z3-eval" },
     services: [],
     warnings: [],
+    usageRead: false,
     ...overrides,
   };
 }
@@ -171,6 +172,7 @@ describe("devServerUrlFor — the Open link from the topology view", () => {
           transient: false,
           subdomainUrl: "https://apidev-26a7-3000.prg1.zerops.app",
           ports: [],
+          routes: [],
         },
       ],
     });
@@ -190,6 +192,7 @@ describe("devServerUrlFor — the Open link from the topology view", () => {
           transient: false,
           subdomainUrl: "https://weatherdash-26a7.prg1.zerops.app",
           ports: [],
+          routes: [],
         },
       ],
     });
@@ -213,6 +216,7 @@ describe("devServerUrlFor — the Open link from the topology view", () => {
           group: "runtimes",
           transient: false,
           ports: [],
+          routes: [],
         },
       ],
     });
@@ -231,6 +235,7 @@ describe("devServerUrlFor — the Open link from the topology view", () => {
           group: "runtimes",
           transient: false,
           ports: [],
+          routes: [],
         },
       ],
     });

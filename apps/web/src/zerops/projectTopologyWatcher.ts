@@ -37,6 +37,7 @@ import {
 } from "@t3tools/client-runtime/zerops/platformWatch";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops/session";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+import type { ZeropsCurrentStat } from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -45,6 +46,14 @@ import { pollerFor } from "./activity/useProjectActivity.ts";
 const CHANGED_DEBOUNCE_MS = 300;
 const DISCONNECTED_POLL_TRANSIENT_MS = 5_000;
 const DISCONNECTED_POLL_IDLE_MS = 30_000;
+/**
+ * How often a service's live allocation is re-read while the tab is visible.
+ * The platform pushes no signal for it (the dashboard subscribes over its
+ * own websocket, which this client does not open), and a container's RAM
+ * moves on the order of minutes — a slow clock, independent of the
+ * topology's doorbell.
+ */
+const USAGE_POLL_MS = 30_000;
 /** How long a hidden tab keeps its live socket open before the watcher closes it and falls back to polling. */
 const HIDDEN_CLOSE_AFTER_MS = 60_000;
 
@@ -113,6 +122,8 @@ export class ProjectTopologyWatcher {
   #ref: EnvironmentProjectRef | undefined;
   #project: ZeropsProject | undefined;
   #servicesCache: ReadonlyArray<ZeropsService> | undefined;
+  /** Undefined until the first current-stats read answers. */
+  #usageCache: ReadonlyArray<ZeropsCurrentStat> | undefined;
   #latestProcesses: ReadonlyArray<ActivityProcess> = [];
 
   #watch: PlatformWatch | undefined;
@@ -122,6 +133,7 @@ export class ProjectTopologyWatcher {
   #hiddenTimeoutHandle: unknown;
   #closedForHidden = false;
   #pollHandle: unknown;
+  #usagePollHandle: unknown;
   #debounceHandle: unknown;
   #disposed = false;
   /** Bumped on every stop, so a start left over from a stopped subscription becomes a no-op past its next await. */
@@ -206,6 +218,7 @@ export class ProjectTopologyWatcher {
     await this.#readNow();
     if (this.#disposed || myGeneration !== this.#generation) return;
     this.#scheduleNextDisconnectedPoll();
+    this.#scheduleNextUsagePoll();
   }
 
   async #resolveRef(): Promise<EnvironmentProjectRef | undefined> {
@@ -384,7 +397,12 @@ export class ProjectTopologyWatcher {
     // read may publish.
     const mySequence = (this.#readSequence += 1);
     try {
-      const services = await this.#client.listProjectServices(this.#ref.projectId);
+      // Usage rides along, tolerantly: a failed stats read keeps the last
+      // known allocation and never fails the topology.
+      const [services] = await Promise.all([
+        this.#client.listProjectServices(this.#ref.projectId),
+        this.#readUsage(),
+      ]);
       if (this.#disposed || mySequence !== this.#readSequence) return;
       this.#servicesCache = services;
       this.#recomputeView();
@@ -395,9 +413,54 @@ export class ProjectTopologyWatcher {
     }
   }
 
+  /**
+   * One current-stats read. Needs the project's owning client id (the search
+   * refuses a query without it); a project read that lacks it leaves usage
+   * unknown rather than guessing.
+   */
+  async #readUsage(): Promise<void> {
+    const clientId = this.#project?.clientId;
+    if (this.#ref === undefined || clientId === undefined) return;
+    try {
+      const usage = await this.#client.searchCurrentStats(clientId, this.#ref.projectId);
+      if (this.#disposed) return;
+      this.#usageCache = usage;
+    } catch {
+      // Keep the last known allocation; the topology read reports its own errors.
+    }
+  }
+
+  #scheduleNextUsagePoll(): void {
+    this.#stopUsagePollLoop();
+    this.#usagePollHandle = this.#setTimer(() => {
+      this.#usagePollHandle = undefined;
+      if (this.#isHidden()) {
+        this.#scheduleNextUsagePoll();
+        return;
+      }
+      void this.#readUsage().then(() => {
+        if (this.#disposed) return;
+        this.#recomputeView();
+        this.#scheduleNextUsagePoll();
+      });
+    }, USAGE_POLL_MS);
+  }
+
+  #stopUsagePollLoop(): void {
+    if (this.#usagePollHandle !== undefined) {
+      this.#clearTimer(this.#usagePollHandle);
+      this.#usagePollHandle = undefined;
+    }
+  }
+
   #recomputeView(): void {
     if (this.#project === undefined || this.#servicesCache === undefined) return;
-    const view = projectTopology(this.#project, this.#servicesCache, this.#latestProcesses);
+    const view = projectTopology(
+      this.#project,
+      this.#servicesCache,
+      this.#latestProcesses,
+      this.#usageCache,
+    );
     this.#publish({ view });
   }
 
@@ -417,6 +480,7 @@ export class ProjectTopologyWatcher {
     }
     this.#closedForHidden = false;
     this.#stopDisconnectedPollLoop();
+    this.#stopUsagePollLoop();
     if (this.#debounceHandle !== undefined) {
       this.#clearTimer(this.#debounceHandle);
       this.#debounceHandle = undefined;

@@ -20,6 +20,7 @@ const topology = (overrides: Partial<ZeropsTopologyView> = {}): ZeropsTopologyVi
   project: { id: "project-1", name: "", status: "ACTIVE" },
   services: [],
   warnings: [],
+  usageRead: false,
   ...overrides,
 });
 

@@ -11,6 +11,7 @@ const service = (
   status: "ACTIVE",
   group: "runtimes",
   transient: false,
+  routes: [],
   ports: [],
   ...overrides,
 });
@@ -22,6 +23,7 @@ const topology = (
   project: { id: "p1", name: "z3-eval", status: "ACTIVE" },
   services,
   warnings: [],
+  usageRead: false,
   ...overrides,
 });
 
