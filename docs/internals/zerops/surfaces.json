@@ -261,6 +261,7 @@
       "title": "Zerops agent authorization card",
       "components": [
         "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentAuthorizationHost.tsx",
         "apps/web/src/components/zerops/ZeropsAgentAuthorizationDialog.tsx",
         "packages/client-runtime/src/zerops/agentLogin.ts",
         "apps/web/src/zerops/useAgentLogin.ts",

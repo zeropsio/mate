@@ -259,6 +259,11 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
+import {
+  ZeropsAgentAuthorizationHost,
+  type ZeropsAgentId,
+} from "./zerops/ZeropsAgentAuthorizationHost";
+import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -3375,6 +3380,14 @@ function ChatViewContent(props: ChatViewProps) {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
   });
+  // The band's sign-in request lands here: the first agent that needs a
+  // sign-in gets the dialog, without a detour through the panel.
+  const [agentAuthDialogAgentId, setAgentAuthDialogAgentId] = useState<ZeropsAgentId | null>(null);
+  const openAgentAuthDialog = useCallback(() => {
+    const agents = zeropsChrome.agentAuthCard?.agents ?? [];
+    const agent = agents.find((entry) => agentAuthAction(entry) === "sign-in") ?? agents[0];
+    if (agent !== undefined) setAgentAuthDialogAgentId(agent.agentId);
+  }, [zeropsChrome.agentAuthCard]);
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -6647,11 +6660,21 @@ function ChatViewContent(props: ChatViewProps) {
         </WorkspacePageHeader>
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentAuthCard !== null}
+          onOpenAgentAuth={openAgentAuthDialog}
           pendingUserInput={activePendingUserInput !== null}
           running={zeropsThreadModel.running}
           session={zeropsThreadModel.session}
           threadRef={zeropsChrome.threadRef}
           zeropsPanelOpen={activeRightPanelKind === "zerops"}
+        />
+        <ZeropsAgentAuthorizationHost
+          agentId={agentAuthDialogAgentId}
+          onClose={() => {
+            setAgentAuthDialogAgentId(null);
+          }}
+          projectName={zeropsChrome.projectName}
+          snapshot={zeropsAgentAuth ?? zeropsChrome.agentAuthCard}
+          threadRef={zeropsChrome.threadRef}
         />
 
         <ThreadErrorBanner

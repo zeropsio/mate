@@ -157,6 +157,42 @@ describe("ZeropsLifecycleStrip", () => {
     },
   );
 
+  it("starts the sign-in from a band that is nothing but that request", () => {
+    // With a handler for it, the band does what it says; the panel stays the
+    // door for everything else.
+    const onOpenAgentAuth = vi.fn();
+    renderToStaticMarkup(
+      <ZeropsLifecycleStrip
+        agentAuthNeedsAttention
+        onOpenAgentAuth={onOpenAgentAuth}
+        pendingUserInput={false}
+        running={undefined}
+        session={undefined}
+        threadRef={THREAD_REF}
+      />,
+    );
+    testState.onOpen?.();
+    expect(onOpenAgentAuth).toHaveBeenCalledTimes(1);
+    expect(testState.open).not.toHaveBeenCalled();
+  });
+
+  it("keeps the panel as the door when the band also carries a lifecycle state", () => {
+    const onOpenAgentAuth = vi.fn();
+    renderToStaticMarkup(
+      <ZeropsLifecycleStrip
+        agentAuthNeedsAttention
+        onOpenAgentAuth={onOpenAgentAuth}
+        pendingUserInput={false}
+        running={undefined}
+        session={SESSION}
+        threadRef={THREAD_REF}
+      />,
+    );
+    testState.onOpen?.();
+    expect(onOpenAgentAuth).not.toHaveBeenCalled();
+    expect(testState.open).toHaveBeenCalledWith(THREAD_REF, "zerops");
+  });
+
   it("opens the panel with the same scoped thread ref object", () => {
     renderToStaticMarkup(
       <ZeropsLifecycleStrip

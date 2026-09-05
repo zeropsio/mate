@@ -41,15 +41,23 @@ const AGENT_AUTH_ATTENTION_LABEL = "Coding agent sign-in required";
 export function ZeropsStripLine({
   state,
   onOpen,
+  onOpenAgentAuth,
   agentAuthNeedsAttention = false,
 }: {
   readonly state: ZeropsStripState | undefined;
   readonly onOpen: () => void;
+  /**
+   * Starts the sign-in the band is asking for. When the band is nothing but
+   * that request, a click should do what it says rather than open a panel
+   * the person then has to search; without this, the panel is the fallback.
+   */
+  readonly onOpenAgentAuth?: (() => void) | undefined;
   readonly agentAuthNeedsAttention?: boolean;
 }) {
   if (state === undefined && !agentAuthNeedsAttention) {
     return null;
   }
+  const signInOnly = state === undefined && onOpenAgentAuth !== undefined;
   const visibleState =
     state ??
     ({
@@ -72,7 +80,7 @@ export function ZeropsStripLine({
             )}
             data-zerops-lifecycle-band="true"
             data-zerops-strip-tone={visibleState.tone}
-            onClick={onOpen}
+            onClick={signInOnly ? onOpenAgentAuth : onOpen}
             type="button"
           />
         }
@@ -94,7 +102,9 @@ export function ZeropsStripLine({
           />
         ) : null}
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Open the Zerops service map</TooltipPopup>
+      <TooltipPopup side="bottom">
+        {signInOnly ? "Sign in the coding agent" : "Open the Zerops service map"}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -106,6 +116,7 @@ export function ZeropsLifecycleStrip({
   running,
   agentAuthNeedsAttention = false,
   zeropsPanelOpen = false,
+  onOpenAgentAuth,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly pendingUserInput: boolean;
@@ -114,6 +125,7 @@ export function ZeropsLifecycleStrip({
   readonly running: ZeropsOperation | undefined;
   readonly agentAuthNeedsAttention?: boolean;
   readonly zeropsPanelOpen?: boolean;
+  readonly onOpenAgentAuth?: (() => void) | undefined;
 }) {
   const state = zeropsStripState(session, running, pendingUserInput);
 
@@ -127,6 +139,7 @@ export function ZeropsLifecycleStrip({
       onOpen={() => {
         useRightPanelStore.getState().open(threadRef, "zerops");
       }}
+      onOpenAgentAuth={onOpenAgentAuth}
       state={state}
     />
   );
