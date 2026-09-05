@@ -553,6 +553,7 @@
         "apps/web/src/zerops/turnstile.tsx",
         "packages/client-runtime/src/zerops/accountScope.ts",
         "packages/client-runtime/src/zerops/autoEnterProvisioning.ts",
+        "packages/client-runtime/src/zerops/bots.ts",
         "packages/client-runtime/src/zerops/candidates.ts",
         "packages/client-runtime/src/zerops/containerHealth.ts",
         "packages/client-runtime/src/zerops/giteaRecipe.ts",

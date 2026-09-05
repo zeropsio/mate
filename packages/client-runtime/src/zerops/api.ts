@@ -878,6 +878,63 @@ export class ZeropsApiClient {
    * the import request: it is deliberately absent from the return value, so no
    * caller can put it on a screen, in a log or in storage.
    */
+  /**
+   * `POST /client/{clientId}/project` with an explicit tag list, and nothing
+   * else — no container.
+   *
+   * Separate from {@link createProjectWithZeropsMate} because a production
+   * environment is a project that deliberately has no agent
+   * (`createEnvironment.ts`), and because the caller owns the tags: the group
+   * name mirror is one of them, and this client must not decide it.
+   */
+  async createProject(input: {
+    readonly clientId: string;
+    readonly name: string;
+    readonly tagList: ReadonlyArray<string>;
+    readonly location?: string;
+  }): Promise<ZeropsProject> {
+    return this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
+      method: "POST",
+      body: JSON.stringify(
+        buildCreateProjectBody({
+          clientId: input.clientId,
+          name: input.name,
+          tagList: input.tagList,
+          ...(input.location ? { location: input.location } : {}),
+        }),
+      ),
+    });
+  }
+
+  /**
+   * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
+   * that carries the agent, imported into a project that already exists.
+   *
+   * Returns the service name it chose, which is what the caller polls for.
+   */
+  async importDevelopmentContainer(input: {
+    readonly projectId: string;
+    readonly existingServiceNames?: ReadonlyArray<string>;
+    readonly zcpVersion?: string;
+    readonly agents?: ReadonlyArray<ZeropsAgentType>;
+  }): Promise<{ readonly serviceName: string }> {
+    const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
+    await this.#request(`/project/${input.projectId}/first-class-recipe/development-container`, {
+      method: "PUT",
+      body: JSON.stringify(
+        buildDevelopmentContainerImportBody({
+          serviceImportYaml: buildZcpServiceImportYaml({
+            serviceName,
+            vscodePassword: generateVscodePassword(),
+            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+            ...(input.agents ? { agents: input.agents } : {}),
+          }),
+        }),
+      ),
+    });
+    return { serviceName };
+  }
+
   async createProjectWithZeropsMate(input: {
     readonly clientId: string;
     readonly name: string;

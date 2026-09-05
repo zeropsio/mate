@@ -7,6 +7,7 @@ import {
   formatRoleTag,
   generateZeropsGroupId,
   readZeropsGroupTags,
+  withZeropsBotTag,
   withZeropsGroupTags,
   formatLabelTag,
   ZEROPS_GROUP_ID_LENGTH,
@@ -333,5 +334,114 @@ describe("deriveZeropsGroups", () => {
 
     expect(result.groups).toEqual([]);
     expect(result.ungrouped.map((entry) => entry.name)).toEqual(["legacy"]);
+  });
+});
+
+describe("bot names on the tag", () => {
+  it("reads the agent's name off the project", () => {
+    expect(readZeropsGroupTags(["mate:g:aaa", "mate:bot:Ada"]).bot).toBe("Ada");
+  });
+
+  it("has no name when the project carries none", () => {
+    expect(readZeropsGroupTags(["mate:g:aaa"]).bot).toBeUndefined();
+  });
+
+  it("writes a name", () => {
+    expect(withZeropsBotTag([], "Ada")).toContain("mate:bot:Ada");
+  });
+
+  /**
+   * The writer used to rewrite the whole `mate:` namespace, so changing a role
+   * silently deleted the agent's name — and a tool marker with it. Anything
+   * the call was not asked about now survives it.
+   */
+  it("keeps the agent's name through an unrelated role change", () => {
+    const after = withZeropsGroupTags(["mate:g:aaa", "mate:role:dev", "mate:bot:Ada"], {
+      groupId: "aaa",
+      role: "stage",
+    });
+    expect(after).toContain("mate:bot:Ada");
+    expect(after).toContain("mate:role:stage");
+    expect(after).not.toContain("mate:role:dev");
+  });
+
+  it("keeps a tool marker through a group write", () => {
+    expect(withZeropsGroupTags(["mate:tool:gitea"], { groupId: "aaa" })).toContain(
+      "mate:tool:gitea",
+    );
+  });
+
+  it("replaces the name when a new one is given", () => {
+    const after = withZeropsBotTag(["mate:bot:Ada"], "Bruno");
+    expect(after).toContain("mate:bot:Bruno");
+    expect(after).not.toContain("mate:bot:Ada");
+  });
+
+  it("writes no tag for a blank name rather than an empty one", () => {
+    expect(withZeropsBotTag([], "   ")).toEqual([]);
+  });
+
+  it("still preserves tags this product does not own", () => {
+    expect(withZeropsBotTag(["billing:team-a"], "Ada")).toContain("billing:team-a");
+  });
+});
+
+/**
+ * Writing one kind must not delete the others. The first version of the
+ * preserve rule dropped group, role and label unconditionally, so naming an
+ * agent silently un-grouped its project — on a live account, before this test
+ * existed.
+ */
+describe("withZeropsGroupTags preserves what it was not asked to change", () => {
+  const FULL = ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM", "mate:bot:Ada"];
+
+  it("keeps group, role and label when only the agent is named", () => {
+    const after = withZeropsBotTag(FULL, "Bruno");
+    expect(after).toContain("mate:g:aaa");
+    expect(after).toContain("mate:role:dev");
+    expect(after).toContain("mate:name:Beviro CRM");
+    expect(after).toContain("mate:bot:Bruno");
+  });
+
+  /**
+   * Membership is written as a whole, so a caller changing a role passes the
+   * group with it. A role alone is a project that has left its group and kept
+   * a role — which is why `updateProjectGroupTags` reads before it writes.
+   */
+  it("treats a role without a group as leaving the group", () => {
+    const after = withZeropsGroupTags(FULL, { role: "prod" });
+    expect(after).toContain("mate:role:prod");
+    expect(after).not.toContain("mate:g:aaa");
+    expect(after).not.toContain("mate:name:Beviro CRM");
+    // The agent still travels with the project.
+    expect(after).toContain("mate:bot:Ada");
+  });
+
+  it("keeps the group and the name when the whole membership is passed", () => {
+    const after = withZeropsGroupTags(FULL, {
+      groupId: "aaa",
+      role: "prod",
+      label: "Beviro CRM",
+    });
+    expect(after).toContain("mate:g:aaa");
+    expect(after).toContain("mate:name:Beviro CRM");
+    expect(after).toContain("mate:role:prod");
+    expect(after).not.toContain("mate:role:dev");
+  });
+
+  it("keeps the agent through a regrouping — it belongs to the project", () => {
+    expect(withZeropsGroupTags(FULL, { groupId: "bbb" })).toContain("mate:bot:Ada");
+  });
+
+  it("drops a stale name mirror when the project moves group unnamed", () => {
+    const after = withZeropsGroupTags(FULL, { groupId: "bbb" });
+    expect(after).toContain("mate:g:bbb");
+    expect(after).not.toContain("mate:name:Beviro CRM");
+  });
+
+  it("carries the new mirror when the move names the group", () => {
+    const after = withZeropsGroupTags(FULL, { groupId: "bbb", label: "Acme Docs" });
+    expect(after).toContain("mate:name:Acme Docs");
+    expect(after).not.toContain("mate:name:Beviro CRM");
   });
 });

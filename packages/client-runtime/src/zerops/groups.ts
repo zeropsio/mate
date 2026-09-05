@@ -53,6 +53,8 @@ export const MATE_TAG_NAMESPACE = "mate";
 const GROUP_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:g:`;
 const ROLE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:role:`;
 const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
+/** The agent living in this environment, named so a person can address it. */
+const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
 
 /** Any tag this module owns; everything else on a project is foreign and preserved verbatim. */
 const MATE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:`;
@@ -102,11 +104,25 @@ export function formatLabelTag(name: string): string | undefined {
   return normalized.length === 0 ? undefined : `${LABEL_TAG_PREFIX}${normalized}`;
 }
 
+/**
+ * The agent's name as a tag. Same normalisation as the group label — it is a
+ * name a person types — but short, because it is read in a menu row rather
+ * than a heading.
+ */
+export function formatBotTag(name: string): string | undefined {
+  const normalized = name.replace(/\s+/g, " ").trim().slice(0, ZEROPS_BOT_NAME_MAX_LENGTH).trim();
+  return normalized.length === 0 ? undefined : `${BOT_TAG_PREFIX}${normalized}`;
+}
+
+export const ZEROPS_BOT_NAME_MAX_LENGTH = 24;
+
 export interface ZeropsGroupTags {
   readonly groupId: string | undefined;
   readonly role: ZeropsEnvironmentRole | undefined;
   /** The display mirror (`mate:name:`), never authoritative — see the module doc. */
   readonly label: string | undefined;
+  /** The agent's own name (`mate:bot:`), the thing a person addresses. */
+  readonly bot: string | undefined;
 }
 
 /**
@@ -118,6 +134,7 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
   let groupId: string | undefined;
   let role: ZeropsEnvironmentRole | undefined;
   let label: string | undefined;
+  let bot: string | undefined;
 
   for (const tag of tagList ?? []) {
     if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
@@ -130,13 +147,18 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
       if (isEnvironmentRole(value)) role = value;
       continue;
     }
+    if (bot === undefined && tag.startsWith(BOT_TAG_PREFIX)) {
+      const value = tag.slice(BOT_TAG_PREFIX.length).trim();
+      if (value.length > 0) bot = value;
+      continue;
+    }
     if (label === undefined && tag.startsWith(LABEL_TAG_PREFIX)) {
       const value = tag.slice(LABEL_TAG_PREFIX.length).trim();
       if (value.length > 0) label = value;
     }
   }
 
-  return { groupId, role, label };
+  return { groupId, role, label, bot };
 }
 
 /**
@@ -156,7 +178,24 @@ export function withZeropsGroupTags(
     readonly label?: string;
   },
 ): ReadonlyArray<string> {
-  const foreign = (tagList ?? []).filter((tag) => !tag.startsWith(MATE_TAG_PREFIX));
+  const existing = tagList ?? [];
+  const foreign = existing.filter((tag) => !tag.startsWith(MATE_TAG_PREFIX));
+  // Tags this call was not asked about survive it. A caller changing a role
+  // must not silently drop the agent's name or the project's tool marker —
+  // rewriting the whole `mate:` namespace on every write did exactly that.
+  // Membership is written wholesale: `next` IS the desired membership, and an
+  // empty one means the project leaves its group. What survives that is
+  // everything in the `mate:` namespace that is not membership — the agent's
+  // name and the tool marker belong to the project, not to its group, and a
+  // regrouping must not delete them.
+  const untouched = existing.filter(
+    (tag) =>
+      tag.startsWith(MATE_TAG_PREFIX) &&
+      !tag.startsWith(GROUP_TAG_PREFIX) &&
+      !tag.startsWith(ROLE_TAG_PREFIX) &&
+      !tag.startsWith(LABEL_TAG_PREFIX),
+  );
+
   const mate: Array<string> = [];
   if (next.groupId !== undefined) mate.push(formatGroupTag(next.groupId));
   if (next.role !== undefined) mate.push(formatRoleTag(next.role));
@@ -166,7 +205,27 @@ export function withZeropsGroupTags(
     const labelTag = formatLabelTag(next.label);
     if (labelTag !== undefined) mate.push(labelTag);
   }
-  return [...foreign, ...mate];
+  return [...foreign, ...untouched, ...mate];
+}
+
+/**
+ * Names the agent living in this project, touching nothing else.
+ *
+ * Deliberately not a parameter of {@link withZeropsGroupTags}: that function
+ * writes *membership*, and an empty membership means "leave the group". Naming
+ * an agent through it therefore un-grouped the project — which is not a
+ * hypothetical, it happened to a live account before this split existed.
+ *
+ * A blank name removes the tag, so an agent can be un-named back to its
+ * project's own name.
+ */
+export function withZeropsBotTag(
+  tagList: ReadonlyArray<string> | undefined,
+  name: string,
+): ReadonlyArray<string> {
+  const kept = (tagList ?? []).filter((tag) => !tag.startsWith(BOT_TAG_PREFIX));
+  const botTag = formatBotTag(name);
+  return botTag === undefined ? kept : [...kept, botTag];
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

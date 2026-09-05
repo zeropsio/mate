@@ -73,6 +73,7 @@ export {
   formatRoleTag,
   generateZeropsGroupId,
   readZeropsGroupTags,
+  withZeropsBotTag,
   withZeropsGroupTags,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,
@@ -142,3 +143,4 @@ export {
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
+export { botDisplayName, generateBotName, hasBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";

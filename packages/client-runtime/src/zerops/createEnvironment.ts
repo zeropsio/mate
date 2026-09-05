@@ -26,7 +26,7 @@
  * @module createEnvironment
  */
 
-import { withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
+import { withZeropsBotTag, withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
 import { canCreateEnvironment, type ZeropsGroupRecord } from "./recipeStore.ts";
 
 /**
@@ -55,6 +55,12 @@ export interface EnvironmentCreationInput {
   readonly location?: string;
   /** Overrides {@link defaultAgentForRole}. */
   readonly withAgent?: boolean;
+  /**
+   * The agent's name, written onto the project at birth (`bots.ts`). A caller
+   * that omits it gets an environment whose menu row falls back to the project
+   * name — legible, but not somebody you can address.
+   */
+  readonly botName?: string;
 }
 
 export type EnvironmentCreationStep =
@@ -106,11 +112,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     {
       kind: "create-project",
       name,
-      tagList: withZeropsGroupTags([], {
-        groupId: input.groupId,
-        role: input.role,
-        ...(input.groupName === undefined ? {} : { label: input.groupName }),
-      }),
+      // Membership first, then the name: naming is not a membership write, and
+      // routing it through one clears the group (`groups.ts`).
+      tagList: taggedAtBirth(input),
       location: input.location,
     },
   ];
@@ -137,4 +141,14 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
     case "await-ready":
       return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
   }
+}
+
+/** The tags a new environment is created with: its membership and its agent. */
+function taggedAtBirth(input: EnvironmentCreationInput): ReadonlyArray<string> {
+  const membership = withZeropsGroupTags([], {
+    groupId: input.groupId,
+    role: input.role,
+    ...(input.groupName === undefined ? {} : { label: input.groupName }),
+  });
+  return input.botName === undefined ? membership : withZeropsBotTag(membership, input.botName);
 }

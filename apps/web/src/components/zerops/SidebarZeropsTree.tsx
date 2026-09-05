@@ -12,11 +12,16 @@
  * where you work; that is where you manage.
  */
 import {
+  botDisplayName,
   buildZeropsGroupTree,
+  hasBotName,
   mateEnvironmentsEmptyReason,
+  readZeropsGroupTags,
   selectMateEnvironments,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+
+import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MicroLabel, StatusDot } from "./primitives";
@@ -42,6 +47,15 @@ export interface SidebarZeropsTreeProps<T extends ZeropsCandidate> {
   /** Opens the projects screen — the only route out of an empty menu. */
   readonly onBrowseProjects: () => void;
   readonly activeProjectId?: string | null;
+  /**
+   * What this agent is doing right now, one short line.
+   *
+   * Injected because the answer is a thread's status, and `resolveThreadStatus`
+   * is the one resolver for that (R5) — this tree must not grow a second
+   * opinion about whether an agent is working. Absent for an environment mate
+   * is not connected to, because then nobody knows.
+   */
+  readonly renderActivity?: (candidate: T) => ReactNode;
   readonly className?: string;
 }
 
@@ -50,6 +64,7 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
   onSelect,
   onBrowseProjects,
   activeProjectId,
+  renderActivity,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const environments = selectMateEnvironments(candidates);
@@ -95,6 +110,7 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
               candidate={item}
               key={item.key}
               onSelect={onSelect}
+              {...(renderActivity ? { renderActivity } : {})}
             />
           ))}
         </section>
@@ -109,6 +125,7 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
               candidate={item}
               key={item.key}
               onSelect={onSelect}
+              {...(renderActivity ? { renderActivity } : {})}
             />
           ))}
         </section>
@@ -122,29 +139,50 @@ function Row<T extends ZeropsCandidate>({
   badge,
   active,
   onSelect,
+  renderActivity,
 }: {
   readonly candidate: T;
   readonly badge?: string | null;
   readonly active: boolean;
   readonly onSelect: (candidate: T) => void;
+  readonly renderActivity?: (candidate: T) => ReactNode;
 }) {
+  const bot = readZeropsGroupTags(candidate.project.tagList).bot;
+  const name = botDisplayName({ bot, projectName: candidate.project.name });
+  const activity = renderActivity?.(candidate);
+
   return (
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+        "flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left",
         active ? "bg-sidebar-row-hover" : "hover:bg-sidebar-row-hover",
       )}
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <span className="min-w-0 flex-1 truncate">{candidate.project.name}</span>
-      {badge ? (
-        <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-          {badge}
+      <span className="flex w-full min-w-0 items-center gap-2 text-sm">
+        {/* The agent's name leads. Under its group and next to its role badge,
+            the project name would be the same fact told three times — and it
+            is not the thing a person addresses. */}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            hasBotName(bot) ? undefined : "text-[var(--muted-foreground)]",
+          )}
+        >
+          {name}
         </span>
-      ) : null}
-      <StatusDot label={LABEL[candidate.group]} tone={TONE[candidate.group]} />
+        {badge ? (
+          <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      {/* What it is doing, when that is knowable; otherwise where it stands. */}
+      <span className="flex w-full min-w-0 items-center text-[var(--muted-foreground)]">
+        {activity ?? <StatusDot label={LABEL[candidate.group]} tone={TONE[candidate.group]} />}
+      </span>
     </button>
   );
 }

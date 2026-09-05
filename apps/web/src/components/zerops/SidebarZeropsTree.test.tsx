@@ -95,3 +95,35 @@ describe("SidebarZeropsTree", () => {
     expect(html.match(/aria-current="true"/gu)).toHaveLength(1);
   });
 });
+
+describe("the agent's name", () => {
+  const NAMED = candidate("crm-dev", [
+    "mate:g:aaa",
+    "mate:role:dev",
+    "mate:name:Beviro CRM",
+    "mate:bot:Ada",
+  ]);
+
+  it("leads with the agent's name, not the project's", () => {
+    const html = render([NAMED]);
+    expect(html).toContain("Ada");
+    expect(html).not.toContain("crm-dev");
+  });
+
+  it("falls back to the project name when no agent is named", () => {
+    expect(render([CRM_DEV])).toContain("crm-dev");
+  });
+
+  it("shows what it is doing when the caller knows", () => {
+    const html = render([NAMED], {
+      renderActivity: () => <span>reviewing the migration</span>,
+    });
+    expect(html).toContain("reviewing the migration");
+    // The injected line replaces the bucket, rather than sitting beside it.
+    expect(html).not.toContain("READY");
+  });
+
+  it("falls back to where it stands when nobody knows", () => {
+    expect(render([NAMED])).toContain("Ready");
+  });
+});

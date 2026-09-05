@@ -147,3 +147,40 @@ describe("environmentCreationStepLabel", () => {
     );
   });
 });
+
+describe("the agent's name", () => {
+  const RECORD = {
+    groupId: "g1",
+    name: "Beviro CRM",
+    recipes: { stage: "services:\n  - hostname: api\n" },
+  };
+
+  it("is written onto the project at birth, not added afterwards", () => {
+    const plan = planEnvironmentCreation({
+      clientId: "c1",
+      groupId: "g1",
+      role: "stage",
+      name: "crm-stage",
+      record: RECORD,
+      botName: "Ada",
+    });
+    expect(plan.ok).toBe(true);
+    const step = plan.ok ? plan.steps[0] : undefined;
+    expect(step?.kind).toBe("create-project");
+    expect(step?.kind === "create-project" ? step.tagList : []).toContain("mate:bot:Ada");
+  });
+
+  it("is optional — an unnamed environment still plans", () => {
+    const plan = planEnvironmentCreation({
+      clientId: "c1",
+      groupId: "g1",
+      role: "stage",
+      name: "crm-stage",
+      record: RECORD,
+    });
+    expect(plan.ok).toBe(true);
+    const step = plan.ok ? plan.steps[0] : undefined;
+    const tags = step?.kind === "create-project" ? step.tagList : [];
+    expect(tags.some((tag) => tag.startsWith("mate:bot:"))).toBe(false);
+  });
+});
