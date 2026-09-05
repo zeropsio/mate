@@ -137,3 +137,8 @@ export {
   type ZeropsGroupTreeView,
   type ZeropsProjectCarrier,
 } from "./groupTree.ts";
+export {
+  hasMateContainer,
+  mateEnvironmentsEmptyReason,
+  selectMateEnvironments,
+} from "./mateEnvironments.ts";

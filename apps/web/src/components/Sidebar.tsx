@@ -188,7 +188,11 @@ import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
+import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
+import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
+import { SidebarZeropsTree } from "./zerops/SidebarZeropsTree";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -2003,6 +2007,21 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops/new" });
   }, [isMobile, router, setOpenMobile]);
 
+  // The left menu lists environments that have Mate. Membership is the
+  // container's presence, not a live session, so a sleeping container changes
+  // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
+  // else about the account is the projects screen's job.
+  const { status: zeropsStatus } = useZeropsSession();
+  const zeropsSignedIn = zeropsStatus === "signed-in";
+  const { candidates: zeropsCandidates } = useZeropsCandidates();
+
+  const navigateToZeropsProjects = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    void router.navigate({ to: "/zerops" });
+  }, [isMobile, router, setOpenMobile]);
+
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
   // merging, no optimistic holds. Archived threads remain hidden here —
@@ -3622,6 +3641,28 @@ export default function Sidebar() {
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
+          {zeropsSignedIn && !isSearchingThreads ? (
+            <SidebarZeropsTree
+              activeProjectId={null}
+              candidates={zeropsCandidates}
+              className="mb-2"
+              onBrowseProjects={navigateToZeropsProjects}
+              onSelect={(candidate) => {
+                if (isMobile) {
+                  setOpenMobile(false);
+                }
+                // Already connected: open it. Otherwise hand off to the
+                // projects screen, which owns the connect flow — better than a
+                // row that looks clickable and quietly does nothing.
+                if (candidate.environmentId) {
+                  rememberZeropsEnvironment(String(candidate.environmentId));
+                  void router.navigate({ to: "/" });
+                  return;
+                }
+                void router.navigate({ to: "/zerops" });
+              }}
+            />
+          ) : null}
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider
@@ -4088,7 +4129,7 @@ export default function Sidebar() {
             settledThreads.length ===
             0 ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {projects.length === 0 ? (
+              {zeropsSignedIn ? null : projects.length === 0 ? (
                 <>
                   <span>No projects yet</span>
                   <button
