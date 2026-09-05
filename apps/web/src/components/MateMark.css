@@ -1,8 +1,10 @@
 /*
  * The mark's own colours are brand geometry, not theme: they come from
  * `MATE_MARK` in shared/brand.ts, and the favicon generator inlines the same
- * values. Only the side wall needs a light/dark pair here, because it is the
- * one surface drawn behind the mark rather than on it.
+ * values. The side wall is the one surface drawn behind the mark rather than
+ * on it, so it alone needs a light/dark pair — `--zerops-mate-mark-side`, in
+ * the app's palette (index.css, pinned to `MATE_MARK_LIVE.side`), so it
+ * follows the app's appearance rather than the OS's.
  *
  * The <svg> IS the component's root — no wrapper element. A wrapper meant the
  * caller's sizing classes landed on a box that did not centre the same way,
@@ -15,13 +17,6 @@
   overflow: visible;
   transform-origin: 50% 50%;
   color: var(--foreground);
-  --mate-mark-side: #2d716b;
-}
-
-@media (prefers-color-scheme: dark) {
-  .mate-mark {
-    --mate-mark-side: #8ad4cb;
-  }
 }
 
 .mate-mark[data-mate-mark="live"] {
@@ -29,7 +24,7 @@
 }
 
 .mate-mark-sides {
-  fill: var(--mate-mark-side);
+  fill: var(--zerops-mate-mark-side);
 }
 
 /*
@@ -45,10 +40,21 @@
 }
 
 /*
- * The lockup shares the mark's colour rule and its overflow: the t's ascender
- * rises just past the mark's box, and clipping it would dock the letter.
+ * The lockup is two boxes at one height — the mark (still or live) and the
+ * word — laid side by side so that the live mark can turn on its own root
+ * without taking the letters with it. Each child fills the height and takes
+ * its width from its viewBox, so the pair is the one `MATE_LOCKUP` box.
  */
 .mate-lockup {
-  display: block;
+  display: inline-flex;
+  align-items: stretch;
   color: var(--foreground);
+}
+
+.mate-lockup > svg {
+  display: block;
+  height: 100%;
+  width: auto;
+  /* The t's ascender rises just past the box, and the live mark turns past it. */
+  overflow: visible;
 }

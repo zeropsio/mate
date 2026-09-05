@@ -35,9 +35,11 @@ describe("SidebarChromeHeader", () => {
   it("renders the shared Mate lockup and sourced product name without T3 branding", () => {
     const markup = renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />);
 
-    // The lockup: mark and wordmark in one box, the name set once by geometry.
-    expect(markup).toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
-    expect(markup).toContain('data-mate-lockup="still"');
+    // The lockup: the live mark and the wordmark, two boxes that are one; the
+    // name set once by geometry.
+    expect(markup).toContain(`viewBox="${MATE_LOCKUP.word.viewBox}"`);
+    expect(markup).toContain('data-mate-lockup="live"');
+    expect(markup).toContain('data-mate-mark="live"');
     expect(markup).toContain(`aria-hidden="true"`);
     // The link names the product once; the lockup inside it stays decorative.
     expect(markup).toContain(`aria-label="${APP_BASE_NAME}"`);

@@ -46,7 +46,7 @@ function SidebarBrand() {
     >
       {/* Identity v1's lockup: the still mark and the wordmark, outlined — the
           one place the product's name is set, so no page repeats it. */}
-      <MateLockup decorative className="h-6 w-auto" />
+      <MateLockup decorative live className="h-6 w-auto" />
     </Link>
   );
 }
