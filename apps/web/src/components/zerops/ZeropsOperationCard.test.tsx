@@ -1,15 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
-import type { ZeropsCallEntry, ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import {
+  deriveZeropsThreadModel,
+  reduceZeropsOperations,
+  type ZeropsCall,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import {
   addMariadb,
-  callEntriesFromThread,
   verifyAndRefusedDeploy,
   weatherdashFirstDeploy,
+  type ZeropsShowcaseThread,
 } from "@t3tools/client-runtime/zerops/operations/fixtures";
-import { EnvironmentId, ThreadId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 const panelTestState = vi.hoisted(() => ({
@@ -41,13 +45,44 @@ vi.mock("../../rightPanelStore", () => ({
   },
 }));
 
-import { deriveWorkLogEntries, deriveZeropsOperations } from "../../session-logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
-const operationsFor = (
-  thread: Parameters<typeof callEntriesFromThread>[0],
-): ReadonlyArray<ZeropsOperation> =>
-  reduceZeropsOperations(callEntriesFromThread(thread)).operations;
+/** Every `ZeropsOperation` (card kind) a real captured thread's activities fold into. */
+function operationsFor(thread: ZeropsShowcaseThread): ReadonlyArray<ZeropsOperation> {
+  return deriveZeropsThreadModel({ activities: thread.activities })
+    .entries.filter(
+      (entry): entry is Extract<typeof entry, { kind: "operation" }> => entry.kind === "operation",
+    )
+    .map((entry) => entry.operation);
+}
+
+/** A hand-built `ZeropsCall`, defaulting the fields these tests never vary. */
+function zeropsCall(overrides: {
+  readonly id: string;
+  readonly toolName: string;
+  readonly status: ZeropsCall["status"];
+  readonly startedAt: string;
+  readonly turnId?: string | null;
+  readonly input?: Record<string, unknown>;
+  readonly resultText?: string;
+  readonly settledAt?: string;
+  readonly truncated?: boolean;
+}): ZeropsCall {
+  return {
+    turnId: null,
+    input: {},
+    truncated: false,
+    anchorActivityId: overrides.id,
+    rowIds: new Set([overrides.id]),
+    agentInternal: false,
+    ...overrides,
+  };
+}
+
+/** One call folds into exactly one operation — the reducer's output for a single-call fixture. */
+function operationFor(call: ZeropsCall): ZeropsOperation {
+  return reduceZeropsOperations([call]).operations[0]!;
+}
 
 describe("ZeropsOperationCard — fixture operations", () => {
   const weatherdash = operationsFor(weatherdashFirstDeploy);
@@ -107,16 +142,16 @@ describe("ZeropsOperationCard — fixture operations", () => {
 });
 
 describe("ZeropsOperationCard — running, with an observed region", () => {
-  const runningDeployEntry: ZeropsCallEntry = {
-    id: "e1",
-    createdAt: "2026-09-01T00:00:00.000Z",
-    startedAt: "2026-09-01T00:00:00.000Z",
-    turnId: "t1",
-    toolName: "zerops_deploy",
-    input: { targetService: "weatherdash" },
-    status: "inProgress",
-  };
-  const running = reduceZeropsOperations([runningDeployEntry]).operations[0]!;
+  const running = operationFor(
+    zeropsCall({
+      id: "e1",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "inProgress",
+    }),
+  );
 
   const observed: ObservedRegion = {
     steps: [
@@ -151,14 +186,18 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
   });
 
   it("shows a settled m/s-style duration once the operation is done and settledAt is known", () => {
-    const doneEntry: ZeropsCallEntry = {
-      ...runningDeployEntry,
-      id: "e2",
-      status: "completed",
-      settledAt: "2026-09-01T00:01:12.000Z",
-      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-    };
-    const done = reduceZeropsOperations([doneEntry]).operations[0]!;
+    const done = operationFor(
+      zeropsCall({
+        id: "e2",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        settledAt: "2026-09-01T00:01:12.000Z",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      }),
+    );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={done} />);
 
     expect(html).toContain("1m 12s");
@@ -166,22 +205,22 @@ describe("ZeropsOperationCard — running, with an observed region", () => {
 });
 
 describe("ZeropsOperationCard — dev server", () => {
-  const runningEntry: ZeropsCallEntry = {
-    id: "dev1",
-    createdAt: "2026-09-01T00:00:00.000Z",
-    startedAt: "2026-09-01T00:00:00.000Z",
-    turnId: "t1",
-    toolName: "zerops_dev_server",
-    input: { action: "start", hostname: "apidev" },
-    status: "completed",
-    resultText: JSON.stringify({
-      action: "start",
-      hostname: "apidev",
-      running: true,
-      port: 3000,
+  const operation = operationFor(
+    zeropsCall({
+      id: "dev1",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_dev_server",
+      input: { action: "start", hostname: "apidev" },
+      status: "completed",
+      resultText: JSON.stringify({
+        action: "start",
+        hostname: "apidev",
+        running: true,
+        port: 3000,
+      }),
     }),
-  };
-  const operation = reduceZeropsOperations([runningEntry]).operations[0]!;
+  );
 
   it("renders the dev-server card with an Open link only when a subdomain URL is supplied", () => {
     const withoutUrl = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
@@ -199,17 +238,17 @@ describe("ZeropsOperationCard — dev server", () => {
   });
 
   it("ignores a devServerUrl prop for a non-devServer operation", () => {
-    const deployEntry: ZeropsCallEntry = {
-      id: "dev2",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: "t1",
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "completed",
-      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-    };
-    const deployOperation = reduceZeropsOperations([deployEntry]).operations[0]!;
+    const deployOperation = operationFor(
+      zeropsCall({
+        id: "dev2",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      }),
+    );
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
         devServerUrl="https://apidev-26a7-3000.prg1.zerops.app"
@@ -226,36 +265,36 @@ describe("ZeropsOperationCard — browser", () => {
     threadId: ThreadId.make("thread-1"),
   };
 
-  const entry: ZeropsCallEntry = {
-    id: "brw1",
-    createdAt: "2026-09-01T00:00:00.000Z",
-    startedAt: "2026-09-01T00:00:00.000Z",
-    turnId: "t1",
-    toolName: "zerops_browser",
-    input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
-    status: "completed",
-    resultText: JSON.stringify({
-      url: "https://kanbandev-26a7.prg1.zerops.app",
-      steps: [
-        { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
-        {
-          command: ["click", "@e1"],
-          success: false,
-          error: "no element matched @e1",
-          errorKind: "selector-not-found",
-        },
-        { command: ["screenshot", "/tmp/shot.png"], success: true },
-        { command: ["errors"], success: true },
-        { command: ["console"], success: true },
-        { command: ["network", "requests", "--status", "400-599"], success: true },
-        { command: ["close"], success: true },
-      ],
-      errorsOutput: ["TypeError: x is not a function"],
-      consoleOutput: [{ type: "error", text: "failed to fetch" }],
-      networkOutput: [],
+  const operation = operationFor(
+    zeropsCall({
+      id: "brw1",
+      startedAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_browser",
+      input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+      status: "completed",
+      resultText: JSON.stringify({
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        steps: [
+          { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
+          {
+            command: ["click", "@e1"],
+            success: false,
+            error: "no element matched @e1",
+            errorKind: "selector-not-found",
+          },
+          { command: ["screenshot", "/tmp/shot.png"], success: true },
+          { command: ["errors"], success: true },
+          { command: ["console"], success: true },
+          { command: ["network", "requests", "--status", "400-599"], success: true },
+          { command: ["close"], success: true },
+        ],
+        errorsOutput: ["TypeError: x is not a function"],
+        consoleOutput: [{ type: "error", text: "failed to fetch" }],
+        networkOutput: [],
+      }),
     }),
-  };
-  const operation = reduceZeropsOperations([entry]).operations[0]!;
+  );
 
   it("renders the condensed line and the full step list only inside the Show steps expander; the plumbing tail never appears", () => {
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
@@ -313,17 +352,17 @@ describe("ZeropsOperationCard — browser", () => {
   });
 
   it("ignores browserScreenshot/liveFrame props for a non-browser operation", () => {
-    const deployEntry: ZeropsCallEntry = {
-      id: "brw2",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: "t1",
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "completed",
-      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-    };
-    const deployOperation = reduceZeropsOperations([deployEntry]).operations[0]!;
+    const deployOperation = operationFor(
+      zeropsCall({
+        id: "brw2",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      }),
+    );
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
         browserScreenshot={{ src: "data:image/png;base64,AAAA" }}
@@ -356,16 +395,16 @@ describe("ZeropsOperationCard — browser", () => {
 
 describe("ZeropsOperationCard — empty body", () => {
   it("renders no ProcessSteps and no placeholder text when there are no steps and no observed region", () => {
-    const entry: ZeropsCallEntry = {
-      id: "e3",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: null,
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "inProgress",
-    };
-    const operation = reduceZeropsOperations([entry]).operations[0]!;
+    const operation = operationFor(
+      zeropsCall({
+        id: "e3",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: null,
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "inProgress",
+      }),
+    );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
 
     expect(operation.steps).toHaveLength(0);
@@ -375,21 +414,21 @@ describe("ZeropsOperationCard — empty body", () => {
 
 describe("ZeropsOperationCard — footer detail disclosure", () => {
   it("shows a quiet Details disclosure with the detail text in a scrollable pre block, never a chip", () => {
-    const entry: ZeropsCallEntry = {
-      id: "e4",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: null,
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "completed",
-      resultText: JSON.stringify({
-        status: "DEPLOYED",
-        targetService: "weatherdash",
-        nextActions: "Check the logs for anything unusual.",
+    const operation = operationFor(
+      zeropsCall({
+        id: "e4",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: null,
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        resultText: JSON.stringify({
+          status: "DEPLOYED",
+          targetService: "weatherdash",
+          nextActions: "Check the logs for anything unusual.",
+        }),
       }),
-    };
-    const operation = reduceZeropsOperations([entry]).operations[0]!;
+    );
     expect(operation.detail).toBeDefined();
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
 
@@ -409,8 +448,8 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   const verify = weatherdash.find((o) => o.kind === "verify")!;
   const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
 
-  it("the deploy operation's settledAt - startedAt is ~75.9s and the card shows 1m 16s", () => {
-    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.startedAt);
+  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 16s", () => {
+    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.anchorAt);
     expect(elapsedMs).toBeGreaterThan(75_000);
     expect(elapsedMs).toBeLessThan(77_000);
 
@@ -431,16 +470,16 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
 
 describe("ZeropsOperationCard — the duration renders outside the uppercase status label", () => {
   it("keeps the running elapsed clock out of the StatusDot's own MicroLabel, in a separate tabular-nums span", () => {
-    const runningDeployEntry: ZeropsCallEntry = {
-      id: "dur-running",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: "t1",
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "inProgress",
-    };
-    const running = reduceZeropsOperations([runningDeployEntry]).operations[0]!;
+    const running = operationFor(
+      zeropsCall({
+        id: "dur-running",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "inProgress",
+      }),
+    );
     const html = renderToStaticMarkup(
       <ZeropsOperationCard now={Date.parse("2026-09-01T00:00:42.000Z")} operation={running} />,
     );
@@ -457,18 +496,18 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
   });
 
   it("renders the settled duration in normal case, tabular-nums, separate from the uppercase status word", () => {
-    const entry: ZeropsCallEntry = {
-      id: "dur-settled",
-      createdAt: "2026-09-01T00:00:00.000Z",
-      startedAt: "2026-09-01T00:00:00.000Z",
-      turnId: null,
-      toolName: "zerops_deploy",
-      input: { targetService: "weatherdash" },
-      status: "completed",
-      settledAt: "2026-09-01T00:01:12.000Z",
-      resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-    };
-    const operation = reduceZeropsOperations([entry]).operations[0]!;
+    const operation = operationFor(
+      zeropsCall({
+        id: "dur-settled",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: null,
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        settledAt: "2026-09-01T00:01:12.000Z",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      }),
+    );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
 
     const statusDotSpan = html.match(
@@ -493,9 +532,9 @@ describe("ZeropsOperationCard — the duration renders outside the uppercase sta
  * supersedes - the shape a reloaded thread's history/snapshot path returns.
  */
 function dropSupersededToolUpdatedActivitiesForTest(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): OrchestrationThreadActivity[] {
-  const keyOf = (activity: OrchestrationThreadActivity): string | null => {
+  activities: ZeropsShowcaseThread["activities"],
+): ZeropsShowcaseThread["activities"] {
+  const keyOf = (activity: ZeropsShowcaseThread["activities"][number]): string | null => {
     const payload =
       activity.payload && typeof activity.payload === "object"
         ? (activity.payload as Record<string, unknown>)
@@ -523,17 +562,14 @@ function dropSupersededToolUpdatedActivitiesForTest(
 
 describe("ZeropsOperationCard - the deploy duration renders identically live and after a reload", () => {
   it("shows 1m 16s for both the full activity list and the reloaded (superseded-updates-dropped) one", () => {
-    const fullDeploy = deriveZeropsOperations(
-      deriveWorkLogEntries(weatherdashFirstDeploy.activities),
-    ).operations.find((operation) => operation.kind === "deploy")!;
-    const reloadedDeploy = deriveZeropsOperations(
-      deriveWorkLogEntries(
-        dropSupersededToolUpdatedActivitiesForTest(weatherdashFirstDeploy.activities),
-      ),
-    ).operations.find((operation) => operation.kind === "deploy")!;
+    const fullDeploy = operationsFor(weatherdashFirstDeploy).find((o) => o.kind === "deploy")!;
+    const reloadedDeploy = operationsFor({
+      ...weatherdashFirstDeploy,
+      activities: dropSupersededToolUpdatedActivitiesForTest(weatherdashFirstDeploy.activities),
+    }).find((o) => o.kind === "deploy")!;
 
-    expect(fullDeploy.anchorEntryId).toBe(reloadedDeploy.anchorEntryId);
-    expect(fullDeploy.startedAt).toBe(reloadedDeploy.startedAt);
+    expect(fullDeploy.anchorActivityId).toBe(reloadedDeploy.anchorActivityId);
+    expect(fullDeploy.anchorAt).toBe(reloadedDeploy.anchorAt);
     expect(fullDeploy.settledAt).toBe(reloadedDeploy.settledAt);
 
     const liveHtml = renderToStaticMarkup(<ZeropsOperationCard operation={fullDeploy} />);

@@ -184,6 +184,7 @@ function buildStandaloneOperation(group: StandaloneGroup, attempts: number): Zer
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
+    ...(fields.browserSummary !== undefined ? { browserSummary: fields.browserSummary } : {}),
   };
 }
 

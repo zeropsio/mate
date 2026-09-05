@@ -37,13 +37,14 @@ const render = (
     readonly lifecycle?: ZeropsLifecycle;
     readonly liveness?: "live" | "polling";
     readonly error?: string;
+    readonly runningTool?: string;
   },
 ): string =>
   renderToStaticMarkup(
     <ZeropsServiceMap
       error={options?.error}
       liveness={options?.liveness}
-      view={buildZeropsServiceMap(view, options?.lifecycle)}
+      view={buildZeropsServiceMap(view, options?.lifecycle, options?.runningTool)}
     />,
   );
 
@@ -155,16 +156,7 @@ describe("ZeropsServiceMap", () => {
 
   it("names a running tool as a phrase, not a spinner", () => {
     const html = render(topology([service({ hostname: "kanbandev" })]), {
-      lifecycle: {
-        threadId: "thread-a",
-        recentTools: [
-          {
-            toolName: "zerops_deploy",
-            status: "inProgress",
-            at: new Date("2026-08-28T10:01:00Z"),
-          },
-        ],
-      } as unknown as ZeropsLifecycle,
+      runningTool: "zerops_deploy",
     });
 
     expect(html).toContain('data-zerops-running-tool="zerops_deploy"');

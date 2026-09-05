@@ -27,7 +27,7 @@ import type {
   ZeropsOperationKind,
   ZeropsOperationPhase,
   ZeropsOperationStep,
-} from "@t3tools/client-runtime/zerops/operations";
+} from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
@@ -72,7 +72,7 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
     key: operation.key,
     kind: operation.kind,
     hostnames: hostnamesFor(operation),
-    startedAtMs: Date.parse(operation.startedAt),
+    startedAtMs: Date.parse(operation.anchorAt),
     running: operation.phase === "running",
   };
 }

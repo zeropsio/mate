@@ -25,10 +25,13 @@ export function ZeropsPanel({
   threadRef,
   agentAuthCard,
   agentAuthSnapshot,
+  runningToolLabel,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | undefined;
+  /** The caller's own reading of `ZeropsThreadModel.running` (`ChatView`) — the map never derives this itself. */
+  readonly runningToolLabel?: string | undefined;
 }) {
   const topology = useProjectTopology(threadRef?.environmentId ?? null);
   const lifecycle = useZeropsLifecycle(
@@ -40,7 +43,7 @@ export function ZeropsPanel({
   >(null);
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
-  const view = buildZeropsServiceMap(topology.view, lifecycle);
+  const view = buildZeropsServiceMap(topology.view, lifecycle, runningToolLabel);
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,

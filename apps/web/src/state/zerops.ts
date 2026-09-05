@@ -1,11 +1,39 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationThreadActivity,
+  TurnId,
+  ZeropsLifecycle,
+} from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
+
+import {
+  deriveZeropsThreadModel,
+  type ZeropsThreadModel,
+} from "@t3tools/client-runtime/zerops/model";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import type { ProjectTopologySnapshot } from "../zerops/projectTopologyWatcher";
 
 export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
+
+/**
+ * `deriveZeropsThreadModel`, re-exported from thread state alongside the
+ * other Zerops derivations this module owns. Not an Effect `Atom` in its
+ * own right — the model has no subscription to hold: it is a pure
+ * projection of activities (already local component state) and the
+ * lifecycle feed (`useZeropsLifecycle`), so the caller memoizes it on
+ * reference identity the same way it memoizes every other thread
+ * derivation (`useMemo`), rather than this module owning a second copy of
+ * that state behind an atom.
+ */
+export function zeropsThreadModelAtom(input: {
+  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+  readonly lifecycle: ZeropsLifecycle | undefined;
+  readonly runningTurnId: TurnId | null;
+}): ZeropsThreadModel {
+  return deriveZeropsThreadModel(input);
+}
 
 /**
  * The read-only side of `useProjectTopology`'s watcher (S3 mate-zone-

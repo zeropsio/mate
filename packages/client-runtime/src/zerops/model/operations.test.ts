@@ -709,6 +709,80 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
       },
     ]);
   });
+
+  it("condenses a browser batch into viewport, media, step count and failed step; tail steps are not listed", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw5",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://kanbandev-26a7.prg1.zerops.app",
+          steps: [
+            { command: ["open", "https://kanbandev-26a7.prg1.zerops.app"], success: true },
+            { command: ["set", "viewport", "1920", "1080"], success: true },
+            { command: ["set", "media", "dark"], success: true },
+            {
+              command: ["click", "@e1"],
+              success: false,
+              error: "no element matched @e1",
+              errorKind: "selector-not-found",
+            },
+            { command: ["screenshot", "/tmp/shot.png"], success: true },
+            { command: ["errors"], success: true },
+            { command: ["console"], success: true },
+            { command: ["network", "requests", "--status", "400-599"], success: true },
+            { command: ["close"], success: true },
+          ],
+          errorsOutput: ["TypeError: x is not a function"],
+          consoleOutput: [{ type: "error", text: "failed to fetch" }],
+          networkOutput: [{ url: "https://kanbandev-26a7.prg1.zerops.app/api", status: 500 }],
+        }),
+      },
+    ]);
+    const op = operations[0]!;
+
+    expect(op.browserSummary?.viewport).toEqual({ width: 1920, height: 1080 });
+    expect(op.browserSummary?.media).toBe("dark");
+    expect(op.browserSummary?.stepCount).toBe(4);
+    expect(op.browserSummary?.failedStep?.label).toBe("click @e1");
+    expect(op.browserSummary?.failedStep?.state).toBe("failed");
+    expect(op.browserSummary?.line).toBe(
+      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080, dark · 4 steps · 2 errors, 1 failed request",
+    );
+
+    const tailLabels = op.steps.filter((step) => step.kind === "tail").map((step) => step.label);
+    expect(tailLabels).toEqual([
+      "screenshot /tmp/shot.png",
+      "errors",
+      "console",
+      "network requests --status 400-599",
+      "close",
+    ]);
+    const nonTailLabels = op.steps.filter((step) => step.kind !== "tail").map((step) => step.label);
+    expect(nonTailLabels).toEqual([
+      "open https://kanbandev-26a7.prg1.zerops.app",
+      "set viewport 1920 1080",
+      "set media dark",
+      "click @e1",
+    ]);
+  });
+
+  it("browserSummary is absent when the result did not decode into a browser card", () => {
+    const { operations } = reduceFrom([
+      {
+        id: "brw6",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: "## Browser walk\n\nEverything looks fine.",
+      },
+    ]);
+    expect(operations[0]!.browserSummary).toBeUndefined();
+  });
 });
 
 // helper: real fixtures go through collectZeropsCalls first — the running

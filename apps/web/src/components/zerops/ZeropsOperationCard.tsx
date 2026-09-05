@@ -15,7 +15,7 @@ import {
   browserLiveCaption,
   type ZeropsOperation,
   type ZeropsOperationStep,
-} from "@t3tools/client-runtime/zerops/operations";
+} from "@t3tools/client-runtime/zerops/model";
 
 import { useRightPanelStore } from "../../rightPanelStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -68,7 +68,7 @@ function formatElapsedClock(ms: number): string {
 
 /** `0:42` while running, `1m 12s` once settled — undefined when neither timestamp resolves. */
 function headerDurationText(operation: ZeropsOperation, now: number): string | undefined {
-  const startedAtMs = Date.parse(operation.startedAt);
+  const startedAtMs = Date.parse(operation.anchorAt);
   if (!Number.isFinite(startedAtMs)) {
     return undefined;
   }

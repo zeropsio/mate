@@ -16,12 +16,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { StatusDot } from "./primitives";
+import type { ZeropsOperation, ZeropsSessionView } from "@t3tools/client-runtime/zerops/model";
 import {
   type ZeropsStripState,
   type ZeropsStripTone,
   zeropsStripState,
 } from "@t3tools/client-runtime/zerops/strip";
-import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 
 const TONE_CLASS: Record<ZeropsStripTone, string> = {
   active: "bg-[var(--zerops-status-busy-surface)] text-foreground",
@@ -102,19 +102,20 @@ export function ZeropsStripLine({
 export function ZeropsLifecycleStrip({
   threadRef,
   pendingUserInput,
+  session,
+  running,
   agentAuthNeedsAttention = false,
   zeropsPanelOpen = false,
 }: {
   readonly threadRef: ScopedThreadRef | null;
   readonly pendingUserInput: boolean;
+  /** The thread's own model state — the caller (`ChatView`) derives this once for every Zerops surface. */
+  readonly session: ZeropsSessionView | undefined;
+  readonly running: ZeropsOperation | undefined;
   readonly agentAuthNeedsAttention?: boolean;
   readonly zeropsPanelOpen?: boolean;
 }) {
-  const lifecycle = useZeropsLifecycle(
-    threadRef?.environmentId ?? null,
-    threadRef?.threadId ?? null,
-  );
-  const state = zeropsStripState(lifecycle, { pendingUserInput });
+  const state = zeropsStripState(session, running, pendingUserInput);
 
   if (threadRef === null) {
     return null;

@@ -1,3 +1,4 @@
+export { browserLiveCaption } from "../operations/phrases.ts";
 export { normalizedToolName } from "./partition.ts";
 export { compareCallRows, compareAnchors } from "./order.ts";
 export { collectZeropsCalls } from "./calls.ts";
@@ -21,6 +22,7 @@ export type {
   ZeropsCallImage,
   ZeropsCallStatus,
   ZeropsOperation,
+  ZeropsOperationBrowserSummary,
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,

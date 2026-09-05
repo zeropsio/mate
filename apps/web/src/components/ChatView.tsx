@@ -98,11 +98,11 @@ import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   deriveTurnPlans,
-  deriveZeropsOperations,
   findLatestProposedPlan,
   deriveWorkLogEntries,
   hasActionableProposedPlan,
 } from "../session-logic";
+import { zeropsThreadModelAtom } from "../state/zerops";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { type LegendListRef } from "@legendapp/list/react";
 import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timelineScrollAnchoring";
@@ -153,7 +153,11 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
-import { useZeropsAgentAuth, useZeropsTopology } from "../zerops/useZeropsFeeds";
+import {
+  useZeropsAgentAuth,
+  useZeropsLifecycle,
+  useZeropsTopology,
+} from "../zerops/useZeropsFeeds";
 import { useZcpRestart } from "../zerops/useZcpRestart";
 import {
   deriveAgentPanelModel,
@@ -2196,8 +2200,20 @@ function ChatViewContent(props: ChatViewProps) {
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
   );
-  const workLogEntries = useMemo(() => deriveWorkLogEntries(threadActivities), [threadActivities]);
-  const zeropsOperations = useMemo(() => deriveZeropsOperations(workLogEntries), [workLogEntries]);
+  const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
+  const zeropsThreadModel = useMemo(
+    () =>
+      zeropsThreadModelAtom({
+        activities: threadActivities,
+        lifecycle: activeZeropsLifecycle,
+        runningTurnId: activeRunningTurnId,
+      }),
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId],
+  );
+  const workLogEntries = useMemo(
+    () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
+    [threadActivities, zeropsThreadModel.zeropsActivityIds],
+  );
   const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
   // Native subagent fold: memoized by activity-list identity, shared by the
   // Agents surface, live strip, and workflow cards. v2Projection is null
@@ -2595,9 +2611,15 @@ function ChatViewContent(props: ChatViewProps) {
         activeThread?.proposedPlans ?? [],
         workLogEntries,
         turnPlans,
-        zeropsOperations,
+        zeropsThreadModel.entries,
       ),
-    [activeThread?.proposedPlans, timelineMessages, turnPlans, workLogEntries, zeropsOperations],
+    [
+      activeThread?.proposedPlans,
+      timelineMessages,
+      turnPlans,
+      workLogEntries,
+      zeropsThreadModel.entries,
+    ],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -6534,6 +6556,7 @@ function ChatViewContent(props: ChatViewProps) {
                 <ZeropsPanel
                   agentAuthCard={zeropsChrome.agentAuthCard}
                   agentAuthSnapshot={zeropsAgentAuth}
+                  runningToolLabel={zeropsThreadModel.running?.kicker}
                   threadRef={zeropsChrome.threadRef}
                 />
               );
@@ -6625,6 +6648,8 @@ function ChatViewContent(props: ChatViewProps) {
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentAuthCard !== null}
           pendingUserInput={activePendingUserInput !== null}
+          running={zeropsThreadModel.running}
+          session={zeropsThreadModel.session}
           threadRef={zeropsChrome.threadRef}
           zeropsPanelOpen={activeRightPanelKind === "zerops"}
         />

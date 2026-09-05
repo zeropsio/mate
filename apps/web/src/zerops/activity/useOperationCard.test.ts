@@ -7,7 +7,7 @@ import type {
   ObservationState,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
@@ -58,9 +58,8 @@ function operation(overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
     key: "call:e1",
     kind: "deploy",
     phase: "running",
-    anchorEntryId: "e1",
-    createdAt: "2026-09-01T00:00:00.000Z",
-    startedAt: "2026-09-01T00:00:00.000Z",
+    anchorAt: "2026-09-01T00:00:00.000Z",
+    anchorActivityId: "e1",
     turnId: "t1",
     subject: "weatherdash",
     kicker: "DEPLOY · WEATHERDASH",
@@ -69,7 +68,8 @@ function operation(overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
     statusWord: "Deploying",
     steps: [],
     links: [],
-    entryIds: ["e1"],
+    callIds: ["e1"],
+    attempts: 1,
     target: { hostname: "weatherdash" },
     hasResult: false,
     ...overrides,
@@ -99,7 +99,7 @@ function observation(overrides: Partial<Observation> = {}): Observation {
 describe("observationTargetFor — building the ObservationTarget from an operation", () => {
   it("deploy: kind, hostnames from target.hostname, startedAtMs, running", () => {
     const target = observationTargetFor(
-      operation({ kind: "deploy", phase: "running", startedAt: "2026-09-01T00:00:00.000Z" }),
+      operation({ kind: "deploy", phase: "running", anchorAt: "2026-09-01T00:00:00.000Z" }),
     );
     expect(target).toEqual({
       key: "call:e1",

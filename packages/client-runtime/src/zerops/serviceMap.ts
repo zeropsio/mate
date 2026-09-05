@@ -67,13 +67,15 @@ export interface ZeropsServiceMapView {
   readonly isEmpty: boolean;
   readonly warnings: ReadonlyArray<string>;
   /**
-   * The `zerops_*` tool running right now, if any.
+   * A phrase for the Zerops operation running right now, if any — the
+   * caller's own reading of `ZeropsThreadModel.running` (passed in as
+   * `runningTool`, see `buildZeropsServiceMap`), never derived here.
    *
    * The topology projection carries no live process state of its own beyond
    * `transient`, so this is the only signal that something is in flight. It
-   * belongs to the map rather than to a row: the lifecycle feed records a
-   * tool name, never a hostname, and attributing it to a service would be a
-   * guess dressed as a fact.
+   * belongs to the map rather than to a row: the model records an operation,
+   * never a hostname, and attributing it to a service would be a guess
+   * dressed as a fact.
    */
   readonly runningTool?: string;
 }
@@ -125,11 +127,15 @@ const productionOf = (
 /**
  * The map to render, or undefined when there is nothing to render at all —
  * `useProjectTopology` has not produced a view yet (no session, no resolved
- * project, or the first read still in flight).
+ * project, or the first read still in flight). `runningTool` is the
+ * caller's own reading of `ZeropsThreadModel.running` — this layer no
+ * longer reads `lifecycle.recentTools` (§2.1 principle 5: one owner for
+ * "which Zerops call is running").
  */
 export function buildZeropsServiceMap(
   topology: ZeropsTopologyView | undefined,
   lifecycle?: ZeropsLifecycle,
+  runningTool?: string,
 ): ZeropsServiceMapView | undefined {
   if (topology === undefined) {
     return undefined;
@@ -168,13 +174,11 @@ export function buildZeropsServiceMap(
       }),
   })).filter((group) => group.rows.length > 0);
 
-  const running = lifecycle?.recentTools.find((tool) => tool.status === "inProgress");
-
   return {
     groups,
     project: topology.project,
     isEmpty: topology.services.length === 0,
     warnings: topology.warnings,
-    ...(running === undefined ? {} : { runningTool: running.toolName }),
+    ...(runningTool === undefined ? {} : { runningTool }),
   };
 }

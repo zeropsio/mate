@@ -20,6 +20,7 @@ import {
 } from "../../operations/phrases.ts";
 import type {
   ZeropsCall,
+  ZeropsOperationBrowserSummary,
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
@@ -47,6 +48,8 @@ export interface BuiltCardFields {
   readonly hasResult: boolean;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
+  /** `browser` only. */
+  readonly browserSummary?: ZeropsOperationBrowserSummary;
   /** Overrides `phaseFor(call.status)` — only `deploy`'s BUILD_TRIGGERED needs this. */
   readonly phaseOverride?: ZeropsOperationPhase;
 }

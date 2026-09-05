@@ -171,47 +171,18 @@ describe("buildZeropsServiceMap", () => {
   /**
    * The topology projection carries no live process state beyond `transient`
    * — so a running tool is the only signal that something is happening right
-   * now. It belongs to the map, not to a row: `ZeropsRecentTool` has no
-   * hostname, and guessing one would be a lie.
+   * now. It belongs to the map, not to a row: the caller passes it in from
+   * `ZeropsThreadModel.running` (the one owner of "which call is running"),
+   * never derived from `lifecycle.recentTools` here.
    */
-  it("surfaces a running zerops tool as the map's live indicator", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices),
-      lifecycle({
-        recentTools: [
-          {
-            toolName: "zerops_deploy",
-            status: "inProgress",
-            at: "2026-08-28T10:00:00Z",
-            itemId: "item-1",
-          },
-          {
-            toolName: "zerops_mount",
-            status: "completed",
-            at: "2026-08-28T09:00:00Z",
-            itemId: "item-0",
-          },
-        ],
-      } as unknown as Partial<ZeropsLifecycle>),
-    );
+  it("surfaces the caller's runningTool as the map's live indicator", () => {
+    const view = buildZeropsServiceMap(topology(realServices), lifecycle({}), "zerops_deploy");
 
     expect(view?.runningTool).toBe("zerops_deploy");
   });
 
-  it("has no live indicator when every recent tool has finished", () => {
-    const view = buildZeropsServiceMap(
-      topology(realServices),
-      lifecycle({
-        recentTools: [
-          {
-            toolName: "zerops_deploy",
-            status: "completed",
-            at: "2026-08-28T10:00:00Z",
-            itemId: "item-1",
-          },
-        ],
-      } as unknown as Partial<ZeropsLifecycle>),
-    );
+  it("has no live indicator when the caller passes none", () => {
+    const view = buildZeropsServiceMap(topology(realServices), lifecycle({}));
 
     expect(view?.runningTool).toBeUndefined();
   });

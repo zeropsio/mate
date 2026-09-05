@@ -1,16 +1,11 @@
-import {
-  EnvironmentId,
-  ThreadId,
-  type ScopedThreadRef,
-  type ZeropsLifecycle,
-} from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import type { ZeropsSessionView } from "@t3tools/client-runtime/zerops/model";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const testState = vi.hoisted(() => ({
   onOpen: null as (() => void) | null,
   open: vi.fn(),
-  useZeropsLifecycle: vi.fn<() => ZeropsLifecycle | undefined>(() => undefined),
 }));
 
 vi.mock("~/components/ui/tooltip", async (importOriginal) => {
@@ -38,10 +33,6 @@ vi.mock("../../rightPanelStore", () => ({
   },
 }));
 
-vi.mock("../../zerops/useZeropsFeeds", () => ({
-  useZeropsLifecycle: testState.useZeropsLifecycle,
-}));
-
 import type { ZeropsStripState } from "@t3tools/client-runtime/zerops/strip";
 import { ZeropsLifecycleStrip, ZeropsStripLine } from "./ZeropsLifecycleStrip";
 
@@ -50,17 +41,7 @@ const THREAD_REF: ScopedThreadRef = {
   threadId: ThreadId.make("thread-1"),
 };
 
-const LIFECYCLE = {
-  threadId: THREAD_REF.threadId,
-  recentTools: [],
-  envelope: {
-    phase: "idle",
-    environment: "container",
-    project: { id: "project-1", name: "z3-eval" },
-    services: [],
-    generated: "2026-08-30T12:00:00.000Z",
-  },
-} as unknown as ZeropsLifecycle;
+const SESSION: ZeropsSessionView = { phase: "idle", serviceCount: 0 };
 
 const render = (state: ZeropsStripState | undefined): string =>
   renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} state={state} />);
@@ -111,24 +92,19 @@ describe("ZeropsLifecycleStrip", () => {
   beforeEach(() => {
     testState.onOpen = null;
     testState.open.mockReset();
-    testState.useZeropsLifecycle.mockClear();
   });
 
-  it.each([
-    {
-      name: "an absent thread",
-      threadRef: null,
-      expectedIds: [null, null],
-    },
-    {
-      name: "the scoped thread",
-      threadRef: THREAD_REF,
-      expectedIds: [THREAD_REF.environmentId, THREAD_REF.threadId],
-    },
-  ] as const)("subscribes to $name", ({ threadRef, expectedIds }) => {
-    renderToStaticMarkup(<ZeropsLifecycleStrip pendingUserInput={false} threadRef={threadRef} />);
+  it("renders nothing for an absent thread, even with a session", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsLifecycleStrip
+        pendingUserInput={false}
+        running={undefined}
+        session={SESSION}
+        threadRef={null}
+      />,
+    );
 
-    expect(testState.useZeropsLifecycle).toHaveBeenCalledWith(...expectedIds);
+    expect(html).toBe("");
   });
 
   it.each([
@@ -159,12 +135,12 @@ describe("ZeropsLifecycleStrip", () => {
   ] as const)(
     "keeps panel entry visible when authorization needs attention: $name",
     ({ agentAuthNeedsAttention, zeropsPanelOpen, showsEntry }) => {
-      testState.useZeropsLifecycle.mockReturnValueOnce(undefined);
-
       const html = renderToStaticMarkup(
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={agentAuthNeedsAttention}
           pendingUserInput={false}
+          running={undefined}
+          session={undefined}
           threadRef={THREAD_REF}
           zeropsPanelOpen={zeropsPanelOpen}
         />,
@@ -182,8 +158,14 @@ describe("ZeropsLifecycleStrip", () => {
   );
 
   it("opens the panel with the same scoped thread ref object", () => {
-    testState.useZeropsLifecycle.mockReturnValueOnce(LIFECYCLE);
-    renderToStaticMarkup(<ZeropsLifecycleStrip pendingUserInput={false} threadRef={THREAD_REF} />);
+    renderToStaticMarkup(
+      <ZeropsLifecycleStrip
+        pendingUserInput={false}
+        running={undefined}
+        session={SESSION}
+        threadRef={THREAD_REF}
+      />,
+    );
 
     expect(testState.onOpen).not.toBeNull();
     testState.onOpen?.();

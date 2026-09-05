@@ -95,11 +95,35 @@ export interface ZeropsOperationStep {
   /** A word for people: "Done", "Running", "Failed", "Skipped", "Waiting". */
   readonly stateLabel: string;
   readonly note?: string;
+  /**
+   * `"tail"` marks a `browser` step as the canonical reporting plumbing
+   * (`screenshot`, `errors`, `console`, `network requests`, `close` —
+   * `internal/ops/browser.go`'s `buildCanonicalBatch`) rather than something
+   * the agent actually did on the page. Absent for every other step.
+   */
+  readonly kind?: "tail";
 }
 
 export interface ZeropsOperationLink {
   readonly label: string;
   readonly url: string;
+}
+
+/**
+ * `browser` only: the condensed viewport summary — `viewport`/`media` read
+ * off a `set viewport <w> <h>` / `set media dark|light` step when the agent
+ * issued one, `stepCount` the number of non-tail steps, `failedStep` the
+ * first non-tail step that failed (always shown even with the step list
+ * collapsed). `line` is the ready-made condensed text
+ * (`phrases.ts`'s `browserCondensedLine`) — the card renders it verbatim,
+ * the same way it already renders `closing`.
+ */
+export interface ZeropsOperationBrowserSummary {
+  readonly viewport?: { readonly width: number; readonly height: number };
+  readonly media?: "dark" | "light";
+  readonly stepCount: number;
+  readonly failedStep?: ZeropsOperationStep;
+  readonly line: string;
 }
 
 export interface ZeropsOperation {
@@ -131,6 +155,8 @@ export interface ZeropsOperation {
   readonly hasResult: boolean;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
+  /** `browser` only. */
+  readonly browserSummary?: ZeropsOperationBrowserSummary;
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;

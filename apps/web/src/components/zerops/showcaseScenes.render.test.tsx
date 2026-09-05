@@ -4,8 +4,7 @@ import {
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
-import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
-import { callEntriesFromActivities } from "@t3tools/client-runtime/zerops/operations/fixtures";
+import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 import { SERVICE_STATUS_TONES, type ServiceStatusToneId } from "@t3tools/shared/brand";
 import { expect, it } from "vite-plus/test";
@@ -51,9 +50,16 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
   }
 
   const thread = scene.threads.find(({ id }) => id === scene.lifecycle.threadId);
-  const strip = zeropsStripState(scene.lifecycle, {
-    pendingUserInput: thread?.hasPendingUserInput ?? false,
+  const lifecycleThreadModel = deriveZeropsThreadModel({
+    activities: scene.threadActivities[scene.lifecycle.threadId] ?? [],
+    lifecycle: scene.lifecycle,
+    runningTurnId: null,
   });
+  const strip = zeropsStripState(
+    lifecycleThreadModel.session,
+    lifecycleThreadModel.running,
+    thread?.hasPendingUserInput ?? false,
+  );
   const stripMarkup = renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} state={strip} />);
   markup.push(stripMarkup);
   if (strip === undefined) {
@@ -69,11 +75,14 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
   markup.push(authMarkup);
   expect(authMarkup).toContain("data-zerops-agent-auth-card");
 
-  for (const activities of Object.values(scene.threadActivities)) {
-    const entries = callEntriesFromActivities(activities);
-    const { operations } = reduceZeropsOperations(entries);
-    for (const operation of operations) {
-      const cardMarkup = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+  for (const [threadId, activities] of Object.entries(scene.threadActivities)) {
+    const model =
+      threadId === scene.lifecycle.threadId
+        ? lifecycleThreadModel
+        : deriveZeropsThreadModel({ activities, runningTurnId: null });
+    for (const entry of model.entries) {
+      if (entry.kind !== "operation") continue;
+      const cardMarkup = renderToStaticMarkup(<ZeropsOperationCard operation={entry.operation} />);
       markup.push(cardMarkup);
       expect(cardMarkup).toContain("data-zerops-card");
     }
