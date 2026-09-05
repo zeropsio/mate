@@ -62,8 +62,9 @@ function ManualPairingRouteSurface({
   readonly methods: ReadonlyArray<ServerAuthBootstrapMethod>;
   readonly onAuthenticated: () => void;
 }) {
-  const autoPairTokenRef = useRef<string | null>(peekPairingTokenFromUrl());
-  const [credential, setCredential] = useState(() => autoPairTokenRef.current ?? "");
+  // Read once, as state, so no ref is read during render.
+  const [autoPairToken] = useState(peekPairingTokenFromUrl);
+  const [credential, setCredential] = useState(autoPairToken ?? "");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const autoSubmitAttemptedRef = useRef(false);
@@ -101,7 +102,7 @@ function ManualPairingRouteSurface({
   );
 
   useEffect(() => {
-    const token = autoPairTokenRef.current;
+    const token = autoPairToken;
     if (methods.length === 0 || !token || autoSubmitAttemptedRef.current) {
       return;
     }
@@ -109,7 +110,7 @@ function ManualPairingRouteSurface({
     autoSubmitAttemptedRef.current = true;
     stripPairingTokenFromUrl();
     void submitCredential(token);
-  }, [methods.length, submitCredential]);
+  }, [autoPairToken, methods.length, submitCredential]);
 
   return (
     <ZeropsLandingShell
@@ -176,22 +177,19 @@ export function HostedPairingRouteSurface() {
   const connectPairingEnvironment = useAtomCommand(connectPairing, {
     reportFailure: false,
   });
-  const hostedPairingRequestRef = useRef(readHostedPairingRequest());
-  const [status, setStatus] = useState<"pairing" | "paired" | "error">(() =>
-    hostedPairingRequestRef.current ? "pairing" : "error",
+  // The request comes from the URL once; state, so no ref is read during render.
+  const [request] = useState(readHostedPairingRequest);
+  const [status, setStatus] = useState<"pairing" | "paired" | "error">(
+    request ? "pairing" : "error",
   );
-  const [message, setMessage] = useState(() =>
-    hostedPairingRequestRef.current
-      ? MANUAL_LINK_COPY.hosted.connecting
-      : MANUAL_LINK_COPY.hosted.missingRequest,
+  const [message, setMessage] = useState(
+    request ? MANUAL_LINK_COPY.hosted.connecting : MANUAL_LINK_COPY.hosted.missingRequest,
   );
   const [canRetry, setCanRetry] = useState(false);
   const submitAttemptedRef = useRef(false);
   const tokenSubmittedRef = useRef(false);
 
   const submitHostedPairingRequest = useCallback(async () => {
-    const request = hostedPairingRequestRef.current;
-
     if (!request) {
       setStatus("error");
       setMessage(MANUAL_LINK_COPY.hosted.missingRequest);
@@ -229,7 +227,7 @@ export function HostedPairingRouteSurface() {
         errorMessageFromUnknown(squashAtomCommandFailure(result)),
       ),
     );
-  }, [connectPairingEnvironment]);
+  }, [connectPairingEnvironment, request]);
 
   useEffect(() => {
     if (submitAttemptedRef.current) {
@@ -240,8 +238,6 @@ export function HostedPairingRouteSurface() {
     stripPairingTokenFromUrl();
     void submitHostedPairingRequest();
   }, [submitHostedPairingRequest]);
-
-  const request = hostedPairingRequestRef.current;
 
   return (
     <ZeropsLandingShell
