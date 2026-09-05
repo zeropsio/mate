@@ -189,6 +189,7 @@ import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -2053,15 +2054,17 @@ export default function Sidebar() {
     return activity;
   }, [threadLastVisitedAtById, threads]);
 
-  // The row for the environment whose conversation is open.
+  // The row for the environment whose conversation is open. A fresh draft
+  // has no thread yet, but it knows its environment — and that is the one
+  // the user is about to talk to.
   const activeZeropsProjectId = useMemo(() => {
-    const environmentId = routeThreadRef?.environmentId;
+    const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
     if (environmentId === undefined) return null;
     return (
       zeropsCandidates.find((candidate) => candidate.environmentId === environmentId)?.project.id ??
       null
     );
-  }, [routeThreadRef?.environmentId, zeropsCandidates]);
+  }, [routeDraftThread?.environmentId, routeThreadRef?.environmentId, zeropsCandidates]);
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3697,15 +3700,45 @@ export default function Sidebar() {
                 if (isMobile) {
                   setOpenMobile(false);
                 }
-                // Already connected: open it. Otherwise hand off to the
-                // projects screen, which owns the connect flow — better than a
-                // row that looks clickable and quietly does nothing.
-                if (candidate.environmentId) {
-                  rememberZeropsEnvironment(String(candidate.environmentId));
-                  void router.navigate({ to: "/" });
+                // Not connected: hand off to the projects screen, which owns
+                // the connect flow — better than a row that looks clickable
+                // and quietly does nothing.
+                const environmentId = candidate.environmentId;
+                if (environmentId === undefined) {
+                  void router.navigate({ to: "/zerops" });
                   return;
                 }
-                void router.navigate({ to: "/zerops" });
+                rememberZeropsEnvironment(String(environmentId));
+                // One environment is one conversation: open *its* conversation,
+                // not whichever project anywhere was touched last — which is
+                // what landing on the index would pick.
+                const { primary } = resolvePrimaryConversation(
+                  threads.filter((thread) => thread.environmentId === environmentId),
+                );
+                if (primary !== undefined) {
+                  void router.navigate({
+                    to: "/$environmentId/$threadId",
+                    params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
+                  });
+                  return;
+                }
+                // No conversation yet: start one in the environment's project,
+                // with zcp's own introduction composed the way the landing does.
+                const project = projects.find((entry) => entry.environmentId === environmentId);
+                if (project !== undefined) {
+                  void handleNewThreadRef
+                    .current(scopeProjectRef(project.environmentId, project.id))
+                    .then((started) => {
+                      if (started) {
+                        composeZeropsFirstPrompt({
+                          environmentId: String(environmentId),
+                          draftId: started.draftId,
+                        });
+                      }
+                    });
+                  return;
+                }
+                void router.navigate({ to: "/" });
               }}
             />
           ) : null}
