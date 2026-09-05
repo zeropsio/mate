@@ -1,21 +1,25 @@
 /**
  * The left menu's Mates: every agent on the account that has somewhere to
  * live, under the project it belongs to — and, folded under each project,
- * the environments themselves with a way out to what runs in them.
+ * the other environments with a way out to what runs in them.
  *
- * A Mate row is who you talk to: the face in its colour wearing the state the
- * conversation is in, the name, the environment's tag, and what the Mate is
- * doing in one word — with what it is on, on a second line, while it is on
- * something. The environments are folded because they are where you look,
- * not where you work: a row each, role and name, and the one glyph that
- * opens the public route (or offers them).
+ * A Mate is a card here as on the projects screen — the same object at the
+ * menu's size: the face in its colour wearing the conversation's state, the
+ * name, what the Mate is doing in one word, and what it is on, on a second
+ * line, while it is on something. A card because it is the one thing in this
+ * menu you pick up. Nothing about the environment: a Mate is always in a dev
+ * box, and which Zerops project that is matters on the projects screen, not
+ * here. The environments are folded because they are where you look, not
+ * where you work: a row each, the name and its tag as a pill, and the one
+ * glyph that opens the public route (or offers them).
  *
- * Membership is `selectMateEnvironments` — the project has a Mate container —
- * and never the live connection, so a container going to sleep changes a face
- * rather than rearranging the menu. Grouping is `buildZeropsGroupTree`, the
- * same derivation the projects screen uses, so the two surfaces can never
- * disagree about which project an environment is in; the colours are
- * `assignCandidateMateTints`, likewise shared.
+ * Membership is `hasMate` — the project declares a Mate or a container backs
+ * one, and never stage or production — not the live connection, so a
+ * container going to sleep changes a face rather than rearranging the menu.
+ * Grouping is `buildZeropsGroupTree`, the same derivation the projects screen
+ * uses, so the two surfaces can never disagree about which project an
+ * environment is in; the colours are `assignCandidateMateTints`, likewise
+ * shared.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -24,11 +28,12 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
-  hasMateContainer,
+  hasMate,
   mateEnvironmentsEmptyReason,
   readZeropsGroupTags,
   selectMateEnvironments,
   type ZeropsEnvironmentRole,
+  type ZeropsGroup,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
@@ -39,12 +44,13 @@ import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { MateFace, MicroLabel } from "./primitives";
-import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
+import { MateFace } from "./primitives";
+import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
+import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 
 /**
- * The bucket, as a roster word, for a Mate whose socket is not up. A row
+ * The bucket, as a roster word, for a Mate whose socket is not up. A card
  * answers "what is this agent up to", so a connected environment with nothing
  * running is idle, never "connected" — the socket is the client's business.
  */
@@ -77,6 +83,8 @@ type RosterCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
 };
+
+type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
@@ -129,10 +137,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     );
   }
 
-  // Mates are the rows; every environment, Mate or not, is in the fold. Both
-  // are derived from the one list, deduplicated per project by the tree — a
-  // project's Mate candidate wins over a bare one so the fold and the rows
-  // agree on which container is the environment's.
+  // One carrier per project — a project's Mate candidate wins over a bare one
+  // — so the cards and the fold agree on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
   const everyEnvironment = [
@@ -151,40 +157,42 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     });
   };
 
-  const rows = (
-    entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
-  ) =>
-    entries
-      .filter(({ item }) => hasMateContainer(item))
-      .map(({ item, role }) => (
-        <MateRow
-          active={item.project.id === activeProjectId}
-          activity={getActivity?.(item)}
-          candidate={item}
-          key={item.key}
-          onSelect={onSelect}
-          role={role}
-          tint={tints.get(item.project.id) ?? "slate"}
-        />
-      ));
-
-  const fold = (
-    id: string,
-    entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
-  ) => (
-    <EnvironmentsFold
-      environments={entries}
-      onToggle={() => {
-        toggle(id);
-      }}
-      open={openGroups.has(id)}
-    />
-  );
+  /** A project: its name, its Mates as cards, its other environments folded. Nothing when nobody lives in it. */
+  const section = (id: string, entries: ReadonlyArray<Entry<T>>, header: ReactNode) => {
+    const cards = entries.filter(({ item }) => hasMate(item));
+    if (cards.length === 0) return null;
+    const others = entries.filter(({ item }) => !hasMate(item));
+    return (
+      <>
+        {header}
+        {cards.map(({ item }) => (
+          <MateCard
+            active={item.project.id === activeProjectId}
+            activity={getActivity?.(item)}
+            candidate={item}
+            key={item.key}
+            onSelect={onSelect}
+            tint={tints.get(item.project.id) ?? "slate"}
+          />
+        ))}
+        {others.length > 0 ? (
+          <EnvironmentsFold
+            environments={others}
+            onToggle={() => {
+              toggle(id);
+            }}
+            open={openGroups.has(id)}
+          />
+        ) : null}
+      </>
+    );
+  };
 
   const groups = view.groups.filter(({ environments }) =>
-    environments.some(({ item }) => hasMateContainer(item)),
+    environments.some(({ item }) => hasMate(item)),
   );
-  const ungroupedMates = view.ungrouped.filter((item) => hasMateContainer(item));
+  const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
+  const ungroupedMates = ungrouped.some(({ item }) => hasMate(item));
 
   return (
     <nav
@@ -194,27 +202,52 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     >
       {groups.map(({ group, environments }) => (
         <section
-          className="flex flex-col gap-0.5"
+          className="flex flex-col gap-1"
           data-zerops-group={group.groupId}
           key={group.groupId}
         >
-          <MicroLabel className="px-2 pb-1">{group.name}</MicroLabel>
-          {rows(environments)}
-          {fold(group.groupId, environments)}
+          {section(group.groupId, environments, <ProjectName group={group} />)}
         </section>
       ))}
 
-      {ungroupedMates.length > 0 ? (
-        <section className="flex flex-col gap-0.5" data-zerops-ungrouped="true">
-          {groups.length > 0 ? <MicroLabel className="px-2 pb-1">Ungrouped</MicroLabel> : null}
-          {rows(view.ungrouped.map((item) => ({ item, role: undefined })))}
-          {fold(
+      {ungroupedMates ? (
+        <section className="flex flex-col gap-1" data-zerops-ungrouped="true">
+          {section(
             "ungrouped",
-            view.ungrouped.map((item) => ({ item, role: undefined })),
+            ungrouped,
+            groups.length > 0 ? <ProjectName muted name="Ungrouped" /> : null,
           )}
         </section>
       ) : null}
     </nav>
+  );
+}
+
+/**
+ * The project's name as a name — a small heading, not a label. A project
+ * nothing has named shows its id, quietly, the way the projects screen does.
+ */
+function ProjectName({
+  group,
+  name,
+  muted = false,
+}: {
+  readonly group?: ZeropsGroup;
+  readonly name?: string;
+  readonly muted?: boolean;
+}) {
+  const placeholder = group !== undefined && groupNameIsPlaceholder(group);
+  return (
+    <div
+      className={cn(
+        "flex h-7 min-w-0 items-center px-2 text-xs font-semibold text-sidebar-foreground",
+        muted && "font-medium text-sidebar-muted-foreground",
+        placeholder && "font-normal text-sidebar-muted-foreground italic",
+      )}
+      data-zerops-surface="sidebar-project"
+    >
+      <span className="min-w-0 truncate">{group?.name ?? name}</span>
+    </div>
   );
 }
 
@@ -227,16 +260,14 @@ function faceFor(
   return activity?.face ?? "idle";
 }
 
-function MateRow<T extends RosterCandidate>({
+function MateCard<T extends RosterCandidate>({
   candidate,
-  role,
   tint,
   active,
   activity,
   onSelect,
 }: {
   readonly candidate: T;
-  readonly role: ZeropsEnvironmentRole | undefined;
   readonly tint: MateTintId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
@@ -244,7 +275,6 @@ function MateRow<T extends RosterCandidate>({
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
-  const badge = environmentRoleLabel(role);
   const connected = candidate.group === "connected";
   const live = connected ? activity : undefined;
 
@@ -255,7 +285,7 @@ function MateRow<T extends RosterCandidate>({
     word = (
       <span
         className={cn(
-          "text-[11px] font-medium",
+          "text-[11px] leading-4 font-medium",
           live.status.colorClass,
           live.status.pulse && "animate-status-pulse motion-reduce:animate-none",
         )}
@@ -265,13 +295,13 @@ function MateRow<T extends RosterCandidate>({
     );
   } else if (!connected && isConnecting(candidate.connection)) {
     word = (
-      <span className="text-[11px] font-medium text-[var(--zerops-status-busy-text,var(--foreground))]">
+      <span className="text-[11px] leading-4 font-medium text-[var(--zerops-status-busy-text,var(--foreground))]">
         Connecting
       </span>
     );
   } else {
     word = (
-      <span className={cn("text-[11px] font-medium", WORD_CLASS[candidate.group])}>
+      <span className={cn("text-[11px] leading-4 font-medium", WORD_CLASS[candidate.group])}>
         {WORD[candidate.group]}
       </span>
     );
@@ -281,24 +311,31 @@ function MateRow<T extends RosterCandidate>({
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-sm",
-        active ? "bg-sidebar-row-hover" : "hover:bg-sidebar-row-hover",
+        "flex min-h-9 w-full min-w-0 cursor-pointer flex-col justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-left transition-[border-color,background-color,transform] duration-150 active:scale-[0.99] motion-reduce:transition-none",
+        // The card colour, as on the projects screen — a card is lighter than
+        // the surface it sits on; the row colours are for rows.
+        active
+          ? "border-foreground/30 bg-card"
+          : "border-sidebar-border bg-card hover:border-foreground/25",
       )}
       data-zerops-surface="sidebar-mate"
       onClick={() => onSelect(candidate)}
       type="button"
     >
       <span className="flex w-full min-w-0 items-center gap-2">
-        <MateFace size="dot" state={faceFor(candidate, activity)} tint={tint} />
-        <span className="min-w-0 flex-1 truncate">{name}</span>
-        {badge ? <MicroLabel className="shrink-0">{badge}</MicroLabel> : null}
-        <span className="shrink-0">{word}</span>
+        <MateFace size="sm" state={faceFor(candidate, activity)} tint={tint} />
+        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-sidebar-foreground">
+          {name}
+        </span>
+        {/* A flex wrapper, so the word's own line-height sets the line — an
+            inline wrapper would add the button's 16 px strut under an 11 px word. */}
+        <span className="flex shrink-0">{word}</span>
       </span>
       {/* What it is on, while it is on something — the line appears with the
           work and leaves with it. */}
       {live?.subject === undefined ? null : (
         <span
-          className="w-full truncate ps-[1.375rem] text-[11px] text-muted-foreground"
+          className="w-full truncate ps-7 text-[11px] leading-4 text-muted-foreground"
           data-zerops-surface="sidebar-mate-subject"
         >
           {live.subject}
@@ -313,10 +350,7 @@ function EnvironmentsFold<T extends RosterCandidate>({
   open,
   onToggle,
 }: {
-  readonly environments: ReadonlyArray<{
-    readonly item: T;
-    readonly role: ZeropsEnvironmentRole | undefined;
-  }>;
+  readonly environments: ReadonlyArray<Entry<T>>;
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
@@ -325,7 +359,7 @@ function EnvironmentsFold<T extends RosterCandidate>({
     <div className="flex flex-col gap-0.5" data-zerops-surface="sidebar-environments-fold">
       <button
         aria-expanded={open}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-foreground"
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-foreground"
         onClick={onToggle}
         type="button"
       >
@@ -339,25 +373,24 @@ function EnvironmentsFold<T extends RosterCandidate>({
       </button>
       {open ? (
         <ul className="flex flex-col gap-0.5" data-zerops-surface="sidebar-environment-rows">
-          {environments.map(({ item, role }) => (
-            <li
-              className="flex h-7 min-w-0 items-center gap-2 rounded-md ps-[1.375rem] pe-1 text-xs"
-              key={item.project.id}
-            >
-              <MicroLabel className="w-16 shrink-0 truncate">
-                {environmentRoleLabel(role) ?? ""}
-              </MicroLabel>
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                {item.project.name}
-              </span>
-              <span className="flex w-6 shrink-0 justify-center">
-                <ZeropsRoutesMenu
-                  label={`Public access of ${item.project.name}`}
-                  routes={item.routes ?? []}
-                />
-              </span>
-            </li>
-          ))}
+          {environments.map(({ item, role }) => {
+            const tag = environmentRoleTag(role);
+            return (
+              <li
+                className="flex h-7 min-w-0 items-center gap-2 ps-[1.625rem] pe-0.5 text-xs"
+                key={item.project.id}
+              >
+                <span className="min-w-0 truncate text-muted-foreground">{item.project.name}</span>
+                {tag === null ? null : <ZeropsRoleTag label={tag} />}
+                <span className="ms-auto flex w-6 shrink-0 justify-center">
+                  <ZeropsRoutesMenu
+                    label={`Public access of ${item.project.name}`}
+                    routes={item.routes ?? []}
+                  />
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>

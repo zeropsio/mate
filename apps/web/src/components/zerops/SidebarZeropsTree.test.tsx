@@ -9,26 +9,37 @@ function candidate(
   id: string,
   tagList: ReadonlyArray<string>,
   group: ZeropsCandidate["group"] = "ready",
-  withMate = true,
+  withContainer = true,
 ): ZeropsCandidate {
   const base = {
     key: `${id}:zcp`,
     project: { id, name: id, status: "ACTIVE", tagList },
     group,
   };
-  return withMate
+  return withContainer
     ? { ...base, service: { id: "zcp", name: "zcp", status: "ACTIVE" } }
-    : { ...base, group: "unavailable", reason: "no Zerops Mate container in this project" };
+    : {
+        ...base,
+        group: "unavailable",
+        reason: "no Zerops Mate container in this project",
+        missingContainer: true,
+      };
 }
 
-const CRM_DEV = candidate("crm-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM"]);
+const CRM_DEV = candidate("crm-dev", [
+  "mate",
+  "mate:g:aaa",
+  "mate:role:dev",
+  "mate:name:Beviro CRM",
+]);
+const CRM_STAGE = candidate("crm-stage", ["mate:g:aaa", "mate:role:stage"], "ready", false);
 const CRM_PROD = candidate(
   "crm-prod",
   ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"],
-  "connected",
+  "ready",
+  false,
 );
-const NO_MATE = candidate("bare", ["mate:g:aaa", "mate:role:stage"], "ready", false);
-const LOOSE = candidate("loose", []);
+const LOOSE = candidate("loose", ["mate"]);
 
 function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string, unknown> = {}) {
   return renderToStaticMarkup(
@@ -42,27 +53,54 @@ function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string
 }
 
 describe("SidebarZeropsTree", () => {
-  it("lists Mates under their project, each with its face, tag and word", () => {
-    const html = render([CRM_DEV, CRM_PROD]);
-    expect(html).toContain("Beviro CRM");
-    expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(2);
-    expect(html.match(/data-zerops-primitive="mate-face"/gu)).toHaveLength(2);
-    expect(html).toContain("crm-dev");
-    expect(html).toContain("crm-prod");
-    expect(html).toContain("Production");
-    // Two Mates, two colours.
-    const tints = [...html.matchAll(/data-mate-face-tint="([a-z]+)"/gu)].map((match) => match[1]);
-    expect(new Set(tints).size).toBe(2);
+  it("names the project as a name, then its Mate as a card with its face and word", () => {
+    const html = render([CRM_DEV, CRM_STAGE]);
+    const projectAt = html.indexOf('data-zerops-surface="sidebar-project"');
+    const project = html.slice(
+      html.lastIndexOf("<div", projectAt),
+      html.indexOf('data-zerops-surface="sidebar-mate"'),
+    );
+    expect(project).toContain("Beviro CRM");
+    // A name, not a label: sentence case in the sidebar's own foreground.
+    expect(project).not.toContain("uppercase");
+    expect(project).not.toContain("micro-label");
+    expect(project).toContain("font-semibold");
+    expect(project).toContain("text-sidebar-foreground");
+
+    expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
+    expect(html).toContain('data-zerops-primitive="mate-face"');
+    expect(html).toContain('data-mate-face-size="sm"');
+    expect(html).toContain(">Ready<");
+    // A card: a bordered surface that presses, not a line of text.
+    const cardAt = html.indexOf('data-zerops-surface="sidebar-mate"');
+    const card = html.slice(html.lastIndexOf("<button", cardAt), cardAt);
+    expect(card).toContain("border");
+    expect(card).toContain("cursor-pointer");
+    expect(card).toContain("active:scale-[0.99]");
   });
 
-  it("folds every environment under the project, Mate or not, and counts them", () => {
-    const html = render([CRM_DEV, NO_MATE]);
-    expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
+  it("folds the other environments under the project and counts them, the Mate's own left out", () => {
+    const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-environments-fold"');
     expect(html).toContain("2 environments");
     // Folded by default: the rows are not in the markup until opened.
     expect(html).not.toContain('data-zerops-surface="sidebar-environment-rows"');
     expect(html).toContain('aria-expanded="false"');
+    // A project whose only environment is its Mate's has nothing to fold.
+    expect(render([CRM_DEV])).not.toContain("sidebar-environments-fold");
+  });
+
+  it("never makes production a Mate, whatever runs in it", () => {
+    const prodWithContainer = candidate("crm-prod", ["mate:g:aaa", "mate:role:prod"], "connected");
+    const html = render([CRM_DEV, prodWithContainer]);
+    expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
+    expect(html).toContain("1 environment");
+  });
+
+  it("gives two Mates two colours", () => {
+    const html = render([CRM_DEV, LOOSE]);
+    const tints = [...html.matchAll(/data-mate-face-tint="([a-z]+)"/gu)].map((match) => match[1]);
+    expect(new Set(tints).size).toBe(2);
   });
 
   it("leaves out a project nobody lives in", () => {
@@ -76,16 +114,20 @@ describe("SidebarZeropsTree", () => {
 
   it("keeps a Mate whose container is not reachable right now, asleep", () => {
     // Membership is presence, not liveness — a sleeping container must not
-    // make a row vanish from under the user.
+    // make a card vanish from under the user.
     const asleep: ZeropsCandidate = {
       ...CRM_DEV,
       group: "unavailable",
       reason: "container is STOPPED",
     };
     const html = render([asleep]);
-    expect(html).toContain("crm-dev");
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).toContain("Unavailable");
+  });
+
+  it("keeps a declared Mate whose container is gone — the tag is its existence", () => {
+    const declared = candidate("crm-dev", ["mate", "mate:g:aaa", "mate:role:dev"], "ready", false);
+    expect(render([declared])).toContain('data-zerops-surface="sidebar-mate"');
   });
 
   it("shows an ungrouped Mate without inventing a project for it", () => {
@@ -99,7 +141,7 @@ describe("SidebarZeropsTree", () => {
   });
 
   it("says Mate is missing, not that projects are, when the account has projects", () => {
-    const html = render([NO_MATE]);
+    const html = render([CRM_STAGE]);
     expect(html).toContain("No environment has Mate yet");
     expect(html).toContain("Set up Mate");
     expect(html).not.toContain("No Zerops projects yet");
@@ -112,14 +154,15 @@ describe("SidebarZeropsTree", () => {
   });
 
   it("marks the active Mate", () => {
-    const html = render([CRM_DEV, CRM_PROD], { activeProjectId: "crm-prod" });
+    const html = render([CRM_DEV, LOOSE], { activeProjectId: "loose" });
     expect(html).toContain('aria-current="true"');
     expect(html.match(/aria-current="true"/gu)).toHaveLength(1);
   });
 });
 
-describe("the Mate's row", () => {
+describe("the Mate's card", () => {
   const NAMED = candidate("crm-dev", [
+    "mate",
     "mate:g:aaa",
     "mate:role:dev",
     "mate:name:Beviro CRM",
@@ -140,10 +183,11 @@ describe("the Mate's row", () => {
     subject: "Reviewing the migration",
   };
 
-  it("leads with the agent's name, not the project's", () => {
+  it("leads with the agent's name — not the project's, not its tag", () => {
     const html = render([NAMED]);
     expect(html).toContain("Ada");
     expect(html).not.toContain(">crm-dev<");
+    expect(html).not.toContain("role-tag");
   });
 
   it("wears the conversation's state and says what it is on, when the caller knows", () => {
@@ -157,7 +201,7 @@ describe("the Mate's row", () => {
   });
 
   it("calls a connected environment with nothing running idle, with open eyes", () => {
-    // The socket is the client's business; the row answers what the agent
+    // The socket is the client's business; the card answers what the agent
     // is up to.
     const html = render([{ ...NAMED, group: "connected" }]);
     expect(html).toContain(">Idle<");
