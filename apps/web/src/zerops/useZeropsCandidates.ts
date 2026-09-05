@@ -24,7 +24,10 @@ import {
   type ZeropsCandidateServiceOutcome,
 } from "@t3tools/client-runtime/zerops/candidateLoading";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { zeropsEnvironmentNamesAtom } from "../state/zerops";
 import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
+import { zeropsEnvironmentNames } from "./environmentNames";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
@@ -171,6 +174,15 @@ export function useZeropsCandidates(): {
       return connection === undefined ? candidate : { ...candidate, connection };
     });
   }, [projects, services, connectedOrigins, connectionsByOrigin]);
+
+  // Publish the environments' names for readers that never load candidates
+  // (`useZeropsEnvironmentNames`). A reload starts from an empty list; the
+  // names it had stay up until the new list carries some.
+  useEffect(() => {
+    const names = zeropsEnvironmentNames(candidates);
+    if (isLoading && names.size === 0) return;
+    appAtomRegistry.set(zeropsEnvironmentNamesAtom, names);
+  }, [candidates, isLoading]);
 
   const refresh = useCallback(() => {
     refreshZeropsCandidates();

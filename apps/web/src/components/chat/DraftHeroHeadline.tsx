@@ -12,6 +12,7 @@ import {
   buildSidebarProjectSnapshots,
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
+import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { sortLogicalProjectsForSidebar } from "../Sidebar.logic";
 import {
@@ -42,6 +43,9 @@ export function DraftHeroHeadline({
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projectSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
   const handleNewThread = useNewThreadHandler();
+  // One environment is one Zerops project: the picker names the project, not
+  // the workspace folder, which is "www" in every container.
+  const zeropsEnvironmentNames = useZeropsEnvironmentNames();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
   const environmentLabelById = useMemo(
@@ -138,15 +142,17 @@ export function DraftHeroHeadline({
             });
           }}
         >
-          {projectPickerEntries.map(({ group }) => {
+          {projectPickerEntries.map(({ group, targetProject }) => {
+            const label =
+              zeropsEnvironmentNames.get(targetProject.environmentId) ?? group.displayName;
             return (
               <MenuRadioItem key={group.projectKey} value={group.projectKey} closeOnClick>
                 <Tooltip>
                   <TooltipTrigger render={<span className="block min-w-0 truncate" />}>
-                    {group.displayName}
+                    {label}
                   </TooltipTrigger>
                   <TooltipPopup side="top" className="max-w-80">
-                    {group.displayName}
+                    {label}
                   </TooltipPopup>
                 </Tooltip>
               </MenuRadioItem>

@@ -49,3 +49,13 @@ const projectTopologyViewFamily = Atom.family((environmentId: string) =>
 export function projectTopologyViewAtom(environmentId: EnvironmentId) {
   return projectTopologyViewFamily(String(environmentId));
 }
+
+/**
+ * The Zerops project's name per environment (`zeropsEnvironmentNames`),
+ * published by `useZeropsCandidates` from whichever host mounts it and read
+ * by anything that must call an environment by name — the draft headline's
+ * picker, where six containers would otherwise all be "www".
+ */
+export const zeropsEnvironmentNamesAtom = Atom.make<ReadonlyMap<EnvironmentId, string>>(
+  new Map(),
+).pipe(Atom.withLabel("zerops:environment-names"));
