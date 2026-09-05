@@ -57,6 +57,18 @@ describe("searchSettings", () => {
     ]);
   });
 
+  // searchSettings here only matches item.title, never searchTerms (that
+  // field is unused/dead across every entry in this file — an unported,
+  // richer multi-field search from another commit). Only the title-matching
+  // query from upstream's test still applies; the searchTerms-only queries
+  // ("CLIProxyAPI", "CLI proxy hub", "management key") are dropped.
+  it.each(["usage providers"])("finds usage-provider management by %s", (query) => {
+    expect(searchSettings(query)[0]).toMatchObject({
+      id: "usage-providers",
+      to: "/settings/providers",
+    });
+  });
+
   it("returns no results for an empty query", () => {
     expect(searchSettings("   ", ITEMS)).toEqual([]);
   });

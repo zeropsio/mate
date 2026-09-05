@@ -202,6 +202,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "usage-providers",
+    title: "Usage providers",
+    to: "/settings/providers",
+    searchTerms: [
+      "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove",
+    ],
+  },
+  {
     id: "source-control",
     title: "Source control",
     to: "/settings/source-control",
