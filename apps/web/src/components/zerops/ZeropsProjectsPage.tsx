@@ -212,7 +212,7 @@ export function useZeropsProjectConnection(orgId: string | null): {
         }
         provisioning.cancel();
         setCreatingIn(null);
-        await navigate({ to: "/" });
+        await navigate({ to: "/", search: { environmentId: String(result.environmentId) } });
       } finally {
         setConnectingOrigin(null);
       }
@@ -633,7 +633,7 @@ function ZeropsProjectsContent() {
         onSelect={(candidate: ZeropsCandidate) => {
           if (candidate.environmentId) {
             rememberZeropsEnvironment(String(candidate.environmentId));
-            void navigate({ to: "/" });
+            void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
             return;
           }
           if (candidate.containerOrigin) startWaitFor(candidate);
@@ -699,6 +699,8 @@ function ZeropsProjectsContent() {
         onOpen={(candidate: ZeropsCandidate) => {
           if (candidate.environmentId) {
             rememberZeropsEnvironment(String(candidate.environmentId));
+            void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
+            return;
           }
           void navigate({ to: "/" });
         }}

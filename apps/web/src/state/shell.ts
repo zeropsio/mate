@@ -8,6 +8,7 @@ import {
   createEnvironmentSnapshotAtom,
   createShellEnvironmentAtoms,
 } from "@t3tools/client-runtime/state/shell";
+import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
@@ -21,6 +22,23 @@ export const environmentShellSummaryAtom = createEnvironmentShellSummaryAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   shellStateValueAtom: environmentShell.stateValueAtom,
 });
+
+/**
+ * The environments whose shell has arrived — the per-environment truth the
+ * all-or-nothing flag below cannot give a caller that wants to wait on the
+ * live ones and not on a registration whose container is gone.
+ */
+export const environmentsWithSnapshotAtom = Atom.make((get): ReadonlySet<EnvironmentId> => {
+  const ids = new Set<EnvironmentId>();
+  const catalog = AsyncResult.value(get(environmentCatalog.catalogAtom));
+  if (Option.isNone(catalog)) return ids;
+  for (const environmentId of catalog.value.entries.keys()) {
+    if (Option.isSome(get(environmentShell.stateValueAtom(environmentId)).snapshot)) {
+      ids.add(environmentId);
+    }
+  }
+  return ids;
+}).pipe(Atom.withLabel("web-environments-with-snapshot"));
 
 export const allEnvironmentShellsBootstrappedAtom = Atom.make((get) => {
   const catalog = AsyncResult.value(get(environmentCatalog.catalogAtom));
