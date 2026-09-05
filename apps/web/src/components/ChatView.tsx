@@ -102,7 +102,7 @@ import {
   deriveWorkLogEntries,
   hasActionableProposedPlan,
 } from "../session-logic";
-import { zeropsThreadModelAtom } from "../state/zerops";
+import { deriveZeropsThreadModel } from "../state/zerops";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { type LegendListRef } from "@legendapp/list/react";
 import { getAnchoredTurnMetrics, type TimelineScrollMode } from "./chat/timelineScrollAnchoring";
@@ -2203,7 +2203,7 @@ function ChatViewContent(props: ChatViewProps) {
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
   const zeropsThreadModel = useMemo(
     () =>
-      zeropsThreadModelAtom({
+      deriveZeropsThreadModel({
         activities: threadActivities,
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,

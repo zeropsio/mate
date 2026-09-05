@@ -1,15 +1,5 @@
-import type {
-  EnvironmentId,
-  OrchestrationThreadActivity,
-  TurnId,
-  ZeropsLifecycle,
-} from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
-
-import {
-  deriveZeropsThreadModel,
-  type ZeropsThreadModel,
-} from "@t3tools/client-runtime/zerops/model";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
@@ -27,13 +17,7 @@ export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
  * derivation (`useMemo`), rather than this module owning a second copy of
  * that state behind an atom.
  */
-export function zeropsThreadModelAtom(input: {
-  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
-  readonly lifecycle: ZeropsLifecycle | undefined;
-  readonly runningTurnId: TurnId | null;
-}): ZeropsThreadModel {
-  return deriveZeropsThreadModel(input);
-}
+export { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 
 /**
  * The read-only side of `useProjectTopology`'s watcher (S3 mate-zone-
