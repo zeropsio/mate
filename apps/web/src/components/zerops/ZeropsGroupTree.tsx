@@ -98,6 +98,8 @@ function Row({
   action,
   menu,
   busy = false,
+  reserveAction = false,
+  reserveMenu = false,
   onSelect,
 }: {
   readonly name: string;
@@ -108,6 +110,13 @@ function Row({
   readonly action?: ReactNode;
   readonly menu?: ReactNode;
   readonly busy?: boolean;
+  /**
+   * Keep the action and menu cells even when this row has nothing to put in
+   * them: health answers arrive row by row, and a pill appearing must not
+   * move anything around it.
+   */
+  readonly reserveAction?: boolean;
+  readonly reserveMenu?: boolean;
   readonly onSelect?: () => void;
 }) {
   // The name is the clickable part, so an action button can sit beside it
@@ -128,7 +137,7 @@ function Row({
   return (
     <div
       aria-busy={busy || undefined}
-      className="flex w-full min-w-0 items-center gap-3 rounded-md px-2 py-1.5"
+      className="flex min-h-[3.125rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 sm:flex-nowrap"
       data-zerops-project-row="true"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -154,10 +163,28 @@ function Row({
           <div className="min-w-0 truncate text-xs text-[var(--muted-foreground)]">{detail}</div>
         ) : null}
       </div>
+      {/* Fixed cells, so every row's status, action and menu line up down the
+          page and a row keeps its shape while its answers arrive. */}
       <div className="flex shrink-0 items-center gap-3">
-        {status}
-        {action}
-        {menu}
+        <div className="flex w-40 shrink-0 items-center justify-end" data-zerops-row-cell="status">
+          {status}
+        </div>
+        {reserveAction ? (
+          <div
+            className="flex w-44 shrink-0 items-center justify-end"
+            data-zerops-row-cell="action"
+          >
+            {action}
+          </div>
+        ) : null}
+        {reserveMenu ? (
+          <div
+            className="flex w-8 shrink-0 items-center justify-center"
+            data-zerops-row-cell="menu"
+          >
+            {menu}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -181,7 +208,12 @@ export function ZeropsGroupTree<T>({
   renderGroupMenu,
   className,
 }: ZeropsGroupTreeProps<T>) {
+  const reserved = {
+    reserveAction: renderAction !== undefined,
+    reserveMenu: renderMenu !== undefined,
+  };
   const rowExtras = (item: T) => ({
+    ...reserved,
     ...(getAgentName === undefined ? {} : { agentName: getAgentName(item) }),
     ...(renderDetail === undefined ? {} : { detail: renderDetail(item) }),
     ...(renderAction === undefined ? {} : { action: renderAction(item) }),
@@ -252,6 +284,21 @@ export function ZeropsGroupTree<T>({
         </section>
       ))}
 
+      {view.ungrouped.length > 0 ? (
+        <Section label="Ungrouped">
+          {view.ungrouped.map((item) => (
+            <Row
+              key={getKey(item)}
+              name={getName(item)}
+              status={renderStatus(item)}
+              {...rowExtras(item)}
+            />
+          ))}
+        </Section>
+      ) : null}
+
+      {/* Account-level, so last: a tool belongs to no group and to no
+          environment's dev/stage/production axis. */}
       {view.tools.length > 0 || onCreateTool ? (
         <Section label="Tools">
           {view.tools.map(({ item, kind }) => (
@@ -259,6 +306,7 @@ export function ZeropsGroupTree<T>({
               key={getKey(item)}
               name={TOOL_LABEL[kind]}
               status={(renderToolStatus ?? renderStatus)(item)}
+              {...reserved}
               {...(renderDetail === undefined ? {} : { detail: renderDetail(item) })}
               {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
             />
@@ -274,19 +322,6 @@ export function ZeropsGroupTree<T>({
               <span>Add Gitea</span>
             </button>
           ) : null}
-        </Section>
-      ) : null}
-
-      {view.ungrouped.length > 0 ? (
-        <Section label="Ungrouped">
-          {view.ungrouped.map((item) => (
-            <Row
-              key={getKey(item)}
-              name={getName(item)}
-              status={renderStatus(item)}
-              {...rowExtras(item)}
-            />
-          ))}
         </Section>
       ) : null}
     </nav>

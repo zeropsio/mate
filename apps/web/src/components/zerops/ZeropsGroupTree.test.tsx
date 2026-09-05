@@ -191,3 +191,25 @@ describe("tool status", () => {
     expect(html).toContain("ENV-STATUS");
   });
 });
+
+describe("the row's cells", () => {
+  it("reserves the action cell on every row once any row can act, so rows keep their shape", () => {
+    const html = render([CRM_DEV, LOOSE], {
+      renderAction: (entry: Item) =>
+        entry.project.id === "crm-dev" ? <button type="button">Connect</button> : null,
+    });
+    expect(html.match(/data-zerops-row-cell="action"/gu)).toHaveLength(2);
+    expect(html).toContain("Connect");
+  });
+
+  it("has no action cell when nothing on the page can act", () => {
+    expect(render([CRM_DEV])).not.toContain('data-zerops-row-cell="action"');
+    expect(render([CRM_DEV])).toContain('data-zerops-row-cell="status"');
+  });
+
+  it("lists tools after the ungrouped environments: account-level, so last", () => {
+    const html = render([CRM_DEV, GITEA, LOOSE]);
+    expect(html.indexOf('data-zerops-group="aaa"')).toBeLessThan(html.indexOf("Ungrouped"));
+    expect(html.indexOf("Ungrouped")).toBeLessThan(html.indexOf("Tools"));
+  });
+});
