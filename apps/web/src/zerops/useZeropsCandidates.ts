@@ -24,6 +24,7 @@ import {
   type ZeropsCandidateServiceOutcome,
 } from "@t3tools/client-runtime/zerops/candidateLoading";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
@@ -82,7 +83,9 @@ export function useZeropsCandidates(): {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reloadCount, setReloadCount] = useState(0);
+  // Shared across mounts: a refresh from the projects screen reloads the
+  // sidebar's copy too (`candidatesRefresh.ts`).
+  const reloadCount = useZeropsCandidatesVersion();
 
   // Bumped per load so a superseded run's callbacks become no-ops.
   const generationRef = useRef(0);
@@ -170,7 +173,7 @@ export function useZeropsCandidates(): {
   }, [projects, services, connectedOrigins, connectionsByOrigin]);
 
   const refresh = useCallback(() => {
-    setReloadCount((count) => count + 1);
+    refreshZeropsCandidates();
   }, []);
 
   return { candidates, isLoading, error, refresh };

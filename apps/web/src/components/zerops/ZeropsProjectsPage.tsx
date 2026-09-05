@@ -7,6 +7,7 @@
 
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isElectron } from "../../env";
@@ -34,10 +35,22 @@ import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
 
-import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  defaultAgentForRole,
+  generateBotName,
+  planEnvironmentCreation,
+  readZeropsGroupTags,
+  runEnvironmentCreation,
+  type EnvironmentCreationStepProgress,
+  type ZeropsEnvironmentRole,
+} from "@t3tools/client-runtime/zerops";
+import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { MicroLabel, StatusDot } from "./primitives";
+import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { ZeropsGroupTree } from "./ZeropsGroupTree";
+import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
@@ -54,6 +67,13 @@ const CANDIDATE_STATUS = {
   provisioning: { label: "Starting", tone: "busy" },
   unavailable: { label: "Unavailable", tone: "attention" },
 } as const;
+
+/** One creation in flight, or just finished, on this screen. */
+interface EnvironmentCreationView {
+  readonly name: string;
+  readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
+  readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
+}
 
 export function autoConnectServedZeropsEnvironment(input: {
   readonly attempted: { current: boolean };
@@ -284,6 +304,113 @@ function ZeropsProjectsContent() {
   );
 
   const [toolError, setToolError] = useState<string | null>(null);
+  const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
+  const groupTree = buildZeropsGroupTree(candidates);
+
+  /**
+   * Stands up one environment in a group: the plan is `planEnvironmentCreation`,
+   * the calls are `runEnvironmentCreation`, and this only chooses the inputs —
+   * the name, whether it gets an agent, and what that agent is called.
+   */
+  const createEnvironment = useCallback(
+    async (groupId: string, role: ZeropsEnvironmentRole) => {
+      if (!activeOrganization) return;
+      const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
+      if (entry === undefined) return;
+      const { group } = entry;
+      const roleLabel = environmentRoleLabel(role)?.toLowerCase() ?? role;
+      const name = `${group.name} - ${roleLabel}`;
+      const withAgent = defaultAgentForRole(role);
+      // An agent's name must be new on the account, not just in the group: it
+      // is what the left menu calls the row, and two Adas is two of nothing.
+      const takenBotNames = candidates.flatMap((candidate) => {
+        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
+        return bot === undefined ? [] : [bot];
+      });
+      const botName = withAgent
+        ? generateBotName(takenBotNames, (bytes) => crypto.getRandomValues(bytes))
+        : undefined;
+
+      const plan = planEnvironmentCreation({
+        clientId: activeOrganization.id,
+        groupId,
+        // A group named by its id has no name to mirror.
+        ...(group.nameSource === "id" ? {} : { groupName: group.name }),
+        role,
+        name,
+        record: await zeropsRecipeStore.readGroup(groupId),
+        ...(botName === undefined ? {} : { botName }),
+      });
+      if (!plan.ok) {
+        setToolError(plan.reason);
+        return;
+      }
+
+      setToolError(null);
+      setCreation({ name, progress: plan.steps.map((step) => ({ step, state: "queued" })) });
+      const outcome = await runEnvironmentCreation({
+        clientId: activeOrganization.id,
+        steps: plan.steps,
+        platform: {
+          createProject: (input) => client.createProject(input),
+          importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
+          importServices: (projectId, yaml) => client.importServicesIntoProject(projectId, yaml),
+          listServices: (projectId) => client.listProjectServices(projectId),
+        },
+        describeError: zeropsErrorMessage,
+        sleep: (ms) =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, ms);
+          }),
+        onProgress: (progress) => {
+          setCreation((current) => (current === null ? current : { ...current, progress }));
+        },
+      });
+
+      if (!outcome.ok) {
+        setCreation((current) =>
+          current === null
+            ? current
+            : {
+                ...current,
+                outcome: {
+                  kind: "failed",
+                  error: outcome.error,
+                  projectExists: outcome.projectId !== undefined,
+                },
+              },
+        );
+        refresh();
+        return;
+      }
+
+      refresh();
+      if (outcome.awaitingAgent) {
+        // The imports were accepted; the container wait is the provisioning
+        // machinery's, which also does the connect and the hand-over to `/`.
+        setCreation(null);
+        setConnectError(null);
+        resetConnectingTarget();
+        setCreatingIn(activeOrganization.id);
+        provisioning.startForProject({ projectId: outcome.projectId });
+        return;
+      }
+      setCreation((current) =>
+        current === null ? current : { ...current, outcome: { kind: "done" } },
+      );
+    },
+    [
+      activeOrganization,
+      candidates,
+      client,
+      groupTree.groups,
+      provisioning,
+      refresh,
+      resetConnectingTarget,
+      setConnectError,
+      setCreatingIn,
+    ],
+  );
 
   /**
    * Stands Gitea up as its own tagged project. Two platform calls with the
@@ -431,6 +558,9 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         getKey={(candidate: ZeropsCandidate) => candidate.key}
         getName={(candidate: ZeropsCandidate) => candidate.project.name}
+        onCreateEnvironment={(groupId, role) => {
+          void createEnvironment(groupId, role);
+        }}
         onCreateTool={() => {
           void createTool();
         }}
@@ -471,8 +601,18 @@ function ZeropsProjectsContent() {
             />
           );
         }}
-        view={buildZeropsGroupTree(candidates)}
+        view={groupTree}
       />
+      {creation === null ? null : (
+        <ZeropsEnvironmentCreation
+          name={creation.name}
+          onDismiss={() => {
+            setCreation(null);
+          }}
+          progress={creation.progress}
+          {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
+        />
+      )}
       {toolError === null ? null : (
         <p className="text-sm text-[var(--zerops-status-failed)]">{toolError}</p>
       )}
