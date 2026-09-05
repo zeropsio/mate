@@ -12,6 +12,7 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
           name: "acme-docs-dev",
           agentName: "Fen",
           services: ["app", "db"],
+          builtFromGit: [],
           yaml: "services:\n  - hostname: app\n",
         },
       ]}

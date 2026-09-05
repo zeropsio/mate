@@ -32,6 +32,13 @@ export interface ExportedRecipe {
   readonly services: ReadonlyArray<string>;
   /** Hostnames dropped because they are agent containers. */
   readonly droppedContainers: ReadonlyArray<string>;
+  /**
+   * Services that build from a repository. The export does not carry their
+   * build setup (`zeropsSetup`; the platform stores no explicit one), so a
+   * clone builds them under the setup named after the hostname and fails
+   * when the repository has none — the person should know before they clone.
+   */
+  readonly builtFromGit: ReadonlyArray<string>;
   /** How many secret blocks were removed. Reported, never their contents. */
   readonly scrubbedBlocks: number;
 }
@@ -41,6 +48,7 @@ const ITEM_START = /^ {2}- /u;
 const ITEM_TYPE = /^ {4}type:\s*(\S+)/u;
 const ITEM_HOSTNAME = /^ {2}- hostname:\s*(\S+)|^ {4}hostname:\s*(\S+)/u;
 const SECRET_BLOCK = /^(\s*)(vault|envSecrets):\s*$/u;
+const BUILD_FROM_GIT = /^ {4}buildFromGit:/u;
 const CONTAINER_TYPE_PREFIX = "zcp@";
 
 function indentOf(line: string): number {
@@ -76,6 +84,7 @@ export function recipeFromProjectExport(exportYaml: string): ExportedRecipe | un
 
   const services: Array<string> = [];
   const droppedContainers: Array<string> = [];
+  const builtFromGit: Array<string> = [];
   let scrubbedBlocks = 0;
   const kept: Array<string> = [];
 
@@ -88,7 +97,10 @@ export function recipeFromProjectExport(exportYaml: string): ExportedRecipe | un
     }
     const scrubbed = withoutSecretBlocks(item);
     scrubbedBlocks += scrubbed.removed;
-    if (hostname !== undefined) services.push(hostname);
+    if (hostname !== undefined) {
+      services.push(hostname);
+      if (item.some((line) => BUILD_FROM_GIT.test(line))) builtFromGit.push(hostname);
+    }
     kept.push(...scrubbed.lines);
   }
 
@@ -98,6 +110,7 @@ export function recipeFromProjectExport(exportYaml: string): ExportedRecipe | un
     servicesYaml: ["services:", ...kept].join("\n").replace(/\n+$/u, "").concat("\n"),
     services,
     droppedContainers,
+    builtFromGit,
     scrubbedBlocks,
   };
 }

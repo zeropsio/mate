@@ -23,7 +23,7 @@ export interface ZeropsEnvironmentCreationProps {
   /** Set once the run has stopped, however it stopped. */
   readonly outcome?:
     | { readonly kind: "handed-off" }
-    | { readonly kind: "done" }
+    | { readonly kind: "done"; readonly undeployed: ReadonlyArray<string> }
     | { readonly kind: "failed"; readonly error: string; readonly projectExists: boolean };
   readonly onDismiss: () => void;
   /** The clock, so a running step's duration ticks; the caller owns the timer. */
@@ -81,7 +81,11 @@ export function ZeropsEnvironmentCreation({
                 : "Nothing was created."
               : outcome.kind === "handed-off"
                 ? "The agent's container is on its way — the wait continues below."
-                : "The environment is up."}
+                : outcome.undeployed.length === 0
+                  ? "The environment is up."
+                  : `The environment is up. ${outcome.undeployed.join(", ")} ${
+                      outcome.undeployed.length === 1 ? "has" : "have"
+                    } nothing deployed yet: deploy from the Zerops dashboard or ask an agent to.`}
         </p>
       </div>
       <ProcessSteps

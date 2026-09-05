@@ -96,6 +96,11 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("Nothing was created");
   });
 
+  it("says what still needs a deploy when the environment is up", () => {
+    const html = render({ outcome: { kind: "done", undeployed: ["app"] } });
+    expect(html).toContain("app has nothing deployed yet");
+  });
+
   it("explains the hand-off to the container wait", () => {
     const html = render({ outcome: { kind: "handed-off" } });
     expect(html).toContain("the wait continues below");

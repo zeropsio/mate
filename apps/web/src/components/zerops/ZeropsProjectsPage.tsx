@@ -582,7 +582,9 @@ function ZeropsProjectsContent() {
         return;
       }
       setCreation((current) =>
-        current === null ? current : { ...current, outcome: { kind: "done" } },
+        current === null
+          ? current
+          : { ...current, outcome: { kind: "done", undeployed: outcome.undeployed } },
       );
     },
     [
@@ -851,6 +853,7 @@ function ZeropsProjectsContent() {
             name: source.name,
             agentName: source.agentName,
             services: source.recipe.services,
+            builtFromGit: source.recipe.builtFromGit,
             yaml: source.recipe.servicesYaml,
           }))}
           cloneSourcesLoading={cloneSources.loading}

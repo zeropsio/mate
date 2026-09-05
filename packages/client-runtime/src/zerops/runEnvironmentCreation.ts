@@ -69,6 +69,12 @@ export type EnvironmentCreationOutcome =
        * provisioning wait this executor deliberately does not own.
        */
       readonly awaitingAgent: boolean;
+      /**
+       * Services that settled short of running — created with nothing
+       * deployed, typically a `buildFromGit` service whose build did not go
+       * through. The environment is up; these are what it still needs.
+       */
+      readonly undeployed: ReadonlyArray<string>;
     }
   | {
       readonly ok: false;
@@ -128,6 +134,7 @@ export async function runEnvironmentCreation(
 
   let projectId: string | undefined;
   let serviceName: string | undefined;
+  let undeployed: ReadonlyArray<string> = [];
   report();
 
   for (let index = 0; index < input.steps.length; index += 1) {
@@ -167,9 +174,10 @@ export async function runEnvironmentCreation(
               projectId: requireProject(projectId),
               serviceName,
               awaitingAgent: true,
+              undeployed: [],
             };
           }
-          await awaitServices({
+          undeployed = await awaitServices({
             projectId: requireProject(projectId),
             platform: input.platform,
             now,
@@ -194,6 +202,7 @@ export async function runEnvironmentCreation(
     projectId: requireProject(projectId),
     serviceName,
     awaitingAgent: false,
+    undeployed,
   };
 }
 
@@ -207,7 +216,16 @@ function requireProject(projectId: string | undefined): string {
 }
 
 /**
- * Every service `ACTIVE`, or a failure naming the ones that are not.
+ * A service the platform has finished creating but that runs nothing yet.
+ * A `buildFromGit` service lands here when its build fails — the export a
+ * clone comes from cannot carry the build setup (`recipeExport.ts`) — and so
+ * does any service that simply awaits a first deploy. Settled, not running.
+ */
+const UNDEPLOYED_STATUS = "READY_TO_DEPLOY";
+
+/**
+ * Every service settled — `ACTIVE`, or created with nothing deployed — with
+ * the names of the latter, or a failure naming what is still on its way.
  *
  * An import's services appear a moment after the import is accepted, so an
  * empty list is "not yet", never "done": waiting on zero services would
@@ -220,12 +238,18 @@ async function awaitServices(input: {
   readonly sleep: (ms: number) => Promise<void>;
   readonly pollIntervalMs: number;
   readonly capMs: number;
-}): Promise<void> {
+}): Promise<ReadonlyArray<string>> {
   const startedAt = input.now();
   for (;;) {
     const services = await input.platform.listServices(input.projectId);
-    const pending = services.filter((service) => service.status !== "ACTIVE");
-    if (services.length > 0 && pending.length === 0) return;
+    const pending = services.filter(
+      (service) => service.status !== "ACTIVE" && service.status !== UNDEPLOYED_STATUS,
+    );
+    if (services.length > 0 && pending.length === 0) {
+      return services
+        .filter((service) => service.status === UNDEPLOYED_STATUS)
+        .map((service) => service.name);
+    }
 
     if (input.now() - startedAt > input.capMs) {
       const names = pending.map((service) => service.name).join(", ");

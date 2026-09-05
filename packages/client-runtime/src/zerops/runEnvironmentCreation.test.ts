@@ -89,6 +89,7 @@ describe("runEnvironmentCreation", () => {
       projectId: "proj-1",
       serviceName: "zcp",
       awaitingAgent: true,
+      undeployed: [],
     });
     expect(calls).toEqual([
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate:bot:Ada",
@@ -118,10 +119,31 @@ describe("runEnvironmentCreation", () => {
       projectId: "proj-1",
       serviceName: undefined,
       awaitingAgent: false,
+      undeployed: [],
     });
     expect(calls.filter((call) => call.startsWith("services:"))).toHaveLength(3);
     expect(slept).toEqual([7, 7]);
     expect(reports.at(-1)!.map((entry) => entry.state)).toEqual(["done", "done", "done"]);
+  });
+
+  it("settles on a service created with nothing deployed, and names it", async () => {
+    // A cloned buildFromGit service whose build failed sits at
+    // READY_TO_DEPLOY for good; waiting on it would only time out.
+    const { platform } = fakePlatform({
+      listServices: () =>
+        Promise.resolve([
+          { name: "app", status: "READY_TO_DEPLOY" },
+          { name: "db", status: "ACTIVE" },
+        ]),
+    });
+    const { outcome } = await run(plan("prod"), platform);
+    expect(outcome).toEqual({
+      ok: true,
+      projectId: "proj-1",
+      serviceName: undefined,
+      awaitingAgent: false,
+      undeployed: ["app"],
+    });
   });
 
   it("does not call zero services ready", async () => {

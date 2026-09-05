@@ -72,6 +72,12 @@ describe("recipeFromProjectExport", () => {
     }
   });
 
+  it("names the services that build from a repository", () => {
+    // Their build setup does not survive the export; the person decides with
+    // that in view.
+    expect(recipeFromProjectExport(EXPORT)?.builtFromGit).toEqual(["app"]);
+  });
+
   it("has nothing to clone from an environment that was only a container", () => {
     const bare = `project:
   name: bare

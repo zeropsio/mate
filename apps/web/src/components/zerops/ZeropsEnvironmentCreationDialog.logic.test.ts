@@ -12,6 +12,7 @@ const SOURCE = {
   name: "acme-docs-dev",
   agentName: "Fen",
   services: ["app", "db"],
+  builtFromGit: [],
   yaml: "services:\n  - hostname: app\n",
 };
 
@@ -26,6 +27,15 @@ describe("recipeOptions", () => {
     expect(options[0]?.label).toBe("The group's stage recipe");
     expect(options[1]?.label).toBe("Clone Fen (acme-docs-dev)");
     expect(options[1]?.detail).toBe("app, db");
+  });
+
+  it("says which cloned services will need a deploy", () => {
+    const options = recipeOptions({
+      roleLabel: "Dev",
+      storeRecipeAvailable: false,
+      sources: [{ ...SOURCE, builtFromGit: ["app"] }],
+    });
+    expect(options[0]?.detail).toBe("app, db · app will need a deploy");
   });
 
   it("always offers nothing yet, even with no store and no siblings", () => {

@@ -12,6 +12,8 @@ export interface CloneSourceSummary {
   readonly name: string;
   readonly agentName: string | undefined;
   readonly services: ReadonlyArray<string>;
+  /** Services whose build setup a clone cannot carry; they will need a deploy. */
+  readonly builtFromGit: ReadonlyArray<string>;
 }
 
 export interface RecipeOption {
@@ -44,10 +46,14 @@ export function recipeOptions(input: {
   for (const source of input.sources) {
     const who =
       source.agentName === undefined ? source.name : `${source.agentName} (${source.name})`;
+    const needsDeploy =
+      source.builtFromGit.length === 0
+        ? ""
+        : ` · ${source.builtFromGit.join(", ")} will need a deploy`;
     options.push({
       id: `clone:${source.projectId}`,
       label: `Clone ${who}`,
-      detail: source.services.join(", "),
+      detail: `${source.services.join(", ")}${needsDeploy}`,
       choice: { kind: "services", yaml: source.yaml, source: source.name },
     });
   }
