@@ -81,3 +81,12 @@ export {
   type ZeropsGroupTags,
   type ZeropsGroupTree,
 } from "./groups.ts";
+export {
+  canCreateEnvironment,
+  groupNamesFromRecords,
+  makeMockZeropsRecipeStore,
+  recipeServicesYaml,
+  type ZeropsGroupRecord,
+  type ZeropsRecipeStore,
+} from "./recipeStore.ts";
+export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
