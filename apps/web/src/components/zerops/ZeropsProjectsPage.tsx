@@ -45,6 +45,7 @@ import {
   type EnvironmentCreationStepProgress,
   type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
+import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { MicroLabel, StatusDot } from "./primitives";
@@ -196,6 +197,11 @@ export function useZeropsProjectConnection(orgId: string | null): {
           setConnectError(result.error);
           return;
         }
+        // The environment is real now. A project created minutes ago may have
+        // been missing from the search-backed list when it was last read (the
+        // index trails the write), so every mounted list reloads here, where
+        // it has certainly caught up.
+        refreshZeropsCandidates();
         const projectId = provisioning.state?.projectId;
         if (projectId && orgId) {
           await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {

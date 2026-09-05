@@ -2,7 +2,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { SidebarZeropsTree } from "./SidebarZeropsTree";
+import { AgentActivity, SidebarZeropsTree } from "./SidebarZeropsTree";
 
 function candidate(
   id: string,
@@ -125,5 +125,29 @@ describe("the agent's name", () => {
 
   it("falls back to where it stands when nobody knows", () => {
     expect(render([NAMED])).toContain("Ready");
+  });
+});
+
+describe("AgentActivity", () => {
+  it("renders the thread status pill's words and tone, and pulses only when told to", () => {
+    const html = renderToStaticMarkup(
+      <AgentActivity
+        status={{
+          label: "Working",
+          colorClass: "text-sky-600",
+          dotClass: "bg-sky-500",
+          pulse: true,
+        }}
+      />,
+    );
+    expect(html).toContain("Working");
+    expect(html).toContain("text-sky-600");
+    expect(html).toContain("bg-sky-500");
+    expect(html).toContain("animate-status-pulse");
+
+    const still = renderToStaticMarkup(
+      <AgentActivity status={{ label: "Done", colorClass: "c", dotClass: "d", pulse: false }} />,
+    );
+    expect(still).not.toContain("animate-status-pulse");
   });
 });
