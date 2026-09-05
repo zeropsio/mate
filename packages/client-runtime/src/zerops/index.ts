@@ -121,3 +121,11 @@ export {
   type ZeropsAgentOwnership,
   type ZeropsAgentOwnershipInput,
 } from "./agentOwnership.ts";
+export {
+  defaultAgentForRole,
+  environmentCreationStepLabel,
+  planEnvironmentCreation,
+  type EnvironmentCreationInput,
+  type EnvironmentCreationPlan,
+  type EnvironmentCreationStep,
+} from "./createEnvironment.ts";
