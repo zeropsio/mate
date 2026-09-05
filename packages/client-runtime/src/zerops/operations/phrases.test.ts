@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  attemptWord,
   browserCondensedLine,
   browserLiveCaption,
   humanizeCheckName,
@@ -82,6 +83,16 @@ describe("humanizeToolName", () => {
 
   it("turns zerops_yml_exists into Yml exists", () => {
     expect(humanizeToolName("zerops_yml_exists")).toBe("Yml exists");
+  });
+});
+
+describe("attemptWord — R8 retry count", () => {
+  it("is undefined for a single attempt", () => {
+    expect(attemptWord(1)).toBeUndefined();
+  });
+
+  it("reads 'attempt 3' for three folded attempts", () => {
+    expect(attemptWord(3)).toBe("attempt 3");
   });
 });
 

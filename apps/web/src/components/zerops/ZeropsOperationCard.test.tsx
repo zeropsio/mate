@@ -393,6 +393,49 @@ describe("ZeropsOperationCard — browser", () => {
   });
 });
 
+describe("ZeropsOperationCard — attempt count (R8)", () => {
+  it("renders a muted 'attempt 3' in the status cluster for a folded retry chain", () => {
+    const failedDeploy = (id: string, createdAt: string) =>
+      zeropsCall({
+        id,
+        startedAt: createdAt,
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "failed",
+        resultText: JSON.stringify({ code: "API_ERROR", error: "zerops.yml not found" }),
+      });
+    const { operations } = reduceZeropsOperations([
+      failedDeploy("r1", "2026-09-01T00:00:00.000Z"),
+      failedDeploy("r2", "2026-09-01T00:01:00.000Z"),
+      failedDeploy("r3", "2026-09-01T00:02:00.000Z"),
+    ]);
+    const folded = operations[0]!;
+    expect(folded.attempts).toBe(3);
+
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={folded} />);
+    expect(html).toContain("attempt 3");
+  });
+
+  it("renders no attempt word for a single call", () => {
+    const single = operationFor(
+      zeropsCall({
+        id: "single1",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
+      }),
+    );
+    expect(single.attempts).toBe(1);
+
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={single} />);
+    expect(html).not.toContain("attempt");
+  });
+});
+
 describe("ZeropsOperationCard — empty body", () => {
   it("renders no ProcessSteps and no placeholder text when there are no steps and no observed region", () => {
     const operation = operationFor(

@@ -317,6 +317,11 @@ export function ZeropsOperationCard(props: {
             role="status"
           >
             <StatusDot label={operation.statusWord} pulse={tone === "busy"} tone={tone} />
+            {operation.attemptWord !== undefined ? (
+              <span className="text-[11px] text-muted-foreground" data-zerops-operation-attempt>
+                {operation.attemptWord}
+              </span>
+            ) : null}
             {durationText !== undefined ? (
               <span
                 className="font-mono text-[11px] text-muted-foreground tabular-nums"

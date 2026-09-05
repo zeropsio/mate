@@ -8,6 +8,7 @@
  *
  * Pure and deterministic: same calls in, same operations out.
  */
+import { attemptWord } from "../operations/phrases.ts";
 import {
   classifyZeropsCall,
   isBootstrapRouteMenuStart,
@@ -162,6 +163,7 @@ function buildStandaloneOperation(group: StandaloneGroup, attempts: number): Zer
   const latest = group.calls[group.calls.length - 1]!;
   const fields = buildFieldsFor(group.kind, latest);
   const phase = fields.phaseOverride ?? phaseFor(latest.status);
+  const attemptWordText = attemptWord(attempts);
   return {
     key: `op:${founder.id}`,
     kind: group.kind,
@@ -180,6 +182,7 @@ function buildStandaloneOperation(group: StandaloneGroup, attempts: number): Zer
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: group.calls.map((c) => c.id),
     attempts,
+    ...(attemptWordText !== undefined ? { attemptWord: attemptWordText } : {}),
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,

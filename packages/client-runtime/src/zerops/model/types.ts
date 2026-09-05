@@ -150,6 +150,8 @@ export interface ZeropsOperation {
   readonly callIds: ReadonlyArray<string>;
   /** >= 1; > 1 when failed retries folded in (§2.3 R8/R9). */
   readonly attempts: number;
+  /** "attempt 3" — `phrases.ts`' `attemptWord(attempts)`, standalone kinds only; absent at 1. */
+  readonly attemptWord?: string;
   readonly target?: { readonly hostname: string };
   readonly resultStatus?: string;
   readonly hasResult: boolean;
