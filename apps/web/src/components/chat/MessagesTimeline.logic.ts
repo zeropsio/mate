@@ -624,11 +624,7 @@ function deriveTurnFolds(input: {
       // Agent-spawn CTA rows never fold: workflows outlive their launching
       // turn (dynamic spawns, background execution), and folding the CTA
       // when the turn settles makes a still-running fleet invisible.
-      if (
-        entry.kind === "work" &&
-        (entry.entry.agentSpawn !== undefined ||
-          entry.entry.sourceActivityKind === "context-compaction")
-      ) {
+      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
         continue;
       }
       // Operation cards never fold either: they are the durable outcomes a
@@ -639,6 +635,16 @@ function deriveTurnFolds(input: {
       hiddenEntries.add(entry);
     }
     if (hiddenEntries.size === 0) {
+      continue;
+    }
+    // A lone compaction row stays visible on its own; it only folds away as
+    // part of a turn that already folds other work.
+    const hidesNonCompactionWork = group.entries.some(
+      (entry) =>
+        hiddenEntries.has(entry) &&
+        !(entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction"),
+    );
+    if (!hidesNonCompactionWork) {
       continue;
     }
 
