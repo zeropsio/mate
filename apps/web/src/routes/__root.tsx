@@ -56,7 +56,7 @@ import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
 } from "../components/KeybindingsUpdateToast.logic";
-import { resolveDoor } from "./-door";
+import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
 import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -97,9 +97,10 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const { status: zeropsSessionStatus } = useZeropsSession();
+  const { environments } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
-    environmentCount: 0,
+    environmentCount: countDoorEnvironments(environments),
   });
   const accountGate = resolveZeropsAccountGate({
     accountRequired: authGateState.status === "hosted-static",

@@ -130,14 +130,21 @@ export function resolveDoor(
   }
 
   const isPairPath = PAIR_PATH_PATTERN.test(pathname);
-  const shell = isPairPath || !profile.hasAppGate ? "bare" : "app";
+  // The primary server is one way into the shell; a usable environment the
+  // client already holds is another. Signed into Zerops on an unpaired
+  // origin, a person connects to their environments and has somewhere to be —
+  // the shell must open on them, or "Open" leads back to the list it left.
+  // Pairing the primary stays available at /pair either way; a hosted pairing
+  // in progress is a handshake, not a place to be, so it never counts.
+  const entered = profile.hasAppGate || (input.environmentCount > 0 && !profile.hostedPairing);
+  const shell = isPairPath || !entered ? "bare" : "app";
   const redirect = isPairPath
     ? profile.zeropsDoor
       ? null
       : profile.hasAppGate
         ? "/"
         : null
-    : !profile.hasAppGate
+    : !entered
       ? "/pair"
       : null;
 

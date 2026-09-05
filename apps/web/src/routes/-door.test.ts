@@ -342,7 +342,7 @@ const GATE_EXPECTATIONS = [
     rows: [
       {
         pathname: "/",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -364,7 +364,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/settings",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -375,7 +375,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/projects/x",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -386,7 +386,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/zerops",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -397,7 +397,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/usage",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -408,7 +408,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -419,7 +419,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect/cli",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -544,7 +544,7 @@ const GATE_EXPECTATIONS = [
     rows: [
       {
         pathname: "/",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -566,7 +566,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/settings",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -577,7 +577,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/projects/x",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -588,7 +588,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/zerops",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -599,7 +599,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/usage",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -610,7 +610,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -621,7 +621,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect/cli",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -641,7 +641,7 @@ const GATE_EXPECTATIONS = [
     rows: [
       {
         pathname: "/",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -663,7 +663,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/settings",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -674,7 +674,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/projects/x",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -685,7 +685,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/zerops",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -696,7 +696,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/usage",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -707,7 +707,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -718,7 +718,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect/cli",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -735,7 +735,7 @@ const GATE_EXPECTATIONS = [
     rows: [
       {
         pathname: "/",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -757,7 +757,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/settings",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -768,7 +768,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/projects/x",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -779,7 +779,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/zerops",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -790,7 +790,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/usage",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -801,7 +801,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -812,7 +812,7 @@ const GATE_EXPECTATIONS = [
       },
       {
         pathname: "/connect/cli",
-        environmentCounts: BOTH_COUNTS,
+        environmentCounts: [0],
         expected: {
           session: "none",
           shell: "bare",
@@ -1044,6 +1044,40 @@ describe("resolveDoor", () => {
       });
     },
   );
+});
+
+describe("an unpaired server with a usable environment", () => {
+  const unpairedGates = GATE_EXPECTATIONS.filter(
+    ({ label }) => label.startsWith("requires-auth:") && !label.includes("zerops-identity"),
+  );
+  const enteredRows = unpairedGates.flatMap(({ label, gate, rows }) =>
+    rows
+      .filter(({ pathname, expected }) => pathname !== "/pair" && expected.redirect === "/pair")
+      .map(({ pathname, expected }) => ({ label, gate, pathname, expected })),
+  );
+
+  it("has rows to prove", () => {
+    expect(enteredRows.length).toBeGreaterThan(0);
+  });
+
+  // Signed into Zerops on an unpaired origin, the person connected to their
+  // environments; "Open" must lead into the shell, not back to the list.
+  it.each(enteredRows)(
+    "$label at $pathname opens the shell on the environment",
+    ({ gate, pathname, expected }) => {
+      const decision = resolveDoor(gate, { pathname, environmentCount: 1 });
+      expect(decision.shell).toBe("app");
+      expect(decision.redirect).toBeNull();
+      expect(decision.session).toBe("none");
+      expect(decision.surface).toBe(expected.surface);
+    },
+  );
+
+  it.each(unpairedGates)("$label still offers pairing the primary at /pair", ({ gate }) => {
+    const decision = resolveDoor(gate, { pathname: "/pair", environmentCount: 1 });
+    expect(decision.shell).toBe("bare");
+    expect(decision.redirect).toBeNull();
+  });
 });
 
 describe("countDoorEnvironments", () => {
