@@ -90,3 +90,20 @@ export {
   type ZeropsRecipeStore,
 } from "./recipeStore.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
+export {
+  deriveGiteaState,
+  formatToolTag,
+  GITEA_ADMIN_USER_COMMAND,
+  GITEA_HTTP_PORT,
+  GITEA_RUNNER_TOKEN_COMMAND,
+  partitionZeropsToolProjects,
+  readZeropsToolKind,
+  type ZeropsGiteaPhase,
+  type ZeropsGiteaProbe,
+  type ZeropsGiteaSetupStep,
+  type ZeropsGiteaState,
+  type ZeropsGiteaStepState,
+  type ZeropsToolKind,
+  type ZeropsToolProject,
+} from "./tools.ts";
+export { buildGiteaImportYaml, buildGiteaRunnerImportYaml } from "./giteaRecipe.ts";
