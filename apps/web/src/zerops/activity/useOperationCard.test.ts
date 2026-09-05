@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
-import { describe, expect, it } from "vite-plus/test";
+import { EnvironmentId } from "@t3tools/contracts";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type {
   Observation,
@@ -9,11 +10,45 @@ import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/obser
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
+import { reactHookHarness as hooks } from "../../test/reactHookHarness";
+
+const browserStreamSpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  return {
+    ...actual,
+    useRef: reactHookHarness.useRef,
+    useState: reactHookHarness.useState,
+  };
+});
+
+vi.mock("react/compiler-runtime", async () => {
+  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  return { c: reactHookHarness.useMemoCache };
+});
+
+vi.mock("../useZeropsFeeds.ts", () => ({
+  useZeropsTopology: () => undefined,
+  useZeropsBrowserStream: browserStreamSpy,
+}));
+
+vi.mock("./useOperationObservation.ts", () => ({
+  useOperationObservation: () => ({
+    state: { kind: "off", reason: "not-found" },
+    history: undefined,
+    buildLog: { status: "idle", lines: [] },
+  }),
+}));
+
 import {
   browserScreenshotFor,
   deriveObservedStepsRegion,
   devServerUrlFor,
+  isBrowserOperationLive,
   observationTargetFor,
+  useOperationCard,
 } from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
@@ -305,5 +340,98 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(region?.steps).toEqual([
       expect.objectContaining({ id: "RUN_BUILD_COMMANDS", label: "Build" }),
     ]);
+  });
+});
+
+describe("isBrowserOperationLive", () => {
+  it("true only for a browser operation whose own call is still running", () => {
+    expect(isBrowserOperationLive(operation({ kind: "browser", phase: "running" }))).toBe(true);
+    expect(isBrowserOperationLive(operation({ kind: "browser", phase: "done" }))).toBe(false);
+    expect(isBrowserOperationLive(operation({ kind: "browser", phase: "failed" }))).toBe(false);
+    expect(isBrowserOperationLive(operation({ kind: "deploy", phase: "running" }))).toBe(false);
+  });
+});
+
+describe("useOperationCard — the browser card's live viewport (hook)", () => {
+  const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+  const FRAME = { type: "frame" as const, data: "AAAA", width: 640, height: 360 };
+
+  beforeEach(() => {
+    hooks.reset();
+    browserStreamSpy.mockReset();
+    browserStreamSpy.mockReturnValue(undefined);
+  });
+
+  it("subscribes to the browser feed only for an in-progress browser call, once per thread", () => {
+    hooks.beginRender();
+    useOperationCard(operation({ kind: "browser", phase: "done" }), ENVIRONMENT_ID);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(null);
+
+    hooks.beginRender();
+    useOperationCard(operation({ kind: "deploy", phase: "running" }), ENVIRONMENT_ID);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(null);
+
+    hooks.beginRender();
+    useOperationCard(operation({ kind: "browser", phase: "running" }), ENVIRONMENT_ID);
+    expect(browserStreamSpy).toHaveBeenLastCalledWith(ENVIRONMENT_ID);
+    expect(browserStreamSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("passes the latest frame as liveFrame while the call is running, and live: true", () => {
+    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "browser", phase: "running" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.live).toBe(true);
+    expect(region.liveFrame).toEqual({
+      src: "data:image/jpeg;base64,AAAA",
+      width: 640,
+      height: 360,
+    });
+  });
+
+  it("keeps the last frame once the call completes, so a result without a screenshot still shows it", () => {
+    const running = operation({ key: "call:brw1", kind: "browser", phase: "running" });
+    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+    hooks.beginRender();
+    useOperationCard(running, ENVIRONMENT_ID);
+
+    const done = operation({ key: "call:brw1", kind: "browser", phase: "done" });
+    browserStreamSpy.mockReturnValue(undefined);
+    hooks.beginRender();
+    const region = useOperationCard(done, ENVIRONMENT_ID);
+
+    expect(region.live).toBe(false);
+    expect(region.liveFrame).toEqual({
+      src: "data:image/jpeg;base64,AAAA",
+      width: 640,
+      height: 360,
+    });
+  });
+
+  it("never carries a remembered frame across two different browser operations", () => {
+    const first = operation({ key: "call:brw1", kind: "browser", phase: "running" });
+    browserStreamSpy.mockReturnValue({ status: "live", frame: FRAME });
+    hooks.beginRender();
+    useOperationCard(first, ENVIRONMENT_ID);
+
+    const second = operation({ key: "call:brw2", kind: "browser", phase: "done" });
+    browserStreamSpy.mockReturnValue(undefined);
+    hooks.beginRender();
+    const region = useOperationCard(second, ENVIRONMENT_ID);
+
+    expect(region.liveFrame).toBeUndefined();
+  });
+
+  it("carries neither live nor liveFrame for a non-browser operation", () => {
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "deploy", phase: "running" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.live).toBeUndefined();
+    expect(region.liveFrame).toBeUndefined();
   });
 });

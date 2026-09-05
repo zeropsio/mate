@@ -11,7 +11,7 @@
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useState, type ReactElement } from "react";
+import { createElement, useRef, useState, type ReactElement } from "react";
 
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -20,6 +20,7 @@ import type {
   ObservationState,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { ObservedStep } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
   ZeropsOperation,
@@ -32,9 +33,10 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import type {
   BrowserScreenshot,
+  LiveBrowserFrame,
   ObservedRegion,
 } from "../../components/zerops/ZeropsOperationCard";
-import { useZeropsTopology } from "../useZeropsFeeds.ts";
+import { useZeropsBrowserStream, useZeropsTopology } from "../useZeropsFeeds.ts";
 import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
 
 const OBSERVED_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
@@ -161,10 +163,66 @@ export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreens
   return operation.kind === "browser" ? operation.screenshot : undefined;
 }
 
+/**
+ * True exactly while THIS operation's own `zerops_browser` call is still
+ * running — the card's live-viewport gate. An operation carries its own
+ * `phase`, so this needs nothing from the thread's lifecycle feed: at most
+ * one browser call is ever `running` in a thread at a time, which is what
+ * keeps the feed subscription below to one per thread.
+ */
+export function isBrowserOperationLive(operation: ZeropsOperation): boolean {
+  return operation.kind === "browser" && operation.phase === "running";
+}
+
+interface RememberedFrame {
+  readonly key: string;
+  readonly frame: LiveBrowserFrame | undefined;
+}
+
+/**
+ * The browser card's live viewport: subscribes to the S8b feed
+ * (`useZeropsBrowserStream`) only while `isBrowserOperationLive` — feeding
+ * it `null` otherwise short-circuits to no subscription
+ * (`useZeropsBrowserStream`'s own `EMPTY_ATOM` path), so a thread with many
+ * completed browser cards never opens more than the one feed its
+ * currently-running call needs. The last frame is remembered across the
+ * running→done transition (a completed call without its own screenshot
+ * still shows something) and reset whenever `operation.key` changes, so a
+ * NEW browser card never inherits a stale frame from an old one.
+ */
+function useLiveBrowserFrame(
+  operation: ZeropsOperation,
+  environmentId: EnvironmentId | null,
+): { readonly live: boolean; readonly liveFrame?: LiveBrowserFrame } {
+  const live = isBrowserOperationLive(operation);
+  const read = useZeropsBrowserStream(live ? environmentId : null);
+  const rememberedRef = useRef<RememberedFrame>({ key: operation.key, frame: undefined });
+  if (rememberedRef.current.key !== operation.key) {
+    rememberedRef.current = { key: operation.key, frame: undefined };
+  }
+  const frame = read !== undefined && read !== "unavailable" ? read.frame : undefined;
+  if (frame !== undefined) {
+    rememberedRef.current = {
+      key: operation.key,
+      frame: { src: frameImageSrc(frame), width: frame.width, height: frame.height },
+    };
+  }
+  return {
+    live,
+    ...(rememberedRef.current.frame === undefined
+      ? {}
+      : { liveFrame: rememberedRef.current.frame }),
+  };
+}
+
 export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
+  /** `browser` only: the call is currently in progress. */
+  readonly live?: boolean;
+  /** `browser` only: the latest live frame, kept across the running→done transition. */
+  readonly liveFrame?: LiveBrowserFrame;
 }
 
 export function useOperationCard(
@@ -175,21 +233,25 @@ export function useOperationCard(
   const { state, history, buildLog } = useOperationObservation(target, environmentId);
   const topology = useZeropsTopology(environmentId);
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId);
 
   const devServerUrl = devServerUrlFor(operation, topology);
   const devServerUrlField = devServerUrl === undefined ? {} : { devServerUrl };
   const browserScreenshot = browserScreenshotFor(operation);
   const browserScreenshotField = browserScreenshot === undefined ? {} : { browserScreenshot };
+  const liveField =
+    operation.kind === "browser" ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) } : {};
 
   const region = deriveObservedStepsRegion(operation.phase, state, history, Date.now());
   if (region === undefined) {
-    return { ...devServerUrlField, ...browserScreenshotField };
+    return { ...devServerUrlField, ...browserScreenshotField, ...liveField };
   }
   if (region.buildLogQuery === undefined) {
     return {
       observed: { steps: region.steps, provenance: region.provenance },
       ...devServerUrlField,
       ...browserScreenshotField,
+      ...liveField,
     };
   }
 
@@ -204,5 +266,6 @@ export function useOperationCard(
     observed: { steps: region.steps, provenance: region.provenance, log },
     ...devServerUrlField,
     ...browserScreenshotField,
+    ...liveField,
   };
 }

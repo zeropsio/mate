@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { reduceZeropsOperations } from "@t3tools/client-runtime/zerops/operations";
 import type { ZeropsCallEntry, ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
@@ -9,7 +9,37 @@ import {
   verifyAndRefusedDeploy,
   weatherdashFirstDeploy,
 } from "@t3tools/client-runtime/zerops/operations/fixtures";
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+
+const panelTestState = vi.hoisted(() => ({
+  onOpen: null as (() => void) | null,
+  open: vi.fn(),
+}));
+
+vi.mock("~/components/ui/tooltip", async (importOriginal) => {
+  const React = await import("react");
+  const original = await importOriginal<typeof import("~/components/ui/tooltip")>();
+  return {
+    ...original,
+    TooltipTrigger: ({
+      children,
+      render,
+    }: {
+      readonly children: React.ReactNode;
+      readonly render: React.ReactElement<{ readonly onClick?: () => void }>;
+    }) => {
+      panelTestState.onOpen = render.props.onClick ?? null;
+      return React.cloneElement(render, undefined, children);
+    },
+  };
+});
+
+vi.mock("../../rightPanelStore", () => ({
+  useRightPanelStore: {
+    getState: () => ({ open: panelTestState.open }),
+  },
+}));
 
 import { deriveWorkLogEntries, deriveZeropsOperations } from "../../session-logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
@@ -191,6 +221,11 @@ describe("ZeropsOperationCard — dev server", () => {
 });
 
 describe("ZeropsOperationCard — browser", () => {
+  const THREAD_REF: ScopedThreadRef = {
+    environmentId: EnvironmentId.make("environment-1"),
+    threadId: ThreadId.make("thread-1"),
+  };
+
   const entry: ZeropsCallEntry = {
     id: "brw1",
     createdAt: "2026-09-01T00:00:00.000Z",
@@ -209,6 +244,10 @@ describe("ZeropsOperationCard — browser", () => {
           error: "no element matched @e1",
           errorKind: "selector-not-found",
         },
+        { command: ["screenshot", "/tmp/shot.png"], success: true },
+        { command: ["errors"], success: true },
+        { command: ["console"], success: true },
+        { command: ["network", "requests", "--status", "400-599"], success: true },
         { command: ["close"], success: true },
       ],
       errorsOutput: ["TypeError: x is not a function"],
@@ -218,24 +257,62 @@ describe("ZeropsOperationCard — browser", () => {
   };
   const operation = reduceZeropsOperations([entry]).operations[0]!;
 
-  it("renders the browser card with counts and the step list; thumbnail only when an image is present", () => {
-    const withoutImage = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
-    expect(withoutImage).toContain("1 console error, 1 page error, 0 failed requests");
-    expect(withoutImage).toContain("open https://kanbandev-26a7.prg1.zerops.app");
-    expect(withoutImage).toContain("click @e1");
-    expect(withoutImage).not.toContain("data-zerops-browser-thumbnail");
+  it("renders the condensed line and the full step list only inside the Show steps expander; the plumbing tail never appears", () => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(html).toContain(operation.browserSummary!.line);
+    expect(html).toContain("open https://kanbandev-26a7.prg1.zerops.app");
+    expect(html).toContain("click @e1");
+    expect(html).toContain("Show steps");
+    expect(html).not.toContain("screenshot /tmp/shot.png");
+    expect(html).not.toMatch(/>\s*errors\s*</);
+    expect(html).not.toContain("network requests --status 400-599");
+  });
 
-    const withImage = renderToStaticMarkup(
+  it("a failed step is always visible with the steps collapsed", () => {
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    const detailsIndex = html.indexOf("<details");
+    const failedStepIndex = html.indexOf("click @e1");
+    expect(detailsIndex).toBeGreaterThan(-1);
+    expect(failedStepIndex).toBeGreaterThan(-1);
+    expect(failedStepIndex).toBeLessThan(detailsIndex);
+    expect(html).not.toMatch(/<details[^>]*\bopen\b/);
+  });
+
+  it("renders the live frame while the call is in progress and the screenshot once it completes", () => {
+    const runningHtml = renderToStaticMarkup(
       <ZeropsOperationCard
-        browserScreenshot={{ src: "data:image/png;base64,AAAA", width: 1280, height: 720 }}
+        live
+        liveFrame={{ src: "data:image/jpeg;base64,LIVE", width: 640, height: 360 }}
         operation={operation}
       />,
     );
-    expect(withImage).toContain("data-zerops-browser-thumbnail");
-    expect(withImage).toContain("data:image/png;base64,AAAA");
+    expect(runningHtml).toContain("data:image/jpeg;base64,LIVE");
+    expect(runningHtml).not.toContain("data:image/png;base64,DONE");
+
+    const doneHtml = renderToStaticMarkup(
+      <ZeropsOperationCard
+        browserScreenshot={{ src: "data:image/png;base64,DONE", width: 1280, height: 720 }}
+        live={false}
+        liveFrame={{ src: "data:image/jpeg;base64,LIVE", width: 640, height: 360 }}
+        operation={operation}
+      />,
+    );
+    expect(doneHtml).toContain("data:image/png;base64,DONE");
+    expect(doneHtml).not.toContain("data:image/jpeg;base64,LIVE");
   });
 
-  it("ignores a browserScreenshot prop for a non-browser operation", () => {
+  it("renders the last frame when a completed call carried no screenshot", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard
+        live={false}
+        liveFrame={{ src: "data:image/jpeg;base64,LASTFRAME", width: 640, height: 360 }}
+        operation={operation}
+      />,
+    );
+    expect(html).toContain("data:image/jpeg;base64,LASTFRAME");
+  });
+
+  it("ignores browserScreenshot/liveFrame props for a non-browser operation", () => {
     const deployEntry: ZeropsCallEntry = {
       id: "brw2",
       createdAt: "2026-09-01T00:00:00.000Z",
@@ -250,10 +327,30 @@ describe("ZeropsOperationCard — browser", () => {
     const html = renderToStaticMarkup(
       <ZeropsOperationCard
         browserScreenshot={{ src: "data:image/png;base64,AAAA" }}
+        live
+        liveFrame={{ src: "data:image/jpeg;base64,BBBB", width: 640, height: 360 }}
         operation={deployOperation}
       />,
     );
-    expect(html).not.toContain("data-zerops-browser-thumbnail");
+    expect(html).not.toContain("data-zerops-browser-viewport");
+    expect(html).not.toContain("data:image/png;base64,AAAA");
+    expect(html).not.toContain("data:image/jpeg;base64,BBBB");
+  });
+
+  it("clicking the viewport opens the Browser panel", () => {
+    panelTestState.onOpen = null;
+    panelTestState.open.mockClear();
+    renderToStaticMarkup(
+      <ZeropsOperationCard
+        browserScreenshot={{ src: "data:image/png;base64,AAAA", width: 1280, height: 720 }}
+        operation={operation}
+        threadRef={THREAD_REF}
+      />,
+    );
+    const onOpen = panelTestState.onOpen as (() => void) | null;
+    expect(onOpen).not.toBeNull();
+    (onOpen as () => void)();
+    expect(panelTestState.open).toHaveBeenCalledWith(THREAD_REF, "browser");
   });
 });
 
