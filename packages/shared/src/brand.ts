@@ -94,6 +94,23 @@ export const PROCESS_STEPS = {
   glyphBorderWidth: 2,
 } as const;
 
+/** Mate identity v1: the Zerops loop with its band retracted. Shared with the favicon. */
+export const MATE_MARK = {
+  viewBox: "0 0 44 52",
+  color: "#45a29a",
+  eyes: { light: "#17130f", dark: "#f4efe6" },
+  paths: [
+    "M0.46,27.54 V11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V17.99 L34.84,22.54 V13.71 L21.6,8.62 L8.36,13.7 V23 Z",
+    "M42.74,23.7 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 V33.26 L8.5,28.62 V37.74 L21.6,42.75 L34.84,37.69 V28.26 Z",
+  ],
+  silhouette:
+    "M0.46,11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 Z",
+  eyeXs: [12.332, 25.572],
+  eyeY: 19.06,
+  eyeWidth: 5.296,
+  eyeHeight: 10.592,
+} as const;
+
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",
   paths: [

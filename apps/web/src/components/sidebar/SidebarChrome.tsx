@@ -5,7 +5,7 @@ import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-ro
 
 import { APP_BASE_NAME } from "../../branding";
 import { cn } from "../../lib/utils";
-import { ZeropsMark } from "../ZeropsMark";
+import { MateMark } from "../MateMark";
 import {
   SidebarFooter,
   SidebarHeader,
@@ -44,7 +44,7 @@ function SidebarBrand() {
       className="ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
       to="/"
     >
-      <ZeropsMark className="h-4 w-auto shrink-0" />
+      <MateMark className="mr-1 h-6 w-auto" />
       <span className="-translate-y-px truncate text-sm font-medium tracking-tight text-muted-foreground">
         {APP_BASE_NAME}
       </span>

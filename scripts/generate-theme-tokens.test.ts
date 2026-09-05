@@ -17,7 +17,7 @@ import {
   themeColorToNativeColor,
   type MobileThemeVariables,
 } from "@t3tools/shared/mobileThemeVariables";
-import { ZEROPS_MARK } from "@t3tools/shared/brand";
+import { MATE_MARK, ZEROPS_MARK } from "@t3tools/shared/brand";
 
 import {
   getThemeTokenProjectionOutputs,
@@ -241,10 +241,12 @@ describe("generate theme tokens", () => {
 
     const favicon = outputs.find((output) => output.target === "apps/web/public/favicon.svg");
     expect(favicon?.contents).toContain(`<svg xmlns="http://www.w3.org/2000/svg"`);
-    for (const path of ZEROPS_MARK.paths) {
-      expect(favicon?.contents).toContain(`d="${path.d}"`);
-      expect(favicon?.contents).toContain(`fill="${path.fill}"`);
+    for (const path of MATE_MARK.paths) {
+      expect(favicon?.contents).toContain(`d="${path}"`);
     }
+    expect(favicon?.contents).toContain(`fill="${MATE_MARK.color}"`);
+    expect(favicon?.contents).toContain("prefers-color-scheme: dark");
+    expect(favicon?.contents.match(/<rect /g)).toHaveLength(2);
 
     const manifest = JSON.parse(
       NodeFS.readFileSync(

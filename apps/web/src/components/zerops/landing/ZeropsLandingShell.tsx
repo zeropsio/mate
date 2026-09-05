@@ -17,6 +17,7 @@ import { Label } from "../../ui/label";
 import { SidebarInset } from "../../ui/sidebar";
 import { Spinner } from "../../ui/spinner";
 import { WorkspacePageHeader } from "../../WorkspacePageHeader";
+import { MateMark } from "../../MateMark";
 
 export function ZeropsLandingShell({
   title,
@@ -38,6 +39,7 @@ export function ZeropsLandingShell({
 
         <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
           <div className="w-full max-w-md space-y-6">
+            <MateMark playful className="mx-auto h-20 w-auto" />
             <div className="space-y-1 text-center">
               <h1 className="text-xl font-semibold text-foreground">{title}</h1>
               <p className="text-sm text-muted-foreground">{description}</p>

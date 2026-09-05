@@ -16,7 +16,7 @@ import {
   type ThemeColors,
   type ThemeDefinition,
 } from "@t3tools/shared/themePalettes";
-import { ZEROPS_MARK } from "@t3tools/shared/brand";
+import { MATE_MARK, ZEROPS_MARK } from "@t3tools/shared/brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
@@ -250,8 +250,13 @@ const renderWebBootMark = (): string =>
 
 const renderZeropsFaviconSvg = (): string =>
   [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ZEROPS_MARK.viewBox}">`,
-    ...ZEROPS_MARK.paths.map((path) => `  <path d="${path.d}" fill="${path.fill}" />`),
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MATE_MARK.viewBox}">`,
+    `  <style>rect { fill: ${MATE_MARK.eyes.light}; } @media (prefers-color-scheme: dark) { rect { fill: ${MATE_MARK.eyes.dark}; } }</style>`,
+    ...MATE_MARK.paths.map((d) => `  <path d="${d}" fill="${MATE_MARK.color}" />`),
+    ...MATE_MARK.eyeXs.map(
+      (x) =>
+        `  <rect x="${x}" y="${MATE_MARK.eyeY}" width="${MATE_MARK.eyeWidth}" height="${MATE_MARK.eyeHeight}" rx="${MATE_MARK.eyeWidth / 2}" />`,
+    ),
     "</svg>",
     "",
   ].join("\n");
