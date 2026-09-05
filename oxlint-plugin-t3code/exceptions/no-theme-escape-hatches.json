@@ -648,38 +648,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/auth/AuthSurfaceShell.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card/94 shadow-2xl shadow-black/20 backdrop-blur-md\"",
-    "owner": "karel",
-    "reason": "auth card shadow retained outside semantic roles",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/auth/PairingRouteSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PairingRouteSurface awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/PairingRouteSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PairingRouteSurface awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/auth/PairingRouteSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PairingRouteSurface awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/ChangedFilesTree.tsx",
     "kind": "Literal",
     "fingerprint": "\"@container/changed-files mt-4 rounded-2xl border border-border/70 bg-secondary p-2 dark:border-transparent dark:bg-input/32\"",

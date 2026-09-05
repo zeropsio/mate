@@ -7,6 +7,14 @@ vi.mock("../zerops/landing/ZeropsHostedLanding", () => ({
   ZeropsHostedLanding: () => <div>Zerops sign-in surface</div>,
 }));
 
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
+      createElement("a", { href: to, ...props }),
+  };
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
