@@ -80,7 +80,7 @@ export function zeropsMateBaseUrl(
   return `${normalizedContainerOrigin}${basePath}`;
 }
 
-function isZcpService(service: ZeropsService): boolean {
+export function isZcpService(service: ZeropsService): boolean {
   return (service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "").startsWith(
     ZCP_SERVICE_TYPE_PREFIX,
   );
