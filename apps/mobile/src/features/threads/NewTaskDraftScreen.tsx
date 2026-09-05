@@ -1,5 +1,4 @@
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
-import { PROVIDER_SEND_TURN_MAX_ATTACHMENTS } from "@t3tools/contracts";
 import {
   StackActions,
   useFocusEffect,
@@ -701,17 +700,6 @@ export function NewTaskDraftScreen(props: {
       );
       return;
     }
-    // A failed-send restore can leave the draft over the cap on purpose (it
-    // never drops the user's files); starting anyway would upload everything
-    // and have the server reject the turn.
-    if (draft.attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-      Alert.alert(
-        "Too many attachments",
-        `Remove attachments until there are at most ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}.`,
-      );
-      return;
-    }
-
     const editingPendingTask = flow.editingPendingTask;
 
     if (!environmentConnected) {
