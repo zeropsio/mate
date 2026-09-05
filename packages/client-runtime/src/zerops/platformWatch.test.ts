@@ -73,7 +73,7 @@ interface FakeSearchCall {
   readonly entity: "service-stack" | "process";
   readonly options: {
     readonly orgId: string;
-    readonly projectId: string;
+    readonly projectId?: string;
     readonly receiverId: string;
     readonly mode: "list" | "update";
   };
@@ -160,6 +160,37 @@ describe("openPlatformWatch", () => {
           call.options.receiverId === "receiver-1",
       ),
     ).toBe(true);
+
+    watch.close();
+  });
+
+  /**
+   * Account scope: `projectId` omitted reaches the client as `undefined`, so
+   * every subscription covers the whole account on one socket. This is what
+   * lets a caller learn which of the account's projects have a Mate container
+   * without opening a socket per project.
+   */
+  it("subscribes account-wide when no project is given", async () => {
+    const client = fakeClient();
+    const sockets: FakeSocket[] = [];
+    const watch = watchHelper({
+      client,
+      orgId: "org-1",
+      makeSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+      makeReceiverId: () => "receiver-1",
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    await connectSocket(sockets, 0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(client.searches).toHaveLength(4);
+    expect(client.searches.every((call) => call.options.projectId === undefined)).toBe(true);
+    expect(client.searches.every((call) => call.options.orgId === "org-1")).toBe(true);
 
     watch.close();
   });

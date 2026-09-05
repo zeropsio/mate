@@ -76,7 +76,7 @@ export interface PlatformWatchClient {
     entity: "service-stack" | "process",
     options: {
       readonly orgId: string;
-      readonly projectId: string;
+      readonly projectId?: string;
       readonly receiverId: string;
       readonly mode: "list" | "update";
     },
@@ -92,7 +92,12 @@ export interface OpenPlatformWatchOptions {
   readonly client: PlatformWatchClient;
   readonly apiBase?: string;
   readonly orgId: string;
-  readonly projectId: string;
+  /**
+   * The project to watch. Omit for account scope: one socket then carries
+   * every project the account can see, which is how `frontend-legacy`
+   * subscribes and what a sidebar needs to know which projects have Mate.
+   */
+  readonly projectId?: string;
   readonly makeSocket: (url: string) => PlatformWatchSocket;
   /**
    * Injected rather than defaulted here: this is a plain module, not an
@@ -249,7 +254,7 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
       void options.client
         .subscribeProjectSearch("process", {
           orgId: options.orgId,
-          projectId: options.projectId,
+          ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
           receiverId,
           mode: "list",
         })
@@ -337,7 +342,7 @@ export function openPlatformWatch(options: OpenPlatformWatchOptions): PlatformWa
         for (const entity of ["service-stack", "process"] as const) {
           await options.client.subscribeProjectSearch(entity, {
             orgId: options.orgId,
-            projectId: options.projectId,
+            ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
             receiverId,
             mode,
           });

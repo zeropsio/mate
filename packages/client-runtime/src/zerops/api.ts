@@ -807,10 +807,11 @@ export class ZeropsApiClient {
    *
    * A `process` subscription additionally excludes the L7 load-balancer's own
    * housekeeping processes — `frontend-legacy` `process-base.effect.ts`'s
-   * `listSubscribe`/`updateSubscribe` calls, ported verbatim (their
-   * `clientId`-only search become `clientId eq` **and** `projectId eq` here:
-   * the official app scopes to the whole account, this client to one
-   * project). Only the LIST subscription narrows further to `status in
+   * `listSubscribe`/`updateSubscribe` calls, ported verbatim. Their
+   * `clientId`-only search is this client's account scope; passing
+   * `projectId` narrows it to one project, which is what a single
+   * environment's service map wants. Only the LIST subscription narrows
+   * further to `status in
    * [RUNNING, PENDING]` (also ported verbatim): the UPDATE subscription must
    * see every status transition, FINISHED/FAILED/CANCELED included, or a
    * process settling would never push a signal. A `service-stack`
@@ -824,7 +825,12 @@ export class ZeropsApiClient {
     entity: "service-stack" | "process",
     options: {
       readonly orgId: string;
-      readonly projectId: string;
+      /**
+       * Narrows the subscription to one project. Omit it for account scope —
+       * the shape `frontend-legacy` itself uses — so one socket carries every
+       * project the account can see.
+       */
+      readonly projectId?: string;
       readonly receiverId: string;
       readonly mode: "list" | "update";
     },
@@ -834,10 +840,12 @@ export class ZeropsApiClient {
       readonly name: string;
       readonly operator: string;
       readonly value: unknown;
-    }> = [
-      { name: "clientId", operator: "eq", value: options.orgId },
-      { name: "projectId", operator: "eq", value: options.projectId },
-    ];
+    }> = [{ name: "clientId", operator: "eq", value: options.orgId }];
+    // Absent means "every project", so the term is dropped rather than sent
+    // with an empty value, which the platform would read as a real filter.
+    if (options.projectId !== undefined) {
+      search.push({ name: "projectId", operator: "eq", value: options.projectId });
+    }
     if (entity === "process") {
       if (options.mode === "list") {
         search.push({ name: "status", operator: "in", value: ["RUNNING", "PENDING"] });

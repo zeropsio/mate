@@ -946,6 +946,48 @@ describe("ZeropsApiClient.subscribeProjectSearch", () => {
   });
 
   /**
+   * Account scope: omitting `projectId` drops the term entirely rather than
+   * sending an empty or null value, restoring the shape `frontend-legacy`
+   * itself subscribes with (`service-stack-base.effect.ts` passes `clientId`
+   * alone). One socket then carries every project the account can see, which
+   * is what lets a sidebar know which projects have Mate without a per-project
+   * fan-out.
+   */
+  it("omits the projectId term when no project is given", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("service-stack", {
+      orgId: "org-1",
+      receiverId: "receiver-1",
+      mode: "list",
+    });
+
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
+      { name: "clientId", operator: "eq", value: "org-1" },
+    ]);
+  });
+
+  it("keeps the process filters under account scope", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.subscribeProjectSearch("process", {
+      orgId: "org-1",
+      receiverId: "receiver-1",
+      mode: "list",
+    });
+
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
+      { name: "clientId", operator: "eq", value: "org-1" },
+      { name: "status", operator: "in", value: ["RUNNING", "PENDING"] },
+      { name: "executorTag", operator: "ne", value: "L7_MASTER" },
+    ]);
+  });
+
+  /**
    * No `status` filter on the UPDATE subscription: FINISHED/FAILED/CANCELED
    * must still push a signal, or a process settling would go unnoticed.
    */
