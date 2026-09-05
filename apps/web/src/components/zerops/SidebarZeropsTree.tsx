@@ -97,12 +97,12 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
   return (
     <nav
       aria-label="Environments"
-      className={cn("flex flex-col gap-3", className)}
+      className={cn("flex flex-col gap-4", className)}
       data-zerops-surface="sidebar-environments"
     >
       {view.groups.map(({ group, environments: rows }) => (
         <section className="flex flex-col gap-0.5" key={group.groupId}>
-          <MicroLabel className="px-2">{group.name}</MicroLabel>
+          <MicroLabel className="px-2 pb-1">{group.name}</MicroLabel>
           {rows.map(({ item, role }) => (
             <Row
               active={item.project.id === activeProjectId}
@@ -118,7 +118,7 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
 
       {view.ungrouped.length > 0 ? (
         <section className="flex flex-col gap-0.5">
-          {view.groups.length > 0 ? <MicroLabel className="px-2">Ungrouped</MicroLabel> : null}
+          {view.groups.length > 0 ? <MicroLabel className="px-2 pb-1">Ungrouped</MicroLabel> : null}
           {view.ungrouped.map((item) => (
             <Row
               active={item.project.id === activeProjectId}
@@ -155,34 +155,68 @@ function Row<T extends ZeropsCandidate>({
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left",
+        "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
         active ? "bg-sidebar-row-hover" : "hover:bg-sidebar-row-hover",
       )}
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <span className="flex w-full min-w-0 items-center gap-2 text-sm">
-        {/* The agent's name leads. Under its group and next to its role badge,
-            the project name would be the same fact told three times — and it
-            is not the thing a person addresses. */}
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate",
-            hasBotName(bot) ? undefined : "text-[var(--muted-foreground)]",
-          )}
-        >
-          {name}
-        </span>
-        {badge ? (
-          <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-            {badge}
-          </span>
-        ) : null}
+      {/* The agent's name leads. Under its group and next to its role badge,
+          the project name would be the same fact told three times — and it
+          is not the thing a person addresses. */}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          hasBotName(bot) ? undefined : "text-[var(--muted-foreground)]",
+        )}
+      >
+        {name}
       </span>
-      {/* What it is doing, when that is knowable; otherwise where it stands. */}
-      <span className="flex w-full min-w-0 items-center text-[var(--muted-foreground)]">
+      {badge ? (
+        <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
+          {badge}
+        </span>
+      ) : null}
+      {/* One trailing column, right-aligned so it lines up down the menu:
+          what the agent is doing when that is knowable, else where it stands.
+          The activity replaces the bucket rather than joining it — a row that
+          says "Connected · Working" says the first word for no reason. */}
+      <span className="ms-auto flex shrink-0 items-center text-[var(--muted-foreground)]">
         {activity ?? <StatusDot label={LABEL[candidate.group]} tone={TONE[candidate.group]} />}
       </span>
     </button>
+  );
+}
+
+/**
+ * The agent's status as the trailing column of its row: the thread status
+ * pill the sidebar's own thread rows use, so an environment and a
+ * conversation never disagree about what "working" looks like.
+ */
+export function AgentActivity({
+  status,
+}: {
+  readonly status: {
+    readonly label: string;
+    readonly colorClass: string;
+    readonly dotClass: string;
+    readonly pulse: boolean;
+  };
+}) {
+  return (
+    <span
+      className={cn("inline-flex min-w-0 items-center gap-1.5", status.colorClass)}
+      data-zerops-surface="agent-activity"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-flex size-2 shrink-0 rounded-full",
+          status.dotClass,
+          status.pulse && "animate-status-pulse motion-reduce:animate-none",
+        )}
+      />
+      <MicroLabel className="truncate">{status.label}</MicroLabel>
+    </span>
   );
 }
