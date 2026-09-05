@@ -113,10 +113,10 @@ interface LastCardTouch {
 function foldStandalone(
   call: ZeropsCall,
   kind: Exclude<ZeropsOperationKind, "bootstrap">,
+  targetKey: string,
   groups: StandaloneGroup[],
   lastCard: LastCardTouch | undefined,
 ): void {
-  const targetKey = targetKeyFor(call);
   const joinsRetry =
     call.status === "failed" &&
     lastCard !== undefined &&
@@ -157,7 +157,7 @@ function buildFieldsFor(
   return BUILDER_BY_KIND[kind](call);
 }
 
-function buildStandaloneOperation(group: StandaloneGroup): ZeropsOperation {
+function buildStandaloneOperation(group: StandaloneGroup, attempts: number): ZeropsOperation {
   const founder = group.calls[0]!;
   const latest = group.calls[group.calls.length - 1]!;
   const fields = buildFieldsFor(group.kind, latest);
@@ -179,7 +179,7 @@ function buildStandaloneOperation(group: StandaloneGroup): ZeropsOperation {
     links: fields.links,
     ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
     callIds: group.calls.map((c) => c.id),
-    attempts: group.calls.length,
+    attempts,
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,
@@ -372,6 +372,12 @@ export function reduceZeropsOperations(
   };
   const standaloneGroups: StandaloneGroup[] = [];
   const genericCalls: ZeropsCall[] = [];
+
+  // R9: `attempts` = 1 + earlier SETTLED calls of the same (toolName, target)
+  // across the whole thread — independent of the R8 join above, which only
+  // decides whether same-turn failures visually merge into one card.
+  const settledAttemptsSoFar = new Map<string, number>();
+  const attemptByCallId = new Map<string, number>();
   let lastCard: LastCardTouch | undefined;
 
   for (const call of ordered) {
@@ -410,13 +416,25 @@ export function reduceZeropsOperations(
       lastCard = { kind: "bootstrap", targetKey: undefined, call };
       continue;
     }
-    foldStandalone(call, kind, standaloneGroups, lastCard);
-    lastCard = { kind, targetKey: targetKeyFor(call), call };
+
+    const targetKey = targetKeyFor(call);
+    const attemptKey = `${call.toolName} ${targetKey}`;
+    const priorSettled = settledAttemptsSoFar.get(attemptKey) ?? 0;
+    attemptByCallId.set(call.id, priorSettled + 1);
+    if (call.status !== "inProgress") {
+      settledAttemptsSoFar.set(attemptKey, priorSettled + 1);
+    }
+
+    foldStandalone(call, kind, targetKey, standaloneGroups, lastCard);
+    lastCard = { kind, targetKey, call };
   }
 
   const operations = [
     ...bootstrapState.groups.map(buildBootstrapOperation),
-    ...standaloneGroups.map(buildStandaloneOperation),
+    ...standaloneGroups.map((group) => {
+      const latest = group.calls[group.calls.length - 1]!;
+      return buildStandaloneOperation(group, attemptByCallId.get(latest.id) ?? group.calls.length);
+    }),
   ].sort((a, b) => compareAnchors(a, b));
 
   return { operations, genericCalls };

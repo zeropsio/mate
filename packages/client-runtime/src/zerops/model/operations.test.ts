@@ -496,7 +496,7 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
     expect(operations[0]!.key).toBe("op:t1a");
   });
 
-  it("a succeeding attempt after failures is its own new operation", () => {
+  it("a succeeding attempt after failures is its own new operation, numbered as the 2nd attempt (R9)", () => {
     const { operations } = reduceFrom([
       {
         id: "s1",
@@ -518,7 +518,39 @@ describe("reduceZeropsOperations — retry fold (R8/R9)", () => {
     expect(operations).toHaveLength(2);
     expect(operations[0]!.attempts).toBe(1);
     expect(operations[1]!.phase).toBe("done");
-    expect(operations[1]!.attempts).toBe(1);
+    expect(operations[1]!.attempts).toBe(2);
+  });
+
+  it("R9's attempt count spans turns, independent of the R8 same-turn join", () => {
+    const failedDeploy = (id: string, createdAt: string, turnId: string): EntrySpec => ({
+      id,
+      createdAt,
+      turnId,
+      toolName: "zerops_deploy",
+      input: { targetService: "weatherdash" },
+      status: "failed",
+      resultText: JSON.stringify({ code: "API_ERROR", error: "boom" }),
+    });
+    const { operations } = reduceFrom([
+      failedDeploy("d1", "2026-09-01T00:00:00.000Z", "t1"),
+      failedDeploy("d2", "2026-09-01T00:01:00.000Z", "t2"),
+      {
+        id: "d3",
+        createdAt: "2026-09-01T00:02:00.000Z",
+        turnId: "t3",
+        toolName: "zerops_deploy",
+        input: { targetService: "weatherdash" },
+        status: "completed",
+        resultText: JSON.stringify({ status: "DEPLOYED", target: "weatherdash" }),
+      },
+    ]);
+    // three turns, each failure in its own turn, never join by R8 —
+    // three separate operations, not folded into one.
+    expect(operations).toHaveLength(3);
+    expect(operations[0]!.attempts).toBe(1);
+    expect(operations[1]!.attempts).toBe(2);
+    expect(operations[2]!.phase).toBe("done");
+    expect(operations[2]!.attempts).toBe(3);
   });
 
   it("a bootstrap card between two same-turn failures of one target breaks the R8 join", () => {
