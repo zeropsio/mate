@@ -471,6 +471,29 @@ describe("reduceZeropsOperations — bootstrap session identity", () => {
     expect(bootstraps).toHaveLength(1);
     expect(bootstraps[0]!.callIds).toEqual(["u1", "u2"]);
   });
+
+  it("a session with no decoded plan anywhere (founder truncated, continuation still pending) reads 'New service' / 'In progress', never 'Done' (F3b)", () => {
+    const undecodableFounder: EntrySpec = {
+      id: "v1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      toolName: "zerops_workflow",
+      input: { action: "start", workflow: "bootstrap", route: "classic" },
+      status: "completed",
+      truncated: true,
+    };
+    const pendingContinuation: EntrySpec = {
+      id: "v2",
+      createdAt: "2026-09-01T00:01:00.000Z",
+      toolName: "zerops_workflow",
+      input: { action: "complete", step: "discover" },
+      status: "inProgress",
+    };
+    const { operations } = reduceFrom([undecodableFounder, pendingContinuation]);
+    const bootstrap = operations.find((o) => o.kind === "bootstrap")!;
+    expect(bootstrap.phase).toBe("running");
+    expect(bootstrap.kicker).toBe("New service");
+    expect(bootstrap.statusWord).toBe("In progress");
+  });
 });
 
 // ---- retries: R8/R9 ----
