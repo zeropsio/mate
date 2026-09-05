@@ -2482,4 +2482,43 @@ describe("computeStableMessagesTimelineRows", () => {
         : undefined,
     ).toBe("done");
   });
+
+  it("does not reuse a generic-call row when the entry's toolInput changes mid-flight", () => {
+    const createRows = (toolInput: Record<string, unknown>) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "generic-input-entry",
+            kind: "generic-call",
+            createdAt: "2026-01-01T00:00:01Z",
+            entry: {
+              id: "generic-input-work",
+              createdAt: "2026-01-01T00:00:01Z",
+              label: "zerops_env_set",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "inProgress",
+              toolInput,
+            },
+          },
+        ],
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+
+    const firstRows = createRows({});
+    const initial = computeStableMessagesTimelineRows(firstRows, { byId: new Map(), result: [] });
+
+    // Same status ("inProgress") and detail (undefined) — only the
+    // streamed-in `toolInput` changes.
+    const secondRows = createRows({ key: "TZ", value: "UTC" });
+    const updated = computeStableMessagesTimelineRows(secondRows, initial);
+
+    expect(updated.result[0]).not.toBe(initial.result[0]);
+    expect(
+      updated.result[0]?.kind === "generic-call" ? updated.result[0].entry.toolInput : undefined,
+    ).toEqual({ key: "TZ", value: "UTC" });
+  });
 });

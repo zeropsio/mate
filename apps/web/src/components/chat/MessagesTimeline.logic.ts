@@ -1216,12 +1216,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "generic-call": {
       const bg = b as typeof a;
-      return (
-        a.createdAt === bg.createdAt &&
-        a.entry.id === bg.entry.id &&
-        a.entry.toolLifecycleStatus === bg.entry.toolLifecycleStatus &&
-        a.entry.detail === bg.entry.detail
-      );
+      // Renders the whole `WorkLogEntry` (`SimpleWorkEntryRow`) — deep-compare
+      // it rather than a hand-picked field subset, so a streamed-in
+      // `toolInput` (or any other field the row shows) is not missed.
+      return a.createdAt === bg.createdAt && Equal.equals(a.entry, bg.entry);
     }
 
     case "work": {
