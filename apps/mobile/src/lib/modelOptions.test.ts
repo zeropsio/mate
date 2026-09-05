@@ -200,7 +200,9 @@ describe("mobile model options", () => {
       expect(option).toMatchObject({
         key: `google_work:${selection.model}`,
         label: model.name,
-        subtitle: "Google",
+        // The fork's mobile picker subtitles a model with its provider label; upstream's
+        // sub-provider subtitles (acb599d2d) are a UI-programme decision, not ported.
+        subtitle: "Google Work",
         providerKey: "google_work",
         providerLabel: "Google Work",
         providerDriver: "antigravity",
@@ -247,7 +249,12 @@ describe("mobile model options", () => {
       expect(restored?.isUnavailable).not.toBe(true);
       expect(restored?.selection).toBe(selection);
       expect(resolveDefaultableModelSelection(config, selection)).toBe(selection);
-      expect(buildModelOptions(config, null)[0]?.selection.options).toBeUndefined();
+      // A fresh option carries the descriptor's current value: the fork normalises
+      // through buildProviderOptionSelectionsFromDescriptors, while upstream keeps only
+      // explicit selections (5392c9bb9, not ported).
+      expect(buildModelOptions(config, null)[0]?.selection.options).toEqual([
+        { id: "native-option", value: "current/default" },
+      ]);
     });
 
     it("uses configured instance metadata when provider status is missing", () => {
