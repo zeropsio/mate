@@ -133,6 +133,19 @@ describe("ZeropsGroupTree", () => {
     expect(render([CRM_DEV], { onCreateEnvironment: () => {} })).toContain("Add production");
   });
 
+  it("disables every create affordance while a creation runs", () => {
+    // Disabled, not hidden: a second click would make a second project, and
+    // a button that vanishes under the pointer reads as a bug.
+    const html = render([CRM_DEV], {
+      creating: true,
+      onCreateEnvironment: () => {},
+      onCreateTool: () => {},
+    });
+    expect(html).toContain("Add production");
+    expect(html).toContain("Add Gitea");
+    expect(html.match(/<button[^>]*disabled/gu)).toHaveLength(3);
+  });
+
   it("offers Gitea only when the account has none", () => {
     expect(render([CRM_DEV], { onCreateTool: () => {} })).toContain("Add Gitea");
     expect(render([CRM_DEV, GITEA], { onCreateTool: () => {} })).not.toContain("Add Gitea");

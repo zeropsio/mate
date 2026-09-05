@@ -52,6 +52,12 @@ export interface ZeropsGroupTreeProps<T> {
   readonly onCreateEnvironment?: (groupId: string, role: ZeropsEnvironmentRole) => void;
   /** Absent hides the tools section's own action. */
   readonly onCreateTool?: (kind: ZeropsToolKind) => void;
+  /**
+   * A creation is already running. Every create affordance is disabled rather
+   * than hidden: a second click mid-run would make a second project, and a
+   * button that vanishes under the pointer reads as a bug.
+   */
+  readonly creating?: boolean;
   readonly className?: string;
 }
 
@@ -109,6 +115,7 @@ export function ZeropsGroupTree<T>({
   onSelect,
   onCreateEnvironment,
   onCreateTool,
+  creating = false,
   className,
 }: ZeropsGroupTreeProps<T>) {
   return (
@@ -157,7 +164,8 @@ export function ZeropsGroupTree<T>({
           {onCreateEnvironment
             ? creatableRoles(group).map((role) => (
                 <button
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                  disabled={creating}
                   key={role}
                   onClick={() => onCreateEnvironment(group.groupId, role)}
                   type="button"
@@ -182,7 +190,8 @@ export function ZeropsGroupTree<T>({
           ))}
           {onCreateTool && view.tools.every((tool) => tool.kind !== "gitea") ? (
             <button
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+              disabled={creating}
               onClick={() => onCreateTool("gitea")}
               type="button"
             >

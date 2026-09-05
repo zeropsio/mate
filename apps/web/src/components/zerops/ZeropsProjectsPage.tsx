@@ -333,7 +333,7 @@ function ZeropsProjectsContent() {
    */
   const createEnvironment = useCallback(
     async (groupId: string, role: ZeropsEnvironmentRole) => {
-      if (!activeOrganization) return;
+      if (!activeOrganization || creationRunning) return;
       const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
       if (entry === undefined) return;
       const { group } = entry;
@@ -423,6 +423,7 @@ function ZeropsProjectsContent() {
       activeOrganization,
       candidates,
       client,
+      creationRunning,
       groupTree.groups,
       provisioning,
       refresh,
@@ -578,6 +579,7 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         getKey={(candidate: ZeropsCandidate) => candidate.key}
         getName={(candidate: ZeropsCandidate) => candidate.project.name}
+        creating={creationRunning}
         onCreateEnvironment={(groupId, role) => {
           void createEnvironment(groupId, role);
         }}
