@@ -16,3 +16,5 @@ export { StatusDot } from "./StatusDot";
 export type { StatusDotProps } from "./StatusDot";
 export { Avatar } from "./Avatar";
 export type { AvatarProps, AvatarSize } from "./Avatar";
+export { MateFace } from "./MateFace";
+export type { MateFaceProps, MateFaceSize } from "./MateFace";

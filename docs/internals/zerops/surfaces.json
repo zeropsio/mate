@@ -448,7 +448,8 @@
         "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
         "apps/web/src/components/zerops/primitives/KeyChip.tsx",
         "apps/web/src/components/zerops/primitives/Avatar.tsx",
-        "apps/web/src/components/zerops/primitives/LivenessLine.tsx"
+        "apps/web/src/components/zerops/primitives/LivenessLine.tsx",
+        "apps/web/src/components/zerops/primitives/MateFace.tsx"
       ],
       "clients": {
         "web": "yes",
@@ -472,6 +473,7 @@
         "apps/web/src/components/zerops/primitives/ProcessSteps.test.tsx",
         "apps/web/src/components/zerops/primitives/KeyChip.test.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.test.tsx",
+        "apps/web/src/components/zerops/primitives/MateFace.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx"
       ],
       "captures": []
