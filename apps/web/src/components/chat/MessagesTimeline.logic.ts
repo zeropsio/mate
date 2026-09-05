@@ -914,6 +914,7 @@ export function deriveMessagesTimelineRows(input: {
           // An "operation" row (like any other non-"work" kind) ends the run.
           nextEntry.kind !== "work" ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
+          nextEntry.entry.tone === "error" ||
           activeWorkEntries.has(nextEntry) ||
           collapsedEntries.has(nextEntry) ||
           foldsByAnchorEntry.has(nextEntry)
