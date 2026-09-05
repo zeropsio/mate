@@ -121,7 +121,10 @@ Trigger: the drift watch (§7) or a monthly tick, whichever comes first. Steps (
    formatted with whatever vite-plus upstream used; when upstream moved the catalog, the bump rides in
    the same commit — neither half is green alone (row 3: 0.2.2 → 0.3.0).
 3. **Port** the provider commits behind the SPI: fixtures replayed, matrix row added, live canary
-   (§7) green on `z3-eval`. A port that needs an orchestration/contract change carries it in the
+   (§7) green on `z3-eval`. A port that lands a client test runs that package's whole test suite
+   (`vp run --filter @t3tools/web test`, mobile likewise), not only the touched file: the fork's
+   components and test mocks diverge from upstream's, and CI's Test job is where that surfaces (row 3
+   landed red on three such tests). A port that needs an orchestration/contract change carries it in the
    same slice with a spec note.
 4. **Cherry-picks** — each its own slice through the normal loop.
 5. Move the last-reviewed SHA.
