@@ -213,3 +213,12 @@ describe("the row's cells", () => {
     expect(html.indexOf("Ungrouped")).toBeLessThan(html.indexOf("Tools"));
   });
 });
+
+describe("an account of loose projects", () => {
+  it("is a list, not an 'Ungrouped' section with nothing to be distinct from", () => {
+    const html = render([LOOSE, item("other", [])]);
+    expect(html).toContain("loose");
+    expect(html).toContain("other");
+    expect(html).not.toContain("Ungrouped");
+  });
+});

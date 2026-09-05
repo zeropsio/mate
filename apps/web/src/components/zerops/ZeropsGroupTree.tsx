@@ -137,7 +137,7 @@ function Row({
   return (
     <div
       aria-busy={busy || undefined}
-      className="flex min-h-[3.125rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 sm:flex-nowrap"
+      className="flex min-h-[3.125rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-2 py-1.5 sm:flex-nowrap"
       data-zerops-project-row="true"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -166,7 +166,7 @@ function Row({
       {/* Fixed cells, so every row's status, action and menu line up down the
           page and a row keeps its shape while its answers arrive. */}
       <div className="flex shrink-0 items-center gap-3">
-        <div className="flex w-40 shrink-0 items-center justify-end" data-zerops-row-cell="status">
+        <div className="flex w-40 shrink-0 items-center" data-zerops-row-cell="status">
           {status}
         </div>
         {reserveAction ? (
@@ -285,16 +285,31 @@ export function ZeropsGroupTree<T>({
       ))}
 
       {view.ungrouped.length > 0 ? (
-        <Section label="Ungrouped">
-          {view.ungrouped.map((item) => (
-            <Row
-              key={getKey(item)}
-              name={getName(item)}
-              status={renderStatus(item)}
-              {...rowExtras(item)}
-            />
-          ))}
-        </Section>
+        // "Ungrouped" is a distinction, so it is drawn only when there is a
+        // group to be distinct from; an account of loose projects is a list.
+        view.groups.length > 0 ? (
+          <Section label="Ungrouped">
+            {view.ungrouped.map((item) => (
+              <Row
+                key={getKey(item)}
+                name={getName(item)}
+                status={renderStatus(item)}
+                {...rowExtras(item)}
+              />
+            ))}
+          </Section>
+        ) : (
+          <div className="flex flex-col">
+            {view.ungrouped.map((item) => (
+              <Row
+                key={getKey(item)}
+                name={getName(item)}
+                status={renderStatus(item)}
+                {...rowExtras(item)}
+              />
+            ))}
+          </div>
+        )
       ) : null}
 
       {/* Account-level, so last: a tool belongs to no group and to no

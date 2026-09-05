@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
+  zeropsReasonSentence,
+  zeropsRowActionTone,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic";
@@ -191,7 +193,48 @@ describe("deriveZeropsRowPresentation", () => {
       ),
     ).toEqual({
       status: { label: "Preparing", pulse: true, tone: "busy" },
-      detail: "project is being created",
+      // The bucket's reason, phrased as a sentence for the row.
+      detail: "Project is being created.",
     });
+  });
+});
+
+describe("zeropsReasonSentence", () => {
+  it.each([
+    ["container is STOPPED", "The container is stopped."],
+    ["container is starting (ACTIVE)", "The container is starting."],
+    ["container is READY_TO_DEPLOY", "The container is ready to deploy."],
+    ["public access is off for this container", "Public access is off for this container."],
+    ["this container does not expose port 8080", "This container does not expose port 8080."],
+    ["this project has no public subdomain", "This project has no public subdomain."],
+    ["no Zerops Mate container in this project", "No Zerops Mate container in this project."],
+    ["Already a sentence.", "Already a sentence."],
+  ])("phrases %j as %j", (reason, sentence) => {
+    expect(zeropsReasonSentence(reason)).toBe(sentence);
+  });
+
+  it("is what an unavailable row's detail says", () => {
+    const stopped: ZeropsRowCandidate = {
+      key: "p:zcp",
+      project: { id: "p", name: "gtm", status: "ACTIVE", tagList: [] },
+      group: "unavailable",
+      reason: "container is STOPPED",
+    };
+    expect(deriveZeropsRowPresentation(input(stopped, undefined)).detail).toBe(
+      "The container is stopped.",
+    );
+  });
+});
+
+describe("zeropsRowActionTone", () => {
+  it("keeps blue for the one verb that reaches an agent now", () => {
+    expect(zeropsRowActionTone("connect")).toBe("primary");
+  });
+
+  it("outlines navigation and greys the chores", () => {
+    expect(zeropsRowActionTone("open")).toBe("outline");
+    for (const kind of ["enable", "set-up-mate", "wait"] as const) {
+      expect(zeropsRowActionTone(kind)).toBe("secondary");
+    }
   });
 });

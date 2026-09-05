@@ -75,6 +75,42 @@ export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
   return readZeropsToolKind(candidate.project.tagList) !== undefined;
 }
 
+/**
+ * The bucket's reason, phrased for a person. `candidates.ts` writes reasons
+ * for the log — "container is STOPPED", "container is starting (ACTIVE)" — and
+ * a row is not a log: platform status tokens read in lowercase words, a
+ * trailing parenthesis goes, "container" gets its article, and the line ends
+ * as a sentence does.
+ */
+export function zeropsReasonSentence(reason: string): string {
+  const withoutParenthesis = reason.replace(/\s*\([^)]*\)\s*$/u, "").trim();
+  const worded = withoutParenthesis.replace(/\b[A-Z][A-Z_]+\b/gu, (token) =>
+    token.toLowerCase().replaceAll("_", " "),
+  );
+  const withArticle = /^container\b/u.test(worded) ? `the ${worded}` : worded;
+  const sentence = withArticle.charAt(0).toUpperCase() + withArticle.slice(1);
+  return /[.!?]$/u.test(sentence) ? sentence : `${sentence}.`;
+}
+
+export type ZeropsRowActionTone = "primary" | "secondary" | "outline";
+
+/**
+ * How loud a row's verb is. On a list of twenty rows, blue is for the one
+ * verb that reaches an agent right now; a setup chore is grey; opening an
+ * already-connected environment is navigation and only outlined. The page's
+ * one primary action, New environment, keeps blue to itself otherwise.
+ */
+export function zeropsRowActionTone(kind: ZeropsRowAction["kind"]): ZeropsRowActionTone {
+  switch (kind) {
+    case "connect":
+      return "primary";
+    case "open":
+      return "outline";
+    default:
+      return "secondary";
+  }
+}
+
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health } = input;
 
@@ -84,7 +120,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
   if (candidate.group === "provisioning") {
     return {
       status: { label: "Preparing", pulse: true, tone: "busy" },
-      ...(candidate.reason === undefined ? {} : { detail: candidate.reason }),
+      ...(candidate.reason === undefined ? {} : { detail: zeropsReasonSentence(candidate.reason) }),
     };
   }
   if (candidate.group === "unavailable") {
@@ -99,7 +135,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     }
     return {
       status: { label: "Not available", tone: "off" },
-      ...(candidate.reason === undefined ? {} : { detail: candidate.reason }),
+      ...(candidate.reason === undefined ? {} : { detail: zeropsReasonSentence(candidate.reason) }),
     };
   }
 

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcwIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import {
   newestProvisioningCandidate,
@@ -62,11 +63,12 @@ import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
 import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
+  type ZeropsRowAction,
+  type ZeropsRowInput,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   isZeropsToolCandidate,
-  type ZeropsRowAction,
-  type ZeropsRowInput,
+  zeropsRowActionTone,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -937,23 +939,31 @@ function ZeropsProjectsContent() {
             case "none":
               return null;
             case "pending":
-              return <Spinner className="size-4 text-muted-foreground" />;
+              // The probe has not answered: the verb's place is held by a
+              // pill-shaped skeleton, so the answer fills a shape that was
+              // already there instead of pushing a button into the row.
+              return (
+                <Skeleton
+                  className="h-8 w-24 rounded-[var(--zerops-pill-radius)]"
+                  data-zerops-row-pending="true"
+                />
+              );
             case "starting":
               return <span className="text-xs text-muted-foreground">{action.label}</span>;
             default:
-              // Blue acts: the primary pill is for a verb that changes the
-              // environment. Opening one is navigation and stays quiet, or
-              // six connected rows would shout in unison.
               return (
-                <Pill
-                  data-zerops-primary-action={action.label}
-                  disabled={busyKeys.has(candidate.key)}
-                  label={action.label}
-                  onClick={() => {
-                    runRowAction(candidate, action.kind);
-                  }}
-                  tone={action.kind === "open" ? "secondary" : "primary"}
-                />
+                <span className="animate-zerops-appear motion-reduce:animate-none">
+                  <Pill
+                    data-zerops-primary-action={action.label}
+                    disabled={busyKeys.has(candidate.key)}
+                    label={action.label}
+                    onClick={() => {
+                      runRowAction(candidate, action.kind);
+                    }}
+                    size="sm"
+                    tone={zeropsRowActionTone(action.kind)}
+                  />
+                </span>
               );
           }
         }}

@@ -22,6 +22,19 @@ describe("Pill", () => {
     },
   );
 
+  it("outlines navigation: a border, no fill", () => {
+    const html = renderToStaticMarkup(<Pill label="Open" tone="outline" />);
+    expect(html).toContain('data-zerops-pill-tone="outline"');
+    expect(html).toContain("border-border bg-transparent");
+  });
+
+  it("has a row size a verb can sit in beside a name", () => {
+    const html = renderToStaticMarkup(<Pill label="Connect" size="sm" />);
+    expect(html).toContain('data-zerops-pill-size="sm"');
+    expect(html).toContain("min-h-8 px-3");
+    expect(renderToStaticMarkup(<Pill label="New environment" />)).toContain("min-h-9 px-4");
+  });
+
   it("forwards the native disabled state", () => {
     expect(renderToStaticMarkup(<Pill disabled label="Deploy" />)).toContain('disabled=""');
   });
