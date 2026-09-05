@@ -24,7 +24,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the five launcher rows in their established order", () => {
+  it("keeps the six launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -71,6 +71,13 @@ describe("right panel kinds", () => {
         shortcut: "Z",
         unavailableHint: "Available in a Zerops project.",
       },
+      {
+        kind: "browser",
+        label: "Browser",
+        description: "Watch the agent's browser live.",
+        shortcut: "B",
+        unavailableHint: "Available in a Zerops project.",
+      },
     ]);
   });
 
@@ -91,6 +98,7 @@ describe("right panel kinds", () => {
         terminal: "available",
         agents: "available",
         zerops: "available",
+        browser: "available",
       },
     },
     {
@@ -109,6 +117,7 @@ describe("right panel kinds", () => {
         terminal: "unavailable",
         agents: "available",
         zerops: "unavailable",
+        browser: "unavailable",
       },
     },
     {
@@ -121,6 +130,7 @@ describe("right panel kinds", () => {
         terminal: "available",
         agents: "available",
         zerops: "unknown",
+        browser: "unknown",
       },
     },
     {
@@ -133,6 +143,7 @@ describe("right panel kinds", () => {
         terminal: "available",
         agents: "available",
         zerops: "available",
+        browser: "available",
       },
     },
   ] as const;

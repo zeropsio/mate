@@ -19,7 +19,7 @@
  *
  * Contract: `../zcp/plans/z3-s6-ui-plan-2026-08-28.md` D-U1.
  */
-import type { SpiEvent, SpiToolCall } from "@t3tools/contracts";
+import type { SpiEvent, SpiToolCall, SpiToolCallImage } from "@t3tools/contracts";
 
 import { readZeropsToolCall } from "./zeropsToolResult.ts";
 
@@ -43,6 +43,14 @@ export interface ZeropsActivityResult {
   readonly resultText?: string;
   /** Set only when text was dropped for exceeding {@link ZEROPS_RESULT_TEXT_LIMIT}. */
   readonly truncated?: true;
+  /**
+   * Image content blocks the result carried (e.g. a `zerops_browser`
+   * screenshot), already capped per-image by `apps/server/src/spi/toolCall.ts`
+   * — independent of the `resultText` cap above.
+   */
+  readonly images?: ReadonlyArray<SpiToolCallImage>;
+  /** Set only when an image was dropped for exceeding ITS cap (`SpiToolCall.result.imagesDropped`). */
+  readonly imagesDropped?: true;
 }
 
 /**
@@ -67,9 +75,13 @@ export const projectZeropsToolCall = (
   if (call.result === undefined) {
     return { toolName: call.name };
   }
+  const imageFields = {
+    ...(call.result.images !== undefined ? { images: call.result.images } : {}),
+    ...(call.result.imagesDropped === true ? { imagesDropped: true as const } : {}),
+  };
   return call.result.text.length > ZEROPS_RESULT_TEXT_LIMIT
-    ? { toolName: call.name, truncated: true }
-    : { toolName: call.name, resultText: call.result.text };
+    ? { toolName: call.name, truncated: true, ...imageFields }
+    : { toolName: call.name, resultText: call.result.text, ...imageFields };
 };
 
 /**

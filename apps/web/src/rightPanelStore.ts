@@ -35,7 +35,8 @@ export type RightPanelSurface =
       revealRequestId: number;
     }
   | { id: "agents"; kind: "agents" }
-  | { id: "zerops"; kind: "zerops" };
+  | { id: "zerops"; kind: "zerops" }
+  | { id: "browser"; kind: "browser" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -44,7 +45,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v12 removed pull-request surfaces with the embedded review workspace.
 // v13 remembers whether the thread-scoped Zerops default has been handled.
 // v14 removed the "preview" surface kind with the in-app browser.
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+// v15 adds the "browser" surface kind (S8b — the container's own live browser view).
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -104,6 +106,8 @@ const singletonSurface = (
       return { id: "agents", kind };
     case "zerops":
       return { id: "zerops", kind };
+    case "browser":
+      return { id: "browser", kind };
   }
 };
 

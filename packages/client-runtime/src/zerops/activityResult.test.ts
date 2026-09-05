@@ -59,6 +59,44 @@ describe("readZeropsActivityResult", () => {
     expect(result).toEqual({ toolName: "zerops_verify" });
   });
 
+  it("reads an image alongside the text (e.g. a zerops_browser screenshot)", () => {
+    const result = readZeropsActivityResult({
+      zerops: {
+        toolName: "zerops_browser",
+        resultText: "## Screenshot\n",
+        images: [{ mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 }],
+      },
+    });
+
+    expect(result).toEqual({
+      toolName: "zerops_browser",
+      resultText: "## Screenshot\n",
+      images: [{ mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 }],
+    });
+  });
+
+  it("reads the imagesDropped marker", () => {
+    const result = readZeropsActivityResult({
+      zerops: { toolName: "zerops_browser", imagesDropped: true },
+    });
+
+    expect(result).toEqual({ toolName: "zerops_browser", imagesDropped: true });
+  });
+
+  it("drops a malformed image entry rather than failing the whole read", () => {
+    const result = readZeropsActivityResult({
+      zerops: {
+        toolName: "zerops_browser",
+        images: [{ mimeType: "image/jpeg" }, { mimeType: "image/jpeg", data: "AAAA" }],
+      },
+    });
+
+    expect(result).toEqual({
+      toolName: "zerops_browser",
+      images: [{ mimeType: "image/jpeg", data: "AAAA" }],
+    });
+  });
+
   it("accepts the shared shape and normalizes its two deliberately permissive fields", () => {
     const candidates: ReadonlyArray<{
       readonly value: unknown;

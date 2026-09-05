@@ -44,6 +44,7 @@ import {
   type ItemLifecyclePayload,
   type SpiEvent,
   type SpiToolCall,
+  type SpiToolCallImage,
 } from "@t3tools/contracts";
 
 export type ToolCallReadResult =
@@ -82,6 +83,82 @@ const readContentText = (content: unknown): string | undefined => {
     }
   }
   return text;
+};
+
+/**
+ * A `{data}` base64 string over this many UTF-16 code units is dropped
+ * rather than carried — 1 MiB. Live-measured 2026-09-04 (verified.md):
+ * Claude Code forwarding a `zerops_browser` screenshot at the default
+ * viewport (1280×577 PNG) put ~301 KB of base64 on the wire, so the
+ * originally-specified 256 KB cap (S8b brief) would have dropped every real
+ * thumbnail; raised with headroom. Independent of
+ * {@link ZEROPS_RESULT_TEXT_LIMIT}-style text caps, which live one layer up
+ * in `apps/server/src/zerops/zeropsActivityResult.ts`.
+ */
+const MAX_IMAGE_BASE64_LENGTH = 1024 * 1024;
+
+interface ContentImagesResult {
+  readonly images: ReadonlyArray<SpiToolCallImage>;
+  readonly dropped: boolean;
+}
+
+/**
+ * MCP image content blocks in a result's `content` array — the
+ * `zerops_browser` screenshot is the first consumer. A bare string `content`
+ * (Claude's shorthand) carries no image blocks. An over-cap image is
+ * dropped, never truncated (a half-decoded PNG is useless); `dropped`
+ * records that at least one was.
+ *
+ * Two shapes, read defensively:
+ * - **Claude** (Agent SDK, live-measured 2026-09-04 — verified.md): mirrors
+ *   Anthropic's own `ImageBlockParam`, `{type: "image", source: {type:
+ *   "base64", media_type, data}}` — nested under `source`, and it carries no
+ *   width/height (the model only ever reported dimensions as prose).
+ * - **Codex**: UNMEASURED. The raw MCP protocol's own `ImageContent` is flat
+ *   (`{type: "image", data, mimeType}`), so that is read as the fallback —
+ *   never live-verified against Codex's `mcpToolCall` item's own result.
+ */
+const readContentImages = (content: unknown): ContentImagesResult => {
+  if (!Array.isArray(content)) {
+    return { images: [], dropped: false };
+  }
+  const images: SpiToolCallImage[] = [];
+  let dropped = false;
+  for (const block of content) {
+    if (!isRecord(block) || block.type !== "image") {
+      continue;
+    }
+    const source = isRecord(block.source) ? block.source : undefined;
+    const data = readString(source?.data) ?? readString(block.data);
+    const mimeType = readString(source?.media_type) ?? readString(block.mimeType);
+    if (data === undefined || mimeType === undefined) {
+      continue;
+    }
+    if (data.length > MAX_IMAGE_BASE64_LENGTH) {
+      dropped = true;
+      continue;
+    }
+    const width = typeof block.width === "number" ? block.width : undefined;
+    const height = typeof block.height === "number" ? block.height : undefined;
+    images.push({
+      mimeType,
+      data,
+      ...(width !== undefined ? { width } : {}),
+      ...(height !== undefined ? { height } : {}),
+    });
+  }
+  return { images, dropped };
+};
+
+/** The `images`/`imagesDropped` fields of a {@link SpiToolCall}'s `result`, built from the same content array {@link readContentText} read. */
+const readResultImageFields = (
+  content: unknown,
+): Pick<NonNullable<SpiToolCall["result"]>, "images" | "imagesDropped"> => {
+  const { images, dropped } = readContentImages(content);
+  return {
+    ...(images.length > 0 ? { images } : {}),
+    ...(dropped ? { imagesDropped: true } : {}),
+  };
 };
 
 /** The `mcp__<server>__` prefix Claude puts on an MCP tool's wire name. */
@@ -139,7 +216,14 @@ const readClaudeToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =
   }
   return {
     kind: "toolCall",
-    call: { ...base, result: { text, failed: data.result.is_error === true } },
+    call: {
+      ...base,
+      result: {
+        text,
+        failed: data.result.is_error === true,
+        ...readResultImageFields(data.result.content),
+      },
+    },
   };
 };
 
@@ -198,7 +282,13 @@ const readCodexToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult =>
     };
   }
   const failed = item.error != null || item.status === "failed";
-  return { kind: "toolCall", call: { ...base, result: { text, failed } } };
+  return {
+    kind: "toolCall",
+    call: {
+      ...base,
+      result: { text, failed, ...readResultImageFields(item.result.content) },
+    },
+  };
 };
 
 const READERS: Partial<Record<string, (payload: ItemLifecyclePayload) => ToolCallReadResult>> = {

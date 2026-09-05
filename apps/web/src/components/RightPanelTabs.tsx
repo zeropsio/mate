@@ -1,6 +1,15 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
-import { Bot, Cloud, FileDiff, Files, type LucideIcon, Plus, TerminalSquare } from "lucide-react";
+import {
+  Bot,
+  Cloud,
+  FileDiff,
+  Files,
+  Globe,
+  type LucideIcon,
+  Plus,
+  TerminalSquare,
+} from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -65,6 +74,7 @@ const SURFACE_DISABLED_REASONS = {
   diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
+  browser: "The Browser view is only available from a Zerops project thread.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -164,6 +174,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Bot;
     case "zerops":
       return Cloud;
+    case "browser":
+      return Globe;
   }
 }
 
@@ -355,6 +367,8 @@ function surfaceTitle(
       return "Agents";
     case "zerops":
       return "Zerops";
+    case "browser":
+      return "Browser";
   }
 }
 
@@ -379,6 +393,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Bot className="size-3 shrink-0" />;
     case "zerops":
       return <Cloud className="size-3 shrink-0" />;
+    case "browser":
+      return <Globe className="size-3 shrink-0" />;
   }
 }
 

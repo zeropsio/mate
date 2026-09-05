@@ -187,6 +187,10 @@
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"
     },
+    "./zerops/browserStream": {
+      "types": "./src/zerops/browserStream.ts",
+      "default": "./src/zerops/browserStream.ts"
+    },
     "./zerops/candidateLoading": {
       "types": "./src/zerops/candidateLoading.ts",
       "default": "./src/zerops/candidateLoading.ts"

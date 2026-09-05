@@ -81,6 +81,41 @@ describe("projectZeropsResult", () => {
     expect(projectZeropsResult(spiEvent(undefined))).toBeUndefined();
   });
 
+  it("carries images through alongside the text", () => {
+    const projected = projectZeropsResult(
+      spiEvent(
+        zeropsCall({
+          name: "zerops_browser",
+          rawName: "mcp__zerops__zerops_browser",
+          result: {
+            text: "## Screenshot\n",
+            failed: false,
+            images: [{ mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 }],
+          },
+        }),
+      ),
+    );
+
+    expect(projected?.images).toEqual([
+      { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+    ]);
+    expect(projected?.imagesDropped).toBeUndefined();
+  });
+
+  it("carries the imagesDropped flag through even when the text is over its own cap", () => {
+    const oversized = "x".repeat(ZEROPS_RESULT_TEXT_LIMIT + 1);
+    const projected = projectZeropsResult(
+      spiEvent(
+        zeropsCall({
+          result: { text: oversized, failed: false, imagesDropped: true },
+        }),
+      ),
+    );
+
+    expect(projected?.truncated).toBe(true);
+    expect(projected?.imagesDropped).toBe(true);
+  });
+
   it("the projected result decodes through the shared ZeropsActivityResult schema", () => {
     const projected = [
       projectZeropsResult(spiEvent(zeropsCall())),

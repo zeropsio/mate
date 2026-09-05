@@ -907,6 +907,56 @@ describe("reduceZeropsOperations — standalone card kinds", () => {
     expect(op.statusWord).toBe("Done");
     expect(op.closing).toBe("Finished.");
   });
+
+  it("carries the first image content block as a data-URI screenshot", () => {
+    const entry: ZeropsCallEntry = {
+      id: "brw3",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_browser",
+      input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+      status: "completed",
+      resultText: "## Browser walk\n\nEverything looks fine.",
+      images: [{ mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 }],
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    const op = operations[0]!;
+    expect(op.screenshot).toEqual({
+      src: "data:image/jpeg;base64,AAAA",
+      width: 640,
+      height: 360,
+    });
+  });
+
+  it("has no screenshot when the result carried no image", () => {
+    const entry: ZeropsCallEntry = {
+      id: "brw4",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_browser",
+      input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+      status: "completed",
+      resultText: "## Browser walk\n\nEverything looks fine.",
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    expect(operations[0]!.screenshot).toBeUndefined();
+  });
+
+  it("a non-browser operation never carries a screenshot even if its entry has images", () => {
+    const entry: ZeropsCallEntry = {
+      id: "dep1",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      turnId: "t1",
+      toolName: "zerops_deploy",
+      input: { hostname: "kanbandev" },
+      status: "completed",
+      resultText: JSON.stringify({ status: "DEPLOYED", hostname: "kanbandev" }),
+      images: [{ mimeType: "image/jpeg", data: "AAAA" }],
+    };
+    const { operations } = reduceZeropsOperations([entry]);
+    expect(operations[0]!.kind).toBe("deploy");
+    expect(operations[0]!.screenshot).toBeUndefined();
+  });
 });
 
 describe("reduceZeropsOperations — no per-call intent (zcp ships none)", () => {

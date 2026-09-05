@@ -34,6 +34,19 @@
  *   launch-arg, ACP session, and model/effort surfaces `textGeneration/**`
  *   and `usage/**` previously imported from `provider/**` directly. Additive
  *   server-side wrapping only — `ProviderRuntimeEventV2` is unchanged.
+ * - 2.2 (2026-09-04, S8b): `SpiToolCall.result` gains an optional `images`
+ *   array (`apps/server/src/spi/toolCall.ts`'s `readContentText`-adjacent
+ *   image reader), read from an MCP result's image content blocks — the
+ *   `zerops_browser` screenshot is the first consumer. Two shapes are read:
+ *   Claude's own (live-measured 2026-09-04, mirrors Anthropic's
+ *   `ImageBlockParam`) nests `{data, media_type}` under `source`; a flat
+ *   `{data, mimeType}` (the raw MCP protocol's own `ImageContent` shape) is
+ *   the fallback for Codex, unmeasured. One image over 1 MiB of base64 is
+ *   dropped rather than truncated (`imagesDropped: true` records that it
+ *   happened — raised from an initial 256 KB once a real screenshot measured
+ *   ~301 KB); the existing 48 KB `resultText` cap is unaffected — the two
+ *   caps are independent. Additive: a reader that does not know about
+ *   `images` still gets `text` exactly as before.
  *
  * @module providerRuntimeSpi
  */
@@ -47,7 +60,22 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.1";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.2";
+
+/**
+ * One image content block an MCP tool result carried, e.g. a
+ * `zerops_browser` screenshot. `data` is base64, capped at 1 MiB — a larger
+ * image is dropped, never truncated (see {@link SpiToolCall.result}'s
+ * `imagesDropped`). `width`/`height` are the block's own device-pixel
+ * dimensions when the tool reported them; Claude's own image blocks never
+ * do (live-measured 2026-09-04) — usually absent in practice.
+ */
+export interface SpiToolCallImage {
+  readonly mimeType: string;
+  readonly data: string;
+  readonly width?: number;
+  readonly height?: number;
+}
 
 /**
  * The generic view of one tool call an item lifecycle payload's
@@ -69,6 +97,10 @@ export interface SpiToolCall {
   readonly result?: {
     readonly text: string;
     readonly failed: boolean;
+    /** Image content blocks the result carried, each under the 1 MiB cap. Absent when none did. */
+    readonly images?: ReadonlyArray<SpiToolCallImage>;
+    /** `true` when at least one image content block was dropped for exceeding the cap. */
+    readonly imagesDropped?: boolean;
   };
 }
 

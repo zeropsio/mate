@@ -13,6 +13,14 @@
 
 export type ZeropsCallStatus = "inProgress" | "completed" | "failed" | "declined" | "stopped";
 
+/** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot) — mirrors `SpiToolCallImage` (`@t3tools/contracts`), declared locally so this pure module needs no server-facing import. */
+export interface ZeropsCallEntryImage {
+  readonly mimeType: string;
+  readonly data: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export interface ZeropsCallEntry {
   /** The FIRST activity id of the call — the transcript's anchor. */
   readonly id: string;
@@ -32,6 +40,8 @@ export interface ZeropsCallEntry {
   readonly resultText?: string;
   /** The server dropped the result as oversized. */
   readonly truncated?: boolean;
+  /** Image content blocks the result carried (e.g. a `zerops_browser` screenshot). */
+  readonly images?: ReadonlyArray<ZeropsCallEntryImage>;
 }
 
 export type ZeropsOperationKind =
@@ -106,6 +116,8 @@ export interface ZeropsOperation {
   /** Decoded result `status`, e.g. "BUILD_TRIGGERED". */
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
+  readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
 }
 
 export interface ZeropsOperationsReduction {

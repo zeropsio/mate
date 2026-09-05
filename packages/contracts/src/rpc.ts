@@ -150,6 +150,8 @@ import {
   ZeropsAgentLoginError,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
+  ZeropsBrowserInput,
+  ZeropsBrowserStreamEvent,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
 } from "./zerops.ts";
@@ -261,6 +263,7 @@ export const WS_METHODS = {
   zeropsLifecycleGet: "zerops.lifecycle.get",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
+  zeropsBrowserInput: "zerops.browser.input",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -273,6 +276,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
+  subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -804,6 +808,25 @@ export const WsZeropsAgentLoginCancelRpc = Rpc.make(WS_METHODS.zeropsAgentLoginC
   error: Schema.Union([TerminalError, ZeropsAgentLoginError, EnvironmentAuthorizationError]),
 });
 
+/**
+ * The live view of the container's agent-browser daemon (S8b, spec-mate.md
+ * §5 Browser surface): frames and connection state, Ack-flow-controlled like
+ * every other feed (§5.5). Connects to the daemon on first subscriber,
+ * disconnects on last unsubscribe — never persistent.
+ */
+export const WsSubscribeZeropsBrowserStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsBrowserStream, {
+  payload: Schema.Struct({}),
+  success: ZeropsBrowserStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** One input event (click, move, key) forwarded to whatever page the daemon currently has open. */
+export const WsZeropsBrowserInputRpc = Rpc.make(WS_METHODS.zeropsBrowserInput, {
+  payload: ZeropsBrowserInput,
+  error: EnvironmentAuthorizationError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -876,6 +899,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsAgentAuthRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentLoginCancelRpc,
+  WsSubscribeZeropsBrowserStreamRpc,
+  WsZeropsBrowserInputRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

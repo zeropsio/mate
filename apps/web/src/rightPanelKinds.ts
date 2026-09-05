@@ -6,7 +6,15 @@
  * a Git or topology answer arrives late or later becomes unavailable, and the
  * existing tab controls remain the way to close them.
  */
-export const RIGHT_PANEL_KINDS = ["terminal", "files", "file", "diff", "agents", "zerops"] as const;
+export const RIGHT_PANEL_KINDS = [
+  "terminal",
+  "files",
+  "file",
+  "diff",
+  "agents",
+  "zerops",
+  "browser",
+] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
 export type RightPanelAvailability = "available" | "unavailable" | "unknown";
@@ -84,6 +92,15 @@ export const RIGHT_PANEL_KIND_META = {
       label: "Zerops",
       description: "See the project's services.",
       shortcut: "Z",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
+  },
+  browser: {
+    launcher: {
+      label: "Browser",
+      description: "Watch the agent's browser live.",
+      shortcut: "B",
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,

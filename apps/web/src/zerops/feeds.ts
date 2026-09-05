@@ -25,6 +25,10 @@
  */
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { createEnvironmentRpcSubscriptionAtomFamily } from "@t3tools/client-runtime/state/runtime";
+import {
+  foldBrowserStreamEvent,
+  INITIAL_BROWSER_STREAM_STATE,
+} from "@t3tools/client-runtime/zerops/browserStream";
 import { WS_METHODS } from "@t3tools/contracts";
 import type {
   EnvironmentId,
@@ -33,6 +37,7 @@ import type {
   ZeropsLifecycle,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 export interface ZeropsLifecycleTarget {
@@ -41,6 +46,11 @@ export interface ZeropsLifecycleTarget {
 }
 
 export interface ZeropsAgentAuthTarget {
+  readonly environmentId: EnvironmentId;
+  readonly input: Record<string, never>;
+}
+
+export interface ZeropsBrowserStreamTarget {
   readonly environmentId: EnvironmentId;
   readonly input: Record<string, never>;
 }
@@ -59,6 +69,39 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
   const agentAuth = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
     label: "environment-data:zerops:agentAuth",
     tag: WS_METHODS.subscribeZeropsAgentAuth,
+  });
+
+  /**
+   * `subscribeZeropsBrowserStream` interleaves state transitions and frames
+   * on one stream; `transform` folds it (`foldBrowserStreamEvent`) into the
+   * accumulated snapshot every consumer reads, so a reconnect's fresh
+   * `no-browser`/`connecting` re-seed never has to be special-cased by a
+   * caller. Unlike `lifecycle`/`agentAuth`, the RAW subscription result
+   * (kept as an `AsyncResult`, not collapsed to a plain value) is exposed
+   * below — a server without this method (0.2.5 and older) fails the
+   * subscription outright, and the panel needs to tell that apart from a
+   * successful "no-browser" state.
+   *
+   * `idleTtlMs` is a few seconds, not the family default of five minutes:
+   * the server keeps the daemon connection open for as long as ANY
+   * subscriber is attached, so leaving this atom mounted at the default TTL
+   * would hold that connection open for minutes after the viewer has
+   * navigated away from the panel.
+   */
+  const browserStream = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:zerops:browserStream",
+    tag: WS_METHODS.subscribeZeropsBrowserStream,
+    idleTtlMs: 5_000,
+    transform: (stream) =>
+      stream.pipe(
+        Stream.mapAccum(
+          () => INITIAL_BROWSER_STREAM_STATE,
+          (state, event) => {
+            const next = foldBrowserStreamEvent(state, event);
+            return [next, [next]] as const;
+          },
+        ),
+      ),
   });
 
   /**
@@ -88,6 +131,7 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
   return {
     lifecycle,
     agentAuth,
+    browserStream,
     lifecycleValue: (target: ZeropsLifecycleTarget) => lifecycleValue(targetKey(target)),
     agentAuthValue: (target: ZeropsAgentAuthTarget) => agentAuthValue(targetKey(target)),
   };

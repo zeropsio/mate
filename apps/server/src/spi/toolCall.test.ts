@@ -131,6 +131,80 @@ describe("readToolCall — Claude", () => {
     expect(result.kind === "toolCall" && result.call.result?.failed).toBe(true);
   });
 
+  it("reads Claude's own image content block alongside text (a real zerops_browser screenshot, verified.md 2026-09-04)", () => {
+    // Real shape from a live probe: `tool_use_result` for a zerops_browser
+    // call with screenshot:true was `[{type:"text",...}, {type:"image",
+    // source:{type:"base64", media_type:"image/png", data:...}}]` — no
+    // width/height on the block (the model only reported dimensions as prose).
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          toolName: "mcp__zerops__zerops_browser",
+          content: [
+            { type: "text", text: "## Screenshot\n" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.text).toBe("## Screenshot\n");
+    expect(result.kind === "toolCall" && result.call.result?.images).toEqual([
+      { mimeType: "image/png", data: "AAAA" },
+    ]);
+    expect(result.kind === "toolCall" && result.call.result?.imagesDropped).toBeUndefined();
+  });
+
+  it("also reads a flat {mimeType, data} image block (defensive fallback, e.g. width/height when a provider sends them)", () => {
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          content: [
+            { type: "text", text: "## Screenshot\n" },
+            { type: "image", mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind === "toolCall" && result.call.result?.images).toEqual([
+      { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+    ]);
+  });
+
+  it("drops an image content block over the 1 MiB base64 cap and flags it, keeping the text", () => {
+    const oversized = "A".repeat(1024 * 1024 + 1);
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          content: [
+            { type: "text", text: "still here" },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: oversized } },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.text).toBe("still here");
+    expect(result.kind === "toolCall" && result.call.result?.images).toBeUndefined();
+    expect(result.kind === "toolCall" && result.call.result?.imagesDropped).toBe(true);
+  });
+
+  it("keeps a real-world-sized screenshot (~301 KB base64, measured) under the cap", () => {
+    const realistic = "A".repeat(301_160);
+    const result = readToolCall(
+      itemEvent({
+        data: claudeToolCallData({
+          content: [
+            { type: "text", text: "..." },
+            { type: "image", source: { type: "base64", media_type: "image/png", data: realistic } },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind === "toolCall" && result.call.result?.images?.length).toBe(1);
+    expect(result.kind === "toolCall" && result.call.result?.imagesDropped).toBeUndefined();
+  });
+
   it("reads a started call, which carries no result", () => {
     const result = readToolCall(
       itemEvent({ type: "item.started", data: claudeToolCallData({ started: true }) }),
@@ -176,6 +250,26 @@ describe("readToolCall — Codex", () => {
       }),
     );
     expect(result.kind === "toolCall" && result.call.result?.failed).toBe(true);
+  });
+
+  it("reads an image content block alongside text (e.g. a zerops_browser screenshot) — UNMEASURED, assumes the raw MCP protocol's flat ImageContent shape", () => {
+    const result = readToolCall(
+      itemEvent({
+        provider: "codex",
+        itemType: "mcp_tool_call",
+        data: codexToolCallData({
+          tool: "zerops_browser",
+          content: [
+            { type: "text", text: "## Screenshot\n" },
+            { type: "image", mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+          ],
+        }),
+      }),
+    );
+    expect(result.kind).toBe("toolCall");
+    expect(result.kind === "toolCall" && result.call.result?.images).toEqual([
+      { mimeType: "image/jpeg", data: "AAAA", width: 640, height: 360 },
+    ]);
   });
 
   it("reads a started call, which carries no result", () => {

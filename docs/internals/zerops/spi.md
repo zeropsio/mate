@@ -27,10 +27,13 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.1"` (`providerRuntimeSpi.ts:50`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.2"` (`providerRuntimeSpi.ts:63`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
-narrowed payload shape. The bus carries its build-time version (`bus.version`,
+narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
+read from an MCP result's image content blocks — the `zerops_browser` screenshot is the first
+consumer; a reader that does not know about `images` still gets `text` exactly as before. The bus
+carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the
 SPI version it was built against" test only proves the field itself works).

@@ -117,6 +117,53 @@
       ]
     },
     {
+      "id": "zerops-browser-panel",
+      "title": "Zerops browser panel",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsBrowserPanel.tsx",
+        "packages/client-runtime/src/zerops/browserStream.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Browser (shortcut B)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile has no Zerops right panel yet; the Browser surface is planned alongside S5-3."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/browserStream",
+        "subscribeZeropsBrowserStream",
+        "zerops.browser.input"
+      ],
+      "reverseStates": [
+        {
+          "action": "Take over",
+          "reverse": "Let the agent drive"
+        },
+        {
+          "action": "Let the agent drive",
+          "reverse": "Take over"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Browser panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsBrowserPanel.test.tsx",
+        "packages/client-runtime/src/zerops/browserStream.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-service-map",
       "title": "Zerops service map",
       "components": [
