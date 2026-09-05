@@ -85,13 +85,10 @@ export function ZeropsOrganizationScope({
   }
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-border/55 bg-card/20 px-4 py-3">
-      <div className="min-w-0">
-        <MicroLabel className="text-muted-foreground">Organization</MicroLabel>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Projects and permissions are scoped to the active membership.
-        </p>
-      </div>
+    // One line, no box: the scope is a fact to glance at and a thing to
+    // switch, not a section to read.
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <MicroLabel className="text-muted-foreground">Organization</MicroLabel>
       <Select
         value={activeOrganization.membershipId}
         onValueChange={(membershipId) => {
