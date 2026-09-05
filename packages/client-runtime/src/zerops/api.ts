@@ -86,6 +86,34 @@ export interface ZeropsProject {
   readonly publicZone?: string;
   readonly zeropsSubdomainHost?: string;
   readonly mode?: string;
+  /**
+   * The project's tags. Carries this product's group membership and
+   * environment role (`groups.ts`) alongside whatever the user tagged the
+   * project with themselves.
+   *
+   * Optional because a caller may be holding a project this client wrote by
+   * hand in a test, not because the platform omits it: measured 2026-09-05,
+   * all three read paths — `GET /client/{id}/project`, `POST /project/search`
+   * and `GET /project/{id}` — return it.
+   */
+  readonly tagList?: ReadonlyArray<string>;
+  /** Round-tripped by any tag write, which must not blank it. */
+  readonly description?: string;
+}
+
+/**
+ * `POST /project/{id}/service-stack/import` — the services it created, each
+ * with the processes bringing it up. Shape measured against the live API
+ * 2026-09-05.
+ */
+export interface ZeropsServiceImportResult {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly serviceStacks: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly processes?: ReadonlyArray<{ readonly id: string }>;
+  }>;
 }
 
 export interface ZeropsServicePort {
@@ -560,6 +588,29 @@ export class ZeropsApiClient {
     if (!options.statuses?.length) return projects;
     const statuses = new Set(options.statuses);
     return projects.filter((project) => statuses.has(project.status));
+  }
+
+  /**
+   * Imports a group's recipe into an existing project — the step that turns an
+   * empty environment into the group's application.
+   *
+   * The YAML must carry `services:` and must NOT carry a `project:` block; the
+   * platform rejects one outright (`projectImportProjectIncluded`, measured
+   * 2026-09-05). `recipeServicesYaml` in `recipeStore.ts` is the transform from
+   * a published recipe to what this accepts.
+   *
+   * Nothing here reaches into a container: the recipe comes from the store and
+   * the import is a platform call with the user's own token, so creating an
+   * environment never depends on another environment being alive.
+   */
+  importServicesIntoProject(
+    projectId: string,
+    servicesYaml: string,
+  ): Promise<ZeropsServiceImportResult> {
+    return this.#request<ZeropsServiceImportResult>(`/project/${projectId}/service-stack/import`, {
+      method: "POST",
+      body: JSON.stringify({ yaml: servicesYaml }),
+    });
   }
 
   /** Locations the selected organization may place a new project in. */

@@ -194,11 +194,13 @@ export function buildCreateProjectBody(input: {
   readonly name: string;
   readonly location?: string;
   readonly mode?: "LIGHT" | "SERIOUS";
+  /** Tags the project is born with — group membership and role (`groups.ts`). */
+  readonly tagList?: ReadonlyArray<string>;
 }): CreateProjectBody {
   return {
     name: input.name.trim(),
     description: "",
-    tagList: [],
+    tagList: input.tagList ?? [],
     location: input.location ?? null,
     clientId: input.clientId,
     mode: input.mode ?? "LIGHT",
