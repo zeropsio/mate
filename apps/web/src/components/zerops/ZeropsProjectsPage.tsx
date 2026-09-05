@@ -197,10 +197,10 @@ export function useZeropsProjectConnection(orgId: string | null): {
           setConnectError(result.error);
           return;
         }
-        // The environment is real now. A project created minutes ago may have
-        // been missing from the search-backed list when it was last read (the
-        // index trails the write), so every mounted list reloads here, where
-        // it has certainly caught up.
+        // The environment is real now. When the lists last reloaded — right
+        // after the creation writes — the project was still NEW with no
+        // container, which the left menu rightly leaves out; here it is ACTIVE
+        // with a zcp, so every mounted list reloads and the row appears.
         refreshZeropsCandidates();
         const projectId = provisioning.state?.projectId;
         if (projectId && orgId) {
