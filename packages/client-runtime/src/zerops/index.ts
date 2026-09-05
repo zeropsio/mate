@@ -93,6 +93,12 @@ export {
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export { recipeFromProjectExport, type ExportedRecipe } from "./recipeExport.ts";
 export {
+  selectAutoConnectTargets,
+  ZEROPS_AUTO_CONNECT_LIMIT,
+  type AutoConnectCandidate,
+  type AutoConnectTarget,
+} from "./autoConnect.ts";
+export {
   deriveGiteaState,
   formatToolTag,
   GITEA_ADMIN_USER_COMMAND,

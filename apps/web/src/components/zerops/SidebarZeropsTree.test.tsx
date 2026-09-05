@@ -126,6 +126,23 @@ describe("the agent's name", () => {
   it("falls back to where it stands when nobody knows", () => {
     expect(render([NAMED])).toContain("Ready");
   });
+
+  it("calls a connected environment with nothing running idle, not connected", () => {
+    // The socket is the client's business; the row answers what the agent
+    // is up to.
+    const html = render([{ ...NAMED, group: "connected" }]);
+    expect(html).toContain("Idle");
+    expect(html).not.toContain("Connected");
+  });
+
+  it("says Connecting while a registered environment's socket comes up", () => {
+    const connecting: ZeropsCandidate & {
+      readonly connection: { phase: "connecting"; error: null; traceId: null };
+    } = { ...NAMED, connection: { phase: "connecting", error: null, traceId: null } };
+    const html = render([connecting]);
+    expect(html).toContain("Connecting");
+    expect(html).not.toContain("Ready");
+  });
 });
 
 describe("AgentActivity", () => {

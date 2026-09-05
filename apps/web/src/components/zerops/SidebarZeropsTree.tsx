@@ -19,6 +19,7 @@ import {
   readZeropsGroupTags,
   selectMateEnvironments,
 } from "@t3tools/client-runtime/zerops";
+import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 import type { ReactNode } from "react";
@@ -27,6 +28,12 @@ import { cn } from "~/lib/utils";
 import { MicroLabel, StatusDot } from "./primitives";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 
+/**
+ * The bucket, as a roster word. A row answers "what is this agent up to",
+ * so a connected environment with nothing running is idle, not "connected"
+ * — the socket is the client's business, not the person's. The dot keeps
+ * the design system's grammar: teal is the connected dot.
+ */
 const TONE = {
   connected: "ok",
   ready: "off",
@@ -35,13 +42,28 @@ const TONE = {
 } as const;
 
 const LABEL = {
-  connected: "Connected",
+  connected: "Idle",
   ready: "Ready",
   provisioning: "Starting",
   unavailable: "Unavailable",
 } as const;
 
-export interface SidebarZeropsTreeProps<T extends ZeropsCandidate> {
+/** A registered environment whose socket is still on its way up. */
+function isConnecting(connection: EnvironmentConnectionPresentation | undefined): boolean {
+  return (
+    connection !== undefined &&
+    (connection.phase === "connecting" ||
+      connection.phase === "reconnecting" ||
+      connection.phase === "available")
+  );
+}
+
+/** What the client holds per environment, when it holds anything. */
+type RosterCandidate = ZeropsCandidate & {
+  readonly connection?: EnvironmentConnectionPresentation;
+};
+
+export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
   readonly onSelect: (candidate: T) => void;
   /** Opens the projects screen — the only route out of an empty menu. */
@@ -59,7 +81,7 @@ export interface SidebarZeropsTreeProps<T extends ZeropsCandidate> {
   readonly className?: string;
 }
 
-export function SidebarZeropsTree<T extends ZeropsCandidate>({
+export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
   onBrowseProjects,
@@ -134,7 +156,7 @@ export function SidebarZeropsTree<T extends ZeropsCandidate>({
   );
 }
 
-function Row<T extends ZeropsCandidate>({
+function Row<T extends RosterCandidate>({
   candidate,
   badge,
   active,
@@ -182,7 +204,12 @@ function Row<T extends ZeropsCandidate>({
           The activity replaces the bucket rather than joining it — a row that
           says "Connected · Working" says the first word for no reason. */}
       <span className="ms-auto flex shrink-0 items-center text-[var(--muted-foreground)]">
-        {activity ?? <StatusDot label={LABEL[candidate.group]} tone={TONE[candidate.group]} />}
+        {activity ??
+          (candidate.group !== "connected" && isConnecting(candidate.connection) ? (
+            <StatusDot label="Connecting" tone="busy" />
+          ) : (
+            <StatusDot label={LABEL[candidate.group]} tone={TONE[candidate.group]} />
+          ))}
       </span>
     </button>
   );
