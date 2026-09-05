@@ -190,7 +190,9 @@ import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./u
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
-import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
+import { connectionOriginFor, rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
+import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
+import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -597,6 +599,8 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
   projectCwdByKey: ReadonlyMap<string, string>;
   projectFaviconPathByKey: ReadonlyMap<string, string | null | undefined>;
   scopedProjectKeys: ReadonlySet<string> | null;
+  /** Environments whose drafts are their roster row, not a row of their own. */
+  hiddenEnvironmentIds: ReadonlySet<EnvironmentId>;
   routeDraftId: string | null;
   onNavigateToDraft: (draftId: DraftId) => void;
 }) {
@@ -636,6 +640,9 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
       if (session.promotedTo != null) {
         continue;
       }
+      if (props.hiddenEnvironmentIds.has(session.environmentId)) {
+        continue;
+      }
       if (
         props.scopedProjectKeys !== null &&
         !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
@@ -663,6 +670,7 @@ const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
     draftThreadsByThreadKey,
     draftsByThreadKey,
     frozenActive,
+    props.hiddenEnvironmentIds,
     props.routeDraftId,
     props.scopedProjectKeys,
   ]);
@@ -1686,6 +1694,24 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
+
+  // The left menu lists environments that have Mate. Membership is the
+  // container's presence, not a live session, so a sleeping container changes
+  // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
+  // else about the account is the projects screen's job.
+  const { status: zeropsStatus } = useZeropsSession();
+  const zeropsSignedIn = zeropsStatus === "signed-in";
+  const { candidates: zeropsCandidates } = useZeropsCandidates();
+  // The roster says what every agent is doing, and the only thing that knows
+  // is the environment's own server. So every container that answers the
+  // health probe is registered on the user's behalf; from then on its socket
+  // and its thread status arrive like any other environment's.
+  const zeropsHealth = useZeropsCandidateHealth(zeropsCandidates);
+  useZeropsAutoConnect({
+    candidates: zeropsCandidates,
+    health: zeropsHealth,
+    enabled: zeropsSignedIn,
+  });
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -1779,6 +1805,26 @@ export default function Sidebar() {
     [isMobile, setOpenMobile],
   );
   const { environments } = useEnvironments();
+  // One environment is one conversation, and its roster row is that
+  // conversation. So a Zerops environment's project, threads and drafts are
+  // folded into its row rather than listed a second time below in T3's tree;
+  // an environment that is not Zerops (a local server) keeps the tree. An
+  // environment counts as Zerops when it is a roster candidate now or came in
+  // through the Zerops door — a container deleted on the platform is still
+  // registered here, and its leftovers must not resurface as a tree.
+  const zeropsEnvironmentIds = useMemo(() => {
+    const ids = new Set<EnvironmentId>();
+    if (!zeropsSignedIn) return ids;
+    for (const candidate of zeropsCandidates) {
+      if (candidate.environmentId !== undefined) ids.add(candidate.environmentId);
+    }
+    for (const environment of environments) {
+      if (connectionOriginFor(String(environment.environmentId)) === "zerops-identity") {
+        ids.add(environment.environmentId);
+      }
+    }
+    return ids;
+  }, [environments, zeropsCandidates, zeropsSignedIn]);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
@@ -1835,7 +1881,9 @@ export default function Sidebar() {
   const unsortedProjectGroups = useMemo(
     () =>
       buildSidebarProjectSnapshots({
-        projects: sidebarProjectSortOrder === "manual" ? orderedProjects : projects,
+        projects: (sidebarProjectSortOrder === "manual" ? orderedProjects : projects).filter(
+          (project) => !zeropsEnvironmentIds.has(project.environmentId),
+        ),
         settings: projectGroupingSettings,
         primaryEnvironmentId,
         resolveEnvironmentLabel: (environmentId) => environmentLabelById.get(environmentId) ?? null,
@@ -1847,12 +1895,16 @@ export default function Sidebar() {
       projectGroupingSettings,
       projects,
       sidebarProjectSortOrder,
+      zeropsEnvironmentIds,
     ],
   );
   const projectGroups = useMemo(
     () => sortLogicalProjectsForSidebar(unsortedProjectGroups, threads, sidebarProjectSortOrder),
     [sidebarProjectSortOrder, threads, unsortedProjectGroups],
   );
+  // Nothing but the roster: a Zerops account whose every environment is a
+  // roster row, with no local project alongside.
+  const rosterOnly = zeropsSignedIn && projectGroups.length === 0;
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   // Threads on non-primary environments resolve their
   // provider entry from their own environment's config: default instance ids
@@ -1968,6 +2020,9 @@ export default function Sidebar() {
       if (session.promotedTo != null) {
         continue;
       }
+      if (zeropsEnvironmentIds.has(session.environmentId)) {
+        continue;
+      }
       if (!composerDraftHasUserContent(store.draftsByThreadKey[draftKey])) {
         continue;
       }
@@ -2009,14 +2064,6 @@ export default function Sidebar() {
     }
     void router.navigate({ to: "/zerops/new" });
   }, [isMobile, router, setOpenMobile]);
-
-  // The left menu lists environments that have Mate. Membership is the
-  // container's presence, not a live session, so a sleeping container changes
-  // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
-  // else about the account is the projects screen's job.
-  const { status: zeropsStatus } = useZeropsSession();
-  const zeropsSignedIn = zeropsStatus === "signed-in";
-  const { candidates: zeropsCandidates } = useZeropsCandidates();
 
   const navigateToZeropsProjects = useCallback(() => {
     if (isMobile) {
@@ -2088,6 +2135,7 @@ export default function Sidebar() {
     const visible = threads.filter(
       (thread) =>
         thread.archivedAt === null &&
+        !zeropsEnvironmentIds.has(thread.environmentId) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
     );
@@ -2166,6 +2214,7 @@ export default function Sidebar() {
     serverConfigs,
     snoozeWakeTick,
     threads,
+    zeropsEnvironmentIds,
   ]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
@@ -3477,97 +3526,111 @@ export default function Sidebar() {
           // Lifted above the stage backdrop, whose fade bleeds below the
           // header and would otherwise paint across the search row's outline.
           <SidebarGroup className="relative z-[1] gap-1 p-[var(--sidebar-content-inset)]">
-            <div className="flex items-center gap-1">
-              <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
-                <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-                <Input
-                  ref={threadSearchInputRef}
-                  nativeInput
-                  unstyled
-                  type="search"
-                  value={threadSearchQuery}
-                  onChange={(event) => {
-                    setThreadSearchQuery(event.currentTarget.value);
-                    setActiveSearchResultIndex(0);
-                  }}
-                  onKeyDown={handleThreadSearchKeyDown}
-                  placeholder="Search"
-                  aria-label="Search threads"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
-                  aria-controls={
-                    isSearchingThreads && threadSearchResults.length > 0
-                      ? "sidebar-thread-search-results"
-                      : undefined
-                  }
-                  aria-activedescendant={
-                    isSearchingThreads && threadSearchResults[activeSearchResultIndex]
-                      ? `sidebar-thread-search-result-${activeSearchResultIndex}`
-                      : undefined
-                  }
-                  className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground"
-                />
-                {isSearchingThreads ? (
-                  <Button
-                    type="button"
-                    size="icon-micro"
-                    variant="ghost"
-                    className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                    aria-label="Clear thread search"
-                    onClick={() => {
-                      clearThreadSearch();
-                      threadSearchInputRef.current?.focus();
+            {rosterOnly ? (
+              // Every environment is in the roster: there is no thread list to
+              // search and no project to start a thread in. The one thing to
+              // make from here is another environment.
+              <SidebarMenuButton
+                type="button"
+                className="h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground"
+                onClick={navigateToZeropsProjects}
+              >
+                <PlusIcon className="size-4 shrink-0" />
+                <span>New environment</span>
+              </SidebarMenuButton>
+            ) : (
+              <div className="flex items-center gap-1">
+                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
+                  <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
+                  <Input
+                    ref={threadSearchInputRef}
+                    nativeInput
+                    unstyled
+                    type="search"
+                    value={threadSearchQuery}
+                    onChange={(event) => {
+                      setThreadSearchQuery(event.currentTarget.value);
+                      setActiveSearchResultIndex(0);
                     }}
-                  >
-                    <XIcon className="size-3" />
-                  </Button>
-                ) : null}
-              </div>
-              <div className="shrink-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <SidebarMenuButton
-                        size="icon"
-                        type="button"
-                        className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        onClick={handleNewThreadClick}
-                        disabled={projects.length === 0}
-                        aria-label="New thread"
-                      />
+                    onKeyDown={handleThreadSearchKeyDown}
+                    placeholder="Search"
+                    aria-label="Search threads"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
+                    aria-controls={
+                      isSearchingThreads && threadSearchResults.length > 0
+                        ? "sidebar-thread-search-results"
+                        : undefined
                     }
-                  >
-                    <SquarePenIcon />
-                    <span
-                      className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                      aria-hidden="true"
-                    />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">
-                    {projectGroups.length > 1 ? (
-                      <span className="flex flex-col gap-0.5">
-                        <span>
-                          {newThreadShortcutLabel
-                            ? `New thread (${newThreadShortcutLabel})`
-                            : "New thread"}
+                    aria-activedescendant={
+                      isSearchingThreads && threadSearchResults[activeSearchResultIndex]
+                        ? `sidebar-thread-search-result-${activeSearchResultIndex}`
+                        : undefined
+                    }
+                    className="min-w-0 flex-1 [&_[data-slot=input]]:h-auto [&_[data-slot=input]]:p-0 [&_[data-slot=input]]:leading-normal [&_[data-slot=input]]:text-sm [&_[data-slot=input]]:font-medium [&_[data-slot=input]]:text-sidebar-foreground [&_[data-slot=input]]:placeholder:text-sidebar-muted-foreground"
+                  />
+                  {isSearchingThreads ? (
+                    <Button
+                      type="button"
+                      size="icon-micro"
+                      variant="ghost"
+                      className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
+                      aria-label="Clear thread search"
+                      onClick={() => {
+                        clearThreadSearch();
+                        threadSearchInputRef.current?.focus();
+                      }}
+                    >
+                      <XIcon className="size-3" />
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="shrink-0">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          type="button"
+                          className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                          onClick={handleNewThreadClick}
+                          disabled={projects.length === 0}
+                          aria-label="New thread"
+                        />
+                      }
+                    >
+                      <SquarePenIcon />
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+                        aria-hidden="true"
+                      />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">
+                      {projectGroups.length > 1 ? (
+                        <span className="flex flex-col gap-0.5">
+                          <span>
+                            {newThreadShortcutLabel
+                              ? `New thread (${newThreadShortcutLabel})`
+                              : "New thread"}
+                          </span>
+                          <span className="text-muted-foreground">
+                            New thread in current project: Shift+click
+                            {newThreadInProjectShortcutLabel
+                              ? ` (${newThreadInProjectShortcutLabel})`
+                              : ""}
+                          </span>
                         </span>
-                        <span className="text-muted-foreground">
-                          New thread in current project: Shift+click
-                          {newThreadInProjectShortcutLabel
-                            ? ` (${newThreadInProjectShortcutLabel})`
-                            : ""}
-                        </span>
-                      </span>
-                    ) : newThreadShortcutLabel ? (
-                      `New thread (${newThreadShortcutLabel})`
-                    ) : (
-                      "New thread"
-                    )}
-                  </TooltipPopup>
-                </Tooltip>
+                      ) : newThreadShortcutLabel ? (
+                        `New thread (${newThreadShortcutLabel})`
+                      ) : (
+                        "New thread"
+                      )}
+                    </TooltipPopup>
+                  </Tooltip>
+                </div>
               </div>
-            </div>
+            )}
             {projectGroups.length > 0 ? (
               <div className="flex items-center gap-1">
                 <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
@@ -3935,6 +3998,7 @@ export default function Sidebar() {
                       projectCwdByKey={projectCwdByKey}
                       projectFaviconPathByKey={projectFaviconPathByKey}
                       scopedProjectKeys={scopedProjectKeys}
+                      hiddenEnvironmentIds={zeropsEnvironmentIds}
                       routeDraftId={routeDraftIdForRows}
                       onNavigateToDraft={navigateToDraft}
                     />,
@@ -4201,6 +4265,9 @@ export default function Sidebar() {
             </TooltipProvider>
           ) : null}
           {!isSearchingThreads &&
+          // A Zerops account whose every environment is in the roster has no
+          // tree to be empty; the roster carries its own empty states.
+          (!zeropsSignedIn || projectGroups.length > 0) &&
           visibleDraftSessionCount === 0 &&
           pinnedThreads.length +
             activeThreads.length +
@@ -4208,7 +4275,7 @@ export default function Sidebar() {
             settledThreads.length ===
             0 ? (
             <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {zeropsSignedIn ? null : projects.length === 0 ? (
+              {projectGroups.length === 0 ? (
                 <>
                   <span>No projects yet</span>
                   <button
