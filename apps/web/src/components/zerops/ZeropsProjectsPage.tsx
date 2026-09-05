@@ -443,10 +443,21 @@ function ZeropsProjectsContent() {
           if (candidate.containerOrigin) startWaitFor(candidate);
         }}
         renderStatus={(candidate: ZeropsCandidate) => (
-          <StatusDot
-            label={CANDIDATE_STATUS[candidate.group].label}
-            tone={CANDIDATE_STATUS[candidate.group].tone}
-          />
+          <span className="flex min-w-0 items-center gap-2">
+            <StatusDot
+              label={CANDIDATE_STATUS[candidate.group].label}
+              tone={CANDIDATE_STATUS[candidate.group].tone}
+            />
+            {/* The bucket alone reads as an alarm on a project that simply has
+                no container yet. `candidates.ts` already produced a sentence
+                saying which of those it is, so show that rather than mint a
+                second phrase for the same fact (R5). */}
+            {candidate.reason === undefined ? null : (
+              <span className="truncate text-xs text-[var(--muted-foreground)]">
+                {candidate.reason}
+              </span>
+            )}
+          </span>
         )}
         view={buildZeropsGroupTree(candidates)}
       />
