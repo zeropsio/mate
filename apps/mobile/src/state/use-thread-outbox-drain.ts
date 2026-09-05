@@ -166,9 +166,9 @@ export function useThreadOutboxDrain(): void {
   // A queued message that can no longer be delivered as drafted (e.g. its
   // Antigravity model needs setup) is removed from the outbox rather than
   // retried forever; the reason is logged for diagnostics.
-  const restoreQueuedMessage = useCallback(
+  const dropUndeliverableMessage = useCallback(
     async (queuedMessage: QueuedThreadMessage, reason: string): Promise<boolean> => {
-      console.warn("[thread-outbox] restoring queued message", {
+      console.warn("[thread-outbox] dropping undeliverable queued message", {
         environmentId: queuedMessage.environmentId,
         threadId: queuedMessage.threadId,
         messageId: queuedMessage.messageId,
@@ -177,7 +177,7 @@ export function useThreadOutboxDrain(): void {
       try {
         await removeThreadOutboxMessage(queuedMessage);
       } catch (error) {
-        console.warn("[thread-outbox] failed to remove restored queued message", {
+        console.warn("[thread-outbox] failed to remove undeliverable queued message", {
           environmentId: queuedMessage.environmentId,
           threadId: queuedMessage.threadId,
           messageId: queuedMessage.messageId,
@@ -197,7 +197,7 @@ export function useThreadOutboxDrain(): void {
       if (!serverConfig) return false;
       const settings = resolveQueuedThreadSettings(queuedMessage, thread, serverConfig.providers);
       if (isModelSelectionUnavailable(serverConfig, settings.modelSelection)) {
-        return restoreQueuedMessage(
+        return dropUndeliverableMessage(
           queuedMessage,
           "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
         );
@@ -256,7 +256,7 @@ export function useThreadOutboxDrain(): void {
       );
       if (!currentConfig) return false;
       if (isModelSelectionUnavailable(currentConfig, settings.modelSelection)) {
-        return restoreQueuedMessage(
+        return dropUndeliverableMessage(
           queuedMessage,
           "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
         );
@@ -291,7 +291,7 @@ export function useThreadOutboxDrain(): void {
       setThreadRuntimeMode,
       startTurn,
       updateThreadMetadata,
-      restoreQueuedMessage,
+      dropUndeliverableMessage,
     ],
   );
 
@@ -320,7 +320,7 @@ export function useThreadOutboxDrain(): void {
         serverConfig.providers,
       );
       if (isModelSelectionUnavailable(serverConfig, settings.modelSelection)) {
-        return restoreQueuedMessage(
+        return dropUndeliverableMessage(
           queuedMessage,
           "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
         );
@@ -348,7 +348,7 @@ export function useThreadOutboxDrain(): void {
       });
       return completeDelivery(deliveryResult);
     },
-    [makeDeliveryHelpers, restoreQueuedMessage, startTurn],
+    [makeDeliveryHelpers, dropUndeliverableMessage, startTurn],
   );
 
   useEffect(() => {
