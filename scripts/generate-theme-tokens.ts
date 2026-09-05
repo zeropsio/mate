@@ -16,7 +16,7 @@ import {
   type ThemeColors,
   type ThemeDefinition,
 } from "@t3tools/shared/themePalettes";
-import { MATE_MARK, ZEROPS_MARK } from "@t3tools/shared/brand";
+import { MATE_MARK } from "@t3tools/shared/brand";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
@@ -236,13 +236,27 @@ const renderWebThemeTokens = (): string =>
     renderBuiltInThemePalettes(),
   ].join("\n");
 
+// The splash is the still, open mark — the same one the favicon and the
+// sidebar show — so the first painted frame and the app's first frame agree.
+// The eyes take the shell's text colour, which the boot script already sets
+// per theme, so they are ink on paper and paper on dark without a rule here.
 const renderWebBootMark = (): string =>
   [
-    `          <svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
-    ...ZEROPS_MARK.paths.flatMap((path) => [
+    `          <svg id="boot-shell-logo" viewBox="${MATE_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
+    ...MATE_MARK.paths.flatMap((d) => [
       "            <path",
-      `              d="${path.d}"`,
-      `              fill="${path.fill}"`,
+      `              d="${d}"`,
+      `              fill="${MATE_MARK.color}"`,
+      "            />",
+    ]),
+    ...MATE_MARK.eyeXs.flatMap((x) => [
+      "            <rect",
+      `              x="${x}"`,
+      `              y="${MATE_MARK.eyeY}"`,
+      `              width="${MATE_MARK.eyeWidth}"`,
+      `              height="${MATE_MARK.eyeHeight}"`,
+      `              rx="${MATE_MARK.eyeWidth / 2}"`,
+      '              fill="currentColor"',
       "            />",
     ]),
     "          </svg>",

@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { APP_BASE_NAME } from "../../branding";
 import { cn } from "../../lib/utils";
-import { MateMark } from "../MateMark";
+import { APP_BASE_NAME } from "../../branding";
+import { MateLockup } from "../MateLockup";
 import {
   SidebarFooter,
   SidebarHeader,
@@ -40,14 +40,13 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 function SidebarBrand() {
   return (
     <Link
-      aria-label="Go to threads"
+      aria-label={APP_BASE_NAME}
       className="ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
       to="/"
     >
-      <MateMark className="mr-1 h-6 w-auto" />
-      <span className="-translate-y-px truncate text-sm font-medium tracking-tight text-muted-foreground">
-        {APP_BASE_NAME}
-      </span>
+      {/* Identity v1's lockup: the still mark and the wordmark, outlined — the
+          one place the product's name is set, so no page repeats it. */}
+      <MateLockup decorative className="h-6 w-auto" />
     </Link>
   );
 }

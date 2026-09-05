@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MATE_MARK } from "@t3tools/shared/brand";
+import { MATE_LOCKUP } from "@t3tools/shared/brand";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { APP_BASE_NAME } from "../../branding";
@@ -32,12 +32,15 @@ vi.mock("../../branding", () => ({
 import { SidebarChromeHeader } from "./SidebarChrome";
 
 describe("SidebarChromeHeader", () => {
-  it("renders the shared Mate mark and sourced product name without T3 branding", () => {
+  it("renders the shared Mate lockup and sourced product name without T3 branding", () => {
     const markup = renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />);
 
-    expect(markup).toContain(`viewBox="${MATE_MARK.viewBox}"`);
+    // The lockup: mark and wordmark in one box, the name set once by geometry.
+    expect(markup).toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
+    expect(markup).toContain('data-mate-lockup="still"');
     expect(markup).toContain(`aria-hidden="true"`);
-    expect(markup).toContain(`aria-label="Go to threads"`);
+    // The link names the product once; the lockup inside it stays decorative.
+    expect(markup).toContain(`aria-label="${APP_BASE_NAME}"`);
     expect(markup).toContain(APP_BASE_NAME);
     expect(markup).not.toContain("T3");
   });

@@ -43,3 +43,13 @@
     will-change: auto;
   }
 }
+
+/*
+ * The lockup shares the mark's colour rule and its overflow: the t's ascender
+ * rises just past the mark's box, and clipping it would dock the letter.
+ */
+.mate-lockup {
+  display: block;
+  overflow: visible;
+  color: var(--foreground);
+}

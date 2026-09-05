@@ -228,16 +228,21 @@ describe("generate theme tokens", () => {
     expect(web.contents).toContain('<link rel="manifest" href="%BASE_URL%manifest.webmanifest" />');
     expect(web.contents).not.toContain("apple-touch-icon");
     expect(web.contents).toContain(
-      `<svg id="boot-shell-logo" viewBox="${ZEROPS_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
+      `<svg id="boot-shell-logo" viewBox="${MATE_MARK.viewBox}" role="img" aria-label="Zerops Mate">`,
     );
     const bootMark = web.contents.slice(
       web.contents.indexOf(WEB_BOOT_MARK_MARKERS.start),
       web.contents.indexOf(WEB_BOOT_MARK_MARKERS.end),
     );
-    for (const path of ZEROPS_MARK.paths) {
-      expect(bootMark).toContain(`d="${path.d}"`);
-      expect(bootMark).toContain(`fill="${path.fill}"`);
+    // The splash is the still Mate mark the favicon and sidebar show, eyes
+    // open, so the frame before React and the frame after it agree.
+    for (const path of MATE_MARK.paths) {
+      expect(bootMark).toContain(`d="${path}"`);
     }
+    expect(bootMark).toContain(`fill="${MATE_MARK.color}"`);
+    expect(bootMark.match(/<rect/gu)).toHaveLength(2);
+    expect(bootMark).toContain('fill="currentColor"');
+    expect(bootMark).not.toContain(ZEROPS_MARK.viewBox);
 
     const favicon = outputs.find((output) => output.target === "apps/web/public/favicon.svg");
     expect(favicon?.contents).toContain(`<svg xmlns="http://www.w3.org/2000/svg"`);
