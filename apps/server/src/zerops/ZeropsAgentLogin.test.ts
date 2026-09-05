@@ -146,7 +146,7 @@ it.effect("start opens a dedicated terminal, writes the login command, and reach
         isZeropsEnvironment: true,
       });
 
-      const result = yield* feed.start("claude-code", "thread-1");
+      const result = yield* feed.start("claude-code", "thread-1", "user-test");
       assert.equal(result.terminalId, "agent-login-claude-code");
 
       const opened = yield* Ref.get(fakeTerminal.opened);
@@ -176,8 +176,8 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        const first = yield* feed.start("claude-code", "thread-1");
-        const second = yield* feed.start("claude-code", "thread-1");
+        const first = yield* feed.start("claude-code", "thread-1", "user-test");
+        const second = yield* feed.start("claude-code", "thread-1", "user-test");
         assert.equal(second.terminalId, first.terminalId);
 
         const writes = yield* Ref.get(fakeTerminal.writes);
@@ -199,7 +199,7 @@ it.effect("an auth URL chunk moves the phase to awaiting-browser with the url", 
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1");
+      yield* feed.start("claude-code", "thread-1", "user-test");
       const subscription = yield* feed.subscribe;
 
       yield* fakeTerminal.emit(
@@ -233,7 +233,7 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        yield* feed.start("claude-code", "thread-1");
+        yield* feed.start("claude-code", "thread-1", "user-test");
         const subscription = yield* feed.subscribe;
         const firstPublished = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
 
@@ -272,7 +272,7 @@ it.effect("codex: url and device code together move to awaiting-browser with bot
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("codex", "thread-1");
+      yield* feed.start("codex", "thread-1", "user-test");
       const subscription = yield* feed.subscribe;
 
       yield* fakeTerminal.emit(
@@ -305,7 +305,7 @@ it.effect(
           isZeropsEnvironment: true,
         });
 
-        yield* feed.start("claude-code", "thread-1");
+        yield* feed.start("claude-code", "thread-1", "user-test");
         const subscription = yield* feed.subscribe;
 
         yield* fakeTerminal.emit(
@@ -323,7 +323,7 @@ it.effect(
 
         // The session is no longer active — a fresh start opens a NEW terminal
         // session (a second `open` + a second write of the login command).
-        yield* feed.start("claude-code", "thread-1");
+        yield* feed.start("claude-code", "thread-1", "user-test");
         const opened = yield* Ref.get(fakeTerminal.opened);
         assert.equal(opened.length, 2);
         const writes = yield* Ref.get(fakeTerminal.writes);
@@ -343,7 +343,7 @@ it.effect("cancel writes Ctrl-C, closes the terminal, and publishes cancelled", 
         isZeropsEnvironment: true,
       });
 
-      yield* feed.start("claude-code", "thread-1");
+      yield* feed.start("claude-code", "thread-1", "user-test");
       yield* feed.cancel("claude-code");
 
       const writes = yield* Ref.get(fakeTerminal.writes);
@@ -389,7 +389,7 @@ it.effect("outside a Zerops environment, start and cancel both fail as unavailab
         isZeropsEnvironment: false,
       });
 
-      const startError = yield* Effect.flip(feed.start("claude-code", "thread-1"));
+      const startError = yield* Effect.flip(feed.start("claude-code", "thread-1", "user-test"));
       assert.instanceOf(startError, ZeropsAgentLoginError);
       const cancelError = yield* Effect.flip(feed.cancel("claude-code"));
       assert.instanceOf(cancelError, ZeropsAgentLoginError);
@@ -419,7 +419,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
               isZeropsEnvironment: true,
             });
 
-            yield* feed.start("claude-code", "thread-1");
+            yield* feed.start("claude-code", "thread-1", "user-test");
             yield* fakeTerminal.emit(
               "thread-1",
               "agent-login-claude-code",
@@ -437,4 +437,65 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
       10_000,
     );
   },
+);
+
+it.effect("records the authorizer from the session subject when a login succeeds", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const recorded = yield* Ref.make<ReadonlyArray<readonly [ZeropsAgentId, string]>>([]);
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+        recordAuthorizer: (agentId, subject) =>
+          Ref.update(recorded, (all) => [...all, [agentId, subject] as const]),
+      });
+
+      yield* feed.start("claude-code", "thread-1", "zerops-user-a");
+      const subscription = yield* feed.subscribe;
+
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue…\n",
+      );
+
+      yield* changeWhere(
+        subscription.changes,
+        (logins) => loginOf(logins, "claude-code")?.phase === "succeeded",
+      );
+
+      assert.deepEqual(yield* Ref.get(recorded), [["claude-code", "zerops-user-a"]]);
+    }),
+  ),
+);
+
+it.effect("records nothing while a login is merely in progress", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const recorded = yield* Ref.make<ReadonlyArray<readonly [ZeropsAgentId, string]>>([]);
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+        recordAuthorizer: (agentId, subject) =>
+          Ref.update(recorded, (all) => [...all, [agentId, subject] as const]),
+      });
+
+      yield* feed.start("claude-code", "thread-1", "zerops-user-a");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Visit https://claude.ai/oauth/authorize?code=1 to continue\n",
+      );
+
+      // Provenance is a claim about a completed sign-in; an abandoned attempt
+      // must not leave one behind.
+      assert.deepEqual(yield* Ref.get(recorded), []);
+    }),
+  ),
 );

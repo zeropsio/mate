@@ -49,6 +49,12 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
+  /**
+   * The connecting session's subject — the Zerops user id the door put on the
+   * grant. Taken from the authenticated session in `ws.ts`, never from RPC
+   * input: a client that could name its own subject could claim to be anyone.
+   */
+  readonly subject: string;
   /** `ws.ts`'s own scope-checked, metrics/trace-instrumented wrapper — same one every other RPC in the router goes through. */
   readonly observeRpcEffect: <A, E, R>(
     method: string,
@@ -69,6 +75,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsAgentAuth,
     zeropsAgentLogin,
     zeropsBrowserStream,
+    subject,
     observeRpcEffect,
     observeRpcStream,
   } = deps;
@@ -81,7 +88,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsAgentLoginStart]: (input) =>
       observeRpcEffect(
         WS_METHODS.zeropsAgentLoginStart,
-        zeropsAgentLogin.start(input.agentId, input.threadId),
+        zeropsAgentLogin.start(input.agentId, input.threadId, subject),
         { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.zeropsAgentLoginCancel]: (input) =>

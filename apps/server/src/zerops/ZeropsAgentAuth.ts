@@ -39,6 +39,7 @@ import * as NodeOS from "node:os";
 
 import type {
   ServerProviderAuthStatus,
+  ZeropsAgentAuth as ZeropsAgentAuthContract,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentAuthState,
   ZeropsAgentId,
@@ -65,6 +66,7 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import { ZeropsCli, type ZeropsCliError } from "./ZeropsCli.ts";
+import * as ZeropsAgentAuthorizers from "./ZeropsAgentAuthorizers.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import {
   spawnAgentAuthProbe,
@@ -112,6 +114,14 @@ export const computeAgentAuthState = (inputs: {
 export type ZembedEnv = Readonly<Record<string, string>>;
 
 /**
+ * Which Zerops user signed an agent in here, as recorded when a server-driven
+ * login succeeded. The subject is the door's session subject — the Zerops user
+ * id — never anything read out of the credential, whose contents this module
+ * still never opens.
+ */
+export type ZeropsAgentAuthorizer = NonNullable<ZeropsAgentAuthContract["authorizedBy"]>;
+
+/**
  * Assembles the full snapshot from already-collected inputs — pure, no I/O of
  * its own (the service does the reading). `env` absent means the store could
  * not be read (missing or invalid file): every flag reads as unset, never a
@@ -124,12 +134,14 @@ export const buildSnapshot = (
   env: ZembedEnv | undefined,
   credPresence: Readonly<Record<ZeropsAgentId, boolean>>,
   providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>,
+  authorizers: Readonly<Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>>> = {},
 ): ZeropsAgentAuthSnapshot => {
   const agents = KNOWN_AGENT_IDS.map((agentId) => {
     const suffix = AGENT_OAUTH_SUFFIX[agentId];
     const flagOAuth = env?.[`ZCP_AGENT_OAUTH_${suffix}`] === "true";
     const flagToken = !!env?.[`ZCP_AGENT_TOKEN_${suffix}`];
     const credPresent = credPresence[agentId];
+    const authorizedBy = authorizers[agentId];
     return {
       agentId,
       credPresent,
@@ -137,6 +149,10 @@ export const buildSnapshot = (
       flagToken,
       providerAuth: providerAuth[agentId],
       state: computeAgentAuthState({ flagOAuth, flagToken, credPresent }),
+      // Provenance only travels with a credential that exists: a stale record
+      // for a credential that has since been removed would name an owner for
+      // nothing.
+      ...(credPresent && authorizedBy ? { authorizedBy } : {}),
     };
   });
   return { available: true, agents };
@@ -224,6 +240,12 @@ export interface ZeropsAgentAuthOptions {
   /** Resolved the same way the provider drivers do by default: `os.homedir()`, never `CLAUDE_CONFIG_DIR`. */
   readonly homeDir: string;
   readonly envStorePath: string;
+  /**
+   * Where `ZeropsAgentAuthorizers` records who signed each agent in. Absent
+   * disables provenance entirely — every snapshot then omits `authorizedBy`,
+   * which is exactly the pre-existing behaviour.
+   */
+  readonly authorizersPath?: string;
   readonly isZeropsEnvironment: boolean;
   /**
    * Watches `target`, tolerating it not existing yet (falls back to
@@ -299,7 +321,8 @@ const agentAuthEqual = (
   a.flagOAuth === b.flagOAuth &&
   a.flagToken === b.flagToken &&
   a.providerAuth === b.providerAuth &&
-  a.state === b.state;
+  a.state === b.state &&
+  a.authorizedBy?.subject === b.authorizedBy?.subject;
 
 /** Field-by-field equality — avoids a JSON round-trip for what is only ever an internal dedup check. */
 const snapshotsEqual = (a: ZeropsAgentAuthSnapshot, b: ZeropsAgentAuthSnapshot): boolean =>
@@ -315,6 +338,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       refreshProviderAuth,
       homeDir,
       envStorePath,
+      authorizersPath,
       watch,
       isZeropsEnvironment: enabled,
     } = options;
@@ -356,7 +380,19 @@ export const make = (options: ZeropsAgentAuthOptions) =>
 
     const publish = Effect.gen(function* () {
       const current = yield* Ref.get(state);
-      const snapshot = buildSnapshot(current.env, current.credPresence, current.providerAuth);
+      // Re-read per publish rather than cached: a login writing the file is
+      // the same event that changes the credential, so the read that follows
+      // it must see the write. The document is a handful of bytes.
+      const authorizers =
+        authorizersPath === undefined
+          ? {}
+          : yield* ZeropsAgentAuthorizers.readAuthorizers(fs, authorizersPath);
+      const snapshot = buildSnapshot(
+        current.env,
+        current.credPresence,
+        current.providerAuth,
+        authorizers,
+      );
       if (current.lastPublished !== undefined && snapshotsEqual(snapshot, current.lastPublished)) {
         return;
       }
@@ -634,6 +670,7 @@ export const layer = Layer.effect(
     const cli = yield* ZeropsCli;
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const config = yield* ServerConfig;
+    const path = yield* Path.Path;
     const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
 
     return yield* make({
@@ -641,6 +678,10 @@ export const layer = Layer.effect(
       refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
+      authorizersPath: path.join(
+        config.stateDir,
+        ZeropsAgentAuthorizers.ZEROPS_AGENT_AUTHORIZERS_FILE,
+      ),
       isZeropsEnvironment: isZeropsEnvironment(config),
       watch: watchWithFallback,
     });

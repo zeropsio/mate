@@ -122,7 +122,7 @@ it.effect("login follows the clock and rechecks auth when it succeeds", () =>
       );
 
       const started = yield* agentLogin
-        .start("codex", serviceMapScene.lifecycle.threadId)
+        .start("codex", serviceMapScene.lifecycle.threadId, "user-test")
         .pipe(Effect.orDie);
       assert.equal(started.terminalId, "agent-login-codex");
       assert.equal((yield* agentLogin.latest).codex?.phase, "starting");
@@ -143,7 +143,9 @@ it.effect("login follows the clock and rechecks auth when it succeeds", () =>
 it.effect("cancel leaves the scripted login cancelled", () =>
   withFixtureFeeds(serviceMapScene, ({ agentLogin }) =>
     Effect.gen(function* () {
-      yield* agentLogin.start("claude-code", serviceMapScene.lifecycle.threadId).pipe(Effect.orDie);
+      yield* agentLogin
+        .start("claude-code", serviceMapScene.lifecycle.threadId, "user-test")
+        .pipe(Effect.orDie);
       yield* agentLogin.cancel("claude-code").pipe(Effect.orDie);
       assert.equal((yield* agentLogin.latest)["claude-code"]?.phase, "cancelled");
 
@@ -157,7 +159,7 @@ it.effect("rejects login start when the fixture scene is unavailable", () =>
   withFixtureFeeds(noZeropsScene, ({ agentLogin }) =>
     Effect.gen(function* () {
       const error = yield* agentLogin
-        .start("codex", noZeropsScene.lifecycle.threadId)
+        .start("codex", noZeropsScene.lifecycle.threadId, "user-test")
         .pipe(Effect.flip, Effect.orDie);
 
       assert.instanceOf(error, ZeropsAgentLoginError);
@@ -194,7 +196,7 @@ it.effect("reattaches to a scene-provided active login", () =>
     Effect.gen(function* () {
       const before = (yield* agentLogin.latest).codex;
       const result = yield* agentLogin
-        .start("codex", agentAuthAttentionScene.lifecycle.threadId)
+        .start("codex", agentAuthAttentionScene.lifecycle.threadId, "user-test")
         .pipe(Effect.orDie);
 
       assert.equal(result.terminalId, before?.terminalId);
@@ -222,7 +224,7 @@ it.effect("a terminal login step lets start create a fresh session", () =>
       yield* advanceTestClock(100);
 
       const result = yield* agentLogin
-        .start("codex", terminalLoginStepScene.lifecycle.threadId)
+        .start("codex", terminalLoginStepScene.lifecycle.threadId, "user-test")
         .pipe(Effect.orDie);
 
       assert.equal(result.terminalId, "agent-login-codex");
@@ -252,7 +254,7 @@ it.effect("agent login steps replace the whole login snapshot", () =>
   withFixtureFeeds(absoluteLoginStepScene, ({ agentLogin }) =>
     Effect.gen(function* () {
       const first = yield* agentLogin
-        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId)
+        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId, "user-test")
         .pipe(Effect.orDie);
       assert.equal(first.terminalId, "scripted-login-claude-code");
 
@@ -261,7 +263,7 @@ it.effect("agent login steps replace the whole login snapshot", () =>
       assert.equal((yield* agentLogin.latest)["claude-code"], undefined);
 
       const restarted = yield* agentLogin
-        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId)
+        .start("claude-code", absoluteLoginStepScene.lifecycle.threadId, "user-test")
         .pipe(Effect.orDie);
       assert.notEqual(restarted.terminalId, first.terminalId);
       assert.equal((yield* agentLogin.latest)["claude-code"]?.phase, "starting");

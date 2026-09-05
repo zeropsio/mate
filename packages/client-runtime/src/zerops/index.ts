@@ -113,3 +113,11 @@ export {
   type ZeropsPrimaryConversation,
   type ZeropsPrimaryConversationReason,
 } from "./primaryConversation.ts";
+export {
+  agentOwnershipNeedsAttention,
+  agentOwnershipNotice,
+  resolveAgentOwnership,
+  type ZeropsAgentAuthorizer,
+  type ZeropsAgentOwnership,
+  type ZeropsAgentOwnershipInput,
+} from "./agentOwnership.ts";

@@ -53,6 +53,8 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -65,6 +67,7 @@ import { ServerConfig } from "../config.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import * as ZeropsAgentAuthorizers from "./ZeropsAgentAuthorizers.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
@@ -134,6 +137,13 @@ export class ZeropsAgentLogin extends Context.Service<
     readonly start: (
       agentId: ZeropsAgentId,
       threadId: string,
+      /**
+       * The Zerops user id of the session driving this login, taken from the
+       * authenticated session — never from the client's input, which could
+       * name anyone. Recorded against the agent when the login succeeds so
+       * mate can say whose subscription a turn spends (`agentOwnership.ts`).
+       */
+      subject: string,
     ) => Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError>;
     readonly cancel: (
       agentId: ZeropsAgentId,
@@ -148,6 +158,12 @@ export interface ZeropsAgentLoginOptions {
   >;
   readonly zeropsAgentAuth: Pick<ZeropsAgentAuth["Service"], "recheckNow">;
   readonly isZeropsEnvironment: boolean;
+  /**
+   * Records who signed this agent in, once the login has actually succeeded.
+   * Injected so this module stays testable without a filesystem; absent means
+   * provenance is simply not recorded.
+   */
+  readonly recordAuthorizer?: (agentId: ZeropsAgentId, subject: string) => Effect.Effect<void>;
 }
 
 interface FeedState {
@@ -162,6 +178,8 @@ interface ActiveSession {
   readonly bufferRef: Ref.Ref<string>;
   readonly stallQueue: Queue.Queue<void>;
   readonly unsubscribeOutput: () => void;
+  /** Who started this login — recorded if it succeeds. */
+  readonly subject: string;
 }
 
 const appendAndTrim = (buffer: string, chunk: string): string => {
@@ -171,7 +189,12 @@ const appendAndTrim = (buffer: string, chunk: string): string => {
 
 export const make = (options: ZeropsAgentLoginOptions) =>
   Effect.gen(function* () {
-    const { terminalManager, zeropsAgentAuth, isZeropsEnvironment: enabled } = options;
+    const {
+      terminalManager,
+      zeropsAgentAuth,
+      recordAuthorizer,
+      isZeropsEnvironment: enabled,
+    } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
 
@@ -288,6 +311,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         if (result.nextPhase === "succeeded") {
+          // Provenance before the recheck: the recheck is what republishes the
+          // snapshot, so the record has to be on disk for that snapshot to
+          // carry it.
+          if (recordAuthorizer !== undefined) {
+            yield* recordAuthorizer(agentId, session.subject);
+          }
           yield* zeropsAgentAuth.recheckNow(agentId);
         }
 
@@ -324,6 +353,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     const start = (
       agentId: ZeropsAgentId,
       threadId: string,
+      subject: string,
     ): Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
         const existing = sessions.get(agentId);
@@ -365,6 +395,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             bufferRef,
             stallQueue,
             unsubscribeOutput,
+            subject,
           });
 
           yield* Stream.fromQueue(stallQueue).pipe(
@@ -428,10 +459,18 @@ export const layer = Layer.effect(
     const terminalManager = yield* TerminalManager;
     const zeropsAgentAuth = yield* ZeropsAgentAuth;
     const config = yield* ServerConfig;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const authorizersPath = path.join(
+      config.stateDir,
+      ZeropsAgentAuthorizers.ZEROPS_AGENT_AUTHORIZERS_FILE,
+    );
     return yield* make({
       terminalManager,
       zeropsAgentAuth,
       isZeropsEnvironment: isZeropsEnvironment(config),
+      recordAuthorizer: (agentId, subject) =>
+        ZeropsAgentAuthorizers.recordAuthorizer(fs, authorizersPath, agentId, subject),
     });
   }),
 );

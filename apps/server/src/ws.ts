@@ -2024,6 +2024,7 @@ const makeWsRpcLayer = (
           zeropsAgentAuth,
           zeropsAgentLogin,
           zeropsBrowserStream,
+          subject: currentSession.subject,
           observeRpcEffect,
           observeRpcStream,
         }),

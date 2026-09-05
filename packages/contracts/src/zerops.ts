@@ -306,6 +306,28 @@ export const ZeropsAgentAuth = Schema.Struct({
   state: ZeropsAgentAuthState,
   /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
   login: Schema.optional(ZeropsAgentLoginState),
+  /**
+   * Which Zerops user signed this agent in, recorded when a server-driven
+   * login succeeded. The subject is the Zerops user id — the same value the
+   * door puts on the session grant.
+   *
+   * This exists because an agent CLI's credential is a *personal* one. Under
+   * Anthropic's consumer terms a subscription login is yours to use on your
+   * own machines and nobody else's, so a project member who did not authorize
+   * this container must be told whose identity they are about to spend, not
+   * silently handed it.
+   *
+   * **Absent means unknown, never "someone else's".** A credential can predate
+   * this field, or have been placed in the container by other means; the
+   * client must say "not recorded", not accuse. Nothing here reads the
+   * credential itself — presence and provenance only.
+   */
+  authorizedBy: Schema.optional(
+    Schema.Struct({
+      subject: Schema.String,
+      at: Schema.DateTimeUtc,
+    }),
+  ),
 });
 export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
 

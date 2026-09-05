@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+
 import { buildSnapshot, computeAgentAuthState, toZembedEnv } from "./ZeropsAgentAuth.ts";
 
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
@@ -103,5 +106,41 @@ describe("toZembedEnv", () => {
 
   it.each([null, [], "x", 1, undefined])("reads a non-object document (%s) as no store", (doc) => {
     expect(toZembedEnv(doc)).toBeUndefined();
+  });
+});
+
+describe("buildSnapshot provenance", () => {
+  const providerAuth = { "claude-code": "authenticated", codex: "unknown" } as const;
+  const at = Option.getOrThrow(DateTime.make(1_788_600_000_000));
+
+  it("carries the recorded authorizer onto the agent that has a credential", () => {
+    const snapshot = buildSnapshot(
+      { ZCP_AGENT_OAUTH_CLAUDE_CODE: "true" },
+      { "claude-code": true, codex: false },
+      providerAuth,
+      { "claude-code": { subject: "zerops-user-a", at } },
+    );
+
+    const claude = snapshot.agents.find((agent) => agent.agentId === "claude-code");
+    expect(claude?.authorizedBy?.subject).toBe("zerops-user-a");
+  });
+
+  it("omits it for an agent whose credential is gone — a record for nothing names nobody", () => {
+    const snapshot = buildSnapshot(
+      undefined,
+      { "claude-code": false, codex: false },
+      providerAuth,
+      { "claude-code": { subject: "zerops-user-a", at } },
+    );
+
+    expect(snapshot.agents.find((agent) => agent.agentId === "claude-code")?.authorizedBy).toBe(
+      undefined,
+    );
+  });
+
+  it("omits it when nothing was ever recorded, which is the pre-existing behaviour", () => {
+    const snapshot = buildSnapshot(undefined, { "claude-code": true, codex: true }, providerAuth);
+
+    expect(snapshot.agents.every((agent) => agent.authorizedBy === undefined)).toBe(true);
   });
 });
