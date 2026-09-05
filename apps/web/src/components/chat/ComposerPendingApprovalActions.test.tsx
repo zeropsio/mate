@@ -13,6 +13,7 @@ const buttonState = vi.hoisted(() => ({
 
 vi.mock("../ui/button", () => ({
   Button: ({
+    "aria-description": ariaDescription,
     children,
     className,
     "data-approval-action-tone": tone,
@@ -21,6 +22,7 @@ vi.mock("../ui/button", () => ({
     onClick,
     variant,
   }: {
+    readonly "aria-description"?: string;
     readonly children: unknown;
     readonly className?: string;
     readonly "data-approval-action-tone": string;
@@ -38,6 +40,7 @@ vi.mock("../ui/button", () => ({
     });
     return (
       <button
+        aria-description={ariaDescription}
         className={className}
         data-approval-action-tone={tone}
         data-approval-decision={decision}
