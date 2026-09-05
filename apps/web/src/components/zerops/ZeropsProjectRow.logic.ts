@@ -88,6 +88,15 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (candidate.group === "unavailable") {
+    // A project that merely has no container is not unavailable; it has no
+    // agent, which for a production environment is the default and not a
+    // fault. The reason stays as the detail.
+    if (candidate.missingContainer === true && !isZeropsToolCandidate(candidate)) {
+      return {
+        status: { label: "No agent", tone: "off" },
+        detail: "No Zerops Mate container in this project.",
+      };
+    }
     return {
       status: { label: "Not available", tone: "off" },
       ...(candidate.reason === undefined ? {} : { detail: candidate.reason }),

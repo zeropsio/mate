@@ -817,6 +817,9 @@ function ZeropsProjectsContent() {
             case "starting":
               return <span className="text-xs text-muted-foreground">{action.label}</span>;
             default:
+              // Blue acts: the primary pill is for a verb that changes the
+              // environment. Opening one is navigation and stays quiet, or
+              // six connected rows would shout in unison.
               return (
                 <Pill
                   data-zerops-primary-action={action.label}
@@ -825,6 +828,7 @@ function ZeropsProjectsContent() {
                   onClick={() => {
                     runRowAction(candidate, action.kind);
                   }}
+                  tone={action.kind === "open" ? "secondary" : "primary"}
                 />
               );
           }

@@ -159,6 +159,23 @@ describe("deriveZeropsRowPresentation", () => {
     expect(presentation.detail).toContain("The container is unreachable.");
   });
 
+  it("calls a project without a container agentless, not unavailable", () => {
+    const presentation = deriveZeropsRowPresentation(
+      input(
+        {
+          key: "bare",
+          project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+          group: "unavailable",
+          reason: "no Zerops Mate container in this project",
+          missingContainer: true,
+        },
+        undefined,
+      ),
+    );
+    expect(presentation.status).toEqual({ label: "No agent", tone: "off" });
+    expect(presentation.detail).toBe("No Zerops Mate container in this project.");
+  });
+
   it("carries the bucket's own reason for a project on its way in or out of reach", () => {
     expect(
       deriveZeropsRowPresentation(
