@@ -1,6 +1,6 @@
 import { CheckpointRef, EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { codexFeedbackMessage } from "@t3tools/client-runtime/state/threads";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -1081,55 +1081,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("live-activity-focus");
   });
 
-  /**
-   * A `zerops_deploy` call is now pulled entirely out of the transcript
-   * upstream (`deriveZeropsOperations` / `deriveTimelineEntries`, before
-   * `MessagesTimeline` ever sees it) and rendered as its own "operation" row
-   * through `ZeropsOperationCard`. A raw "work" kind entry that still carries
-   * a `zeropsResult` — this component never decodes one — renders through
-   * the same live-work row as any other in-progress tool, never a card.
-   */
-  it("shows a live zerops_deploy work entry through the ordinary live-work row, never a card", () => {
-    const turnId = TurnId.make("turn-live-deploy");
-    const startedAt = new Date().toISOString();
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        isWorking
-        activeTurnStartedAt={startedAt}
-        latestTurn={{
-          turnId,
-          state: "running",
-          startedAt,
-          completedAt: null,
-        }}
-        runningTurnId={turnId}
-        timelineEntries={[
-          {
-            id: "entry-live-deploy",
-            kind: "work",
-            createdAt: startedAt,
-            entry: {
-              id: "work-live-deploy",
-              createdAt: startedAt,
-              turnId,
-              toolCallId: "call-live-deploy",
-              label: "mcp__zerops__zerops_deploy",
-              tone: "tool",
-              itemType: "mcp_tool_call",
-              toolLifecycleStatus: "inProgress",
-              toolInput: { targetService: "kanban" },
-              zeropsResult: { toolName: "zerops_deploy" },
-            },
-          },
-        ]}
-      />,
-    );
-
-    expect(markup).not.toContain("data-zerops-card");
-    expect(markup).toContain("live-activity-focus");
-  });
-
   it("scopes a live row failure to the tool named by the row", () => {
     const turnId = TurnId.make("turn-live");
     const markup = renderToStaticMarkup(
@@ -1317,34 +1268,28 @@ describe("MessagesTimeline", () => {
   });
 
   /**
-   * A settled `zerops_deploy` work entry — of the kind `deriveZeropsOperations`
-   * would normally have pulled out into its own "operation" row upstream —
-   * renders through the ordinary generic tool block when it reaches
-   * `MessagesTimeline` directly: this component decodes no Zerops payload of
-   * its own any more, for any result shape.
+   * A Zerops call the model classified "generic" (never a card) reaches
+   * `MessagesTimeline` as its own `generic-call` row kind, but renders
+   * through the same generic tool block as any other tool — this component
+   * decodes no Zerops payload of its own.
    */
-  it("renders a settled zerops_deploy work entry as an ordinary tool row, never a card", () => {
-    const resultText = JSON.stringify({
-      status: "DEPLOYED",
-      targetService: "kanbandev",
-      subdomainUrl: "https://kanbandev.example.com",
-    });
+  it("renders a generic-call row as an ordinary tool row, never a card", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...buildProps()}
         timelineEntries={[
           {
-            id: "deploy-entry",
-            kind: "work",
+            id: "zerops:call-status-1",
+            kind: "generic-call",
             createdAt: MESSAGE_CREATED_AT,
             entry: {
-              id: "deploy-work",
+              id: "activity-status-1",
               createdAt: MESSAGE_CREATED_AT,
-              label: "Deploy kanbandev",
+              label: "zerops_mount",
+              toolTitle: "zerops_mount",
               tone: "tool",
               itemType: "mcp_tool_call",
               toolLifecycleStatus: "completed",
-              zeropsResult: { toolName: "zerops_deploy", resultText },
             },
           },
         ]}
@@ -1352,7 +1297,8 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).not.toContain("data-zerops-card");
-    expect(markup).toContain("Used 1 tool");
+    expect(markup).toContain("Zerops_mount");
+    expect(markup).toContain("lucide-wrench");
   });
 
   it("renders an operation timeline entry through ZeropsOperationCard", () => {
@@ -1360,9 +1306,8 @@ describe("MessagesTimeline", () => {
       key: "call:deploy-operation",
       kind: "deploy",
       phase: "done",
-      anchorEntryId: "deploy-operation",
-      createdAt: MESSAGE_CREATED_AT,
-      startedAt: MESSAGE_CREATED_AT,
+      anchorAt: MESSAGE_CREATED_AT,
+      anchorActivityId: "deploy-operation",
       settledAt: MESSAGE_CREATED_AT,
       turnId: null,
       subject: "kanbandev",
@@ -1373,7 +1318,8 @@ describe("MessagesTimeline", () => {
       closing: "kanbandev is live.",
       steps: [],
       links: [],
-      entryIds: ["deploy-operation"],
+      callIds: ["deploy-operation"],
+      attempts: 1,
       hasResult: true,
     };
     const markup = renderToStaticMarkup(
@@ -1381,7 +1327,7 @@ describe("MessagesTimeline", () => {
         {...buildProps()}
         timelineEntries={[
           {
-            id: "operation:deploy-operation",
+            id: "zerops:call:deploy-operation",
             kind: "operation",
             createdAt: MESSAGE_CREATED_AT,
             operation,
@@ -1394,54 +1340,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-zerops-card-kind="deploy"');
     expect(markup).toContain("Deploy · kanbandev");
     expect(markup).toContain("kanbandev is live.");
-  });
-
-  it("keeps undecodable, absent and oversize results in the ordinary generic tool block", () => {
-    const cases = [
-      {
-        name: "undecodable",
-        label: "Deploy with unreadable result",
-        zeropsResult: { toolName: "zerops_deploy", resultText: "not json" },
-      },
-      {
-        name: "absent",
-        label: "Deploy with absent result",
-        zeropsResult: { toolName: "zerops_deploy" },
-      },
-      {
-        name: "oversize",
-        label: "Deploy with oversized result",
-        zeropsResult: { toolName: "zerops_deploy", truncated: true },
-      },
-    ] as const;
-
-    for (const fallbackCase of cases) {
-      const markup = renderToStaticMarkup(
-        <MessagesTimeline
-          {...buildProps()}
-          timelineEntries={[
-            {
-              id: `fallback-${fallbackCase.name}`,
-              kind: "work",
-              createdAt: MESSAGE_CREATED_AT,
-              entry: {
-                id: `fallback-work-${fallbackCase.name}`,
-                createdAt: MESSAGE_CREATED_AT,
-                label: fallbackCase.label,
-                tone: "tool",
-                itemType: "mcp_tool_call",
-                toolLifecycleStatus: "completed",
-                zeropsResult: fallbackCase.zeropsResult,
-              },
-            },
-          ]}
-        />,
-      );
-
-      expect(markup, fallbackCase.name).toContain("Used 1 tool");
-      expect(markup, fallbackCase.name).toContain("lucide-wrench");
-      expect(markup, fallbackCase.name).not.toContain("data-zerops-card");
-    }
   });
 
   it("renders a muted failure marker for failed tool lifecycle entries", () => {

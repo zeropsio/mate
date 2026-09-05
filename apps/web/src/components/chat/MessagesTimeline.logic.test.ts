@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
@@ -506,9 +506,8 @@ describe("deriveMessagesTimelineRows", () => {
     key: "call:op-1",
     kind: "deploy",
     phase: "done",
-    anchorEntryId: "op-1",
-    createdAt: "2026-01-01T00:00:50Z",
-    startedAt: "2026-01-01T00:00:50Z",
+    anchorActivityId: "op-1",
+    anchorAt: "2026-01-01T00:00:50Z",
     turnId: "turn-milestone" as never,
     subject: "api",
     kicker: "Deploy · api",
@@ -517,7 +516,8 @@ describe("deriveMessagesTimelineRows", () => {
     statusWord: "Deployed",
     steps: [],
     links: [],
-    entryIds: ["op-1"],
+    callIds: ["op-1"],
+    attempts: 1,
     hasResult: true,
     ...overrides,
   });
@@ -527,23 +527,41 @@ describe("deriveMessagesTimelineRows", () => {
     overrides: Partial<ZeropsOperation> = {},
   ): Extract<TimelineEntry, { kind: "operation" }> => {
     const operation = makeOperation({
-      anchorEntryId: id,
+      anchorActivityId: id,
       key: `call:${id}`,
-      entryIds: [id],
+      callIds: [id],
       ...overrides,
     });
     return {
-      id: `operation:${operation.anchorEntryId}`,
+      id: `operation:${operation.anchorActivityId}`,
       kind: "operation",
-      createdAt: operation.createdAt,
+      createdAt: operation.anchorAt,
       operation,
     };
   };
 
+  /** A Zerops call the model classified "generic" — a `generic-call` timeline entry. */
+  const makeGenericCallTimelineEntry = (
+    id: string,
+    entry: Partial<WorkLogEntry> = {},
+  ): Extract<TimelineEntry, { kind: "generic-call" }> => ({
+    id: `${id}-entry`,
+    kind: "generic-call",
+    createdAt: "2026-01-01T00:00:01Z",
+    entry: {
+      id: `${id}-work`,
+      createdAt: "2026-01-01T00:00:01Z",
+      label: id,
+      tone: "tool",
+      itemType: "mcp_tool_call",
+      toolLifecycleStatus: "completed",
+      ...entry,
+    },
+  });
+
   it("moves a settled-turn fold anchor past a leading operation entry", () => {
     const operation = makeOperationTimelineEntry("anchor-operation", {
-      createdAt: "2026-01-01T00:00:02Z",
-      startedAt: "2026-01-01T00:00:02Z",
+      anchorAt: "2026-01-01T00:00:02Z",
     });
     const ordinary = makeWorkTimelineEntry("anchor-ordinary", {
       turnId: "turn-milestone" as never,
@@ -570,8 +588,7 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveSettledRows([
       makeAssistantTimelineEntry("assistant-first", "2026-01-01T00:00:01Z"),
       makeOperationTimelineEntry("only-hidden-operation", {
-        createdAt: "2026-01-01T00:00:02Z",
-        startedAt: "2026-01-01T00:00:02Z",
+        anchorAt: "2026-01-01T00:00:02Z",
       }),
       makeAssistantTimelineEntry("assistant-final", "2026-01-01T00:00:59Z"),
     ]);
@@ -584,13 +601,11 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveSettledRows([
       makeOperationTimelineEntry("deploy-operation", {
         kind: "deploy",
-        createdAt: "2026-01-01T00:00:01Z",
-        startedAt: "2026-01-01T00:00:01Z",
+        anchorAt: "2026-01-01T00:00:01Z",
       }),
       makeOperationTimelineEntry("verify-operation", {
         kind: "verify",
-        createdAt: "2026-01-01T00:00:02Z",
-        startedAt: "2026-01-01T00:00:02Z",
+        anchorAt: "2026-01-01T00:00:02Z",
       }),
     ]);
 
@@ -603,8 +618,7 @@ describe("deriveMessagesTimelineRows", () => {
   it("keeps a standalone tool group and a distinct operation row side by side, never merged into the toggle", () => {
     const rows = deriveSettledRows([
       makeOperationTimelineEntry("standalone-operation", {
-        createdAt: "2026-01-01T00:00:01Z",
-        startedAt: "2026-01-01T00:00:01Z",
+        anchorAt: "2026-01-01T00:00:01Z",
       }),
       makeWorkTimelineEntry("standalone-tool-1", { itemType: "command_execution" }),
       makeWorkTimelineEntry("standalone-tool-2", { itemType: "command_execution" }),
@@ -617,13 +631,26 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({ hiddenCount: 2 });
   });
 
+  it("keeps a generic-call row distinct from a neighbouring work group, never merged into its toggle", () => {
+    const rows = deriveSettledRows([
+      makeGenericCallTimelineEntry("generic-status"),
+      makeWorkTimelineEntry("standalone-tool-1", { itemType: "command_execution" }),
+      makeWorkTimelineEntry("standalone-tool-2", { itemType: "command_execution" }),
+    ]);
+
+    expect(rowIdentities(rows)).toEqual([
+      { id: "generic-status-entry", kind: "generic-call" },
+      { id: "work-toggle:standalone-tool-1-entry", kind: "work-toggle" },
+    ]);
+    expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({ hiddenCount: 2 });
+  });
+
   it("splits an active work group around a middle operation entry", () => {
     const rows = deriveActiveRows([
       makeRunningTool("active-running-before"),
       makeOperationTimelineEntry("active-middle-operation", {
         turnId: "turn-active" as never,
-        createdAt: "2026-01-01T00:00:01Z",
-        startedAt: "2026-01-01T00:00:01Z",
+        anchorAt: "2026-01-01T00:00:01Z",
       }),
       makeRunningTool("active-running-after"),
     ]);
@@ -641,8 +668,7 @@ describe("deriveMessagesTimelineRows", () => {
       makeRunningTool("active-running-before"),
       makeOperationTimelineEntry("active-trailing-operation", {
         turnId: "turn-active" as never,
-        createdAt: "2026-01-01T00:00:01Z",
-        startedAt: "2026-01-01T00:00:01Z",
+        anchorAt: "2026-01-01T00:00:01Z",
       }),
     ]);
 
@@ -656,8 +682,7 @@ describe("deriveMessagesTimelineRows", () => {
   it("keeps a leading operation entry visible ahead of a running tool", () => {
     const operation = makeOperationTimelineEntry("active-leading-operation", {
       turnId: "turn-active" as never,
-      createdAt: "2026-01-01T00:00:01Z",
-      startedAt: "2026-01-01T00:00:01Z",
+      anchorAt: "2026-01-01T00:00:01Z",
     });
     const running = makeRunningTool("active-running");
 
@@ -674,8 +699,7 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveActiveRows([
       makeOperationTimelineEntry("active-only-operation", {
         turnId: "turn-active" as never,
-        createdAt: "2026-01-01T00:00:01Z",
-        startedAt: "2026-01-01T00:00:01Z",
+        anchorAt: "2026-01-01T00:00:01Z",
       }),
     ]);
 
@@ -2335,5 +2359,62 @@ describe("computeStableMessagesTimelineRows", () => {
 
     expect(reordered).not.toBe(initial);
     expect(reordered.result).toEqual([initial.result[1], initial.result[0]]);
+  });
+
+  it("reuses an operation row when an equivalent derivation rebuilds a fresh ZeropsOperation object", () => {
+    const operation = (overrides: Partial<ZeropsOperation> = {}): ZeropsOperation => ({
+      key: "call:op-stable",
+      kind: "deploy",
+      phase: "done",
+      anchorAt: "2026-01-01T00:00:00Z",
+      anchorActivityId: "op-stable",
+      turnId: null,
+      subject: "api",
+      kicker: "Deploy · api",
+      voice: "Deploying api.",
+      voiceSource: "mate",
+      statusWord: "Deployed",
+      steps: [],
+      links: [],
+      callIds: ["op-stable"],
+      attempts: 1,
+      hasResult: true,
+      ...overrides,
+    });
+
+    const createRows = (op: ZeropsOperation) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: [
+          {
+            id: "zerops:call:op-stable",
+            kind: "operation",
+            createdAt: op.anchorAt,
+            operation: op,
+          },
+        ],
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaryByAssistantMessageId: new Map(),
+        revertTurnCountByUserMessageId: new Map(),
+      });
+
+    const firstRows = createRows(operation());
+    const initial = computeStableMessagesTimelineRows(firstRows, { byId: new Map(), result: [] });
+
+    // A brand-new `ZeropsOperation` object, equal in every field the row
+    // cares about — the model rebuilds this fresh on every derive, with no
+    // per-operation cache of its own.
+    const secondRows = createRows(operation());
+    expect(secondRows[0]?.kind === "operation" && secondRows[0].operation).not.toBe(
+      firstRows[0]?.kind === "operation" && firstRows[0].operation,
+    );
+
+    const repeated = computeStableMessagesTimelineRows(secondRows, initial);
+    expect(repeated.result[0]).toBe(initial.result[0]);
+
+    // A field the row actually renders changes: the row is NOT reused.
+    const changedRows = createRows(operation({ phase: "failed" }));
+    const changed = computeStableMessagesTimelineRows(changedRows, initial);
+    expect(changed.result[0]).not.toBe(initial.result[0]);
   });
 });

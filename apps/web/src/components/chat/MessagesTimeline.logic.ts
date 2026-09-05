@@ -9,7 +9,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/operations";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -251,6 +251,13 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       operation: ZeropsOperation;
+    }
+  | {
+      /** A Zerops call the model classified "generic" (never a card) — a work-like row, but never identity-merged with an adjacent "work" run. */
+      kind: "generic-call";
+      id: string;
+      createdAt: string;
+      entry: WorkLogEntry;
     }
   | {
       kind: "working";
@@ -534,7 +541,9 @@ function timelineEntryTurnId(entry: TimelineEntry): TurnId | null {
     // platform-free (R1) and never imports the branded `TurnId` type.
     return entry.operation.turnId as TurnId | null;
   }
-  return entry.kind === "work" ? (entry.entry.turnId ?? null) : null;
+  return entry.kind === "work" || entry.kind === "generic-call"
+    ? (entry.entry.turnId ?? null)
+    : null;
 }
 
 /**
@@ -572,7 +581,7 @@ function deriveTurnFolds(input: {
     const turnId =
       entry.kind === "message" && entry.message.role === "assistant"
         ? (entry.message.turnId ?? null)
-        : entry.kind === "work"
+        : entry.kind === "work" || entry.kind === "generic-call"
           ? (entry.entry.turnId ?? null)
           : entry.kind === "operation"
             ? (entry.operation.turnId as TurnId | null)
@@ -787,7 +796,7 @@ export function deriveMessagesTimelineRows(input: {
     if (entry.kind === "message") {
       return entry.message.role === "assistant" && (entry.message.text?.trim().length ?? 0) > 0;
     }
-    if (entry.kind === "work") {
+    if (entry.kind === "work" || entry.kind === "generic-call") {
       return (
         entry.entry.agentSpawn === undefined &&
         workLogEntryIsToolLike(entry.entry) &&
@@ -1093,6 +1102,16 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "generic-call") {
+      nextRows.push({
+        kind: "generic-call",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        entry: timelineEntry.entry,
+      });
+      continue;
+    }
+
     const assistantTurnStillInProgress =
       timelineEntry.message.role === "assistant" &&
       unsettledTurnId !== null &&
@@ -1188,7 +1207,30 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "operation": {
       const bo = b as typeof a;
-      return a.createdAt === bo.createdAt && a.operation === bo.operation;
+      // The model rebuilds every `ZeropsOperation` fresh on each derive
+      // (no per-operation cache), so object identity always reports
+      // "changed" — compare the fields a render actually depends on
+      // instead, the same way `work-toggle` below does for its own
+      // freshly-built summary.
+      return (
+        a.createdAt === bo.createdAt &&
+        a.operation.key === bo.operation.key &&
+        a.operation.phase === bo.operation.phase &&
+        a.operation.attempts === bo.operation.attempts &&
+        a.operation.settledAt === bo.operation.settledAt &&
+        a.operation.hasResult === bo.operation.hasResult &&
+        a.operation.steps.length === bo.operation.steps.length
+      );
+    }
+
+    case "generic-call": {
+      const bg = b as typeof a;
+      return (
+        a.createdAt === bg.createdAt &&
+        a.entry.id === bg.entry.id &&
+        a.entry.toolLifecycleStatus === bg.entry.toolLifecycleStatus &&
+        a.entry.detail === bg.entry.detail
+      );
     }
 
     case "work": {

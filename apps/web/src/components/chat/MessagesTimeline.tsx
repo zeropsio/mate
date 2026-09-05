@@ -953,7 +953,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
                   row.kind === "turn-plan" ||
-                  row.kind === "operation"
+                  row.kind === "operation" ||
+                  row.kind === "generic-call"
                 ? "pb-2"
                 : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
@@ -980,6 +981,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
       {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
+      {row.kind === "generic-call" ? <GenericCallTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
     </div>
   );
@@ -1321,6 +1323,29 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
         {...(browserScreenshot === undefined ? {} : { browserScreenshot })}
         {...(live === undefined ? {} : { live })}
         {...(liveFrame === undefined ? {} : { liveFrame })}
+      />
+    </div>
+  );
+});
+
+/**
+ * A Zerops call the model classified "generic" (never a card) — rendered
+ * through the ordinary generic tool row, same as any other non-Zerops
+ * tool call. Never grouped with an adjacent "work" run (its own row kind
+ * ends that run, same as an "operation" row does).
+ */
+const GenericCallTimelineRow = memo(function GenericCallTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "generic-call" }>;
+}) {
+  const { workspaceRoot } = use(TimelineRowCtx);
+  return (
+    <div className="-mx-1 space-y-0.5 px-1 py-0.5">
+      <SimpleWorkEntryRow
+        isExpandedToolGroupEntry={false}
+        workEntry={row.entry}
+        workspaceRoot={workspaceRoot}
       />
     </div>
   );
@@ -2521,9 +2546,10 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry } = props;
 
   // Spawn CTA rows render their own component. Every other entry — including
-  // a Zerops call the operations reducer classified as "generic" (never an
-  // operation) — renders through the ordinary tool row below; its own result
-  // text is already what the generic expanded body shows.
+  // a Zerops call the model classified "generic" (never an operation),
+  // reached here through its own "generic-call" row kind — renders through
+  // the ordinary tool row below; its own result text is already what the
+  // generic expanded body shows.
   if (workEntry.agentSpawn) {
     return <AgentSpawnCtaRow workEntry={workEntry} />;
   }
