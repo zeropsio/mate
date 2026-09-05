@@ -606,7 +606,12 @@ export class ZeropsApiClient {
    */
   async updateProjectGroupTags(
     projectId: string,
-    next: { readonly groupId?: string; readonly role?: ZeropsEnvironmentRole },
+    next: {
+      readonly groupId?: string;
+      readonly role?: ZeropsEnvironmentRole;
+      /** The group's display name, mirrored into `mate:name:` (`groups.ts`). */
+      readonly label?: string;
+    },
   ): Promise<ZeropsProject> {
     const project = await this.fetchProject(projectId);
     return this.#request<ZeropsProject>(`/project/${projectId}`, {

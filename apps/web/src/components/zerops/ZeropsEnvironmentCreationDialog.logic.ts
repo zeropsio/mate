@@ -79,6 +79,25 @@ export interface CreationFormErrors {
   readonly recipe?: string;
 }
 
+/** The one rule for an agent's name: present, short, and new on the account. */
+export function validateBotName(
+  raw: string,
+  takenBotNames: ReadonlyArray<string>,
+  options: { readonly current?: string } = {},
+): string | undefined {
+  const bot = raw.replace(/\s+/g, " ").trim();
+  if (bot.length === 0) return "Give the agent a name.";
+  if (bot.length > ZEROPS_BOT_NAME_MAX_LENGTH) {
+    return `Keep it under ${ZEROPS_BOT_NAME_MAX_LENGTH} characters.`;
+  }
+  const isCurrent =
+    options.current !== undefined && options.current.toLowerCase() === bot.toLowerCase();
+  if (!isCurrent && takenBotNames.some((taken) => taken.toLowerCase() === bot.toLowerCase())) {
+    return `${bot} is already an agent on this account.`;
+  }
+  return undefined;
+}
+
 export function validateCreationForm(
   form: CreationForm,
   context: {
@@ -90,13 +109,8 @@ export function validateCreationForm(
   if (form.name.trim().length === 0) errors.name = "Give the environment a name.";
 
   if (form.withAgent) {
-    const bot = form.botName.replace(/\s+/g, " ").trim();
-    if (bot.length === 0) errors.botName = "Give the agent a name.";
-    else if (bot.length > ZEROPS_BOT_NAME_MAX_LENGTH) {
-      errors.botName = `Keep it under ${ZEROPS_BOT_NAME_MAX_LENGTH} characters.`;
-    } else if (context.takenBotNames.some((taken) => taken.toLowerCase() === bot.toLowerCase())) {
-      errors.botName = `${bot} is already an agent on this account.`;
-    }
+    const botError = validateBotName(form.botName, context.takenBotNames);
+    if (botError !== undefined) errors.botName = botError;
   }
 
   const option = context.options.find((entry) => entry.id === form.recipeId);

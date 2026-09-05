@@ -42,11 +42,13 @@ import {
   canCreateEnvironment,
   defaultAgentForRole,
   generateBotName,
+  generateZeropsGroupId,
   planEnvironmentCreation,
   readZeropsGroupTags,
   runEnvironmentCreation,
   type EnvironmentCreationStepProgress,
   type ZeropsEnvironmentRole,
+  type ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
@@ -57,6 +59,11 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
+import { validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ZeropsMoveToGroupDialog } from "./ZeropsMoveToGroupDialog";
+import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
+import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
+import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
 import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
@@ -381,6 +388,71 @@ function ZeropsProjectsContent() {
   const busyKeys = useMemo(
     () => new Set([enablingCandidateKey, settingUpKey].filter((key) => key !== null)),
     [enablingCandidateKey, settingUpKey],
+  );
+
+  // The quiet actions: rename an agent, move a project, rename a group. Each
+  // is one platform write with the user's own token and a reload.
+  const [rowDialog, setRowDialog] = useState<
+    | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
+    | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
+    | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
+    | null
+  >(null);
+  const runWrite = useCallback(
+    async (write: () => Promise<unknown>) => {
+      setToolError(null);
+      try {
+        await write();
+        refresh();
+      } catch (cause) {
+        setToolError(zeropsErrorMessage(cause));
+      }
+    },
+    [refresh],
+  );
+  const renameAgent = useCallback(
+    (candidate: ZeropsCandidate, name: string) =>
+      runWrite(() => client.nameProjectAgent(candidate.project.id, name)),
+    [client, runWrite],
+  );
+  const moveProject = useCallback(
+    (candidate: ZeropsCandidate, membership: MoveMembership) =>
+      runWrite(() => {
+        if (membership.kind === "none") {
+          return client.updateProjectGroupTags(candidate.project.id, {});
+        }
+        // Joining an existing group carries its name along, so the mirror on
+        // this member agrees with the others'.
+        const label =
+          membership.label ??
+          groupTree.groups.find((entry) => entry.group.groupId === membership.groupId)?.group.name;
+        const known = groupTree.groups.find((entry) => entry.group.groupId === membership.groupId);
+        return client.updateProjectGroupTags(candidate.project.id, {
+          groupId: membership.groupId,
+          role: membership.role,
+          ...(label !== undefined && known?.group.nameSource !== "id" ? { label } : {}),
+          ...(membership.label !== undefined ? { label: membership.label } : {}),
+        });
+      }),
+    [client, groupTree.groups, runWrite],
+  );
+  const renameGroup = useCallback(
+    (group: ZeropsGroup, name: string) =>
+      runWrite(async () => {
+        // The name lives on every member; a rename is one write per member.
+        for (const environment of group.environments) {
+          await client.updateProjectGroupTags(environment.project.id, {
+            groupId: group.groupId,
+            ...(environment.role === undefined ? {} : { role: environment.role }),
+            label: name,
+          });
+        }
+      }),
+    [client, runWrite],
+  );
+  const mintGroupId = useCallback(
+    () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+    [],
   );
 
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
@@ -783,6 +855,58 @@ function ZeropsProjectsContent() {
           void createTool();
         }}
         isBusy={(candidate: ZeropsCandidate) => busyKeys.has(candidate.key)}
+        renderMenu={(candidate: ZeropsCandidate) => {
+          if (isZeropsToolCandidate(candidate)) return null;
+          const tags = readZeropsGroupTags(candidate.project.tagList);
+          const actions = [
+            ...(candidate.service === undefined
+              ? []
+              : [
+                  {
+                    id: "rename-agent",
+                    label: "Rename agent",
+                    onSelect: () => {
+                      setRowDialog({ kind: "rename-agent", candidate });
+                    },
+                  },
+                ]),
+            {
+              id: "move",
+              label: tags.groupId === undefined ? "Move to a group" : "Change group or role",
+              onSelect: () => {
+                setRowDialog({ kind: "move", candidate });
+              },
+            },
+            ...(tags.groupId === undefined
+              ? []
+              : [
+                  {
+                    id: "leave",
+                    label: "Leave the group",
+                    onSelect: () => {
+                      void moveProject(candidate, { kind: "none" });
+                    },
+                  },
+                ]),
+          ];
+          return (
+            <ZeropsProjectMenu actions={actions} label={`More for ${candidate.project.name}`} />
+          );
+        }}
+        renderGroupMenu={(group: ZeropsGroup) => (
+          <ZeropsProjectMenu
+            actions={[
+              {
+                id: "rename-group",
+                label: "Rename group",
+                onSelect: () => {
+                  setRowDialog({ kind: "rename-group", group });
+                },
+              },
+            ]}
+            label={`More for ${group.name}`}
+          />
+        )}
         renderStatus={(candidate: ZeropsCandidate) => {
           const { status } = deriveZeropsRowPresentation(rowInput(candidate));
           return (
@@ -849,6 +973,76 @@ function ZeropsProjectsContent() {
       />
       {!isLoading && candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects in this account yet.</p>
+      ) : null}
+      {rowDialog?.kind === "rename-agent" ? (
+        <ZeropsRenameDialog
+          initialValue={readZeropsGroupTags(rowDialog.candidate.project.tagList).bot ?? ""}
+          key={`rename-agent:${rowDialog.candidate.key}`}
+          label="Agent's name"
+          onCancel={() => {
+            setRowDialog(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRowDialog(null);
+          }}
+          onSubmit={(name) => {
+            const { candidate } = rowDialog;
+            setRowDialog(null);
+            void renameAgent(candidate, name);
+          }}
+          open
+          submitLabel="Rename"
+          title={`Rename the agent in ${rowDialog.candidate.project.name}`}
+          validate={(value) => {
+            const current = readZeropsGroupTags(rowDialog.candidate.project.tagList).bot;
+            return validateBotName(value, takenBotNames, current === undefined ? {} : { current });
+          }}
+        />
+      ) : null}
+      {rowDialog?.kind === "rename-group" ? (
+        <ZeropsRenameDialog
+          description="The name is written onto every environment in the group."
+          initialValue={rowDialog.group.nameSource === "id" ? "" : rowDialog.group.name}
+          key={`rename-group:${rowDialog.group.groupId}`}
+          label="Group name"
+          onCancel={() => {
+            setRowDialog(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRowDialog(null);
+          }}
+          onSubmit={(name) => {
+            const { group } = rowDialog;
+            setRowDialog(null);
+            void renameGroup(group, name);
+          }}
+          open
+          submitLabel="Rename"
+          title={rowDialog.group.nameSource === "id" ? "Name this group" : "Rename the group"}
+          validate={(value) => (value.trim().length === 0 ? "Give the group a name." : undefined)}
+        />
+      ) : null}
+      {rowDialog?.kind === "move" ? (
+        <ZeropsMoveToGroupDialog
+          currentGroupId={readZeropsGroupTags(rowDialog.candidate.project.tagList).groupId}
+          currentRole={readZeropsGroupTags(rowDialog.candidate.project.tagList).role}
+          groups={groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name }))}
+          key={`move:${rowDialog.candidate.key}`}
+          mintGroupId={mintGroupId}
+          onCancel={() => {
+            setRowDialog(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRowDialog(null);
+          }}
+          onSubmit={(membership) => {
+            const { candidate } = rowDialog;
+            setRowDialog(null);
+            void moveProject(candidate, membership);
+          }}
+          open
+          projectName={rowDialog.candidate.project.name}
+        />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog

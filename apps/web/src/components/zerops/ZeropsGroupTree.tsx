@@ -19,6 +19,7 @@
 import type { ReactNode } from "react";
 import type {
   ZeropsEnvironmentRole,
+  ZeropsGroup,
   ZeropsGroupTreeView,
   ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
@@ -70,6 +71,10 @@ export interface ZeropsGroupTreeProps<T> {
   readonly renderAction?: (item: T) => ReactNode;
   /** Marks the row busy while its action runs. */
   readonly isBusy?: (item: T) => boolean;
+  /** The row's secondary actions, after the action cell — rename, move, and so on. */
+  readonly renderMenu?: (item: T) => ReactNode;
+  /** A group's own actions, beside its header. */
+  readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
   readonly className?: string;
 }
 
@@ -91,6 +96,7 @@ function Row({
   status,
   detail,
   action,
+  menu,
   busy = false,
   onSelect,
 }: {
@@ -100,6 +106,7 @@ function Row({
   readonly status?: ReactNode;
   readonly detail?: ReactNode;
   readonly action?: ReactNode;
+  readonly menu?: ReactNode;
   readonly busy?: boolean;
   readonly onSelect?: () => void;
 }) {
@@ -150,6 +157,7 @@ function Row({
       <div className="flex shrink-0 items-center gap-3">
         {status}
         {action}
+        {menu}
       </div>
     </div>
   );
@@ -169,6 +177,8 @@ export function ZeropsGroupTree<T>({
   renderDetail,
   renderAction,
   isBusy,
+  renderMenu,
+  renderGroupMenu,
   className,
 }: ZeropsGroupTreeProps<T>) {
   const rowExtras = (item: T) => ({
@@ -176,6 +186,7 @@ export function ZeropsGroupTree<T>({
     ...(renderDetail === undefined ? {} : { detail: renderDetail(item) }),
     ...(renderAction === undefined ? {} : { action: renderAction(item) }),
     ...(isBusy === undefined ? {} : { busy: isBusy(item) }),
+    ...(renderMenu === undefined ? {} : { menu: renderMenu(item) }),
     ...(onSelect ? { onSelect: () => onSelect(item) } : {}),
   });
   return (
@@ -191,13 +202,16 @@ export function ZeropsGroupTree<T>({
           key={group.groupId}
         >
           <header className="flex flex-col gap-0.5 px-2">
-            <span
-              className={cn(
-                "truncate text-sm font-medium",
-                groupNameIsPlaceholder(group) && "text-[var(--muted-foreground)] italic",
-              )}
-            >
-              {group.name}
+            <span className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "min-w-0 truncate text-sm font-medium",
+                  groupNameIsPlaceholder(group) && "text-[var(--muted-foreground)] italic",
+                )}
+              >
+                {group.name}
+              </span>
+              {renderGroupMenu === undefined ? null : renderGroupMenu(group)}
             </span>
             {/* Visible rather than a tooltip: it is an invitation to name the
                 group, and it disappears the moment one does. */}
