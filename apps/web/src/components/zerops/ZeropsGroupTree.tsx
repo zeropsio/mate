@@ -137,7 +137,10 @@ function Row({
   return (
     <div
       aria-busy={busy || undefined}
-      className="flex min-h-[3.125rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-2 py-1.5 sm:flex-nowrap"
+      // 51 px: the name line, a detail line, the paddings and the border — so a
+      // row with a detail and a row without are the same height, and a line
+      // arriving or leaving moves nothing below it.
+      className="flex min-h-[3.1875rem] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40 px-2 py-1.5 sm:flex-nowrap"
       data-zerops-project-row="true"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">

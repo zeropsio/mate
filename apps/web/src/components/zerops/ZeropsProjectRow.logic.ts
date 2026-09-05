@@ -159,9 +159,9 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (isConnectionInFlight(candidate)) {
-    const detail = connectionDetail(candidate);
+    // The status cell says it; a second line saying it again would only
+    // arrive and leave with the socket, moving every row below.
     return {
-      ...(detail === undefined ? {} : { detail }),
       status: {
         label: connection?.phase === "reconnecting" ? "Reconnecting" : "Connecting",
         pulse: true,

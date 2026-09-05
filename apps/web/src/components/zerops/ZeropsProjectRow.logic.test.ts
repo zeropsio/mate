@@ -213,6 +213,27 @@ describe("zeropsReasonSentence", () => {
     expect(zeropsReasonSentence(reason)).toBe(sentence);
   });
 
+  it.each([
+    { phase: "available" as const, label: "Connecting" },
+    { phase: "connecting" as const, label: "Connecting" },
+    { phase: "reconnecting" as const, label: "Reconnecting" },
+  ])(
+    "a $phase socket is said in the status cell only, never in a second line",
+    ({ phase, label }) => {
+      const presentation = deriveZeropsRowPresentation({
+        candidate: {
+          ...READY,
+          connection: { phase, error: null, traceId: null },
+        },
+        health: undefined,
+        can: ALL,
+      });
+      expect(presentation.status.label).toBe(label);
+      expect(presentation.status.pulse).toBe(true);
+      expect(presentation.detail).toBeUndefined();
+    },
+  );
+
   it("is what an unavailable row's detail says", () => {
     const stopped: ZeropsRowCandidate = {
       key: "p:zcp",
