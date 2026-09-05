@@ -1,6 +1,9 @@
 /**
  * Settings → Zerops: which Zerops account this browser holds, the orgs it can
  * see, and the way out. Signing in happens on the Zerops landing, not here.
+ *
+ * The page's breadcrumb already says "Zerops"; the rows say what they are
+ * about — the account, the organization — without repeating it.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -11,6 +14,8 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Avatar } from "../zerops/primitives";
+import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -28,20 +33,34 @@ export function ZeropsSettings() {
   } = useZeropsSession();
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const account = status === "signed-in" ? zeropsAccountDisplay(user) : null;
 
   return (
     <SettingsPageContainer>
       <SettingsSection title="Zerops" id="zerops">
         <SettingsRow
           {...searchableSetting("zerops-account")}
+          title="Account"
           description={
-            status === "signed-in"
-              ? "The Zerops account this browser is signed in with."
-              : "No Zerops account is signed in on this browser."
+            account === null
+              ? "No Zerops account is signed in on this browser."
+              : "Signed in on this browser."
           }
-          status={user?.email ?? null}
+          status={
+            account === null ? null : (
+              <span className="flex items-center gap-2" data-zerops-account-line="true">
+                <Avatar initials={account.initials} src={account.avatarUrl} />
+                <span className="truncate text-foreground">{account.fullName ?? account.name}</span>
+                {account.email === null ? null : <span className="truncate">{account.email}</span>}
+              </span>
+            )
+          }
           control={
-            status === "signed-in" ? (
+            account === null ? (
+              <Button size="sm" variant="outline" render={<Link to="/zerops" />}>
+                Open Zerops
+              </Button>
+            ) : (
               <Button
                 size="sm"
                 variant="outline"
@@ -60,10 +79,6 @@ export function ZeropsSettings() {
               >
                 Sign out
               </Button>
-            ) : (
-              <Button size="sm" variant="outline" render={<Link to="/zerops" />}>
-                Open Zerops
-              </Button>
             )
           }
         />
@@ -71,7 +86,8 @@ export function ZeropsSettings() {
         {organizations.length > 0 ? (
           <SettingsRow
             {...searchableSetting("zerops-organizations")}
-            description="Projects and permissions are scoped to this Zerops membership."
+            title="Organization"
+            description="Environments and permissions come from the organization you pick."
             status={
               activeOrganization
                 ? zeropsOrganizationRoleLabel(activeOrganization)
@@ -85,7 +101,7 @@ export function ZeropsSettings() {
                 }}
               >
                 <SelectTrigger
-                  aria-label="Active Zerops organization"
+                  aria-label="Active organization"
                   className="min-w-56"
                   disabled={organizationStatus === "loading"}
                   size="sm"

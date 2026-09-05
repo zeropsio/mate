@@ -14,3 +14,5 @@ export { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 export type { ProcessStep, ProcessStepsProps, ProcessStepState } from "./ProcessSteps";
 export { StatusDot } from "./StatusDot";
 export type { StatusDotProps } from "./StatusDot";
+export { Avatar } from "./Avatar";
+export type { AvatarProps, AvatarSize } from "./Avatar";

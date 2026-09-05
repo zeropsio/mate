@@ -56,10 +56,20 @@ export interface ZeropsClientMembership {
   };
 }
 
+/** The account's picture, as `GET /user/info` returns it; every URL may be null. */
+export interface ZeropsUserAvatar {
+  readonly smallAvatarUrl?: string | null;
+  readonly largeAvatarUrl?: string | null;
+  readonly externalAvatarUrl?: string | null;
+}
+
 export interface ZeropsUser {
   readonly id: string;
   readonly email: string;
   readonly fullName?: string;
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly avatar?: ZeropsUserAvatar | null;
   readonly clientUserList?: ReadonlyArray<ZeropsClientMembership>;
 }
 

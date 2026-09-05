@@ -447,6 +447,7 @@
         "apps/web/src/components/zerops/primitives/MintPanel.tsx",
         "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
         "apps/web/src/components/zerops/primitives/KeyChip.tsx",
+        "apps/web/src/components/zerops/primitives/Avatar.tsx",
         "apps/web/src/components/zerops/primitives/LivenessLine.tsx"
       ],
       "clients": {
