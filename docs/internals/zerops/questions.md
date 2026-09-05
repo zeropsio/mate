@@ -36,3 +36,36 @@ list the peers.
 **Blocks** Nothing on the product path (S2 auto-bootstraps the `/var/www` project and S4 never opens that dialog), but it may be the first symptom of the `loopback-browser` mis-classification (S0.9 web half) hitting a UI flow.
 **What is known** (2026-08-28) `server.probe`, `server.getConfig`, `orchestration.dispatchCommand` over the same bearer answer instantly; only the folder-browse dialog never resolves (~40 s). Server started with `--host 127.0.0.1`, reached through an SSH tunnel.
 **How to answer** Reproduce once S1's policy override is in (remote-reachable in Zerops mode); if it persists, trace the dialog's RPC (`filesystem.browse`?) in the browser's WS frames.
+
+---
+
+### Q-14 · Does Antigravity's managed ACP runtime pick up zcp's MCP registration?
+
+**Blocks** offering Antigravity in mate with the `zerops_*` tools attached. zcp's Antigravity adapter
+(`../zcp/internal/init/adapters/antigravity.go`) writes the MCP server into
+`~/.gemini/config/mcp_config.json` for the installed Antigravity CLI. The ported driver
+(`apps/server/src/provider/Drivers/AntigravityDriver.ts`, `antigravityRelease.ts`) downloads and
+runs a managed `agy_acp_server` runtime with `mcpServers: []` (upstream's only per-thread MCP wiring
+was the deleted T3 preview server). Whether that runtime reads the same config file is unknown.
+
+**What is known** (2026-09-05) Static only: the two code paths above; nothing live.
+
+**How to answer** On `z3-eval`, install Antigravity through the ported setup flow, start a thread and
+ask the agent to list its tools; the answer is the presence of `zerops_workflow`. If absent, the fix is
+on the zcp side (a `mcpServers` entry for the managed runtime) or an adapter option — a two-repo change
+through spec §2.8.
+
+---
+
+### Q-15 · Do Claude mid-turn limit updates reach the Limits tab on the rig's Claude Code?
+
+**Blocks** trusting the Limits tab's "pace" and reset countdown during a long Claude turn. On Claude Code
+2.1.251 the streamed `rate_limit_event` carries utilization only under `unifiedWindows`, and upstream's
+normaliser drops it (`compat.md` row 2 notes); the tab then updates only from the `get_usage` probe.
+
+**What is known** (2026-09-05) The four recorded fixtures (2.1.251) lose the event; SDK 0.3.260's types
+declare a flat `utilization` and no `unifiedWindows`, so a newer CLI may emit the flat field.
+
+**How to answer** On `z3-eval` with a signed-in Claude subscription, run one turn and diff the Limits
+tab before/after against `claude --version`; if it does not move, decide between porting a
+`unifiedWindows` reader into the normaliser (a ported-zone divergence) and waiting for the CLI.

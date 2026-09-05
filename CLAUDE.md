@@ -39,6 +39,9 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - Before a push: `vp check` on the touched files; a deletion must also pass
   `node scripts/check-guard-exceptions.ts` and `vp test run scripts/surface-manifest.test.ts` — CI's
   Check job reconciles the guard ledgers and `docs/internals/zerops/surfaces.json` against the tree.
+- The CI Check job runs `vp check` repo-wide, ledger markdown included: a table row committed past
+  the pre-commit hook (`--no-verify`, an editor) leaves unaligned columns and a red job — `vp fmt`
+  the file first.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
