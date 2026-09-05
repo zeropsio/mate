@@ -1,7 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import { TurnId } from "@t3tools/contracts";
 
-import { hasUnseenCompletion, kindForAwarenessPhase, resolveThreadStatus } from "./threadStatus.ts";
+import {
+  hasUnseenCompletion,
+  kindForAwarenessPhase,
+  mateMarkStateForThreadStatus,
+  resolveThreadStatus,
+  type ThreadStatusKind,
+} from "./threadStatus.ts";
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
 
 describe("resolveThreadStatus", () => {
@@ -12,6 +18,33 @@ describe("resolveThreadStatus", () => {
     expect(kindForAwarenessPhase(vector.expectedAwarenessPhase)).toBe(
       vector.expectedAwarenessPhase === "completed" ? "done" : vector.expected.kind,
     );
+  });
+});
+
+describe("mateMarkStateForThreadStatus", () => {
+  // Exhaustive on purpose: a kind added to the resolver must choose a face here.
+  it.each([
+    ["approval", "needs"],
+    ["input", "needs"],
+    ["planReady", "needs"],
+    ["woke", "needs"],
+    ["failed", "needs"],
+    ["connecting", "working"],
+    ["working", "working"],
+    ["monitoring", "working"],
+    ["done", "done"],
+    ["idle", "idle"],
+  ] as const satisfies ReadonlyArray<readonly [ThreadStatusKind, string]>)(
+    "%s wears the %s face",
+    (kind, face) => {
+      expect(mateMarkStateForThreadStatus(kind)).toBe(face);
+    },
+  );
+
+  it("agrees with every resolver vector", () => {
+    for (const vector of threadStatusVectors) {
+      expect(mateMarkStateForThreadStatus(resolveThreadStatus(vector.input).kind)).toBeDefined();
+    }
   });
 });
 

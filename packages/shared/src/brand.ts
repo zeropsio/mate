@@ -214,35 +214,165 @@ const MATE_LOCKUP_HEIGHT = 52;
  * no page ever waits on a webfont to show the logo. Held in the mark's units,
  * at the proportion the owner set from the reference lockup (2026-09-05): the
  * word reads small beside a large mark — x-height three eighths of the mark's
- * height, the x-height band centred on the mark, and the first stem's ink six
- * tenths of the mark's height right of it. Derivation: `scripts/brand/wordmark.py`.
+ * height, the x-height band centred on the mark, and the first stem's ink half
+ * the mark's height right of it (the owner's second correction, 2026-09-05:
+ * "the name a bit closer"). Derivation: `scripts/brand/wordmark.py`.
  */
 export const MATE_WORDMARK = {
   font: "Sora SemiBold",
   letterSpacingEm: -0.015,
   xHeight: round(MATE_LOCKUP_HEIGHT * 0.375),
   baseline: round(MATE_LOCKUP_HEIGHT / 2 + (MATE_LOCKUP_HEIGHT * 0.375) / 2),
-  gap: round(MATE_LOCKUP_HEIGHT * 0.6),
-  ink: { left: 73.94, top: 10.33, right: 163.52, bottom: 36.44 },
+  gap: round(MATE_LOCKUP_HEIGHT * 0.5),
+  ink: { left: 68.74, top: 10.33, right: 158.32, bottom: 36.44 },
   /** One outline per letter, m · a · t · e. */
   paths: [
-    "M73.94 35.75V15.92H77.96V24.43H77.59Q77.59 21.44 78.36 19.41Q79.13 17.38 80.64 16.34Q82.16 15.3 84.42 15.3H84.64Q86.94 15.3 88.46 16.34Q89.97 17.38 90.72 19.41Q91.47 21.44 91.47 24.43H90.19Q90.19 21.44 90.98 19.41Q91.76 17.38 93.28 16.34Q94.79 15.3 97.06 15.3H97.27Q99.57 15.3 101.11 16.34Q102.64 17.38 103.43 19.41Q104.21 21.44 104.21 24.43V35.75H99.14V23.96Q99.14 22.09 98.19 20.98Q97.24 19.87 95.48 19.87Q93.73 19.87 92.67 21.02Q91.61 22.17 91.61 24.1V35.75H86.54V23.96Q86.54 22.09 85.59 20.98Q84.64 19.87 82.89 19.87Q81.13 19.87 80.07 21.02Q79.02 22.17 79.02 24.1V35.75Z",
-    "M121.12 35.75V29.87H120.28V23.33Q120.28 21.62 119.44 20.78Q118.6 19.94 116.85 19.94Q115.93 19.94 114.66 19.97Q113.38 20.01 112.08 20.07Q110.79 20.12 109.76 20.19V15.88Q110.6 15.81 111.66 15.74Q112.72 15.67 113.83 15.65Q114.95 15.63 115.93 15.63Q119 15.63 121.03 16.43Q123.06 17.24 124.1 18.95Q125.14 20.67 125.14 23.44V35.75ZM114.73 36.26Q112.57 36.26 110.95 35.49Q109.32 34.73 108.43 33.3Q107.54 31.88 107.54 29.87Q107.54 27.68 108.61 26.29Q109.69 24.9 111.64 24.21Q113.6 23.52 116.23 23.52H120.83V26.55H116.15Q114.4 26.55 113.47 27.41Q112.54 28.26 112.54 29.62Q112.54 30.97 113.47 31.81Q114.4 32.65 116.15 32.65Q117.21 32.65 118.11 32.26Q119 31.88 119.6 30.95Q120.21 30.02 120.28 28.41L121.52 29.83Q121.34 31.92 120.52 33.34Q119.7 34.76 118.25 35.51Q116.81 36.26 114.73 36.26Z",
-    "M138.65 36.01Q135.91 36.01 134.14 35.29Q132.37 34.58 131.49 32.88Q130.61 31.19 130.61 28.3L130.65 10.33H135.4L135.36 28.63Q135.36 30.09 136.15 30.88Q136.93 31.66 138.39 31.66H141.5V36.01ZM127.47 19.65V15.92H141.5V19.65Z",
-    "M153.98 36.44Q151.43 36.44 149.51 35.57Q147.59 34.69 146.33 33.21Q145.07 31.73 144.44 29.91Q143.8 28.08 143.8 26.18V25.49Q143.8 23.52 144.44 21.67Q145.07 19.83 146.33 18.39Q147.59 16.94 149.46 16.09Q151.32 15.23 153.77 15.23Q156.98 15.23 159.15 16.63Q161.32 18.04 162.42 20.32Q163.52 22.6 163.52 25.23V27.06H145.95V23.96H160.34L158.77 25.49Q158.77 23.59 158.22 22.24Q157.67 20.89 156.56 20.16Q155.45 19.43 153.77 19.43Q152.09 19.43 150.92 20.19Q149.75 20.96 149.15 22.4Q148.54 23.85 148.54 25.85Q148.54 27.72 149.13 29.16Q149.71 30.6 150.92 31.42Q152.12 32.24 153.98 32.24Q155.85 32.24 157.02 31.5Q158.18 30.75 158.51 29.65H163.19Q162.75 31.7 161.51 33.23Q160.27 34.76 158.35 35.6Q156.43 36.44 153.98 36.44Z",
+    "M68.74 35.75V15.92H72.76V24.43H72.39Q72.39 21.44 73.16 19.41Q73.93 17.38 75.44 16.34Q76.96 15.3 79.22 15.3H79.44Q81.74 15.3 83.26 16.34Q84.77 17.38 85.52 19.41Q86.27 21.44 86.27 24.43H84.99Q84.99 21.44 85.78 19.41Q86.56 17.38 88.08 16.34Q89.59 15.3 91.86 15.3H92.07Q94.37 15.3 95.91 16.34Q97.44 17.38 98.23 19.41Q99.01 21.44 99.01 24.43V35.75H93.94V23.96Q93.94 22.09 92.99 20.98Q92.04 19.87 90.28 19.87Q88.53 19.87 87.47 21.02Q86.41 22.17 86.41 24.1V35.75H81.34V23.96Q81.34 22.09 80.39 20.98Q79.44 19.87 77.69 19.87Q75.93 19.87 74.87 21.02Q73.82 22.17 73.82 24.1V35.75Z",
+    "M115.92 35.75V29.87H115.08V23.33Q115.08 21.62 114.24 20.78Q113.4 19.94 111.65 19.94Q110.73 19.94 109.46 19.97Q108.18 20.01 106.88 20.07Q105.59 20.12 104.56 20.19V15.88Q105.4 15.81 106.46 15.74Q107.52 15.67 108.63 15.65Q109.75 15.63 110.73 15.63Q113.8 15.63 115.83 16.43Q117.86 17.24 118.9 18.95Q119.94 20.67 119.94 23.44V35.75ZM109.53 36.26Q107.37 36.26 105.75 35.49Q104.12 34.73 103.23 33.3Q102.34 31.88 102.34 29.87Q102.34 27.68 103.41 26.29Q104.49 24.9 106.44 24.21Q108.4 23.52 111.03 23.52H115.63V26.55H110.95Q109.2 26.55 108.27 27.41Q107.34 28.26 107.34 29.62Q107.34 30.97 108.27 31.81Q109.2 32.65 110.95 32.65Q112.01 32.65 112.91 32.26Q113.8 31.88 114.4 30.95Q115.01 30.02 115.08 28.41L116.32 29.83Q116.14 31.92 115.32 33.34Q114.5 34.76 113.05 35.51Q111.61 36.26 109.53 36.26Z",
+    "M133.45 36.01Q130.71 36.01 128.94 35.29Q127.17 34.58 126.29 32.88Q125.41 31.19 125.41 28.3L125.45 10.33H130.2L130.16 28.63Q130.16 30.09 130.95 30.88Q131.73 31.66 133.19 31.66H136.3V36.01ZM122.27 19.65V15.92H136.3V19.65Z",
+    "M148.78 36.44Q146.23 36.44 144.31 35.57Q142.39 34.69 141.13 33.21Q139.87 31.73 139.24 29.91Q138.6 28.08 138.6 26.18V25.49Q138.6 23.52 139.24 21.67Q139.87 19.83 141.13 18.39Q142.39 16.94 144.26 16.09Q146.12 15.23 148.57 15.23Q151.78 15.23 153.95 16.63Q156.12 18.04 157.22 20.32Q158.32 22.6 158.32 25.23V27.06H140.75V23.96H155.14L153.57 25.49Q153.57 23.59 153.02 22.24Q152.47 20.89 151.36 20.16Q150.25 19.43 148.57 19.43Q146.89 19.43 145.72 20.19Q144.55 20.96 143.95 22.4Q143.34 23.85 143.34 25.85Q143.34 27.72 143.93 29.16Q144.51 30.6 145.72 31.42Q146.92 32.24 148.78 32.24Q150.65 32.24 151.82 31.5Q152.98 30.75 153.31 29.65H157.99Q157.55 31.7 156.31 33.23Q155.07 34.76 153.15 35.6Q151.23 36.44 148.78 36.44Z",
   ],
 } as const;
 
+/** The mark's box width — `MATE_MARK.viewBox` is `0 0 44 52`. */
+const MATE_MARK_WIDTH = 44;
+const MATE_LOCKUP_WIDTH = 159;
+
 /**
- * The lockup: the still mark and the wordmark in one box. Its height is the
- * mark's own, so a lockup and a bare mark at the same CSS height draw the mark
- * at the same size; the right margin mirrors the mark's left one.
+ * The lockup: the mark and the wordmark in one box. Its height is the mark's
+ * own, so a lockup and a bare mark at the same CSS height draw the mark at the
+ * same size; the right margin mirrors the mark's left one.
+ *
+ * The box is also drawn as two: the mark in its own `viewBox` (so it can be
+ * the live mark, which turns and looks about on its own root) and the word in
+ * the rest of the box, `word.viewBox`, which starts at the mark's right edge
+ * and so carries the gap. Side by side at one height they are the one box.
  */
 export const MATE_LOCKUP = {
-  viewBox: `0 0 164 ${MATE_LOCKUP_HEIGHT}`,
-  width: 164,
+  viewBox: `0 0 ${MATE_LOCKUP_WIDTH} ${MATE_LOCKUP_HEIGHT}`,
+  width: MATE_LOCKUP_WIDTH,
   height: MATE_LOCKUP_HEIGHT,
+  mark: { width: MATE_MARK_WIDTH },
+  word: {
+    viewBox: `${MATE_MARK_WIDTH} 0 ${MATE_LOCKUP_WIDTH - MATE_MARK_WIDTH} ${MATE_LOCKUP_HEIGHT}`,
+    width: MATE_LOCKUP_WIDTH - MATE_MARK_WIDTH,
+  },
 } as const;
+
+/**
+ * A Mate's colour. Each agent on an account gets one of eight, so a menu of
+ * six faces reads as six people rather than six copies of the logo. None of
+ * them is the brand teal: teal identifies the product (design-system §2), and
+ * a Mate is somebody in it. Light discs carry ink eyes, the deeper dark ones
+ * paper eyes — the mark's own rule for eyes on a ground (`MATE_MARK.eyes`).
+ * Which Mate gets which is `client-runtime/zerops/mateTints.ts`.
+ */
+export const MATE_TINT_IDS = [
+  "coral",
+  "amber",
+  "olive",
+  "sky",
+  "violet",
+  "rose",
+  "sand",
+  "slate",
+] as const;
+
+export type MateTintId = (typeof MATE_TINT_IDS)[number];
+
+export const MATE_TINTS = {
+  coral: { light: "#ef8f78", dark: "#b85f4b" },
+  amber: { light: "#e9b645", dark: "#9c7420" },
+  olive: { light: "#a9bf5a", dark: "#6f8436" },
+  sky: { light: "#7fb7e6", dark: "#3f7fb3" },
+  violet: { light: "#ab97e3", dark: "#6f5aab" },
+  rose: { light: "#e98bb5", dark: "#ad5580" },
+  sand: { light: "#d9a874", dark: "#9c6f42" },
+  slate: { light: "#8ea3c2", dark: "#556b8d" },
+} as const satisfies Record<MateTintId, Readonly<Record<BrandAppearance, string>>>;
+
+/**
+ * The face: a Mate's eyes on a disc of its colour, in a 100-box. The grid is
+ * the mark's own (identity v1 §02) carried over — the window is five eye
+ * units and spans 60 % of the mark's width, so here it spans 60 % of the disc:
+ * `u` = 12. Eyes are `u × 2u` pills a quarter-unit above the centre; the
+ * mouth, when a state has one, sits 2.08 u below the eye line, exactly where
+ * the mark's does (60 % of the way to the window floor).
+ *
+ * Still, by design: a menu of faces must not blink at you. What moves is the
+ * state, and `mateFaceParts` draws each state from `MATE_MARK_LIDS`, so the
+ * face and the live mark can never disagree about what "working" looks like.
+ */
+const FACE_UNIT = 12;
+const FACE_EYE_LINE = 50 - 0.25 * FACE_UNIT;
+
+export const MATE_FACE = {
+  viewBox: "0 0 100 100",
+  radius: 50,
+  eyeUnit: FACE_UNIT,
+  eyeCentres: [50 - 1.25 * FACE_UNIT, 50 + 1.25 * FACE_UNIT] as const,
+  eyeCentreY: FACE_EYE_LINE,
+  mouth: {
+    y: FACE_EYE_LINE + 2.08 * FACE_UNIT,
+    r: 0.42 * FACE_UNIT,
+    strokeWidth: 0.28 * FACE_UNIT,
+  },
+} as const;
+
+export interface MateFaceEye {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rx: number;
+}
+
+export interface MateFaceParts {
+  /** The two eye pills, left then right — empty when the eyes are the happy arcs. */
+  readonly eyes: ReadonlyArray<MateFaceEye>;
+  /** The happy arcs' translations, left then right — only on `done`. */
+  readonly arcs: ReadonlyArray<readonly [number, number]>;
+  /** The mouth is an event: the "o" when the Mate needs you, the smile when it is done. */
+  readonly mouth: "o" | "smile" | null;
+}
+
+/** The live mark's arc and smile, in eye units around their own origin. */
+export const MATE_FACE_STROKES = {
+  arc: `M${-FACE_UNIT / 2},0 Q0,${round(-0.85 * FACE_UNIT)} ${FACE_UNIT / 2},0`,
+  smile: `M${round(-0.75 * FACE_UNIT)},${round(-0.05 * FACE_UNIT)} Q0,${round(1.22 * FACE_UNIT)} ${round(0.75 * FACE_UNIT)},${round(-0.05 * FACE_UNIT)}`,
+} as const;
+
+/**
+ * Where the eyes and mouth sit for a state — the still frame of the live
+ * mark's pose, from the same lid table. A shut eye keeps a hairline of height
+ * (0.22 u, the driver's own floor) so an asleep face still has eyes.
+ */
+export function mateFaceParts(state: MateMarkState): MateFaceParts {
+  const u = MATE_FACE.eyeUnit;
+  if (state === "done") {
+    const y = round(MATE_FACE.eyeCentreY + 0.05 * u);
+    return {
+      eyes: [],
+      arcs: MATE_FACE.eyeCentres.map((cx) => [cx, y] as const),
+      mouth: "smile",
+    };
+  }
+  const [openness, width, lift] = MATE_MARK_LIDS[state];
+  const w = round(u * width);
+  const h = round(Math.max(0.22 * u, 2 * u * openness));
+  const cy = MATE_FACE.eyeCentreY + lift * u;
+  return {
+    eyes: MATE_FACE.eyeCentres.map((cx) => ({
+      x: round(cx - w / 2),
+      y: round(cy - h / 2),
+      width: w,
+      height: h,
+      rx: round(Math.min(w, h) / 2),
+    })),
+    arcs: [],
+    mouth: state === "needs" || state === "surprise" ? "o" : null,
+  };
+}
 
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",

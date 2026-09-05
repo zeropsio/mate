@@ -1240,6 +1240,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-key-chip-radius: 3px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
+  /* A Mate's colour: one of eight per agent, none of them the brand teal
+     (brand.ts MATE_TINTS); the eyes are ink on these light discs. */
+  --zerops-mate-tint-coral: #ef8f78;
+  --zerops-mate-tint-amber: #e9b645;
+  --zerops-mate-tint-olive: #a9bf5a;
+  --zerops-mate-tint-sky: #7fb7e6;
+  --zerops-mate-tint-violet: #ab97e3;
+  --zerops-mate-tint-rose: #e98bb5;
+  --zerops-mate-tint-sand: #d9a874;
+  --zerops-mate-tint-slate: #8ea3c2;
+  --zerops-mate-face-ink: #17130f;
+  --zerops-mate-mark-side: #2d716b;
   /* Provider authorization keeps a console-like surface in both app themes;
      naming the palette here prevents one-off dark colors in components. */
   --zerops-auth-terminal-surface: #0b0c14;
@@ -1325,6 +1337,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-key-chip-radius: 3px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #1d3323;
+    --zerops-mate-tint-coral: #b85f4b;
+    --zerops-mate-tint-amber: #9c7420;
+    --zerops-mate-tint-olive: #6f8436;
+    --zerops-mate-tint-sky: #3f7fb3;
+    --zerops-mate-tint-violet: #6f5aab;
+    --zerops-mate-tint-rose: #ad5580;
+    --zerops-mate-tint-sand: #9c6f42;
+    --zerops-mate-tint-slate: #556b8d;
+    --zerops-mate-face-ink: #f4efe6;
+    --zerops-mate-mark-side: #8ad4cb;
     --zerops-process-step-column: 30px;
     --zerops-process-step-glyph-size: 17px;
     --zerops-process-step-border-width: 2px;

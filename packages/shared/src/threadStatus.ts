@@ -1,5 +1,6 @@
 import type { OrchestrationThreadShell } from "@t3tools/contracts";
 import type { RelayAgentAwarenessPhase } from "@t3tools/contracts/relay";
+import type { MateMarkState } from "./brand.ts";
 import { isLatestTurnSettled } from "./orchestrationTiming.ts";
 
 export type ThreadStatusKind =
@@ -111,6 +112,34 @@ export function resolveThreadStatus(thread: ThreadStatusInput): ThreadStatus {
   if (hasUnseenWake(thread)) return status("woke");
   if (hasUnseenCompletion(thread)) return status("done");
   return status("idle");
+}
+
+/**
+ * The face a Mate wears for a thread status. Identity v1 §04 gives the mark
+ * four waking states and the resolver has ten kinds, so this is the one place
+ * they meet (R5: the status is resolved once; every face is derived from it).
+ * Anything that waits on a person — an approval, a question, a plan, a failure,
+ * a wake nobody has seen — is "needs you"; anything the agent is doing itself
+ * is "working". Asleep is not a thread state: a Mate whose container is not
+ * connected has no thread to resolve, and the caller draws it asleep.
+ */
+export function mateMarkStateForThreadStatus(kind: ThreadStatusKind): MateMarkState {
+  switch (kind) {
+    case "approval":
+    case "input":
+    case "planReady":
+    case "woke":
+    case "failed":
+      return "needs";
+    case "connecting":
+    case "working":
+    case "monitoring":
+      return "working";
+    case "done":
+      return "done";
+    case "idle":
+      return "idle";
+  }
 }
 
 export function kindForAwarenessPhase(

@@ -8,11 +8,15 @@ import {
   FALLBACK_PROVIDER_ACCENT,
   FLAT_CARD_BORDER,
   ICON_MAP,
+  MATE_FACE,
   MATE_MARK,
   MATE_MARK_LIDS,
   MATE_MARK_LIVE,
   MATE_LOCKUP,
+  MATE_TINT_IDS,
+  MATE_TINTS,
   MATE_WORDMARK,
+  mateFaceParts,
   IDENTITY,
   MINT_PANEL,
   PROVIDER_ACCENT_SWATCHES,
@@ -345,9 +349,9 @@ describe("the wordmark and lockup (identity v1 §06)", () => {
   const xs = MATE_WORDMARK.paths.flatMap((d) => coordinates(d).xs);
   const ys = MATE_WORDMARK.paths.flatMap((d) => coordinates(d).ys);
 
-  it("starts six tenths of the mark's height right of it, measured to the ink", () => {
+  it("starts half the mark's height right of it, measured to the ink", () => {
     const markRight = 42.74;
-    expect(MATE_WORDMARK.gap).toBe(31.2);
+    expect(MATE_WORDMARK.gap).toBe(26);
     expect(MATE_WORDMARK.ink.left).toBeCloseTo(markRight + MATE_WORDMARK.gap, 2);
     expect(Math.min(...xs)).toBeCloseTo(MATE_WORDMARK.ink.left, 1);
   });
@@ -374,5 +378,119 @@ describe("the wordmark and lockup (identity v1 §06)", () => {
     expect(MATE_LOCKUP.viewBox).toBe(`0 0 ${MATE_LOCKUP.width} ${MATE_LOCKUP.height}`);
     // Even the t's ascender stays inside the mark's box.
     expect(Math.min(...ys)).toBeGreaterThan(0);
+  });
+
+  it("splits into the mark's box and the word's, which meet at the mark's right edge", () => {
+    expect(MATE_LOCKUP.mark.width).toBe(44);
+    expect(MATE_MARK.viewBox).toBe(`0 0 ${MATE_LOCKUP.mark.width} ${MATE_LOCKUP.height}`);
+    expect(MATE_LOCKUP.word.viewBox).toBe(
+      `${MATE_LOCKUP.mark.width} 0 ${MATE_LOCKUP.word.width} ${MATE_LOCKUP.height}`,
+    );
+    expect(MATE_LOCKUP.mark.width + MATE_LOCKUP.word.width).toBe(MATE_LOCKUP.width);
+    // The whole word, gap included, lives in the word's box.
+    expect(MATE_WORDMARK.ink.left).toBeGreaterThan(MATE_LOCKUP.mark.width);
+  });
+});
+
+describe("a Mate's colour (MATE_TINTS)", () => {
+  const luminance = (hex: string) => {
+    const channel = (at: number) => {
+      const value = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  };
+
+  it("offers eight, in a fixed order, and none of them the brand teal", () => {
+    expect(MATE_TINT_IDS).toHaveLength(8);
+    expect(Object.keys(MATE_TINTS)).toEqual([...MATE_TINT_IDS]);
+    for (const tint of Object.values(MATE_TINTS)) {
+      expect(tint.light).not.toBe(MATE_MARK.color);
+      expect(tint.dark).not.toBe(MATE_MARK.color);
+    }
+  });
+
+  it("goes deeper in the dark appearance, so paper eyes read on it as ink does on the light disc", () => {
+    for (const tint of Object.values(MATE_TINTS)) {
+      expect(luminance(tint.dark)).toBeLessThan(luminance(tint.light));
+      expect(contrastRatio(MATE_MARK.eyes.light, tint.light)).toBeGreaterThan(3);
+      expect(contrastRatio(MATE_MARK.eyes.dark, tint.dark)).toBeGreaterThan(3);
+    }
+  });
+
+  it("projects every tint and the face ink into both web palettes", () => {
+    const indexCss = NodeFS.readFileSync(
+      new URL("../../../apps/web/src/index.css", import.meta.url),
+      "utf8",
+    );
+    const rootStart = indexCss.indexOf(":root {\n  color-scheme: light;");
+    const darkStart = indexCss.indexOf("\n  @variant dark {", rootStart);
+    const darkEnd = indexCss.indexOf("\n  }\n}", darkStart);
+    const palettes: Record<BrandAppearance, string> = {
+      light: indexCss.slice(rootStart, darkStart),
+      dark: indexCss.slice(darkStart, darkEnd),
+    };
+    const valuesFor = (source: string, property: string) =>
+      [...source.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
+    for (const appearance of ["light", "dark"] as const) {
+      for (const id of MATE_TINT_IDS) {
+        expect(valuesFor(palettes[appearance], `--zerops-mate-tint-${id}`)).toEqual([
+          MATE_TINTS[id][appearance],
+        ]);
+      }
+      expect(valuesFor(palettes[appearance], "--zerops-mate-face-ink")).toEqual([
+        MATE_MARK.eyes[appearance],
+      ]);
+      expect(valuesFor(palettes[appearance], "--zerops-mate-mark-side")).toEqual([
+        MATE_MARK_LIVE.side[appearance],
+      ]);
+    }
+  });
+});
+
+describe("the face (MATE_FACE)", () => {
+  it("carries the mark's window over: five eye units across 60 % of the disc, eyes a quarter-unit up", () => {
+    const u = MATE_FACE.eyeUnit;
+    expect(5 * u).toBe(0.6 * 2 * MATE_FACE.radius);
+    expect(MATE_FACE.eyeCentres).toEqual([50 - 1.25 * u, 50 + 1.25 * u]);
+    expect(MATE_FACE.eyeCentreY).toBe(50 - 0.25 * u);
+    // The mark's mouth sits 2.08 eye units under its eye line; so does the face's.
+    const markMouthUnits =
+      (MATE_MARK_LIVE.mouth.y - MATE_MARK_LIVE.eyeCentreY) / MATE_MARK_LIVE.eyeUnit;
+    expect((MATE_FACE.mouth.y - MATE_FACE.eyeCentreY) / u).toBeCloseTo(markMouthUnits, 1);
+  });
+
+  it.each([
+    { state: "idle", height: 24, dy: 0, mouth: null },
+    { state: "working", height: 12, dy: 2.4, mouth: null },
+    { state: "needs", height: 26.88, dy: -1.56, mouth: "o" },
+    { state: "sleep", height: 2.64, dy: 0, mouth: null },
+    { state: "closed", height: 2.64, dy: 0, mouth: null },
+  ] as const)("draws $state from the lid table", ({ state, height, dy, mouth }) => {
+    const parts = mateFaceParts(state);
+    expect(parts.arcs).toEqual([]);
+    expect(parts.mouth).toBe(mouth);
+    expect(parts.eyes).toHaveLength(2);
+    for (const [index, eye] of parts.eyes.entries()) {
+      expect(eye.height).toBeCloseTo(height, 2);
+      expect(eye.y + eye.height / 2).toBeCloseTo(MATE_FACE.eyeCentreY + dy, 2);
+      expect(eye.x + eye.width / 2).toBeCloseTo(MATE_FACE.eyeCentres[index]!, 2);
+      // A pill: fully rounded on its shorter side.
+      expect(eye.rx).toBeCloseTo(Math.min(eye.width, eye.height) / 2, 2);
+    }
+  });
+
+  it("smiles with happy arcs and no pills when done", () => {
+    const parts = mateFaceParts("done");
+    expect(parts.eyes).toEqual([]);
+    expect(parts.mouth).toBe("smile");
+    expect(parts.arcs.map(([x]) => x)).toEqual([...MATE_FACE.eyeCentres]);
+  });
+
+  it("has a pose for every lid state", () => {
+    for (const state of Object.keys(MATE_MARK_LIDS) as Array<keyof typeof MATE_MARK_LIDS>) {
+      const parts = mateFaceParts(state);
+      expect(parts.eyes.length + parts.arcs.length).toBe(2);
+    }
   });
 });

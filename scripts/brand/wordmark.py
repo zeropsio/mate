@@ -4,9 +4,10 @@ Sora SemiBold (wght 600), lowercase, letter-spacing -0.015 em, shaped with
 HarfBuzz (kern on). The word reads small beside a large mark, the proportion
 the owner set from the reference lockup (2026-09-05): x-height three eighths
 of the mark's height (19.5 of 52), the x-height band centred on the mark
-(baseline y = 35.75), and the first stem's ink six tenths of the mark's height
-(31.2) right of the mark's right edge (x = 42.74) -- measured to the ink, so the
-m's side bearing is taken off the pen origin.
+(baseline y = 35.75), and the first stem's ink half the mark's height (26)
+right of the mark's right edge (x = 42.74) -- measured to the ink, so the m's
+side bearing is taken off the pen origin. (The owner's second correction: the
+first cut used six tenths, 31.2, and read as too far.)
 """
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
@@ -28,7 +29,7 @@ buf = hb.Buffer(); buf.add_str("mate"); buf.guess_segment_properties()
 hb.shape(font, buf, {"kern": True, "liga": True})
 
 MARK_H, MARK_RIGHT = 52.0, 42.74
-X_HEIGHT, GAP = 0.375 * MARK_H, 0.6 * MARK_H
+X_HEIGHT, GAP = 0.375 * MARK_H, 0.5 * MARK_H
 FLOOR = MARK_H / 2 + X_HEIGHT / 2
 scale = X_HEIGHT / xh
 tracking = -0.015 * upem
