@@ -247,6 +247,7 @@ import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSki
 import { vcsEnvironment } from "../state/vcs";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
+  useEnvironmentProjectRefs,
   useProject,
   useProjects,
   useThread,
@@ -1747,6 +1748,35 @@ function ChatViewContent(props: ChatViewProps) {
     [activeThread?.environmentId, activeThread?.projectId],
   );
   const activeProject = useProject(activeProjectRef);
+  // A local draft whose project the environment no longer lists — a store
+  // migration once rewrote the id to the workspace path (`questions.md`
+  // Q-16) — re-attaches to the environment's only project: on Zerops one
+  // environment is one project, so there is nothing to choose. The repaired
+  // ref is written back, so the send path and the next reload agree with
+  // the header.
+  const activeEnvironmentProjectRefs = useEnvironmentProjectRefs(
+    isLocalDraftThread && activeProject === null ? activeThreadEnvironmentId : null,
+  );
+  useEffect(() => {
+    if (!isLocalDraftThread || activeProject !== null || draftId === null || !draftThread) return;
+    const [sole, second] = activeEnvironmentProjectRefs;
+    if (sole === undefined || second !== undefined || sole.projectId === draftThread.projectId) {
+      return;
+    }
+    setLogicalProjectDraftThreadId(draftThread.logicalProjectKey, sole, draftId, {
+      threadId: draftThread.threadId,
+      createdAt: draftThread.createdAt,
+      runtimeMode: draftThread.runtimeMode,
+      interactionMode: draftThread.interactionMode,
+    });
+  }, [
+    activeEnvironmentProjectRefs,
+    activeProject,
+    draftId,
+    draftThread,
+    isLocalDraftThread,
+    setLogicalProjectDraftThreadId,
+  ]);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
