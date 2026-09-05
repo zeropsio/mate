@@ -442,6 +442,145 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
+  it("folds a compaction row into a settled turn's fold alongside other hidden work", () => {
+    const turnId = TurnId.make("turn-1");
+    const thread = makeThread({
+      id: ThreadId.make("thread-compaction-folded"),
+      projectId: ProjectId.make("project-1"),
+      title: "Folded compaction",
+      latestTurn: {
+        turnId,
+        state: "completed",
+        requestedAt: "2026-09-01T00:00:00.000Z",
+        startedAt: "2026-09-01T00:00:01.000Z",
+        completedAt: "2026-09-01T00:00:04.000Z",
+        assistantMessageId: MessageId.make("assistant-final"),
+      },
+      messages: [
+        {
+          id: MessageId.make("assistant-first"),
+          role: "assistant",
+          text: "Starting the compaction.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-09-01T00:00:01.000Z",
+          updatedAt: "2026-09-01T00:00:01.000Z",
+        },
+        {
+          id: MessageId.make("assistant-final"),
+          role: "assistant",
+          text: "Done.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-09-01T00:00:04.000Z",
+          updatedAt: "2026-09-01T00:00:04.000Z",
+        },
+      ],
+      activities: [
+        makeActivity({
+          id: EventId.make("tool-completed"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Read files",
+          createdAt: "2026-09-01T00:00:02.000Z",
+          turnId,
+          payload: {
+            title: "Read files",
+            itemType: "file_read",
+            status: "completed",
+          },
+        }),
+        makeActivity({
+          id: EventId.make("context-compaction"),
+          kind: "context-compaction",
+          tone: "info",
+          summary: "Compacted context 899K → 19K tokens",
+          createdAt: "2026-09-01T00:00:03.000Z",
+          turnId,
+        }),
+      ],
+    });
+
+    const feed = buildThreadFeed(thread);
+    const collapsed = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set());
+    // Both the tool work and the compaction row fold behind one turn-fold
+    // entry: the turn hides real work, so the compaction row does not get
+    // to stay visible on its own (contrast the lone-compaction case above).
+    expect(collapsed.map((entry) => entry.id)).toEqual([
+      "assistant-first",
+      "turn-fold:turn-1",
+      "assistant-final",
+    ]);
+
+    const expanded = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set([turnId]));
+    // Expanding the fold reveals both hidden entries, proving the fold's
+    // hidden set held the tool work AND the compaction row, not just one.
+    expect(expanded.map((entry) => entry.id)).toEqual([
+      "assistant-first",
+      "turn-fold:turn-1",
+      "tool-completed",
+      "context-compaction",
+      "assistant-final",
+    ]);
+  });
+
+  it("never folds a turn whose only hidden entry is its compaction row", () => {
+    const turnId = TurnId.make("turn-1");
+    const thread = makeThread({
+      id: ThreadId.make("thread-compaction-unfolded"),
+      projectId: ProjectId.make("project-1"),
+      title: "Unfolded compaction",
+      latestTurn: {
+        turnId,
+        state: "completed",
+        requestedAt: "2026-09-01T00:00:00.000Z",
+        startedAt: "2026-09-01T00:00:01.000Z",
+        completedAt: "2026-09-01T00:00:03.000Z",
+        assistantMessageId: MessageId.make("assistant-final"),
+      },
+      messages: [
+        {
+          id: MessageId.make("assistant-first"),
+          role: "assistant",
+          text: "Starting the compaction.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-09-01T00:00:01.000Z",
+          updatedAt: "2026-09-01T00:00:01.000Z",
+        },
+        {
+          id: MessageId.make("assistant-final"),
+          role: "assistant",
+          text: "Done.",
+          turnId,
+          streaming: false,
+          createdAt: "2026-09-01T00:00:03.000Z",
+          updatedAt: "2026-09-01T00:00:03.000Z",
+        },
+      ],
+      activities: [
+        makeActivity({
+          id: EventId.make("context-compaction"),
+          kind: "context-compaction",
+          tone: "info",
+          summary: "Compacted context 899K → 19K tokens",
+          createdAt: "2026-09-01T00:00:02.000Z",
+          turnId,
+        }),
+      ],
+    });
+
+    const feed = buildThreadFeed(thread);
+    const presented = deriveThreadFeedPresentation(feed, thread.latestTurn, new Set());
+
+    expect(presented.some((entry) => entry.type === "turn-fold")).toBe(false);
+    expect(presented.map((entry) => entry.id)).toEqual([
+      "assistant-first",
+      "context-compaction",
+      "assistant-final",
+    ]);
+  });
+
   it("keeps older local feedback before newer messages returned by the server", () => {
     const submission = {
       id: MessageId.make("feedback-command-ordering"),
