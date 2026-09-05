@@ -344,7 +344,7 @@ function EnvironmentsFold<T extends RosterCandidate>({
               className="flex h-7 min-w-0 items-center gap-2 rounded-md ps-[1.375rem] pe-1 text-xs"
               key={item.project.id}
             >
-              <MicroLabel className="w-10 shrink-0 truncate">
+              <MicroLabel className="w-16 shrink-0 truncate">
                 {environmentRoleLabel(role) ?? ""}
               </MicroLabel>
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
