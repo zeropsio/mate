@@ -3,28 +3,29 @@
  * `MATE_MARK` in shared/brand.ts, and the favicon generator inlines the same
  * values. Only the side wall needs a light/dark pair here, because it is the
  * one surface drawn behind the mark rather than on it.
+ *
+ * The <svg> IS the component's root — no wrapper element. A wrapper meant the
+ * caller's sizing classes landed on a box that did not centre the same way,
+ * and `mx-auto` silently stopped working.
  */
-.mate-mark-root {
-  display: inline-flex;
-  --mate-mark-side: #2d716b;
-}
-
-@media (prefers-color-scheme: dark) {
-  .mate-mark-root {
-    --mate-mark-side: #8ad4cb;
-  }
-}
-
 .mate-mark {
   display: block;
-  height: 100%;
-  width: auto;
   /* The turn rotates the slab past its own box; clipping it would flatten
      exactly the edge the extrusion exists to show. */
   overflow: visible;
   transform-origin: 50% 50%;
-  will-change: transform;
   color: var(--foreground);
+  --mate-mark-side: #2d716b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mate-mark {
+    --mate-mark-side: #8ad4cb;
+  }
+}
+
+.mate-mark[data-mate-mark="live"] {
+  will-change: transform;
 }
 
 .mate-mark-sides {

@@ -56,7 +56,7 @@ const lerpTo = (v: number, target: number, rate: number, dt: number) =>
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
 interface MarkRuntime {
-  readonly root: HTMLElement;
+  readonly root: SVGSVGElement;
   readonly parts: LiveMarkParts;
   readonly forced: MateMarkState | undefined;
   readonly seed: number;
@@ -331,7 +331,7 @@ function tick(mark: MarkRuntime, now: number, delta: number, reduced: boolean) {
  * nothing keeps ticking after the marks unmount.
  */
 export function registerLiveMark(
-  root: HTMLElement,
+  root: SVGSVGElement,
   parts: LiveMarkParts,
   forced: MateMarkState | undefined,
 ): () => void {

@@ -33,12 +33,11 @@ export function MateMark({
 }) {
   const clipId = useId();
   const loopId = `${clipId}-loop`;
-  const rootRef = useRef<HTMLSpanElement>(null);
   const parts = useRef<LiveMarkParts>({});
 
   useEffect(() => {
     if (!playful) return;
-    const root = rootRef.current;
+    const root = parts.current.svg;
     if (!root) return;
     return registerLiveMark(root, parts.current, state);
   }, [playful, state]);
@@ -48,181 +47,176 @@ export function MateMark({
   const eyeH = MATE_MARK.eyeHeight;
 
   return (
-    <span
-      ref={rootRef}
-      className={cn("mate-mark-root", className)}
+    <svg
+      aria-hidden="true"
+      className={cn("mate-mark", className)}
       data-mate-mark={playful ? "live" : "still"}
+      ref={(node) => {
+        parts.current.svg = node;
+      }}
+      viewBox={MATE_MARK.viewBox}
     >
-      <svg
-        aria-hidden="true"
-        className="mate-mark"
+      <defs>
+        <clipPath id={clipId}>
+          <path d={MATE_MARK.silhouette} />
+        </clipPath>
+        <g id={loopId}>
+          {MATE_MARK.paths.map((d) => (
+            <path d={d} key={d} />
+          ))}
+        </g>
+      </defs>
+
+      <g
         ref={(node) => {
-          parts.current.svg = node;
+          parts.current.bob = node;
         }}
-        viewBox={MATE_MARK.viewBox}
       >
-        <defs>
-          <clipPath id={clipId}>
-            <path d={MATE_MARK.silhouette} />
-          </clipPath>
-          <g id={loopId}>
-            {MATE_MARK.paths.map((d) => (
-              <path d={d} key={d} />
-            ))}
-          </g>
-        </defs>
-
-        <g
-          ref={(node) => {
-            parts.current.bob = node;
-          }}
-        >
-          {/* The extruded side wall. Hidden at rest; it fades in only as the
+        {/* The extruded side wall. Hidden at rest; it fades in only as the
               slab turns, so a mark sitting still is flat by construction. */}
-          {playful ? (
-            <g
-              className="mate-mark-sides"
-              opacity="0"
-              ref={(node) => {
-                parts.current.sides = node;
-              }}
-            >
-              {Array.from({ length: EXTRUSION_LAYERS }, (_, layer) => (
-                <use href={`#${loopId}`} key={layer} />
-              ))}
-            </g>
-          ) : null}
-
-          <g fill={MATE_MARK.color}>
-            {MATE_MARK.paths.map((d) => (
-              <path d={d} key={d} />
+        {playful ? (
+          <g
+            className="mate-mark-sides"
+            opacity="0"
+            ref={(node) => {
+              parts.current.sides = node;
+            }}
+          >
+            {Array.from({ length: EXTRUSION_LAYERS }, (_, layer) => (
+              <use href={`#${loopId}`} key={layer} />
             ))}
           </g>
+        ) : null}
 
-          {/* The band, clipped to the silhouette so its halves disappear into
+        <g fill={MATE_MARK.color}>
+          {MATE_MARK.paths.map((d) => (
+            <path d={d} key={d} />
+          ))}
+        </g>
+
+        {/* The band, clipped to the silhouette so its halves disappear into
               the walls rather than sliding out past them. A still mark has no
               band: it is the open face, and the retraction never happens. */}
-          {playful ? (
-            <g
-              clipPath={`url(#${clipId})`}
+        {playful ? (
+          <g
+            clipPath={`url(#${clipId})`}
+            ref={(node) => {
+              parts.current.band = node;
+            }}
+          >
+            <path
+              d={MATE_MARK_LIVE.band.left}
+              fill={MATE_MARK.color}
               ref={(node) => {
-                parts.current.band = node;
+                parts.current.bandLeft = node;
               }}
-            >
-              <path
-                d={MATE_MARK_LIVE.band.left}
-                fill={MATE_MARK.color}
-                ref={(node) => {
-                  parts.current.bandLeft = node;
-                }}
-              />
-              <path
-                d={MATE_MARK_LIVE.band.right}
-                fill={MATE_MARK.color}
-                ref={(node) => {
-                  parts.current.bandRight = node;
-                }}
-              />
-            </g>
-          ) : null}
+            />
+            <path
+              d={MATE_MARK_LIVE.band.right}
+              fill={MATE_MARK.color}
+              ref={(node) => {
+                parts.current.bandRight = node;
+              }}
+            />
+          </g>
+        ) : null}
 
-          {/* Hidden until the band clears them. A live mark starts closed — as
+        {/* Hidden until the band clears them. A live mark starts closed — as
               the plain Zerops logo — and opens, so before the driver's first
               frame (and if its script never runs) it reads as the logo rather
               than as eyes painted over a band that is still in the way. */}
-          <g
-            className="mate-mark-eyes"
-            fill="currentColor"
+        <g
+          className="mate-mark-eyes"
+          fill="currentColor"
+          ref={(node) => {
+            parts.current.eyes = node;
+          }}
+          visibility={playful ? "hidden" : "visible"}
+        >
+          <rect
+            height={eyeH}
             ref={(node) => {
-              parts.current.eyes = node;
+              parts.current.eyeLeft = node;
             }}
-            visibility={playful ? "hidden" : "visible"}
-          >
-            <rect
-              height={eyeH}
-              ref={(node) => {
-                parts.current.eyeLeft = node;
-              }}
-              rx={eyeW / 2}
-              width={eyeW}
-              x={eyeLeft - eyeW / 2}
-              y={MATE_MARK_LIVE.eyeCentreY - eyeH / 2}
-            />
-            <rect
-              height={eyeH}
-              ref={(node) => {
-                parts.current.eyeRight = node;
-              }}
-              rx={eyeW / 2}
-              width={eyeW}
-              x={eyeRight - eyeW / 2}
-              y={MATE_MARK_LIVE.eyeCentreY - eyeH / 2}
-            />
-            {/* The happy eyes: arcs that replace the rectangles on `done`. */}
-            {playful ? (
-              <>
-                <path
-                  d={HAPPY_ARC}
-                  fill="none"
-                  ref={(node) => {
-                    parts.current.happyLeft = node;
-                  }}
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
-                  visibility="hidden"
-                />
-                <path
-                  d={HAPPY_ARC}
-                  fill="none"
-                  ref={(node) => {
-                    parts.current.happyRight = node;
-                  }}
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
-                  visibility="hidden"
-                />
-              </>
-            ) : null}
-          </g>
-
-          {/* The mouth is an event, not a resting feature, so a still mark
-              never carries one. */}
+            rx={eyeW / 2}
+            width={eyeW}
+            x={eyeLeft - eyeW / 2}
+            y={MATE_MARK_LIVE.eyeCentreY - eyeH / 2}
+          />
+          <rect
+            height={eyeH}
+            ref={(node) => {
+              parts.current.eyeRight = node;
+            }}
+            rx={eyeW / 2}
+            width={eyeW}
+            x={eyeRight - eyeW / 2}
+            y={MATE_MARK_LIVE.eyeCentreY - eyeH / 2}
+          />
+          {/* The happy eyes: arcs that replace the rectangles on `done`. */}
           {playful ? (
-            <g
-              ref={(node) => {
-                parts.current.mouth = node;
-              }}
-              visibility="hidden"
-            >
-              <circle
-                cx="0"
-                cy="0"
-                fill="none"
-                r={MATE_MARK_LIVE.mouth.r}
-                ref={(node) => {
-                  parts.current.mouthO = node;
-                }}
-                stroke="currentColor"
-                strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
-              />
+            <>
               <path
-                d={SMILE}
+                d={HAPPY_ARC}
                 fill="none"
                 ref={(node) => {
-                  parts.current.mouthSmile = node;
+                  parts.current.happyLeft = node;
                 }}
                 stroke="currentColor"
                 strokeLinecap="round"
                 strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
                 visibility="hidden"
               />
-            </g>
+              <path
+                d={HAPPY_ARC}
+                fill="none"
+                ref={(node) => {
+                  parts.current.happyRight = node;
+                }}
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
+                visibility="hidden"
+              />
+            </>
           ) : null}
         </g>
-      </svg>
-    </span>
+
+        {/* The mouth is an event, not a resting feature, so a still mark
+              never carries one. */}
+        {playful ? (
+          <g
+            ref={(node) => {
+              parts.current.mouth = node;
+            }}
+            visibility="hidden"
+          >
+            <circle
+              cx="0"
+              cy="0"
+              fill="none"
+              r={MATE_MARK_LIVE.mouth.r}
+              ref={(node) => {
+                parts.current.mouthO = node;
+              }}
+              stroke="currentColor"
+              strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
+            />
+            <path
+              d={SMILE}
+              fill="none"
+              ref={(node) => {
+                parts.current.mouthSmile = node;
+              }}
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth={MATE_MARK_LIVE.mouth.strokeWidth}
+              visibility="hidden"
+            />
+          </g>
+        ) : null}
+      </g>
+    </svg>
   );
 }
 
