@@ -216,29 +216,31 @@ export function ZeropsHostedLanding({
       description="Pick a project and start talking to the agent inside it."
       onManualConnect={manualConnect}
     >
-      <ZeropsHandoverActions
-        onContinue={() => {
-          if (startNativeSignIn({})) return;
-          // A full-page navigation in this tab, never a new one: the callback
-          // reads the nonce back out of this tab's storage.
-          window.location.href = startZeropsHandover();
-        }}
-        onCreateAccount={() => {
-          if (startNativeSignIn({ intent: "register" })) return;
-          window.location.href = startZeropsHandover({ intent: "register" });
-        }}
-        nativeSignIn={
-          readZeropsNativeSignInBridge()
-            ? {
-                busy: nativeSignInState.kind === "busy",
-                error: nativeSignInState.kind === "error" ? nativeSignInState.message : null,
-                onCancel: cancelNativeSignIn,
-              }
-            : undefined
-        }
-      />
       <ZeropsPasswordDisclosure
         open={showPasswordForm}
+        handover={
+          <ZeropsHandoverActions
+            onContinue={() => {
+              if (startNativeSignIn({})) return;
+              // A full-page navigation in this tab, never a new one: the callback
+              // reads the nonce back out of this tab's storage.
+              window.location.href = startZeropsHandover();
+            }}
+            onCreateAccount={() => {
+              if (startNativeSignIn({ intent: "register" })) return;
+              window.location.href = startZeropsHandover({ intent: "register" });
+            }}
+            nativeSignIn={
+              readZeropsNativeSignInBridge()
+                ? {
+                    busy: nativeSignInState.kind === "busy",
+                    error: nativeSignInState.kind === "error" ? nativeSignInState.message : null,
+                    onCancel: cancelNativeSignIn,
+                  }
+                : undefined
+            }
+          />
+        }
         onToggle={() => {
           setError(null);
           setShowPasswordForm((open) => !open);

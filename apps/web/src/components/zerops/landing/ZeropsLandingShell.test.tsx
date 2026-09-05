@@ -14,6 +14,7 @@ import {
   ZEROPS_GUI_REGISTRATION_URL,
   ZeropsHandedOffBanner,
   ZeropsHandoverActions,
+  ZeropsPasswordDisclosure,
   ZeropsLandingShell,
   ZeropsRegisterForm,
   ZeropsRegistrationUnavailable,
@@ -207,5 +208,28 @@ describe("ZeropsHandoverActions", () => {
 
     expect(markup).toContain("Continue with Zerops");
     expect(markup).toContain("Sign-in was cancelled.");
+  });
+});
+
+describe("ZeropsPasswordDisclosure", () => {
+  const render = (open: boolean) =>
+    renderToStaticMarkup(
+      <ZeropsPasswordDisclosure handover={<div>hand-over</div>} open={open} onToggle={noop}>
+        <div>password form</div>
+      </ZeropsPasswordDisclosure>,
+    );
+
+  it("shows one way in at a time: the hand-over, or the form", () => {
+    const closed = render(false);
+    expect(closed).toContain("hand-over");
+    expect(closed).not.toContain("password form");
+    expect(closed).toContain("Sign in with a password instead");
+    expect(closed).toContain('data-zerops-password-form="closed"');
+
+    const open = render(true);
+    expect(open).toContain("password form");
+    expect(open).not.toContain("hand-over");
+    expect(open).toContain("Use the Zerops sign-in instead");
+    expect(open).not.toContain("Sign in with a password instead");
   });
 });

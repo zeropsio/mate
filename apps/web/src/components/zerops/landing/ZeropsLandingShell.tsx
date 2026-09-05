@@ -419,30 +419,36 @@ export function ZeropsHandoverActions({
   );
 }
 
-/** Collapses the password form behind the hand-over without hiding it. */
+/**
+ * One way in at a time. Closed, the card is the hand-over and a line offering
+ * the password form; open, it is the form and a line back. Each state has one
+ * primary action and one sign-up link — never two of either on one card.
+ */
 export function ZeropsPasswordDisclosure({
   open,
   onToggle,
+  handover,
   children,
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
+  /** The hand-over block shown while the form is closed. */
+  readonly handover: ReactNode;
+  /** The password form shown while open. */
   readonly children: ReactNode;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <span className="h-px flex-1 bg-border/60" />
+    <div className="space-y-3" data-zerops-password-form={open ? "open" : "closed"}>
+      {open ? children : handover}
+      <p className="text-center text-xs text-muted-foreground">
         <button
           type="button"
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          className="underline underline-offset-2 hover:text-foreground"
           onClick={onToggle}
         >
-          {open ? "Hide the password form" : "Sign in with a password instead"}
+          {open ? "Use the Zerops sign-in instead" : "Sign in with a password instead"}
         </button>
-        <span className="h-px flex-1 bg-border/60" />
-      </div>
-      {open ? children : null}
+      </p>
     </div>
   );
 }
