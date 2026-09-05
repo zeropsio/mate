@@ -47,6 +47,13 @@
  *   ~301 KB); the existing 48 KB `resultText` cap is unaffected — the two
  *   caps are independent. Additive: a reader that does not know about
  *   `images` still gets `text` exactly as before.
+ * - 2.3 (2026-09-05, intake `c8f77e0d4`): `account.rate-limits.updated`'s payload
+ *   is `{ limits: ProviderUsageLimitsUpdate }` (upstream `19d8ab2ae`), replacing
+ *   `{ rateLimits: unknown }` — a renamed, now typed field. The driver snapshot's
+ *   `usageLimits` is the primary carrier (Codex `account/rateLimits/read`, Claude
+ *   `get_usage`); the event is an incremental update on top, and no owned reader
+ *   existed. `thread.state.changed` gains optional `beforeTokens`/`afterTokens`
+ *   (context compaction, `c5ba51d62`), additive.
  *
  * @module providerRuntimeSpi
  */
@@ -60,7 +67,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.2";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.3";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

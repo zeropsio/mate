@@ -5,7 +5,7 @@ import { PROVIDER_RUNTIME_SPI_VERSION, type SpiEvent } from "./providerRuntimeSp
 
 describe("providerRuntimeSpi", () => {
   it("declares the current SPI version", () => {
-    expect(PROVIDER_RUNTIME_SPI_VERSION).toBe("2.2");
+    expect(PROVIDER_RUNTIME_SPI_VERSION).toBe("2.3");
   });
 
   it("SpiEvent is ProviderRuntimeEvent — a value typed as one satisfies the other", () => {

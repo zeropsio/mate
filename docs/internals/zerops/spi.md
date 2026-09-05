@@ -27,12 +27,15 @@ Consumers never read `payload.data` (a driver's raw, per-provider item shape) �
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.2"` (`providerRuntimeSpi.ts:63`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.3"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
 read from an MCP result's image content blocks — the `zerops_browser` screenshot is the first
-consumer; a reader that does not know about `images` still gets `text` exactly as before. The bus
+consumer; a reader that does not know about `images` still gets `text` exactly as before. 2.3
+(intake row 3, 2026-09-05) renames `account.rate-limits.updated`'s payload to a typed `limits`
+(the snapshot's `usageLimits` is the primary carrier) and adds optional `beforeTokens`/`afterTokens`
+to `thread.state.changed` for context compaction. The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the
@@ -87,6 +90,8 @@ changes the wrapped shape fails the named test, not a spawn call site:
 - **`acpSupport.ts`** — `makeCursorAcpRuntime`/`makeGrokAcpRuntime`, model-selection application + extraction for both; wraps `provider/acp/{Cursor,Grok}AcpSupport.ts`. Test: `acpSupport.test.ts`.
 - **`claudeProvider.ts`** — `getClaudeModelCapabilities`, `resolveClaudeEffort`, `normalizeClaudeCliEffort`, `isClaudeUltracodeEffort`, `resolveClaudeApiModelId`; wraps `provider/Layers/ClaudeProvider.ts`. Test: `claudeProvider.test.ts`.
 - **`openCodeRuntime.ts`** — `openCodeRuntimeCapability` (narrowed to 2 of the driver's 6-member `OpenCodeRuntimeShape`: `startOpenCodeServerProcess` + `createOpenCodeSdkClient`), plus `openCodeRuntimeErrorDetail`/`parseOpenCodeModelSlug`/`toOpenCodeFileParts`; wraps `provider/opencodeRuntime.ts`. Test: `openCodeRuntime.test.ts`.
+- **`antigravityAcp.ts`** — `AntigravityTextRuntime` (a member-list narrowing of the driver's `AcpSessionRuntime`, pinned by typecheck), `applyAntigravityAcpModelSelection`, `removeAntigravitySessionFiles`; wraps `provider/acp/AntigravityAcpSupport.ts` for `textGeneration/AntigravityTextGeneration.ts`. Test: the re-exported helpers through `provider/acp/AntigravityAcpSupport.test.ts`; no contract test of its own yet.
+- **`usageLimitsSupport.ts`** — `codexPlanLabel`, `clampPercent`, `makeUsageLimits`; wraps `provider/Layers/CodexProvider.ts` + `provider/providerUsageLimits.ts` for `usage/cliproxyUsageLimits.ts`. Test: `usageLimitsSupport.test.ts`.
 
 `ProviderRegistryTest.ts`/`ProviderInstanceTest.ts` are not capabilities — owned test-only fakes so
 a test outside `spi/**` never has to import driver internals to satisfy those tags.
@@ -131,8 +136,8 @@ string equal to (or path-prefixed by) `process.cwd()`, `os.homedir()`, or `os.tm
 Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`)
 
 - 1 Codex fixture (`multi-agent-wire`, converted once from the upstream ported-zone test fixture
-  `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) + 3 live baselines (cursor, grok,
-  opencode, each `synthetic: true`) = 8 goldens total.
+  `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) + 4 live baselines (cursor, grok,
+  antigravity, opencode, each `synthetic: true`) = 9 goldens total.
 
 ## 8. Porting checklist
 
