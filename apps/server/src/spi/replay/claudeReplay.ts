@@ -225,6 +225,7 @@ export async function replayClaude(fixture: Fixture): Promise<ReadonlyArray<SpiE
 
         const resultPromise = canUseTool(args.toolName, args.input, {
           signal: new AbortController().signal,
+          requestId: "spi-replay-request",
           toolUseID: args.toolUseID ?? "spi-replay-tool-use",
         });
 
