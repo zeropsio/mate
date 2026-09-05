@@ -65,3 +65,19 @@ export {
   type RandomBytes,
   type ZeropsAgentType,
 } from "./newProject.ts";
+export {
+  MATE_TAG_NAMESPACE,
+  ZEROPS_GROUP_ID_LENGTH,
+  deriveZeropsGroups,
+  formatGroupTag,
+  formatRoleTag,
+  generateZeropsGroupId,
+  readZeropsGroupTags,
+  withZeropsGroupTags,
+  type DeriveZeropsGroupsOptions,
+  type ZeropsEnvironmentRole,
+  type ZeropsGroup,
+  type ZeropsGroupEnvironment,
+  type ZeropsGroupTags,
+  type ZeropsGroupTree,
+} from "./groups.ts";
