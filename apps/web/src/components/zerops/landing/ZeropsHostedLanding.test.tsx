@@ -10,9 +10,11 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
+const session = vi.hoisted(() => ({ status: "signed-out" as "signed-out" | "loading" }));
+
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
-    status: "signed-out",
+    status: session.status,
     signIn: vi.fn(),
     register: vi.fn(),
     verifyTotp: vi.fn(),
@@ -56,5 +58,22 @@ describe("ZeropsHostedLanding entry action", () => {
     expect(markup).toContain("Continue with Zerops");
     expect(markup).not.toContain("Connect a backend manually");
     expect(markup).not.toContain("Manual connect");
+  });
+});
+
+describe("ZeropsHostedLanding while the session is checked", () => {
+  it("shows the mark and a spinner, and writes nothing the next frame replaces", () => {
+    session.status = "loading";
+    try {
+      const markup = renderLanding();
+      expect(markup).toContain('data-zerops-session-check="true"');
+      expect(markup).toContain("data-mate-mark");
+      expect(markup).toContain("Checking your Zerops session…");
+      expect(markup).not.toContain("<h1");
+      expect(markup).not.toContain(">Zerops Mate<");
+      expect(markup).not.toContain("Continue with Zerops");
+    } finally {
+      session.status = "signed-out";
+    }
   });
 });

@@ -8,6 +8,7 @@ import { isZeropsCaptchaRejection } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useRef, useState, type ReactNode } from "react";
 
+import { MateMark } from "../../MateMark";
 import { Spinner } from "../../ui/spinner";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsTurnstile } from "~/zerops/turnstile";
@@ -31,6 +32,7 @@ import {
   ZeropsSignInForm,
   ZeropsTotpForm,
 } from "./ZeropsLandingShell";
+import { ZeropsHostedFrame } from "./ZeropsHostedFrame";
 
 type LandingMode = "sign-in" | "register" | "handed-off";
 
@@ -117,16 +119,23 @@ export function ZeropsHostedLanding({
   const manualConnect = exclusive ? undefined : openManual;
 
   if (status === "loading") {
+    // Under a second, usually. Nothing is written that the next frame will
+    // replace — the product's name is the lockup's, and the sentence would
+    // only flash — so the mark waits with a spinner, and the words go to
+    // assistive technology alone.
     return (
-      <ZeropsLandingShell
-        title="Zerops Mate"
-        description="Checking your Zerops session…"
-        onManualConnect={manualConnect}
-      >
-        <div className="flex justify-center py-4">
+      <ZeropsHostedFrame centered>
+        <div
+          aria-live="polite"
+          className="flex flex-col items-center gap-6"
+          data-zerops-session-check="true"
+          role="status"
+        >
+          <MateMark playful className="h-20 w-auto" />
           <Spinner className="size-5" />
+          <span className="sr-only">Checking your Zerops session…</span>
         </div>
-      </ZeropsLandingShell>
+      </ZeropsHostedFrame>
     );
   }
 
