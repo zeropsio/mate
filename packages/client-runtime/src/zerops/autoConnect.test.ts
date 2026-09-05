@@ -96,7 +96,7 @@ describe("selectAutoConnectTargets", () => {
     const targets = selectAutoConnectTargets({
       candidates: [
         candidate("p", { key: "p:zcp" }),
-        candidate("p", { key: "p:zcp2", containerOrigin: candidate("p").containerOrigin }),
+        candidate("p", { key: "p:zcp2", containerOrigin: "https://zcp-p-8080.prg1.zerops.app" }),
       ],
       health: new Map([
         ["p:zcp", "ready"],

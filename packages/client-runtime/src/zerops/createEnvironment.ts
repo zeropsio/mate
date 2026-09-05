@@ -42,6 +42,21 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
   return role !== "prod";
 }
 
+/**
+ * Where the new environment's application comes from.
+ *
+ * - `store`: the group's published recipe for this role (`recipeStore.ts`).
+ * - `services`: services-only import YAML the caller already holds — today a
+ *   sibling's export with its container and secrets stripped
+ *   (`recipeExport.ts`); `source` names where it came from, for the record.
+ * - `none`: no application yet. The agent is the first thing in the
+ *   environment and sets the rest up — which is the whole point of having one.
+ */
+export type EnvironmentRecipeChoice =
+  | { readonly kind: "store" }
+  | { readonly kind: "services"; readonly yaml: string; readonly source: string }
+  | { readonly kind: "none" };
+
 export interface EnvironmentCreationInput {
   readonly clientId: string;
   readonly groupId: string;
@@ -50,8 +65,10 @@ export interface EnvironmentCreationInput {
   readonly role: ZeropsEnvironmentRole;
   /** What this environment is called, e.g. `"Beviro CRM - production"`. */
   readonly name: string;
-  /** The group's store record — the source of the recipe. */
+  /** The group's store record — the source of the recipe when `recipe` is `store`. */
   readonly record: ZeropsGroupRecord | undefined;
+  /** Defaults to the store. */
+  readonly recipe?: EnvironmentRecipeChoice;
   readonly location?: string;
   /** Overrides {@link defaultAgentForRole}. */
   readonly withAgent?: boolean;
@@ -101,12 +118,36 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   const name = input.name.trim();
   if (name.length === 0) return { ok: false, reason: "An environment needs a name." };
 
-  const gate = canCreateEnvironment(input.record, input.role);
-  if (!gate.allowed) return { ok: false, reason: gate.reason ?? "No recipe for this role." };
-
-  // `canCreateEnvironment` already proved this is a non-blank string.
-  const yaml = input.record?.recipes[input.role] ?? "";
   const withAgent = input.withAgent ?? defaultAgentForRole(input.role);
+  const recipe = input.recipe ?? { kind: "store" };
+
+  let yaml: string | null;
+  switch (recipe.kind) {
+    case "store": {
+      const gate = canCreateEnvironment(input.record, input.role);
+      if (!gate.allowed) return { ok: false, reason: gate.reason ?? "No recipe for this role." };
+      // `canCreateEnvironment` already proved this is a non-blank string.
+      yaml = input.record?.recipes[input.role] ?? "";
+      break;
+    }
+    case "services": {
+      if (recipe.yaml.trim().length === 0) {
+        return { ok: false, reason: `There is nothing to clone from ${recipe.source}.` };
+      }
+      yaml = recipe.yaml;
+      break;
+    }
+    case "none":
+      yaml = null;
+      break;
+  }
+
+  if (yaml === null && !withAgent) {
+    return {
+      ok: false,
+      reason: "An environment with neither an agent nor an application has nothing in it.",
+    };
+  }
 
   const steps: Array<EnvironmentCreationStep> = [
     {
@@ -120,7 +161,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   ];
 
   if (withAgent) steps.push({ kind: "import-container" });
-  steps.push({ kind: "import-recipe", role: input.role, yaml });
+  if (yaml !== null) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
 
   return { ok: true, steps };

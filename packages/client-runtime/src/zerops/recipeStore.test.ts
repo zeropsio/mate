@@ -137,32 +137,3 @@ describe("canCreateEnvironment", () => {
     ).toBe(false);
   });
 });
-
-describe("makeMockZeropsRecipeStore with fallback recipes (H-26)", () => {
-  it("answers an unseeded group with the fallback, under that group's own id", async () => {
-    const store = makeMockZeropsRecipeStore([], {
-      fallbackRecipes: GO_HELLO_WORLD_GROUP.recipes,
-    });
-    const record = await store.readGroup("unseen");
-    expect(record?.groupId).toBe("unseen");
-    expect(record?.recipes).toBe(GO_HELLO_WORLD_GROUP.recipes);
-  });
-
-  it("never lets the fallback name a group", async () => {
-    // Display names come from the seed and the tags; a fallback that named
-    // groups would rename every one it touched.
-    const store = makeMockZeropsRecipeStore([], {
-      fallbackRecipes: GO_HELLO_WORLD_GROUP.recipes,
-    });
-    const record = await store.readGroup("unseen");
-    expect(record?.name).toBe("unseen");
-    expect(await store.listGroups()).toEqual([]);
-  });
-
-  it("prefers a seeded record over the fallback", async () => {
-    const store = makeMockZeropsRecipeStore([GO_HELLO_WORLD_GROUP], {
-      fallbackRecipes: {},
-    });
-    expect(await store.readGroup(GO_HELLO_WORLD_GROUP.groupId)).toBe(GO_HELLO_WORLD_GROUP);
-  });
-});

@@ -546,6 +546,8 @@
       "components": [
         "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
+        "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.ts",
         "apps/web/src/components/zerops/ZeropsGroupTree.tsx",
         "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",

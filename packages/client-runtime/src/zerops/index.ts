@@ -74,6 +74,7 @@ export {
   generateZeropsGroupId,
   readZeropsGroupTags,
   withZeropsBotTag,
+  ZEROPS_BOT_NAME_MAX_LENGTH,
   withZeropsGroupTags,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,
@@ -134,6 +135,7 @@ export {
   environmentCreationStepLabel,
   planEnvironmentCreation,
   type EnvironmentCreationInput,
+  type EnvironmentRecipeChoice,
   type EnvironmentCreationPlan,
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";

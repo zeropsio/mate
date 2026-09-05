@@ -460,9 +460,8 @@ committed.
 
 ---
 
-### H-26 · Every group reads as the `go-hello-world` recipe · in place
+### H-26 · Every group reads as the `go-hello-world` recipe · paid back (2026-09-05)
 
-**Where** `apps/web/src/zerops/recipeStore.ts` — the web app's recipe store is `makeMockZeropsRecipeStore` with `fallbackRecipes`, so a group nobody has published a recipe for answers with the seed's dev / stage / prod tiers under its own group id.
-**Why** The store zcp writes (`recipeStore.ts`, "zcp writes, this client reads") does not exist yet, and without a recipe `canCreateEnvironment` refuses every role — the "Add stage" / "Add production" buttons on a live group would do nothing. With the fallback, environment creation runs end to end against a real account today.
-**Blast radius** Any environment created from a live group gets the `go-hello-world` application, not that group's own. The fallback cannot rename a group (its record's name is the group id; display names come from the seed and the `mate:name:` tag), so the group tree is unaffected.
-**Real fix** Point `zeropsRecipeStore` at the platform store once zcp publishes recipes into it, and drop `fallbackRecipes` from `makeMockZeropsRecipeStore`; the seed stays for the showcase.
+**Where was** `apps/web/src/zerops/recipeStore.ts` — the web app's recipe store answered every unseeded group with the seed's dev / stage / prod tiers, so "Add stage" on a live group imported `go-hello-world` rather than that group's application.
+**Fix** The creation dialog chooses the application per environment (`EnvironmentRecipeChoice`, `createEnvironment.ts`): the group's store recipe when the store has one, a clone of a sibling's export with its container and secrets stripped (`recipeFromProjectExport`, measured in `verified.md`), or nothing yet with the agent to set it up. The mock store is seeded with the showcase group alone and `fallbackRecipes` is gone.
+**Still open** The store zcp writes does not exist, so no live group has a store recipe; the clone is lossy (`zeropsSetup`, `priority`, `profile` do not round-trip). Both go away when zcp publishes recipes into the platform store.

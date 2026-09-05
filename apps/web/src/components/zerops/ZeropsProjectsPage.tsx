@@ -39,6 +39,7 @@ import type { AuthGateState } from "~/environments/primary/auth";
 
 import {
   buildZeropsGroupTree,
+  canCreateEnvironment,
   defaultAgentForRole,
   generateBotName,
   planEnvironmentCreation,
@@ -52,6 +53,11 @@ import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { MicroLabel, Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
+import {
+  ZeropsEnvironmentCreationDialog,
+  type EnvironmentCreationChoice,
+} from "./ZeropsEnvironmentCreationDialog";
+import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
 import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
@@ -435,24 +441,78 @@ function ZeropsProjectsContent() {
    * the calls are `runEnvironmentCreation`, and this only chooses the inputs —
    * the name, whether it gets an agent, and what that agent is called.
    */
+  // An agent's name must be new on the account, not just in the group: it is
+  // what the left menu calls the row, and two Adas is two of nothing.
+  const takenBotNames = useMemo(
+    () =>
+      candidates.flatMap((candidate) => {
+        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
+        return bot === undefined ? [] : [bot];
+      }),
+    [candidates],
+  );
+
+  // "Add stage" opens the form; the form's answer is what gets created.
+  const [creationRequest, setCreationRequest] = useState<{
+    readonly groupId: string;
+    readonly role: ZeropsEnvironmentRole;
+    readonly botName: string;
+  } | null>(null);
+  const requestedGroup = useMemo(
+    () =>
+      creationRequest === null
+        ? undefined
+        : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
+    [creationRequest, groupTree.groups],
+  );
+  const cloneSiblings = useMemo(
+    () =>
+      requestedGroup === undefined
+        ? null
+        : requestedGroup.environments.map(({ item }) => {
+            const bot = readZeropsGroupTags(item.project.tagList).bot?.trim();
+            return {
+              projectId: item.project.id,
+              name: item.project.name,
+              agentName: bot === undefined || bot.length === 0 ? undefined : bot,
+            };
+          }),
+    [requestedGroup],
+  );
+  const cloneSources = useZeropsCloneSources(cloneSiblings);
+  const [storeRecipeAvailable, setStoreRecipeAvailable] = useState(false);
+  useEffect(() => {
+    if (creationRequest === null) return;
+    let cancelled = false;
+    const { groupId, role } = creationRequest;
+    void zeropsRecipeStore.readGroup(groupId).then((record) => {
+      if (!cancelled) setStoreRecipeAvailable(canCreateEnvironment(record, role).allowed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [creationRequest]);
+
+  const requestEnvironment = useCallback(
+    (groupId: string, role: ZeropsEnvironmentRole) => {
+      if (creationRunning) return;
+      setStoreRecipeAvailable(false);
+      setCreationRequest({
+        groupId,
+        role,
+        botName: generateBotName(takenBotNames, (bytes) => crypto.getRandomValues(bytes)),
+      });
+    },
+    [creationRunning, takenBotNames],
+  );
+
   const createEnvironment = useCallback(
-    async (groupId: string, role: ZeropsEnvironmentRole) => {
+    async (groupId: string, role: ZeropsEnvironmentRole, choice: EnvironmentCreationChoice) => {
       if (!activeOrganization || creationRunning) return;
       const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
       if (entry === undefined) return;
       const { group } = entry;
-      const roleLabel = environmentRoleLabel(role)?.toLowerCase() ?? role;
-      const name = `${group.name} - ${roleLabel}`;
-      const withAgent = defaultAgentForRole(role);
-      // An agent's name must be new on the account, not just in the group: it
-      // is what the left menu calls the row, and two Adas is two of nothing.
-      const takenBotNames = candidates.flatMap((candidate) => {
-        const bot = readZeropsGroupTags(candidate.project.tagList).bot;
-        return bot === undefined ? [] : [bot];
-      });
-      const botName = withAgent
-        ? generateBotName(takenBotNames, (bytes) => crypto.getRandomValues(bytes))
-        : undefined;
+      const { name } = choice;
 
       const plan = planEnvironmentCreation({
         clientId: activeOrganization.id,
@@ -462,7 +522,9 @@ function ZeropsProjectsContent() {
         role,
         name,
         record: await zeropsRecipeStore.readGroup(groupId),
-        ...(botName === undefined ? {} : { botName }),
+        recipe: choice.recipe,
+        withAgent: choice.withAgent,
+        ...(choice.botName === undefined ? {} : { botName: choice.botName }),
       });
       if (!plan.ok) {
         setToolError(plan.reason);
@@ -525,7 +587,6 @@ function ZeropsProjectsContent() {
     },
     [
       activeOrganization,
-      candidates,
       client,
       creationRunning,
       groupTree.groups,
@@ -715,9 +776,7 @@ function ZeropsProjectsContent() {
           return bot === undefined || bot.length === 0 ? undefined : bot;
         }}
         creating={creationRunning}
-        onCreateEnvironment={(groupId, role) => {
-          void createEnvironment(groupId, role);
-        }}
+        onCreateEnvironment={requestEnvironment}
         onCreateTool={() => {
           void createTool();
         }}
@@ -785,6 +844,40 @@ function ZeropsProjectsContent() {
       {!isLoading && candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects in this account yet.</p>
       ) : null}
+      {creationRequest === null || requestedGroup === undefined ? null : (
+        <ZeropsEnvironmentCreationDialog
+          cloneSources={cloneSources.sources.map((source) => ({
+            projectId: source.projectId,
+            name: source.name,
+            agentName: source.agentName,
+            services: source.recipe.services,
+            yaml: source.recipe.servicesYaml,
+          }))}
+          cloneSourcesLoading={cloneSources.loading}
+          defaultBotName={creationRequest.botName}
+          defaultName={`${requestedGroup.group.name} - ${
+            environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role
+          }`}
+          defaultWithAgent={defaultAgentForRole(creationRequest.role)}
+          groupName={requestedGroup.group.name}
+          key={`${creationRequest.groupId}:${creationRequest.role}`}
+          onCancel={() => {
+            setCreationRequest(null);
+          }}
+          onCreate={(choice) => {
+            const { groupId, role } = creationRequest;
+            setCreationRequest(null);
+            void createEnvironment(groupId, role, choice);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setCreationRequest(null);
+          }}
+          open
+          role={creationRequest.role}
+          storeRecipeAvailable={storeRecipeAvailable}
+          takenBotNames={takenBotNames}
+        />
+      )}
       {creation === null ? null : (
         <ZeropsEnvironmentCreation
           name={creation.name}

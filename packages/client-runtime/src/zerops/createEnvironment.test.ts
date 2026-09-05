@@ -184,3 +184,42 @@ describe("the agent's name", () => {
     expect(tags.some((tag) => tag.startsWith("mate:bot:"))).toBe(false);
   });
 });
+
+describe("the recipe choice", () => {
+  it("imports the services a caller hands it instead of the store's", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      record: undefined,
+      recipe: { kind: "services", yaml: "services:\n  - hostname: app\n", source: "acme-docs-dev" },
+    });
+    if (!plan.ok) throw new Error(plan.reason);
+    const step = plan.steps.find((entry) => entry.kind === "import-recipe");
+    expect(step?.kind === "import-recipe" && step.yaml).toContain("hostname: app");
+  });
+
+  it("refuses a clone with nothing in it, naming the source", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      recipe: { kind: "services", yaml: "   ", source: "acme-docs-dev" },
+    });
+    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toContain("acme-docs-dev");
+  });
+
+  it("skips the application entirely when the agent is to set it up", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      role: "dev",
+      name: "dev",
+      record: undefined,
+      recipe: { kind: "none" },
+    });
+    if (!plan.ok) throw new Error(plan.reason);
+    expect(stepKinds(plan.steps)).toEqual(["create-project", "import-container", "await-ready"]);
+  });
+
+  it("refuses an environment with neither an agent nor an application", () => {
+    const plan = planEnvironmentCreation({ ...BASE, role: "prod", recipe: { kind: "none" } });
+    expect(plan.ok).toBe(false);
+  });
+});
