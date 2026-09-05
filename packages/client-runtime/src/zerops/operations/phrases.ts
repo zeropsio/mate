@@ -278,6 +278,47 @@ function browserClosing(context: OperationClosingContext): string {
   return `checked ${target}. ${counts}.`;
 }
 
+export interface BrowserCondensedLineInput {
+  readonly url: string;
+  readonly viewport?: { readonly width: number; readonly height: number };
+  readonly media?: "dark" | "light";
+  readonly stepCount: number;
+  readonly consoleErrorCount: number;
+  readonly pageErrorCount: number;
+  readonly failedRequestCount: number;
+}
+
+/** The viewport segment — `<w>×<h>[, dark]`, `dark` alone with no known viewport, or absent entirely. */
+function browserViewportSegment(input: BrowserCondensedLineInput): string | undefined {
+  if (input.viewport !== undefined) {
+    const dimensions = `${input.viewport.width}×${input.viewport.height}`;
+    return input.media === "dark" ? `${dimensions}, dark` : dimensions;
+  }
+  return input.media === "dark" ? "dark" : undefined;
+}
+
+/**
+ * The card's condensed line, under the viewport —
+ * `opened <url> · <viewport w×h>[, dark] · <n> steps · <errors> errors, <failed requests> failed requests`.
+ * `errors` folds `consoleErrorCount` and `pageErrorCount` into one figure —
+ * `browserClosing`'s Details-disclosure text keeps them apart, this line
+ * does not have the room.
+ */
+export function browserCondensedLine(input: BrowserCondensedLineInput): string {
+  const segments = [
+    `opened ${input.url}`,
+    browserViewportSegment(input),
+    plural(input.stepCount, "step"),
+    `${plural(input.consoleErrorCount + input.pageErrorCount, "error")}, ${plural(input.failedRequestCount, "failed request")}`,
+  ].filter((segment): segment is string => segment !== undefined);
+  return segments.join(" · ");
+}
+
+/** The caption over the live viewport while the call is in progress. */
+export function browserLiveCaption(subject: string): string {
+  return `Agent is verifying ${subject}.`;
+}
+
 /** The closing line, once `phase !== "running"` — outcome + the one thing the user needs. */
 export function operationClosing(
   kind: ZeropsOperationKind,

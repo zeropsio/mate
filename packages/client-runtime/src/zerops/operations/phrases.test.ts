@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  browserCondensedLine,
+  browserLiveCaption,
   humanizeCheckName,
   humanizeToolName,
   operationStatusWord,
@@ -187,5 +189,75 @@ describe("operationStatusWord — failed phase", () => {
   it("subdomain done is Enabled or Disabled by action", () => {
     expect(operationStatusWord("subdomain", "done", { action: "enable" })).toBe("Enabled");
     expect(operationStatusWord("subdomain", "done", { action: "disable" })).toBe("Disabled");
+  });
+});
+
+describe("browserCondensedLine", () => {
+  const base = {
+    url: "https://kanbandev-26a7.prg1.zerops.app",
+    stepCount: 4,
+    consoleErrorCount: 1,
+    pageErrorCount: 1,
+    failedRequestCount: 1,
+  };
+
+  it("joins the url, viewport with dark, step count and folded error/failed-request counts", () => {
+    expect(
+      browserCondensedLine({ ...base, viewport: { width: 1920, height: 1080 }, media: "dark" }),
+    ).toBe(
+      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080, dark · 4 steps · 2 errors, 1 failed request",
+    );
+  });
+
+  it("omits the dark suffix for an explicit light media", () => {
+    expect(
+      browserCondensedLine({ ...base, viewport: { width: 1920, height: 1080 }, media: "light" }),
+    ).toBe(
+      "opened https://kanbandev-26a7.prg1.zerops.app · 1920×1080 · 4 steps · 2 errors, 1 failed request",
+    );
+  });
+
+  it("drops the viewport segment entirely when no viewport step was seen", () => {
+    expect(browserCondensedLine(base)).toBe(
+      "opened https://kanbandev-26a7.prg1.zerops.app · 4 steps · 2 errors, 1 failed request",
+    );
+  });
+
+  it("shows a bare 'dark' segment when media is known but the viewport size is not", () => {
+    expect(browserCondensedLine({ ...base, media: "dark" })).toBe(
+      "opened https://kanbandev-26a7.prg1.zerops.app · dark · 4 steps · 2 errors, 1 failed request",
+    );
+  });
+
+  it("singularizes a lone step, error and failed request", () => {
+    expect(
+      browserCondensedLine({
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        stepCount: 1,
+        consoleErrorCount: 1,
+        pageErrorCount: 0,
+        failedRequestCount: 1,
+      }),
+    ).toBe("opened https://kanbandev-26a7.prg1.zerops.app · 1 step · 1 error, 1 failed request");
+  });
+
+  it("zero errors and zero failed requests still render their counts", () => {
+    expect(
+      browserCondensedLine({
+        url: "https://kanbandev-26a7.prg1.zerops.app",
+        stepCount: 2,
+        consoleErrorCount: 0,
+        pageErrorCount: 0,
+        failedRequestCount: 0,
+      }),
+    ).toBe("opened https://kanbandev-26a7.prg1.zerops.app · 2 steps · 0 errors, 0 failed requests");
+  });
+});
+
+describe("browserLiveCaption", () => {
+  it("names the subject the agent is verifying", () => {
+    expect(browserLiveCaption("https://kanbandev-26a7.prg1.zerops.app")).toBe(
+      "Agent is verifying https://kanbandev-26a7.prg1.zerops.app.",
+    );
   });
 });

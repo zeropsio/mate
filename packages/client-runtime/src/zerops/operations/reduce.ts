@@ -21,6 +21,7 @@ import {
   isBootstrapStartWithRoute,
 } from "./classify.ts";
 import {
+  browserCondensedLine,
   humanizeCheckName,
   humanizeToolName,
   neutralStatusWord,
@@ -34,6 +35,7 @@ import {
 import type {
   ZeropsCallEntry,
   ZeropsOperation,
+  ZeropsOperationBrowserSummary,
   ZeropsOperationKind,
   ZeropsOperationLink,
   ZeropsOperationPhase,
@@ -1129,6 +1131,77 @@ function buildDevServerOperation(group: OperationGroup): ZeropsOperation {
 
 // --- browser ------------------------------------------------------------------------
 
+/**
+ * The canonical reporting tail `buildCanonicalBatch` always appends
+ * (`internal/ops/browser.go`): the screenshot step (only when requested),
+ * `errors`, `console`, `network requests …`, `close`. Matched by the
+ * step's own first command word — none of these names are ever the
+ * agent's own action.
+ */
+const BROWSER_TAIL_COMMANDS: ReadonlySet<string> = new Set([
+  "screenshot",
+  "errors",
+  "console",
+  "network",
+  "close",
+]);
+
+function isBrowserTailLabel(label: string): boolean {
+  return BROWSER_TAIL_COMMANDS.has(label.split(" ")[0] ?? "");
+}
+
+/** `["set", "viewport", "1920", "1080"]` (agent-browser `set --help`) — the caller's own resize, if it issued one. */
+function browserViewportFromLabel(label: string): { width: number; height: number } | undefined {
+  const match = label.match(/^set viewport (\d+) (\d+)/);
+  if (match === undefined || match === null) {
+    return undefined;
+  }
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+/** `["set", "media", "dark"|"light", ...]` — the caller's own colour-scheme emulation, if it issued one. */
+function browserMediaFromLabel(label: string): "dark" | "light" | undefined {
+  const match = label.match(/^set media (dark|light)\b/);
+  return match?.[1] === "dark" ? "dark" : match?.[1] === "light" ? "light" : undefined;
+}
+
+/**
+ * `viewport`/`media` are the LAST matching step (a caller may resize more
+ * than once); `stepCount`/`failedStep` look only at the non-tail steps —
+ * the reporting tail is plumbing, never something a person reads as "what
+ * the agent did".
+ */
+function browserSummaryFor(
+  subject: string,
+  steps: ReadonlyArray<ZeropsOperationStep>,
+  counts: { consoleErrorCount: number; pageErrorCount: number; failedRequestCount: number },
+): ZeropsOperationBrowserSummary {
+  let viewport: { width: number; height: number } | undefined;
+  let media: "dark" | "light" | undefined;
+  for (const step of steps) {
+    if (step.kind === "tail") {
+      continue;
+    }
+    viewport = browserViewportFromLabel(step.label) ?? viewport;
+    media = browserMediaFromLabel(step.label) ?? media;
+  }
+  const visibleSteps = steps.filter((step) => step.kind !== "tail");
+  const failedStep = visibleSteps.find((step) => step.state === "failed");
+  return {
+    ...(viewport !== undefined ? { viewport } : {}),
+    ...(media !== undefined ? { media } : {}),
+    stepCount: visibleSteps.length,
+    ...(failedStep !== undefined ? { failedStep } : {}),
+    line: browserCondensedLine({
+      url: subject,
+      stepCount: visibleSteps.length,
+      ...counts,
+      ...(viewport !== undefined ? { viewport } : {}),
+      ...(media !== undefined ? { media } : {}),
+    }),
+  };
+}
+
 function buildBrowserOperation(group: OperationGroup): ZeropsOperation {
   const { entry, decoded } = group.entries[0]!;
   const errorInfo = errorInfoFor(entry, decoded);
@@ -1139,14 +1212,23 @@ function buildBrowserOperation(group: OperationGroup): ZeropsOperation {
   const { voice, voiceSource } = mateVoiceFor("browser", subject);
   const settledAt = settledAtFor(group, phase);
 
-  const steps: ZeropsOperationStep[] = (card?.steps ?? []).map((step, index) =>
-    buildStep(
+  const steps: ZeropsOperationStep[] = (card?.steps ?? []).map((step, index) => {
+    const built = buildStep(
       `step-${index}`,
       step.label,
       step.success ? "ACTIVE" : "FAILED",
       browserStepNote(step),
-    ),
-  );
+    );
+    return isBrowserTailLabel(step.label) ? { ...built, kind: "tail" as const } : built;
+  });
+  const browserSummary =
+    card !== undefined
+      ? browserSummaryFor(subject, steps, {
+          consoleErrorCount: card.consoleErrorCount,
+          pageErrorCount: card.pageErrorCount,
+          failedRequestCount: card.failedRequestCount,
+        })
+      : undefined;
 
   const closing =
     phase === "running"
@@ -1179,6 +1261,7 @@ function buildBrowserOperation(group: OperationGroup): ZeropsOperation {
     kind: "browser",
     phase,
     ...(screenshot !== undefined ? { screenshot } : {}),
+    ...(browserSummary !== undefined ? { browserSummary } : {}),
     ...(settledAt !== undefined ? { settledAt } : {}),
     subject,
     kicker: `${KIND_LABEL.browser} · ${subject}`,
