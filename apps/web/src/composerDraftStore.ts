@@ -1360,6 +1360,16 @@ function removeDraftThreadReferences(
 function normalizePersistedDraftThreads(
   rawDraftThreadsByThreadId: unknown,
   rawProjectDraftThreadIdByProjectKey: unknown,
+  options: {
+    /**
+     * Legacy stores mapped `environment:projectId` to a thread; the modern
+     * map is keyed by the *logical* project key — a repository identity or
+     * `environment:workspaceRoot` — which is not a project ref and must never
+     * be parsed as one. Doing so once rewrote a draft's project id to
+     * `/var/www` on every reload (`questions.md` Q-16).
+     */
+    readonly keysAreProjectRefs: boolean;
+  },
 ): Pick<
   PersistedComposerDraftStoreState,
   "draftThreadsByThreadKey" | "logicalProjectDraftThreadKeyByLogicalProjectKey"
@@ -1482,7 +1492,9 @@ function normalizePersistedDraftThreads(
       if (typeof threadKeyOrId !== "string" || threadKeyOrId.length === 0) {
         continue;
       }
-      const projectRef = parseScopedProjectKey(logicalProjectKey);
+      const projectRef = options.keysAreProjectRefs
+        ? parseScopedProjectKey(logicalProjectKey)
+        : null;
       const parsedThreadRef = parseScopedThreadKey(threadKeyOrId);
       const threadKey = normalizeLegacyComposerStorageKey(threadKeyOrId);
       logicalProjectDraftThreadKeyByLogicalProjectKey[logicalProjectKey] = threadKey;
@@ -1719,7 +1731,9 @@ function migratePersistedComposerDraftStoreState(
   const stickyActiveProvider = normalizeProviderInstanceId(candidate.stickyProvider) ?? null;
 
   const { draftThreadsByThreadKey, logicalProjectDraftThreadKeyByLogicalProjectKey } =
-    normalizePersistedDraftThreads(rawDraftThreadsByThreadId, rawProjectDraftThreadIdByProjectKey);
+    normalizePersistedDraftThreads(rawDraftThreadsByThreadId, rawProjectDraftThreadIdByProjectKey, {
+      keysAreProjectRefs: candidate.logicalProjectDraftThreadKeyByLogicalProjectKey === undefined,
+    });
   const draftsByThreadKey = normalizePersistedDraftsByThreadId(
     rawDraftMap,
     draftThreadsByThreadKey,
@@ -1849,6 +1863,10 @@ function normalizeCurrentPersistedComposerDraftStoreState(
         normalizedPersistedState.projectDraftThreadKeyByProjectKey ??
         normalizedPersistedState.projectDraftThreadIdByProjectKey ??
         normalizedPersistedState.projectDraftThreadIdByProjectId,
+      {
+        keysAreProjectRefs:
+          normalizedPersistedState.logicalProjectDraftThreadKeyByLogicalProjectKey === undefined,
+      },
     );
 
   // Handle both v3 (modelSelectionByProvider) and v2/legacy formats

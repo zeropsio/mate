@@ -579,6 +579,83 @@ describe("composerDraftStore terminal contexts", () => {
   });
 });
 
+describe("composerDraftStore persisted draft threads keep their project", () => {
+  const persistApi = useComposerDraftStore.persist as unknown as {
+    getOptions: () => {
+      merge: (
+        persistedState: unknown,
+        currentState: ReturnType<typeof useComposerDraftStore.getState>,
+      ) => ReturnType<typeof useComposerDraftStore.getState>;
+    };
+  };
+  const environmentId = EnvironmentId.make("a5c9ebd6-8cf7-411b-bd8f-92ce44bc9c25");
+  const projectId = ProjectId.make("bfb22596-bb3c-4d89-b523-3768cfbd907d");
+  const draftId = "ddc56cd7-b2b8-44d9-bc3e-b7d474febb84";
+  const threadId = ThreadId.make("c492f861-8444-46d8-a1a5-dcd21753b2cc");
+  const logicalProjectKey = `${environmentId}:/var/www`;
+  const draftThread = {
+    threadId,
+    environmentId,
+    projectId,
+    logicalProjectKey,
+    createdAt: "2026-09-05T19:20:19.171Z",
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    envMode: "local",
+    startFromOrigin: false,
+    promotedTo: null,
+  };
+
+  it("never rewrites a draft's project from its logical key, which is a workspace, not an id", () => {
+    const merged = persistApi.getOptions().merge(
+      {
+        draftsByThreadKey: {},
+        draftThreadsByThreadKey: { [draftId]: draftThread },
+        logicalProjectDraftThreadKeyByLogicalProjectKey: { [logicalProjectKey]: draftId },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(merged.draftThreadsByThreadKey[draftId]).toMatchObject({
+      environmentId,
+      projectId,
+      logicalProjectKey,
+    });
+    expect(merged.logicalProjectDraftThreadKeyByLogicalProjectKey).toEqual({
+      [logicalProjectKey]: draftId,
+    });
+  });
+
+  it("does not invent a draft thread for a logical key whose draft is gone", () => {
+    const merged = persistApi.getOptions().merge(
+      {
+        draftsByThreadKey: {},
+        draftThreadsByThreadKey: {},
+        logicalProjectDraftThreadKeyByLogicalProjectKey: { [logicalProjectKey]: draftId },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    expect(merged.draftThreadsByThreadKey).toEqual({});
+  });
+
+  it("still reads a legacy `environment:projectId` map as project refs", () => {
+    const legacyThreadId = ThreadId.make("thread-legacy");
+    const merged = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {},
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectKey: {
+          [`${environmentId}:${projectId}`]: `${environmentId}:${legacyThreadId}`,
+        },
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+    const [fabricated] = Object.values(merged.draftThreadsByThreadKey);
+    expect(fabricated).toMatchObject({ environmentId, projectId, threadId: legacyThreadId });
+  });
+});
+
 describe("composerDraftStore review comments", () => {
   const threadId = ThreadId.make("thread-review-comment");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
