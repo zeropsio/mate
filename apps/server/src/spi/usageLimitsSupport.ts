@@ -10,7 +10,8 @@
  * This module is the ONE place `usage/**` may reach into `provider/**` for
  * these two things — `scripts/mate-zone-architecture.test.ts`'s
  * "textGeneration/ and usage/ reach provider internals only through spi/"
- * rule enforces it. A port that renames or reshapes either function fails
+ * rule enforces it. `usageLimitsSupport.test.ts` pins the behaviour of all
+ * three re-exports, so a port that renames or reshapes any of them fails
  * here, not at the cliproxy call site.
  *
  * @module usageLimitsSupport
