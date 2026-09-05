@@ -12,6 +12,9 @@
  * persisted server-side.
  */
 
+import { buildGiteaImportYaml } from "./giteaRecipe.ts";
+import { withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
+import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -97,7 +100,7 @@ export interface ZeropsProject {
    * and `GET /project/{id}` — return it.
    */
   readonly tagList?: ReadonlyArray<string>;
-  /** Round-tripped by any tag write, which must not blank it. */
+  /** Round-tripped by `updateProjectGroupTags`, which must not blank it. */
   readonly description?: string;
 }
 
@@ -591,6 +594,32 @@ export class ZeropsApiClient {
   }
 
   /**
+   * Moves a project into a group, out of one, or changes what it is for.
+   *
+   * Read-modify-write because `PUT /project/{id}` replaces `tagList` wholesale
+   * — a blind write would delete whatever the user tagged the project with
+   * themselves. `withZeropsGroupTags` is what preserves them.
+   *
+   * This is also the path that makes an existing project adoptable and lets a
+   * production environment be paired retroactively, which the create-time tag
+   * alone cannot do.
+   */
+  async updateProjectGroupTags(
+    projectId: string,
+    next: { readonly groupId?: string; readonly role?: ZeropsEnvironmentRole },
+  ): Promise<ZeropsProject> {
+    const project = await this.fetchProject(projectId);
+    return this.#request<ZeropsProject>(`/project/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: project.name,
+        description: project.description ?? "",
+        tagList: withZeropsGroupTags(project.tagList, next),
+      }),
+    });
+  }
+
+  /**
    * Imports a group's recipe into an existing project — the step that turns an
    * empty environment into the group's application.
    *
@@ -611,6 +640,48 @@ export class ZeropsApiClient {
       method: "POST",
       body: JSON.stringify({ yaml: servicesYaml }),
     });
+  }
+
+  /**
+   * Stands up an account-level tool — today only Gitea — as its own tagged
+   * project.
+   *
+   * Two calls, in this order for a reason: the region is only knowable once
+   * the project exists (`publicZone`), and the Gitea recipe needs it to write
+   * a `GITEA_DOMAIN` that resolves. The published recipe hardcodes a host that
+   * does not (`giteaRecipe.ts`), so a caller that skipped this would get an
+   * instance whose every clone URL points nowhere.
+   *
+   * No `zcp` container: a tool is not an environment and has no agent.
+   */
+  async createToolProject(input: {
+    readonly clientId: string;
+    readonly kind: ZeropsToolKind;
+    readonly name: string;
+    readonly location?: string;
+  }): Promise<{ readonly project: ZeropsProject }> {
+    const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
+      method: "POST",
+      body: JSON.stringify(
+        buildCreateProjectBody({
+          clientId: input.clientId,
+          name: input.name,
+          ...(input.location ? { location: input.location } : {}),
+          tagList: [formatToolTag(input.kind)],
+        }),
+      ),
+    });
+
+    const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
+    if (region === null) {
+      throw new ZeropsApiError(
+        "Zerops did not say which region the project was created in.",
+        "unexpected",
+      );
+    }
+
+    await this.importServicesIntoProject(project.id, buildGiteaImportYaml(region));
+    return { project };
   }
 
   /** Locations the selected organization may place a new project in. */
@@ -806,6 +877,8 @@ export class ZeropsApiClient {
     readonly location?: string;
     readonly zcpVersion?: string;
     readonly agents?: ReadonlyArray<ZeropsAgentType>;
+    /** The group this environment joins, and what it is for (`groups.ts`). */
+    readonly group?: { readonly groupId: string; readonly role?: ZeropsEnvironmentRole };
   }): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
     const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
       method: "POST",
@@ -814,6 +887,14 @@ export class ZeropsApiClient {
           clientId: input.clientId,
           name: input.name,
           ...(input.location ? { location: input.location } : {}),
+          ...(input.group
+            ? {
+                tagList: withZeropsGroupTags([], {
+                  groupId: input.group.groupId,
+                  ...(input.group.role ? { role: input.group.role } : {}),
+                }),
+              }
+            : {}),
         }),
       ),
     });
