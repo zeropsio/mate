@@ -93,6 +93,7 @@ import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons
 import { resolveMarkdownLinkPresentation } from "@t3tools/mobile-markdown-text/links";
 import {
   deriveThreadFeedPresentation,
+  isContextCompactionActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
 } from "../../lib/threadActivity";
@@ -1020,6 +1021,29 @@ function renderFeedEntry(
         onlyToolActivities={entry.onlyToolActivities}
         onToggle={() => props.onToggleWorkGroup(entry.groupId)}
       />
+    );
+  }
+
+  if (entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) {
+    const label = entry.activities[0]!.summary;
+    return (
+      <View
+        accessible
+        accessibilityLabel={label}
+        className="mb-3 flex-row items-center gap-3 px-1 py-1"
+      >
+        <View className="h-px flex-1 bg-adaptive-neutral-200-a80-white-a8" />
+        <View className="shrink-0 flex-row items-center gap-1.5">
+          <SymbolView
+            name="arrow.down.right.and.arrow.up.left"
+            size={12}
+            tintColor={iconSubtleColor}
+            type="monochrome"
+          />
+          <Text className="font-t3-medium text-xs text-foreground-muted">{label}</Text>
+        </View>
+        <View className="h-px flex-1 bg-adaptive-neutral-200-a80-white-a8" />
+      </View>
     );
   }
 
@@ -1990,6 +2014,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         case "working":
           return workingRowHeight;
         case "activity-group":
+          if (isContextCompactionActivityGroup(entry)) {
+            return undefined;
+          }
           // Expanded rows append a variable detail block — fall back to
           // measurement for those groups.
           return entry.activities.some((activity) => expandedWorkRows[activity.id])

@@ -12,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import * as Cause from "effect/Cause";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { scopedThreadKey } from "../lib/scopedEntities";
@@ -42,16 +42,12 @@ import {
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
 import {
+  dispatchingQueuedMessageIdAtom,
   editingQueuedMessageIdsAtom,
   useThreadOutboxMessages,
   useThreadOutboxShellStatuses,
 } from "./use-thread-outbox";
 import { useRemoteConnectionStatus } from "./use-remote-environment-registry";
-
-export const dispatchingQueuedMessageIdAtom = Atom.make<MessageId | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("mobile:thread-outbox:dispatching-message-id"),
-);
 
 function beginDispatchingQueuedMessage(queuedMessageId: MessageId): void {
   appAtomRegistry.set(dispatchingQueuedMessageIdAtom, queuedMessageId);

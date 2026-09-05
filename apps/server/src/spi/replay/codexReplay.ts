@@ -102,6 +102,10 @@ class ReplayCodexRuntime implements CodexSessionRuntimeShape {
     return Effect.void;
   }
 
+  get compactThread(): Effect.Effect<void> {
+    return Effect.void;
+  }
+
   get readThread(): Effect.Effect<CodexThreadSnapshot> {
     return Effect.succeed({ threadId: "spi-replay-thread", turns: [] });
   }

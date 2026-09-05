@@ -217,6 +217,12 @@ export type MessagesTimelineRow =
       expanded: boolean;
     }
   | {
+      kind: "context-compaction";
+      id: string;
+      createdAt: string;
+      label: string;
+    }
+  | {
       kind: "message";
       id: string;
       createdAt: string;
@@ -616,8 +622,13 @@ function deriveTurnFolds(input: {
         continue;
       }
       // Agent-spawn CTA rows never fold: workflows outlive their launching
-      // turn.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+      // turn (dynamic spawns, background execution), and folding the CTA
+      // when the turn settles makes a still-running fleet invisible.
+      if (
+        entry.kind === "work" &&
+        (entry.entry.agentSpawn !== undefined ||
+          entry.entry.sourceActivityKind === "context-compaction")
+      ) {
         continue;
       }
       // Operation cards never fold either: they are the durable outcomes a
@@ -791,6 +802,7 @@ export function deriveMessagesTimelineRows(input: {
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
       entry.entry.agentSpawn !== undefined ||
+      entry.entry.sourceActivityKind === "context-compaction" ||
       entry.entry.tone === "error" ||
       !workLogEntryIsToolLike(entry.entry)
     ) {
@@ -879,6 +891,19 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (
+      timelineEntry.kind === "work" &&
+      timelineEntry.entry.sourceActivityKind === "context-compaction"
+    ) {
+      nextRows.push({
+        kind: "context-compaction",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        label: timelineEntry.entry.label,
+      });
+      continue;
+    }
+
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
       let cursor = index + 1;
@@ -888,6 +913,7 @@ export function deriveMessagesTimelineRows(input: {
           !nextEntry ||
           // An "operation" row (like any other non-"work" kind) ends the run.
           nextEntry.kind !== "work" ||
+          nextEntry.entry.sourceActivityKind === "context-compaction" ||
           activeWorkEntries.has(nextEntry) ||
           collapsedEntries.has(nextEntry) ||
           foldsByAnchorEntry.has(nextEntry)
@@ -1136,6 +1162,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "turn-fold": {
       const bf = b as typeof a;
       return a.createdAt === bf.createdAt && a.label === bf.label && a.expanded === bf.expanded;
+    }
+
+    case "context-compaction": {
+      const bc = b as typeof a;
+      return a.createdAt === bc.createdAt && a.label === bc.label;
     }
 
     case "proposed-plan":
