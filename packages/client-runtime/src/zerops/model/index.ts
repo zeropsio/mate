@@ -1,8 +1,4 @@
-export {
-  partitionZeropsActivities,
-  normalizedToolName,
-  type ZeropsPartition,
-} from "./partition.ts";
+export { normalizedToolName } from "./partition.ts";
 export { compareCallRows, compareAnchors } from "./order.ts";
 export { collectZeropsCalls } from "./calls.ts";
 export {

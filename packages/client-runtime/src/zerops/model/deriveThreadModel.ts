@@ -10,7 +10,6 @@ import type { OrchestrationThreadActivity, ZeropsLifecycle } from "@t3tools/cont
 import { collectZeropsCalls } from "./calls.ts";
 import { compareAnchors } from "./order.ts";
 import { reduceZeropsOperations } from "./operations.ts";
-import { partitionZeropsActivities } from "./partition.ts";
 import { composeSession } from "./session.ts";
 import type {
   ZeropsCall,
@@ -41,8 +40,8 @@ export interface ZeropsThreadModel {
 
 export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsThreadModel {
   const runningTurnId = input.runningTurnId ?? null;
-  const { zeropsActivityIds } = partitionZeropsActivities(input.activities);
   const calls = collectZeropsCalls(input.activities, runningTurnId);
+  const zeropsActivityIds = new Set<string>(calls.flatMap((call) => [...call.rowIds]));
   const { operations, genericCalls } = reduceZeropsOperations(calls);
 
   const entries: ZeropsTimelineEntry[] = [
