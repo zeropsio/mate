@@ -91,6 +91,7 @@ export {
   type ZeropsRecipeStore,
 } from "./recipeStore.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
+export { recipeFromProjectExport, type ExportedRecipe } from "./recipeExport.ts";
 export {
   deriveGiteaState,
   formatToolTag,

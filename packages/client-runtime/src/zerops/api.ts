@@ -620,6 +620,17 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /project/{id}/export` — the platform's own import YAML for a live
+   * project, `project:` block, containers and vaults included (measured
+   * 2026-09-05). Never a recipe as returned: `recipeFromProjectExport` is the
+   * only thing that may read it, and it strips the secrets first.
+   */
+  async exportProject(projectId: string): Promise<string> {
+    const body = await this.#request<{ readonly yaml?: string }>(`/project/${projectId}/export`);
+    return body.yaml ?? "";
+  }
+
+  /**
    * `PUT /project/{id}` with the agent's name in `mate:bot:` and every other
    * tag kept — the write replaces the list wholesale, so this is a
    * read-modify-write like `updateProjectGroupTags`, and it goes through
