@@ -111,6 +111,100 @@ export const MATE_MARK = {
   eyeHeight: 10.592,
 } as const;
 
+/**
+ * The live mark's grid — identity v1's own derivation, in the logo's units.
+ *
+ * Every number below is measured from the logo rather than chosen: the stroke
+ * `S` is the wall thickness, the window `XL..XR` is five columns wide
+ * (¾ margin · eye · 1½ gap · eye · ¾ margin), and the eye unit `U` is one of
+ * those columns. `MATE_MARK`'s flat eye rectangles fall out of the same
+ * arithmetic, which `brand.test.ts` pins — so the still favicon and the live
+ * mark can never drift apart.
+ *
+ * Held in logo units, not identity v1's 100-box: the mark already renders in
+ * a `0 0 44 52` viewBox here, and rescaling would have moved the favicon.
+ */
+const MARK_STROKE = 7.9;
+const WINDOW = { xl: 8.36, xr: 34.84, yb: 42.75 } as const;
+/** The mark's centre in path space (`logo.svg` carries a translate(-.46,-.44)). */
+const MARK_CENTRE = { x: 21.59, y: 25.68 } as const;
+const EYE_UNIT = (WINDOW.xr - WINDOW.xl) / 5;
+const EYE_CENTRE_Y = MARK_CENTRE.y - 0.25 * EYE_UNIT;
+
+const COS30 = Math.cos(Math.PI / 6);
+const SIN30 = 0.5;
+/** Where the left slot's lower edge meets the inner wall: the band's upper edge. */
+const BAND_ANCHOR = { x: 8.5, y: 28.62 } as const;
+/** Axis distance from the anchor to the centre cut. */
+const BAND_CENTRE = (MARK_CENTRE.x - BAND_ANCHOR.x) / COS30;
+
+/** A point `t` along the band's axis and `k` across it. */
+function bandPoint(t: number, k: number): readonly [number, number] {
+  return [BAND_ANCHOR.x + t * COS30 + k * SIN30, BAND_ANCHOR.y - t * SIN30 + k * COS30];
+}
+
+function bandQuad(t0: number, t1: number): string {
+  const points = [
+    bandPoint(t0, 0),
+    bandPoint(t1, 0),
+    bandPoint(t1, MARK_STROKE),
+    bandPoint(t0, MARK_STROKE),
+  ];
+  return `M${points.map(([x, y]) => `${round(x)},${round(y)}`).join(" L")} Z`;
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * How far each lid travels, as `[openness, width, lift in eye units]`.
+ * `sleep`/`blink`/`closed` shut the eye; `needs`/`surprise` widen and lift it.
+ */
+export const MATE_MARK_LIDS = {
+  idle: [1, 1, 0],
+  working: [0.5, 1, 0.2],
+  needs: [1.12, 1.12, -0.13],
+  surprise: [1.12, 1.12, -0.13],
+  done: [1, 1, 0],
+  blink: [0, 1, 0],
+  sleep: [0, 1, 0],
+  closed: [0, 1, 0],
+} as const;
+
+export type MateMarkState = keyof typeof MATE_MARK_LIDS;
+
+export const MATE_MARK_LIVE = {
+  /** The extruded side wall is one stroke deep; the turn is capped at 5°. */
+  depth: MARK_STROKE,
+  tilt: 5,
+  /** Side-wall fill, so the extrusion reads as a turn rather than a shadow. */
+  side: { light: "#2d716b", dark: "#8ad4cb" },
+  eyeUnit: EYE_UNIT,
+  /** Eye centres, unlike `MATE_MARK.eyeXs` which are the rectangles' left edges. */
+  eyeCentres: [WINDOW.xl + 1.25 * EYE_UNIT, WINDOW.xr - 1.25 * EYE_UNIT] as const,
+  eyeCentreY: EYE_CENTRE_Y,
+  /** The mouth sits 60% of the way from the eye line to the window floor. */
+  mouth: {
+    y: EYE_CENTRE_Y + 0.6 * (WINDOW.yb - EYE_CENTRE_Y),
+    r: 0.42 * EYE_UNIT,
+    strokeWidth: 0.28 * EYE_UNIT,
+  },
+  /**
+   * The band the Zerops mark has pulled out, drawn back in as the one moving
+   * part: at rest it sits in place and the mark IS the Zerops logo; awake it
+   * retracts into the walls along its own 30° and the eyes open behind it.
+   * The halves overlap by 1.2 at rest so the seam never shows.
+   */
+  band: {
+    left: bandQuad(-16, BAND_CENTRE + 0.6),
+    right: bandQuad(BAND_CENTRE - 0.6, 46),
+    travel: 20,
+    cos30: COS30,
+    sin30: SIN30,
+  },
+} as const;
+
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",
   paths: [

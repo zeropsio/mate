@@ -8,6 +8,9 @@ import {
   FALLBACK_PROVIDER_ACCENT,
   FLAT_CARD_BORDER,
   ICON_MAP,
+  MATE_MARK,
+  MATE_MARK_LIDS,
+  MATE_MARK_LIVE,
   IDENTITY,
   MINT_PANEL,
   PROVIDER_ACCENT_SWATCHES,
@@ -274,5 +277,51 @@ describe("Zerops brand tokens", () => {
       },
       draftHero: { fontSize: 32, fontWeight: 400 },
     });
+  });
+});
+
+/**
+ * The live mark and the still favicon are two renderings of one grid. These
+ * pin the derived geometry against `MATE_MARK`'s hand-written constants, so a
+ * change to either side that moves an eye fails here rather than shipping a
+ * mark whose animated and static forms disagree.
+ */
+describe("MATE_MARK_LIVE", () => {
+  it("derives the eye unit that MATE_MARK's rectangles are drawn from", () => {
+    expect(MATE_MARK_LIVE.eyeUnit).toBeCloseTo(MATE_MARK.eyeWidth, 3);
+    expect(MATE_MARK.eyeHeight).toBeCloseTo(2 * MATE_MARK_LIVE.eyeUnit, 3);
+  });
+
+  it("puts its eye centres on MATE_MARK's rectangles", () => {
+    const [left, right] = MATE_MARK_LIVE.eyeCentres;
+    expect(left - MATE_MARK.eyeWidth / 2).toBeCloseTo(MATE_MARK.eyeXs[0], 3);
+    expect(right - MATE_MARK.eyeWidth / 2).toBeCloseTo(MATE_MARK.eyeXs[1], 3);
+  });
+
+  it("puts the eye line on MATE_MARK's rectangle top", () => {
+    expect(MATE_MARK_LIVE.eyeCentreY - MATE_MARK.eyeHeight / 2).toBeCloseTo(MATE_MARK.eyeY, 3);
+  });
+
+  it("keeps the mouth inside the window, below the eyes", () => {
+    expect(MATE_MARK_LIVE.mouth.y).toBeGreaterThan(MATE_MARK_LIVE.eyeCentreY);
+    expect(MATE_MARK_LIVE.mouth.y).toBeLessThan(42.75);
+  });
+
+  it("draws both band halves as closed quads that overlap at rest", () => {
+    for (const half of [MATE_MARK_LIVE.band.left, MATE_MARK_LIVE.band.right]) {
+      expect(half.startsWith("M")).toBe(true);
+      expect(half.endsWith(" Z")).toBe(true);
+      expect(half.split(" L")).toHaveLength(4);
+    }
+    expect(MATE_MARK_LIVE.band.left).not.toBe(MATE_MARK_LIVE.band.right);
+  });
+
+  it("gives every lid state an openness, a width and a lift", () => {
+    for (const [state, lid] of Object.entries(MATE_MARK_LIDS)) {
+      expect(lid, state).toHaveLength(3);
+    }
+    expect(MATE_MARK_LIDS.sleep[0]).toBe(0);
+    expect(MATE_MARK_LIDS.idle[0]).toBe(1);
+    expect(MATE_MARK_LIDS.surprise[0]).toBeGreaterThan(1);
   });
 });

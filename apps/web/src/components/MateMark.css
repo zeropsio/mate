@@ -1,71 +1,44 @@
+/*
+ * The mark's own colours are brand geometry, not theme: they come from
+ * `MATE_MARK` in shared/brand.ts, and the favicon generator inlines the same
+ * values. Only the side wall needs a light/dark pair here, because it is the
+ * one surface drawn behind the mark rather than on it.
+ */
+.mate-mark-root {
+  display: inline-flex;
+  --mate-mark-side: #2d716b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mate-mark-root {
+    --mate-mark-side: #8ad4cb;
+  }
+}
+
 .mate-mark {
   display: block;
+  height: 100%;
+  width: auto;
+  /* The turn rotates the slab past its own box; clipping it would flatten
+     exactly the edge the extrusion exists to show. */
   overflow: visible;
+  transform-origin: 50% 50%;
+  will-change: transform;
   color: var(--foreground);
 }
 
-.mate-mark-gaze {
-  transition: transform 180ms ease-out;
+.mate-mark-sides {
+  fill: var(--mate-mark-side);
 }
 
-.mate-mark-band-left {
-  transform: translateX(-20px);
-}
-
-.mate-mark-band-right {
-  transform: translateX(20px);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .mate-mark-playful .mate-mark-eyes {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: mate-eyes-wake 650ms ease-out both;
-  }
-
-  .mate-mark-playful .mate-mark-band-left {
-    animation: mate-band-left-wake 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .mate-mark-playful .mate-mark-band-right {
-    animation: mate-band-right-wake 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-}
-
+/*
+ * Reduced motion: the driver already holds the mark open, still and forward —
+ * it never starts the band, the gaze, the tilt or the blink. This only stops
+ * the browser from interpolating the transform the driver leaves behind.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .mate-mark-gaze {
-    transform: none !important;
+  .mate-mark {
     transition: none;
-  }
-}
-
-@keyframes mate-eyes-wake {
-  0%,
-  20% {
-    transform: scaleY(0);
-  }
-  75% {
-    transform: scaleY(1.06);
-  }
-  100% {
-    transform: scaleY(1);
-  }
-}
-
-@keyframes mate-band-left-wake {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-20px);
-  }
-}
-
-@keyframes mate-band-right-wake {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(20px);
+    will-change: auto;
   }
 }
