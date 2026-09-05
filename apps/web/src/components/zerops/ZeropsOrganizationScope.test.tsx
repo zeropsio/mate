@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
-import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
+import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 
 const organizations: ReadonlyArray<ZeropsOrganization> = [
   {
@@ -22,16 +22,16 @@ const organizations: ReadonlyArray<ZeropsOrganization> = [
 ];
 
 describe("ZeropsOrganizationScope", () => {
-  it("requires an explicit organization choice for a new multi-account session", () => {
+  it("is the page while no organization is chosen: a title and one card per membership", () => {
     const markup = renderToStaticMarkup(
       <ZeropsOrganizationScope
-        activeOrganization={null}
         organizations={organizations}
         status="needs-selection"
         onSelect={() => {}}
       />,
     );
 
+    expect(markup).toContain("<h1");
     expect(markup).toContain("Choose an organization");
     expect(markup).toContain("Acme");
     expect(markup).toContain("Owner");
@@ -39,24 +39,35 @@ describe("ZeropsOrganizationScope", () => {
     expect(markup).toContain("Developer");
     expect(markup.match(/data-zerops-organization-choice/g)).toHaveLength(2);
     expect(markup).toContain("data-zerops-organization-card");
-    expect(markup).toContain("max-w-3xl");
-    expect(markup).toContain("min-h-20");
+    // The grid fills the page's width; it is not a narrow column in a wide frame.
+    expect(markup).toContain("sm:grid-cols-2 lg:grid-cols-3");
+    expect(markup).not.toContain("max-w-3xl");
     expect(markup).not.toContain('data-slot="button"');
+    // The bar above already says whose product this is.
+    expect(markup).not.toContain("micro-label");
   });
 
-  it("shows the active membership as a switchable account scope", () => {
+  it("says when there is nothing to choose from", () => {
     const markup = renderToStaticMarkup(
-      <ZeropsOrganizationScope
+      <ZeropsOrganizationScope organizations={[]} status="needs-selection" onSelect={() => {}} />,
+    );
+    expect(markup).toContain("No active Zerops organizations.");
+  });
+});
+
+describe("ZeropsOrganizationSwitcher", () => {
+  it("shows the active membership as a switchable control with no label of its own", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsOrganizationSwitcher
         activeOrganization={organizations[1]!}
         organizations={organizations}
-        status="selected"
         onSelect={() => {}}
       />,
     );
 
-    expect(markup).toContain("Organization");
     expect(markup).toContain("Jan Saidl");
     expect(markup).toContain("Developer");
     expect(markup).toContain('aria-label="Active Zerops organization"');
+    expect(markup).not.toContain("micro-label");
   });
 });

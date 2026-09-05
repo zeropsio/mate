@@ -479,6 +479,8 @@
       "id": "zerops-landing",
       "title": "Zerops hosted landing",
       "components": [
+        "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
         "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx"
       ],
@@ -536,7 +538,11 @@
       "docs": {
         "none": "No docs/user page documents the hosted Zerops landing yet."
       },
-      "tests": ["apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"],
+      "tests": [
+        "apps/web/src/components/zerops/landing/ZeropsAccountControl.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedFrame.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"
+      ],
       "untested": "ZeropsLandingShell has focused markup tests, but ZeropsHostedLanding orchestration has no component test.",
       "captures": []
     },

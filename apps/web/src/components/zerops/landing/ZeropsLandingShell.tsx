@@ -14,10 +14,9 @@ import type { FormEvent, ReactNode } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
-import { SidebarInset } from "../../ui/sidebar";
 import { Spinner } from "../../ui/spinner";
-import { WorkspacePageHeader } from "../../WorkspacePageHeader";
 import { MateMark } from "../../MateMark";
+import { ZeropsHostedFrame } from "./ZeropsHostedFrame";
 
 export function ZeropsLandingShell({
   title,
@@ -31,40 +30,32 @@ export function ZeropsLandingShell({
   readonly onManualConnect?: (() => void) | undefined;
 }) {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-        <WorkspacePageHeader className="border-b border-border">
-          <span className="text-sm font-medium text-foreground">Zerops Mate</span>
-        </WorkspacePageHeader>
-
-        <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
-          <div className="w-full max-w-md space-y-6">
-            <MateMark playful className="mx-auto h-20 w-auto" />
-            <div className="space-y-1 text-center">
-              <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-              <p className="text-sm text-muted-foreground">{description}</p>
-            </div>
-
-            <div className="rounded-3xl border border-border/55 bg-card/20 px-6 py-6 shadow-sm/5">
-              {children}
-            </div>
-
-            {onManualConnect === undefined ? null : (
-              <p className="text-center text-xs text-muted-foreground">
-                Not using Zerops?{" "}
-                <button
-                  type="button"
-                  className="underline underline-offset-2 hover:text-foreground"
-                  onClick={onManualConnect}
-                >
-                  Connect a backend manually
-                </button>
-              </p>
-            )}
-          </div>
+    <ZeropsHostedFrame centered>
+      <div className="w-full max-w-md space-y-6">
+        <MateMark playful className="mx-auto h-20 w-auto" />
+        <div className="space-y-1 text-center">
+          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
+
+        <div className="rounded-3xl border border-border/55 bg-card/20 px-6 py-6 shadow-sm/5">
+          {children}
+        </div>
+
+        {onManualConnect === undefined ? null : (
+          <p className="text-center text-xs text-muted-foreground">
+            Not using Zerops?{" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-foreground"
+              onClick={onManualConnect}
+            >
+              Connect a backend manually
+            </button>
+          </p>
+        )}
       </div>
-    </SidebarInset>
+    </ZeropsHostedFrame>
   );
 }
 

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   retryZeropsProjectConnection,
-  ZeropsProjectScopeHeader,
+  ZeropsEnvironmentsHeader,
 } from "./ZeropsProjectsPage";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 
@@ -58,7 +58,9 @@ describe("same-origin Zerops identity bootstrap", () => {
   });
 
   it("exposes a compact account header and preserves selection behavior", () => {
-    const markup = renderToStaticMarkup(createElement(ZeropsProjectScopeHeader));
+    const markup = renderToStaticMarkup(
+      createElement(ZeropsEnvironmentsHeader, { onCreate: () => {} }),
+    );
     const attempted = { current: false };
     const connect = vi.fn();
     const input = {
@@ -75,9 +77,13 @@ describe("same-origin Zerops identity bootstrap", () => {
     autoConnectServedZeropsEnvironment(input);
 
     expect(markup).toContain('data-zerops-project-scope="true"');
-    expect(markup).toContain('data-zerops-primitive="micro-label"');
-    expect(markup).toContain("Zerops");
+    expect(markup).toContain("<h1");
     expect(markup).toContain("Environments");
+    // The bar above carries the brand; the title row does not repeat it.
+    expect(markup).not.toContain("micro-label");
+    expect(markup).not.toContain(">Zerops<");
+    // The creating action sits in the title row, not under the list.
+    expect(markup).toContain("New environment");
     expect(connect).toHaveBeenCalledTimes(1);
   });
 

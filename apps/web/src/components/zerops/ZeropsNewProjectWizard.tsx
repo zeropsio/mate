@@ -8,7 +8,7 @@
  * picker page rather than duplicated here.
  */
 
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import {
@@ -23,18 +23,18 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
-import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../WorkspacePageContainer";
-import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { isElectron } from "../../env";
+import {
+  WorkspaceBreadcrumb,
+  WorkspaceBreadcrumbItem,
+  WorkspaceBreadcrumbSeparator,
+} from "../WorkspaceBreadcrumb";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { MicroLabel } from "./primitives";
+import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
+import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 import { useZeropsProjectConnection } from "./ZeropsProjectsPage";
@@ -219,7 +219,6 @@ function ZeropsNewProjectContent() {
   ) {
     return (
       <ZeropsOrganizationScope
-        activeOrganization={activeOrganization}
         organizations={organizations}
         status={organizationStatus}
         onSelect={(membershipId) => {
@@ -295,14 +294,8 @@ function ZeropsNewProjectContent() {
     <div className="space-y-6" data-zerops-new-project-step={step}>
       {step === "project" ? (
         <section className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">New project</h2>
-            <p className="text-xs text-muted-foreground">
-              Creates a Zerops project with a Zerops Mate container in it.
-            </p>
-          </div>
           <div className="space-y-1.5">
-            <Label htmlFor="zerops-new-project">Project name</Label>
+            <Label htmlFor="zerops-new-project">Name</Label>
             <Input
               id="zerops-new-project"
               value={name}
@@ -399,25 +392,27 @@ function ZeropsNewProjectContent() {
 
 export function ZeropsNewProjectWizard() {
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <WorkspacePageHeader electron={isElectron}>
-          <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
-            <WorkspaceBreadcrumbItem>Zerops</WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbItem current>New project</WorkspaceBreadcrumbItem>
-          </WorkspaceBreadcrumb>
-        </WorkspacePageHeader>
-
-        <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer width="wide">
-            <div className="space-y-1" data-zerops-project-scope="true">
-              <MicroLabel className="text-muted-foreground">New project</MicroLabel>
-              <h1 className="text-xl font-medium text-foreground">Create a Zerops project</h1>
-            </div>
-            <ZeropsNewProjectContent />
-          </WorkspacePageContainer>
-        </ScrollArea>
+    <ZeropsHostedFrame
+      actions={<ZeropsSessionAccountControl />}
+      breadcrumb={
+        <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
+          <WorkspaceBreadcrumbItem>
+            <Link className="hover:text-foreground" to="/zerops">
+              Environments
+            </Link>
+          </WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbSeparator />
+          <WorkspaceBreadcrumbItem current>New environment</WorkspaceBreadcrumbItem>
+        </WorkspaceBreadcrumb>
+      }
+    >
+      <div className="space-y-1" data-zerops-project-scope="true">
+        <h1 className="text-xl font-medium text-foreground">New environment</h1>
+        <p className="text-sm text-muted-foreground">
+          A Zerops project with a Zerops Mate container in it.
+        </p>
       </div>
-    </SidebarInset>
+      <ZeropsNewProjectContent />
+    </ZeropsHostedFrame>
   );
 }

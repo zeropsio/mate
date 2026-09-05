@@ -86,6 +86,15 @@ function useSidebar() {
   return context;
 }
 
+/**
+ * The sidebar context if there is one. A surface that renders both inside the
+ * app shell and on its own (the Zerops pages) asks this to decide whether the
+ * sidebar already carries the brand, instead of throwing where there is none.
+ */
+function useOptionalSidebar(): SidebarContextProps | null {
+  return React.use(SidebarContext);
+}
+
 function useSidebarVisibility() {
   const { isMobile, open, openMobile } = useSidebar();
   return isMobile ? openMobile : open;
@@ -1010,5 +1019,6 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  useOptionalSidebar,
   useSidebar,
 };

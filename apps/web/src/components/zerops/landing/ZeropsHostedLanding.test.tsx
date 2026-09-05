@@ -1,5 +1,14 @@
+import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+
+vi.mock("@tanstack/react-router", async () => {
+  const { createElement } = await import("react");
+  return {
+    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
+      createElement("a", { href: to, ...props }),
+  };
+});
 
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({

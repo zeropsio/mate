@@ -12,14 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { RotateCcwIcon } from "lucide-react";
 
-import { isElectron } from "../../env";
 import { Button } from "../ui/button";
-import { ScrollArea } from "../ui/scroll-area";
-import { SidebarInset } from "../ui/sidebar";
 import { Spinner } from "../ui/spinner";
-import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../WorkspacePageContainer";
-import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import {
   newestProvisioningCandidate,
   shouldAutoEnterProvisioning,
@@ -53,7 +47,7 @@ import {
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
-import { MicroLabel, Pill, StatusDot } from "./primitives";
+import { Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
   ZeropsEnvironmentCreationDialog,
@@ -74,7 +68,9 @@ import {
   type ZeropsRowAction,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic";
-import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
+import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
+import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
+import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 
 /** One creation in flight, or just finished, on this screen. */
@@ -142,16 +138,29 @@ function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
 }
 
-export function ZeropsProjectScopeHeader() {
+/**
+ * The page's title row. The one creating action sits here, beside the title,
+ * where a reader looks for it — not under a list it has to scroll past.
+ */
+export function ZeropsEnvironmentsHeader({
+  onCreate,
+}: {
+  readonly onCreate?: (() => void) | undefined;
+}) {
   return (
-    <div className="space-y-1" data-zerops-project-scope="true">
-      <MicroLabel className="text-muted-foreground">Zerops</MicroLabel>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <div
+      className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3"
+      data-zerops-project-scope="true"
+    >
+      <div className="min-w-0 space-y-1">
         <h1 className="text-xl font-medium text-foreground">Environments</h1>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Every project in the account, the agent in each one, and what it needs next.
         </p>
       </div>
+      {onCreate === undefined ? null : (
+        <Pill className="shrink-0" label="New environment" onClick={onCreate} />
+      )}
     </div>
   );
 }
@@ -754,7 +763,6 @@ function ZeropsProjectsContent() {
   if (organizationStatus !== "selected" || !activeOrganization) {
     return (
       <ZeropsOrganizationScope
-        activeOrganization={activeOrganization}
         organizations={organizations}
         status={organizationStatus}
         onSelect={(membershipId) => {
@@ -806,15 +814,7 @@ function ZeropsProjectsContent() {
   }
 
   return (
-    <div className="space-y-8">
-      <ZeropsOrganizationScope
-        activeOrganization={activeOrganization}
-        organizations={organizations}
-        status={organizationStatus}
-        onSelect={(membershipId) => {
-          void selectOrganization(membershipId);
-        }}
-      />
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {isLoading ? (
@@ -1093,38 +1093,42 @@ function ZeropsProjectsContent() {
       {toolError === null ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">{toolError}</p>
       )}
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void navigate({ to: "/zerops/new" });
-          }}
-        >
-          New project
-        </Button>
-      </div>
     </div>
   );
 }
 
 export function ZeropsProjectsPage() {
-  return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <WorkspacePageHeader electron={isElectron}>
-          <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
-            <WorkspaceBreadcrumbItem current>Zerops</WorkspaceBreadcrumbItem>
-          </WorkspaceBreadcrumb>
-        </WorkspacePageHeader>
+  const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
+    useZeropsSession();
+  const navigate = useNavigate();
+  const scoped =
+    status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
 
-        <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer width="wide">
-            <ZeropsProjectScopeHeader />
-            <ZeropsProjectsContent />
-          </WorkspacePageContainer>
-        </ScrollArea>
-      </div>
-    </SidebarInset>
+  return (
+    <ZeropsHostedFrame
+      actions={
+        <>
+          {scoped ? (
+            <ZeropsOrganizationSwitcher
+              activeOrganization={activeOrganization}
+              organizations={organizations}
+              onSelect={(membershipId) => {
+                void selectOrganization(membershipId);
+              }}
+            />
+          ) : null}
+          <ZeropsSessionAccountControl />
+        </>
+      }
+    >
+      {scoped ? (
+        <ZeropsEnvironmentsHeader
+          onCreate={() => {
+            void navigate({ to: "/zerops/new" });
+          }}
+        />
+      ) : null}
+      <ZeropsProjectsContent />
+    </ZeropsHostedFrame>
   );
 }

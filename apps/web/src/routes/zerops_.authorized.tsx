@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
+import { ZeropsHostedFrame } from "../components/zerops/landing/ZeropsHostedFrame";
 import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
@@ -99,7 +100,7 @@ function ZeropsHandoverCallback() {
   }, [adoptHandover, navigate, outcome]);
 
   return (
-    <div className="flex min-h-dvh items-center justify-center p-6">
+    <ZeropsHostedFrame centered>
       <div className="w-full max-w-sm space-y-4 text-center">
         {state.kind === "working" ? (
           <>
@@ -129,6 +130,6 @@ function ZeropsHandoverCallback() {
           </>
         )}
       </div>
-    </div>
+    </ZeropsHostedFrame>
   );
 }
