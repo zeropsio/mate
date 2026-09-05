@@ -1,60 +1,45 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
 
+import type { ZeropsOperation, ZeropsSessionView } from "./model/types.ts";
 import { zeropsStripState } from "./strip.ts";
 
-const envelope = (overrides: Record<string, unknown>): ZeropsStateEnvelope =>
+const session = (overrides: Partial<ZeropsSessionView>): ZeropsSessionView => ({ ...overrides });
+
+const attempt = (success: boolean) => ({ success });
+
+const runningOperation = (kicker: string): ZeropsOperation =>
   ({
-    phase: "idle",
-    environment: "container",
-    project: { id: "proj-1", name: "z3-eval" },
-    services: [],
-    generated: "2026-08-28T10:00:00Z",
-    ...overrides,
-  }) as unknown as ZeropsStateEnvelope;
-
-const lifecycle = (overrides: Record<string, unknown>): ZeropsLifecycle =>
-  ({ threadId: "thread-1", recentTools: [], ...overrides }) as unknown as ZeropsLifecycle;
-
-const service = (hostname: string) => ({
-  hostname,
-  typeVersion: "nodejs@22",
-  runtimeClass: "runtime",
-  status: "ACTIVE",
-  bootstrapped: true,
-});
-
-const attempt = (success: boolean) => ({
-  at: "2026-08-28T10:00:00Z",
-  success,
-  iteration: 1,
-});
-
-const runningTool = (toolName: string) => ({
-  toolName,
-  status: "inProgress",
-  at: "2026-08-28T10:00:00Z",
-  itemId: "item-1",
-});
+    key: "op:1",
+    kind: "deploy",
+    phase: "running",
+    anchorAt: "2026-08-28T10:00:00Z",
+    anchorActivityId: "a1",
+    turnId: "t1",
+    subject: "kanbandev",
+    kicker,
+    voice: "Deploying kanbandev.",
+    voiceSource: "mate",
+    statusWord: "Deploying",
+    steps: [],
+    links: [],
+    callIds: ["1"],
+    attempts: 1,
+    hasResult: false,
+  }) as unknown as ZeropsOperation;
 
 describe("zeropsStripState", () => {
-  it("is absent until the thread has an envelope", () => {
-    expect(zeropsStripState(undefined, { pendingUserInput: false })).toBeUndefined();
-    expect(zeropsStripState(lifecycle({}), { pendingUserInput: false })).toBeUndefined();
+  it("is absent until the thread has a session phase", () => {
+    expect(zeropsStripState(undefined, undefined, false)).toBeUndefined();
+    expect(zeropsStripState(session({}), undefined, false)).toBeUndefined();
   });
 
   // ---- the §7 journey, line by line ----
 
   it("reads infrastructure ready with a service count once bootstrap closes", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "idle",
-          idleScenario: "bootstrapped",
-          services: [service("kanbandev"), service("kanbanstage"), service("db")],
-        }),
-      }),
-      { pendingUserInput: false },
+      session({ phase: "idle", idleScenario: "bootstrapped", serviceCount: 3 }),
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("infrastructure ready · 3 services");
@@ -63,14 +48,9 @@ describe("zeropsStripState", () => {
 
   it("counts one service without pluralising", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "idle",
-          idleScenario: "bootstrapped",
-          services: [service("app")],
-        }),
-      }),
-      { pendingUserInput: false },
+      session({ phase: "idle", idleScenario: "bootstrapped", serviceCount: 1 }),
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("infrastructure ready · 1 service");
@@ -78,18 +58,16 @@ describe("zeropsStripState", () => {
 
   it("reads developing <service> while a work session has no attempts yet", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "develop-active",
-          services: [service("kanbandev")],
-          workSession: {
-            intent: "build a kanban",
-            services: ["kanbandev"],
-            createdAt: "2026-08-28T10:00:00Z",
-          },
-        }),
+      session({
+        phase: "develop-active",
+        work: {
+          key: "work:2026-08-28T10:00:00Z",
+          intent: "build a kanban",
+          services: ["kanbandev"],
+        },
       }),
-      { pendingUserInput: false },
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("developing kanbandev");
@@ -98,20 +76,18 @@ describe("zeropsStripState", () => {
 
   it("reads deploy and verify per service once attempts are recorded", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "develop-active",
-          services: [service("kanbandev"), service("kanbanstage")],
-          workSession: {
-            intent: "build a kanban",
-            services: ["kanbandev", "kanbanstage"],
-            createdAt: "2026-08-28T10:00:00Z",
-            deploys: { kanbandev: [attempt(true)] },
-            verifies: { kanbandev: [attempt(true)] },
-          },
-        }),
+      session({
+        phase: "develop-active",
+        work: {
+          key: "work:2026-08-28T10:00:00Z",
+          intent: "build a kanban",
+          services: ["kanbandev", "kanbanstage"],
+          deploys: { kanbandev: [attempt(true)] },
+          verifies: { kanbandev: [attempt(true)] },
+        },
       }),
-      { pendingUserInput: false },
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("kanbandev deployed ✓ verified ✓ · kanbanstage pending");
@@ -119,29 +95,24 @@ describe("zeropsStripState", () => {
 
   it("says a deploy failed rather than calling it done", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "develop-active",
-          services: [service("kanbandev")],
-          workSession: {
-            intent: "build a kanban",
-            services: ["kanbandev"],
-            createdAt: "2026-08-28T10:00:00Z",
-            deploys: { kanbandev: [attempt(true), attempt(false)] },
-          },
-        }),
+      session({
+        phase: "develop-active",
+        work: {
+          key: "work:2026-08-28T10:00:00Z",
+          intent: "build a kanban",
+          services: ["kanbandev"],
+          deploys: { kanbandev: [attempt(true), attempt(false)] },
+        },
       }),
-      { pendingUserInput: false },
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("kanbandev deploy failed");
   });
 
   it("reads task complete when the session auto-closed", () => {
-    const state = zeropsStripState(
-      lifecycle({ envelope: envelope({ phase: "develop-closed-auto" }) }),
-      { pendingUserInput: false },
-    );
+    const state = zeropsStripState(session({ phase: "develop-closed-auto" }), undefined, false);
 
     expect(state?.label).toBe("task complete");
     expect(state?.tone).toBe("done");
@@ -152,38 +123,28 @@ describe("zeropsStripState", () => {
   /** A question outranks everything: the agent is blocked until it is answered. */
   it("says waiting for you when a question is pending, whatever the phase", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({ phase: "develop-active" }),
-        recentTools: [runningTool("zerops_deploy")],
-      }),
-      { pendingUserInput: true },
+      session({ phase: "develop-active" }),
+      runningOperation("Deploy · kanbandev"),
+      true,
     );
 
     expect(state?.label).toBe("waiting for you");
     expect(state?.tone).toBe("waiting");
   });
 
-  it("shows the running tool ahead of the phase wording", () => {
+  it("shows the running operation ahead of the phase wording", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({ phase: "develop-active" }),
-        recentTools: [runningTool("zerops_deploy")],
-      }),
-      { pendingUserInput: false },
+      session({ phase: "develop-active" }),
+      runningOperation("Deploy · kanbandev"),
+      false,
     );
 
-    expect(state?.label).toBe("zerops_deploy running");
+    expect(state?.label).toBe("Deploy · kanbandev running");
     expect(state?.tone).toBe("active");
   });
 
-  it("falls back to the phase once the tool finishes", () => {
-    const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({ phase: "develop-closed-auto" }),
-        recentTools: [{ ...runningTool("zerops_deploy"), status: "completed" }],
-      }),
-      { pendingUserInput: false },
-    );
+  it("falls back to the phase once no operation is running", () => {
+    const state = zeropsStripState(session({ phase: "develop-closed-auto" }), undefined, false);
 
     expect(state?.label).toBe("task complete");
   });
@@ -191,16 +152,28 @@ describe("zeropsStripState", () => {
   // ---- the other phases ----
 
   it("reads the remaining known phases", () => {
-    const read = (overrides: Record<string, unknown>) =>
-      zeropsStripState(lifecycle({ envelope: envelope(overrides) }), { pendingUserInput: false })
-        ?.label;
+    const read = (overrides: Partial<ZeropsSessionView>) =>
+      zeropsStripState(session(overrides), undefined, false)?.label;
 
     expect(
-      read({ phase: "bootstrap-active", bootstrap: { route: "classic", step: "provision" } }),
+      read({
+        phase: "bootstrap-active",
+        bootstrap: {
+          key: "bootstrap:1",
+          sessionIds: [],
+          step: "provision",
+          completed: 1,
+          total: 3,
+          phase: "running",
+        },
+      }),
     ).toBe("setting up infrastructure · provision");
-    expect(read({ phase: "bootstrap-active", bootstrap: { route: "classic" } })).toBe(
-      "setting up infrastructure",
-    );
+    expect(
+      read({
+        phase: "bootstrap-active",
+        bootstrap: { key: "bootstrap:1", sessionIds: [], completed: 0, total: 3, phase: "running" },
+      }),
+    ).toBe("setting up infrastructure");
     expect(read({ phase: "idle", idleScenario: "empty" })).toBe("no services yet");
     expect(read({ phase: "strategy-setup" })).toBe("choosing how to deploy");
     expect(read({ phase: "export-active" })).toBe("exporting the project");
@@ -213,10 +186,7 @@ describe("zeropsStripState", () => {
    * the strip or, worse, being mistaken for one of the known ones.
    */
   it("renders a phase this build has never seen, rather than nothing", () => {
-    const state = zeropsStripState(
-      lifecycle({ envelope: envelope({ phase: "migration-active" }) }),
-      { pendingUserInput: false },
-    );
+    const state = zeropsStripState(session({ phase: "migration-active" }), undefined, false);
 
     expect(state?.label).toBe("migration-active");
     expect(state?.tone).toBe("idle");
@@ -224,23 +194,20 @@ describe("zeropsStripState", () => {
 
   /**
    * A thread reopened after compaction has one `status` envelope and nothing
-   * else — no work session, no recent tools. It must still read correctly.
+   * else — no work session, no running operation. It must still read correctly.
    */
-  it("reads a compaction-reopened thread from a bare status envelope", () => {
+  it("reads a compaction-reopened thread from a bare session", () => {
     const state = zeropsStripState(
-      lifecycle({
-        envelope: envelope({
-          phase: "develop-active",
-          services: [service("kanbandev")],
-          workSession: {
-            intent: "build a kanban",
-            services: ["kanbandev"],
-            createdAt: "2026-08-28T10:00:00Z",
-          },
-        }),
-        recentTools: [],
+      session({
+        phase: "develop-active",
+        work: {
+          key: "work:2026-08-28T10:00:00Z",
+          intent: "build a kanban",
+          services: ["kanbandev"],
+        },
       }),
-      { pendingUserInput: false },
+      undefined,
+      false,
     );
 
     expect(state?.label).toBe("developing kanbandev");

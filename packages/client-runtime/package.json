@@ -219,6 +219,10 @@
       "types": "./src/zerops/errors.ts",
       "default": "./src/zerops/errors.ts"
     },
+    "./zerops/model": {
+      "types": "./src/zerops/model/index.ts",
+      "default": "./src/zerops/model/index.ts"
+    },
     "./zerops/operations": {
       "types": "./src/zerops/operations/index.ts",
       "default": "./src/zerops/operations/index.ts"

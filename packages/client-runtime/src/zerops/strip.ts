@@ -1,15 +1,16 @@
 /**
- * The lifecycle strip's wording, projected from the envelope.
+ * The lifecycle strip's wording, projected from the model.
  *
- * This is a projection, never a state machine: the envelope IS the state, and
- * every phrase here is a reading of it plus two things the envelope cannot
- * know — whether a question is waiting for the user, and whether a tool is
- * running right now.
+ * This is a projection, never a state machine: `session` and `running` ARE
+ * the state (composed by `model/session.ts` and `model/deriveThreadModel.ts`
+ * from the envelope and the call ledger), and every phrase here is a reading
+ * of them plus the one thing neither can know — whether a question is
+ * waiting for the user.
  *
  * The phrases are the ones in the brief's journey table (§7), so they are
  * asserted verbatim in `strip.test.ts` rather than approximated.
  */
-import type { ZeropsLifecycle, ZeropsStateEnvelope, ZeropsWorkSession } from "@t3tools/contracts";
+import type { ZeropsOperation, ZeropsSessionView, ZeropsWorkAttempt } from "./model/types.ts";
 
 export type ZeropsStripTone = "idle" | "active" | "waiting" | "done";
 
@@ -21,7 +22,7 @@ export interface ZeropsStripState {
 const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 const lastAttemptSucceeded = (
-  attempts: ReadonlyArray<{ readonly success: boolean }> | undefined,
+  attempts: ReadonlyArray<ZeropsWorkAttempt> | undefined,
 ): boolean | undefined =>
   attempts === undefined || attempts.length === 0
     ? undefined
@@ -34,11 +35,11 @@ const lastAttemptSucceeded = (
  * deployed, and one that deployed and then failed is broken. Reading the whole
  * history would let an early success hide a current failure.
  */
-function workSessionLabel(session: ZeropsWorkSession): string {
-  return session.services
+function workSessionLabel(work: NonNullable<ZeropsSessionView["work"]>): string {
+  return work.services
     .map((hostname) => {
-      const deployed = lastAttemptSucceeded(session.deploys?.[hostname]);
-      const verified = lastAttemptSucceeded(session.verifies?.[hostname]);
+      const deployed = lastAttemptSucceeded(work.deploys?.[hostname]);
+      const verified = lastAttemptSucceeded(work.verifies?.[hostname]);
       if (deployed === false) {
         return `${hostname} deploy failed`;
       }
@@ -53,10 +54,10 @@ function workSessionLabel(session: ZeropsWorkSession): string {
     .join(" · ");
 }
 
-function phaseState(envelope: ZeropsStateEnvelope): ZeropsStripState {
-  switch (envelope.phase) {
+function phaseState(session: ZeropsSessionView): ZeropsStripState {
+  switch (session.phase) {
     case "bootstrap-active": {
-      const step = envelope.bootstrap?.step;
+      const step = session.bootstrap?.step;
       return {
         tone: "active",
         label:
@@ -66,25 +67,22 @@ function phaseState(envelope: ZeropsStateEnvelope): ZeropsStripState {
       };
     }
     case "idle":
-      return envelope.idleScenario === "empty"
+      return session.idleScenario === "empty"
         ? { tone: "idle", label: "no services yet" }
         : {
             tone: "idle",
-            label: `infrastructure ready · ${plural(envelope.services.length, "service")}`,
+            label: `infrastructure ready · ${plural(session.serviceCount ?? 0, "service")}`,
           };
     case "develop-active": {
-      const session = envelope.workSession;
-      if (session === undefined || session.services.length === 0) {
+      const work = session.work;
+      if (work === undefined || work.services.length === 0) {
         return { tone: "active", label: "developing" };
       }
       const hasAttempts =
-        Object.keys(session.deploys ?? {}).length > 0 ||
-        Object.keys(session.verifies ?? {}).length > 0;
+        Object.keys(work.deploys ?? {}).length > 0 || Object.keys(work.verifies ?? {}).length > 0;
       return {
         tone: "active",
-        label: hasAttempts
-          ? workSessionLabel(session)
-          : `developing ${session.services.join(", ")}`,
+        label: hasAttempts ? workSessionLabel(work) : `developing ${work.services.join(", ")}`,
       };
     }
     case "develop-closed-auto":
@@ -99,7 +97,7 @@ function phaseState(envelope: ZeropsStateEnvelope): ZeropsStripState {
       // zcp adds phases independently of this build — `launch-production-active`
       // arrived that way. Show it as itself rather than blanking the strip or
       // silently reading it as one of the phases above.
-      return { tone: "idle", label: envelope.phase };
+      return { tone: "idle", label: session.phase! };
   }
 }
 
@@ -112,19 +110,18 @@ function phaseState(envelope: ZeropsStateEnvelope): ZeropsStripState {
  * phase otherwise.
  */
 export function zeropsStripState(
-  lifecycle: ZeropsLifecycle | undefined,
-  options: { readonly pendingUserInput: boolean },
+  session: ZeropsSessionView | undefined,
+  running: ZeropsOperation | undefined,
+  pendingQuestion: boolean,
 ): ZeropsStripState | undefined {
-  const envelope = lifecycle?.envelope;
-  if (lifecycle === undefined || envelope === undefined) {
+  if (session === undefined || session.phase === undefined) {
     return undefined;
   }
-  if (options.pendingUserInput) {
+  if (pendingQuestion) {
     return { tone: "waiting", label: "waiting for you" };
   }
-  const running = lifecycle.recentTools.find((tool) => tool.status === "inProgress");
   if (running !== undefined) {
-    return { tone: "active", label: `${running.toolName} running` };
+    return { tone: "active", label: `${running.kicker} running` };
   }
-  return phaseState(envelope);
+  return phaseState(session);
 }

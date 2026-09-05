@@ -12,7 +12,7 @@
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 
 import { readRecord, readString } from "../cards/decode.ts";
-import { compareCallRows } from "./order.ts";
+import { compareAnchors, compareCallRows } from "./order.ts";
 import { normalizedToolName } from "./partition.ts";
 import type { ZeropsCall, ZeropsCallStatus } from "./types.ts";
 
@@ -178,7 +178,12 @@ export function collectZeropsCalls(
     }
     calls.push(buildCall(group, runningTurnId));
   }
+  calls.sort((a, b) => compareAnchors(anchorOf(a), anchorOf(b)));
   return calls;
+}
+
+function anchorOf(call: ZeropsCall): { anchorAt: string; anchorActivityId: string } {
+  return { anchorAt: call.startedAt, anchorActivityId: call.anchorActivityId };
 }
 
 function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {

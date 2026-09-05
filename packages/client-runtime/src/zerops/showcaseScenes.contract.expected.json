@@ -212,7 +212,7 @@
       "serviceTones": []
     },
     "strips": [
-      "active:zerops_deploy running",
+      "active:developing apidev",
       "waiting:waiting for you",
       "done:task complete",
       "waiting:waiting for you"
@@ -271,7 +271,7 @@
       "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
     },
     "strips": [
-      "active:zerops_deploy running",
+      "idle:future-phase",
       "waiting:waiting for you",
       "done:task complete",
       "waiting:waiting for you"

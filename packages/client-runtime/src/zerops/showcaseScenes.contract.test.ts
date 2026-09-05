@@ -26,6 +26,7 @@ import {
 } from "./agentLogin.ts";
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
+import { composeSession } from "./model/session.ts";
 import { zeropsQuickActions } from "./quickActions.ts";
 import { buildZeropsServiceMap, serviceStatusTone } from "./serviceMap.ts";
 import { zeropsStripState } from "./strip.ts";
@@ -85,7 +86,11 @@ function expectKnownPhaseTotality(scene: ShowcaseScene): void {
   for (const { name, lifecycle } of sceneLifecycles(scene)) {
     const envelope = lifecycle.envelope;
     for (const pendingUserInput of [false, true]) {
-      const strip = zeropsStripState(lifecycle, { pendingUserInput });
+      const strip = zeropsStripState(
+        composeSession(lifecycle.envelope, []),
+        undefined,
+        pendingUserInput,
+      );
       if (envelope === undefined) {
         expect(strip, `${scene.id} ${name}: no envelope has no strip`).toBeUndefined();
         continue;
@@ -111,7 +116,9 @@ function scenePresentation(scene: ShowcaseScene) {
   );
   const map = buildZeropsServiceMap(view, scene.lifecycle);
   const strips = sceneLifecycles(scene).flatMap(({ lifecycle }) =>
-    [false, true].map((pendingUserInput) => zeropsStripState(lifecycle, { pendingUserInput })),
+    [false, true].map((pendingUserInput) =>
+      zeropsStripState(composeSession(lifecycle.envelope, []), undefined, pendingUserInput),
+    ),
   );
 
   for (const service of view.services) {
@@ -230,10 +237,7 @@ describe("showcase scene presentation contract", () => {
   it.each(scenes)("$id#withUnknownShape pins the raw phase fallback", (scene) => {
     const unknown = decodeScene(withUnknownShape(scene));
     const envelope = unknown.lifecycle.envelope;
-    const strip = zeropsStripState(
-      { ...unknown.lifecycle, recentTools: [] },
-      { pendingUserInput: false },
-    );
+    const strip = zeropsStripState(composeSession(envelope, []), undefined, false);
 
     expect(envelope).toBeDefined();
     expect(strip?.tone).toBe("idle");
