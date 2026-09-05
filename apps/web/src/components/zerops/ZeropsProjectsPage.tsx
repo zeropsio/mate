@@ -157,7 +157,7 @@ export function ZeropsEnvironmentsHeader({
       <div className="min-w-0 space-y-1">
         <h1 className="text-xl font-medium text-foreground">Environments</h1>
         <p className="text-sm text-muted-foreground">
-          Every project in the account, the agent in each one, and what it needs next.
+          Every environment in the account, the agent in each one, and what it needs next.
         </p>
       </div>
       {onCreate === undefined ? null : (
@@ -822,12 +822,11 @@ function ZeropsProjectsContent() {
           {isLoading ? (
             <>
               <Spinner className="size-3.5" />
-              <span>Reading your Zerops projects…</span>
+              <span>Reading your environments…</span>
             </>
           ) : (
             <span>
-              {environmentCount} {environmentCount === 1 ? "environment" : "environments"} in{" "}
-              {activeOrganization.name}
+              {environmentCount} {environmentCount === 1 ? "environment" : "environments"}
             </span>
           )}
         </div>
