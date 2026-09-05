@@ -57,7 +57,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(retryIdentity).not.toHaveBeenCalled();
   });
 
-  it("exposes a compact project-scope header and preserves selection behavior", () => {
+  it("exposes a compact account header and preserves selection behavior", () => {
     const markup = renderToStaticMarkup(createElement(ZeropsProjectScopeHeader));
     const attempted = { current: false };
     const connect = vi.fn();
@@ -76,8 +76,8 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     expect(markup).toContain('data-zerops-project-scope="true"');
     expect(markup).toContain('data-zerops-primitive="micro-label"');
-    expect(markup).toContain("Project scope");
-    expect(markup).toContain("Projects");
+    expect(markup).toContain("Zerops");
+    expect(markup).toContain("Environments");
     expect(connect).toHaveBeenCalledTimes(1);
   });
 

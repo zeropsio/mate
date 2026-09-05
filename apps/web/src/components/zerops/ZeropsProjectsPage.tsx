@@ -8,7 +8,9 @@
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { RotateCcwIcon } from "lucide-react";
 
 import { isElectron } from "../../env";
 import { Button } from "../ui/button";
@@ -48,26 +50,19 @@ import {
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
-import { MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel, Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
-import { ZeropsProjectPicker } from "./ZeropsProjectPicker";
+import {
+  deriveZeropsRowAction,
+  deriveZeropsRowPresentation,
+  isZeropsToolCandidate,
+  type ZeropsRowAction,
+  type ZeropsRowInput,
+} from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
-
-/**
- * The four-way classification `candidates.ts` already made, projected onto a
- * dot. Deliberately a projection and not a new status table: the picker below
- * owns the detailed phrasing (health, connection errors, retries), and this
- * tree only needs to say which of those four buckets a row is in.
- */
-const CANDIDATE_STATUS = {
-  connected: { label: "Connected", tone: "ok" },
-  ready: { label: "Ready", tone: "off" },
-  provisioning: { label: "Starting", tone: "busy" },
-  unavailable: { label: "Unavailable", tone: "attention" },
-} as const;
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -137,11 +132,11 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 export function ZeropsProjectScopeHeader() {
   return (
     <div className="space-y-1" data-zerops-project-scope="true">
-      <MicroLabel className="text-muted-foreground">Project scope</MicroLabel>
+      <MicroLabel className="text-muted-foreground">Zerops</MicroLabel>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h1 className="text-xl font-medium text-foreground">Projects</h1>
+        <h1 className="text-xl font-medium text-foreground">Environments</h1>
         <p className="text-xs text-muted-foreground">
-          Choose the Zerops project this workspace should open.
+          Every project in the account, the agent in each one, and what it needs next.
         </p>
       </div>
     </div>
@@ -325,6 +320,13 @@ function ZeropsProjectsContent() {
     };
   }, [creationRunning]);
   const groupTree = buildZeropsGroupTree(candidates);
+  const environmentCount = candidates.filter((candidate) => candidate.service !== undefined).length;
+  const pageError = connectError ?? error;
+  const rowInput = (candidate: ZeropsCandidate): ZeropsRowInput => ({
+    candidate,
+    health: candidateHealth.get(candidate.key),
+    can: { open: true, connect: true, enable: true, wait: true, setUpMate: true },
+  });
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
 
@@ -369,6 +371,64 @@ function ZeropsProjectsContent() {
       settingUpKey,
     ],
   );
+
+  const busyKeys = useMemo(
+    () => new Set([enablingCandidateKey, settingUpKey].filter((key) => key !== null)),
+    [enablingCandidateKey, settingUpKey],
+  );
+
+  /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
+  const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
+    switch (kind) {
+      case "open":
+        if (candidate.environmentId) {
+          rememberZeropsEnvironment(String(candidate.environmentId));
+          void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
+        }
+        return;
+      case "connect":
+        startWaitFor(candidate);
+        return;
+      case "wait":
+        if (candidate.containerOrigin) {
+          startWaitFor(candidate);
+          return;
+        }
+        setConnectError(null);
+        setCreatingIn(candidate.project.clientId ?? null);
+        provisioning.start({ zcpClaimed: true });
+        return;
+      case "set-up-mate":
+        void setUpMate(candidate);
+        return;
+      case "enable": {
+        const serviceId = candidate.service?.id;
+        if (!serviceId) return;
+        setConnectError(null);
+        setEnablingCandidateKey(candidate.key);
+        // Write the flag, then restart: the install step re-runs on boot and
+        // comes back with the current zcp, which only installs Zerops Mate
+        // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
+        // container to the identical state.
+        void client
+          .enableZeropsMate(serviceId)
+          .then(() => {
+            startWaitFor(candidate);
+          })
+          .catch((cause: unknown) => {
+            setConnectError(zeropsErrorMessage(cause));
+          })
+          .finally(() => {
+            setEnablingCandidateKey(null);
+          });
+        return;
+      }
+      case "starting":
+      case "pending":
+      case "none":
+        return;
+    }
+  };
 
   /**
    * Stands up one environment in a group: the plan is `planEnvironmentCreation`,
@@ -620,9 +680,40 @@ function ZeropsProjectsContent() {
           void selectOrganization(membershipId);
         }}
       />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {isLoading ? (
+            <>
+              <Spinner className="size-3.5" />
+              <span>Reading your Zerops projects…</span>
+            </>
+          ) : (
+            <span>
+              {environmentCount} {environmentCount === 1 ? "environment" : "environments"} in{" "}
+              {activeOrganization.name}
+            </span>
+          )}
+        </div>
+        <Button size="sm" variant="ghost" onClick={refresh} disabled={isLoading}>
+          <RotateCcwIcon className="size-4" />
+          Refresh
+        </Button>
+      </div>
+      {pageError === null ? null : (
+        <div
+          className="rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
+          role="alert"
+        >
+          {pageError}
+        </div>
+      )}
       <ZeropsGroupTree
         getKey={(candidate: ZeropsCandidate) => candidate.key}
         getName={(candidate: ZeropsCandidate) => candidate.project.name}
+        getAgentName={(candidate: ZeropsCandidate) => {
+          const bot = readZeropsGroupTags(candidate.project.tagList).bot?.trim();
+          return bot === undefined || bot.length === 0 ? undefined : bot;
+        }}
         creating={creationRunning}
         onCreateEnvironment={(groupId, role) => {
           void createEnvironment(groupId, role);
@@ -630,31 +721,53 @@ function ZeropsProjectsContent() {
         onCreateTool={() => {
           void createTool();
         }}
-        onSelect={(candidate: ZeropsCandidate) => {
-          if (candidate.environmentId) {
-            rememberZeropsEnvironment(String(candidate.environmentId));
-            void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
-            return;
-          }
-          if (candidate.containerOrigin) startWaitFor(candidate);
-        }}
-        renderStatus={(candidate: ZeropsCandidate) => (
-          <span className="flex min-w-0 items-center gap-2">
+        isBusy={(candidate: ZeropsCandidate) => busyKeys.has(candidate.key)}
+        renderStatus={(candidate: ZeropsCandidate) => {
+          const { status } = deriveZeropsRowPresentation(rowInput(candidate));
+          return (
             <StatusDot
-              label={CANDIDATE_STATUS[candidate.group].label}
-              tone={CANDIDATE_STATUS[candidate.group].tone}
+              label={status.label}
+              tone={status.tone}
+              {...(status.pulse === undefined ? {} : { pulse: status.pulse })}
             />
-            {/* The bucket alone reads as an alarm on a project that simply has
-                no container yet. `candidates.ts` already produced a sentence
-                saying which of those it is, so show that rather than mint a
-                second phrase for the same fact (R5). */}
-            {candidate.reason === undefined ? null : (
-              <span className="truncate text-xs text-[var(--muted-foreground)]">
-                {candidate.reason}
-              </span>
-            )}
-          </span>
-        )}
+          );
+        }}
+        renderDetail={(candidate: ZeropsCandidate) => {
+          if (isZeropsToolCandidate(candidate)) return null;
+          const presentation = deriveZeropsRowPresentation(rowInput(candidate));
+          if (presentation.detail === undefined) return null;
+          return (
+            <span
+              className={
+                presentation.detailIsError ? "text-[var(--zerops-status-failed-text)]" : undefined
+              }
+            >
+              {presentation.detail}
+            </span>
+          );
+        }}
+        renderAction={(candidate: ZeropsCandidate) => {
+          const action = deriveZeropsRowAction(rowInput(candidate));
+          switch (action.kind) {
+            case "none":
+              return null;
+            case "pending":
+              return <Spinner className="size-4 text-muted-foreground" />;
+            case "starting":
+              return <span className="text-xs text-muted-foreground">{action.label}</span>;
+            default:
+              return (
+                <Pill
+                  data-zerops-primary-action={action.label}
+                  disabled={busyKeys.has(candidate.key)}
+                  label={action.label}
+                  onClick={() => {
+                    runRowAction(candidate, action.kind);
+                  }}
+                />
+              );
+          }
+        }}
         renderToolStatus={(candidate: ZeropsCandidate) => {
           // A tool has no Mate container and never will, so the environment
           // classifier's verdict is meaningless here. The platform's own
@@ -669,6 +782,9 @@ function ZeropsProjectsContent() {
         }}
         view={groupTree}
       />
+      {!isLoading && candidates.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No projects in this account yet.</p>
+      ) : null}
       {creation === null ? null : (
         <ZeropsEnvironmentCreation
           name={creation.name}
@@ -681,63 +797,8 @@ function ZeropsProjectsContent() {
         />
       )}
       {toolError === null ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed)]">{toolError}</p>
+        <p className="text-sm text-[var(--zerops-status-failed-text)]">{toolError}</p>
       )}
-      <ZeropsProjectPicker
-        busyCandidateKeys={
-          enablingCandidateKey === null && settingUpKey === null
-            ? undefined
-            : new Set([enablingCandidateKey, settingUpKey].filter((key) => key !== null))
-        }
-        candidates={candidates}
-        scopeName={activeOrganization.name}
-        isLoading={isLoading}
-        error={connectError ?? error}
-        onRefresh={refresh}
-        health={candidateHealth}
-        onConnect={startWaitFor}
-        onOpen={(candidate: ZeropsCandidate) => {
-          if (candidate.environmentId) {
-            rememberZeropsEnvironment(String(candidate.environmentId));
-            void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
-            return;
-          }
-          void navigate({ to: "/" });
-        }}
-        onSetUpMate={(candidate: ZeropsCandidate) => {
-          void setUpMate(candidate);
-        }}
-        onWait={(candidate: ZeropsCandidate) => {
-          if (candidate.containerOrigin) {
-            startWaitFor(candidate);
-            return;
-          }
-          setConnectError(null);
-          setCreatingIn(candidate.project.clientId ?? null);
-          provisioning.start({ zcpClaimed: true });
-        }}
-        onEnable={(candidate: ZeropsCandidate) => {
-          const serviceId = candidate.service?.id;
-          if (!serviceId) return;
-          setConnectError(null);
-          setEnablingCandidateKey(candidate.key);
-          // Write the flag, then restart: the install step re-runs on boot and
-          // comes back with the current zcp, which only installs Zerops Mate
-          // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
-          // container to the identical state.
-          void client
-            .enableZeropsMate(serviceId)
-            .then(() => {
-              startWaitFor(candidate);
-            })
-            .catch((cause: unknown) => {
-              setConnectError(zeropsErrorMessage(cause));
-            })
-            .finally(() => {
-              setEnablingCandidateKey(null);
-            });
-        }}
-      />
       <div className="flex justify-end">
         <Button
           size="sm"

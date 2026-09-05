@@ -58,6 +58,18 @@ export interface ZeropsGroupTreeProps<T> {
    * button that vanishes under the pointer reads as a bug.
    */
   readonly creating?: boolean;
+  /**
+   * The agent's name, when the environment has one. Leads the row: on this
+   * screen the project name still matters (it is what the Zerops GUI shows),
+   * so the two sit side by side rather than one replacing the other.
+   */
+  readonly getAgentName?: (item: T) => string | undefined;
+  /** One muted line under the name — an error, health prose, or a reason. */
+  readonly renderDetail?: (item: T) => ReactNode;
+  /** The row's one action, in its own right-aligned cell after the status. */
+  readonly renderAction?: (item: T) => ReactNode;
+  /** Marks the row busy while its action runs. */
+  readonly isBusy?: (item: T) => boolean;
   readonly className?: string;
 }
 
@@ -74,35 +86,72 @@ function Section({ label, children }: { readonly label: string; readonly childre
 
 function Row({
   name,
+  agentName,
   badge,
   status,
+  detail,
+  action,
+  busy = false,
   onSelect,
 }: {
   readonly name: string;
+  readonly agentName?: string | undefined;
   readonly badge?: string | null;
   readonly status?: ReactNode;
+  readonly detail?: ReactNode;
+  readonly action?: ReactNode;
+  readonly busy?: boolean;
   readonly onSelect?: () => void;
 }) {
-  const content = (
+  // The name is the clickable part, so an action button can sit beside it
+  // without nesting one button in another.
+  const title = (
     <>
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-      {badge ? (
-        <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
-          {badge}
-        </span>
-      ) : null}
-      {status}
+      {agentName === undefined ? (
+        <span className="truncate">{name}</span>
+      ) : (
+        <>
+          <span className="truncate font-medium">{agentName}</span>
+          <span className="truncate text-[var(--muted-foreground)]">{name}</span>
+        </>
+      )}
     </>
   );
 
-  const shared = "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm";
-
-  return onSelect ? (
-    <button className={cn(shared, "hover:bg-[var(--accent)]")} onClick={onSelect} type="button">
-      {content}
-    </button>
-  ) : (
-    <div className={shared}>{content}</div>
+  return (
+    <div
+      aria-busy={busy || undefined}
+      className="flex w-full min-w-0 items-center gap-3 rounded-md px-2 py-1.5"
+      data-zerops-project-row="true"
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          {onSelect ? (
+            <button
+              className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onSelect}
+              type="button"
+            >
+              {title}
+            </button>
+          ) : (
+            <span className="flex min-w-0 items-center gap-2">{title}</span>
+          )}
+          {badge ? (
+            <span className="shrink-0 text-[length:var(--zerops-micro-label-font-size)] text-[var(--muted-foreground)]">
+              {badge}
+            </span>
+          ) : null}
+        </div>
+        {detail ? (
+          <div className="min-w-0 truncate text-xs text-[var(--muted-foreground)]">{detail}</div>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {status}
+        {action}
+      </div>
+    </div>
   );
 }
 
@@ -116,8 +165,19 @@ export function ZeropsGroupTree<T>({
   onCreateEnvironment,
   onCreateTool,
   creating = false,
+  getAgentName,
+  renderDetail,
+  renderAction,
+  isBusy,
   className,
 }: ZeropsGroupTreeProps<T>) {
+  const rowExtras = (item: T) => ({
+    ...(getAgentName === undefined ? {} : { agentName: getAgentName(item) }),
+    ...(renderDetail === undefined ? {} : { detail: renderDetail(item) }),
+    ...(renderAction === undefined ? {} : { action: renderAction(item) }),
+    ...(isBusy === undefined ? {} : { busy: isBusy(item) }),
+    ...(onSelect ? { onSelect: () => onSelect(item) } : {}),
+  });
   return (
     <nav
       aria-label="Projects and environments"
@@ -157,7 +217,7 @@ export function ZeropsGroupTree<T>({
               key={getKey(item)}
               name={getName(item)}
               status={renderStatus(item)}
-              {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
+              {...rowExtras(item)}
             />
           ))}
 
@@ -185,6 +245,7 @@ export function ZeropsGroupTree<T>({
               key={getKey(item)}
               name={TOOL_LABEL[kind]}
               status={(renderToolStatus ?? renderStatus)(item)}
+              {...(renderDetail === undefined ? {} : { detail: renderDetail(item) })}
               {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
             />
           ))}
@@ -209,7 +270,7 @@ export function ZeropsGroupTree<T>({
               key={getKey(item)}
               name={getName(item)}
               status={renderStatus(item)}
-              {...(onSelect ? { onSelect: () => onSelect(item) } : {})}
+              {...rowExtras(item)}
             />
           ))}
         </Section>
