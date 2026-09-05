@@ -9,7 +9,7 @@
  * Never render a raw enum in a label: every raw status a card shows goes
  * through `statusWord` first.
  */
-import type { ZeropsOperationKind, ZeropsOperationPhase } from "./types.ts";
+import type { ZeropsOperationKind, ZeropsOperationPhase } from "../model/types.ts";
 
 export function sentenceCase(raw: string): string {
   const words = raw.trim().toLowerCase().replace(/[_-]+/g, " ").split(/\s+/).filter(Boolean);
@@ -90,11 +90,30 @@ const PAST_PARTICIPLE: Readonly<Record<string, string>> = {
  * The status word for a kind × phase — the free-text word next to the status
  * dot. Never a raw platform enum.
  */
+/** Kind-independent words for the outcomes no per-kind claim ever applies to. */
+export function settledPhaseWord(
+  phase: Extract<ZeropsOperationPhase, "declined" | "stopped" | "interrupted" | "reset">,
+): string {
+  switch (phase) {
+    case "declined":
+      return "Declined";
+    case "stopped":
+      return "Stopped";
+    case "interrupted":
+      return "Interrupted";
+    case "reset":
+      return "Reset";
+  }
+}
+
 export function operationStatusWord(
   kind: ZeropsOperationKind,
   phase: ZeropsOperationPhase,
   context: OperationStatusWordContext = {},
 ): string {
+  if (phase === "declined" || phase === "stopped" || phase === "interrupted" || phase === "reset") {
+    return settledPhaseWord(phase);
+  }
   if (phase === "running") {
     if (kind === "deploy" && context.resultStatus === "BUILD_TRIGGERED") {
       return "Build triggered";
@@ -179,6 +198,11 @@ export function neutralStatusWord(phase: ZeropsOperationPhase): string {
       return "Done";
     case "failed":
       return "Failed";
+    case "declined":
+    case "stopped":
+    case "interrupted":
+    case "reset":
+      return settledPhaseWord(phase);
   }
 }
 
@@ -325,6 +349,18 @@ export function operationClosing(
   phase: Exclude<ZeropsOperationPhase, "running">,
   context: OperationClosingContext,
 ): string {
+  if (phase === "declined") {
+    return "Declined.";
+  }
+  if (phase === "stopped") {
+    return "Stopped.";
+  }
+  if (phase === "interrupted") {
+    return "The agent did not report a result.";
+  }
+  if (phase === "reset") {
+    return "Reset.";
+  }
   if (phase === "failed") {
     switch (kind) {
       case "deploy":

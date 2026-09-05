@@ -107,7 +107,14 @@ describe.each(ZEROPS_SHOWCASE_THREADS.map((thread) => [thread.name, thread] as c
 
 // ---- synthetic cases: the lattice properties, not real transcripts ----
 
-const started = (overrides: Partial<OrchestrationThreadActivity> & { id: string }) =>
+interface ActivityOverrides {
+  readonly id: string;
+  readonly createdAt?: string;
+  readonly turnId?: string | null;
+  readonly payload?: Record<string, unknown>;
+}
+
+const started = (overrides: ActivityOverrides) =>
   ({
     tone: "tool",
     kind: "tool.started",
@@ -119,11 +126,11 @@ const started = (overrides: Partial<OrchestrationThreadActivity> & { id: string 
       toolCallId: "call-1",
       status: "inProgress",
       data: { toolName: "mcp__zerops__zerops_deploy", input: {} },
-      ...(overrides.payload as Record<string, unknown> | undefined),
+      ...overrides.payload,
     },
   }) as unknown as OrchestrationThreadActivity;
 
-const updated = (overrides: Partial<OrchestrationThreadActivity> & { id: string }) =>
+const updated = (overrides: ActivityOverrides) =>
   ({
     tone: "tool",
     kind: "tool.updated",
@@ -135,11 +142,11 @@ const updated = (overrides: Partial<OrchestrationThreadActivity> & { id: string 
       toolCallId: "call-1",
       status: "inProgress",
       data: {},
-      ...(overrides.payload as Record<string, unknown> | undefined),
+      ...overrides.payload,
     },
   }) as unknown as OrchestrationThreadActivity;
 
-const completed = (overrides: Partial<OrchestrationThreadActivity> & { id: string }) =>
+const completed = (overrides: ActivityOverrides) =>
   ({
     tone: "tool",
     kind: "tool.completed",
@@ -156,7 +163,7 @@ const completed = (overrides: Partial<OrchestrationThreadActivity> & { id: strin
           content: [{ type: "text", text: JSON.stringify({ status: "DEPLOYED" }) }],
         },
       },
-      ...(overrides.payload as Record<string, unknown> | undefined),
+      ...overrides.payload,
     },
   }) as unknown as OrchestrationThreadActivity;
 
@@ -193,7 +200,7 @@ describe("collectZeropsCalls — the lattice properties", () => {
 
   it("agentInternal excludes the whole call when any row carries a non-empty agentId", () => {
     const activities = [
-      started({ id: "a1", payload: { agentId: "sub-1" } } as never),
+      started({ id: "a1", payload: { agentId: "sub-1" } }),
       completed({ id: "a3" }),
     ];
     const [call] = collectZeropsCalls(activities, "t1");
@@ -218,7 +225,7 @@ describe("collectZeropsCalls — the lattice properties", () => {
       updated({
         id: "a2",
         createdAt: "2026-09-01T00:00:01.000Z",
-        payload: { data: { input: { targetService: "weatherdash" } } } as never,
+        payload: { data: { input: { targetService: "weatherdash" } } },
       }),
       completed({ id: "a3" }),
     ];
@@ -251,11 +258,11 @@ describe("collectZeropsCalls — the lattice properties", () => {
       started({
         id: "a1",
         payload: { toolCallId: "x1", data: { toolName: "ToolSearch", input: {} } },
-      } as never),
+      }),
       completed({
         id: "a2",
         payload: { toolCallId: "x1", data: { toolName: "ToolSearch" } },
-      } as never),
+      }),
     ];
     expect(collectZeropsCalls(activities, "t1")).toHaveLength(0);
   });
