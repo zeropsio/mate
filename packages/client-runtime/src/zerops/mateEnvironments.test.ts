@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
 import {
+  hasMate,
   hasMateContainer,
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,
@@ -24,13 +25,18 @@ function withMate(
   };
 }
 
-function withoutMate(id: string): ZeropsCandidate {
+function withoutMate(id: string, tagList: ReadonlyArray<string> = []): ZeropsCandidate {
   return {
     key: id,
-    project: project(id),
+    project: project(id, tagList),
     group: "unavailable",
     reason: "no Zerops Mate container in this project",
+    missingContainer: true,
   };
+}
+
+function tagged(candidate: ZeropsCandidate, tagList: ReadonlyArray<string>): ZeropsCandidate {
+  return { ...candidate, project: { ...candidate.project, tagList } };
 }
 
 describe("hasMateContainer", () => {
@@ -53,10 +59,45 @@ describe("hasMateContainer", () => {
   });
 });
 
+describe("hasMate", () => {
+  it.each([
+    [
+      "the project declares it, container or not",
+      withoutMate("a", ["mate", "mate:role:dev"]),
+      true,
+    ],
+    ["a container is there, declared or not", withMate("b"), true],
+    ["a dev environment with neither", withoutMate("c", ["mate:g:x", "mate:role:dev"]), false],
+    ["a bare project with neither", withoutMate("d"), false],
+    [
+      "a stage environment, even with a container",
+      tagged(withMate("e"), ["mate:role:stage"]),
+      false,
+    ],
+    ["production, even declared", tagged(withMate("f"), ["mate", "mate:role:prod"]), false],
+    [
+      "a dev/stage environment with a container",
+      tagged(withMate("g"), ["mate:role:devstage"]),
+      true,
+    ],
+  ] as const)("%s", (_label, candidate, expected) => {
+    expect(hasMate(candidate)).toBe(expected);
+  });
+});
+
 describe("selectMateEnvironments", () => {
   it("keeps only the projects that have Mate", () => {
     const rows = selectMateEnvironments([withMate("a"), withoutMate("b"), withMate("c")]);
     expect(rows.map((row) => row.project.id)).toEqual(["a", "c"]);
+  });
+
+  it("keeps a declared Mate whose container is gone — the card is where it comes back", () => {
+    const rows = selectMateEnvironments([withoutMate("a", ["mate"]), withMate("b")]);
+    expect(rows.map((row) => row.project.id)).toEqual(["a", "b"]);
+  });
+
+  it("never lists production as a Mate, whatever runs in it", () => {
+    expect(selectMateEnvironments([tagged(withMate("p"), ["mate:role:prod"])])).toEqual([]);
   });
 
   it("shows one row per project, however many containers it runs", () => {

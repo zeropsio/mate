@@ -56,6 +56,15 @@ const LABEL_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:name:`;
 /** The agent living in this environment, named so a person can address it. */
 const BOT_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:bot:`;
 
+/**
+ * The marker: this project has a Mate. The bare namespace word, so the Zerops
+ * GUI shows a project's one-word answer beside its longer tags and a tag
+ * filter on `mate` lists exactly the Mates. It is the declared fact, written
+ * when a Mate is set up and kept when its container is rebuilt or lost — the
+ * container is the Mate's body, the tag is its existence.
+ */
+export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
+
 /** Any tag this module owns; everything else on a project is foreign and preserved verbatim. */
 const MATE_TAG_PREFIX = `${MATE_TAG_NAMESPACE}:`;
 
@@ -117,6 +126,8 @@ export function formatBotTag(name: string): string | undefined {
 export const ZEROPS_BOT_NAME_MAX_LENGTH = 24;
 
 export interface ZeropsGroupTags {
+  /** The project carries the `mate` marker: a Mate lives here. */
+  readonly mate: boolean;
   readonly groupId: string | undefined;
   readonly role: ZeropsEnvironmentRole | undefined;
   /** The display mirror (`mate:name:`), never authoritative — see the module doc. */
@@ -131,12 +142,17 @@ export interface ZeropsGroupTags {
  * newer client never resolves to the wrong thing in an older one.
  */
 export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined): ZeropsGroupTags {
+  let mate = false;
   let groupId: string | undefined;
   let role: ZeropsEnvironmentRole | undefined;
   let label: string | undefined;
   let bot: string | undefined;
 
   for (const tag of tagList ?? []) {
+    if (tag === MATE_MARKER_TAG) {
+      mate = true;
+      continue;
+    }
     if (groupId === undefined && tag.startsWith(GROUP_TAG_PREFIX)) {
       const value = tag.slice(GROUP_TAG_PREFIX.length);
       if (value.length > 0) groupId = value;
@@ -158,7 +174,7 @@ export function readZeropsGroupTags(tagList: ReadonlyArray<string> | undefined):
     }
   }
 
-  return { groupId, role, label, bot };
+  return { mate, groupId, role, label, bot };
 }
 
 /**
@@ -179,6 +195,9 @@ export function withZeropsGroupTags(
   },
 ): ReadonlyArray<string> {
   const existing = tagList ?? [];
+  // The marker is not membership either: a Mate that changes project is
+  // still a Mate. It reads as foreign here — it has no colon — and so
+  // survives untouched, which is the point.
   const foreign = existing.filter((tag) => !tag.startsWith(MATE_TAG_PREFIX));
   // Tags this call was not asked about survive it. A caller changing a role
   // must not silently drop the agent's name or the project's tool marker —
@@ -226,6 +245,18 @@ export function withZeropsBotTag(
   const kept = (tagList ?? []).filter((tag) => !tag.startsWith(BOT_TAG_PREFIX));
   const botTag = formatBotTag(name);
   return botTag === undefined ? kept : [...kept, botTag];
+}
+
+/**
+ * Declares the Mate: the marker, once, after every other tag. Idempotent, so
+ * every path that stands a Mate up — the wizard, "Add dev" with an agent,
+ * "Set up Mate", naming the agent — can write it without checking first.
+ */
+export function withZeropsMateTag(
+  tagList: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> {
+  const existing = tagList ?? [];
+  return existing.includes(MATE_MARKER_TAG) ? existing : [...existing, MATE_MARKER_TAG];
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

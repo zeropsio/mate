@@ -13,7 +13,12 @@
  */
 
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
-import { withZeropsBotTag, withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
+import {
+  withZeropsBotTag,
+  withZeropsGroupTags,
+  withZeropsMateTag,
+  type ZeropsEnvironmentRole,
+} from "./groups.ts";
 import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
 import {
   buildCreateProjectBody,
@@ -718,16 +723,19 @@ export class ZeropsApiClient {
    * tag kept — the write replaces the list wholesale, so this is a
    * read-modify-write like `updateProjectGroupTags`, and it goes through
    * `withZeropsBotTag` rather than a membership write, which would clear the
-   * group (`groups.ts`).
+   * group (`groups.ts`). Naming an agent declares the Mate: a non-blank name
+   * also writes the `mate` marker, so "Set up Mate" is one write and a
+   * rename heals a project the marker never reached.
    */
   async nameProjectAgent(projectId: string, name: string): Promise<ZeropsProject> {
     const project = await this.fetchProject(projectId);
+    const named = withZeropsBotTag(project.tagList, name);
     return this.#request<ZeropsProject>(`/project/${projectId}`, {
       method: "PUT",
       body: JSON.stringify({
         name: project.name,
         description: project.description ?? "",
-        tagList: withZeropsBotTag(project.tagList, name),
+        tagList: name.trim().length === 0 ? named : withZeropsMateTag(named),
       }),
     });
   }
@@ -1093,14 +1101,15 @@ export class ZeropsApiClient {
           clientId: input.clientId,
           name: input.name,
           ...(input.location ? { location: input.location } : {}),
-          ...(input.group
-            ? {
-                tagList: withZeropsGroupTags([], {
+          // Born a Mate: the marker goes on before the container does.
+          tagList: withZeropsMateTag(
+            input.group
+              ? withZeropsGroupTags([], {
                   groupId: input.group.groupId,
                   ...(input.group.role ? { role: input.group.role } : {}),
-                }),
-              }
-            : {}),
+                })
+              : [],
+          ),
         }),
       ),
     });

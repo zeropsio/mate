@@ -68,6 +68,7 @@ export {
   type ZeropsAgentType,
 } from "./newProject.ts";
 export {
+  MATE_MARKER_TAG,
   MATE_TAG_NAMESPACE,
   ZEROPS_GROUP_ID_LENGTH,
   deriveZeropsGroups,
@@ -78,6 +79,7 @@ export {
   withZeropsBotTag,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   withZeropsGroupTags,
+  withZeropsMateTag,
   type DeriveZeropsGroupsOptions,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
@@ -162,6 +164,7 @@ export {
   type ZeropsProjectCarrier,
 } from "./groupTree.ts";
 export {
+  hasMate,
   hasMateContainer,
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,

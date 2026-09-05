@@ -170,6 +170,20 @@ describe("the agent's name", () => {
     expect(step?.kind === "create-project" ? step.tagList : []).toContain("mate:bot:Ada");
   });
 
+  it("declares the Mate at birth when the environment gets an agent, and not otherwise", () => {
+    const tags = (plan: ReturnType<typeof planEnvironmentCreation>) => {
+      const step = plan.ok ? plan.steps[0] : undefined;
+      return step?.kind === "create-project" ? step.tagList : [];
+    };
+    // Stage gets an agent by default; production does not — and a caller can
+    // say so either way.
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "stage" }))).toContain("mate");
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "prod" }))).not.toContain("mate");
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "prod", withAgent: true }))).toContain(
+      "mate",
+    );
+  });
+
   it("is optional — an unnamed environment still plans", () => {
     const plan = planEnvironmentCreation({
       clientId: "c1",

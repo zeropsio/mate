@@ -26,7 +26,12 @@
  * @module createEnvironment
  */
 
-import { withZeropsBotTag, withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
+import {
+  withZeropsBotTag,
+  withZeropsGroupTags,
+  withZeropsMateTag,
+  type ZeropsEnvironmentRole,
+} from "./groups.ts";
 import { canCreateEnvironment, type ZeropsGroupRecord } from "./recipeStore.ts";
 
 /**
@@ -155,7 +160,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       name,
       // Membership first, then the name: naming is not a membership write, and
       // routing it through one clears the group (`groups.ts`).
-      tagList: taggedAtBirth(input),
+      tagList: taggedAtBirth(input, withAgent),
       location: input.location,
     },
   ];
@@ -184,12 +189,20 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
   }
 }
 
-/** The tags a new environment is created with: its membership and its agent. */
-function taggedAtBirth(input: EnvironmentCreationInput): ReadonlyArray<string> {
+/**
+ * The tags a new environment is created with: its membership, and — when it
+ * gets an agent — the `mate` marker and the agent's name. The marker is
+ * written here, at birth, rather than after the container import, so a
+ * creation that fails between the two still leaves a project that says what
+ * it was meant to be.
+ */
+function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): ReadonlyArray<string> {
   const membership = withZeropsGroupTags([], {
     groupId: input.groupId,
     role: input.role,
     ...(input.groupName === undefined ? {} : { label: input.groupName }),
   });
-  return input.botName === undefined ? membership : withZeropsBotTag(membership, input.botName);
+  if (!withAgent) return membership;
+  const declared = withZeropsMateTag(membership);
+  return input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
 }

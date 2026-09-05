@@ -9,6 +9,7 @@ import {
   readZeropsGroupTags,
   withZeropsBotTag,
   withZeropsGroupTags,
+  withZeropsMateTag,
   formatLabelTag,
   ZEROPS_GROUP_ID_LENGTH,
   ZEROPS_GROUP_LABEL_MAX_LENGTH,
@@ -91,16 +92,49 @@ describe("readZeropsGroupTags", () => {
       tagList: ["mate:g:abc", "mate:name:   "],
       expected: { groupId: "abc", role: undefined, label: undefined },
     },
+    {
+      name: "reads the bare marker as the Mate's existence, wherever it sits",
+      tagList: ["mate:g:abc", "mate:role:dev", "mate"],
+      expected: { mate: true, groupId: "abc", role: "dev", label: undefined },
+    },
+    {
+      name: "does not mistake a namespaced tag for the marker",
+      tagList: ["mate:role:dev", "mate:bot:Ada"],
+      expected: { groupId: undefined, role: "dev", label: undefined, bot: "Ada" },
+    },
   ])("$name", ({ tagList, expected }) => {
-    expect(readZeropsGroupTags(tagList)).toEqual(expected);
+    expect(readZeropsGroupTags(tagList)).toEqual({ mate: false, ...expected });
   });
 
   it("treats a project with no tagList field as untagged", () => {
     expect(readZeropsGroupTags(undefined)).toEqual({
+      mate: false,
       groupId: undefined,
       role: undefined,
       label: undefined,
     });
+  });
+});
+
+describe("withZeropsMateTag", () => {
+  it("declares the Mate once, after every other tag", () => {
+    expect(withZeropsMateTag(["mate:g:abc", "mate:role:dev"])).toEqual([
+      "mate:g:abc",
+      "mate:role:dev",
+      "mate",
+    ]);
+    expect(withZeropsMateTag(undefined)).toEqual(["mate"]);
+  });
+
+  it("is idempotent — every set-up path may write it without looking", () => {
+    const once = withZeropsMateTag(["keep"]);
+    expect(withZeropsMateTag(once)).toEqual(once);
+  });
+
+  it("survives a regroup and a leave: existence is not membership", () => {
+    const declared = withZeropsMateTag(["mate:g:old", "mate:role:dev"]);
+    expect(withZeropsGroupTags(declared, { groupId: "new", role: "dev" })).toContain("mate");
+    expect(withZeropsGroupTags(declared, {})).toEqual(["mate"]);
   });
 });
 
