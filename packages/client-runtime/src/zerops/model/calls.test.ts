@@ -6,6 +6,7 @@ import {
   type ZeropsShowcaseThread,
 } from "../operations/__fixtures__/index.ts";
 import { collectZeropsCalls } from "./calls.ts";
+import { deriveZeropsThreadModel } from "./deriveThreadModel.ts";
 
 function toolCallIdsOf(thread: ZeropsShowcaseThread): ReadonlySet<string> {
   const ids = new Set<string>();
@@ -265,5 +266,39 @@ describe("collectZeropsCalls — the lattice properties", () => {
       }),
     ];
     expect(collectZeropsCalls(activities, "t1")).toHaveLength(0);
+  });
+
+  it("a zerops_browser call's images carry into the call and the derived browser operation's screenshot", () => {
+    const activities = [
+      started({
+        id: "a1",
+        payload: {
+          data: { toolName: "mcp__zerops__zerops_browser", input: { url: "https://example.com" } },
+        },
+      }),
+      completed({
+        id: "a3",
+        payload: {
+          data: {
+            toolName: "mcp__zerops__zerops_browser",
+            zerops: {
+              resultText: JSON.stringify({ status: "ok" }),
+              images: [{ mimeType: "image/jpeg", data: "abc123" }],
+            },
+          },
+        },
+      }),
+    ];
+
+    const [call] = collectZeropsCalls(activities, "t1");
+    expect(call!.images).toEqual([{ mimeType: "image/jpeg", data: "abc123" }]);
+
+    const model = deriveZeropsThreadModel({ activities });
+    const browserEntry = model.entries.find(
+      (e): e is Extract<(typeof model.entries)[number], { kind: "operation" }> =>
+        e.kind === "operation" && e.operation.kind === "browser",
+    );
+    expect(browserEntry).toBeDefined();
+    expect(browserEntry?.operation.screenshot?.src.startsWith("data:")).toBe(true);
   });
 });
