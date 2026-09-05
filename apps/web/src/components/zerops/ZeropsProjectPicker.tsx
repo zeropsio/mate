@@ -20,6 +20,7 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { readZeropsToolKind } from "@t3tools/client-runtime/zerops";
 
 type PresentedZeropsCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -255,6 +256,7 @@ export function ZeropsProjectPicker({
   onEnable,
   onOpen,
   onWait,
+  onSetUpMate,
 }: {
   readonly candidates: ReadonlyArray<PresentedZeropsCandidate>;
   /** The currently selected Zerops organization, shown beside the result count. */
@@ -270,6 +272,8 @@ export function ZeropsProjectPicker({
   readonly onOpen?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
   /** A project or container that is still on its way in — nothing to connect to yet. */
   readonly onWait?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
+  /** A project with no container yet: give it one, and an agent. */
+  readonly onSetUpMate?: ((candidate: PresentedZeropsCandidate) => void) | undefined;
 }) {
   const grouped = groupZeropsCandidates(candidates);
   const connecting = grouped.ready.filter(isConnectionInFlight);
@@ -397,6 +401,26 @@ export function ZeropsProjectPicker({
         busyCandidateKeys={busyCandidateKeys}
         candidates={grouped.unavailable}
         status={{ label: "Not available", tone: "off" }}
+        renderAction={
+          onSetUpMate
+            ? (candidate) =>
+                // A missing container is the one thing in the way that a
+                // click can fix — on an environment. A tool has none by
+                // design (`tools.ts`) and is not offered one.
+                candidate.missingContainer === true &&
+                readZeropsToolKind(candidate.project.tagList) === undefined ? (
+                  <Pill
+                    className="w-full"
+                    data-zerops-primary-action="Set up Mate"
+                    disabled={busyCandidateKeys?.has(candidate.key) ?? false}
+                    label="Set up Mate"
+                    onClick={() => {
+                      onSetUpMate(candidate);
+                    }}
+                  />
+                ) : undefined
+            : undefined
+        }
       />
 
       {empty ? (

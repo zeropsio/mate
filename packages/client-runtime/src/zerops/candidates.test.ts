@@ -73,6 +73,14 @@ describe("deriveZeropsCandidates", () => {
     expect(candidates[0]?.group).toBe("unavailable");
     expect(candidates[0]?.reason).toMatch(/no Zerops Mate container/i);
     expect(candidates[0]?.service).toBeUndefined();
+    // The one unavailable case with an action, flagged structurally.
+    expect(candidates[0]?.missingContainer).toBe(true);
+  });
+
+  it("does not flag a project whose services could not be read as missing a container", () => {
+    const [candidate] = deriveZeropsCandidates(PROJECT, null, NO_CONNECTIONS);
+    expect(candidate?.group).toBe("unavailable");
+    expect(candidate?.missingContainer).toBeUndefined();
   });
 
   it("offers every zcp container in a project, not one per project", () => {

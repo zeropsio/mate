@@ -326,6 +326,50 @@ function ZeropsProjectsContent() {
   }, [creationRunning]);
   const groupTree = buildZeropsGroupTree(candidates);
 
+  const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
+
+  /**
+   * Gives a project that has none a Mate container — and an agent's name, so
+   * the row it earns in the left menu is somebody — then hands the wait to
+   * the provisioning machinery from the project's known id.
+   */
+  const setUpMate = useCallback(
+    async (candidate: ZeropsCandidate) => {
+      if (!activeOrganization || settingUpKey !== null) return;
+      setSettingUpKey(candidate.key);
+      setConnectError(null);
+      try {
+        const projectId = candidate.project.id;
+        const taken = candidates.flatMap((entry) => {
+          const bot = readZeropsGroupTags(entry.project.tagList).bot;
+          return bot === undefined ? [] : [bot];
+        });
+        await client.importDevelopmentContainer({ projectId });
+        await client.nameProjectAgent(
+          projectId,
+          generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
+        );
+        resetConnectingTarget();
+        setCreatingIn(activeOrganization.id);
+        provisioning.startForProject({ projectId });
+      } catch (cause) {
+        setConnectError(zeropsErrorMessage(cause));
+      } finally {
+        setSettingUpKey(null);
+      }
+    },
+    [
+      activeOrganization,
+      candidates,
+      client,
+      provisioning,
+      resetConnectingTarget,
+      setConnectError,
+      setCreatingIn,
+      settingUpKey,
+    ],
+  );
+
   /**
    * Stands up one environment in a group: the plan is `planEnvironmentCreation`,
    * the calls are `runEnvironmentCreation`, and this only chooses the inputs —
@@ -641,7 +685,9 @@ function ZeropsProjectsContent() {
       )}
       <ZeropsProjectPicker
         busyCandidateKeys={
-          enablingCandidateKey === null ? undefined : new Set([enablingCandidateKey])
+          enablingCandidateKey === null && settingUpKey === null
+            ? undefined
+            : new Set([enablingCandidateKey, settingUpKey].filter((key) => key !== null))
         }
         candidates={candidates}
         scopeName={activeOrganization.name}
@@ -655,6 +701,9 @@ function ZeropsProjectsContent() {
             rememberZeropsEnvironment(String(candidate.environmentId));
           }
           void navigate({ to: "/" });
+        }}
+        onSetUpMate={(candidate: ZeropsCandidate) => {
+          void setUpMate(candidate);
         }}
         onWait={(candidate: ZeropsCandidate) => {
           if (candidate.containerOrigin) {

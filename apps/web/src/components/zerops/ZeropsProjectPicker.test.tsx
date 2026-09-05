@@ -385,3 +385,47 @@ describe("ZeropsProjectPicker preparing section", () => {
     expect(markup).not.toContain("Wait for it");
   });
 });
+
+describe("Set up Mate", () => {
+  const BARE: ZeropsCandidate = {
+    key: "bare",
+    project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+    group: "unavailable",
+    reason: "no Zerops Mate container in this project",
+    missingContainer: true,
+  };
+
+  function renderWith(candidate: ZeropsCandidate, onSetUpMate?: () => void): string {
+    return renderToStaticMarkup(
+      <ZeropsProjectPicker
+        candidates={[candidate]}
+        isLoading={false}
+        error={null}
+        onRefresh={noop}
+        {...(onSetUpMate ? { onSetUpMate } : {})}
+      />,
+    );
+  }
+
+  it("offers it on a project that merely has no container", () => {
+    expect(renderWith(BARE, noop)).toContain('data-zerops-primary-action="Set up Mate"');
+  });
+
+  it("offers nothing without a handler", () => {
+    expect(renderWith(BARE)).not.toContain("Set up Mate");
+  });
+
+  it("never offers it to a tool project, which has no container by design", () => {
+    const gitea = { ...BARE, project: { ...BARE.project, tagList: ["mate:tool:gitea"] } };
+    expect(renderWith(gitea, noop)).not.toContain("Set up Mate");
+  });
+
+  it("never offers it for any other unavailable reason", () => {
+    const unread: ZeropsCandidate = {
+      ...BARE,
+      reason: "this project's services could not be read",
+    };
+    delete (unread as { missingContainer?: true }).missingContainer;
+    expect(renderWith(unread, noop)).not.toContain("Set up Mate");
+  });
+});

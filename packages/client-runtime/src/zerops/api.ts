@@ -13,7 +13,7 @@
  */
 
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
-import { withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
+import { withZeropsBotTag, withZeropsGroupTags, type ZeropsEnvironmentRole } from "./groups.ts";
 import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
 import {
   buildCreateProjectBody,
@@ -615,6 +615,25 @@ export class ZeropsApiClient {
         name: project.name,
         description: project.description ?? "",
         tagList: withZeropsGroupTags(project.tagList, next),
+      }),
+    });
+  }
+
+  /**
+   * `PUT /project/{id}` with the agent's name in `mate:bot:` and every other
+   * tag kept — the write replaces the list wholesale, so this is a
+   * read-modify-write like `updateProjectGroupTags`, and it goes through
+   * `withZeropsBotTag` rather than a membership write, which would clear the
+   * group (`groups.ts`).
+   */
+  async nameProjectAgent(projectId: string, name: string): Promise<ZeropsProject> {
+    const project = await this.fetchProject(projectId);
+    return this.#request<ZeropsProject>(`/project/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: project.name,
+        description: project.description ?? "",
+        tagList: withZeropsBotTag(project.tagList, name),
       }),
     });
   }

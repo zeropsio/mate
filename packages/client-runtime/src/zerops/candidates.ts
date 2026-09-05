@@ -32,6 +32,12 @@ export interface ZeropsCandidate {
   readonly project: ZeropsProject;
   readonly group: ZeropsCandidateGroup;
   readonly reason?: string;
+  /**
+   * The project is fine; it simply has no zcp container. Structural rather
+   * than a reason string, because it is the one unavailable case with an
+   * action — Set up Mate — and a caller must not parse prose to find it.
+   */
+  readonly missingContainer?: true;
   readonly service?: ZeropsCandidateService;
   readonly containerOrigin?: string;
   readonly environmentId?: EnvironmentId;
@@ -161,7 +167,12 @@ export function deriveZeropsCandidates(
 
   const containers = services.filter(isZcpService);
   if (containers.length === 0) {
-    return [unavailable(project, "no Zerops Mate container in this project")];
+    return [
+      {
+        ...unavailable(project, "no Zerops Mate container in this project"),
+        missingContainer: true,
+      },
+    ];
   }
 
   return containers.map((service) => {
