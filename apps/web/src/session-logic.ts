@@ -18,18 +18,13 @@ import {
 } from "@t3tools/contracts";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 
-import {
-  type ZeropsActivityResult,
-  readZeropsActivityResult,
-} from "@t3tools/client-runtime/zerops/activityResult";
-import { TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/operations/classify";
-import {
-  reduceZeropsOperations,
-  type ZeropsCallEntry,
-  type ZeropsCallStatus,
-  type ZeropsOperation,
-  type ZeropsOperationsReduction,
-} from "@t3tools/client-runtime/zerops/operations";
+import { TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
+import type {
+  ZeropsCall,
+  ZeropsCallStatus,
+  ZeropsOperation,
+  ZeropsTimelineEntry,
+} from "@t3tools/client-runtime/zerops/model";
 
 import type {
   ChatMessage,
@@ -123,20 +118,6 @@ export interface WorkLogEntry {
    * Read this before falling back to `toolData` for a call's arguments.
    */
   toolInput?: Record<string, unknown>;
-  /**
-   * The `zerops_*` result this entry carries, when it is a Zerops tool call.
-   * Attached by the server because the slimming pass drops MCP results — see
-   * `@t3tools/client-runtime/zerops/activityResult`. Absent for every other tool.
-   */
-  zeropsResult?: ZeropsActivityResult;
-  /**
-   * The normalized `zerops_*` tool name for this call, set whenever it is
-   * recognized as one — independent of whether a result has landed yet (a
-   * `tool.started` row never carries one). Set once at first observation and
-   * carried through every later merge, same as `zeropsResult`; read this to
-   * identify a still-running Zerops call before `zeropsResult` exists.
-   */
-  zeropsToolName?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -245,6 +226,12 @@ export type TimelineEntry =
       kind: "operation";
       createdAt: string;
       operation: ZeropsOperation;
+    }
+  | {
+      id: string;
+      kind: "generic-call";
+      createdAt: string;
+      entry: WorkLogEntry;
     };
 
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
@@ -931,11 +918,14 @@ function isAgentInternalActivity(activity: OrchestrationThreadActivity): boolean
 
 export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
+  options?: { readonly exclude?: ReadonlySet<string> },
 ): WorkLogEntry[] {
+  const exclude = options?.exclude;
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries: DerivedWorkLogEntry[] = [];
   for (const activity of ordered) {
-    if (activity.kind === "tool.started" && !isZeropsToolStartedActivity(activity)) continue;
+    if (exclude?.has(activity.id)) continue;
+    if (activity.kind === "tool.started") continue;
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -954,34 +944,6 @@ export function deriveWorkLogEntries(
   return collapseDerivedWorkLogEntries(entries);
 }
 
-// Keyed by activity identity — same reasoning as `isTimelineHiddenToolActivityCache`.
-const isZeropsToolStartedActivityCache = new WeakMap<OrchestrationThreadActivity, boolean>();
-
-/**
- * A `tool.started` row is skipped for every tool except a Zerops call, which
- * keeps it. The server's history/snapshot path drops every `tool.updated` a
- * later `tool.completed` supersedes
- * (`ActivityPayloadProjection.ts` `dropSupersededToolUpdatedActivities`), so
- * a reloaded thread carries only started+completed per call — skipping
- * started here would anchor a live call on its first `tool.updated` and a
- * reloaded one on its `tool.completed`, moving the card on every reload,
- * exactly the instability the operations layer exists to avoid.
- */
-function isZeropsToolStartedActivity(activity: OrchestrationThreadActivity): boolean {
-  const cached = isZeropsToolStartedActivityCache.get(activity);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const payload =
-    activity.payload && typeof activity.payload === "object"
-      ? (activity.payload as Record<string, unknown>)
-      : null;
-  const data = asRecord(payload?.data);
-  const isZeropsCall = zeropsToolNameForClassification(payload, data).startsWith("zerops_");
-  isZeropsToolStartedActivityCache.set(activity, isZeropsCall);
-  return isZeropsCall;
-}
-
 // Keyed by activity identity, like `derivedWorkLogEntryByActivity` below — a
 // repeat `deriveWorkLogEntries` call over the same (unchanged) activities
 // must never re-read `activity.payload` for one it already classified.
@@ -990,16 +952,9 @@ const isTimelineHiddenToolActivityCache = new WeakMap<OrchestrationThreadActivit
 /**
  * `ToolSearch` / `Skill` never become work-log entries at all — classified
  * per-activity, since the transcript's own lifecycle collapse
- * (started/updated/completed) has not happened yet here.
- *
- * A hidden `zerops_*` action (`action=status`, the bootstrap route-menu
- * reply, `close-mode`, …) is deliberately NOT filtered here any more: the
- * bootstrap session's own voice line comes from the `intent` on the hidden
- * route-menu `start`, which the operations reducer can only read if that
- * call survives to reach it. Every `zerops_*` call always becomes an entry
- * and flows into `deriveZeropsOperations`; the reducer alone decides which
- * of them the transcript keeps, via `consumedEntryIds`
- * (`deriveTimelineEntries`).
+ * (started/updated/completed) has not happened yet here. Every `zerops_*`
+ * activity is excluded upstream of this check (`model.zeropsActivityIds`),
+ * so this only ever sees a non-Zerops tool name.
  */
 function isTimelineHiddenToolActivity(activity: OrchestrationThreadActivity): boolean {
   const cached = isTimelineHiddenToolActivityCache.get(activity);
@@ -1015,94 +970,27 @@ function isTimelineHiddenToolActivity(activity: OrchestrationThreadActivity): bo
       ? (activity.payload as Record<string, unknown>)
       : null;
   const data = asRecord(payload?.data);
-  const toolName = zeropsToolNameForClassification(payload, data);
+  const toolName = genericToolNameForHiddenCheck(payload, data);
   const hidden = TIMELINE_HIDDEN_TOOL_NAMES.has(toolName);
   isTimelineHiddenToolActivityCache.set(activity, hidden);
   return hidden;
 }
 
 /**
- * `payload.data.zerops.toolName` ?? `payload.data.toolName` (its
- * `mcp__<server>__` prefix stripped) ?? the tool title, for a non-MCP tool
- * (`ToolSearch`, `Skill`) that carries no `data.toolName` of its own — a name
- * `TIMELINE_HIDDEN_TOOL_NAMES` never contains simply never matches, so an
- * empty string here is always safe.
+ * `payload.data.toolName` (its `mcp__<server>__` prefix stripped) ?? the tool
+ * title, for a non-MCP tool (`ToolSearch`, `Skill`) that carries no
+ * `data.toolName` of its own — a name `TIMELINE_HIDDEN_TOOL_NAMES` never
+ * contains simply never matches, so an empty string here is always safe.
  */
-function zeropsToolNameForClassification(
+function genericToolNameForHiddenCheck(
   payload: Record<string, unknown> | null,
   data: Record<string, unknown> | null,
 ): string {
-  const zerops = asRecord(data?.zerops);
-  const zeropsToolName = asTrimmedString(zerops?.toolName);
-  if (zeropsToolName !== null) {
-    return zeropsToolName;
-  }
   const plainToolName = asTrimmedString(data?.toolName);
   if (plainToolName !== null) {
     return plainToolName.replace(/^mcp__[^_]+__/, "");
   }
   return asTrimmedString(payload?.title) ?? "";
-}
-
-/**
- * The oldest rows a real captured thread carries predate the server's
- * `data.zerops` enrichment: no row for the call ever gets a `zerops` field,
- * but the underlying provider's own raw tool result is intact. When the tool
- * is a `zerops_*` call and that raw result parses as a JSON object, synthesize
- * the same `ZeropsActivityResult` shape the enrichment would have carried —
- * mirrors the test-only adapter in
- * `@t3tools/client-runtime/zerops/operations/fixtures`'s `callEntriesFromActivities`.
- */
-function fallbackZeropsResultFromRawContent(
-  payload: Record<string, unknown> | null,
-): ZeropsActivityResult | undefined {
-  const data = asRecord(payload?.data);
-  const rawToolName = asTrimmedString(data?.toolName);
-  if (rawToolName === null) {
-    return undefined;
-  }
-  const toolName = rawToolName.replace(/^mcp__[^_]+__/, "");
-  if (!toolName.startsWith("zerops_")) {
-    return undefined;
-  }
-  const resultText = extractRawMcpResultText(data?.result);
-  if (resultText === undefined || !isJsonObjectText(resultText)) {
-    return undefined;
-  }
-  return { toolName, resultText };
-}
-
-/** Claude's own raw tool result text, when `content` is a string or an SDK content-block array. */
-function extractRawMcpResultText(result: unknown): string | undefined {
-  const record = asRecord(result);
-  if (record === null) {
-    return undefined;
-  }
-  const content = record.content;
-  if (typeof content === "string") {
-    return asTrimmedString(content) ?? undefined;
-  }
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      const blockRecord = asRecord(block);
-      if (blockRecord?.type === "text" && typeof blockRecord.text === "string") {
-        const text = asTrimmedString(blockRecord.text);
-        if (text !== null) {
-          return text;
-        }
-      }
-    }
-  }
-  return undefined;
-}
-
-function isJsonObjectText(text: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
-  } catch {
-    return false;
-  }
 }
 
 /** Adapters forward unknown wire-only SDK messages (background_tasks_changed,
@@ -1220,26 +1108,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.toolTitle = title;
   }
   const data = asRecord(payload?.data);
-  // Set whenever the call is recognized, independent of whether a result has
-  // landed yet — a `tool.started` row never carries one. Read this (rather
-  // than `zeropsResult`) anywhere the call needs identifying before its
-  // result exists: `mergeDerivedWorkLogEntries`'s anchor rule,
-  // `deriveZeropsOperations`'s still-running adapter.
-  const zeropsToolName = zeropsToolNameForClassification(payload, data);
-  if (zeropsToolName.startsWith("zerops_")) {
-    entry.zeropsToolName = zeropsToolName;
-  }
-  // Not gated on itemType: Claude types `zerops_delete` as `file_change`, and
-  // the server attaches the result by tool NAME for exactly that reason.
-  const zeropsResult =
-    readZeropsActivityResult(payload?.data) ?? fallbackZeropsResultFromRawContent(payload);
-  if (zeropsResult !== undefined) {
-    entry.zeropsResult = zeropsResult;
-  }
-  // Same reasoning as the result read above: a Zerops call's own arguments
-  // must not be gated on itemType either, or a `file_change`-typed
-  // `zerops_delete` would reach `deriveZeropsOperations` with no input at all.
-  if (itemType === "mcp_tool_call" || zeropsResult !== undefined) {
+  if (itemType === "mcp_tool_call") {
     if (data?.item !== undefined) {
       entry.toolData = data.item;
     } else {
@@ -1480,21 +1349,11 @@ function mergeDerivedWorkLogEntries(
   // moves to `next`'s own timestamp via the spread below, which is right for
   // "when was this last updated" but wrong for "when did this call start".
   const startedAt = previous.startedAt ?? previous.createdAt;
-  // A Zerops call keeps its anchor: once either side is recognized as one
-  // (`zeropsToolName` — set before any result exists, so a lone `tool.started`
-  // already qualifies), `id`/`createdAt` stay pinned to the FIRST activity
-  // (`previous`'s own) instead of moving to the newest one — the transcript
-  // row this call renders under must never change position or identity as
-  // its lifecycle advances, nor between a live thread and a reload (server
-  // drops superseded `tool.updated` rows on reload; see `isZeropsToolStartedActivity`).
-  // See `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3.
-  const keepsAnchor = previous.zeropsToolName !== undefined || next.zeropsToolName !== undefined;
   return {
     ...previous,
     ...next,
     startedAt,
     updatedAt: next.createdAt,
-    ...(keepsAnchor ? { id: previous.id, createdAt: previous.createdAt } : {}),
     ...(detail ? { detail } : {}),
     ...(viewedImagePath ? { viewedImagePath } : {}),
     ...(command ? { command } : {}),
@@ -2114,61 +1973,36 @@ function compareActivityLifecycleRank(kind: string): number {
   return 1;
 }
 
-const EMPTY_ZEROPS_OPERATIONS_REDUCTION: ZeropsOperationsReduction = {
-  operations: [],
-  consumedEntryIds: new Set(),
-};
-
-/**
- * Adapts every work-log entry whose tool name starts with `zerops_` into the
- * operations reducer's `ZeropsCallEntry` shape and folds them into
- * `ZeropsOperation`s — the domain objects `ZeropsOperationCard` renders. See
- * `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3.
- */
-export function deriveZeropsOperations(
-  workEntries: ReadonlyArray<WorkLogEntry>,
-): ZeropsOperationsReduction {
-  const callEntries: ZeropsCallEntry[] = [];
-  for (const entry of workEntries) {
-    // `zeropsToolName` is set whenever the call is recognized, before any
-    // result exists — a lone `tool.started` (a call still in flight, or a
-    // stopped session) has one but no `zeropsResult`, and must still adapt
-    // into a running operation rather than being skipped.
-    const toolName = entry.zeropsResult?.toolName ?? entry.zeropsToolName;
-    if (toolName === undefined || !toolName.startsWith("zerops_")) {
-      continue;
-    }
-    const status: ZeropsCallStatus = entry.toolLifecycleStatus ?? "completed";
-    const settledAt = status === "inProgress" ? undefined : (entry.updatedAt ?? entry.createdAt);
-    const input = zeropsWorkLogEntryInput(entry);
-    callEntries.push({
-      id: entry.id,
-      createdAt: entry.createdAt,
-      ...(entry.startedAt !== undefined ? { startedAt: entry.startedAt } : {}),
-      ...(settledAt !== undefined ? { settledAt } : {}),
-      turnId: entry.turnId ?? null,
-      ...(entry.toolCallId !== undefined ? { toolCallId: entry.toolCallId } : {}),
-      toolName,
-      ...(input !== undefined ? { input } : {}),
-      status,
-      ...(entry.zeropsResult?.resultText !== undefined
-        ? { resultText: entry.zeropsResult.resultText }
-        : {}),
-      ...(entry.zeropsResult?.truncated === true ? { truncated: true } : {}),
-      ...(entry.zeropsResult?.images !== undefined ? { images: entry.zeropsResult.images } : {}),
-    });
-  }
-  return reduceZeropsOperations(callEntries);
+/** `entry.toolInput` (Claude) ?? `entry.toolData.arguments` (Codex) — unused by a synthesized entry, kept for parity with other WorkLogEntry readers. */
+function zeropsCallToolLifecycleStatus(status: ZeropsCallStatus): WorkLogToolLifecycleStatus {
+  // `WorkLogToolLifecycleStatus` has no "interrupted" value of its own; an
+  // orphaned call renders as stopped, the closest honest word the generic
+  // tool row already has.
+  return status === "interrupted" ? "stopped" : status;
 }
 
-/** `entry.toolInput` (Claude) ?? `entry.toolData.arguments` (Codex). */
-function zeropsWorkLogEntryInput(entry: WorkLogEntry): Record<string, unknown> | undefined {
-  if (entry.toolInput !== undefined) {
-    return entry.toolInput;
-  }
-  const item = asRecord(entry.toolData);
-  const args = item !== null ? asRecord(item.arguments) : null;
-  return args ?? undefined;
+/**
+ * A Zerops call the model classified `generic` (never a card) renders through
+ * the ordinary generic tool block, same as any other tool call — this is the
+ * one place that shape is synthesized, so `MessagesTimeline` never has to
+ * know a `ZeropsCall` exists.
+ */
+function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
+  return {
+    id: call.anchorActivityId,
+    createdAt: call.startedAt,
+    startedAt: call.startedAt,
+    ...(call.settledAt !== undefined ? { updatedAt: call.settledAt } : {}),
+    turnId: (call.turnId as TurnId | null) ?? null,
+    toolCallId: call.id,
+    label: call.toolName,
+    toolTitle: call.toolName,
+    tone: "tool",
+    itemType: "mcp_tool_call",
+    toolInput: call.input,
+    toolLifecycleStatus: zeropsCallToolLifecycleStatus(call.status),
+    ...(call.resultText !== undefined ? { detail: call.resultText } : {}),
+  };
 }
 
 export function deriveTimelineEntries(
@@ -2176,7 +2010,7 @@ export function deriveTimelineEntries(
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
-  operations: ZeropsOperationsReduction = EMPTY_ZEROPS_OPERATIONS_REDUCTION,
+  zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
 ): TimelineEntry[] {
   const messageRows: TimelineEntry[] = messages.map((message) => ({
     id: message.id,
@@ -2196,27 +2030,34 @@ export function deriveTimelineEntries(
     createdAt: turnPlan.createdAt,
     turnPlan,
   }));
-  const workRows: TimelineEntry[] = workEntries
-    .filter((entry) => !operations.consumedEntryIds.has(entry.id))
-    .map((entry) => ({
-      id: entry.id,
-      kind: "work",
-      createdAt: entry.createdAt,
-      entry,
-    }));
-  const operationRows: TimelineEntry[] = operations.operations.map((operation) => ({
-    id: `operation:${operation.anchorEntryId}`,
-    kind: "operation",
-    createdAt: operation.createdAt,
-    operation,
+  const workRows: TimelineEntry[] = workEntries.map((entry) => ({
+    id: entry.id,
+    kind: "work",
+    createdAt: entry.createdAt,
+    entry,
   }));
+  const zeropsRows: TimelineEntry[] = zeropsEntries.map((entry) =>
+    entry.kind === "operation"
+      ? {
+          id: `zerops:${entry.key}`,
+          kind: "operation",
+          createdAt: entry.anchorAt,
+          operation: entry.operation,
+        }
+      : {
+          id: `zerops:${entry.key}`,
+          kind: "generic-call",
+          createdAt: entry.anchorAt,
+          entry: zeropsCallToWorkLogEntry(entry.call),
+        },
+  );
   return [
     ...messageRows,
     ...proposedPlanRows,
     ...turnPlanRows,
     ...workRows,
-    ...operationRows,
-  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+    ...zeropsRows,
+  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function inferCheckpointTurnCountByTurnId(

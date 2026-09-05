@@ -223,6 +223,10 @@
       "types": "./src/zerops/model/index.ts",
       "default": "./src/zerops/model/index.ts"
     },
+    "./zerops/operations/fixtures": {
+      "types": "./src/zerops/operations/__fixtures__/index.ts",
+      "default": "./src/zerops/operations/__fixtures__/index.ts"
+    },
     "./zerops/environmentProjectRef": {
       "types": "./src/zerops/environmentProjectRef.ts",
       "default": "./src/zerops/environmentProjectRef.ts"
