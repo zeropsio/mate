@@ -148,7 +148,6 @@ import {
   sortSettledThreadsForSidebar,
   sortThreadsForSidebar,
   shouldShowProjectIdentityInSidebarSection,
-  threadStatusPill,
   threadStatusRowPresentation,
   useThreadJumpHintVisibility,
 } from "./Sidebar.logic";
@@ -197,7 +196,8 @@ import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
-import { AgentActivity, SidebarZeropsTree } from "./zerops/SidebarZeropsTree";
+import { SidebarZeropsTree } from "./zerops/SidebarZeropsTree";
+import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -2086,34 +2086,10 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
 
-  // What each connected agent is doing: its environment's one conversation
-  // (`resolvePrimaryConversation`) run through the one status resolver and
-  // the one phrase producer the thread rows use, so an environment row and
-  // a thread row can never disagree about what "working" looks like.
-  const threadLastVisitedAtById = useUiStateStore((s) => s.threadLastVisitedAtById);
-  const zeropsActivityByEnvironment = useMemo(() => {
-    const shellsByEnvironment = new Map<EnvironmentId, EnvironmentThreadShell[]>();
-    for (const thread of threads) {
-      const shells = shellsByEnvironment.get(thread.environmentId);
-      if (shells) shells.push(thread);
-      else shellsByEnvironment.set(thread.environmentId, [thread]);
-    }
-    const activity = new Map<EnvironmentId, NonNullable<ReturnType<typeof threadStatusPill>>>();
-    for (const [environmentId, shells] of shellsByEnvironment) {
-      const { primary } = resolvePrimaryConversation(shells);
-      if (primary === undefined) continue;
-      const lastVisitedAt =
-        threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))];
-      const pill = threadStatusPill(
-        resolveThreadStatus({
-          ...primary,
-          ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-        }),
-      );
-      if (pill !== null) activity.set(environmentId, pill);
-    }
-    return activity;
-  }, [threadLastVisitedAtById, threads]);
+  // What each connected agent is doing — the one derivation the projects
+  // screen reads too (`agentActivity.ts`), so a Mate says the same thing in
+  // both places.
+  const zeropsAgentActivity = useZeropsAgentActivity();
 
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
@@ -3543,14 +3519,14 @@ export default function Sidebar() {
             {rosterOnly ? (
               // Every environment is in the roster: there is no thread list to
               // search and no project to start a thread in. The one thing to
-              // make from here is another environment.
+              // make from here is another project.
               <SidebarMenuButton
                 type="button"
                 className="h-8 w-full justify-start gap-2 px-2 text-sm font-medium text-sidebar-muted-foreground hover:text-sidebar-foreground"
-                onClick={navigateToZeropsProjects}
+                onClick={navigateToNewZeropsProject}
               >
                 <PlusIcon className="size-4 shrink-0" />
-                <span>New environment</span>
+                <span>New project</span>
               </SidebarMenuButton>
             ) : (
               <div className="flex items-center gap-1">
@@ -3768,11 +3744,11 @@ export default function Sidebar() {
               candidates={zeropsCandidates}
               className="mb-2"
               onBrowseProjects={navigateToZeropsProjects}
-              renderActivity={(candidate) => {
-                if (candidate.environmentId === undefined) return undefined;
-                const status = zeropsActivityByEnvironment.get(candidate.environmentId);
-                return status === undefined ? undefined : <AgentActivity status={status} />;
-              }}
+              getActivity={(candidate) =>
+                candidate.environmentId === undefined
+                  ? undefined
+                  : zeropsAgentActivity.get(candidate.environmentId)
+              }
               onSelect={(candidate) => {
                 if (isMobile) {
                   setOpenMobile(false);
