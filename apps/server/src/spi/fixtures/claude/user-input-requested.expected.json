@@ -415,70 +415,8 @@
     }
   },
   {
-    "eventId": "evt-7",
-    "provider": "claudeAgent",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "threadId": "spi-replay-claude-thread",
-    "turnId": "turn-0",
-    "providerRefs": {},
-    "raw": {
-      "source": "claude.sdk.message",
-      "method": "claude/rate_limit_event",
-      "messageType": "rate_limit_event",
-      "payload": {
-        "type": "rate_limit_event",
-        "rate_limit_info": {
-          "status": "allowed",
-          "resetsAt": 1788008400,
-          "rateLimitType": "five_hour",
-          "overageStatus": "rejected",
-          "overageDisabledReason": "org_level_disabled",
-          "isUsingOverage": false,
-          "unifiedWindows": {
-            "five_hour": {
-              "utilization": 0.07,
-              "resetsAt": 1788008400
-            },
-            "seven_day": {
-              "utilization": 0.01,
-              "resetsAt": 1788559200
-            }
-          }
-        },
-        "uuid": "49db34e4-d02b-4400-a7c0-82737716afab",
-        "session_id": "2c8c77b4-29b9-46ef-bce1-ac5a2013e04f"
-      }
-    },
-    "type": "account.rate-limits.updated",
-    "payload": {
-      "rateLimits": {
-        "type": "rate_limit_event",
-        "rate_limit_info": {
-          "status": "allowed",
-          "resetsAt": 1788008400,
-          "rateLimitType": "five_hour",
-          "overageStatus": "rejected",
-          "overageDisabledReason": "org_level_disabled",
-          "isUsingOverage": false,
-          "unifiedWindows": {
-            "five_hour": {
-              "utilization": 0.07,
-              "resetsAt": 1788008400
-            },
-            "seven_day": {
-              "utilization": 0.01,
-              "resetsAt": 1788559200
-            }
-          }
-        },
-        "uuid": "49db34e4-d02b-4400-a7c0-82737716afab",
-        "session_id": "2c8c77b4-29b9-46ef-bce1-ac5a2013e04f"
-      }
-    }
-  },
-  {
     "type": "item.started",
-    "eventId": "evt-8",
+    "eventId": "evt-7",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -528,7 +466,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-9",
+    "eventId": "evt-8",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -609,7 +547,7 @@
   },
   {
     "type": "user-input.requested",
-    "eventId": "evt-10",
+    "eventId": "evt-9",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -667,7 +605,7 @@
   },
   {
     "type": "user-input.resolved",
-    "eventId": "evt-11",
+    "eventId": "evt-10",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -693,7 +631,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-12",
+    "eventId": "evt-11",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -753,7 +691,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-13",
+    "eventId": "evt-12",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -868,7 +806,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-14",
+    "eventId": "evt-13",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -982,7 +920,7 @@
     }
   },
   {
-    "eventId": "evt-15",
+    "eventId": "evt-14",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1015,7 +953,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-16",
+    "eventId": "evt-15",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1047,7 +985,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-17",
+    "eventId": "evt-16",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "itemId": "item-1",
@@ -1077,7 +1015,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-18",
+    "eventId": "evt-17",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1137,7 +1075,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-19",
+    "eventId": "evt-18",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1267,7 +1205,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-20",
+    "eventId": "evt-19",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

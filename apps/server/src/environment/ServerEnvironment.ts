@@ -86,6 +86,7 @@ export const makeServerEnvironmentCapabilities = (
     worktreesAllowed: policy.worktreesAllowed,
     threadSettlement: true,
     threadSnooze: true,
+    usageLimitSources: true,
     threadPinning: true,
     threadPinReorder: true,
     threadTitleRegeneration: true,

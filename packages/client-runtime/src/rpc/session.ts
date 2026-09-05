@@ -36,6 +36,7 @@ import {
 import {
   applyServerConfigProjection,
   type ServerConfigProjection,
+  withoutUsageLimitSources,
 } from "../state/serverConfigProjection.ts";
 
 const SOCKET_OPEN_TIMEOUT = "15 seconds";
@@ -94,7 +95,7 @@ function serverConfigReplayEvents(
   const snapshot = {
     version: 1 as const,
     type: "snapshot" as const,
-    config: state.projection.config,
+    config: withoutUsageLimitSources(state.projection.config),
   };
   return [snapshot];
 }

@@ -58,6 +58,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server understands thread.snooze / thread.unsnooze commands. Same
       version-skew contract as threadSettlement. */
   threadSnooze: Schema.optionalKey(Schema.Boolean),
+  /** Server streams quota from configured usage-limit sources. Absent on
+      servers from before usage limits shipped, which never emit the events --
+      so a client reconnecting to one must drop reported quota rather than
+      keep showing a set nothing will ever update. */
+  usageLimitSources: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.pin / thread.unpin commands. Same
       version-skew contract as threadSettlement. */
   threadPinning: Schema.optionalKey(Schema.Boolean),
