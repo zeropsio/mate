@@ -118,13 +118,15 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (candidate.group === "unavailable") {
-    // A project that merely has no container is not unavailable; it has no
-    // Mate, which for a production environment is the default and not a
-    // fault. The reason stays as the detail.
+    // A project that merely has no container is not unavailable. Read on a
+    // Mate's card this is a Mate whose body is gone — the tag declares it,
+    // nothing runs it — and the verb beside it sets it up again; an
+    // environment's row never shows this word at all, because for stage and
+    // production a missing container is the default and not a fault.
     if (candidate.missingContainer === true && !isZeropsToolCandidate(candidate)) {
       return {
-        status: { label: "No Mate", tone: "off" },
-        detail: "No Mate in this environment.",
+        status: { label: "No container", tone: "off" },
+        detail: "This Mate has no container yet.",
       };
     }
     return {

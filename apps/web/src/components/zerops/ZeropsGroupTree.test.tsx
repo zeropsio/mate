@@ -6,8 +6,8 @@ import { ZeropsGroupTree } from "./ZeropsGroupTree";
 import {
   creatableRoles,
   environmentRoleLabel,
+  environmentRoleTag,
   groupNameIsPlaceholder,
-  groupSummaryLabel,
 } from "./ZeropsGroupTree.logic";
 
 interface Item {
@@ -20,6 +20,7 @@ function item(name: string, tagList: ReadonlyArray<string>, mate = true): Item {
 }
 
 const CRM_DEV = item("crm-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM"]);
+const CRM_STAGE = item("crm-stage", ["mate:g:aaa", "mate:role:stage"], false);
 const CRM_PROD = item("crm-prod", ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"], false);
 const GITEA = item("mate-gitea", ["mate:tool:gitea"], false);
 const LOOSE = item("loose", []);
@@ -28,12 +29,14 @@ function render(items: ReadonlyArray<Item>, props: Record<string, unknown> = {})
   return renderToStaticMarkup(
     <ZeropsGroupTree
       getKey={(entry: Item) => entry.project.id}
+      isMate={(entry: Item) => entry.mate === true}
       renderEnvironment={(entry: Item, role) => (
-        <div data-test-environment={entry.project.id} data-test-mate={entry.mate === true}>
-          {environmentRoleLabel(role) ?? "—"} {entry.project.name}
-        </div>
+        <li data-test-environment={entry.project.id}>
+          {entry.project.name} {environmentRoleTag(role) ?? ""}
+        </li>
       )}
-      renderTool={(entry: Item, kind) => <div data-test-tool={kind}>{entry.project.name}</div>}
+      renderMate={(entry: Item) => <div data-test-mate={entry.project.id} />}
+      renderTool={(entry: Item, kind) => <li data-test-tool={kind}>{entry.project.name}</li>}
       view={buildZeropsGroupTree(items)}
       {...props}
     />,
@@ -46,7 +49,7 @@ describe("environmentRoleLabel", () => {
     ["devstage", "Dev / Stage"],
     ["stage", "Stage"],
     ["prod", "Production"],
-  ] as const)("writes %s as %s", (role, expected) => {
+  ] as const)("writes %s as %s in a sentence", (role, expected) => {
     expect(environmentRoleLabel(role)).toBe(expected);
   });
 
@@ -55,21 +58,18 @@ describe("environmentRoleLabel", () => {
   });
 });
 
-describe("groupSummaryLabel", () => {
-  it("says production is live when exactly one member claims it", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV, CRM_PROD]).groups;
-    expect(groupSummaryLabel(group!.group)).toBe("2 environments · production live");
+describe("environmentRoleTag", () => {
+  it.each([
+    ["dev", "dev"],
+    ["devstage", "dev/stage"],
+    ["stage", "stage"],
+    ["prod", "prod"],
+  ] as const)("writes %s as the tag %s", (role, expected) => {
+    expect(environmentRoleTag(role)).toBe(expected);
   });
 
-  it("names the absence, because creating it is the action offered", () => {
-    const [group] = buildZeropsGroupTree([CRM_DEV]).groups;
-    expect(groupSummaryLabel(group!.group)).toBe("1 environment · no production yet");
-  });
-
-  it("surfaces a contested production rather than silently picking one", () => {
-    const second = item("crm-prod-2", ["mate:g:aaa", "mate:role:prod"]);
-    const [group] = buildZeropsGroupTree([CRM_PROD, second]).groups;
-    expect(groupSummaryLabel(group!.group)).toBe("2 environments · 2 claim production");
+  it("has no tag for an environment with no role", () => {
+    expect(environmentRoleTag(undefined)).toBeNull();
   });
 });
 
@@ -92,60 +92,61 @@ describe("creatableRoles", () => {
   });
 
   it("offers nothing once dev, stage and production all exist", () => {
-    const [group] = buildZeropsGroupTree([
-      CRM_DEV,
-      item("crm-stage", ["mate:g:aaa", "mate:role:stage"]),
-      CRM_PROD,
-    ]).groups;
+    const [group] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD]).groups;
     expect(creatableRoles(group!.group)).toEqual([]);
   });
 });
 
 describe("ZeropsGroupTree", () => {
-  it("renders a project as a heading with its summary, and one table with a row per environment", () => {
-    const html = render([CRM_DEV, CRM_PROD]);
+  it("renders a project as its name, its Mates as cards, then its other environments as a list", () => {
+    const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
 
     expect(html).toContain('data-zerops-group="aaa"');
     expect(html).toContain("<h2");
     expect(html).toContain(">Beviro CRM<");
-    expect(html).toContain("2 environments · production live");
-    expect(html).toContain('role="table"');
-    expect(html).toContain('data-zerops-surface="environment-table-header"');
-    // Every environment is one row, in role order, whether or not a Mate lives in it.
-    expect(html).toContain('data-test-environment="crm-dev"');
+    // The Mate's environment is the Mate: a card, and no row of its own.
+    expect(html).toContain('data-zerops-surface="mate-cards"');
+    expect(html).toContain('data-test-mate="crm-dev"');
+    expect(html).not.toContain('data-test-environment="crm-dev"');
+    // The rest in role order, as a list, after the cards.
+    expect(html).toContain('data-zerops-surface="environment-rows"');
+    expect(html).toContain('data-test-environment="crm-stage"');
     expect(html).toContain('data-test-environment="crm-prod"');
-    expect(html.indexOf('data-test-environment="crm-dev"')).toBeLessThan(
+    expect(html.indexOf('data-test-mate="crm-dev"')).toBeLessThan(
+      html.indexOf('data-test-environment="crm-stage"'),
+    );
+    expect(html.indexOf('data-test-environment="crm-stage"')).toBeLessThan(
       html.indexOf('data-test-environment="crm-prod"'),
     );
-    expect(html.match(/data-test-environment=/gu)).toHaveLength(2);
+    // No table, no header row, no sentence under the name.
+    expect(html).not.toContain('role="table"');
+    expect(html).not.toContain("columnheader");
+    expect(html).not.toContain("environments ·");
   });
 
-  it("names the columns once per table", () => {
-    const html = render([CRM_DEV, CRM_PROD]);
-    expect(html.match(/data-zerops-surface="environment-table-header"/gu)).toHaveLength(1);
-    expect(html).toContain(">Mate<");
-    expect(html).toContain(">Public access<");
+  it("draws no list for a project whose every environment is a Mate's, and no cards for one with none", () => {
+    expect(render([CRM_DEV])).not.toContain('data-zerops-surface="environment-rows"');
+    expect(render([CRM_PROD])).not.toContain('data-zerops-surface="mate-cards"');
   });
 
-  it("keeps tools in their own table, never inside a project", () => {
+  it("keeps tools in their own list, never inside a project", () => {
     const html = render([CRM_DEV, GITEA]);
 
     expect(html).toContain('data-zerops-tools="true"');
+    expect(html).toContain('data-zerops-surface="tool-rows"');
     expect(html).toContain('data-test-tool="gitea"');
-    // A tool is not a Mate, and its table's first column says so.
-    expect(html).toContain(">Tool<");
-    // The tool is not a member of the group's own section.
     const groupSection = html.slice(html.indexOf('data-zerops-group="aaa"'));
     expect(groupSection.slice(0, groupSection.indexOf('data-zerops-tools="true"'))).not.toContain(
       "mate-gitea",
     );
   });
 
-  it("shows ungrouped environments under their own heading", () => {
-    const html = render([CRM_DEV, LOOSE]);
+  it("shows ungrouped Mates and environments under their own heading", () => {
+    const html = render([CRM_DEV, LOOSE, item("bare", [], false)]);
     expect(html).toContain('data-zerops-ungrouped="true"');
     expect(html).toContain(">Ungrouped<");
-    expect(html).toContain('data-test-environment="loose"');
+    expect(html).toContain('data-test-mate="loose"');
+    expect(html).toContain('data-test-environment="bare"');
   });
 
   it("marks a project nothing has named", () => {
@@ -153,7 +154,7 @@ describe("ZeropsGroupTree", () => {
     expect(html).toContain("This project has no name yet");
   });
 
-  it("offers the missing roles in the table's foot, only when a create handler is given", () => {
+  it("offers the missing roles under the project, only when a create handler is given", () => {
     expect(render([CRM_DEV])).not.toContain("Add production");
     const html = render([CRM_DEV], { onCreateEnvironment: () => {} });
     expect(html).toContain('data-zerops-surface="add-roles"');
@@ -179,11 +180,12 @@ describe("ZeropsGroupTree", () => {
     expect(render([CRM_DEV, GITEA], { onCreateTool: () => {} })).not.toContain("Add Gitea");
   });
 
-  it("renders the project's menu beside its heading", () => {
+  it("renders the project's menu at the end of its heading, on hover", () => {
     const html = render([CRM_DEV], {
       renderGroupMenu: () => <span data-test="group-menu" />,
     });
     expect(html).toContain('data-test="group-menu"');
+    expect(html).toContain("group-hover/project:opacity-100");
   });
 
   it("renders nothing but an empty nav for an account with no projects", () => {
@@ -206,8 +208,8 @@ describe("ZeropsGroupTree", () => {
 
 describe("an account of loose projects", () => {
   it("is a list, not an 'Ungrouped' section with nothing to be distinct from", () => {
-    const html = render([LOOSE, item("other", [])]);
-    expect(html).toContain('data-test-environment="loose"');
+    const html = render([LOOSE, item("other", [], false)]);
+    expect(html).toContain('data-test-mate="loose"');
     expect(html).toContain('data-test-environment="other"');
     expect(html).not.toContain(">Ungrouped<");
   });

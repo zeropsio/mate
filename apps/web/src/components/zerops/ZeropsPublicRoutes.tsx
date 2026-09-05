@@ -1,127 +1,89 @@
 /**
  * Where an environment is reachable from outside: its public routes
- * (`derivePublicRoutes`), in the two shapes the product needs.
+ * (`derivePublicRoutes`), in the two places the product offers them.
  *
- * Chips are the projects screen's: one chip per service, named as the
- * developer names it (`app`, `api`), that opens the service's public URL —
- * or offers them, when one service answers on several ports. An environment
- * with six public services is six small words, not six hostnames; the host
- * is a tooltip away and a click away, never a column. The icon menu is the
- * left menu's, where there is room for one glyph beside a name.
+ * In a menu, as a group: one item per route — the service as the developer
+ * names it (`app`, `api`; with its port when one service answers on several),
+ * the host in a muted hand, a click that opens it. Six public services are
+ * six items in a menu that scrolls, never six chips in a row and never a
+ * column of hostnames; and when nobody can reach the environment yet, the
+ * group says so instead of vanishing, so a person learns where to look next
+ * time. The icon menu is the left menu's, where there is room for one glyph
+ * beside a name.
  */
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { ExternalLinkIcon } from "lucide-react";
 
-import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-/** Routes by service, in the order `derivePublicRoutes` sorted them. */
-export function groupRoutesByService(
-  routes: ReadonlyArray<ZeropsPublicRoute>,
-): ReadonlyArray<{ readonly service: string; readonly routes: ReadonlyArray<ZeropsPublicRoute> }> {
-  const byService = new Map<string, Array<ZeropsPublicRoute>>();
-  for (const route of routes) {
-    const bucket = byService.get(route.service);
-    if (bucket) bucket.push(route);
-    else byService.set(route.service, [route]);
-  }
-  return [...byService.entries()].map(([service, entries]) => ({ service, routes: entries }));
+export interface ZeropsRouteMenuEntry {
+  readonly key: string;
+  readonly service: string;
+  /** Written only where one service answers on several ports; one port needs no number. */
+  readonly port: number | undefined;
+  readonly host: string;
+  readonly url: string;
 }
 
-const CHIP_CLASS =
-  "relative z-[1] inline-flex h-6 max-w-40 items-center gap-1 rounded-md border border-border/60 bg-card px-1.5 text-xs text-foreground/80 transition-colors hover:border-border hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+/** The menu's items, in the order `derivePublicRoutes` sorted the routes. */
+export function routeMenuEntries(
+  routes: ReadonlyArray<ZeropsPublicRoute>,
+): ReadonlyArray<ZeropsRouteMenuEntry> {
+  const counts = new Map<string, number>();
+  for (const route of routes) counts.set(route.service, (counts.get(route.service) ?? 0) + 1);
+  return routes.map((route) => ({
+    key: route.url,
+    service: route.service,
+    port: (counts.get(route.service) ?? 0) > 1 ? route.port : undefined,
+    host: route.host,
+    url: route.url,
+  }));
+}
 
-export function ZeropsRouteChips({
+/** The public-access group of a menu: a label, then a route per item. */
+export function ZeropsRouteMenuItems({
   routes,
-  label,
-  className,
+  label = "Public access",
 }: {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** Whose routes these are — read by assistive technology. */
-  readonly label: string;
-  readonly className?: string;
+  readonly label?: string;
 }) {
-  if (routes.length === 0) {
-    return (
-      // A dash where a table has a column for it; on a phone, where the cell
-      // is a line of its own, nothing is the quieter answer.
-      <span
-        aria-label={`${label}: none`}
-        className={cn("hidden text-xs text-muted-foreground/50 md:inline", className)}
-        data-zerops-surface="public-routes-empty"
-      >
-        —
-      </span>
-    );
-  }
+  const entries = routeMenuEntries(routes);
   return (
-    <ul
-      aria-label={label}
-      className={cn("flex min-w-0 flex-wrap items-center gap-1", className)}
-      data-zerops-surface="public-routes"
-    >
-      {groupRoutesByService(routes).map(({ service, routes: entries }) => {
-        const [only] = entries;
-        return (
-          <li className="flex min-w-0" key={service}>
-            {entries.length === 1 && only !== undefined ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <a
-                      className={CHIP_CLASS}
-                      data-zerops-surface="public-route"
-                      href={only.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    />
-                  }
-                >
-                  <span className="truncate">{service}</span>
-                  <ExternalLinkIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
-                </TooltipTrigger>
-                <TooltipPopup>{only.host}</TooltipPopup>
-              </Tooltip>
-            ) : (
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <button
-                      aria-label={`${service}: ${entries.length} public ports`}
-                      className={CHIP_CLASS}
-                      data-zerops-surface="public-route"
-                      type="button"
-                    />
-                  }
-                >
-                  <span className="truncate">{service}</span>
-                  <span className="text-muted-foreground">{entries.length}</span>
-                  <ExternalLinkIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
-                </MenuTrigger>
-                <MenuPopup align="start">
-                  {entries.map((route) => (
-                    <MenuItem
-                      key={route.url}
-                      render={<a href={route.url} rel="noreferrer" target="_blank" />}
-                    >
-                      <span className="truncate">{route.host}</span>
-                    </MenuItem>
-                  ))}
-                </MenuPopup>
-              </Menu>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+    <MenuGroup data-zerops-surface="public-routes">
+      <MenuGroupLabel>{label}</MenuGroupLabel>
+      {entries.length === 0 ? (
+        <MenuItem data-zerops-surface="public-routes-empty" disabled>
+          None yet
+        </MenuItem>
+      ) : (
+        entries.map((entry) => (
+          <MenuItem
+            data-zerops-surface="public-route"
+            key={entry.key}
+            render={<a href={entry.url} rel="noreferrer" target="_blank" />}
+          >
+            <span className="shrink-0 font-medium">
+              {entry.service}
+              {entry.port === undefined ? null : (
+                <span className="font-normal text-muted-foreground">:{entry.port}</span>
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.host}</span>
+            <ExternalLinkIcon aria-hidden="true" />
+          </MenuItem>
+        ))
+      )}
+    </MenuGroup>
   );
 }
 
 const ICON_BUTTON_CLASS =
   "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
+/** The left menu's glyph beside an environment: the route itself, or the routes as a menu. */
 export function ZeropsRoutesMenu({
   routes,
   label,
@@ -168,17 +130,8 @@ export function ZeropsRoutesMenu({
       >
         <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>
-      <MenuPopup align="end">
-        {routes.map((route) => (
-          <MenuItem
-            key={route.url}
-            render={<a href={route.url} rel="noreferrer" target="_blank" />}
-          >
-            <span className="truncate">
-              {route.service} · {route.host}
-            </span>
-          </MenuItem>
-        ))}
+      <MenuPopup align="end" className="min-w-48 max-w-[24rem]">
+        <ZeropsRouteMenuItems routes={routes} />
       </MenuPopup>
     </Menu>
   );

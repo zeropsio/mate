@@ -2,7 +2,7 @@ import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupRoutesByService, ZeropsRouteChips, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
+import { routeMenuEntries, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 
 const APP: ZeropsPublicRoute = {
   service: "app",
@@ -23,46 +23,21 @@ const API_ADMIN: ZeropsPublicRoute = {
   host: "api-26a7-9000.prg1.zerops.app",
 };
 
-describe("groupRoutesByService", () => {
-  it("keeps one entry per service, in the order the routes came", () => {
-    expect(groupRoutesByService([API, API_ADMIN, APP]).map((group) => group.service)).toEqual([
-      "api",
-      "app",
+describe("routeMenuEntries", () => {
+  it("is one item per route, the service as the developer names it, the host beside it", () => {
+    expect(routeMenuEntries([API, APP])).toEqual([
+      { key: API.url, service: "api", port: undefined, host: API.host, url: API.url },
+      { key: APP.url, service: "app", port: undefined, host: APP.host, url: APP.url },
     ]);
-    expect(groupRoutesByService([API, API_ADMIN, APP])[0]?.routes).toHaveLength(2);
-  });
-});
-
-describe("ZeropsRouteChips", () => {
-  it("is one chip per service, named as the developer names it, that opens the URL", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsRouteChips label="Public access of x" routes={[API, APP]} />,
-    );
-    expect(html).toContain('data-zerops-surface="public-routes"');
-    expect(html.match(/data-zerops-surface="public-route"/gu)).toHaveLength(2);
-    expect(html).toContain(">api<");
-    expect(html).toContain(">app<");
-    expect(html).toContain(`href="${APP.url}"`);
-    expect(html).toContain('target="_blank"');
-    // The host is not a column: it is not written into the row.
-    expect(html).not.toContain(">app-26a7.prg1.zerops.app<");
   });
 
-  it("offers a menu for a service that answers on several ports", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsRouteChips label="Public access of x" routes={[API, API_ADMIN]} />,
-    );
-    expect(html.match(/data-zerops-surface="public-route"/gu)).toHaveLength(1);
-    expect(html).toContain('aria-label="api: 2 public ports"');
-    expect(html).toContain("<button");
-    expect(html).not.toContain(`href="${API.url}"`);
+  it("writes the port only where one service answers on several", () => {
+    const entries = routeMenuEntries([API, API_ADMIN, APP]);
+    expect(entries.map((entry) => entry.port)).toEqual([3000, 9000, undefined]);
   });
 
-  it("is a quiet dash when nobody can reach the environment", () => {
-    const html = renderToStaticMarkup(<ZeropsRouteChips label="Public access of x" routes={[]} />);
-    expect(html).toContain('data-zerops-surface="public-routes-empty"');
-    expect(html).toContain('aria-label="Public access of x: none"');
-    expect(html).not.toContain("<a ");
+  it("is empty when nobody can reach the environment", () => {
+    expect(routeMenuEntries([])).toEqual([]);
   });
 });
 

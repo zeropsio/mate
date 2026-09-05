@@ -560,6 +560,7 @@
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
+        "apps/web/src/components/zerops/ZeropsMateCard.tsx",
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.ts",
         "apps/web/src/components/zerops/ZeropsGroupTree.tsx",
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts",
@@ -667,6 +668,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
+        "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsGroupTree.test.tsx",
         "apps/web/src/components/zerops/ZeropsOrganizationScope.test.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.test.tsx",

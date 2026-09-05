@@ -193,8 +193,8 @@ describe("deriveZeropsRowPresentation", () => {
         undefined,
       ),
     );
-    expect(presentation.status).toEqual({ label: "No Mate", tone: "off" });
-    expect(presentation.detail).toBe("No Mate in this environment.");
+    expect(presentation.status).toEqual({ label: "No container", tone: "off" });
+    expect(presentation.detail).toBe("This Mate has no container yet.");
   });
 
   it("carries the bucket's own reason for a project on its way in or out of reach", () => {

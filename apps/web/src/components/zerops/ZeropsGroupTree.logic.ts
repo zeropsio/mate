@@ -12,8 +12,9 @@
 import type { ZeropsEnvironmentRole, ZeropsGroup } from "@t3tools/client-runtime/zerops";
 
 /**
- * How a role is written. Sentence case, not the tag's own spelling: `prod` is
- * an identifier, "Production" is the word people use.
+ * How a role is written in a sentence — "Add production", "Acme Docs -
+ * production". Sentence case, not the tag's own spelling: `prod` is an
+ * identifier, "Production" is the word people use.
  */
 export function environmentRoleLabel(role: ZeropsEnvironmentRole | undefined): string | null {
   switch (role) {
@@ -31,20 +32,23 @@ export function environmentRoleLabel(role: ZeropsEnvironmentRole | undefined): s
 }
 
 /**
- * The line under a group's name.
- *
- * Says what is true rather than what is missing, with one exception: a group
- * with no production is the one absence worth surfacing, because creating it
- * is the action the header offers.
+ * How a role reads as a tag — the pill trailing an environment's name. The
+ * tag's own short spelling, because a pill is a tag, and `PROD` beside a
+ * name is what a developer calls it; `MicroLabel` sets the case.
  */
-export function groupSummaryLabel(group: ZeropsGroup): string {
-  const count = group.environments.length;
-  const environments = `${count} ${count === 1 ? "environment" : "environments"}`;
-  if (group.production !== undefined) return `${environments} · production live`;
-
-  const claimants = group.environments.filter((entry) => entry.role === "prod").length;
-  if (claimants > 1) return `${environments} · ${claimants} claim production`;
-  return `${environments} · no production yet`;
+export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): string | null {
+  switch (role) {
+    case "dev":
+      return "dev";
+    case "devstage":
+      return "dev/stage";
+    case "stage":
+      return "stage";
+    case "prod":
+      return "prod";
+    case undefined:
+      return null;
+  }
 }
 
 /**

@@ -46,7 +46,7 @@ import {
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
-  hasMateContainer,
+  hasMate,
   planEnvironmentCreation,
   readZeropsGroupTags,
   runEnvironmentCreation,
@@ -59,13 +59,8 @@ import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { Pill, StatusDot } from "./primitives";
-import {
-  ZeropsEmptySeat,
-  ZeropsEnvironmentRow,
-  ZeropsMateSeat,
-  ZeropsMateVerb,
-  ZeropsMateWord,
-} from "./ZeropsEnvironmentRow";
+import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { ZeropsMateCard, ZeropsMateVerb, ZeropsMateWord } from "./ZeropsMateCard";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -79,7 +74,7 @@ import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
-import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
+import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -520,8 +515,9 @@ function ZeropsProjectsContent() {
   };
 
   /**
-   * The row's quiet actions: the Mate's name when there is a Mate, and where
-   * the environment sits in its project.
+   * The quiet actions of a card or a row: the environment's public access,
+   * the Mate's name when there is a Mate, and where the environment sits in
+   * its project.
    */
   const renderEnvironmentMenu = (
     candidate: ZeropsCandidatePresentation,
@@ -563,12 +559,13 @@ function ZeropsProjectsContent() {
               ]),
         ]}
         label={`More for ${candidate.project.name}`}
+        routes={candidate.routes}
       />
     );
   };
 
   /**
-   * What a Mate is up to, as one phrase in the activity column: the status
+   * What a Mate is up to, as one phrase under its name: the status
    * word, then what it is on, then the one verb that would change things —
    * "Ready · Connect". Connected, the words are the thread's own
    * (`agentActivity`); otherwise they are the row logic's, which already
@@ -623,13 +620,14 @@ function ZeropsProjectsContent() {
       case "connect":
       case "enable":
       case "wait":
+      case "set-up-mate":
         return (
           <>
             {word}
             {dot}
             <ZeropsMateVerb
               disabled={busy}
-              label={action.label}
+              label={action.kind === "set-up-mate" && busy ? "Setting up…" : action.label}
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
@@ -1028,6 +1026,7 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         creating={creationRunning}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
+        isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateTool={() => {
           void createTool();
@@ -1037,55 +1036,29 @@ function ZeropsProjectsContent() {
           const presentation = deriveZeropsRowPresentation(input);
           const action = deriveZeropsRowAction(input);
           const tags = readZeropsGroupTags(candidate.project.tagList);
-          const mate = hasMateContainer(candidate);
-          const connected = candidate.group === "connected";
           const busy = busyKeys.has(candidate.key);
-          const live =
-            connected && candidate.environmentId !== undefined
-              ? activity.get(candidate.environmentId)
-              : undefined;
-          const open =
-            connected && candidate.environmentId !== undefined
-              ? () => {
-                  runRowAction(candidate, "open");
-                }
-              : undefined;
-          // The project itself is the row's concern; a Mate's state is the
-          // activity's. Only a project on its way in, or out of reach, gets a word.
+          // The project itself is the row's concern. Only a project on its
+          // way in, or out of reach, gets a word; one that is simply there
+          // says nothing.
           const projectTrouble =
             candidate.group === "provisioning" ||
             (candidate.group === "unavailable" && candidate.missingContainer !== true);
           return (
             <ZeropsEnvironmentRow
-              activity={
-                mate ? renderMateActivity(candidate, presentation, action, live, busy) : undefined
-              }
-              busy={busy}
-              environmentName={candidate.project.name}
-              menu={renderEnvironmentMenu(candidate, tags, mate)}
-              opens={open !== undefined}
-              roleLabel={environmentRoleLabel(role)}
-              routes={candidate.routes}
-              seat={
-                mate ? (
-                  <ZeropsMateSeat
-                    face={mateFace(candidate)}
-                    name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
-                    onOpen={open}
-                    tint={tints.get(candidate.project.id) ?? "slate"}
-                  />
-                ) : action.kind === "set-up-mate" ? (
-                  <ZeropsEmptySeat
+              action={
+                action.kind === "set-up-mate" ? (
+                  <ZeropsMateVerb
                     disabled={busy}
                     label={busy ? "Setting up…" : action.label}
                     onClick={() => {
                       runRowAction(candidate, action.kind);
                     }}
                   />
-                ) : (
-                  <ZeropsEmptySeat />
-                )
+                ) : undefined
               }
+              busy={busy}
+              menu={renderEnvironmentMenu(candidate, tags, false)}
+              name={candidate.project.name}
               status={
                 projectTrouble ? (
                   <StatusDot
@@ -1095,8 +1068,9 @@ function ZeropsProjectsContent() {
                       ? {}
                       : { pulse: presentation.status.pulse })}
                   />
-                ) : null
+                ) : undefined
               }
+              tag={environmentRoleTag(role)}
             />
           );
         }}
@@ -1114,27 +1088,67 @@ function ZeropsProjectsContent() {
             label={`More for ${group.name}`}
           />
         )}
+        renderMate={(candidate: ZeropsCandidatePresentation, role) => {
+          const input = rowInput(candidate, role);
+          const presentation = deriveZeropsRowPresentation(input);
+          const action = deriveZeropsRowAction(input);
+          const tags = readZeropsGroupTags(candidate.project.tagList);
+          const connected = candidate.group === "connected";
+          const busy = busyKeys.has(candidate.key);
+          const live =
+            connected && candidate.environmentId !== undefined
+              ? activity.get(candidate.environmentId)
+              : undefined;
+          // The card does what its line says: opens a connected Mate's
+          // conversation, connects to a ready one. Anything heavier stays on
+          // the verb itself.
+          const select =
+            connected && candidate.environmentId !== undefined
+              ? () => {
+                  runRowAction(candidate, "open");
+                }
+              : action.kind === "connect" && !busy
+                ? () => {
+                    runRowAction(candidate, "connect");
+                  }
+                : undefined;
+          return (
+            <ZeropsMateCard
+              activity={renderMateActivity(candidate, presentation, action, live, busy)}
+              busy={busy}
+              face={mateFace(candidate)}
+              menu={renderEnvironmentMenu(candidate, tags, true)}
+              name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+              onSelect={select}
+              tint={tints.get(candidate.project.id) ?? "slate"}
+            />
+          );
+        }}
         renderTool={(candidate: ZeropsCandidatePresentation, kind) => {
-          // A tool has no Mate container and never will, so the environment
-          // classifier's verdict is meaningless here. The platform's own
-          // project status is the honest answer.
+          // A tool has no Mate and never will, so the environment classifier's
+          // verdict is meaningless here. The platform's own project status is
+          // the honest answer — and only when it is not simply there.
           const active = candidate.project.status === "ACTIVE";
           return (
             <ZeropsEnvironmentRow
-              activity={
-                <ZeropsMateWord
-                  label={active ? "Ready" : candidate.project.status}
-                  tone={active ? "ok" : "attention"}
+              menu={
+                <ZeropsProjectMenu
+                  actions={[]}
+                  label={`More for ${TOOL_LABEL[kind]}`}
+                  routes={candidate.routes}
                 />
               }
-              environmentName={candidate.project.name}
-              roleLabel="Tool"
-              routes={candidate.routes}
-              seat={
-                <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                  {TOOL_LABEL[kind]}
-                </span>
+              name={TOOL_LABEL[kind]}
+              status={
+                active ? undefined : (
+                  <StatusDot
+                    label={candidate.project.status.toLowerCase().replaceAll("_", " ")}
+                    tone="attention"
+                  />
+                )
               }
+              // Under a heading that says Tools, a pill that says the same is one accessory too many.
+              tag={null}
             />
           );
         }}
