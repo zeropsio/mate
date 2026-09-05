@@ -33,7 +33,9 @@ import { WorkspacePageHeader } from "../../WorkspacePageHeader";
 export function ZeropsHostedFrame({
   breadcrumb,
   actions,
+  bar = true,
   centered = false,
+  footer,
   width = "wide",
   children,
 }: {
@@ -41,8 +43,17 @@ export function ZeropsHostedFrame({
   readonly breadcrumb?: ReactNode;
   /** The bar's right side. */
   readonly actions?: ReactNode;
+  /**
+   * `false` draws no bar: the landing states (sign-in, the pairing pages, the
+   * callback) are one composition in the middle of the page, and a bar above
+   * it would only hold the brand a second time. On the desktop the window
+   * still needs something to drag by, so a bare strip stays.
+   */
+  readonly bar?: boolean;
   /** A single card in the middle of the page (sign-in, the callback) rather than a page. */
   readonly centered?: boolean;
+  /** One quiet line at the foot of a centred page — the byline. */
+  readonly footer?: ReactNode;
   readonly width?: WorkspacePageWidth;
   readonly children: ReactNode;
 }) {
@@ -54,36 +65,46 @@ export function ZeropsHostedFrame({
         {/* The bar's own padding goes; its content sits in the page's column,
             so the lockup lines up with the title and the account with the
             title row's action, at every width. */}
-        <WorkspacePageHeader
-          className={cn("px-0 sm:px-0", standalone && "border-b border-border")}
-          data-zerops-frame={standalone ? "standalone" : "shell"}
-          electron={isElectron}
-        >
-          <div
-            className={cn(
-              "mx-auto flex h-full w-full min-w-0 items-center gap-3 px-5 sm:px-6",
-              workspacePageWidthClass(width),
-            )}
+        {bar ? (
+          <WorkspacePageHeader
+            className={cn("px-0 sm:px-0", standalone && "border-b border-border")}
+            data-zerops-frame={standalone ? "standalone" : "shell"}
+            electron={isElectron}
           >
-            {standalone ? (
-              <Link
-                aria-label={APP_BASE_NAME}
-                className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
-                to="/"
-              >
-                <MateLockup decorative className="h-4.5 w-auto" />
-              </Link>
-            ) : null}
-            {breadcrumb ?? null}
-            {actions === undefined ? null : (
-              <div className="ms-auto flex min-w-0 items-center gap-2">{actions}</div>
-            )}
-          </div>
-        </WorkspacePageHeader>
+            <div
+              className={cn(
+                "mx-auto flex h-full w-full min-w-0 items-center gap-3 px-5 sm:px-6",
+                workspacePageWidthClass(width),
+              )}
+            >
+              {standalone ? (
+                <Link
+                  aria-label={APP_BASE_NAME}
+                  className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+                  to="/"
+                >
+                  <MateLockup decorative className="h-6 w-auto" />
+                </Link>
+              ) : null}
+              {breadcrumb ?? null}
+              {actions === undefined ? null : (
+                <div className="ms-auto flex min-w-0 items-center gap-2">{actions}</div>
+              )}
+            </div>
+          </WorkspacePageHeader>
+        ) : isElectron ? (
+          <div
+            aria-hidden="true"
+            className="drag-region h-[var(--workspace-topbar-height)] shrink-0"
+          />
+        ) : null}
 
         {centered ? (
-          <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
-            {children}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="flex flex-1 items-center justify-center p-6">{children}</div>
+            {footer === undefined ? null : (
+              <footer className="flex shrink-0 justify-center px-6 pb-6">{footer}</footer>
+            )}
           </div>
         ) : (
           <ScrollArea className="min-h-0 flex-1">

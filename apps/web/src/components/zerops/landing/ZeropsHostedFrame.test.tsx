@@ -55,6 +55,23 @@ describe("ZeropsHostedFrame", () => {
     expect(html).toContain("Environments / New");
   });
 
+  it("draws no bar when told not to, and still carries the byline at the foot", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsHostedFrame
+        bar={false}
+        centered
+        footer={<a href="https://zerops.io">Mate by Zerops</a>}
+      >
+        <p>card</p>
+      </ZeropsHostedFrame>,
+    );
+    expect(html).not.toContain("<header");
+    expect(html).not.toContain("data-zerops-frame");
+    expect(html).not.toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
+    expect(html.indexOf("card")).toBeLessThan(html.indexOf("<footer"));
+    expect(html).toContain("Mate by Zerops");
+  });
+
   it("centres a single card when asked, and frames a page otherwise", () => {
     const centred = renderToStaticMarkup(
       <ZeropsHostedFrame centered>

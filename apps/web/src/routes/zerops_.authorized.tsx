@@ -12,9 +12,8 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
-import { ZeropsHostedFrame } from "../components/zerops/landing/ZeropsHostedFrame";
+import { ZeropsHandoverFailed } from "../components/zerops/landing/ZeropsHandoverFailed";
+import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { completeZeropsHandover, readHandoverOnce, startZeropsHandover } from "../zerops/handover";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
@@ -99,37 +98,18 @@ function ZeropsHandoverCallback() {
       });
   }, [adoptHandover, navigate, outcome]);
 
+  if (state.kind === "working") {
+    return <ZeropsLandingWait data-zerops-handover="working" label="Signing you in…" />;
+  }
   return (
-    <ZeropsHostedFrame centered>
-      <div className="w-full max-w-sm space-y-4 text-center">
-        {state.kind === "working" ? (
-          <>
-            <Spinner className="mx-auto size-5" />
-            <p className="text-sm text-muted-foreground">Signing you in…</p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-foreground">{state.message}</p>
-            <Button
-              className="w-full"
-              onClick={() => {
-                window.location.href = startZeropsHandover();
-              }}
-            >
-              Try again
-            </Button>
-            <button
-              type="button"
-              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-              onClick={() => {
-                void navigate({ to: "/zerops", replace: true });
-              }}
-            >
-              Back to Zerops Mate
-            </button>
-          </>
-        )}
-      </div>
-    </ZeropsHostedFrame>
+    <ZeropsHandoverFailed
+      message={state.message}
+      onBack={() => {
+        void navigate({ to: "/zerops", replace: true });
+      }}
+      onRetry={() => {
+        window.location.href = startZeropsHandover();
+      }}
+    />
   );
 }

@@ -1,7 +1,9 @@
 /**
- * The Zerops entry surface, presentational only: a frame plus the three forms
- * it can hold (sign in, sign up, two-factor). Every decision arrives as a
- * prop, so this file renders without a session, a router or a network.
+ * The Zerops entry surface, presentational only: one composition in the
+ * middle of the page — the live mark, a title, a card — plus the three forms
+ * the card can hold (sign in, sign up, two-factor), and the byline at the
+ * foot. No bar: the mark is the brand here. Every decision arrives as a prop,
+ * so this file renders without a session, a router or a network.
  *
  * The reusable frame may keep a way out to upstream's manual connect flow.
  * The outer mate account gate deliberately omits it: signed-out users see one
@@ -16,6 +18,7 @@ import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
+import { ZeropsMark } from "../../ZeropsMark";
 import { ZeropsHostedFrame } from "./ZeropsHostedFrame";
 
 export function ZeropsLandingShell({
@@ -30,11 +33,11 @@ export function ZeropsLandingShell({
   readonly onManualConnect?: (() => void) | undefined;
 }) {
   return (
-    <ZeropsHostedFrame centered>
+    <ZeropsHostedFrame bar={false} centered footer={<ZeropsByline />}>
       <div className="w-full max-w-md space-y-6">
         <MateMark playful className="mx-auto h-20 w-auto" />
-        <div className="space-y-1 text-center">
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+        <div className="space-y-1.5 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
 
@@ -54,6 +57,46 @@ export function ZeropsLandingShell({
             </button>
           </p>
         )}
+      </div>
+    </ZeropsHostedFrame>
+  );
+}
+
+/**
+ * Who made this: one quiet line at the foot of every landing state. The
+ * product is Mate; Zerops is the company, and this is where its name lives on
+ * a page that otherwise says it only where the account is meant.
+ */
+export function ZeropsByline() {
+  return (
+    <a
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      data-zerops-byline="true"
+      href="https://zerops.io"
+      rel="noreferrer"
+      target="_blank"
+    >
+      <ZeropsMark className="size-3.5" />
+      Mate by Zerops
+    </a>
+  );
+}
+
+/**
+ * A landing state that is only waiting — the session check on a reload, the
+ * sign-in callback spending its token. The mark and a spinner, no words the
+ * next frame would replace; the words go to assistive technology alone.
+ */
+export function ZeropsLandingWait({
+  label,
+  ...props
+}: { readonly label: string } & Record<`data-${string}`, string>) {
+  return (
+    <ZeropsHostedFrame bar={false} centered footer={<ZeropsByline />}>
+      <div {...props} aria-live="polite" className="flex flex-col items-center gap-6" role="status">
+        <MateMark playful className="h-20 w-auto" />
+        <Spinner className="size-5" />
+        <span className="sr-only">{label}</span>
       </div>
     </ZeropsHostedFrame>
   );
@@ -402,7 +445,8 @@ export function ZeropsHandoverActions({
   return (
     <div className="space-y-3">
       <Button className="w-full" onClick={onContinue}>
-        Continue with Zerops
+        <ZeropsMark className="size-4" tone="current" />
+        Continue with your Zerops account
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         No account yet?{" "}

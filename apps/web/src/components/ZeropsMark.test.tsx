@@ -17,4 +17,14 @@ describe("ZeropsMark", () => {
       expect(markup).toContain(`fill="${path.fill}"`);
     }
   });
+
+  it("takes the text colour when told to, for a place that already has one", () => {
+    const markup = renderToStaticMarkup(<ZeropsMark tone="current" />);
+
+    expect(markup).toContain('data-zerops-mark-tone="current"');
+    expect(markup.match(/fill="currentColor"/gu)).toHaveLength(ZEROPS_MARK.paths.length);
+    for (const path of ZEROPS_MARK.paths) {
+      expect(markup).not.toContain(`fill="${path.fill}"`);
+    }
+  });
 });

@@ -12,8 +12,10 @@ vi.mock("@tanstack/react-router", async () => {
 
 import {
   ZEROPS_GUI_REGISTRATION_URL,
+  ZeropsByline,
   ZeropsHandedOffBanner,
   ZeropsHandoverActions,
+  ZeropsLandingWait,
   ZeropsPasswordDisclosure,
   ZeropsLandingShell,
   ZeropsRegisterForm,
@@ -35,14 +37,31 @@ describe("ZeropsLandingShell", () => {
     expect(markup).toContain("Connect a backend manually");
   });
 
+  it("is one composition: no bar above it, the byline at its foot, the brand said by the mark", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsLandingShell title="Sign in to Mate" description="Pick an environment.">
+        <p>card</p>
+      </ZeropsLandingShell>,
+    );
+
+    expect(markup).not.toContain("<header");
+    expect(markup).toContain('data-mate-mark="live"');
+    expect(markup).toContain("<h1");
+    expect(markup.indexOf("card")).toBeLessThan(markup.indexOf('data-zerops-byline="true"'));
+    expect(markup).toContain("Mate by Zerops");
+    expect(markup).toContain('href="https://zerops.io"');
+    // The company's name is in the byline; the shell itself says it nowhere else.
+    expect(markup.match(/Zerops/gu)).toHaveLength(1);
+  });
+
   it("hides manual backend onboarding in the exclusive Zerops account gate", () => {
     const markup = renderToStaticMarkup(
-      <ZeropsLandingShell title="Sign in to Zerops" description="Sign in">
+      <ZeropsLandingShell title="Sign in to Mate" description="Sign in">
         <ZeropsSignInForm busy={false} error={null} onSubmit={noop} onSwitchToRegister={noop} />
       </ZeropsLandingShell>,
     );
 
-    expect(markup).toContain("Sign in to Zerops");
+    expect(markup).toContain("Sign in to Mate");
     expect(markup).not.toContain("Connect a backend manually");
   });
 
@@ -111,6 +130,31 @@ describe("ZeropsLandingShell", () => {
   });
 });
 
+describe("ZeropsByline", () => {
+  it("says who made this, with the company's mark, and opens the company's site", () => {
+    const markup = renderToStaticMarkup(<ZeropsByline />);
+    expect(markup).toContain("Mate by Zerops");
+    expect(markup).toContain('data-zerops-mark-tone="brand"');
+    expect(markup).toContain('target="_blank"');
+    expect(markup).toContain('rel="noreferrer"');
+  });
+});
+
+describe("ZeropsLandingWait", () => {
+  it("shows the mark and a spinner and says what it waits for to assistive technology only", () => {
+    const markup = renderToStaticMarkup(
+      <ZeropsLandingWait data-zerops-session-check="true" label="Checking your Zerops session…" />,
+    );
+    expect(markup).toContain('data-zerops-session-check="true"');
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain('data-mate-mark="live"');
+    expect(markup).toContain("Checking your Zerops session…");
+    expect(markup).toContain("Mate by Zerops");
+    expect(markup).not.toContain("<h1");
+    expect(markup).not.toContain("<header");
+  });
+});
+
 describe("ZeropsRegistrationUnavailable", () => {
   it("sends the user to the Zerops sign-up that the captcha does allow, with the pool claim", () => {
     const markup = renderToStaticMarkup(
@@ -175,7 +219,7 @@ describe("ZeropsHandoverActions", () => {
       <ZeropsHandoverActions onContinue={noop} onCreateAccount={noop} />,
     );
 
-    expect(markup).toContain("Continue with Zerops");
+    expect(markup).toContain("Continue with your Zerops account");
     expect(markup).toContain("Create one on Zerops");
     expect(markup).not.toContain("Continue in your browser");
   });
@@ -194,7 +238,7 @@ describe("ZeropsHandoverActions", () => {
 
     expect(markup).toContain("Continue in your browser");
     expect(markup).toContain("Cancel");
-    expect(markup).not.toContain("Continue with Zerops");
+    expect(markup).not.toContain("Continue with your Zerops account");
   });
 
   it("surfaces a native sign-in error once no longer busy", () => {
@@ -206,7 +250,7 @@ describe("ZeropsHandoverActions", () => {
       />,
     );
 
-    expect(markup).toContain("Continue with Zerops");
+    expect(markup).toContain("Continue with your Zerops account");
     expect(markup).toContain("Sign-in was cancelled.");
   });
 });

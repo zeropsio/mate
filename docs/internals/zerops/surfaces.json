@@ -481,6 +481,7 @@
       "title": "Zerops hosted landing",
       "components": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
         "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx"
@@ -541,6 +542,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.test.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedFrame.test.tsx",
         "apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"
       ],
