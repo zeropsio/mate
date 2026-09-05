@@ -6,6 +6,7 @@ import {
   advanceProvisioning,
   readProvisioning,
   startProvisioning,
+  startProvisioningForProject,
   type ProvisioningState,
 } from "./provisioning.ts";
 
@@ -44,6 +45,16 @@ function reachAwaitingContainer(nowMs = 0): ProvisioningState {
 describe("provisioning state machine", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("starts at the container wait for a project it was handed", () => {
+    // Environment creation knows the project id the moment the platform
+    // answers; following "the newest project" would be guessing at it.
+    const state = startProvisioningForProject({ projectId: "proj-new", nowMs: 5 });
+    expect(state.phase).toBe("awaiting-container");
+    expect(state.projectId).toBe("proj-new");
+    expect(state.phaseStartedAtMs).toBe(5);
+    expect(state.capMs).toBe(PROVISIONING_CAPS["awaiting-container"]);
   });
 
   it("accepts the clock explicitly", () => {

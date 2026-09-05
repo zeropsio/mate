@@ -180,6 +180,19 @@ export function startProvisioningForContainer(input: {
   });
 }
 
+/**
+ * Starts at the container wait for a project the caller just created — the
+ * environment-creation path, where the project id is known the moment the
+ * platform answers, and following "the newest project on the account" would
+ * be guessing at something already in hand.
+ */
+export function startProvisioningForProject(input: {
+  readonly projectId: string;
+  readonly nowMs: number;
+}): ProvisioningState {
+  return waiting("awaiting-container", input.nowMs, { projectId: input.projectId });
+}
+
 function newestProject(projects: ReadonlyArray<ZeropsProject>): ZeropsProject | undefined {
   // A claim hands over a brand-new project, so on an account that already had
   // one the newest row is the one to follow.

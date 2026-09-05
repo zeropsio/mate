@@ -131,6 +131,16 @@ export {
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 export {
+  ENVIRONMENT_SERVICE_POLL_INTERVAL_MS,
+  ENVIRONMENT_SERVICE_WAIT_CAP_MS,
+  runEnvironmentCreation,
+  type EnvironmentCreationOutcome,
+  type EnvironmentCreationPlatform,
+  type EnvironmentCreationStepProgress,
+  type EnvironmentCreationStepState,
+  type RunEnvironmentCreationInput,
+} from "./runEnvironmentCreation.ts";
+export {
   buildZeropsGroupTree,
   type ZeropsGroupTreeEnvironment,
   type ZeropsGroupTreeGroup,

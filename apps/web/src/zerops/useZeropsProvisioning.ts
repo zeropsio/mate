@@ -16,6 +16,7 @@ import {
   readProvisioning,
   startProvisioning,
   startProvisioningForContainer,
+  startProvisioningForProject,
   type ProvisioningEvent,
   type ProvisioningState,
 } from "@t3tools/client-runtime/zerops/provisioning";
@@ -33,6 +34,8 @@ export function useZeropsProvisioning(clientId: string | null): {
     readonly serviceId: string | null;
     readonly containerOrigin: string;
   }) => void;
+  /** Waits on a project that exists but whose container may not yet. */
+  readonly startForProject: (input: { readonly projectId: string }) => void;
   readonly cancel: () => void;
   readonly retry: () => void;
   readonly enable: () => void;
@@ -99,6 +102,10 @@ export function useZeropsProvisioning(clientId: string | null): {
     startForContainer: (input) => {
       setError(null);
       setState(startProvisioningForContainer({ ...input, nowMs: Date.now() }));
+    },
+    startForProject: (input) => {
+      setError(null);
+      setState(startProvisioningForProject({ ...input, nowMs: Date.now() }));
     },
     cancel: () => {
       setState(null);
