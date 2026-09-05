@@ -107,3 +107,9 @@ export {
   type ZeropsToolProject,
 } from "./tools.ts";
 export { buildGiteaImportYaml, buildGiteaRunnerImportYaml } from "./giteaRecipe.ts";
+export {
+  resolvePrimaryConversation,
+  type ZeropsConversationCandidate,
+  type ZeropsPrimaryConversation,
+  type ZeropsPrimaryConversationReason,
+} from "./primaryConversation.ts";
