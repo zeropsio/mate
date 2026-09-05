@@ -85,7 +85,11 @@ thread in the same environment (`/a5c9…/fff9…`) and a fresh thread in `Acme 
 resolved their project and showed the normal placeholder. Whether the project id changed (a dev
 container's state is ephemeral across a restart) or the environment's project list had not loaded is
 not established; the header's name comes from the Zerops API, not from that list, which is why it
-still reads right.
+still reads right. Later the same day: the draft record reads `projectId: "/var/www"`, and on the
+thread route in the same environment the header's `activeProjectCwd` is `/var/www` while on the
+draft route it is `null`; the draft page's own project picker lists `a5c9…:/var/www` among its
+entries — the project is in `useProjects()` while `useProject(ref)` misses. Not a changed id, then;
+a lookup that misses for a reason the DOM cannot show.
 
 **How to answer** Read the draft's `projectId` out of `t3code:composer-drafts:v1` and compare it with
 the environment's current project list (the `environmentShell` snapshot). Then decide whether a draft
