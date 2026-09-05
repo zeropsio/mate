@@ -19,6 +19,14 @@ export type ZeropsCallStatus =
   | "stopped"
   | "interrupted";
 
+/** One image content block a `zerops_*` result carried (e.g. a `zerops_browser` screenshot). */
+export interface ZeropsCallImage {
+  readonly mimeType: string;
+  readonly data: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 /** One provider tool call of a `zerops_*` tool. Identity = `id` (§2.1 principle 1). */
 export interface ZeropsCall {
   /** `payload.toolCallId`, or `anon:<activityId>` when a driver sends none. */
@@ -34,6 +42,8 @@ export interface ZeropsCall {
   readonly resultText?: string;
   /** The server dropped the result as oversized, and no row carries text. */
   readonly truncated: boolean;
+  /** Image content blocks the result carried (e.g. a `zerops_browser` screenshot), carried forward like `resultText` (§2.3 R3). */
+  readonly images?: ReadonlyArray<ZeropsCallImage>;
   /** `min createdAt` over the call's rows. */
   readonly startedAt: string;
   /** The row whose `createdAt` is `startedAt` — tiebreak only, never identity. */
@@ -119,6 +129,8 @@ export interface ZeropsOperation {
   readonly target?: { readonly hostname: string };
   readonly resultStatus?: string;
   readonly hasResult: boolean;
+  /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. Absent when the result carried none, or the provider dropped the image content block. */
+  readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;

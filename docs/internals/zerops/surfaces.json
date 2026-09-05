@@ -383,8 +383,8 @@
         "packages/client-runtime/src/zerops/activityResult.ts",
         "packages/client-runtime/src/zerops/cards/payloads.ts",
         "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
-        "packages/client-runtime/src/zerops/operations/reduce.ts",
-        "packages/client-runtime/src/zerops/operations/classify.ts",
+        "packages/client-runtime/src/zerops/model/operations.ts",
+        "packages/client-runtime/src/zerops/model/classify.ts",
         "packages/client-runtime/src/zerops/operations/phrases.ts",
         "apps/web/src/zerops/activity/useOperationCard.ts"
       ],
@@ -423,8 +423,10 @@
         "packages/client-runtime/src/zerops/activityResult.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts",
         "apps/web/src/components/zerops/ZeropsBuildLog.test.tsx",
-        "packages/client-runtime/src/zerops/operations/reduce.test.ts",
-        "packages/client-runtime/src/zerops/operations/classify.test.ts",
+        "packages/client-runtime/src/zerops/model/operations.test.ts",
+        "packages/client-runtime/src/zerops/model/calls.test.ts",
+        "packages/client-runtime/src/zerops/model/classify.test.ts",
+        "packages/client-runtime/src/zerops/model/convergence.test.ts",
         "packages/client-runtime/src/zerops/operations/phrases.test.ts",
         "apps/web/src/zerops/activity/useOperationCard.test.ts",
         "apps/web/src/session-logic.test.ts"

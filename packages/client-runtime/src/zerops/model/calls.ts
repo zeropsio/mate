@@ -14,7 +14,7 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { readRecord, readString } from "../cards/decode.ts";
 import { compareAnchors, compareCallRows } from "./order.ts";
 import { normalizedToolName } from "./partition.ts";
-import type { ZeropsCall, ZeropsCallStatus } from "./types.ts";
+import type { ZeropsCall, ZeropsCallImage, ZeropsCallStatus } from "./types.ts";
 
 const TOOL_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
   "tool.started",
@@ -105,6 +105,36 @@ function readZeropsTruncated(payload: Record<string, unknown>): boolean {
   const data = readRecord(payload.data);
   const zerops = data !== undefined ? readRecord(data.zerops) : undefined;
   return zerops?.truncated === true;
+}
+
+/** A malformed image is dropped rather than failing the whole row — one bad entry must not blank every other image the row carries. */
+function readZeropsImages(
+  payload: Record<string, unknown>,
+): ReadonlyArray<ZeropsCallImage> | undefined {
+  const data = readRecord(payload.data);
+  const zerops = data !== undefined ? readRecord(data.zerops) : undefined;
+  const raw = zerops?.images;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return undefined;
+  }
+  const images: ZeropsCallImage[] = [];
+  for (const candidate of raw) {
+    const record = readRecord(candidate);
+    const mimeType = record !== undefined ? readString(record.mimeType) : undefined;
+    const data2 = record !== undefined ? readString(record.data) : undefined;
+    if (mimeType === undefined || data2 === undefined) {
+      continue;
+    }
+    const width = typeof record?.width === "number" ? record.width : undefined;
+    const height = typeof record?.height === "number" ? record.height : undefined;
+    images.push({
+      mimeType,
+      data: data2,
+      ...(width !== undefined ? { width } : {}),
+      ...(height !== undefined ? { height } : {}),
+    });
+  }
+  return images.length > 0 ? images : undefined;
 }
 
 function firstNonNullTurnId(rows: ReadonlyArray<Row>): string | null {
@@ -257,6 +287,14 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
   const truncated =
     resultText === undefined && rows.some((row) => readZeropsTruncated(row.payload));
 
+  let images: ReadonlyArray<ZeropsCallImage> | undefined;
+  for (const row of rows) {
+    const rowImages = readZeropsImages(row.payload);
+    if (rowImages !== undefined) {
+      images = rowImages;
+    }
+  }
+
   return {
     id: group.toolCallId ?? group.id,
     turnId,
@@ -265,6 +303,7 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     status,
     ...(resultText !== undefined ? { resultText } : {}),
     truncated,
+    ...(images !== undefined ? { images } : {}),
     startedAt: first.createdAt,
     anchorActivityId: first.id,
     ...(settledRow !== undefined ? { settledAt: settledRow.createdAt } : {}),

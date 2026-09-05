@@ -22,6 +22,7 @@ export {
 } from "./deriveThreadModel.ts";
 export type {
   ZeropsCall,
+  ZeropsCallImage,
   ZeropsCallStatus,
   ZeropsOperation,
   ZeropsOperationKind,

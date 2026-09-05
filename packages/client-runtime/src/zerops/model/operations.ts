@@ -171,6 +171,7 @@ function buildStandaloneOperation(group: StandaloneGroup): ZeropsOperation {
     ...(fields.target !== undefined ? { target: fields.target } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,
+    ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),
   };
 }
 

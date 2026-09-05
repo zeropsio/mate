@@ -58,6 +58,16 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
             : "Finished."
           : operationClosing("browser", phase, {});
 
+  const firstImage = call.images?.[0];
+  const screenshot =
+    firstImage !== undefined
+      ? {
+          src: `data:${firstImage.mimeType};base64,${firstImage.data}`,
+          ...(firstImage.width !== undefined ? { width: firstImage.width } : {}),
+          ...(firstImage.height !== undefined ? { height: firstImage.height } : {}),
+        }
+      : undefined;
+
   return {
     subject,
     kicker: `${KIND_LABEL.browser} · ${subject}`,
@@ -70,6 +80,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
       call.resultText !== undefined,
     ),
     ...(closing !== undefined ? { closing } : {}),
+    ...(screenshot !== undefined ? { screenshot } : {}),
     steps,
     links: [],
     ...detailField([
