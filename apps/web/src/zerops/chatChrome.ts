@@ -21,6 +21,12 @@ export interface ZeropsChatChrome {
    */
   readonly panel: "available" | "unknown";
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
+  /**
+   * The Zerops project's name, for the header and the draft headline. Read
+   * from the topology whenever it has answered — a draft has an environment
+   * before it has a thread, and "www" (the workspace folder) is not the
+   * name of anything a person recognises.
+   */
   readonly projectName: string | null;
 }
 
@@ -31,23 +37,25 @@ export function resolveZeropsChatChrome(
     readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
   },
 ): ZeropsChatChrome {
+  const topologyProjectName = input.topology?.project.name.trim();
+  const projectName = topologyProjectName ? topologyProjectName : null;
+
   if (threadRef === null) {
     return {
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
-      projectName: null,
+      projectName,
     };
   }
 
   const panel = input.topology === undefined ? "unknown" : "available";
   const agentAuth = input.agentAuth;
-  const topologyProjectName = input.topology?.project.name.trim();
 
   return {
     threadRef,
     panel,
-    projectName: panel === "available" && topologyProjectName ? topologyProjectName : null,
+    projectName,
     // The panel owns the snapshot even while closed. Chat chrome may expose an
     // in-flow entry to that panel, but never render the card over the timeline.
     agentAuthCard:

@@ -153,11 +153,8 @@ import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
-import {
-  useZeropsAgentAuth,
-  useZeropsLifecycle,
-  useZeropsTopology,
-} from "../zerops/useZeropsFeeds";
+import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import { useProjectTopology } from "../zerops/useProjectTopology";
 import { useZcpRestart } from "../zerops/useZcpRestart";
 import {
   deriveAgentPanelModel,
@@ -3373,9 +3370,12 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "browser");
   }, [activeThreadRef]);
-  const activeZeropsEnvironmentId = activeThreadRef === null ? null : activeThreadRef.environmentId;
-  const zeropsTopology = useZeropsTopology(activeZeropsEnvironmentId);
-  const zeropsAgentAuth = useZeropsAgentAuth(activeZeropsEnvironmentId);
+  // The environment, not the thread: a draft has one before it has the other,
+  // and the header names the project either way. This is the writer half of
+  // the topology split (`useProjectTopology`) — the panel mounts the same
+  // ref-counted watcher, so opening it costs nothing extra.
+  const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
+  const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,

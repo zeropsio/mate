@@ -94,7 +94,10 @@ export function DraftHeroHeadline({
           ),
         ) ?? null);
   const activeProjectKey = activeProjectGroup?.projectKey ?? "";
-  const activeProjectDisplayName = activeProjectGroup?.displayName ?? activeProjectTitle;
+  // The caller has already named the project the way the header does (a
+  // Zerops project's own name over the workspace folder); the logical
+  // group's name is the fallback, not the other way round.
+  const activeProjectDisplayName = activeProjectTitle ?? activeProjectGroup?.displayName ?? null;
   const hasResolvedProject = activeProjectTitle !== null;
   const canChooseProject = projectPickerEntries.length > 0;
   const shouldShowProjectMenu = canChooseProject;

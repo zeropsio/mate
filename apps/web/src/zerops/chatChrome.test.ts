@@ -99,6 +99,20 @@ describe("resolveZeropsChatChrome", () => {
     expect(resolveZeropsChatChrome(threadRef, input)).toEqual(expected);
   });
 
+  it("names the project for a draft too: the environment is known before the thread is", () => {
+    expect(
+      resolveZeropsChatChrome(null, {
+        topology: topology({ project: { id: "project-1", name: "acme-docs-dev" } }),
+        agentAuth: undefined,
+      }),
+    ).toEqual({
+      threadRef: null,
+      panel: "unknown",
+      agentAuthCard: null,
+      projectName: "acme-docs-dev",
+    });
+  });
+
   it("uses the trimmed Zerops project name only when topology is available", () => {
     expect(
       resolveZeropsChatChrome(THREAD_REF, {
