@@ -24,13 +24,20 @@
  * the public URL. They say nothing about Gitea itself.
  *
  * Gitea, though, answers two useful questions **unauthenticated** on that same
- * URL (measured 2026-09-05 against a real import):
+ * URL (measured 2026-09-05 against a real import, with curl):
  *
  * - `GET /api/v1/version` → `{"version":"1.27.2"}`, which turns "the platform
  *   says `ACTIVE`" into "Gitea is actually answering";
  * - `GET /api/v1/users/search?q=` → `{"ok":true,"data":[]}`, an empty list on a
  *   fresh instance, which is how the "create the admin user" step can be
  *   ticked honestly instead of nagging forever.
+ *
+ * **Neither is readable from a browser** until the instance answers
+ * cross-origin: the same `GET /api/v1/version` from a page on another origin
+ * fails with `Failed to fetch` before any request is made (measured 2026-09-06
+ * against a live import). `zeropsio/recipe-gitea` enables `[cors]` for exactly
+ * this; an instance built before that lands can only ever be probed
+ * server-side, and this module says `"unknown"` rather than guessing.
  *
  * So {@link deriveGiteaState} takes an optional {@link ZeropsGiteaProbe} beside
  * the platform reads. Without one it says `"unknown"` for what only Gitea
