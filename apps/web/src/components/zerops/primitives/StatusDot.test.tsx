@@ -24,6 +24,15 @@ describe("StatusDot", () => {
     expect(html.endsWith(`>${label}</span></span>`)).toBe(true);
   });
 
+  it("can set the phrase as a sentence instead of a label", () => {
+    const html = renderToStaticMarkup(
+      <StatusDot label="Setting up infrastructure" sentence tone="busy" />,
+    );
+    expect(html).not.toContain("micro-label");
+    expect(html).not.toContain("uppercase");
+    expect(html).toContain(">Setting up infrastructure</span>");
+  });
+
   it("uses the stepped hook for busy work and exposes reduced motion", () => {
     const pulsing = renderToStaticMarkup(<StatusDot label="Creating" tone="busy" />);
     const settled = renderToStaticMarkup(

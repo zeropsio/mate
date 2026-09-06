@@ -99,6 +99,8 @@ import {
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
+import { useZeropsMates } from "~/zerops/useZeropsMates";
+import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -571,9 +573,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return null;
     }
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
-      </div>
+      <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
     );
   }
 
@@ -2676,3 +2676,32 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     </div>
   );
 });
+
+/**
+ * Nothing said yet. In a Mate's conversation that is the Mate's own opening —
+ * its mark, its question, and the sign-in when no agent could act
+ * (`ZeropsMateEmptyState`); elsewhere upstream's one line.
+ */
+function TimelineEmptyState({
+  environmentId,
+  threadKey,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadKey: string;
+}) {
+  const mate = useZeropsMates().get(environmentId);
+  if (mate === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
+      </div>
+    );
+  }
+  return (
+    <ZeropsMateEmptyState
+      environmentId={environmentId}
+      mate={mate}
+      threadRef={parseScopedThreadKey(threadKey)}
+    />
+  );
+}

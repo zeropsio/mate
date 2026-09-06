@@ -1,146 +1,113 @@
 /**
- * The lifecycle strip: one band below the thread header saying where the agent
- * is in the Zerops workflow.
+ * The one line below the thread header that asks for something: a coding
+ * agent to sign in, when none is authorized and the conversation already has
+ * messages. An empty conversation asks in its own empty state
+ * (`ZeropsMateEmptyState`), and where the agent is in the Zerops workflow is
+ * the timeline's and the service map's to say — the band that used to repeat
+ * it here told nobody anything they could not see below it.
  *
- * Absent until the thread's agent has run a workflow-aware Zerops tool, except
- * when the closed service map needs an in-flow authorization entry. Lifecycle
- * wording is decided in `@t3tools/client-runtime/zerops/strip` and tested
- * there; the line below is split out from the feed-reading container so its
- * markup can be tested without a live atom registry.
- *
- * Clicking it opens the service map, which is the question the strip provokes.
+ * The line sits in the timeline's column, at the timeline's width, and paints
+ * nothing across the page: a dot, the request as a sentence, a chevron.
+ * Clicking it starts the sign-in when the caller can, else opens the service
+ * map, where the agents are.
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { ChevronRightIcon } from "lucide-react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { StatusDot } from "./primitives";
 import type { ZeropsOperation, ZeropsSessionView } from "@t3tools/client-runtime/zerops/model";
-import {
-  type ZeropsStripState,
-  type ZeropsStripTone,
-  zeropsStripState,
-} from "@t3tools/client-runtime/zerops/strip";
 
-const TONE_CLASS: Record<ZeropsStripTone, string> = {
-  active: "bg-[var(--zerops-status-busy-surface)] text-foreground",
-  done: "bg-[var(--zerops-status-ok-surface)] text-success-foreground",
-  idle: "bg-[var(--zerops-status-off-surface)] text-muted-foreground",
-  waiting: "bg-[var(--zerops-status-attention-surface)] text-warning-foreground",
-};
-
-const STATUS_TONE: Record<ZeropsStripTone, "attention" | "busy" | "off" | "ok"> = {
-  active: "busy",
-  done: "ok",
-  idle: "off",
-  waiting: "attention",
-};
 const AGENT_AUTH_ATTENTION_LABEL = "Coding agent sign-in required";
 
 export function ZeropsStripLine({
-  state,
   onOpen,
   onOpenAgentAuth,
-  agentAuthNeedsAttention = false,
 }: {
-  readonly state: ZeropsStripState | undefined;
+  /** Opens the service map — the fallback door to the agents. */
   readonly onOpen: () => void;
-  /**
-   * Starts the sign-in the band is asking for. When the band is nothing but
-   * that request, a click should do what it says rather than open a panel
-   * the person then has to search; without this, the panel is the fallback.
-   */
+  /** Starts the sign-in the line is asking for; a click should do what it says. */
   readonly onOpenAgentAuth?: (() => void) | undefined;
-  readonly agentAuthNeedsAttention?: boolean;
 }) {
-  if (state === undefined && !agentAuthNeedsAttention) {
-    return null;
-  }
-  const signInOnly = state === undefined && onOpenAgentAuth !== undefined;
-  const visibleState =
-    state ??
-    ({
-      tone: "waiting",
-      label: AGENT_AUTH_ATTENTION_LABEL,
-    } satisfies ZeropsStripState);
-  const ariaLabel = `Zerops: ${visibleState.label}${
-    state !== undefined && agentAuthNeedsAttention ? ` · ${AGENT_AUTH_ATTENTION_LABEL}` : ""
-  }`;
-
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            aria-label={ariaLabel}
-            className={cn(
-              "flex h-7 w-full min-w-0 cursor-pointer items-center overflow-hidden px-3 text-xs font-medium transition-colors hover:brightness-95",
-              TONE_CLASS[visibleState.tone],
-            )}
-            data-zerops-lifecycle-band="true"
-            data-zerops-strip-tone={visibleState.tone}
-            onClick={signInOnly ? onOpenAgentAuth : onOpen}
-            type="button"
-          />
-        }
-      >
-        <StatusDot
-          className="overflow-hidden"
-          data-zerops-agent-auth-attention={state === undefined ? "true" : undefined}
-          label={visibleState.label}
-          pulse={visibleState.tone === "active"}
-          tone={STATUS_TONE[visibleState.tone]}
-        />
-        {state !== undefined && agentAuthNeedsAttention ? (
-          <StatusDot
-            className="ml-auto shrink-0 pl-3"
-            data-zerops-agent-auth-attention="true"
-            label={AGENT_AUTH_ATTENTION_LABEL}
-            pulse={false}
-            tone="attention"
-          />
-        ) : null}
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        {signInOnly ? "Sign in the coding agent" : "Open the Zerops service map"}
-      </TooltipPopup>
-    </Tooltip>
+    <div
+      className="flex w-full shrink-0 justify-center px-5 sm:px-6"
+      data-zerops-lifecycle-band="true"
+      data-zerops-strip-tone="waiting"
+    >
+      <div className="flex h-8 w-full max-w-3xl items-center">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={`Zerops: ${AGENT_AUTH_ATTENTION_LABEL}`}
+                className="-ms-2 inline-flex h-7 max-w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-warning-foreground transition-colors hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={onOpenAgentAuth ?? onOpen}
+                type="button"
+              />
+            }
+          >
+            <StatusDot
+              className="min-w-0"
+              data-zerops-agent-auth-attention="true"
+              label={AGENT_AUTH_ATTENTION_LABEL}
+              pulse={false}
+              sentence
+              tone="attention"
+            />
+            <ChevronRightIcon
+              aria-hidden="true"
+              className="size-3 shrink-0 text-muted-foreground"
+            />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {onOpenAgentAuth === undefined
+              ? "Open the Zerops service map"
+              : "Sign in the coding agent"}
+          </TooltipPopup>
+        </Tooltip>
+      </div>
+    </div>
   );
 }
 
 export function ZeropsLifecycleStrip({
   threadRef,
-  pendingUserInput,
-  session,
-  running,
   agentAuthNeedsAttention = false,
   zeropsPanelOpen = false,
   onOpenAgentAuth,
+  session,
+  running,
 }: {
   readonly threadRef: ScopedThreadRef | null;
-  readonly pendingUserInput: boolean;
-  /** The thread's own model state — the caller (`ChatView`) derives this once for every Zerops surface. */
-  readonly session: ZeropsSessionView | undefined;
-  readonly running: ZeropsOperation | undefined;
   readonly agentAuthNeedsAttention?: boolean;
   readonly zeropsPanelOpen?: boolean;
   readonly onOpenAgentAuth?: (() => void) | undefined;
+  /**
+   * The thread's Zerops lifecycle, as the caller (`ChatView`) derives it once
+   * for every Zerops surface. Read only for whether there is one: a
+   * conversation the agent has worked in asks for the sign-in here; an empty
+   * one asks in its own empty state. What the lifecycle says is not this
+   * line's to repeat.
+   */
+  readonly session?: ZeropsSessionView | undefined;
+  readonly running?: ZeropsOperation | undefined;
+  /** Handed over by the caller; a waiting question is the timeline's to show, not a band's. */
+  readonly pendingUserInput?: boolean;
 }) {
-  const state = zeropsStripState(session, running, pendingUserInput);
+  const underway = session?.phase !== undefined || running !== undefined;
 
-  if (threadRef === null) {
+  if (threadRef === null || !agentAuthNeedsAttention || zeropsPanelOpen || !underway) {
     return null;
   }
 
   return (
     <ZeropsStripLine
-      agentAuthNeedsAttention={agentAuthNeedsAttention && !zeropsPanelOpen}
       onOpen={() => {
         useRightPanelStore.getState().open(threadRef, "zerops");
       }}
       onOpenAgentAuth={onOpenAgentAuth}
-      state={state}
     />
   );
 }

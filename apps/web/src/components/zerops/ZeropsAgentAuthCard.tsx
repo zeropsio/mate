@@ -55,17 +55,36 @@ export function ZeropsAgentAuthCard({
           Sign in inside this Zerops Control Plane. Access is shared by this project.
         </p>
       </header>
-      <div className="divide-y divide-border/60">
-        {snapshot.agents.map((agent) => (
-          <ZeropsAgentAuthRow
-            key={agent.agentId}
-            agent={agent}
-            onSignIn={onSignIn}
-            onCancel={onCancel}
-          />
-        ))}
-      </div>
+      <ZeropsAgentAuthRows onCancel={onCancel} onSignIn={onSignIn} snapshot={snapshot} />
     </FlatCard>
+  );
+}
+
+/**
+ * The rows alone — one per agent CLI — for a surface that already says why
+ * they are there (an empty conversation asking for a sign-in) and needs no
+ * card header repeating it.
+ */
+export function ZeropsAgentAuthRows({
+  snapshot,
+  onSignIn,
+  onCancel,
+}: {
+  readonly snapshot: ZeropsAgentAuthSnapshot;
+  readonly onSignIn: (agentId: ZeropsAgentId) => void;
+  readonly onCancel: (agentId: ZeropsAgentId) => void;
+}) {
+  return (
+    <div className="divide-y divide-border/60" data-zerops-agent-auth-rows>
+      {snapshot.agents.map((agent) => (
+        <ZeropsAgentAuthRow
+          key={agent.agentId}
+          agent={agent}
+          onSignIn={onSignIn}
+          onCancel={onCancel}
+        />
+      ))}
+    </div>
   );
 }
 

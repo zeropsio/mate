@@ -3,7 +3,6 @@ import {
   serviceStatusTone,
   zeropsStatusWord,
 } from "@t3tools/client-runtime/zerops/serviceMap";
-import { zeropsStripState } from "@t3tools/client-runtime/zerops/strip";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
 import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
@@ -12,7 +11,6 @@ import { expect, it } from "vite-plus/test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
-import { ZeropsStripLine } from "./ZeropsLifecycleStrip";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { ZeropsOperationCard } from "./ZeropsOperationCard";
 import {
@@ -50,26 +48,11 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
     }
   }
 
-  const thread = scene.threads.find(({ id }) => id === scene.lifecycle.threadId);
   const lifecycleThreadModel = deriveZeropsThreadModel({
     activities: scene.threadActivities[scene.lifecycle.threadId] ?? [],
     lifecycle: scene.lifecycle,
     runningTurnId: null,
   });
-  const strip = zeropsStripState(
-    lifecycleThreadModel.session,
-    lifecycleThreadModel.running,
-    thread?.hasPendingUserInput ?? false,
-  );
-  const stripMarkup = renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} state={strip} />);
-  markup.push(stripMarkup);
-  if (strip === undefined) {
-    expect(stripMarkup, "a lifecycle without an envelope is intentionally hidden").toBe("");
-  } else {
-    expect(stripMarkup).toContain(`data-zerops-strip-tone="${strip.tone}"`);
-    expect(stripMarkup).toContain(strip.label);
-  }
-
   const authMarkup = renderToStaticMarkup(
     <ZeropsAgentAuthCard onCancel={() => {}} onSignIn={() => {}} snapshot={scene.agentAuth} />,
   );

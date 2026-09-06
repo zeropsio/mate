@@ -49,17 +49,26 @@ function ChatIndexRouteView() {
  * Where landing on the index goes.
  *
  * With an environment named in the search (`?environmentId=…`, which is how
- * a connect hands over), the landing is *that* environment's: its one
- * conversation when it has one, else a draft in its most recent project, and
- * nothing at all until its shell has arrived — never some other environment's
- * project because that one happened to be cached first.
+ * a connect hands over), the landing is *that* environment's, and nothing at
+ * all until its shell has arrived — never some other environment's project
+ * because that one happened to be cached first.
  *
  * Without one, the most recently active project wins, but only among
  * environments whose socket is up: a registration whose container is gone
  * keeps its cached projects, and those must not claim the landing.
+ *
+ * Either way the landing is the environment's one conversation when it has
+ * one (`resolvePrimaryConversation`), else a draft in the project: one
+ * environment is one conversation, and a second thread would be a second
+ * Mate.
  */
 type IndexLanding =
-  | { readonly kind: "thread"; readonly ref: ScopedThreadRef }
+  | {
+      readonly kind: "thread";
+      readonly ref: ScopedThreadRef;
+      /** Nobody has spoken into it yet: zcp's introduction gets composed into it. */
+      readonly unspoken: boolean;
+    }
   | {
       readonly kind: "draft";
       readonly project: { readonly environmentId: EnvironmentId; readonly id: ProjectId };
@@ -95,6 +104,23 @@ function IndexDraftLanding() {
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
 
   const landing = useMemo((): IndexLanding | null => {
+    /** The environment's one conversation when it has one, else a draft in the project. */
+    const landingIn = (
+      project: { readonly environmentId: EnvironmentId; readonly id: ProjectId } | undefined,
+    ): IndexLanding => {
+      if (project === undefined) return { kind: "none" };
+      const { primary } = resolvePrimaryConversation(
+        threads.filter((thread) => thread.environmentId === project.environmentId),
+      );
+      return primary === undefined
+        ? { kind: "draft", project }
+        : {
+            kind: "thread",
+            ref: scopeThreadRef(project.environmentId, primary.id),
+            unspoken: primary.latestUserMessageAt === null,
+          };
+    };
+
     if (targetEnvironmentId !== null) {
       if (!targetBootstrapped) return null;
       const environmentThreads = threads.filter(
@@ -102,14 +128,19 @@ function IndexDraftLanding() {
       );
       const { primary } = resolvePrimaryConversation(environmentThreads);
       if (primary !== undefined) {
-        return { kind: "thread", ref: scopeThreadRef(targetEnvironmentId, primary.id) };
+        return {
+          kind: "thread",
+          ref: scopeThreadRef(targetEnvironmentId, primary.id),
+          unspoken: primary.latestUserMessageAt === null,
+        };
       }
-      const project = sortScopedProjectsForSidebar(
-        projects.filter((entry) => entry.environmentId === targetEnvironmentId),
-        environmentThreads,
-        "updated_at",
-      )[0];
-      return project === undefined ? { kind: "none" } : { kind: "draft", project };
+      return landingIn(
+        sortScopedProjectsForSidebar(
+          projects.filter((entry) => entry.environmentId === targetEnvironmentId),
+          environmentThreads,
+          "updated_at",
+        )[0],
+      );
     }
 
     // A socket on its first attempt is about to tell us something; a live
@@ -122,16 +153,16 @@ function IndexDraftLanding() {
     if (live.some((environment) => !withSnapshot.has(environment.environmentId))) return null;
     if (live.length > 0) {
       const liveIds = new Set(live.map((environment) => environment.environmentId));
-      const project = sortScopedProjectsForSidebar(
-        projects.filter((entry) => liveIds.has(entry.environmentId)),
-        threads,
-        "updated_at",
-      )[0];
-      return project === undefined ? { kind: "none" } : { kind: "draft", project };
+      return landingIn(
+        sortScopedProjectsForSidebar(
+          projects.filter((entry) => liveIds.has(entry.environmentId)),
+          threads,
+          "updated_at",
+        )[0],
+      );
     }
     if (!bootstrapped) return null;
-    const project = sortScopedProjectsForSidebar(projects, threads, "updated_at")[0];
-    return project === undefined ? { kind: "none" } : { kind: "draft", project };
+    return landingIn(sortScopedProjectsForSidebar(projects, threads, "updated_at")[0]);
   }, [
     bootstrapped,
     environments,
@@ -154,6 +185,14 @@ function IndexDraftLanding() {
     startedForKeyRef.current = key;
 
     if (landing.kind === "thread") {
+      // A conversation nobody has spoken into opens with zcp's own
+      // introduction already written, once — as a fresh draft would.
+      if (landing.unspoken) {
+        composeZeropsFirstPrompt({
+          environmentId: landing.ref.environmentId,
+          target: landing.ref,
+        });
+      }
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(landing.ref),
@@ -169,7 +208,7 @@ function IndexDraftLanding() {
         if (started) {
           composeZeropsFirstPrompt({
             environmentId: project.environmentId,
-            draftId: started.draftId,
+            target: started.draftId,
           });
         }
       })

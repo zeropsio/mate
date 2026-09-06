@@ -5,6 +5,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { DEFAULT_RUNTIME_MODE, type ScopedProjectRef, type ThreadId } from "@t3tools/contracts";
+import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
@@ -29,13 +30,16 @@ import {
 import {
   readEnvironmentAllowsWorktrees,
   readThreadShell,
+  readThreadShells,
   useProjects,
   useThread,
 } from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
-import { resolveThreadRouteTarget } from "../threadRoutes";
+import { zeropsMatesAtom } from "../state/zerops";
+import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
+import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -73,6 +77,9 @@ export function useNewThreadHandler() {
   // set those values on a remote server.
   const primaryServerSettings = useAtomValue(primaryServerSettingsAtom);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  // Which environments a Mate lives in: there, a request for a new thread
+  // opens the one conversation instead.
+  const mates = useAtomValue(zeropsMatesAtom);
   const router = useRouter();
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};
@@ -113,6 +120,39 @@ export function useNewThreadHandler() {
         setModelSelection,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
+      // One environment is one conversation where a Mate lives: a request for
+      // a new thread in a Mate's project opens the conversation the Mate
+      // already has — typed content following when the caller carries it, zcp's
+      // introduction composed into it when nobody has spoken there yet — and
+      // creates nothing, because a second thread would be a second Mate.
+      const mateConversation = mates.has(projectRef.environmentId)
+        ? resolvePrimaryConversation(
+            readThreadShells().filter(
+              (thread) => thread.environmentId === projectRef.environmentId,
+            ),
+          ).primary
+        : undefined;
+      if (mateConversation !== undefined) {
+        return (async () => {
+          const ref = scopeThreadRef(projectRef.environmentId, mateConversation.id);
+          if (
+            options?.carryComposerContent === true &&
+            currentRouteTarget?.kind === "draft" &&
+            composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId)) &&
+            !composerDraftHasUserContent(getComposerDraft(ref))
+          ) {
+            moveComposerPromptAndImages(currentRouteTarget.draftId, ref);
+          } else if (mateConversation.latestUserMessageAt === null) {
+            composeZeropsFirstPrompt({ environmentId: projectRef.environmentId, target: ref });
+          }
+          await router.navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(ref),
+            replace: options?.replace ?? false,
+          });
+          return null;
+        })();
+      }
       // A new thread carries the user's *working mode* from the thread being
       // viewed: model (including options like reasoning effort and context
       // window), permission mode, and interaction mode. Branch, worktree, and
@@ -451,7 +491,14 @@ export function useNewThreadHandler() {
         return { draftId, threadId };
       })();
     },
-    [getCurrentRouteTarget, primaryServerSettings, projectGroupingSettings, projects, router],
+    [
+      getCurrentRouteTarget,
+      mates,
+      primaryServerSettings,
+      projectGroupingSettings,
+      projects,
+      router,
+    ],
   );
 }
 

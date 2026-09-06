@@ -3,8 +3,9 @@ import {
   MATE_MARK_LIDS,
   MATE_MARK_LIVE,
   type MateMarkState,
+  type MateTintId,
 } from "@t3tools/shared/brand";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type CSSProperties } from "react";
 
 import { cn } from "~/lib/utils";
 import "./MateMark.css";
@@ -20,16 +21,35 @@ import { registerLiveMark, type LiveMarkParts } from "./mateMarkRuntime";
  * the still open mark — which is what the sidebar and the favicon want, and
  * what everyone gets under `prefers-reduced-motion`.
  */
+/** The mark in a Mate's colour instead of the brand's: the slab, and the band and side wall of the live one. */
+const TINT_CLASS: Record<MateTintId, string> = {
+  coral: "fill-[var(--zerops-mate-tint-coral)]",
+  amber: "fill-[var(--zerops-mate-tint-amber)]",
+  olive: "fill-[var(--zerops-mate-tint-olive)]",
+  sky: "fill-[var(--zerops-mate-tint-sky)]",
+  violet: "fill-[var(--zerops-mate-tint-violet)]",
+  rose: "fill-[var(--zerops-mate-tint-rose)]",
+  sand: "fill-[var(--zerops-mate-tint-sand)]",
+  slate: "fill-[var(--zerops-mate-tint-slate)]",
+};
+
 export function MateMark({
   className,
   playful = false,
   state,
+  tint,
 }: {
   className?: string;
   /** Renders the live mark rather than the still one. */
   playful?: boolean;
   /** Drives the face directly; otherwise it idles, blinks and reacts to hover. */
   state?: MateMarkState;
+  /**
+   * A Mate's colour for the mark, where the mark stands for one Mate rather
+   * than for the product — an empty conversation, a draft's headline. Absent,
+   * the mark is the brand's teal.
+   */
+  tint?: MateTintId | undefined;
 }) {
   const clipId = useId();
   const loopId = `${clipId}-loop`;
@@ -51,6 +71,12 @@ export function MateMark({
       aria-hidden="true"
       className={cn("mate-mark", className)}
       data-mate-mark={playful ? "live" : "still"}
+      data-mate-mark-tint={tint}
+      style={
+        tint === undefined
+          ? undefined
+          : ({ "--zerops-mate-mark-side": `var(--zerops-mate-tint-${tint})` } as CSSProperties)
+      }
       ref={(node) => {
         parts.current.svg = node;
       }}
@@ -88,7 +114,7 @@ export function MateMark({
           </g>
         ) : null}
 
-        <g fill={MATE_MARK.color}>
+        <g className={tint === undefined ? undefined : TINT_CLASS[tint]} fill={MATE_MARK.color}>
           {MATE_MARK.paths.map((d) => (
             <path d={d} key={d} />
           ))}
@@ -105,6 +131,7 @@ export function MateMark({
             }}
           >
             <path
+              className={tint === undefined ? undefined : TINT_CLASS[tint]}
               d={MATE_MARK_LIVE.band.left}
               fill={MATE_MARK.color}
               ref={(node) => {
@@ -112,6 +139,7 @@ export function MateMark({
               }}
             />
             <path
+              className={tint === undefined ? undefined : TINT_CLASS[tint]}
               d={MATE_MARK_LIVE.band.right}
               fill={MATE_MARK.color}
               ref={(node) => {

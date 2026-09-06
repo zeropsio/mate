@@ -336,6 +336,7 @@
       "title": "Zerops lifecycle strip",
       "components": [
         "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+        "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
         "packages/client-runtime/src/zerops/strip.ts"
       ],
       "entryPoints": [

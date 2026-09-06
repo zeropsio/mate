@@ -19,9 +19,15 @@ type StatusDotProps = Omit<
   readonly label: string;
   readonly pulse?: boolean;
   readonly tone: ServiceStatusToneId;
+  /**
+   * Set the phrase in the running hand — sentence case at the text's own
+   * size — instead of the `MicroLabel`: for a line that is read as a
+   * sentence rather than scanned as a label.
+   */
+  readonly sentence?: boolean;
 };
 
-function StatusDot({ className, label, pulse, tone, ...props }: StatusDotProps) {
+function StatusDot({ className, label, pulse, sentence = false, tone, ...props }: StatusDotProps) {
   const shouldPulse = pulse ?? tone === "busy";
 
   return (
@@ -39,7 +45,11 @@ function StatusDot({ className, label, pulse, tone, ...props }: StatusDotProps) 
           shouldPulse && "animate-status-pulse motion-reduce:animate-none",
         )}
       />
-      <MicroLabel>{label}</MicroLabel>
+      {sentence ? (
+        <span className="min-w-0 truncate">{label}</span>
+      ) : (
+        <MicroLabel>{label}</MicroLabel>
+      )}
     </span>
   );
 }

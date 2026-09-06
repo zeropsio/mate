@@ -1,5 +1,4 @@
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
-import type { ZeropsSessionView } from "@t3tools/client-runtime/zerops/model";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -33,7 +32,7 @@ vi.mock("../../rightPanelStore", () => ({
   },
 }));
 
-import type { ZeropsStripState } from "@t3tools/client-runtime/zerops/strip";
+import type { ZeropsSessionView } from "@t3tools/client-runtime/zerops/model";
 import { ZeropsLifecycleStrip, ZeropsStripLine } from "./ZeropsLifecycleStrip";
 
 const THREAD_REF: ScopedThreadRef = {
@@ -41,50 +40,30 @@ const THREAD_REF: ScopedThreadRef = {
   threadId: ThreadId.make("thread-1"),
 };
 
-const SESSION: ZeropsSessionView = { phase: "idle", serviceCount: 0 };
-
-const render = (state: ZeropsStripState | undefined): string =>
-  renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} state={state} />);
+/** A conversation the agent has worked in: it has a lifecycle. */
+const UNDERWAY: ZeropsSessionView = { phase: "idle", serviceCount: 2 };
 
 describe("ZeropsStripLine", () => {
-  it("renders a full-width lifecycle band with the canonical label", () => {
-    const html = render({ tone: "active", label: "developing kanbandev" });
+  it("is one quiet line in the timeline's column asking for the sign-in: the dot, the sentence, a chevron", () => {
+    const html = renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} />);
 
-    expect(html).toContain("developing kanbandev");
-    expect(html).toContain('data-zerops-strip-tone="active"');
+    expect(html).toContain("Coding agent sign-in required");
     expect(html).toContain('data-zerops-lifecycle-band="true"');
+    expect(html).toContain('data-zerops-strip-tone="waiting"');
     expect(html).toContain('data-zerops-primitive="status-dot"');
-    expect(html).toContain("h-7");
-    expect(html).toContain("w-full");
+    expect(html).toContain("text-warning-foreground");
+    // The timeline's width, not the page's; no tint across the page, no label.
+    expect(html).toContain("max-w-3xl");
+    expect(html).not.toContain("surface)");
+    expect(html).not.toContain("micro-label");
+    expect(html).not.toContain("animate-status-pulse");
+    expect(html).toContain("lucide-chevron-right");
   });
 
-  it("renders nothing when the thread has no Zerops state", () => {
-    expect(render(undefined)).toBe("");
-  });
-
-  it("uses a stepped reduced-motion-safe pulse only while something is running", () => {
-    const active = render({ tone: "active", label: "zerops_deploy running" });
-
-    expect(active).toContain("animate-status-pulse");
-    expect(active).toContain("motion-reduce:animate-none");
-    expect(active).not.toContain("animate-spin");
-    expect(render({ tone: "done", label: "task complete" })).not.toContain("animate-status-pulse");
-  });
-
-  it("colours a waiting strip differently from a finished one", () => {
-    expect(render({ tone: "waiting", label: "waiting for you" })).toContain(
-      "text-warning-foreground",
-    );
-    expect(render({ tone: "done", label: "task complete" })).toContain("text-success-foreground");
-  });
-
-  /** The tooltip popup is portalled and only exists once open, so the label a
-   * screen reader gets is what the static markup can prove. */
-  it("is a labelled button, so the map is one click away", () => {
-    const html = render({ tone: "idle", label: "infrastructure ready · 3 services" });
-
+  it("is a labelled button, so the sign-in is one click away", () => {
+    const html = renderToStaticMarkup(<ZeropsStripLine onOpen={() => {}} />);
     expect(html).toContain("<button");
-    expect(html).toContain('aria-label="Zerops: infrastructure ready · 3 services"');
+    expect(html).toContain('aria-label="Zerops: Coding agent sign-in required"');
   });
 });
 
@@ -94,119 +73,68 @@ describe("ZeropsLifecycleStrip", () => {
     testState.open.mockReset();
   });
 
-  it("renders nothing for an absent thread, even with a session", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsLifecycleStrip
-        pendingUserInput={false}
-        running={undefined}
-        session={SESSION}
-        threadRef={null}
-      />,
-    );
-
-    expect(html).toBe("");
+  it("renders nothing for an absent thread", () => {
+    expect(
+      renderToStaticMarkup(
+        <ZeropsLifecycleStrip agentAuthNeedsAttention session={UNDERWAY} threadRef={null} />,
+      ),
+    ).toBe("");
   });
 
-  it.each([
-    {
-      name: "with the panel closed and attention present",
-      agentAuthNeedsAttention: true,
-      zeropsPanelOpen: false,
-      showsEntry: true,
-    },
-    {
-      name: "with the panel open and attention present",
-      agentAuthNeedsAttention: true,
-      zeropsPanelOpen: true,
-      showsEntry: false,
-    },
-    {
-      name: "with the panel closed after attention clears",
-      agentAuthNeedsAttention: false,
-      zeropsPanelOpen: false,
-      showsEntry: false,
-    },
-    {
-      name: "with the panel open after attention clears",
-      agentAuthNeedsAttention: false,
-      zeropsPanelOpen: true,
-      showsEntry: false,
-    },
-  ] as const)(
-    "keeps panel entry visible when authorization needs attention: $name",
-    ({ agentAuthNeedsAttention, zeropsPanelOpen, showsEntry }) => {
-      const html = renderToStaticMarkup(
+  it("says nothing about the workflow: a conversation whose agents are signed in gets no line", () => {
+    expect(
+      renderToStaticMarkup(
         <ZeropsLifecycleStrip
-          agentAuthNeedsAttention={agentAuthNeedsAttention}
-          pendingUserInput={false}
           running={undefined}
-          session={undefined}
+          session={{ phase: "develop-active", serviceCount: 2 }}
           threadRef={THREAD_REF}
-          zeropsPanelOpen={zeropsPanelOpen}
         />,
-      );
+      ),
+    ).toBe("");
+  });
 
-      expect(html.includes('data-zerops-agent-auth-attention="true"')).toBe(showsEntry);
-      expect(testState.onOpen !== null).toBe(showsEntry);
+  it("asks for the sign-in only over a conversation the agent has worked in — an empty one asks in its empty state", () => {
+    expect(
+      renderToStaticMarkup(<ZeropsLifecycleStrip agentAuthNeedsAttention threadRef={THREAD_REF} />),
+    ).toBe("");
+    expect(
+      renderToStaticMarkup(
+        <ZeropsLifecycleStrip agentAuthNeedsAttention session={UNDERWAY} threadRef={THREAD_REF} />,
+      ),
+    ).toContain("Coding agent sign-in required");
+  });
 
-      testState.onOpen?.();
-      expect(testState.open).toHaveBeenCalledTimes(showsEntry ? 1 : 0);
-      if (showsEntry) {
-        expect(testState.open).toHaveBeenCalledWith(THREAD_REF, "zerops");
-      }
-    },
-  );
+  it("stays out of the way while the service map is open, where the agents are", () => {
+    expect(
+      renderToStaticMarkup(
+        <ZeropsLifecycleStrip
+          agentAuthNeedsAttention
+          session={UNDERWAY}
+          threadRef={THREAD_REF}
+          zeropsPanelOpen
+        />,
+      ),
+    ).toBe("");
+  });
 
-  it("starts the sign-in from a band that is nothing but that request", () => {
-    // With a handler for it, the band does what it says; the panel stays the
-    // door for everything else.
+  it("starts the sign-in from the line when the caller can, else opens the panel with the same scoped thread ref", () => {
     const onOpenAgentAuth = vi.fn();
     renderToStaticMarkup(
       <ZeropsLifecycleStrip
         agentAuthNeedsAttention
         onOpenAgentAuth={onOpenAgentAuth}
-        pendingUserInput={false}
-        running={undefined}
-        session={undefined}
+        session={UNDERWAY}
         threadRef={THREAD_REF}
       />,
     );
     testState.onOpen?.();
     expect(onOpenAgentAuth).toHaveBeenCalledTimes(1);
     expect(testState.open).not.toHaveBeenCalled();
-  });
 
-  it("keeps the panel as the door when the band also carries a lifecycle state", () => {
-    const onOpenAgentAuth = vi.fn();
     renderToStaticMarkup(
-      <ZeropsLifecycleStrip
-        agentAuthNeedsAttention
-        onOpenAgentAuth={onOpenAgentAuth}
-        pendingUserInput={false}
-        running={undefined}
-        session={SESSION}
-        threadRef={THREAD_REF}
-      />,
+      <ZeropsLifecycleStrip agentAuthNeedsAttention session={UNDERWAY} threadRef={THREAD_REF} />,
     );
     testState.onOpen?.();
-    expect(onOpenAgentAuth).not.toHaveBeenCalled();
     expect(testState.open).toHaveBeenCalledWith(THREAD_REF, "zerops");
-  });
-
-  it("opens the panel with the same scoped thread ref object", () => {
-    renderToStaticMarkup(
-      <ZeropsLifecycleStrip
-        pendingUserInput={false}
-        running={undefined}
-        session={SESSION}
-        threadRef={THREAD_REF}
-      />,
-    );
-
-    expect(testState.onOpen).not.toBeNull();
-    testState.onOpen?.();
-
-    expect(testState.open).toHaveBeenCalledWith(THREAD_REF, "zerops");
-    expect(testState.open.mock.calls[0]?.[0]).toBe(THREAD_REF);
   });
 });

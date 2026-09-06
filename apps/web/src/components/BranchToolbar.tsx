@@ -19,6 +19,7 @@ import {
   useThreadShellsForProjectRefs,
 } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
+import { useZeropsMates } from "../zerops/useZeropsMates";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -496,11 +497,19 @@ export const BranchToolbar = memo(function BranchToolbar({
     activeEnvironment: activeEnvironmentOption,
     canPickEnvironment: showEnvironmentPicker,
   });
+  // A Mate's conversation runs in the Mate's own container, on whatever the
+  // agent checks out: the header wears the Mate's face, and a tab under the
+  // composer naming the container, a branch or a worktree mode is the local
+  // workstation's business, not this conversation's.
+  const mateEnvironment = useZeropsMates().has(environmentId);
   const isMobile = useIsMobile();
   const [stripElement, setStripElement] = useState<HTMLDivElement | null>(null);
   const labelsOverflow = useLabelsOverflow(stripElement);
 
   if (!hasActiveThread || !activeProject) return null;
+  if (mateEnvironment) return null;
+  // Nothing to say: no strip, rather than an empty tab.
+  if (!showGitControls && !showEnvironmentIndicator) return null;
 
   return (
     <div
