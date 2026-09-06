@@ -32,6 +32,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
@@ -883,6 +884,26 @@ function ZeropsProjectsContent() {
       setToolError(zeropsErrorMessage(cause));
     }
   }, [activeOrganization, client, refresh]);
+
+  // A Mate's group is its token: every environment in the group readable,
+  // its own writable. Reconciled off the list this screen already has, on
+  // every read — a grant write restarts nothing, and a group that has not
+  // moved is not written (`groupReach.ts`).
+  useZeropsGroupReach({
+    client,
+    clientId: activeOrganization?.id,
+    enabled: status === "signed-in" && !isLoading,
+    groups: useMemo(
+      () =>
+        groupTree.groups.map((entry) => ({
+          projectIds: entry.environments.map(({ item }) => item.project.id),
+          mateProjectIds: entry.environments
+            .filter(({ item }) => hasMate(item))
+            .map(({ item }) => item.project.id),
+        })),
+      [groupTree.groups],
+    ),
+  });
 
   useEffect(() => {
     autoConnectServedZeropsEnvironment({

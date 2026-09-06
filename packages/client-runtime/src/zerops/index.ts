@@ -192,12 +192,13 @@ export {
   type ZeropsGiteaCredentialPlan,
 } from "./giteaCredential.ts";
 export {
-  formatGroupFacts,
-  MATE_ENVIRONMENTS_ENV_KEY,
-  MATE_GROUP_ENV_KEY,
-  planGroupFacts,
-  type ZeropsGroupFactEnvironment,
-  type ZeropsGroupFactService,
-  type ZeropsGroupFactsInput,
-  type ZeropsGroupFactsPlan,
-} from "./groupFacts.ts";
+  buildGroupGrants,
+  findMateIntegrationToken,
+  planAccountGroupReach,
+  planGroupReach,
+  type ZeropsGroupReachGroup,
+  type ZeropsGroupReachWrite,
+  type ZeropsIntegrationToken,
+  type ZeropsProjectGrant,
+  type ZeropsProjectRole,
+} from "./groupReach.ts";

@@ -13,6 +13,7 @@
  */
 
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
+import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "./groupReach.ts";
 import {
   withZeropsBotTag,
   withZeropsGroupTags,
@@ -1220,6 +1221,53 @@ export class ZeropsApiClient {
     });
 
     return { project, serviceName };
+  }
+
+  /**
+   * `GET /client/{id}/integration-token/list` — every token on the account,
+   * with the project grants each one carries.
+   *
+   * The bare `…/integration-token` GET answers 405; the listing is under
+   * `/list` (measured 2026-09-06). `groupReach.ts` picks a Mate's own token
+   * out of this.
+   */
+  async listIntegrationTokens(clientId: string): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
+    const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsIntegrationToken> }>(
+      `/client/${clientId}/integration-token/list?limit=100`,
+    );
+    return body.list ?? [];
+  }
+
+  /**
+   * `PUT /client/{id}/integration-token/{tokenId}` — rewrites what a token
+   * reaches, in place.
+   *
+   * The token **string does not change**, so a container already holding it
+   * gains or loses sight of a project immediately, with nothing written into
+   * its environment and no restart (measured 2026-09-06: a read of a sibling
+   * went 200 → 403 → 200 across two of these calls, on one unchanged token).
+   * That is what makes a Mate's group maintainable rather than seeded once.
+   *
+   * The whole body is sent because the platform replaces the record: omitting
+   * a field is not "leave it alone", it is "set it to nothing".
+   */
+  async setIntegrationTokenProjects(input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  }): Promise<void> {
+    await this.#request(`/client/${input.clientId}/integration-token/${input.tokenId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: input.name,
+        roleCode: "NO_ACCESS",
+        canCreateProjects: false,
+        canViewFinances: false,
+        canEditFinances: false,
+        projects: input.projects,
+      }),
+    });
   }
 
   /**
