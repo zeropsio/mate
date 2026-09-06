@@ -4,7 +4,9 @@ import {
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
   ThreadId,
+  type ThreadMessagePreview,
 } from "@t3tools/contracts";
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -22,6 +24,7 @@ import { ProjectionThreadActivityRepository } from "../../persistence/Services/P
 import { type ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
 import {
   type ProjectionThreadMessage,
+  type ProjectionThreadMessagePreviewSource,
   ProjectionThreadMessageRepository,
 } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import {
@@ -128,6 +131,19 @@ function isStalePendingApprovalFailureDetail(detail: string | null): boolean {
     detail.includes("unknown pending approval request") ||
     detail.includes("unknown pending permission request")
   );
+}
+
+// The shell's preview of the last message: the newest user or assistant
+// message with text, quoted (`@t3tools/shared/messagePreview`). Null when
+// nothing has been said or nothing said quotes to anything.
+function threadMessagePreviewFromSource(
+  source: ProjectionThreadMessagePreviewSource | null,
+): ThreadMessagePreview | null {
+  if (source === null) {
+    return null;
+  }
+  const text = messagePreviewText(source.text);
+  return text === null ? null : { role: source.role, text, createdAt: source.createdAt };
 }
 
 // A refresh reads each persisted summary source, so skip activities that cannot change the result.
@@ -571,6 +587,35 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
+    // The preview folds in the way latestUserMessageAt does: a completed user
+    // or assistant message with text becomes the preview when it is the
+    // newest. A completion event may carry no text (the streamed body stands),
+    // and then the projected row is read — one bounded row, not the thread.
+    const foldLatestMessagePreview = Effect.fn("foldLatestMessagePreview")(function* (
+      previous: ThreadMessagePreview | null,
+      payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
+    ) {
+      if (payload.streaming || payload.role === "system") {
+        return previous;
+      }
+      const next =
+        payload.text.length > 0
+          ? threadMessagePreviewFromSource({
+              role: payload.role,
+              text: payload.text,
+              createdAt: payload.createdAt,
+            })
+          : threadMessagePreviewFromSource(
+              yield* projectionThreadMessageRepository.getLatestPreviewSource({
+                threadId: payload.threadId,
+              }),
+            );
+      if (next === null || (previous !== null && previous.createdAt > next.createdAt)) {
+        return previous;
+      }
+      return next;
+    });
+
     const refreshThreadShellSummary = Effect.fn("refreshThreadShellSummary")(function* (
       threadId: ThreadId,
     ) {
@@ -581,9 +626,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return;
       }
 
-      const [latestUserMessageAt, proposedPlans, activities, pendingApprovalCount] =
+      const [latestUserMessageAt, previewSource, proposedPlans, activities, pendingApprovalCount] =
         yield* Effect.all([
           projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
+          projectionThreadMessageRepository.getLatestPreviewSource({ threadId }),
           projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
           projectionThreadActivityRepository.listUserInputLifecycleByThreadId({ threadId }),
           projectionPendingApprovalRepository.countPendingByThreadId({ threadId }),
@@ -598,6 +644,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       yield* projectionThreadRepository.upsert({
         ...existingRow.value,
         latestUserMessageAt,
+        latestMessagePreview: threadMessagePreviewFromSource(previewSource),
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
@@ -633,6 +680,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             titleRegenerationRequestId: null,
             titleRegenerationStartedAt: null,
             latestUserMessageAt: null,
+            latestMessagePreview: null,
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
@@ -881,9 +929,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
-        // A message cannot change any summary field except latestUserMessageAt,
-        // which is a monotonic maximum that folds in directly. The full refresh
-        // would re-read every message body in the thread per user message.
+        // A message cannot change any summary field except latestUserMessageAt
+        // and the preview of the last message, both monotonic by time and both
+        // folding in directly. The full refresh would re-read every message
+        // body in the thread per user message.
         case "thread.message-sent": {
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
@@ -892,9 +941,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             return;
           }
           const previousLatest = existingRow.value.latestUserMessageAt;
+          const latestMessagePreview = yield* foldLatestMessagePreview(
+            existingRow.value.latestMessagePreview ?? null,
+            event.payload,
+          );
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             updatedAt: event.occurredAt,
+            latestMessagePreview,
             latestUserMessageAt:
               event.payload.role === "user" &&
               (previousLatest === null || event.payload.createdAt > previousLatest)

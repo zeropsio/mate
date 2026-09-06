@@ -2661,16 +2661,33 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
 
       const readSummary = sql<{
         readonly latestUserMessageAt: string | null;
+        readonly latestMessagePreview: string | null;
         readonly pendingUserInputCount: number;
         readonly updatedAt: string;
       }>`
         SELECT
           latest_user_message_at AS "latestUserMessageAt",
+          latest_message_preview_json AS "latestMessagePreview",
           pending_user_input_count AS "pendingUserInputCount",
           updated_at AS "updatedAt"
         FROM projection_threads
         WHERE thread_id = 'thread-shell-summary'
-      `;
+      `.pipe(
+        Effect.map((rows) =>
+          rows.map((row) => ({
+            ...row,
+            latestMessagePreview:
+              row.latestMessagePreview === null
+                ? null
+                : (JSON.parse(row.latestMessagePreview) as unknown),
+          })),
+        ),
+      );
+      const userPreview = {
+        role: "user",
+        text: "please do the thing",
+        createdAt: "2026-03-01T08:00:02.000Z",
+      };
 
       yield* appendAndProject({
         type: "thread.message-sent",
@@ -2697,6 +2714,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       assert.deepEqual(yield* readSummary, [
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+          latestMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:02.000Z",
         },
@@ -2726,11 +2744,50 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         },
       });
 
+      // …nor the preview: a streaming message is not said yet.
       assert.deepEqual(yield* readSummary, [
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+          latestMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:03.000Z",
+        },
+      ]);
+
+      // The completion carries no text of its own — the streamed body stands —
+      // and the preview reads the projected row: the assistant's words, quoted.
+      yield* appendAndProject({
+        type: "thread.message-sent",
+        eventId: EventId.make("evt-shell-summary-4b"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-shell-summary"),
+        occurredAt: "2026-03-01T08:00:03.500Z",
+        commandId: CommandId.make("cmd-shell-summary-4b"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-shell-summary-4b"),
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("thread-shell-summary"),
+          messageId: MessageId.make("message-shell-summary-assistant"),
+          role: "assistant",
+          text: "",
+          turnId: TurnId.make("turn-shell-summary-1"),
+          streaming: false,
+          createdAt: "2026-03-01T08:00:03.000Z",
+          updatedAt: "2026-03-01T08:00:03.500Z",
+        },
+      });
+      const assistantPreview = {
+        role: "assistant",
+        text: "working on it",
+        createdAt: "2026-03-01T08:00:03.000Z",
+      };
+      assert.deepEqual(yield* readSummary, [
+        {
+          latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+          latestMessagePreview: assistantPreview,
+          pendingUserInputCount: 0,
+          updatedAt: "2026-03-01T08:00:03.500Z",
         },
       ]);
 
@@ -2763,6 +2820,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       assert.deepEqual(yield* readSummary, [
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+          latestMessagePreview: assistantPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:04.000Z",
         },
@@ -2805,6 +2863,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       assert.deepEqual(yield* readSummary, [
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+          latestMessagePreview: assistantPreview,
           pendingUserInputCount: 1,
           updatedAt: "2026-03-01T08:00:05.000Z",
         },
@@ -2888,12 +2947,14 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         yield* appendAndProject(event);
         const summary = yield* sql<{
           readonly latestUserMessageAt: string | null;
+          readonly latestMessagePreview: string | null;
           readonly pendingApprovalCount: number;
           readonly pendingUserInputCount: number;
           readonly hasActionableProposedPlan: number;
         }>`
           SELECT
             latest_user_message_at AS "latestUserMessageAt",
+            latest_message_preview_json AS "latestMessagePreview",
             pending_approval_count AS "pendingApprovalCount",
             pending_user_input_count AS "pendingUserInputCount",
             has_actionable_proposed_plan AS "hasActionableProposedPlan"
@@ -2903,6 +2964,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         assert.deepEqual(summary, [
           {
             latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+            latestMessagePreview: JSON.stringify(assistantPreview),
             pendingApprovalCount: 1,
             pendingUserInputCount: 1,
             hasActionableProposedPlan: 1,

@@ -425,6 +425,21 @@ export const ThreadLinkedPullRequest = Schema.Struct({
 });
 export type ThreadLinkedPullRequest = typeof ThreadLinkedPullRequest.Type;
 
+/**
+ * The last thing said in a thread, for a row that lists conversations: who
+ * said it, its opening words (`@t3tools/shared/messagePreview`), and when.
+ * System messages are not part of the conversation and never preview.
+ */
+export const ThreadMessagePreviewRole = Schema.Literals(["user", "assistant"]);
+export type ThreadMessagePreviewRole = typeof ThreadMessagePreviewRole.Type;
+
+export const ThreadMessagePreview = Schema.Struct({
+  role: ThreadMessagePreviewRole,
+  text: TrimmedNonEmptyString,
+  createdAt: IsoDateTime,
+});
+export type ThreadMessagePreview = typeof ThreadMessagePreview.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -530,6 +545,12 @@ export const OrchestrationThreadShell = Schema.Struct({
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
+  /**
+   * The conversation's last completed user or assistant message, previewed.
+   * Optional so payloads from pre-preview servers still decode; absent or
+   * null = nothing said yet.
+   */
+  latestMessagePreview: Schema.optional(Schema.NullOr(ThreadMessagePreview)),
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,

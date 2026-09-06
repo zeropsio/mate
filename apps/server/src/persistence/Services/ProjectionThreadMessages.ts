@@ -11,6 +11,7 @@ import {
   MessageId,
   OrchestrationMessageRole,
   ThreadId,
+  ThreadMessagePreviewRole,
   TurnId,
   IsoDateTime,
 } from "@t3tools/contracts";
@@ -40,6 +41,18 @@ export const AppendStreamingProjectionThreadMessage = Schema.Struct(
 );
 export type AppendStreamingProjectionThreadMessage =
   typeof AppendStreamingProjectionThreadMessage.Type;
+
+/**
+ * What a preview of the newest message reads: who, the opening characters,
+ * when — never a body or its attachments (`@t3tools/shared/messagePreview`
+ * turns the characters into the preview).
+ */
+export const ProjectionThreadMessagePreviewSource = Schema.Struct({
+  role: ThreadMessagePreviewRole,
+  text: Schema.String,
+  createdAt: IsoDateTime,
+});
+export type ProjectionThreadMessagePreviewSource = typeof ProjectionThreadMessagePreviewSource.Type;
 
 export const ListProjectionThreadMessagesInput = Schema.Struct({
   threadId: ThreadId,
@@ -94,6 +107,15 @@ export interface ProjectionThreadMessageRepositoryShape {
   readonly getLatestUserMessageAt: (
     input: ListProjectionThreadMessagesInput,
   ) => Effect.Effect<ProjectionThreadMessage["createdAt"] | null, ProjectionRepositoryError>;
+
+  /**
+   * The newest user or assistant message with any text, as far as a preview
+   * reads it — one bounded row, no attachments decoded. Null for a thread
+   * nobody has spoken into.
+   */
+  readonly getLatestPreviewSource: (
+    input: ListProjectionThreadMessagesInput,
+  ) => Effect.Effect<ProjectionThreadMessagePreviewSource | null, ProjectionRepositoryError>;
 
   /**
    * Delete projected thread messages by thread.

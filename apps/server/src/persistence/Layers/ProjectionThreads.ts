@@ -14,12 +14,13 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection, ThreadLinkedPullRequest } from "@t3tools/contracts";
+import { ModelSelection, ThreadLinkedPullRequest, ThreadMessagePreview } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
+    latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
   }),
 );
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
@@ -55,6 +56,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title_regeneration_request_id,
           title_regeneration_started_at,
           latest_user_message_at,
+          latest_message_preview_json,
           pending_approval_count,
           pending_user_input_count,
           has_actionable_proposed_plan,
@@ -84,6 +86,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.titleRegenerationRequestId ?? null},
           ${row.titleRegenerationStartedAt ?? null},
           ${row.latestUserMessageAt},
+          ${row.latestMessagePreview === undefined || row.latestMessagePreview === null ? null : JSON.stringify(row.latestMessagePreview)},
           ${row.pendingApprovalCount},
           ${row.pendingUserInputCount},
           ${row.hasActionableProposedPlan},
@@ -113,6 +116,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title_regeneration_request_id = excluded.title_regeneration_request_id,
           title_regeneration_started_at = excluded.title_regeneration_started_at,
           latest_user_message_at = excluded.latest_user_message_at,
+          latest_message_preview_json = excluded.latest_message_preview_json,
           pending_approval_count = excluded.pending_approval_count,
           pending_user_input_count = excluded.pending_user_input_count,
           has_actionable_proposed_plan = excluded.has_actionable_proposed_plan,
@@ -149,6 +153,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          latest_message_preview_json AS "latestMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -187,6 +192,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
+          latest_message_preview_json AS "latestMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",

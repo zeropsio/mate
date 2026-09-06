@@ -16,6 +16,7 @@ import {
   DeleteProjectionThreadMessagesInput,
   ListProjectionThreadMessagesInput,
   ProjectionThreadMessage,
+  ProjectionThreadMessagePreviewSource,
 } from "../Services/ProjectionThreadMessages.ts";
 
 const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
@@ -194,6 +195,23 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
     `,
   });
 
+  const getLatestPreviewSourceRow = SqlSchema.findOneOption({
+    Request: ListProjectionThreadMessagesInput,
+    Result: ProjectionThreadMessagePreviewSource,
+    execute: ({ threadId }) => sql`
+      SELECT
+        role,
+        substr(text, 1, 1000) AS text,
+        created_at AS "createdAt"
+      FROM projection_thread_messages
+      WHERE thread_id = ${threadId}
+        AND role IN ('user', 'assistant')
+        AND length(trim(text)) > 0
+      ORDER BY created_at DESC, message_id DESC
+      LIMIT 1
+    `,
+  });
+
   const deleteProjectionThreadMessageRows = SqlSchema.void({
     Request: DeleteProjectionThreadMessagesInput,
     execute: ({ threadId }) =>
@@ -241,6 +259,16 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
       Effect.map((row) => row.latestUserMessageAt),
     );
 
+  const getLatestPreviewSource: ProjectionThreadMessageRepositoryShape["getLatestPreviewSource"] = (
+    input,
+  ) =>
+    getLatestPreviewSourceRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.getLatestPreviewSource:query"),
+      ),
+      Effect.map(Option.getOrNull),
+    );
+
   const deleteByThreadId: ProjectionThreadMessageRepositoryShape["deleteByThreadId"] = (input) =>
     deleteProjectionThreadMessageRows(input).pipe(
       Effect.mapError(
@@ -254,6 +282,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
     getByMessageId,
     listByThreadId,
     getLatestUserMessageAt,
+    getLatestPreviewSource,
     deleteByThreadId,
   } satisfies ProjectionThreadMessageRepositoryShape;
 });
