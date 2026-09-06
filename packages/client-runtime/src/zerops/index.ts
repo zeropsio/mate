@@ -116,7 +116,10 @@ export {
 export {
   deriveGiteaState,
   formatToolTag,
+  GITEA_ADMIN_PASSWORD_ENV_KEY,
+  GITEA_ADMIN_TOKEN_ENV_KEY,
   GITEA_ADMIN_USER_COMMAND,
+  GITEA_ADMIN_USER_ENV_KEY,
   GITEA_HTTP_PORT,
   GITEA_RUNNER_TOKEN_COMMAND,
   partitionZeropsToolProjects,

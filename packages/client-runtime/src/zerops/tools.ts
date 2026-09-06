@@ -131,15 +131,36 @@ export interface ZeropsGiteaState {
   readonly webStatus: string | undefined;
   /** Whether the CI runner addon has been imported. Registration itself is invisible from here. */
   readonly runnersImported: boolean;
+  /**
+   * Whether the recipe's `GITEA_ADMIN_TOKEN` is on the `web` service — i.e.
+   * whether mate can act as Gitea's admin without asking anyone for anything.
+   * False on an instance whose admin was made by hand: it has an admin, but
+   * nobody published a credential for it.
+   */
+  readonly adminCredentialPublished: boolean;
   readonly steps: ReadonlyArray<ZeropsGiteaSetupStep>;
 }
 
 /**
- * The command that creates Gitea's first admin user. It has to run inside the
- * `web` service — over the project's SSH, or the Remote Web Terminal in the
- * Zerops GUI — because registration is disabled and Gitea has no bootstrap
- * endpoint. Mate cannot run it: the container is in another project, and mate
- * reaches no container but its own.
+ * The env keys `recipe-gitea`'s `admin-init.sh` publishes on the `web` service
+ * once it has minted the first admin (merged 2026-09-06). The token and the
+ * password are written `sensitive: true`, and the platform hands both back in
+ * clear to a token with the owner's role — which is how mate reads them without
+ * ever asking Gitea, and without a human in a terminal.
+ */
+export const GITEA_ADMIN_USER_ENV_KEY = "GITEA_ADMIN_USERNAME";
+export const GITEA_ADMIN_TOKEN_ENV_KEY = "GITEA_ADMIN_TOKEN";
+export const GITEA_ADMIN_PASSWORD_ENV_KEY = "GITEA_ADMIN_PASSWORD";
+
+/**
+ * The command that creates Gitea's first admin user **by hand** — the fallback
+ * for an instance built before the recipe minted its own, since a Gitea that
+ * already has an admin cannot be given one twice.
+ *
+ * It has to run inside the `web` service — over the project's SSH, or the
+ * Remote Web Terminal in the Zerops GUI — because registration is disabled and
+ * Gitea has no bootstrap endpoint. Mate cannot run it: the container is in
+ * another project, and mate reaches no container but its own.
  */
 export const GITEA_ADMIN_USER_COMMAND =
   "gitea admin user create --config /etc/gitea/app.ini --admin --username admin --email you@example.com --password '<choose-one>' --must-change-password=false";
@@ -183,6 +204,11 @@ export function deriveGiteaState(
   project: ZeropsProject,
   services: ReadonlyArray<ZeropsService>,
   probe?: ZeropsGiteaProbe,
+  /**
+   * The `web` service's env keys, from the platform read the caller already
+   * makes. Values are never needed here — presence is the whole signal.
+   */
+  webEnvKeys?: ReadonlyArray<string>,
 ): ZeropsGiteaState {
   const web = findService(services, GITEA_WEB_SERVICE);
   const runner = findService(services, GITEA_RUNNER_SERVICE);
@@ -202,8 +228,17 @@ export function deriveGiteaState(
   const running = phase === "running";
   const url = giteaUrl(project, web);
 
-  const adminState: ZeropsGiteaStepState =
-    probe?.userCount === undefined ? "unknown" : probe.userCount > 0 ? "done" : "needs-you";
+  // A published token outranks the user count: it is proof the recipe finished
+  // its own bootstrap, it needs no probe, and it is the thing every later step
+  // actually consumes. The count only decides the case where no token exists.
+  const adminCredentialPublished = (webEnvKeys ?? []).includes(GITEA_ADMIN_TOKEN_ENV_KEY);
+  const adminState: ZeropsGiteaStepState = adminCredentialPublished
+    ? "done"
+    : probe?.userCount === undefined
+      ? "unknown"
+      : probe.userCount > 0
+        ? "done"
+        : "needs-you";
 
   const steps: ReadonlyArray<ZeropsGiteaSetupStep> = [
     { id: "import", title: "Gitea imported", state: "done" },
@@ -244,6 +279,7 @@ export function deriveGiteaState(
     url,
     webStatus,
     runnersImported: runner !== undefined,
+    adminCredentialPublished,
     steps,
   };
 }

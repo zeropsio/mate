@@ -157,6 +157,42 @@ describe("deriveGiteaState", () => {
         stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, { reachable: true }), "admin"),
       ).toBe("unknown");
     });
+
+    // The recipe mints the admin on first boot and publishes the token as the
+    // web service's own env, so its presence is stronger evidence than a user
+    // count — and it is readable without asking Gitea anything.
+    it("is done when the recipe has published the admin token, with no probe at all", () => {
+      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, undefined, [
+        "GITEA_ADMIN_USERNAME",
+        "GITEA_ADMIN_TOKEN",
+      ]);
+      expect(stepState(state, "admin")).toBe("done");
+      expect(state.adminCredentialPublished).toBe(true);
+      expect(state.steps.find((step) => step.id === "admin")?.detail).toBeUndefined();
+    });
+
+    it("does not read an unrelated key as the admin token", () => {
+      const state = deriveGiteaState(
+        GITEA_PROJECT,
+        RECIPE_SERVICES,
+        { reachable: true, userCount: 0 },
+        ["GITEA_ADMIN_USERNAME"],
+      );
+      expect(stepState(state, "admin")).toBe("needs-you");
+      expect(state.adminCredentialPublished).toBe(false);
+    });
+
+    // An instance built before the recipe minted its own admin: somebody made
+    // the user by hand, so there is a user but no published token. Still done,
+    // and still worth knowing the credential is not readable.
+    it("is done but unpublished for a hand-made admin on an older instance", () => {
+      const state = deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES, {
+        reachable: true,
+        userCount: 1,
+      });
+      expect(stepState(state, "admin")).toBe("done");
+      expect(state.adminCredentialPublished).toBe(false);
+    });
   });
 
   it("reports runners only once the addon has been imported", () => {
