@@ -6689,7 +6689,7 @@ function ChatViewContent(props: ChatViewProps) {
           />
         </WorkspacePageHeader>
         <ZeropsLifecycleStrip
-          agentAuthNeedsAttention={zeropsChrome.agentAuthCard !== null}
+          agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
           onOpenAgentAuth={openAgentAuthDialog}
           pendingUserInput={activePendingUserInput !== null}
           running={zeropsThreadModel.running}

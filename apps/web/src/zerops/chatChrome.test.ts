@@ -62,10 +62,36 @@ const TOPOLOGIES = [
   { label: "when Zerops is available", value: topology(), panel: "available" },
 ] as const;
 
+const ONE_OF_TWO: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [...NO_ATTENTION.agents, ...ATTENTION.agents],
+};
+
 const AUTH_STATES = [
-  { label: "before agent auth answers", value: undefined, needsAttention: false },
-  { label: "when agent auth needs no attention", value: NO_ATTENTION, needsAttention: false },
-  { label: "when agent auth needs attention", value: ATTENTION, needsAttention: true },
+  {
+    label: "before agent auth answers",
+    value: undefined,
+    needsAttention: false,
+    signInRequired: false,
+  },
+  {
+    label: "when agent auth needs no attention",
+    value: NO_ATTENTION,
+    needsAttention: false,
+    signInRequired: false,
+  },
+  {
+    label: "when one agent is authorized and the other is not",
+    value: ONE_OF_TWO,
+    needsAttention: true,
+    signInRequired: false,
+  },
+  {
+    label: "when no agent is authorized",
+    value: ATTENTION,
+    needsAttention: true,
+    signInRequired: true,
+  },
 ] as const;
 
 const CASES = THREADS.flatMap((thread) =>
@@ -83,12 +109,14 @@ const CASES = THREADS.flatMap((thread) =>
               threadRef: null,
               panel: "unknown" as const,
               agentAuthCard: null,
+              agentSignInRequired: false,
               projectName: null,
             }
           : {
               threadRef: thread.value,
               panel: topologyState.panel,
-              agentAuthCard: authState.needsAttention ? ATTENTION : null,
+              agentAuthCard: authState.needsAttention ? authState.value : null,
+              agentSignInRequired: authState.signInRequired,
               projectName: null,
             },
     })),
@@ -110,6 +138,7 @@ describe("resolveZeropsChatChrome", () => {
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
+      agentSignInRequired: false,
       projectName: "acme-docs-dev",
     });
   });

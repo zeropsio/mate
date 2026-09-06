@@ -205,3 +205,23 @@ export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot)
     )
   );
 }
+
+/**
+ * Whether the band below the thread header should demand a sign-in. One
+ * authorized agent is enough to work, so the band asks only when the
+ * environment has none: every listed agent is `not-authorized`, `reconnect`,
+ * or `needs-reauth`. An agent still `checking`/`registering` is on its way to
+ * authorized and must not flash the band while the provider answers; an empty
+ * or unavailable feed has nothing to ask for. The per-agent card
+ * (`zeropsAgentAuthNeedsAttention`) keeps the wider "any agent" rule.
+ */
+export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): boolean {
+  return (
+    snapshot.available &&
+    snapshot.agents.length > 0 &&
+    snapshot.agents.every((agent) => {
+      const kind = classifyAgentAuth(agent).kind;
+      return kind === "not-authorized" || kind === "reconnect" || kind === "needs-reauth";
+    })
+  );
+}

@@ -13,6 +13,7 @@ import {
   agentLoginTerminalToFocus,
   classifyAgentLogin,
   zeropsAgentAuthNeedsAttention,
+  zeropsAgentSignInRequired,
 } from "./agentLogin.ts";
 
 const agent = (
@@ -323,5 +324,93 @@ describe("zeropsAgentAuthNeedsAttention", () => {
         ]),
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * The band below the thread header asks for a sign-in only when the
+ * environment has no agent to run at all. One authorized agent is enough to
+ * work; the other agent's row stays the panel card's business.
+ */
+describe("zeropsAgentSignInRequired", () => {
+  const authorizedClaude = agent({
+    agentId: "claude-code",
+    state: "authorized",
+    credPresent: true,
+    providerAuth: "authenticated",
+  });
+
+  it.each([
+    {
+      name: "the feed is not available",
+      snapshot: { available: false, agents: [] },
+      expected: false,
+    },
+    { name: "the feed has not listed any agent yet", snapshot: snapshot([]), expected: false },
+    {
+      name: "one agent is authorized and the other is not signed in",
+      snapshot: snapshot([authorizedClaude, agent({ agentId: "codex", state: "not-authorized" })]),
+      expected: false,
+    },
+    {
+      name: "one agent is authorized and the other needs a reconnect",
+      snapshot: snapshot([authorizedClaude, agent({ agentId: "codex", state: "reconnect" })]),
+      expected: false,
+    },
+    {
+      name: "one agent is authorized and the other is mid-login",
+      snapshot: snapshot([
+        authorizedClaude,
+        agent({ agentId: "codex", state: "not-authorized", login: loginState({ phase: "menu" }) }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "the only agent's credential is present but the provider check has not answered",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "unknown",
+        }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "no agent is signed in",
+      snapshot: snapshot([
+        agent({ agentId: "claude-code", state: "not-authorized" }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "the only authorized-looking agent is rejected by its provider",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "unauthenticated",
+        }),
+        agent({ agentId: "codex", state: "reconnect" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "no agent is signed in and one login is in flight",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "not-authorized",
+          login: loginState({ phase: "awaiting-browser" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+  ])("is $expected when $name", ({ snapshot: input, expected }) => {
+    expect(zeropsAgentSignInRequired(input)).toBe(expected);
   });
 });

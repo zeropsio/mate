@@ -5,7 +5,10 @@
  * ChatView reads the snapshots and the consumers keep their own rendering and
  * command wiring.
  */
-import { zeropsAgentAuthNeedsAttention } from "@t3tools/client-runtime/zerops/agentLogin";
+import {
+  zeropsAgentAuthNeedsAttention,
+  zeropsAgentSignInRequired,
+} from "@t3tools/client-runtime/zerops/agentLogin";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
@@ -21,6 +24,12 @@ export interface ZeropsChatChrome {
    */
   readonly panel: "available" | "unknown";
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
+  /**
+   * Whether the lifecycle band asks for a coding-agent sign-in. Narrower than
+   * the card: one authorized agent is enough to work, so this is true only
+   * when no agent is authorized (`docs/spec-mate.md` §5.4).
+   */
+  readonly agentSignInRequired: boolean;
   /**
    * The Zerops project's name, for the header and the draft headline. Read
    * from the topology whenever it has answered — a draft has an environment
@@ -45,6 +54,7 @@ export function resolveZeropsChatChrome(
       threadRef: null,
       panel: "unknown",
       agentAuthCard: null,
+      agentSignInRequired: false,
       projectName,
     };
   }
@@ -60,5 +70,6 @@ export function resolveZeropsChatChrome(
     // in-flow entry to that panel, but never render the card over the timeline.
     agentAuthCard:
       agentAuth !== undefined && zeropsAgentAuthNeedsAttention(agentAuth) ? agentAuth : null,
+    agentSignInRequired: agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth),
   };
 }
