@@ -7,8 +7,10 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { PanelLeftIcon } from "lucide-react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
+import { APP_BASE_NAME } from "../branding";
 import { isElectron } from "../env";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -25,7 +27,8 @@ import {
   THREAD_SIDEBAR_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
-import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
+import { MateMark } from "./MateMark";
+import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
@@ -53,7 +56,7 @@ function readInitialThreadSidebarWidth(): number {
 
 function SidebarControl() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar } = useSidebar();
+  const { state, toggleSidebar } = useSidebar();
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle");
 
   useEffect(() => {
@@ -77,25 +80,54 @@ function SidebarControl() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings, toggleSidebar]);
 
+  // Open, the panel carries its own controls: the lockup in its header, the
+  // collapse control at the right of its footer row. Closed, both keep a
+  // corner of the screen — the mark where the lockup was, the control at the
+  // foot of the column the panel had.
+  if (state === "expanded") return null;
+
   return (
-    // The right-side layout controls carry mr-px (border compensation inside
-    // the panel), so the trigger mirrors it: both clusters sit one extra pixel
-    // off their edge and the titlebar reads symmetric.
-    <div
-      className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center"
-      data-sidebar-control=""
-    >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarTrigger className="pointer-events-auto" aria-label="Toggle main sidebar" />
-          }
-        />
-        <TooltipPopup side="bottom">
-          Toggle main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
-        </TooltipPopup>
-      </Tooltip>
-    </div>
+    <>
+      {/* The mark is centred in a box the size of a titlebar control, which
+          insets it by half the difference — the same pixel the open panel's
+          lockup starts from, so closing the panel does not move it. */}
+      <div
+        className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+        data-sidebar-control=""
+      >
+        <Link
+          aria-label={APP_BASE_NAME}
+          className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
+          to="/"
+        >
+          {/* Live, as the open panel's lockup is: the same mark in the same
+              corner, so closing the panel does not still it. */}
+          <MateMark playful className="h-6 w-auto" />
+        </Link>
+      </div>
+      <div
+        className="fixed bottom-[var(--sidebar-content-inset)] left-[var(--sidebar-content-inset)] z-50"
+        data-sidebar-open-control=""
+      >
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label="Open main sidebar"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]"
+                onClick={toggleSidebar}
+                type="button"
+              >
+                <PanelLeftIcon className="size-4" />
+              </button>
+            }
+          />
+          <TooltipPopup side="right">
+            Open main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
+          </TooltipPopup>
+        </Tooltip>
+      </div>
+    </>
   );
 }
 
