@@ -349,22 +349,22 @@ describe("the wordmark and lockup (identity v1 §06)", () => {
   const xs = MATE_WORDMARK.paths.flatMap((d) => coordinates(d).xs);
   const ys = MATE_WORDMARK.paths.flatMap((d) => coordinates(d).ys);
 
-  it("starts half the mark's height right of it, measured to the ink", () => {
+  it("starts two fifths of the mark's height right of it, measured to the ink", () => {
     const markRight = 42.74;
-    expect(MATE_WORDMARK.gap).toBe(26);
+    expect(MATE_WORDMARK.gap).toBe(20.8);
     expect(MATE_WORDMARK.ink.left).toBeCloseTo(markRight + MATE_WORDMARK.gap, 2);
     expect(Math.min(...xs)).toBeCloseTo(MATE_WORDMARK.ink.left, 1);
   });
 
-  it("reads at three eighths of the mark's height, its x-height band centred on the mark", () => {
-    expect(MATE_WORDMARK.xHeight).toBe(19.5);
-    expect(MATE_WORDMARK.baseline).toBe(35.75);
+  it("reads at 0.35 of the mark's height, its x-height band centred on the mark", () => {
+    expect(MATE_WORDMARK.xHeight).toBe(18.2);
+    expect(MATE_WORDMARK.baseline).toBe(35.1);
     expect(MATE_WORDMARK.baseline - MATE_WORDMARK.xHeight / 2).toBeCloseTo(
       MATE_LOCKUP.height / 2,
       2,
     );
     // The flat stems of the m end exactly on the baseline.
-    expect(MATE_WORDMARK.paths[0]).toContain("35.75");
+    expect(MATE_WORDMARK.paths[0]).toContain("35.1");
     // Round letters overshoot the baseline by about a unit and never more.
     expect(Math.max(...ys)).toBeLessThan(MATE_WORDMARK.baseline + 1.5);
   });
