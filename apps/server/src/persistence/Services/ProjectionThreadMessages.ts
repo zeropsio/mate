@@ -54,6 +54,14 @@ export const ProjectionThreadMessagePreviewSource = Schema.Struct({
 });
 export type ProjectionThreadMessagePreviewSource = typeof ProjectionThreadMessagePreviewSource.Type;
 
+/** A preview source read: the newest message, of one role when `role` is given. */
+export const LatestProjectionThreadMessagePreviewSourceInput = Schema.Struct({
+  threadId: ThreadId,
+  role: Schema.optional(ThreadMessagePreviewRole),
+});
+export type LatestProjectionThreadMessagePreviewSourceInput =
+  typeof LatestProjectionThreadMessagePreviewSourceInput.Type;
+
 export const ListProjectionThreadMessagesInput = Schema.Struct({
   threadId: ThreadId,
 });
@@ -109,12 +117,12 @@ export interface ProjectionThreadMessageRepositoryShape {
   ) => Effect.Effect<ProjectionThreadMessage["createdAt"] | null, ProjectionRepositoryError>;
 
   /**
-   * The newest user or assistant message with any text, as far as a preview
-   * reads it — one bounded row, no attachments decoded. Null for a thread
-   * nobody has spoken into.
+   * The newest user or assistant message with any text — of one role when
+   * asked — as far as a preview reads it: one bounded row, no attachments
+   * decoded. Null for a thread nobody has spoken into.
    */
   readonly getLatestPreviewSource: (
-    input: ListProjectionThreadMessagesInput,
+    input: LatestProjectionThreadMessagePreviewSourceInput,
   ) => Effect.Effect<ProjectionThreadMessagePreviewSource | null, ProjectionRepositoryError>;
 
   /**

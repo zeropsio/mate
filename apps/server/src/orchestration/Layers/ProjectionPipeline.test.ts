@@ -10,11 +10,13 @@ import {
   ThreadId,
   TurnId,
   ProviderInstanceId,
+  ThreadMessagePreview,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -42,6 +44,12 @@ import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
 import { ServerConfig } from "../../config.ts";
+
+// The shell's previews, read back off the row for the assertions below.
+const decodePreview = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadMessagePreview));
+function parsePreview(preview: string | null): ThreadMessagePreview | null {
+  return preview === null ? null : decodePreview(preview);
+}
 
 const makeProjectionPipelinePrefixedTestLayer = (prefix: string) =>
   OrchestrationProjectionPipelineLive.pipe(
@@ -2662,12 +2670,14 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
       const readSummary = sql<{
         readonly latestUserMessageAt: string | null;
         readonly latestMessagePreview: string | null;
+        readonly latestUserMessagePreview: string | null;
         readonly pendingUserInputCount: number;
         readonly updatedAt: string;
       }>`
         SELECT
           latest_user_message_at AS "latestUserMessageAt",
           latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview",
           pending_user_input_count AS "pendingUserInputCount",
           updated_at AS "updatedAt"
         FROM projection_threads
@@ -2676,14 +2686,12 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         Effect.map((rows) =>
           rows.map((row) => ({
             ...row,
-            latestMessagePreview:
-              row.latestMessagePreview === null
-                ? null
-                : (JSON.parse(row.latestMessagePreview) as unknown),
+            latestMessagePreview: parsePreview(row.latestMessagePreview),
+            latestUserMessagePreview: parsePreview(row.latestUserMessagePreview),
           })),
         ),
       );
-      const userPreview = {
+      const userPreview: ThreadMessagePreview = {
         role: "user",
         text: "please do the thing",
         createdAt: "2026-03-01T08:00:02.000Z",
@@ -2715,6 +2723,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
           latestMessagePreview: userPreview,
+          latestUserMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:02.000Z",
         },
@@ -2749,6 +2758,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
           latestMessagePreview: userPreview,
+          latestUserMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:03.000Z",
         },
@@ -2777,7 +2787,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           updatedAt: "2026-03-01T08:00:03.500Z",
         },
       });
-      const assistantPreview = {
+      const assistantPreview: ThreadMessagePreview = {
         role: "assistant",
         text: "working on it",
         createdAt: "2026-03-01T08:00:03.000Z",
@@ -2786,6 +2796,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
           latestMessagePreview: assistantPreview,
+          latestUserMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:03.500Z",
         },
@@ -2821,6 +2832,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
           latestMessagePreview: assistantPreview,
+          latestUserMessagePreview: userPreview,
           pendingUserInputCount: 0,
           updatedAt: "2026-03-01T08:00:04.000Z",
         },
@@ -2864,6 +2876,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         {
           latestUserMessageAt: "2026-03-01T08:00:02.000Z",
           latestMessagePreview: assistantPreview,
+          latestUserMessagePreview: userPreview,
           pendingUserInputCount: 1,
           updatedAt: "2026-03-01T08:00:05.000Z",
         },
@@ -2948,6 +2961,7 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
         const summary = yield* sql<{
           readonly latestUserMessageAt: string | null;
           readonly latestMessagePreview: string | null;
+          readonly latestUserMessagePreview: string | null;
           readonly pendingApprovalCount: number;
           readonly pendingUserInputCount: number;
           readonly hasActionableProposedPlan: number;
@@ -2955,21 +2969,30 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           SELECT
             latest_user_message_at AS "latestUserMessageAt",
             latest_message_preview_json AS "latestMessagePreview",
+            latest_user_message_preview_json AS "latestUserMessagePreview",
             pending_approval_count AS "pendingApprovalCount",
             pending_user_input_count AS "pendingUserInputCount",
             has_actionable_proposed_plan AS "hasActionableProposedPlan"
           FROM projection_threads
           WHERE thread_id = 'thread-shell-summary'
         `;
-        assert.deepEqual(summary, [
-          {
-            latestUserMessageAt: "2026-03-01T08:00:02.000Z",
-            latestMessagePreview: JSON.stringify(assistantPreview),
-            pendingApprovalCount: 1,
-            pendingUserInputCount: 1,
-            hasActionableProposedPlan: 1,
-          },
-        ]);
+        assert.deepEqual(
+          summary.map((row) => ({
+            ...row,
+            latestMessagePreview: parsePreview(row.latestMessagePreview),
+            latestUserMessagePreview: parsePreview(row.latestUserMessagePreview),
+          })),
+          [
+            {
+              latestUserMessageAt: "2026-03-01T08:00:02.000Z",
+              latestMessagePreview: assistantPreview,
+              latestUserMessagePreview: userPreview,
+              pendingApprovalCount: 1,
+              pendingUserInputCount: 1,
+              hasActionableProposedPlan: 1,
+            },
+          ],
+        );
       }
     }),
   );

@@ -100,6 +100,7 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
     modelSelection: Schema.fromJsonString(ModelSelection),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     latestMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
+    latestUserMessagePreview: Schema.NullOr(Schema.fromJsonString(ThreadMessagePreview)),
   }),
 );
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -487,6 +488,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
           latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -526,6 +528,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
           latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -567,6 +570,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
           latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -1026,6 +1030,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
           latest_message_preview_json AS "latestMessagePreview",
+          latest_user_message_preview_json AS "latestUserMessagePreview",
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
@@ -2345,6 +2350,9 @@ pending_approval_requests AS (
                       ...(row.latestMessagePreview === null
                         ? {}
                         : { latestMessagePreview: row.latestMessagePreview }),
+                      ...(row.latestUserMessagePreview === null
+                        ? {}
+                        : { latestUserMessagePreview: row.latestUserMessagePreview }),
                       hasPendingApprovals: row.pendingApprovalCount > 0,
                       hasPendingUserInput: row.pendingUserInputCount > 0,
                       hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
@@ -2496,6 +2504,9 @@ pending_approval_requests AS (
                 ...(row.latestMessagePreview === null
                   ? {}
                   : { latestMessagePreview: row.latestMessagePreview }),
+                ...(row.latestUserMessagePreview === null
+                  ? {}
+                  : { latestUserMessagePreview: row.latestUserMessagePreview }),
                 hasPendingApprovals: row.pendingApprovalCount > 0,
                 hasPendingUserInput: row.pendingUserInputCount > 0,
                 hasActionableProposedPlan: row.hasActionableProposedPlan > 0,
@@ -2791,6 +2802,9 @@ pending_approval_requests AS (
         ...(threadRow.value.latestMessagePreview === null
           ? {}
           : { latestMessagePreview: threadRow.value.latestMessagePreview }),
+        ...(threadRow.value.latestUserMessagePreview === null
+          ? {}
+          : { latestUserMessagePreview: threadRow.value.latestUserMessagePreview }),
         hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
         hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,
         hasActionableProposedPlan: threadRow.value.hasActionableProposedPlan > 0,

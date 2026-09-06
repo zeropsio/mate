@@ -546,11 +546,13 @@ export const OrchestrationThreadShell = Schema.Struct({
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   /**
-   * The conversation's last completed user or assistant message, previewed.
-   * Optional so payloads from pre-preview servers still decode; absent or
-   * null = nothing said yet.
+   * The conversation's last completed user or assistant message, previewed,
+   * and the last thing the person asked — the task, as they put it. Optional
+   * so payloads from pre-preview servers still decode; absent or null =
+   * nothing said yet.
    */
   latestMessagePreview: Schema.optional(Schema.NullOr(ThreadMessagePreview)),
+  latestUserMessagePreview: Schema.optional(Schema.NullOr(ThreadMessagePreview)),
   hasPendingApprovals: Schema.Boolean,
   hasPendingUserInput: Schema.Boolean,
   hasActionableProposedPlan: Schema.Boolean,

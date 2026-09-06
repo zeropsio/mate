@@ -587,10 +587,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
-    // The preview folds in the way latestUserMessageAt does: a completed user
+    // The previews fold in the way latestUserMessageAt does: a completed user
     // or assistant message with text becomes the preview when it is the
-    // newest. A completion event may carry no text (the streamed body stands),
-    // and then the projected row is read — one bounded row, not the thread.
+    // newest — of anyone for `latestMessagePreview`, of the person for
+    // `latestUserMessagePreview`. A completion event may carry no text (the
+    // streamed body stands), and then the projected row is read — one bounded
+    // row of the same role, not the thread.
     const foldLatestMessagePreview = Effect.fn("foldLatestMessagePreview")(function* (
       previous: ThreadMessagePreview | null,
       payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
@@ -608,6 +610,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           : threadMessagePreviewFromSource(
               yield* projectionThreadMessageRepository.getLatestPreviewSource({
                 threadId: payload.threadId,
+                role: payload.role,
               }),
             );
       if (next === null || (previous !== null && previous.createdAt > next.createdAt)) {
@@ -626,14 +629,21 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         return;
       }
 
-      const [latestUserMessageAt, previewSource, proposedPlans, activities, pendingApprovalCount] =
-        yield* Effect.all([
-          projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
-          projectionThreadMessageRepository.getLatestPreviewSource({ threadId }),
-          projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
-          projectionThreadActivityRepository.listUserInputLifecycleByThreadId({ threadId }),
-          projectionPendingApprovalRepository.countPendingByThreadId({ threadId }),
-        ]);
+      const [
+        latestUserMessageAt,
+        previewSource,
+        userPreviewSource,
+        proposedPlans,
+        activities,
+        pendingApprovalCount,
+      ] = yield* Effect.all([
+        projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
+        projectionThreadMessageRepository.getLatestPreviewSource({ threadId }),
+        projectionThreadMessageRepository.getLatestPreviewSource({ threadId, role: "user" }),
+        projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
+        projectionThreadActivityRepository.listUserInputLifecycleByThreadId({ threadId }),
+        projectionPendingApprovalRepository.countPendingByThreadId({ threadId }),
+      ]);
 
       const pendingUserInputCount = derivePendingUserInputCountFromActivities(activities);
       const hasActionableProposedPlan = deriveHasActionableProposedPlan({
@@ -645,6 +655,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         ...existingRow.value,
         latestUserMessageAt,
         latestMessagePreview: threadMessagePreviewFromSource(previewSource),
+        latestUserMessagePreview: threadMessagePreviewFromSource(userPreviewSource),
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
@@ -681,6 +692,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             titleRegenerationStartedAt: null,
             latestUserMessageAt: null,
             latestMessagePreview: null,
+            latestUserMessagePreview: null,
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
@@ -945,10 +957,19 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             existingRow.value.latestMessagePreview ?? null,
             event.payload,
           );
+          // The task as the person put it: the same fold, over their messages only.
+          const latestUserMessagePreview =
+            event.payload.role === "user"
+              ? yield* foldLatestMessagePreview(
+                  existingRow.value.latestUserMessagePreview ?? null,
+                  event.payload,
+                )
+              : (existingRow.value.latestUserMessagePreview ?? null);
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             updatedAt: event.occurredAt,
             latestMessagePreview,
+            latestUserMessagePreview,
             latestUserMessageAt:
               event.payload.role === "user" &&
               (previousLatest === null || event.payload.createdAt > previousLatest)

@@ -14,6 +14,7 @@ import {
   ProjectionThreadMessageRepository,
   type ProjectionThreadMessageRepositoryShape,
   DeleteProjectionThreadMessagesInput,
+  LatestProjectionThreadMessagePreviewSourceInput,
   ListProjectionThreadMessagesInput,
   ProjectionThreadMessage,
   ProjectionThreadMessagePreviewSource,
@@ -196,9 +197,9 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
   });
 
   const getLatestPreviewSourceRow = SqlSchema.findOneOption({
-    Request: ListProjectionThreadMessagesInput,
+    Request: LatestProjectionThreadMessagePreviewSourceInput,
     Result: ProjectionThreadMessagePreviewSource,
-    execute: ({ threadId }) => sql`
+    execute: ({ threadId, role }) => sql`
       SELECT
         role,
         substr(text, 1, 1000) AS text,
@@ -206,6 +207,7 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
       FROM projection_thread_messages
       WHERE thread_id = ${threadId}
         AND role IN ('user', 'assistant')
+        AND (${role ?? null} IS NULL OR role = ${role ?? null})
         AND length(trim(text)) > 0
       ORDER BY created_at DESC, message_id DESC
       LIMIT 1
