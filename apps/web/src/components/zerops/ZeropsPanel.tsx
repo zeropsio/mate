@@ -64,6 +64,9 @@ export function ZeropsPanel({
       : {
           name: mateIdentity.name,
           tint: mateIdentity.tint,
+          // Idle, not asleep: a Mate is keyed by an environment id, which only
+          // a connected candidate carries, so there is no sleeping Mate to
+          // draw here — see `ChatHeader`.
           face: activity.get(environmentId)?.face ?? "idle",
         };
   const agents =
