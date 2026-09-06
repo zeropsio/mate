@@ -16,6 +16,8 @@ export {
   type ZeropsRegistrationResponse,
   type ZeropsService,
   type ZeropsServicePort,
+  type ZeropsAutoscaling,
+  type ZeropsAutoscalingResource,
   type ZeropsCurrentStat,
   type ZeropsStatHistoryItem,
   type ZeropsStatHistoryWindow,

@@ -6,12 +6,14 @@
  * nothing: the only links offered open URLs the feed already carries (a
  * service's public routes, and its own page in the Zerops dashboard).
  *
- * One small card per service — two lines. The name with its port and the
- * status word; then the three resources it holds — cores, RAM, disk — each
- * a figure beside its own inline graph of the last day. Everything the
- * dashboard shows around those — what the service is, how it was deployed,
- * where it answers, what is in use of its allocation — waits in a pop that
- * opens on hover. A service holding nothing (not deployed yet) is one line.
+ * One small card per service, read as the dashboard's: the status word,
+ * then the name with its port and what it is (`app :3000 Node.js 22`), one
+ * button per public route at the right; then the three resources it holds —
+ * cores, RAM, disk — each a figure beside its own inline graph of the last
+ * day. Everything the dashboard shows around those — how it was deployed,
+ * where it answers, what is in use of its allocation and the autoscaling
+ * range it moves in — waits in a pop that opens on hover. A service holding
+ * nothing (not deployed yet) has no resources line.
  *
  * The control plane's card is also the Mate's home: under its resources it
  * says who lives there — the face wearing the conversation's state, the name
@@ -36,6 +38,7 @@ import type {
   ZeropsServiceRoute,
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
+import { Button } from "~/components/ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
@@ -148,34 +151,46 @@ function ResourceGraph({ trend, id }: { trend: ReadonlyArray<ZeropsTrendPoint>; 
   );
 }
 
+/** A figure the card can show: an allocation the service holds right now. */
+interface ResourceFigure {
+  readonly id: ZeropsServiceMetric["id"];
+  readonly value: string;
+  readonly unit: string | undefined;
+}
+
+const figureOf = (metric: ZeropsServiceMetric | undefined): ResourceFigure | undefined =>
+  metric === undefined || metric.value === undefined
+    ? undefined
+    : { id: metric.id, value: metric.value, unit: metric.unit };
+
 /** One resource on the line: its label, the figure it holds, and its graph beside it. */
 function ResourceItem({
   label,
-  metric,
+  figure,
   trend,
   graphId,
 }: {
   label: string;
-  metric: ZeropsServiceMetric | undefined;
+  figure: ResourceFigure | undefined;
   trend: ReadonlyArray<ZeropsTrendPoint> | undefined;
   graphId: string;
 }) {
   return (
     <span
       className="inline-flex min-w-0 items-baseline gap-1.5"
-      data-zerops-service-resource={metric?.id ?? label.toLowerCase()}
+      data-zerops-service-resource={figure?.id ?? label.toLowerCase()}
     >
       <MicroLabel>{label}</MicroLabel>
-      {metric === undefined ? (
+      {figure === undefined ? (
         <Skeleton className="h-3 w-8 self-center" data-zerops-service-figure="pending" />
       ) : (
         <span
           className="text-xs leading-none font-medium text-foreground tabular-nums"
           data-zerops-service-figure="live"
         >
-          {metric.value}
-          {metric.unit === undefined ? null : (
-            <span className="ml-0.5 font-normal text-muted-foreground">{metric.unit}</span>
+          {figure.value}
+          {figure.unit === undefined ? null : (
+            <span className="ml-0.5 font-normal text-muted-foreground">{figure.unit}</span>
           )}
         </span>
       )}
@@ -197,7 +212,8 @@ function ResourceItem({
  * resources at all once usage is known.
  */
 function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
-  if (usageRead && row.metrics.length === 0) {
+  // The envelope alone (`range` without `value`) is the pop's, not the card's.
+  if (usageRead && row.metrics.every((metric) => metric.value === undefined)) {
     return null;
   }
   const trends: ZeropsServiceTrends | undefined = row.trends;
@@ -210,8 +226,12 @@ function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead
         <ResourceItem
           graphId={`${row.service.serviceId}-${resource.id}`}
           key={resource.id}
+          figure={
+            usageRead
+              ? figureOf(row.metrics.find((metric) => metric.id === resource.id))
+              : undefined
+          }
           label={resource.label}
-          metric={usageRead ? row.metrics.find((metric) => metric.id === resource.id) : undefined}
           trend={trends?.[resource.id]}
         />
       ))}
@@ -220,24 +240,23 @@ function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead
 }
 
 /**
- * A public route as one glyph beside the name — the one thing a person
- * reaches for without hovering. The click stays the link's: it must not
- * toggle the card's pop underneath.
+ * A public route as a button at the card's right — the one thing a person
+ * reaches for without hovering, so it gets a real target. The click stays
+ * the link's: it must not toggle the card's pop underneath.
  */
-function RouteGlyph({ route }: { route: ZeropsServiceRoute }) {
+function RouteButton({ route }: { route: ZeropsServiceRoute }) {
   return (
-    <a
+    <Button
       aria-label={route.host}
-      className="inline-flex shrink-0 self-center rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden motion-reduce:transition-none"
-      data-zerops-service-route-glyph
-      href={route.url}
+      data-zerops-service-route-button
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      rel="noreferrer"
-      target="_blank"
+      render={<a href={route.url} rel="noreferrer" target="_blank" />}
+      size="icon-sm"
+      variant="outline"
     >
-      <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
-    </a>
+      <ExternalLinkIcon aria-hidden="true" />
+    </Button>
   );
 }
 
@@ -287,6 +306,21 @@ function ServiceRoutes({
   );
 }
 
+/** The autoscaling range a figure moves in, as the dashboard's panel states it. */
+function MetricRange({ metric }: { metric: ZeropsServiceMetric }) {
+  if (metric.range === undefined) return null;
+  const unit = metric.unit === undefined ? "" : ` ${metric.unit}`;
+  const mode = metric.cpuMode === undefined ? "" : ` · ${metric.cpuMode}`;
+  return (
+    <span
+      className="shrink-0 text-xs text-muted-foreground tabular-nums"
+      data-zerops-service-metric-range
+    >
+      {`${metric.range}${unit}${mode}`}
+    </span>
+  );
+}
+
 function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
   return (
     <div
@@ -295,17 +329,24 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
     >
       <MicroLabel>{metric.label}</MicroLabel>
       <div className="min-w-0">
-        <div className="text-xs text-foreground tabular-nums">
-          {metric.used === undefined ? null : (
-            <>
-              <span>{metric.used}</span>
-              <span className="text-muted-foreground"> / </span>
-            </>
+        <div className="flex min-w-0 items-baseline justify-between gap-3 text-xs text-foreground tabular-nums">
+          {metric.value === undefined ? (
+            <span />
+          ) : (
+            <span>
+              {metric.used === undefined ? null : (
+                <>
+                  <span>{metric.used}</span>
+                  <span className="text-muted-foreground"> / </span>
+                </>
+              )}
+              <span>{metric.value}</span>
+              {metric.unit === undefined ? null : (
+                <span className="ml-1 text-muted-foreground">{metric.unit}</span>
+              )}
+            </span>
           )}
-          <span>{metric.value}</span>
-          {metric.unit === undefined ? null : (
-            <span className="ml-1 text-muted-foreground">{metric.unit}</span>
-          )}
+          <MetricRange metric={metric} />
         </div>
         {metric.fraction === undefined ? null : (
           <div aria-hidden="true" className="mt-1 h-0.5 w-full rounded-full bg-border">
@@ -403,18 +444,32 @@ function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   );
 }
 
-/** The two lines every card has, plus the stage line a dev service folds in. Inside the hover pop's trigger. */
+/**
+ * What every card has: the status word over the name line — the name with
+ * its port and what the service is — the route buttons at the right, the
+ * resources, plus the stage line a dev service folds in. Inside the hover
+ * pop's trigger.
+ */
 function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
   return (
     <>
-      <div className="flex min-w-0 max-w-full items-baseline justify-between gap-3">
-        <span className="flex min-w-0 max-w-full items-baseline gap-2">
-          <ServiceName className="text-sm leading-snug" row={row} />
-          {row.service.routes.map((route) => (
-            <RouteGlyph key={route.url} route={route} />
-          ))}
-        </span>
-        <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
+      <div className="flex min-w-0 max-w-full items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
+          <div className="mt-0.5 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2">
+            <ServiceName className="text-sm leading-snug" row={row} />
+            {row.typeShort === undefined ? null : (
+              <span className="text-xs text-muted-foreground">{row.typeShort}</span>
+            )}
+          </div>
+        </div>
+        {row.service.routes.length === 0 ? null : (
+          <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
+            {row.service.routes.map((route) => (
+              <RouteButton key={route.url} route={route} />
+            ))}
+          </div>
+        )}
       </div>
       <ServiceResources row={row} usageRead={usageRead} />
       {row.stage === undefined ||

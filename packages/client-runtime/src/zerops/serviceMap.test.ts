@@ -4,11 +4,13 @@ import type { ZeropsLifecycle } from "@t3tools/contracts";
 import {
   buildZeropsServiceMap,
   formatAmount,
+  formatRange,
   serviceStatusTone,
   zeropsPortLabel,
   zeropsServiceFacts,
   zeropsServiceMetrics,
   zeropsStatusWord,
+  zeropsTypeShort,
   zeropsUsageTrends,
 } from "./serviceMap.ts";
 import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
@@ -401,6 +403,84 @@ describe("zeropsServiceMetrics", () => {
 
   it("is empty when usage is unknown", () => {
     expect(zeropsServiceMetrics(undefined)).toEqual([]);
+  });
+
+  const scaling = {
+    containers: { min: 1, max: 3 },
+    cores: { min: 1, max: 3 },
+    memoryGb: { min: 0.125, max: 6 },
+    diskGb: { min: 1, max: 100 },
+    cpuMode: "SHARED",
+  };
+
+  it("puts each figure's autoscaling range beside it, the cores' with the CPU mode", () => {
+    const metrics = zeropsServiceMetrics(
+      {
+        containers: 1,
+        cores: { used: 0.04, limit: 1 },
+        memoryGb: { used: 0.07, limit: 0.25 },
+        diskGb: { used: 0.01, limit: 1 },
+      },
+      scaling,
+    );
+
+    expect(metrics.map((metric) => [metric.id, metric.value, metric.range])).toEqual([
+      ["containers", "1", "1 – 3"],
+      ["cores", "1", "1 – 3"],
+      ["memory", "0.25", "0.13 – 6"],
+      ["disk", "1", "1 – 100"],
+    ]);
+    expect(metrics[1]?.cpuMode).toBe("Shared");
+    expect(metrics[2]).not.toHaveProperty("cpuMode");
+  });
+
+  it("lays the envelope out on its own for a service holding no container yet", () => {
+    const metrics = zeropsServiceMetrics(undefined, {
+      containers: { min: 1, max: 1 },
+      cores: { min: 2, max: 3 },
+    });
+
+    expect(metrics).toEqual([
+      { id: "containers", label: "containers", range: "stays at 1" },
+      { id: "cores", label: "Cores", range: "2 – 3" },
+      { id: "memory", label: "RAM", unit: "GB" },
+      { id: "disk", label: "Disk", unit: "GB" },
+    ]);
+    expect(metrics.every((metric) => metric.value === undefined)).toBe(true);
+  });
+});
+
+describe("formatRange", () => {
+  it.each([
+    [{ min: 1, max: 3 }, "1 – 3"],
+    [{ min: 0.125, max: 6 }, "0.13 – 6"],
+    [{ min: 1, max: 1 }, "stays at 1"],
+  ])("%j reads %s", (range, expected) => {
+    expect(formatRange(range)).toBe(expected);
+  });
+});
+
+describe("zeropsTypeShort", () => {
+  it.each([
+    [{ type: "ubuntu/nodejs@22", typeName: "Node.js" }, "Node.js 22"],
+    [{ type: "postgresql:single@16", typeName: "PostgreSQL" }, "PostgreSQL 16"],
+    [{ type: "valkey:single@7.2", typeName: "Valkey" }, "Valkey 7.2"],
+    [{ type: "ubuntu/nodejs@22" }, "nodejs@22"],
+    [{ type: "zcp@1", typeName: "zcp" }, "zcp 1"],
+  ])("%j reads %s", (service, expected) => {
+    expect(zeropsTypeShort(service)).toBe(expected);
+  });
+
+  it("rides on every row but the control plane's", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "app", typeName: "Node.js" }),
+        service({ hostname: "zcp", type: "zcp@1", typeName: "zcp", group: "infrastructure" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.typeShort).toBe("Node.js 22");
+    expect(view?.groups[1]?.rows[0]).not.toHaveProperty("typeShort");
   });
 });
 

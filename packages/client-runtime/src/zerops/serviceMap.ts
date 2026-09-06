@@ -18,6 +18,8 @@ import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import type {
+  ZeropsScalingRange,
+  ZeropsServiceScaling,
   ZeropsServiceUsage,
   ZeropsTopologyGroup,
   ZeropsTopologyService,
@@ -67,12 +69,20 @@ export interface ZeropsServiceFact {
 export interface ZeropsServiceMetric {
   readonly id: "containers" | "cores" | "memory" | "disk";
   readonly label: string;
-  /** The allocation, as the dashboard prints it. */
-  readonly value: string;
+  /** The allocation, as the dashboard prints it; absent while the service holds no container. */
+  readonly value?: string;
   /** What is in use of it; absent on the container count. */
   readonly used?: string;
   readonly unit?: string;
   readonly fraction?: number;
+  /**
+   * The autoscaling envelope the figure moves in — `1 – 3`, or `stays at 1`
+   * where the two ends meet — in the row's unit; absent where the platform
+   * states no range.
+   */
+  readonly range?: string;
+  /** On the cores row: `Shared` or `Dedicated`. */
+  readonly cpuMode?: string;
 }
 
 /** One point of a card's graph: the allocation and what was used of it, at an hour. */
@@ -96,6 +106,13 @@ export interface ZeropsServiceRow {
   readonly statusLabel: string;
   /** `type` without its OS prefix: `ubuntu/nodejs@22` reads as `nodejs@22`. */
   readonly typeLabel: string;
+  /**
+   * What the service is, as the card's name line says it beside the port:
+   * the platform's name and the major version, `Node.js 22`; the raw type
+   * where the platform gave no name. Absent on the control plane, whose
+   * name already says what it is.
+   */
+  readonly typeShort?: string;
   /** The row's name: the hostname, or the glossary word for the control plane. */
   readonly title: string;
   /** The service's declared ports after its name, `:80` or `:80, :443`. */
@@ -215,6 +232,35 @@ export function formatAmount(value: number): string {
   return Number(value.toFixed(2)).toString();
 }
 
+const EN_DASH = "\u2013";
+
+/** `1 – 3`, or `stays at 1` where nothing scales. */
+export function formatRange(range: ZeropsScalingRange): string {
+  return range.min === range.max
+    ? `stays at ${formatAmount(range.min)}`
+    : `${formatAmount(range.min)} ${EN_DASH} ${formatAmount(range.max)}`;
+}
+
+const withRange = (range: ZeropsScalingRange | undefined) =>
+  range === undefined ? {} : { range: formatRange(range) };
+
+const CPU_MODE_WORDS: Record<string, string> = { SHARED: "Shared", DEDICATED: "Dedicated" };
+
+const withCpuMode = (mode: string | undefined) =>
+  mode === undefined ? {} : { cpuMode: CPU_MODE_WORDS[mode] ?? mode };
+
+/**
+ * The name line's word for what a service is: the platform's name and the
+ * major version — `Node.js 22`, `PostgreSQL 16`, `Valkey 7.2` — or the bare
+ * type where the platform gave no name.
+ */
+export function zeropsTypeShort(service: Pick<ZeropsTopologyService, "type" | "typeName">): string {
+  const label = zeropsTypeLabel(service.type);
+  if (service.typeName === undefined) return label;
+  const at = label.lastIndexOf("@");
+  return at < 0 ? service.typeName : `${service.typeName} ${label.slice(at + 1)}`;
+}
+
 const fractionOf = (used: number, limit: number): number | undefined =>
   limit > 0 ? Math.min(1, Math.max(0, used / limit)) : undefined;
 
@@ -230,36 +276,44 @@ const withFraction = (used: number, limit: number) => {
  */
 export function zeropsServiceMetrics(
   usage: ZeropsServiceUsage | undefined,
+  scaling?: ZeropsServiceScaling,
 ): ReadonlyArray<ZeropsServiceMetric> {
-  if (usage === undefined) return [];
+  if (usage === undefined && scaling === undefined) return [];
+  const held = (pair: ZeropsStatPair | undefined) =>
+    pair === undefined
+      ? {}
+      : {
+          value: formatAmount(pair.limit),
+          used: formatAmount(pair.used),
+          ...withFraction(pair.used, pair.limit),
+        };
   return [
     {
       id: "containers",
-      label: usage.containers === 1 ? "container" : "containers",
-      value: String(usage.containers),
+      label: usage?.containers === 1 ? "container" : "containers",
+      ...(usage === undefined ? {} : { value: String(usage.containers) }),
+      ...withRange(scaling?.containers),
     },
     {
       id: "cores",
       label: "Cores",
-      value: formatAmount(usage.cores.limit),
-      used: formatAmount(usage.cores.used),
-      ...withFraction(usage.cores.used, usage.cores.limit),
+      ...held(usage?.cores),
+      ...withRange(scaling?.cores),
+      ...withCpuMode(scaling?.cpuMode),
     },
     {
       id: "memory",
       label: "RAM",
-      value: formatAmount(usage.memoryGb.limit),
-      used: formatAmount(usage.memoryGb.used),
+      ...held(usage?.memoryGb),
       unit: "GB",
-      ...withFraction(usage.memoryGb.used, usage.memoryGb.limit),
+      ...withRange(scaling?.memoryGb),
     },
     {
       id: "disk",
       label: "Disk",
-      value: formatAmount(usage.diskGb.limit),
-      used: formatAmount(usage.diskGb.used),
+      ...held(usage?.diskGb),
       unit: "GB",
-      ...withFraction(usage.diskGb.used, usage.diskGb.limit),
+      ...withRange(scaling?.diskGb),
     },
   ];
 }
@@ -406,11 +460,12 @@ export function buildZeropsServiceMap(
           tone: serviceStatusTone(entry),
           statusLabel: zeropsStatusWord(entry.status),
           typeLabel: zeropsTypeLabel(entry.type),
+          ...(isControlPlane ? {} : { typeShort: zeropsTypeShort(entry) }),
           title,
           ...(isControlPlane || portLabel === undefined ? {} : { portLabel }),
           meta: [...hostnameFact, ...zeropsServiceFacts(entry, title)],
           dashboardUrl: serviceDashboardUrl(entry.serviceId),
-          metrics: zeropsServiceMetrics(entry.usage),
+          metrics: zeropsServiceMetrics(entry.usage, entry.scaling),
           ...withKey("trends", zeropsUsageTrends(entry.history)),
           ...(stage === undefined
             ? {}

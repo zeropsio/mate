@@ -51,6 +51,27 @@ export interface ZeropsUsageSample {
   readonly diskGb: ZeropsStatPair;
 }
 
+/** The least and the most the autoscaler may give, in the unit the field says. */
+export interface ZeropsScalingRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * A service's effective autoscaling envelope — what the dashboard's
+ * autoscaling panel shows. A range is present only where the platform
+ * states both ends; a managed service outside container scaling has no
+ * `containers`.
+ */
+export interface ZeropsServiceScaling {
+  readonly containers?: ZeropsScalingRange;
+  readonly cores?: ZeropsScalingRange;
+  readonly memoryGb?: ZeropsScalingRange;
+  readonly diskGb?: ZeropsScalingRange;
+  /** `SHARED` or `DEDICATED`. */
+  readonly cpuMode?: string;
+}
+
 /** One public URL of a service: a subdomain-enabled HTTP(S) port. */
 export interface ZeropsServiceRoute {
   readonly port: number;
@@ -99,6 +120,8 @@ export interface ZeropsTopologyService {
   readonly usage?: ZeropsServiceUsage;
   /** The last buckets of the service's history, oldest first; absent until the read answers. */
   readonly history?: ReadonlyArray<ZeropsUsageSample>;
+  /** The autoscaling envelope; absent where the platform reports none (the core service). */
+  readonly scaling?: ZeropsServiceScaling;
 }
 
 export interface ZeropsTopologyView {
@@ -291,6 +314,37 @@ function serviceDeploy(service: ZeropsService): ZeropsServiceDeploy | undefined 
   };
 }
 
+const range = (
+  min: number | null | undefined,
+  max: number | null | undefined,
+): ZeropsScalingRange | undefined =>
+  typeof min === "number" && typeof max === "number" ? { min, max } : undefined;
+
+/** The effective envelope, or undefined where the platform states nothing at all. */
+function serviceScaling(service: ZeropsService): ZeropsServiceScaling | undefined {
+  const current = service.currentAutoscaling;
+  if (current === null || current === undefined) return undefined;
+  const vertical = current.verticalAutoscaling;
+  const horizontal = current.horizontalAutoscaling;
+  const scaling: ZeropsServiceScaling = {
+    ...withKey("containers", range(horizontal?.minContainerCount, horizontal?.maxContainerCount)),
+    ...withKey(
+      "cores",
+      range(vertical?.minResource?.cpuCoreCount, vertical?.maxResource?.cpuCoreCount),
+    ),
+    ...withKey(
+      "memoryGb",
+      range(vertical?.minResource?.memoryGBytes, vertical?.maxResource?.memoryGBytes),
+    ),
+    ...withKey(
+      "diskGb",
+      range(vertical?.minResource?.diskGBytes, vertical?.maxResource?.diskGBytes),
+    ),
+    ...withKey("cpuMode", present(vertical?.cpuMode)),
+  };
+  return Object.keys(scaling).length === 0 ? undefined : scaling;
+}
+
 /**
  * Correlates a project's service list and process list into the map's
  * presentation model. `apps/server`'s core/system service (isSystem) is
@@ -331,6 +385,7 @@ export function projectTopology(
         ...withKey("deploy", serviceDeploy(service)),
         ...withKey("usage", usage.get(service.id)),
         ...withKey("history", samples.get(service.id)),
+        ...withKey("scaling", serviceScaling(service)),
       };
     });
 

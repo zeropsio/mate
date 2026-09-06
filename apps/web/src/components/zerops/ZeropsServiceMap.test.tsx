@@ -150,6 +150,9 @@ describe("ZeropsServiceMap — the card", () => {
     );
 
     expect(html).toContain(">:3000</span>");
+    // The status word sits above the name, the type beside it — as the dashboard's card reads.
+    expect(html.indexOf(">Active<")).toBeLessThan(html.indexOf(">app<"));
+    expect(html).toContain(">Node.js 22</span>");
     expect(html).toContain("data-zerops-service-resources");
     expect(html.match(/data-zerops-service-graph="live"/gu)).toHaveLength(3);
     expect(html.match(/data-zerops-service-figure="live"/gu)).toHaveLength(3);
@@ -160,11 +163,14 @@ describe("ZeropsServiceMap — the card", () => {
     expect(html).not.toContain("Node.js v22.22.3");
     expect(html).not.toContain("Deployed from CLI");
     expect(html).not.toContain("data-zerops-service-detail");
-    // The public route is the one thing reachable without hovering: a glyph, the host as its label.
-    expect(html).toContain("data-zerops-service-route-glyph");
+    // The public route is the one thing reachable without hovering: a button at the card's right, the host as its label.
+    expect(html).toContain("data-zerops-service-route-button");
     expect(html).toContain('aria-label="app-1d09-3000.prg1.zerops.app"');
     expect(html).toContain('href="https://app-1d09-3000.prg1.zerops.app"');
     expect(html).not.toContain(">app-1d09-3000.prg1.zerops.app<");
+    expect(html.indexOf("data-zerops-service-route-button")).toBeGreaterThan(
+      html.indexOf(">Node.js 22</span>"),
+    );
     // The card is the pop's trigger, opening on hover.
     expect(html).toContain('data-slot="popover-trigger"');
   });
@@ -187,9 +193,18 @@ describe("ZeropsServiceMap — the card", () => {
 
   it("shows no resources at all for a service holding nothing once usage is known", () => {
     const html = render(
-      topology([service({ hostname: "app", status: "READY_TO_DEPLOY", history: [] })], {
-        usageRead: true,
-      }),
+      topology(
+        [
+          service({
+            hostname: "app",
+            status: "READY_TO_DEPLOY",
+            history: [],
+            // The envelope alone is not a resource the card can show.
+            scaling: { cores: { min: 1, max: 3 } },
+          }),
+        ],
+        { usageRead: true },
+      ),
     );
 
     expect(html).not.toContain("data-zerops-service-resources");
@@ -460,6 +475,39 @@ describe("ZeropsServiceDetail — the pop", () => {
     const html = renderDetail(topology([service({ hostname: "app" })]));
 
     expect(html).not.toContain("data-zerops-service-metrics");
+  });
+
+  const scaling = {
+    containers: { min: 1, max: 3 },
+    cores: { min: 1, max: 3 },
+    memoryGb: { min: 0.125, max: 6 },
+    diskGb: { min: 1, max: 100 },
+    cpuMode: "SHARED",
+  };
+
+  it("shows the autoscaling range beside each figure, the cores' with the CPU mode", () => {
+    const html = renderDetail(
+      topology([service({ hostname: "app", usage, scaling })], { usageRead: true }),
+    );
+
+    expect(html.match(/data-zerops-service-metric-range/gu)).toHaveLength(4);
+    expect(html).toContain("1 – 3");
+    expect(html).toContain("0.13 – 6 GB");
+    expect(html).toContain("1 – 100 GB");
+    expect(html).toContain("1 – 3 · Shared");
+  });
+
+  it("shows the envelope alone for a service holding nothing yet", () => {
+    const html = renderDetail(
+      topology([service({ hostname: "app", status: "READY_TO_DEPLOY", scaling })], {
+        usageRead: true,
+      }),
+    );
+
+    expect(html).toContain("data-zerops-service-metrics");
+    expect(html).toContain("1 – 3 · Shared");
+    expect(html).not.toContain("data-zerops-service-metric-fill");
+    expect(html).not.toContain(" / ");
   });
 });
 

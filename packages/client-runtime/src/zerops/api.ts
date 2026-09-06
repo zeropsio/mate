@@ -231,6 +231,34 @@ export interface ZeropsAppVersion {
   } | null;
 }
 
+/** One corner of the vertical autoscaling envelope; `null` where the platform has no value. */
+export interface ZeropsAutoscalingResource {
+  readonly cpuCoreCount?: number | null;
+  readonly memoryGBytes?: number | null;
+  readonly diskGBytes?: number | null;
+}
+
+/**
+ * A service's autoscaling as `GET /project/{id}/service-stack` reports it.
+ * `currentAutoscaling` is the effective configuration — the profile's
+ * defaults with the service's own overrides applied — which is what the
+ * dashboard's autoscaling panel shows; `customAutoscaling` holds only the
+ * overrides, mostly `null`.
+ */
+export interface ZeropsAutoscaling {
+  readonly verticalAutoscaling?: {
+    readonly minResource?: ZeropsAutoscalingResource | null;
+    readonly maxResource?: ZeropsAutoscalingResource | null;
+    /** `SHARED` or `DEDICATED`. */
+    readonly cpuMode?: string | null;
+    readonly startCpuCoreCount?: number | null;
+  } | null;
+  readonly horizontalAutoscaling?: {
+    readonly minContainerCount?: number | null;
+    readonly maxContainerCount?: number | null;
+  } | null;
+}
+
 export interface ZeropsService {
   readonly id: string;
   readonly name: string;
@@ -252,6 +280,8 @@ export interface ZeropsService {
   readonly activeAppVersion?: ZeropsAppVersion | null;
   readonly githubIntegration?: ZeropsGitIntegration | null;
   readonly gitlabIntegration?: ZeropsGitIntegration | null;
+  /** The effective autoscaling envelope; `null` on the core service. */
+  readonly currentAutoscaling?: ZeropsAutoscaling | null;
 }
 
 /** One record from `GET /service-stack/{id}/env`. */

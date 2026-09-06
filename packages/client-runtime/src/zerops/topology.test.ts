@@ -449,3 +449,61 @@ describe("projectTopology — history", () => {
     expect(view.services[0]).not.toHaveProperty("history");
   });
 });
+
+describe("projectTopology — the autoscaling envelope", () => {
+  const scaled = service({
+    id: "svc-app",
+    name: "app",
+    currentAutoscaling: {
+      verticalAutoscaling: {
+        maxResource: { cpuCoreCount: 3, memoryGBytes: 6, diskGBytes: 100 },
+        minResource: { cpuCoreCount: 1, memoryGBytes: 0.125, diskGBytes: 1 },
+        cpuMode: "SHARED",
+        startCpuCoreCount: 2,
+      },
+      horizontalAutoscaling: { maxContainerCount: 3, minContainerCount: 1 },
+    },
+  });
+
+  it("carries the effective envelope, each range with both ends", () => {
+    const view = projectTopology(project, [scaled], []);
+
+    expect(view.services[0]?.scaling).toEqual({
+      containers: { min: 1, max: 3 },
+      cores: { min: 1, max: 3 },
+      memoryGb: { min: 0.125, max: 6 },
+      diskGb: { min: 1, max: 100 },
+      cpuMode: "SHARED",
+    });
+  });
+
+  it("leaves out a range the platform states with a null end, and the whole envelope when there is none", () => {
+    const single = service({
+      id: "svc-db",
+      name: "db",
+      currentAutoscaling: {
+        verticalAutoscaling: {
+          maxResource: { cpuCoreCount: 3, memoryGBytes: 6, diskGBytes: 100 },
+          minResource: { cpuCoreCount: 1, memoryGBytes: 1, diskGBytes: 1 },
+          cpuMode: "SHARED",
+        },
+        horizontalAutoscaling: { maxContainerCount: null, minContainerCount: null },
+      },
+    });
+    const core = service({
+      id: "svc-core",
+      name: "core",
+      currentAutoscaling: { verticalAutoscaling: null, horizontalAutoscaling: null },
+    });
+    const view = projectTopology(project, [single, core, service({ id: "svc-x", name: "x" })], []);
+
+    expect(view.services[0]?.scaling).toEqual({
+      cores: { min: 1, max: 3 },
+      memoryGb: { min: 1, max: 6 },
+      diskGb: { min: 1, max: 100 },
+      cpuMode: "SHARED",
+    });
+    expect(view.services[1]).not.toHaveProperty("scaling");
+    expect(view.services[2]).not.toHaveProperty("scaling");
+  });
+});
