@@ -94,6 +94,7 @@ describe("SidebarZeropsTree", () => {
       face: "idle",
       subject: "Fix the login redirect",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      snippet: undefined,
     };
     const html = render([connected], { getActivity: () => idle });
     expect(html).toContain('data-mate-face-state="idle"');
@@ -103,6 +104,36 @@ describe("SidebarZeropsTree", () => {
     // When it last did something, at the right edge, the way a messenger dates its rows.
     expect(html).toContain('data-zerops-surface="sidebar-mate-time"');
     expect(html).toContain(">3h<");
+  });
+
+  it("quotes the last thing said under what the Mate is on, the person's words as theirs", () => {
+    const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
+    const spoken: ZeropsAgentActivity = {
+      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Fix the login redirect",
+      at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      snippet: "You: also check the logout",
+    };
+    const html = render([connected], { getActivity: () => spoken });
+    const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
+    const snippetAt = html.indexOf('data-zerops-surface="sidebar-mate-snippet"');
+    expect(subjectAt).toBeGreaterThan(-1);
+    expect(snippetAt).toBeGreaterThan(subjectAt);
+    expect(html).toContain("You: also check the logout");
+    // Three tones: the name, then what it is on, then, quieter, what was said.
+    const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
+    const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);
+    expect(subject).toContain("text-sidebar-foreground");
+    expect(snippet).toContain("text-sidebar-muted-foreground");
+  });
+
+  it('says nothing while the candidate list is on its first read, rather than "none"', () => {
+    expect(render([], { loading: true })).toBe("");
+    // Read once and empty: the empty state, as before.
+    expect(render([], { loading: false })).toContain("sidebar-environments-empty");
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {
@@ -214,6 +245,7 @@ describe("the Mate's card", () => {
     face: "working",
     subject: "Reviewing the migration",
     at: "2026-09-06T10:00:00.000Z",
+    snippet: undefined,
   };
 
   it("leads with the agent's name — not the project's, not its tag", () => {

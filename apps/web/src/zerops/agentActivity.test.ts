@@ -2,7 +2,12 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { agentActivityAt, agentActivitySubject, deriveZeropsAgentActivity } from "./agentActivity";
+import {
+  agentActivityAt,
+  agentActivitySnippet,
+  agentActivitySubject,
+  deriveZeropsAgentActivity,
+} from "./agentActivity";
 
 const FEN = EnvironmentId.make("env-fen");
 const OTTO = EnvironmentId.make("env-otto");
@@ -137,6 +142,46 @@ describe("agentActivitySubject", () => {
         "working",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("agentActivitySnippet", () => {
+  it.each([
+    [
+      "the Mate's words plain",
+      { role: "assistant", text: "Done. The app is live.", createdAt: "2026-09-05T10:05:00.000Z" },
+      "Done. The app is live.",
+    ],
+    [
+      "the person's words as theirs",
+      { role: "user", text: "add the login page", createdAt: "2026-09-05T10:00:00.000Z" },
+      "You: add the login page",
+    ],
+  ] as const)("quotes %s", (_, preview, expected) => {
+    expect(agentActivitySnippet(shell({ latestMessagePreview: preview }))).toBe(expected);
+  });
+
+  it.each([
+    ["a shell that carries none", {}],
+    ["a conversation nobody has spoken into", { latestMessagePreview: null }],
+  ] as const)("has nothing to quote from %s", (_, overrides) => {
+    expect(agentActivitySnippet(shell(overrides))).toBeUndefined();
+  });
+
+  it("rides along on the activity", () => {
+    const activity = deriveZeropsAgentActivity(
+      [
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "Deployed.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ],
+      {},
+    );
+    expect(activity.get(FEN)?.snippet).toBe("Deployed.");
   });
 });
 

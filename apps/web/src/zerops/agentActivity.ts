@@ -10,6 +10,7 @@
  * last on — is the running plan step while a turn runs and the server
  * reports one, else the conversation's title, which stays up while the Mate
  * is idle: a row that only ever said "Idle" told nobody which Mate this is.
+ * The snippet is the last thing said, off the shell's server-kept preview.
  * Nothing is decided here; it is all read off the one resolver.
  *
  * Knowable only for an environment Mate is connected to: an environment with
@@ -51,6 +52,21 @@ export interface ZeropsAgentActivity {
    * writes at its right edge, the way a messenger dates its rows.
    */
   readonly at: string;
+  /**
+   * The last thing said in the conversation, as a messenger's row quotes it:
+   * the Mate's words plain, the person's prefixed "You:", since the row is the
+   * Mate's. From the shell's server-kept preview; absent until something has
+   * been said, or on a server that keeps none.
+   */
+  readonly snippet: string | undefined;
+}
+
+export function agentActivitySnippet(
+  thread: Pick<EnvironmentThreadShell, "latestMessagePreview">,
+): string | undefined {
+  const preview = thread.latestMessagePreview;
+  if (preview === undefined || preview === null) return undefined;
+  return preview.role === "user" ? `You: ${preview.text}` : preview.text;
 }
 
 export function agentActivityAt(
@@ -109,6 +125,7 @@ export function deriveZeropsAgentActivity(
       face: mateMarkStateForThreadStatus(resolved.kind),
       subject: agentActivitySubject(primary, resolved.kind),
       at: agentActivityAt(primary),
+      snippet: agentActivitySnippet(primary),
     });
   }
   return activity;

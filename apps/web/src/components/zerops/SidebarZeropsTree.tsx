@@ -77,6 +77,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   readonly className?: string;
+  /** The candidate list is still being read for the first time: say nothing rather than "none". */
+  readonly loading?: boolean;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
@@ -85,10 +87,18 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onBrowseProjects,
   activeProjectId,
   getActivity,
+  loading = false,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+
+  // Nothing read yet is not nothing: an empty state that shows for the first
+  // second of every reload and then gives way to the roster sends the whole
+  // menu jumping. Say nothing until the list has been read once.
+  if (loading && candidates.length === 0) {
+    return null;
+  }
 
   if (emptyReason !== undefined) {
     return (
@@ -254,6 +264,7 @@ function MateRow<T extends RosterCandidate>({
   // open socket, and only once somebody has spoken to it.
   const live = candidate.group === "connected" ? activity : undefined;
   const subject = live?.subject;
+  const snippet = subject === undefined ? undefined : live?.snippet;
   const when =
     live === undefined || live.subject === undefined
       ? undefined
@@ -287,10 +298,21 @@ function MateRow<T extends RosterCandidate>({
         </span>
         {subject === undefined ? null : (
           <span
-            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
+            className={cn(
+              "truncate text-xs leading-4",
+              snippet === undefined ? "text-sidebar-muted-foreground" : "text-sidebar-foreground",
+            )}
             data-zerops-surface="sidebar-mate-subject"
           >
             {subject}
+          </span>
+        )}
+        {snippet === undefined ? null : (
+          <span
+            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
+            data-zerops-surface="sidebar-mate-snippet"
+          >
+            {snippet}
           </span>
         )}
       </span>
