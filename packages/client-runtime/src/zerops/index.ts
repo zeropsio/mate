@@ -181,3 +181,13 @@ export {
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
 export { botDisplayName, generateBotName, hasBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
+export {
+  GITEA_MATE_TOKEN_SCOPES,
+  GITEA_REPO_ENV_KEY,
+  GITEA_TOKEN_ENV_KEY,
+  GITEA_URL_ENV_KEY,
+  giteaTokenName,
+  planGiteaCredential,
+  type ZeropsGiteaCredentialInput,
+  type ZeropsGiteaCredentialPlan,
+} from "./giteaCredential.ts";
