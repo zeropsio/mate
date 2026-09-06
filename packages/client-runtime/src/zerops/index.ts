@@ -95,6 +95,7 @@ export {
   canCreateEnvironment,
   groupNamesFromRecords,
   makeMockZeropsRecipeStore,
+  recipeProjectImportYaml,
   recipeServicesYaml,
   type ZeropsGroupRecord,
   type ZeropsRecipeStore,

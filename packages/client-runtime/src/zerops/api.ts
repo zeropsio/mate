@@ -1224,6 +1224,27 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `POST /client/{id}/project/import` — creates a project **and** its
+   * services from one whole-project document.
+   *
+   * The path for an environment that does not exist yet, in place of create
+   * then import-services: the platform's own preprocessor runs over the
+   * document, so a recipe's `<@generateRandomString(<32>)>` arrives as a real
+   * secret rather than the literal directive (measured 2026-09-06 — a probe
+   * import came back with `APP_KEY` set to 32 generated characters). It also
+   * honours the project block's `tags:`, so the group's membership is written
+   * at birth rather than in a second call that could fail on its own.
+   *
+   * `recipeProjectImportYaml` composes the document.
+   */
+  async importProject(clientId: string, yaml: string): Promise<{ readonly projectId: string }> {
+    return this.#request<{ readonly projectId: string }>(`/client/${clientId}/project/import`, {
+      method: "POST",
+      body: JSON.stringify({ yaml }),
+    });
+  }
+
+  /**
    * `GET /client/{id}/integration-token/list` — every token on the account,
    * with the project grants each one carries.
    *

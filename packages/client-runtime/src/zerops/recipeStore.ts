@@ -111,6 +111,105 @@ export function recipeServicesYaml(yaml: string): string {
 }
 
 /**
+ * The same recipe, aimed at `POST /client/{id}/project/import` — which creates
+ * the project **and** its services in one call, from the tier exactly as
+ * published.
+ *
+ * This is the path that should be taken whenever the environment does not
+ * exist yet, and {@link recipeServicesYaml} is for the other case: adding
+ * services to a project that is already there. The difference is not
+ * cosmetic. Stripping the `project:` block takes its `envVariables` with it,
+ * and a published tier puts real things there — `APP_KEY` in every Laravel
+ * recipe, which is the app's encryption key. An environment created the
+ * stripped way boots without one.
+ *
+ * Nor could the caller put them back afterwards: the values are preprocessor
+ * directives, not values. Measured 2026-09-06 against a live import,
+ * `APP_KEY: <@generateRandomString(<32>)>` came back as a real 32-character
+ * secret, evaluated by the platform on the way in. Writing that literal into a
+ * service env after the fact stores the directive as text.
+ *
+ * The project's `name` and `tagList` are the caller's, not the recipe's: the
+ * recipe names a project after itself, and mate names it after the group and
+ * tags it with the group's membership, which is what makes it findable at all
+ * (`groups.ts`). Both are rewritten in place here, line by line, for the same
+ * reason `recipeServicesYaml` is line-based — a recipe's comments are written
+ * for whoever reads it next, and a YAML round-trip drops them.
+ */
+export function recipeProjectImportYaml(
+  yaml: string,
+  project: { readonly name: string; readonly tagList?: ReadonlyArray<string> },
+): string {
+  const lines = yaml.split("\n");
+  const block = findProjectBlock(lines);
+  const tagLines = (project.tagList ?? []).map((tag) => `    - ${tag}`);
+  const header = [
+    "project:",
+    `  name: ${project.name}`,
+    ...(tagLines.length > 0 ? ["  tags:", ...tagLines] : []),
+  ];
+
+  // No project block at all — a services-only document. Give it one, after
+  // the preprocessor header, which the platform requires to stay first.
+  if (block === null) {
+    const start = lines.findIndex((line) => line.trim().length > 0 && !line.startsWith("#"));
+    const at = start === -1 ? lines.length : start;
+    return [...lines.slice(0, at), ...header, "", ...lines.slice(at)].join("\n");
+  }
+
+  return [
+    ...lines.slice(0, block.start),
+    ...header,
+    ...withoutKeys(lines.slice(block.start + 1, block.end), ["name", "tags"]),
+    ...lines.slice(block.end),
+  ].join("\n");
+}
+
+/**
+ * The block's lines with the named keys removed, and with the list items that
+ * belonged to a removed key removed alongside. One pass, because a key and its
+ * items are one thing: dropping `tags:` and leaving its `- ` lines behind
+ * produces a document the platform rejects.
+ */
+function withoutKeys(
+  body: ReadonlyArray<string>,
+  keys: ReadonlyArray<string>,
+): ReadonlyArray<string> {
+  const kept: Array<string> = [];
+  let dropping = false;
+  for (const line of body) {
+    if (keys.some((key) => isBlockKey(line, key))) {
+      dropping = true;
+      continue;
+    }
+    if (dropping && /^\s+- /.test(line)) continue;
+    if (line.trim().length > 0) dropping = false;
+    kept.push(line);
+  }
+  return kept;
+}
+
+/** The `project:` block's bounds, or `null` when the document has none. */
+function findProjectBlock(
+  lines: ReadonlyArray<string>,
+): { readonly start: number; readonly end: number } | null {
+  const start = lines.findIndex((line) => /^project:\s*(#.*)?$/.test(line));
+  if (start === -1) return null;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^[^\s#-]/.test(lines[index] ?? "")) {
+      end = index;
+      break;
+    }
+  }
+  return { start, end };
+}
+
+function isBlockKey(line: string, key: string): boolean {
+  return new RegExp(`^\\s{1,2}${key}:`).test(line);
+}
+
+/**
  * An in-memory {@link ZeropsRecipeStore}. Seeded records are deep-frozen by
  * being plain data the caller never mutates; writes replace whole records, the
  * way a CRUD endpoint would.
