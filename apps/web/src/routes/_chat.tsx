@@ -17,7 +17,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { resolveDoor } from "./-door";
-import { readDoorEnvironmentCount } from "./-doorEnvironments";
+import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
 function ChatRouteGlobalShortcuts() {
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -127,7 +127,7 @@ export const Route = createFileRoute("/_chat")({
   beforeLoad: async ({ context, location }) => {
     const door = resolveDoor(context.authGateState, {
       pathname: location.pathname,
-      environmentCount: readDoorEnvironmentCount(),
+      environmentCount: await loadDoorEnvironmentCount(),
     });
     if (door.redirect !== null) {
       // The product entry is Zerops account sign-in. Standalone pairing stays

@@ -1,9 +1,21 @@
-import type { ServerAuthBootstrapMethod, ServerAuthDescriptor } from "@t3tools/contracts";
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import type {
+  EnvironmentId,
+  ServerAuthBootstrapMethod,
+  ServerAuthDescriptor,
+} from "@t3tools/contracts";
 import { isRedirect } from "@tanstack/react-router";
+import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { AuthGateState } from "../environments/primary/auth";
-import { countDoorEnvironments, type DoorDecision, resolveDoor } from "./-door";
+import {
+  awaitDoorEnvironmentCount,
+  countDoorEnvironments,
+  type DoorDecision,
+  type DoorRegistry,
+  resolveDoor,
+} from "./-door";
 import { Route as PairRoute } from "./pair";
 
 const BOTH_COUNTS = [0, 1] as const;
@@ -1139,5 +1151,90 @@ describe("the Zerops hand-over callback is reachable from every gate", () => {
         "zerops-handover",
       );
     }
+  });
+});
+
+describe("awaitDoorEnvironmentCount", () => {
+  type CatalogResult = AsyncResult.AsyncResult<{ readonly isReady: boolean }, string>;
+  type DoorEnvironments = ReadonlyMap<
+    EnvironmentId,
+    { readonly connection: { readonly phase: EnvironmentConnectionPhase } }
+  >;
+
+  function environments(phases: ReadonlyArray<EnvironmentConnectionPhase>): DoorEnvironments {
+    return new Map(
+      phases.map((phase, index) => [`env-${index}` as EnvironmentId, { connection: { phase } }]),
+    );
+  }
+
+  function makeDoor(input: {
+    readonly catalog: CatalogResult;
+    readonly phases: ReadonlyArray<EnvironmentConnectionPhase>;
+  }) {
+    const registry = AtomRegistry.make();
+    const catalogAtom = Atom.make<CatalogResult>(input.catalog);
+    const presentationsAtom = Atom.make<DoorEnvironments>(environments(input.phases));
+    let released = 0;
+    const door: DoorRegistry = {
+      get: (atom) => registry.get(atom),
+      subscribe: (atom, listener, options) => {
+        const release = registry.subscribe(atom, listener, options);
+        return () => {
+          released += 1;
+          release();
+        };
+      },
+    };
+    return { registry, catalogAtom, presentationsAtom, door, released: () => released };
+  }
+
+  const settledCases: ReadonlyArray<{
+    readonly label: string;
+    readonly catalog: CatalogResult;
+    readonly phases: ReadonlyArray<EnvironmentConnectionPhase>;
+    readonly expected: number;
+  }> = [
+    {
+      label: "a loaded catalog counts every environment that has not settled into failure",
+      catalog: AsyncResult.success({ isReady: true }),
+      phases: ["available", "connecting", "error"],
+      expected: 2,
+    },
+    {
+      label: "a loaded empty catalog counts none",
+      catalog: AsyncResult.success({ isReady: true }),
+      phases: [],
+      expected: 0,
+    },
+    {
+      label: "a catalog that failed to load holds nothing usable",
+      catalog: AsyncResult.fail("storage unavailable"),
+      phases: ["available"],
+      expected: 0,
+    },
+  ];
+
+  it.each(settledCases)("$label", async ({ catalog, phases, expected }) => {
+    const door = makeDoor({ catalog, phases });
+    await expect(awaitDoorEnvironmentCount(door.door, door)).resolves.toBe(expected);
+    expect(door.released()).toBe(1);
+  });
+
+  it("waits for the catalog to load before counting", async () => {
+    const door = makeDoor({ catalog: AsyncResult.success({ isReady: false }), phases: [] });
+    let settled: number | null = null;
+    const pending = awaitDoorEnvironmentCount(door.door, door).then((count) => {
+      settled = count;
+      return count;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    expect(door.released()).toBe(0);
+
+    door.registry.set(door.presentationsAtom, environments(["connecting"]));
+    door.registry.set(door.catalogAtom, AsyncResult.success({ isReady: true }));
+    await expect(pending).resolves.toBe(1);
+    expect(door.released()).toBe(1);
   });
 });

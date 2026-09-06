@@ -2,9 +2,10 @@
  * Trailing slashes and case are normalized for pathname classification only; the classified
  * pathname is never handed back to the router.
  */
-import type { ServerAuthBootstrapMethod } from "@t3tools/contracts";
+import type { EnvironmentId, ServerAuthBootstrapMethod } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
+import { AsyncResult, type Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AuthGateState } from "../environments/primary/auth";
 
@@ -92,13 +93,66 @@ function profileForGate(gate: AuthGateState): GateProfile {
   return unreachable(status);
 }
 
+export interface DoorEnvironment {
+  readonly connection: { readonly phase: EnvironmentConnectionPhase };
+}
+
 /** A settled failure is unusable; transient connection phases keep the user inside the shell. */
-export function countDoorEnvironments(
-  environments: ReadonlyArray<{
-    readonly connection: { readonly phase: EnvironmentConnectionPhase };
-  }>,
-): number {
+export function countDoorEnvironments(environments: ReadonlyArray<DoorEnvironment>): number {
   return environments.filter((environment) => environment.connection.phase !== "error").length;
+}
+
+/** What the door needs of the atom registry, so a test can hand it a counting wrapper. */
+export type DoorRegistry = Pick<AtomRegistry.AtomRegistry, "get" | "subscribe">;
+
+/**
+ * The door's environment count, taken once the catalog has loaded what the
+ * browser saved.
+ *
+ * A route guard runs before anything renders, and the catalog hydrates from
+ * IndexedDB after the runtime boots. A guard that read it synchronously saw
+ * its empty initial value whenever the primary's session answer came back
+ * first, counted zero, and sent a refreshed deep link to /pair — a race the
+ * next load usually won. A catalog that failed to load holds nothing usable.
+ */
+export function awaitDoorEnvironmentCount<
+  Catalog extends { readonly isReady: boolean },
+  CatalogError,
+  Environment extends DoorEnvironment,
+>(
+  registry: DoorRegistry,
+  atoms: {
+    readonly catalogAtom: Atom.Atom<AsyncResult.AsyncResult<Catalog, CatalogError>>;
+    readonly presentationsAtom: Atom.Atom<ReadonlyMap<EnvironmentId, Environment>>;
+  },
+): Promise<number> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let release: (() => void) | undefined;
+    const settle = (count: number) => {
+      settled = true;
+      release?.();
+      resolve(count);
+    };
+    release = registry.subscribe(
+      atoms.catalogAtom,
+      (catalog) => {
+        if (settled) {
+          return;
+        }
+        if (AsyncResult.isFailure(catalog)) {
+          settle(0);
+        } else if (AsyncResult.isSuccess(catalog) && catalog.value.isReady) {
+          settle(countDoorEnvironments([...registry.get(atoms.presentationsAtom).values()]));
+        }
+      },
+      { immediate: true },
+    );
+    // `immediate` may settle inside `subscribe`, before `release` exists.
+    if (settled) {
+      release();
+    }
+  });
 }
 
 export function resolveDoor(

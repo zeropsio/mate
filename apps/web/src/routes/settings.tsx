@@ -16,6 +16,7 @@ import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { isElectron } from "../env";
 import { resolveDoor } from "./-door";
+import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
 function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
@@ -99,7 +100,7 @@ export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context, location }) => {
     const door = resolveDoor(context.authGateState, {
       pathname: location.pathname,
-      environmentCount: 0,
+      environmentCount: await loadDoorEnvironmentCount(),
     });
     if (door.redirect !== null) {
       throw redirect({ to: door.redirect, replace: true });
