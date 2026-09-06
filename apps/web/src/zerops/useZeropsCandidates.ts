@@ -32,6 +32,7 @@ import {
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
+import { writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import { zeropsMateIdentities } from "./mateIdentities";
@@ -65,6 +66,22 @@ export function authenticatedZeropsOrigins(
   const byOrigin = new Map<string, EnvironmentId>();
   for (const environment of environments) {
     if (environment.connection.phase !== "connected" || !environment.displayUrl) continue;
+    const origin = normalizeOrigin(environment.displayUrl);
+    if (origin) byOrigin.set(origin, environment.environmentId);
+  }
+  return byOrigin;
+}
+
+/** Every registered environment keyed by origin, socket up or not — who lives where is known before it connects. */
+function registeredZeropsOrigins(
+  environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly displayUrl: string | null;
+  }>,
+): ReadonlyMap<string, EnvironmentId> {
+  const byOrigin = new Map<string, EnvironmentId>();
+  for (const environment of environments) {
+    if (!environment.displayUrl) continue;
     const origin = normalizeOrigin(environment.displayUrl);
     if (origin) byOrigin.set(origin, environment.environmentId);
   }
@@ -106,7 +123,6 @@ export function useZeropsCandidates(): {
   const [services, setServices] = useState<ReadonlyMap<string, ZeropsCandidateServiceOutcome>>(
     new Map(),
   );
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Shared across mounts: a refresh from the projects screen reloads the
   // sidebar's copy too (`candidatesRefresh.ts`).
@@ -115,12 +131,19 @@ export function useZeropsCandidates(): {
   // Bumped per load so a superseded run's callbacks become no-ops.
   const generationRef = useRef(0);
   const organizationId = activeOrganization?.id ?? null;
+  const canLoad = status === "signed-in" && organizationStatus === "selected" && !!organizationId;
+  // Loading is a fact about the load the current session and organisation
+  // call for, not a flag an effect raises a render later: the render in
+  // which the session settles already reports loading, so nobody publishes
+  // or paints "none" from the empty list that render still holds.
+  const loadKey = canLoad ? `${organizationId}:${reloadCount}` : null;
+  const [settledLoadKey, setSettledLoadKey] = useState<string | null>(null);
+  const isLoading = loadKey !== null && settledLoadKey !== loadKey;
 
   useEffect(() => {
-    if (status !== "signed-in" || organizationStatus !== "selected" || !organizationId) {
+    if (!canLoad || loadKey === null) {
       setProjects([]);
       setServices(new Map());
-      setIsLoading(false);
       return;
     }
 
@@ -128,7 +151,6 @@ export function useZeropsCandidates(): {
     const generation = generationRef.current;
     const isCancelled = () => generationRef.current !== generation;
 
-    setIsLoading(true);
     setError(null);
     setProjects([]);
     setServices(new Map());
@@ -150,24 +172,25 @@ export function useZeropsCandidates(): {
         if (isCancelled()) return;
         const failure = result.failures[0];
         if (failure) setError(zeropsErrorMessage(failure.cause));
-        setIsLoading(false);
+        setSettledLoadKey(loadKey);
       })
       .catch((cause: unknown) => {
         if (isCancelled()) return;
         setError(zeropsErrorMessage(cause));
-        setIsLoading(false);
+        setSettledLoadKey(loadKey);
       });
 
     return () => {
       generationRef.current += 1;
     };
-  }, [client, status, organizationStatus, organizationId, reloadCount]);
+  }, [canLoad, client, loadKey, organizationId]);
 
   const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
   const connectionsByOrigin = useMemo(
     () => zeropsConnectionsByOrigin(environments),
     [environments],
   );
+  const registeredOrigins = useMemo(() => registeredZeropsOrigins(environments), [environments]);
 
   const candidates = useMemo(() => {
     const derived: ZeropsCandidatePresentation[] = [];
@@ -210,13 +233,22 @@ export function useZeropsCandidates(): {
   // Publish the environments' names, and who lives in each, for readers that
   // never load candidates (`useZeropsEnvironmentNames`, `useZeropsMates`). A
   // reload starts from an empty list; what they had stays up until the new
-  // list carries some.
+  // list carries some. Nothing is published while the session is still being
+  // checked or the organisation picked: an empty answer then would be a
+  // guess, and the surfaces that wait on `zeropsMatesAtom` would paint their
+  // other look for the first second of every reload.
   useEffect(() => {
+    if (status === "loading" || status === "totp-required") return;
+    if (status === "signed-in" && !canLoad) return;
     const names = zeropsEnvironmentNames(candidates);
     if (isLoading && names.size === 0) return;
+    const mates = zeropsMateIdentities(candidates, registeredOrigins);
     appAtomRegistry.set(zeropsEnvironmentNamesAtom, names);
-    appAtomRegistry.set(zeropsMatesAtom, zeropsMateIdentities(candidates));
-  }, [candidates, isLoading]);
+    appAtomRegistry.set(zeropsMatesAtom, mates);
+    // Remembered across reloads, so the next one knows who lives where from
+    // its first frame (`zeropsMatesAtom` starts from this).
+    writeCachedZeropsMates(mates);
+  }, [candidates, canLoad, isLoading, registeredOrigins, status]);
 
   const refresh = useCallback(() => {
     refreshZeropsCandidates();

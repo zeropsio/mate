@@ -22,11 +22,8 @@ function candidate(
   };
 }
 
-const FEN_DEV = candidate(
-  "acme-docs-dev",
-  ["mate", "mate:g:aaa", "mate:role:dev", "mate:name:Acme Docs", "mate:bot:Fen"],
-  FEN,
-);
+const FEN_TAGS = ["mate", "mate:g:aaa", "mate:role:dev", "mate:name:Acme Docs", "mate:bot:Fen"];
+const FEN_DEV = candidate("acme-docs-dev", FEN_TAGS, FEN);
 const JUNO_LOOSE = candidate("scratch", ["mate", "mate:bot:Juno"], JUNO);
 const ACME_STAGE = candidate("acme-docs-stage", ["mate:g:aaa", "mate:role:stage"], STAGE);
 
@@ -39,9 +36,24 @@ describe("zeropsMateIdentities", () => {
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
   });
 
-  it("knows nobody in an environment without a Mate, or without a socket", () => {
+  it("knows nobody in an environment without a Mate, or in no registered environment", () => {
     const mates = zeropsMateIdentities([ACME_STAGE, candidate("dev", ["mate"])]);
     expect(mates.size).toBe(0);
+  });
+
+  it("knows a Mate from its container's origin before its socket is up", () => {
+    // The environment is registered (its origin is known) but not connected
+    // yet: the header and the composer must not wait seconds to learn this is
+    // Fen's conversation.
+    const ready: ZeropsCandidate = {
+      ...candidate("acme-docs-dev", FEN_TAGS),
+      containerOrigin: "https://node-id-1.runtime.zcp.zerops.app",
+    };
+    const mates = zeropsMateIdentities(
+      [ready],
+      new Map([["https://node-id-1.runtime.zcp.zerops.app", FEN]]),
+    );
+    expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
   });
 });
 

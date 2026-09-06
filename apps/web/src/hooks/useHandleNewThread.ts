@@ -37,9 +37,9 @@ import {
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
-import { zeropsMatesAtom } from "../state/zerops";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
+import { useZeropsMates } from "../zerops/useZeropsMates";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 
@@ -79,7 +79,7 @@ export function useNewThreadHandler() {
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   // Which environments a Mate lives in: there, a request for a new thread
   // opens the one conversation instead.
-  const mates = useAtomValue(zeropsMatesAtom);
+  const mates = useZeropsMates();
   const router = useRouter();
   const getCurrentRouteTarget = useCallback(() => {
     const currentRouteParams = router.state.matches[router.state.matches.length - 1]?.params ?? {};

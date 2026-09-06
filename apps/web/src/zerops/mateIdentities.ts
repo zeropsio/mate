@@ -8,6 +8,11 @@
  * `useZeropsCandidates` next to the environment names, so the chat header, an
  * empty conversation and a draft's headline never load anything themselves
  * and can never disagree with the left menu about who a Mate is.
+ *
+ * Who lives where is known from the project's tags and the container's
+ * origin, not from its socket: `registeredOrigins` maps every registered
+ * environment's origin to its id, so a Mate is known the moment the project
+ * list is read, seconds before its socket is up.
  */
 import {
   assignCandidateMateTints,
@@ -15,7 +20,7 @@ import {
   hasMate,
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 
@@ -26,13 +31,17 @@ export interface ZeropsMateIdentity {
   readonly project: string | undefined;
 }
 
+const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
+
 export function zeropsMateIdentities(
   candidates: ReadonlyArray<ZeropsCandidate>,
+  registeredOrigins: ReadonlyMap<string, EnvironmentId> = NO_ORIGINS,
 ): ReadonlyMap<EnvironmentId, ZeropsMateIdentity> {
   const tints = assignCandidateMateTints(candidates);
   const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
   for (const candidate of candidates) {
-    const environmentId = candidate.environmentId;
+    const environmentId =
+      candidate.environmentId ?? registeredEnvironment(candidate, registeredOrigins);
     if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
     const tags = readZeropsGroupTags(candidate.project.tagList);
     mates.set(environmentId, {
@@ -42,6 +51,15 @@ export function zeropsMateIdentities(
     });
   }
   return mates;
+}
+
+function registeredEnvironment(
+  candidate: ZeropsCandidate,
+  registeredOrigins: ReadonlyMap<string, EnvironmentId>,
+): EnvironmentId | undefined {
+  const origin = candidate.containerOrigin;
+  if (origin === undefined) return undefined;
+  return registeredOrigins.get(normalizeOrigin(origin) ?? origin);
 }
 
 /** The question an empty conversation asks: "What should Fen do on Acme Docs?" */

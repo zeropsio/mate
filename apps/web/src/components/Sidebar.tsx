@@ -1824,6 +1824,13 @@ export default function Sidebar() {
   // registered here, and its leftovers must not resurface as a tree.
   const zeropsEnvironmentIds = useMemo(() => {
     const ids = new Set<EnvironmentId>();
+    // Not yet known which environments are Zerops — the session is still
+    // resolving, or the candidate list is on its first read: hide every tree
+    // rather than list each environment for the first second of a reload.
+    if (zeropsStatus === "loading" || (zeropsSignedIn && zeropsCandidatesLoading)) {
+      for (const environment of environments) ids.add(environment.environmentId);
+      return ids;
+    }
     if (!zeropsSignedIn) return ids;
     for (const candidate of zeropsCandidates) {
       if (candidate.environmentId !== undefined) ids.add(candidate.environmentId);
@@ -1834,7 +1841,7 @@ export default function Sidebar() {
       }
     }
     return ids;
-  }, [environments, zeropsCandidates, zeropsSignedIn]);
+  }, [environments, zeropsCandidates, zeropsCandidatesLoading, zeropsSignedIn, zeropsStatus]);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
@@ -3739,6 +3746,7 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
               className="mb-2"
+              loading={zeropsCandidatesLoading}
               onBrowseProjects={navigateToZeropsProjects}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined

@@ -1,19 +1,36 @@
-import { LoaderCircleIcon } from "lucide-react";
+/**
+ * A conversation catching up with its server: a small spinner in the header's
+ * sync slot (`threadSyncSlot.ts`), with the phrase on hover. Upstream stacked
+ * this as a drawer above the composer, which moved the composer and the
+ * timeline every time the thread's connection blinked; a header slot of fixed
+ * size moves nothing.
+ */
+import { createPortal } from "react-dom";
 
+import { Spinner } from "~/components/ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { threadSyncLabel, type ThreadSyncPhase } from "../../threadSync";
+import { useThreadSyncSlot } from "./threadSyncSlot";
 
 export function ThreadSyncStatusPill({ phase }: { readonly phase: ThreadSyncPhase }) {
+  const slot = useThreadSyncSlot();
   const label = threadSyncLabel(phase);
+  if (slot === null) return null;
 
-  return (
-    <div
-      aria-label={label}
-      className="chat-composer-drawer-surface chat-composer-drawer-attached chat-composer-drawer-slot pointer-events-none flex items-center gap-2 px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-foreground text-xs font-medium sm:px-4"
-      data-thread-sync-drawer="true"
-      role="status"
-    >
-      <LoaderCircleIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate">{label}</span>
-    </div>
+  return createPortal(
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="flex size-4 items-center justify-center text-muted-foreground"
+            data-thread-sync-indicator="true"
+          />
+        }
+      >
+        <Spinner aria-label={label} className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
+    </Tooltip>,
+    slot,
   );
 }

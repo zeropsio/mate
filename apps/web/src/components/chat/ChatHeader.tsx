@@ -43,6 +43,7 @@ import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsMates } from "~/zerops/useZeropsMates";
+import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -169,6 +170,10 @@ export const ChatHeader = memo(function ChatHeader({
   // carries a title only once somebody has spoken into it. Elsewhere the
   // header is upstream's: the project, then the thread.
   const mate = useZeropsMates().get(activeThreadEnvironmentId);
+  // Idle is the safe floor here, never a lie: a Mate is keyed by an
+  // environment id, which only a connected candidate carries, so a Mate whose
+  // socket is down has no identity to head a conversation with — the sleeping
+  // face belongs to the lists, which do see disconnected candidates.
   const mateFace = useZeropsAgentActivity().get(activeThreadEnvironmentId)?.face ?? "idle";
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -402,6 +407,13 @@ export const ChatHeader = memo(function ChatHeader({
           </WorkspaceBreadcrumbItem>
         )}
       </WorkspaceBreadcrumb>
+      {/* The sync indicator's seat: always this size, so a thread catching up
+          with its server spins here and moves nothing (`threadSyncSlot.ts`). */}
+      <span
+        className="flex size-4 shrink-0 items-center justify-center"
+        data-thread-sync-slot="true"
+        ref={registerThreadSyncSlot}
+      />
       <div
         data-chat-header-actions
         className={cn(

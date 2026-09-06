@@ -768,7 +768,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --chat-composer-context-extension: 2.25rem;
   }
 
-  .chat-composer-glass-shell-with-context::before {
+  /* The joined shape exists for a strip: a shell told to expect one whose
+     toolbar then has nothing to say (a Mate's conversation) keeps the plain
+     22px glass, not two glass shoulders hanging below its corners. */
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
     border-radius: 0;
     /*
      * One continuous glass layer: a 22px composer joined to a 16px strip. The
@@ -984,7 +987,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   @supports not (clip-path: shape(from 0 0, line to 1px 1px)) {
-    .chat-composer-glass-shell-with-context::before {
+    .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
       inset-block-end: var(--chat-composer-context-extension);
       border-radius: 22px;
       clip-path: none;
