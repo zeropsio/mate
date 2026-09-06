@@ -3,7 +3,8 @@
  * sync slot (`threadSyncSlot.ts`), with the phrase on hover. Upstream stacked
  * this as a drawer above the composer, which moved the composer and the
  * timeline every time the thread's connection blinked; a header slot of fixed
- * size moves nothing.
+ * size moves nothing. The chat view still renders it where the drawer stood;
+ * the indicator lands in the header.
  */
 import { createPortal } from "react-dom";
 
@@ -12,12 +13,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { threadSyncLabel, type ThreadSyncPhase } from "../../threadSync";
 import { useThreadSyncSlot } from "./threadSyncSlot";
 
-export function ThreadSyncStatusPill({ phase }: { readonly phase: ThreadSyncPhase }) {
-  const slot = useThreadSyncSlot();
+/** The indicator itself: what the slot shows while the thread syncs. */
+export function ThreadSyncIndicator({ phase }: { readonly phase: ThreadSyncPhase }) {
   const label = threadSyncLabel(phase);
-  if (slot === null) return null;
-
-  return createPortal(
+  return (
     <Tooltip>
       <TooltipTrigger
         render={
@@ -30,7 +29,12 @@ export function ThreadSyncStatusPill({ phase }: { readonly phase: ThreadSyncPhas
         <Spinner aria-label={label} className="size-3.5" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
-    </Tooltip>,
-    slot,
+    </Tooltip>
   );
+}
+
+export function ThreadSyncStatusPill({ phase }: { readonly phase: ThreadSyncPhase }) {
+  const slot = useThreadSyncSlot();
+  if (slot === null) return null;
+  return createPortal(<ThreadSyncIndicator phase={phase} />, slot);
 }

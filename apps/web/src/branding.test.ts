@@ -75,7 +75,8 @@ describe("branding", () => {
     expect(indexHtml).toContain("<title>Zerops Mate (Alpha)</title>");
     expect(indexHtml).toContain('aria-label="Zerops Mate splash screen"');
     expect(indexHtml).toContain(
-      '<svg id="boot-shell-logo" viewBox="0 0 42.27 50.48" role="img" aria-label="Zerops Mate">',
+      // The mark's own box (`MATE_MARK.viewBox`), the one the live mark draws in.
+      '<svg id="boot-shell-logo" viewBox="0 0 44 52" role="img" aria-label="Zerops Mate">',
     );
   });
 });

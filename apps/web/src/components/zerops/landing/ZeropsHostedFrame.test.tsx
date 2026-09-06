@@ -2,8 +2,6 @@ import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { MATE_LOCKUP } from "@t3tools/shared/brand";
-
 vi.mock("@tanstack/react-router", async () => {
   const { createElement } = await import("react");
   return {
@@ -23,7 +21,7 @@ describe("ZeropsHostedFrame", () => {
       </ZeropsHostedFrame>,
     );
     expect(html).toContain('data-zerops-frame="standalone"');
-    expect(html).toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
+    expect(html).toContain("data-mate-lockup=");
     expect(html).toContain('href="/"');
     expect(html).toContain("Sign out");
     expect(html).toContain("content");
@@ -37,9 +35,7 @@ describe("ZeropsHostedFrame", () => {
         <p>content</p>
       </ZeropsHostedFrame>,
     );
-    expect(html.indexOf(`viewBox="${MATE_LOCKUP.viewBox}"`)).toBeLessThan(
-      html.indexOf("Environments / New"),
-    );
+    expect(html.indexOf("data-mate-lockup=")).toBeLessThan(html.indexOf("Environments / New"));
   });
 
   it("leaves the brand to the sidebar inside the app shell and shows the breadcrumb", () => {
@@ -51,7 +47,7 @@ describe("ZeropsHostedFrame", () => {
       </SidebarProvider>,
     );
     expect(html).toContain('data-zerops-frame="shell"');
-    expect(html).not.toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
+    expect(html).not.toContain("data-mate-lockup=");
     expect(html).toContain("Environments / New");
   });
 
@@ -67,7 +63,7 @@ describe("ZeropsHostedFrame", () => {
     );
     expect(html).not.toContain("<header");
     expect(html).not.toContain("data-zerops-frame");
-    expect(html).not.toContain(`viewBox="${MATE_LOCKUP.viewBox}"`);
+    expect(html).not.toContain("data-mate-lockup=");
     expect(html.indexOf("card")).toBeLessThan(html.indexOf("<footer"));
     expect(html).toContain("Mate by Zerops");
   });

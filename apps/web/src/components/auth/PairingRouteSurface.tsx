@@ -20,9 +20,9 @@ import { ZeropsHostedLanding } from "../zerops/landing/ZeropsHostedLanding";
 import { ZeropsLandingShell } from "../zerops/landing/ZeropsLandingShell";
 
 /**
- * Every pairing state stands in the same frame as the Zerops sign-in — the
- * lockup in the bar, the live mark, a title, one sentence, a card — so a
- * one-time link lands in the product, not on a page of its own.
+ * Every state of a one-time link stands in the same frame as the Zerops
+ * sign-in — the lockup in the bar, the live mark, a title, one sentence, a
+ * card — so the link lands in the product, not on a page of its own.
  */
 export function PairingPendingSurface() {
   return (

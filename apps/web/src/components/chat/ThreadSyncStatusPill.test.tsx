@@ -1,22 +1,27 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ThreadSyncStatusPill } from "./ThreadSyncStatusPill";
+import { ThreadSyncIndicator, ThreadSyncStatusPill } from "./ThreadSyncStatusPill";
 
-describe("ThreadSyncStatusPill", () => {
+describe("ThreadSyncIndicator", () => {
   it.each([
     ["loading", "Loading messages..."],
     ["syncing", "Syncing messages..."],
-  ] as const)("renders the %s message sync phase", (phase, label) => {
-    const markup = renderToStaticMarkup(<ThreadSyncStatusPill phase={phase} />);
+  ] as const)("is a small spinner that says %s on hover", (phase, label) => {
+    const markup = renderToStaticMarkup(<ThreadSyncIndicator phase={phase} />);
 
+    expect(markup).toContain('data-thread-sync-indicator="true"');
     expect(markup).toContain('role="status"');
-    expect(markup).toContain('data-thread-sync-drawer="true"');
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).toContain("chat-composer-drawer-slot");
-    expect(markup).toContain("pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)]");
-    expect(markup).toContain(label);
-    expect(markup).not.toContain("animate-");
+    expect(markup).toContain(`aria-label="${label}"`);
+    // Fixed size: it sits in a slot the header keeps whether or not it spins.
+    expect(markup).toContain("size-4");
+    // Never the drawer that pushed the composer down.
+    expect(markup).not.toContain("chat-composer-drawer");
+  });
+});
+
+describe("ThreadSyncStatusPill", () => {
+  it("renders nothing where the chat view mounts it — the indicator lives in the header's slot", () => {
+    expect(renderToStaticMarkup(<ThreadSyncStatusPill phase="syncing" />)).toBe("");
   });
 });
