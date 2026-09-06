@@ -125,8 +125,45 @@ describe("agentActivitySubject", () => {
     ["working", "Add the login page"],
     ["approval", "Add the login page"],
     ["done", "Add the login page"],
-  ] as const)("for %s is %s", (kind, expected) => {
+  ] as const)("for %s is the title on a server that keeps no preview", (kind, expected) => {
     expect(agentActivitySubject(shell(), kind)).toBe(expected);
+  });
+
+  it.each(["idle", "working", "done"] as const)(
+    "for %s is the last task as the person put it, not the first task's title",
+    (kind) => {
+      // One conversation per environment: the title names the first task
+      // forever; the row must say what the Mate was set on last.
+      expect(
+        agentActivitySubject(
+          shell({
+            title: "create todo app",
+            latestUserMessagePreview: {
+              role: "user",
+              text: "give it optimistic updates",
+              createdAt: "2026-09-06T01:55:00.000Z",
+            },
+          }),
+          kind,
+        ),
+      ).toBe("give it optimistic updates");
+    },
+  );
+
+  it("is the running step over the task while the server reports one", () => {
+    expect(
+      agentActivitySubject(
+        shell({
+          planProgress: { step: "Wire the toggle", completedSteps: 1, totalSteps: 3 },
+          latestUserMessagePreview: {
+            role: "user",
+            text: "give it optimistic updates",
+            createdAt: "2026-09-06T01:55:00.000Z",
+          },
+        }),
+        "working",
+      ),
+    ).toBe("Wire the toggle");
   });
 
   it("has nothing to say for a conversation nobody has spoken into — its title is a placeholder", () => {
@@ -146,24 +183,33 @@ describe("agentActivitySubject", () => {
 });
 
 describe("agentActivitySnippet", () => {
-  it.each([
-    [
-      "the Mate's words plain",
-      { role: "assistant", text: "Done. The app is live.", createdAt: "2026-09-05T10:05:00.000Z" },
-      "Done. The app is live.",
-    ],
-    [
-      "the person's words as theirs",
-      { role: "user", text: "add the login page", createdAt: "2026-09-05T10:00:00.000Z" },
-      "You: add the login page",
-    ],
-  ] as const)("quotes %s", (_, preview, expected) => {
-    expect(agentActivitySnippet(shell({ latestMessagePreview: preview }))).toBe(expected);
+  it("quotes the Mate's last words", () => {
+    expect(
+      agentActivitySnippet(
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "Done. The app is live.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ),
+    ).toBe("Done. The app is live.");
   });
 
   it.each([
     ["a shell that carries none", {}],
     ["a conversation nobody has spoken into", { latestMessagePreview: null }],
+    [
+      "a conversation whose last word is the person's — the subject already says it",
+      {
+        latestMessagePreview: {
+          role: "user",
+          text: "add the login page",
+          createdAt: "2026-09-05T10:00:00.000Z",
+        },
+      },
+    ],
   ] as const)("has nothing to quote from %s", (_, overrides) => {
     expect(agentActivitySnippet(shell(overrides))).toBeUndefined();
   });

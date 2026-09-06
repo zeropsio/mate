@@ -174,8 +174,15 @@ export const ChatHeader = memo(function ChatHeader({
   // environment id, which only a connected candidate carries, so a Mate whose
   // socket is down has no identity to head a conversation with — the sleeping
   // face belongs to the lists, which do see disconnected candidates.
-  const mateFace = useZeropsAgentActivity().get(activeThreadEnvironmentId)?.face ?? "idle";
+  const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
+  const mateFace = mateActivity?.face ?? "idle";
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
+  // A Mate's conversation is headed by what the Mate is on — the same subject
+  // its row shows (`agentActivity.ts`): the last task as the person put it,
+  // not the conversation's title, which with one conversation per environment
+  // names the first task forever. The title stays the rename target.
+  const headline =
+    mate === undefined ? activeThreadTitle : (mateActivity?.subject ?? activeThreadTitle);
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -374,7 +381,7 @@ export const ChatHeader = memo(function ChatHeader({
                     <button
                       ref={titleButtonRef}
                       type="button"
-                      aria-label={`Thread actions for ${activeThreadTitle}`}
+                      aria-label={`Thread actions for ${headline}`}
                       aria-haspopup="menu"
                       onClick={openMenuFromTitle}
                       onDoubleClick={handleTitleDoubleClick}
@@ -383,25 +390,25 @@ export const ChatHeader = memo(function ChatHeader({
                     />
                   }
                 >
-                  <h2 className="min-w-0 truncate">{activeThreadTitle}</h2>
+                  <h2 className="min-w-0 truncate">{headline}</h2>
                   <ChevronDownIcon
                     aria-hidden
                     data-thread-title-chevron
                     className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
                   />
                 </TooltipTrigger>
-                <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
+                <TooltipPopup side="top">{headline}</TooltipPopup>
               </Tooltip>
             ) : (
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <h2 aria-label={activeThreadTitle} className="min-w-0 flex-1 truncate">
-                      {activeThreadTitle}
+                    <h2 aria-label={headline} className="min-w-0 flex-1 truncate">
+                      {headline}
                     </h2>
                   }
                 />
-                <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
+                <TooltipPopup side="top">{headline}</TooltipPopup>
               </Tooltip>
             )}
           </WorkspaceBreadcrumbItem>

@@ -106,23 +106,24 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain(">3h<");
   });
 
-  it("quotes the last thing said under what the Mate is on, the person's words as theirs", () => {
+  it("quotes the Mate's last words under the task it was set on", () => {
     const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
     const spoken: ZeropsAgentActivity = {
       threadId: "thread-1" as ZeropsAgentActivity["threadId"],
       kind: "idle",
       status: null,
       face: "idle",
-      subject: "Fix the login redirect",
+      subject: "give it optimistic updates",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      snippet: "You: also check the logout",
+      snippet: "Deploying and verifying now.",
     };
     const html = render([connected], { getActivity: () => spoken });
     const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
     const snippetAt = html.indexOf('data-zerops-surface="sidebar-mate-snippet"');
     expect(subjectAt).toBeGreaterThan(-1);
     expect(snippetAt).toBeGreaterThan(subjectAt);
-    expect(html).toContain("You: also check the logout");
+    expect(html).toContain("give it optimistic updates");
+    expect(html).toContain("Deploying and verifying now.");
     // Three tones: the name, then what it is on, then, quieter, what was said.
     const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
     const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);

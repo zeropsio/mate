@@ -8,9 +8,12 @@
  * about what "working" looks like. The face comes from the same status
  * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was
  * last on — is the running plan step while a turn runs and the server
- * reports one, else the conversation's title, which stays up while the Mate
+ * reports one, else the last task as the person put it (the shell's
+ * server-kept preview of their last message), which stays up while the Mate
  * is idle: a row that only ever said "Idle" told nobody which Mate this is.
- * The snippet is the last thing said, off the shell's server-kept preview.
+ * The conversation's title is the fallback for a server that keeps no
+ * preview — with one conversation per environment it names the first task,
+ * forever. The snippet is the Mate's last words, off the same shell.
  * Nothing is decided here; it is all read off the one resolver.
  *
  * Knowable only for an environment Mate is connected to: an environment with
@@ -41,9 +44,10 @@ export interface ZeropsAgentActivity {
   readonly face: MateMarkState;
   /**
    * What the Mate is on, or was last on: the running plan step while it
-   * works, else the conversation's title — idle included, so the line under
-   * the name keeps saying what this Mate is about. Absent for a conversation
-   * nobody has spoken into yet — its title is a placeholder, not a subject.
+   * works, else the last task as the person asked it — idle included, so the
+   * line under the name keeps saying what this Mate is about. The
+   * conversation's title only on a server that keeps no preview. Absent for
+   * a conversation nobody has spoken into yet.
    */
   readonly subject: string | undefined;
   /**
@@ -53,10 +57,9 @@ export interface ZeropsAgentActivity {
    */
   readonly at: string;
   /**
-   * The last thing said in the conversation, as a messenger's row quotes it:
-   * the Mate's words plain, the person's prefixed "You:", since the row is the
-   * Mate's. From the shell's server-kept preview; absent until something has
-   * been said, or on a server that keeps none.
+   * The Mate's last words, quoted under the task — the reply to what the
+   * subject asks. Absent while the person's message is the last thing said
+   * (the subject already says it), and on a server that keeps no preview.
    */
   readonly snippet: string | undefined;
 }
@@ -65,8 +68,8 @@ export function agentActivitySnippet(
   thread: Pick<EnvironmentThreadShell, "latestMessagePreview">,
 ): string | undefined {
   const preview = thread.latestMessagePreview;
-  if (preview === undefined || preview === null) return undefined;
-  return preview.role === "user" ? `You: ${preview.text}` : preview.text;
+  if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
+  return preview.text;
 }
 
 export function agentActivityAt(
@@ -83,13 +86,19 @@ export function agentActivityAt(
 }
 
 export function agentActivitySubject(
-  thread: Pick<EnvironmentThreadShell, "title" | "planProgress" | "latestUserMessageAt">,
+  thread: Pick<
+    EnvironmentThreadShell,
+    "title" | "planProgress" | "latestUserMessageAt" | "latestUserMessagePreview"
+  >,
   kind: ThreadStatusKind,
 ): string | undefined {
   if (kind !== "idle") {
     const step = thread.planProgress?.step.trim();
     if (step !== undefined && step.length > 0) return step;
   }
+  // The last task, as the person put it.
+  const asked = thread.latestUserMessagePreview;
+  if (asked !== undefined && asked !== null) return asked.text;
   // A conversation nobody has spoken into has a placeholder for a title, not
   // a subject: a Mate that was never asked anything has nothing it is about.
   if (thread.latestUserMessageAt === null) return undefined;
