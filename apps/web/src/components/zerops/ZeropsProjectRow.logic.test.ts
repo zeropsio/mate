@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
+  environmentSummaryLine,
   mateSetupOffered,
   zeropsReasonSentence,
   type ZeropsRowCandidate,
@@ -263,5 +264,33 @@ describe("zeropsReasonSentence", () => {
     expect(deriveZeropsRowPresentation(input(stopped, undefined)).detail).toBe(
       "The container is stopped.",
     );
+  });
+});
+
+describe("environmentSummaryLine", () => {
+  const age = (iso: string) => (iso === "2026-09-05T15:17:24Z" ? "2h ago" : "?");
+
+  it.each([
+    [
+      "names the services and dates the deploy",
+      { hostnames: ["app", "db"], deployedAt: "2026-09-05T15:17:24Z" },
+      "app, db · deployed 2h ago",
+    ],
+    [
+      "names services nothing has been deployed to",
+      { hostnames: ["db"], deployedAt: undefined },
+      "db",
+    ],
+    [
+      "says when a project holds only the platform's services",
+      { hostnames: [], deployedAt: undefined },
+      "No services yet",
+    ],
+  ] as const)("%s", (_, services, expected) => {
+    expect(environmentSummaryLine(services, age)).toBe(expected);
+  });
+
+  it("says nothing while the services are unread", () => {
+    expect(environmentSummaryLine(undefined, age)).toBeUndefined();
   });
 });

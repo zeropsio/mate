@@ -150,6 +150,7 @@ import {
   shouldShowProjectIdentityInSidebarSection,
   threadStatusRowPresentation,
   useThreadJumpHintVisibility,
+  compactSidebarTimeLabel,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
@@ -216,11 +217,6 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 // Keep the v2 key so existing preferences survive the v2-to-default rename.
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:snoozed-expanded";
-
-function compactSidebarTimeLabel(label: string): string {
-  if (label === "just now") return "now";
-  return label.endsWith(" ago") ? label.slice(0, -4) : label;
-}
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -3785,7 +3781,7 @@ export default function Sidebar() {
                       if (started) {
                         composeZeropsFirstPrompt({
                           environmentId: String(environmentId),
-                          draftId: started.draftId,
+                          target: started.draftId,
                         });
                       }
                     });

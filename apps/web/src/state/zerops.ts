@@ -3,6 +3,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
+import type { ZeropsMateIdentity } from "../zerops/mateIdentities";
 import type { ProjectTopologySnapshot } from "../zerops/projectTopologyWatcher";
 
 export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
@@ -59,3 +60,12 @@ export function projectTopologyViewAtom(environmentId: EnvironmentId) {
 export const zeropsEnvironmentNamesAtom = Atom.make<ReadonlyMap<EnvironmentId, string>>(
   new Map(),
 ).pipe(Atom.withLabel("zerops:environment-names"));
+
+/**
+ * Who lives in each connected environment — the Mate's name, colour and
+ * project (`mateIdentities.ts`) — for the chat header, an empty conversation
+ * and a draft's headline. Published by `useZeropsCandidates` next to the names.
+ */
+export const zeropsMatesAtom = Atom.make<ReadonlyMap<EnvironmentId, ZeropsMateIdentity>>(
+  new Map(),
+).pipe(Atom.withLabel("zerops:mates"));

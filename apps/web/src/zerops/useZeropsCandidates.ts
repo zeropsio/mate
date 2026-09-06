@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   derivePublicRoutes,
+  summarizeEnvironmentServices,
+  type ZeropsEnvironmentServices,
   type ZeropsProject,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -29,9 +31,10 @@ import {
 } from "@t3tools/client-runtime/zerops/candidateLoading";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import { zeropsEnvironmentNamesAtom } from "../state/zerops";
+import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
+import { zeropsMateIdentities } from "./mateIdentities";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
@@ -43,6 +46,12 @@ export interface ZeropsCandidatePresentation extends ZeropsCandidate {
    * from "none".
    */
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  /**
+   * What the environment holds — the developer's services and when its code
+   * last landed — read off the same list. Absent while it is unread, like
+   * `routes`.
+   */
+  readonly services?: ZeropsEnvironmentServices;
 }
 
 /** Authenticated environments keyed by origin, so a derived container origin can be matched. */
@@ -82,6 +91,8 @@ function zeropsConnectionsByOrigin(
 // moment its services arrive rather than waiting for the whole load — the
 // shell is given a stable empty map here since that derivation is unused.
 const NO_CONNECTED_ORIGINS = new Map<string, EnvironmentId>();
+/** A project that is not up holds nothing anyone deployed. */
+const NO_SERVICES: ZeropsEnvironmentServices = { hostnames: [], deployedAt: undefined };
 
 export function useZeropsCandidates(): {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
@@ -169,6 +180,7 @@ export function useZeropsCandidates(): {
           ...deriveZeropsCandidates(project, null, connectedOrigins).map((candidate) => ({
             ...candidate,
             routes: [],
+            services: NO_SERVICES,
           })),
         );
         continue;
@@ -179,9 +191,12 @@ export function useZeropsCandidates(): {
       if (!outcome) continue;
       const resolved = outcome.status === "resolved" ? outcome.services : null;
       const routes = resolved === null ? undefined : derivePublicRoutes(project, resolved);
+      const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
       derived.push(
         ...deriveZeropsCandidates(project, resolved, connectedOrigins).map((candidate) =>
-          routes === undefined ? candidate : { ...candidate, routes },
+          routes === undefined || held === undefined
+            ? candidate
+            : { ...candidate, routes, services: held },
         ),
       );
     }
@@ -192,13 +207,15 @@ export function useZeropsCandidates(): {
     });
   }, [projects, services, connectedOrigins, connectionsByOrigin]);
 
-  // Publish the environments' names for readers that never load candidates
-  // (`useZeropsEnvironmentNames`). A reload starts from an empty list; the
-  // names it had stay up until the new list carries some.
+  // Publish the environments' names, and who lives in each, for readers that
+  // never load candidates (`useZeropsEnvironmentNames`, `useZeropsMates`). A
+  // reload starts from an empty list; what they had stays up until the new
+  // list carries some.
   useEffect(() => {
     const names = zeropsEnvironmentNames(candidates);
     if (isLoading && names.size === 0) return;
     appAtomRegistry.set(zeropsEnvironmentNamesAtom, names);
+    appAtomRegistry.set(zeropsMatesAtom, zeropsMateIdentities(candidates));
   }, [candidates, isLoading]);
 
   const refresh = useCallback(() => {

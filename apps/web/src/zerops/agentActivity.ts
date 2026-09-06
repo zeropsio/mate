@@ -6,10 +6,11 @@
  * the one status resolver, and `threadStatusPill`, the one phrase producer
  * (R5), so a Mate's row, a Mate's card and a thread's row can never disagree
  * about what "working" looks like. The face comes from the same status
- * (`mateMarkStateForThreadStatus`), and the subject — what it is working on —
- * is the running plan step when the server reports one, else the
- * conversation's title. Nothing is decided here; it is all read off the one
- * resolver.
+ * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was
+ * last on — is the running plan step while a turn runs and the server
+ * reports one, else the conversation's title, which stays up while the Mate
+ * is idle: a row that only ever said "Idle" told nobody which Mate this is.
+ * Nothing is decided here; it is all read off the one resolver.
  *
  * Knowable only for an environment Mate is connected to: an environment with
  * no thread shells has no entry, and the caller draws it asleep.
@@ -38,19 +39,44 @@ export interface ZeropsAgentActivity {
   readonly status: ThreadStatusPill | null;
   readonly face: MateMarkState;
   /**
-   * What the Mate is on: the running plan step, else the conversation's title.
-   * Absent when idle — an idle Mate is not "working on" the thing it last did.
+   * What the Mate is on, or was last on: the running plan step while it
+   * works, else the conversation's title — idle included, so the line under
+   * the name keeps saying what this Mate is about. Absent for a conversation
+   * nobody has spoken into yet — its title is a placeholder, not a subject.
    */
   readonly subject: string | undefined;
+  /**
+   * When the Mate last did something: the last turn's end while it rests, its
+   * start while it works, else the conversation's last change. What a row
+   * writes at its right edge, the way a messenger dates its rows.
+   */
+  readonly at: string;
+}
+
+export function agentActivityAt(
+  thread: Pick<EnvironmentThreadShell, "latestTurn" | "latestUserMessageAt" | "updatedAt">,
+): string {
+  const turn = thread.latestTurn;
+  return (
+    turn?.completedAt ??
+    turn?.startedAt ??
+    turn?.requestedAt ??
+    thread.latestUserMessageAt ??
+    thread.updatedAt
+  );
 }
 
 export function agentActivitySubject(
-  thread: Pick<EnvironmentThreadShell, "title" | "planProgress">,
+  thread: Pick<EnvironmentThreadShell, "title" | "planProgress" | "latestUserMessageAt">,
   kind: ThreadStatusKind,
 ): string | undefined {
-  if (kind === "idle") return undefined;
-  const step = thread.planProgress?.step.trim();
-  if (step !== undefined && step.length > 0) return step;
+  if (kind !== "idle") {
+    const step = thread.planProgress?.step.trim();
+    if (step !== undefined && step.length > 0) return step;
+  }
+  // A conversation nobody has spoken into has a placeholder for a title, not
+  // a subject: a Mate that was never asked anything has nothing it is about.
+  if (thread.latestUserMessageAt === null) return undefined;
   const title = thread.title.trim();
   return title.length > 0 ? title : undefined;
 }
@@ -82,6 +108,7 @@ export function deriveZeropsAgentActivity(
       status: threadStatusPill(resolved),
       face: mateMarkStateForThreadStatus(resolved.kind),
       subject: agentActivitySubject(primary, resolved.kind),
+      at: agentActivityAt(primary),
     });
   }
   return activity;

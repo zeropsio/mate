@@ -2,7 +2,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { agentActivitySubject, deriveZeropsAgentActivity } from "./agentActivity";
+import { agentActivityAt, agentActivitySubject, deriveZeropsAgentActivity } from "./agentActivity";
 
 const FEN = EnvironmentId.make("env-fen");
 const OTTO = EnvironmentId.make("env-otto");
@@ -57,8 +57,14 @@ describe("deriveZeropsAgentActivity", () => {
       face: "working",
       subject: "Add the login page",
     });
-    // Idle has no phrase of its own; the row says it. The face still knows.
-    expect(activity.get(OTTO)).toMatchObject({ kind: "idle", status: null, face: "idle" });
+    // Idle has no phrase of its own — the face says it — but the subject stays:
+    // the line under the name keeps saying what this Mate is about.
+    expect(activity.get(OTTO)).toMatchObject({
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Add the login page",
+    });
   });
 
   it("knows nothing about an environment with no conversation", () => {
@@ -100,18 +106,28 @@ describe("deriveZeropsAgentActivity", () => {
     const unseen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:04:00.000Z" });
     expect(unseen.get(FEN)).toMatchObject({ kind: "done", status: { kind: "done" }, face: "done" });
     const seen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:06:00.000Z" });
-    expect(seen.get(FEN)).toMatchObject({ kind: "idle", status: null, subject: undefined });
+    expect(seen.get(FEN)).toMatchObject({
+      kind: "idle",
+      status: null,
+      subject: "Add the login page",
+    });
   });
 });
 
 describe("agentActivitySubject", () => {
   it.each([
-    ["idle", undefined],
+    ["idle", "Add the login page"],
     ["working", "Add the login page"],
     ["approval", "Add the login page"],
     ["done", "Add the login page"],
   ] as const)("for %s is %s", (kind, expected) => {
     expect(agentActivitySubject(shell(), kind)).toBe(expected);
+  });
+
+  it("has nothing to say for a conversation nobody has spoken into — its title is a placeholder", () => {
+    expect(
+      agentActivitySubject(shell({ title: "New thread", latestUserMessageAt: null }), "idle"),
+    ).toBeUndefined();
   });
 
   it("has nothing to say for a blank step and a blank title", () => {
@@ -121,5 +137,37 @@ describe("agentActivitySubject", () => {
         "working",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("agentActivityAt", () => {
+  const turn = {
+    turnId: TurnId.make("turn-1"),
+    state: "completed" as const,
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:05.000Z",
+    completedAt: "2026-09-05T10:05:00.000Z",
+    assistantMessageId: null,
+  };
+
+  it.each([
+    ["the last turn's end when it has one", shell({ latestTurn: turn }), turn.completedAt],
+    [
+      "the turn's start while it still runs",
+      shell({ latestTurn: { ...turn, state: "running", completedAt: null } }),
+      turn.startedAt,
+    ],
+    [
+      "the last message when no turn has run",
+      shell({ latestTurn: null, latestUserMessageAt: "2026-09-05T09:00:00.000Z" }),
+      "2026-09-05T09:00:00.000Z",
+    ],
+    [
+      "the conversation's last change when nobody has spoken",
+      shell({ latestTurn: null, latestUserMessageAt: null, updatedAt: "2026-09-04T08:00:00.000Z" }),
+      "2026-09-04T08:00:00.000Z",
+    ],
+  ] as const)("is %s", (_, thread, expected) => {
+    expect(agentActivityAt(thread)).toBe(expected);
   });
 });

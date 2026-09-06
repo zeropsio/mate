@@ -912,3 +912,12 @@ export function sortScopedProjectsForSidebar<
       left.id.localeCompare(right.id),
   );
 }
+
+/**
+ * A relative time as the sidebar's rows write it at their right edge: "2h",
+ * "3d", "now" — the "ago" is what a column of them all say, so none says it.
+ */
+export function compactSidebarTimeLabel(label: string): string {
+  if (label === "just now") return "now";
+  return label.endsWith(" ago") ? label.slice(0, -4) : label;
+}

@@ -13,7 +13,11 @@ import {
   connectionStatusText,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import { readZeropsToolKind, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import {
+  readZeropsToolKind,
+  type ZeropsEnvironmentRole,
+  type ZeropsEnvironmentServices,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -215,4 +219,23 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   if (isConnectionInFlight(candidate) || health === undefined) return { kind: "pending" };
   if (health === "initializing") return { kind: "starting", label: "Starting…" };
   return can.connect ? { kind: "connect", label: "Connect" } : { kind: "none" };
+}
+
+/**
+ * What an environment holds, as the row's one muted line: the developer's
+ * services by hostname and when code last landed — `app, db · deployed 2h
+ * ago` — or "No services yet" for a project holding only the platform's.
+ * Undefined while the services are unread, so the row can leave the place
+ * empty rather than claim there is nothing.
+ */
+export function environmentSummaryLine(
+  services: ZeropsEnvironmentServices | undefined,
+  age: (isoDate: string) => string,
+): string | undefined {
+  if (services === undefined) return undefined;
+  if (services.hostnames.length === 0) return "No services yet";
+  const names = services.hostnames.join(", ");
+  return services.deployedAt === undefined
+    ? names
+    : `${names} · deployed ${age(services.deployedAt)}`;
 }
