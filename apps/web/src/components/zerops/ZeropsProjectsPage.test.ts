@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   autoConnectServedZeropsEnvironment,
+  hasNoZeropsProject,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
@@ -277,5 +278,29 @@ describe("same-origin Zerops identity bootstrap", () => {
     });
 
     expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+});
+
+describe("hasNoZeropsProject", () => {
+  const candidate = (tagList: ReadonlyArray<string>) =>
+    ({ project: { id: tagList.join("|"), name: "p", status: "ACTIVE", tagList } }) as never;
+
+  it.each([
+    ["nothing at all", [], true],
+    ["a project in a group", [candidate(["mate:g:aaa", "mate:role:dev"])], false],
+    ["a project in no group", [candidate([])], false],
+    // A tool is not a project: an account holding only Gitea has not started.
+    ["only a tool", [candidate(["mate:tool:gitea"])], true],
+  ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
+    expect(hasNoZeropsProject({ candidates, isLoading: false })).toBe(expected);
+  });
+
+  it("answers no while the first list is still being read", () => {
+    // Otherwise the invitation paints for a second and the roster takes it back.
+    expect(hasNoZeropsProject({ candidates: [], isLoading: true })).toBe(false);
+  });
+
+  it("answers from what has already arrived while a refresh runs", () => {
+    expect(hasNoZeropsProject({ candidates: [candidate([])], isLoading: true })).toBe(false);
   });
 });

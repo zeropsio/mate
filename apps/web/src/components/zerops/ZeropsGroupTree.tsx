@@ -14,6 +14,11 @@
  * (Gitea) sit in their own list, never inside a project, because a tool the
  * whole account shares has no dev/stage/production axis.
  *
+ * An account with no project yet gets one thing instead of the shape: what a
+ * Mate is, and the action that makes one. It is the tree's own, like the
+ * headings and the create affordances, because emptiness is a fact about the
+ * view — no caller can see it earlier.
+ *
  * Structural only. It renders the shape and the words that are its own (the
  * heading, the create affordances) and takes every card and row as an
  * injected slot — who lives where and what they are doing is the caller's to
@@ -31,6 +36,7 @@ import type {
 import { Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { MateFace, Pill } from "./primitives";
 import {
   creatableRoles,
   environmentRoleLabel,
@@ -54,6 +60,11 @@ export interface ZeropsGroupTreeProps<T> {
   /** Absent hides the tools section's own action. */
   readonly onCreateTool?: (kind: ZeropsToolKind) => void;
   /**
+   * Starts a project that does not exist yet — the account's first. Absent
+   * leaves an empty account empty, which is what a read-only tree wants.
+   */
+  readonly onCreateProject?: (() => void) | undefined;
+  /**
    * A creation is already running. Every create affordance is disabled rather
    * than hidden: a second click mid-run would make a second project, and a
    * button that vanishes under the pointer reads as a bug.
@@ -68,6 +79,45 @@ const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
 const ADD_BUTTON_CLASS =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
+
+/**
+ * What the page is, said once, to an account that has nothing in it yet.
+ *
+ * A sleeping face rather than an illustration: the mark is the product's own,
+ * and shut eyes are the honest state for a roster with nobody on it. It says
+ * what a Mate *is* — a first-time reader has no way to know — and then offers
+ * the one action that ends this screen. Not centred: the page's column is
+ * where every row will be, and moving the eye there twice is a shift the
+ * first project would have to undo.
+ */
+function FirstRun({
+  onCreateProject,
+  creating,
+}: {
+  readonly onCreateProject: () => void;
+  readonly creating: boolean;
+}) {
+  return (
+    <section
+      className="flex max-w-2xl flex-col items-start gap-5 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8"
+      data-zerops-surface="first-run"
+    >
+      <MateFace className="size-14" size="lg" state="idle" tint="slate" />
+      <div className="flex min-w-0 flex-col items-start gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            Start with a Mate
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            A Mate is a coding agent with a Zerops project of its own: a terminal, somewhere to run
+            what it builds, and one conversation you come back to.
+          </p>
+        </div>
+        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+      </div>
+    </section>
+  );
+}
 
 function Heading({
   name,
@@ -151,6 +201,7 @@ export function ZeropsGroupTree<T>({
   renderTool,
   onCreateEnvironment,
   onCreateTool,
+  onCreateProject,
   creating = false,
   renderGroupMenu,
   className,
@@ -167,12 +218,18 @@ export function ZeropsGroupTree<T>({
     />
   );
 
+  // A tool is not a project, so an account holding nothing but Gitea is still
+  // an account that has not started.
+  const firstRun =
+    onCreateProject !== undefined && view.groups.length === 0 && view.ungrouped.length === 0;
+
   return (
     <nav
       aria-label="Projects, their Mates and environments"
       className={cn("flex flex-col gap-10", className)}
       data-zerops-surface="group-tree"
     >
+      {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       {view.groups.map(({ group, environments }) => {
         const missing = onCreateEnvironment ? creatableRoles(group) : [];
         return (
@@ -230,7 +287,16 @@ export function ZeropsGroupTree<T>({
           environment's dev/stage/production axis. */}
       {view.tools.length > 0 || onCreateTool ? (
         <section className="flex flex-col gap-3" data-zerops-tools="true">
-          <Heading muted name="Tools" />
+          <div className="flex flex-col gap-0.5">
+            <Heading muted name="Tools" />
+            {/* An account with no tools yet gets the heading's reason for being
+                there; one that has them lets the rows speak. */}
+            {view.tools.length === 0 ? (
+              <span className="text-xs text-muted-foreground">
+                Git hosting for your Mates, with runners that deploy what they push.
+              </span>
+            ) : null}
+          </div>
           {view.tools.length > 0 ? (
             <ul className="flex flex-col divide-y divide-border/50" data-zerops-surface="tool-rows">
               {view.tools.map(({ item, kind }) => (

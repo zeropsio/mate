@@ -151,6 +151,26 @@ export function retryZeropsProjectConnection(input: {
   input.retryProvisioning();
 }
 
+/**
+ * Whether this account has no project to show — the state the projects screen
+ * answers with an invitation rather than a list.
+ *
+ * A tool is not a project (`tools.ts`), so an account holding nothing but
+ * Gitea has still not started. Two readers ask: the header, which drops its
+ * create button so the invitation is not said twice, and the tree, which
+ * carries the invitation. Both must agree, and neither may answer before the
+ * first list has been read — an invitation that paints for a second and is
+ * then replaced by the roster is a shift the reader has to undo.
+ */
+export function hasNoZeropsProject(input: {
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly isLoading: boolean;
+}): boolean {
+  if (input.isLoading && input.candidates.length === 0) return false;
+  const view = buildZeropsGroupTree(input.candidates);
+  return view.groups.length === 0 && view.ungrouped.length === 0;
+}
+
 function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
 }
@@ -997,6 +1017,13 @@ function ZeropsProjectsContent() {
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
+        onCreateProject={
+          hasNoZeropsProject({ candidates, isLoading })
+            ? () => {
+                void navigate({ to: "/zerops/new" });
+              }
+            : undefined
+        }
         onCreateTool={() => {
           void createTool();
         }}
@@ -1125,9 +1152,6 @@ function ZeropsProjectsContent() {
         }}
         view={groupTree}
       />
-      {!isLoading && candidates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No projects in this account yet.</p>
-      ) : null}
       {rowDialog?.kind === "rename-agent" ? (
         <ZeropsRenameDialog
           initialValue={readZeropsGroupTags(rowDialog.candidate.project.tagList).bot ?? ""}
@@ -1254,10 +1278,14 @@ function ZeropsProjectsContent() {
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
-  const { isLoading, refresh } = useZeropsCandidates();
+  const { candidates, isLoading, refresh } = useZeropsCandidates();
   const navigate = useNavigate();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
+  // The account with nothing in it is invited to create below, at length. A
+  // second button saying the same thing, in the same blue, a hand's width
+  // away, is the one thing that screen does not need.
+  const invitedBelow = hasNoZeropsProject({ candidates, isLoading });
 
   return (
     <ZeropsHostedFrame
@@ -1279,9 +1307,13 @@ export function ZeropsProjectsPage() {
     >
       {scoped ? (
         <ZeropsProjectsHeader
-          onCreate={() => {
-            void navigate({ to: "/zerops/new" });
-          }}
+          onCreate={
+            invitedBelow
+              ? undefined
+              : () => {
+                  void navigate({ to: "/zerops/new" });
+                }
+          }
           onRefresh={refresh}
           refreshing={isLoading}
         />

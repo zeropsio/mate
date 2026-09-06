@@ -9,7 +9,7 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-type MateFaceSize = "dot" | "sm" | "md";
+type MateFaceSize = "dot" | "sm" | "md" | "lg";
 
 const SIZE_CLASS: Record<MateFaceSize, string> = {
   /** In a menu row, where a status dot would be. */
@@ -18,10 +18,12 @@ const SIZE_CLASS: Record<MateFaceSize, string> = {
   sm: "size-5",
   /** The card's avatar, beside a 14 px name. */
   md: "size-7",
+  /** Alone on a page, where there is no card yet to sit in. */
+  lg: "size-12",
 };
 
 /** Strokes stay legible at every size: they are set in pixels, not in the box. */
-const STROKE_PX: Record<MateFaceSize, number> = { dot: 1.25, sm: 1.5, md: 1.75 };
+const STROKE_PX: Record<MateFaceSize, number> = { dot: 1.25, sm: 1.5, md: 1.75, lg: 2.5 };
 
 const TINT_CLASS: Record<MateTintId, string> = {
   coral: "fill-[var(--zerops-mate-tint-coral)]",

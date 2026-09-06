@@ -193,6 +193,39 @@ describe("ZeropsGroupTree", () => {
     expect(html).toContain('data-zerops-surface="group-tree"');
     expect(html).not.toContain("Tools");
     expect(html).not.toContain("Ungrouped");
+    // No invitation either: a tree with no way to create one has none to give.
+    expect(html).not.toContain('data-zerops-surface="first-run"');
+  });
+
+  it("says what a Mate is, and offers one, to an account with no project", () => {
+    const html = render([], { onCreateProject: () => {} });
+    expect(html).toContain('data-zerops-surface="first-run"');
+    expect(html).toContain("Start with a Mate");
+    expect(html).toContain("New project");
+    expect(html).toContain('data-mate-face-state="idle"');
+  });
+
+  it.each([
+    ["a project", [CRM_DEV]],
+    ["an ungrouped environment", [LOOSE]],
+  ] as const)("drops the invitation once the account has %s", (_case, items) => {
+    expect(render(items, { onCreateProject: () => {} })).not.toContain(
+      'data-zerops-surface="first-run"',
+    );
+  });
+
+  it("still invites a project into an account whose only project is a tool", () => {
+    // Gitea is not a project: an account holding one has not started yet.
+    const html = render([GITEA], { onCreateProject: () => {} });
+    expect(html).toContain('data-zerops-surface="first-run"');
+  });
+
+  it("gives the empty tools heading its reason for being there", () => {
+    const withNone = render([CRM_DEV], { onCreateTool: () => {} });
+    expect(withNone).toContain("Git hosting for your Mates");
+    expect(render([CRM_DEV, GITEA], { onCreateTool: () => {} })).not.toContain(
+      "Git hosting for your Mates",
+    );
   });
 
   it("lists tools after the ungrouped environments: account-level, so last", () => {
