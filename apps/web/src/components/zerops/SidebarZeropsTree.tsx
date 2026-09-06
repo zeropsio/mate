@@ -3,15 +3,17 @@
  * live, under the project it belongs to — and, folded under each project,
  * the other environments with a way out to what runs in them.
  *
- * A Mate is a card here as on the projects screen — the same object at the
- * menu's size: the face in its colour wearing the conversation's state, the
- * name, what the Mate is doing in one word, and what it is on, on a second
- * line, while it is on something. A card because it is the one thing in this
- * menu you pick up. Nothing about the environment: a Mate is always in a dev
- * box, and which Zerops project that is matters on the projects screen, not
- * here. The environments are folded because they are where you look, not
- * where you work: a row each, the name and its tag as a pill, and the one
- * glyph that opens the public route (or offers them).
+ * A Mate is a row here, the menu's own kind of row — the surface every
+ * thread and project in this menu has, lit on hover and when it is the one
+ * open — and a tall one, the way a messenger lists people: the face in its
+ * colour wearing the conversation's state, the name, when the Mate last did
+ * something at the right edge, and under it what the Mate is on or was last
+ * on. The state is the face's to show; no word repeats it. Nothing about the
+ * environment: a Mate is always in a dev box, and which Zerops project that
+ * is matters on the projects screen, not here. The environments are folded
+ * because they are where you look, not where you work: a row each, the name
+ * and its tag as a pill, and the one glyph that opens the public route (or
+ * offers them).
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -43,40 +45,13 @@ import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
-
-/**
- * The bucket, as a roster word, for a Mate whose socket is not up. A card
- * answers "what is this agent up to", so a connected environment with nothing
- * running is idle, never "connected" — the socket is the client's business.
- */
-const WORD: Record<ZeropsCandidate["group"], string> = {
-  connected: "Idle",
-  ready: "Ready",
-  provisioning: "Starting",
-  unavailable: "Unavailable",
-};
-
-const WORD_CLASS: Record<ZeropsCandidate["group"], string> = {
-  connected: "text-muted-foreground",
-  ready: "text-muted-foreground",
-  provisioning: "text-[var(--zerops-status-busy-text,var(--foreground))]",
-  unavailable: "text-[var(--zerops-status-attention-text,var(--foreground))]",
-};
-
-/** A registered environment whose socket is still on its way up. */
-function isConnecting(connection: EnvironmentConnectionPresentation | undefined): boolean {
-  return (
-    connection !== undefined &&
-    (connection.phase === "connecting" ||
-      connection.phase === "reconnecting" ||
-      connection.phase === "available")
-  );
-}
 
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = ZeropsCandidate & {
@@ -138,7 +113,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   }
 
   // One carrier per project — a project's Mate candidate wins over a bare one
-  // — so the cards and the fold agree on which container is the environment's.
+  // — so the rows and the fold agree on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
   const everyEnvironment = [
@@ -157,16 +132,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     });
   };
 
-  /** A project: its name, its Mates as cards, its other environments folded. Nothing when nobody lives in it. */
+  /** A project: its name, its Mates as rows, its other environments folded. Nothing when nobody lives in it. */
   const section = (id: string, entries: ReadonlyArray<Entry<T>>, header: ReactNode) => {
-    const cards = entries.filter(({ item }) => hasMate(item));
-    if (cards.length === 0) return null;
+    const mates = entries.filter(({ item }) => hasMate(item));
+    if (mates.length === 0) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
     return (
       <>
         {header}
-        {cards.map(({ item }) => (
-          <MateCard
+        {mates.map(({ item }) => (
+          <MateRow
             active={item.project.id === activeProjectId}
             activity={getActivity?.(item)}
             candidate={item}
@@ -202,7 +177,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     >
       {groups.map(({ group, environments }) => (
         <section
-          className="flex flex-col gap-1"
+          className="flex flex-col gap-px"
           data-zerops-group={group.groupId}
           key={group.groupId}
         >
@@ -211,7 +186,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ))}
 
       {ungroupedMates ? (
-        <section className="flex flex-col gap-1" data-zerops-ungrouped="true">
+        <section className="flex flex-col gap-px" data-zerops-ungrouped="true">
           {section(
             "ungrouped",
             ungrouped,
@@ -260,7 +235,7 @@ function faceFor(
   return activity?.face ?? "idle";
 }
 
-function MateCard<T extends RosterCandidate>({
+function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
   active,
@@ -275,72 +250,50 @@ function MateCard<T extends RosterCandidate>({
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
-  const connected = candidate.group === "connected";
-  const live = connected ? activity : undefined;
-
-  // One trailing word, right-aligned so it lines up down the menu: what the
-  // agent is doing when that is knowable, else where its container stands.
-  let word: ReactNode;
-  if (live?.status) {
-    word = (
-      <span
-        className={cn(
-          "text-[11px] leading-4 font-medium",
-          live.status.colorClass,
-          live.status.pulse && "animate-status-pulse motion-reduce:animate-none",
-        )}
-      >
-        {live.status.label}
-      </span>
-    );
-  } else if (!connected && isConnecting(candidate.connection)) {
-    word = (
-      <span className="text-[11px] leading-4 font-medium text-[var(--zerops-status-busy-text,var(--foreground))]">
-        Connecting
-      </span>
-    );
-  } else {
-    word = (
-      <span className={cn("text-[11px] leading-4 font-medium", WORD_CLASS[candidate.group])}>
-        {WORD[candidate.group]}
-      </span>
-    );
-  }
+  // What it is on, or was last on, and since when — knowable only through an
+  // open socket, and only once somebody has spoken to it.
+  const live = candidate.group === "connected" ? activity : undefined;
+  const subject = live?.subject;
+  const when =
+    live === undefined || live.subject === undefined
+      ? undefined
+      : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at));
 
   return (
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex min-h-9 w-full min-w-0 cursor-pointer flex-col justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-left transition-[border-color,background-color,transform] duration-150 active:scale-[0.99] motion-reduce:transition-none",
-        // The card colour, as on the projects screen — a card is lighter than
-        // the surface it sits on; the row colours are for rows.
+        "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "border-foreground/30 bg-card"
-          : "border-sidebar-border bg-card hover:border-foreground/25",
+          ? "bg-sidebar-row-active text-sidebar-foreground"
+          : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
       )}
       data-zerops-surface="sidebar-mate"
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <span className="flex w-full min-w-0 items-center gap-2">
-        <MateFace size="sm" state={faceFor(candidate, activity)} tint={tint} />
-        <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-sidebar-foreground">
-          {name}
+      <MateFace size="sm" state={faceFor(candidate, activity)} tint={tint} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">{name}</span>
+          {when === undefined || when.length === 0 ? null : (
+            <span
+              className="shrink-0 text-[11px] leading-5 text-sidebar-muted-foreground tabular-nums"
+              data-zerops-surface="sidebar-mate-time"
+            >
+              {when}
+            </span>
+          )}
         </span>
-        {/* A flex wrapper, so the word's own line-height sets the line — an
-            inline wrapper would add the button's 16 px strut under an 11 px word. */}
-        <span className="flex shrink-0">{word}</span>
+        {subject === undefined ? null : (
+          <span
+            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
+            data-zerops-surface="sidebar-mate-subject"
+          >
+            {subject}
+          </span>
+        )}
       </span>
-      {/* What it is on, while it is on something — the line appears with the
-          work and leaves with it. */}
-      {live?.subject === undefined ? null : (
-        <span
-          className="w-full truncate ps-7 text-[11px] leading-4 text-muted-foreground"
-          data-zerops-surface="sidebar-mate-subject"
-        >
-          {live.subject}
-        </span>
-      )}
     </button>
   );
 }

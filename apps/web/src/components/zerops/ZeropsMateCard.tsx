@@ -1,65 +1,26 @@
 /**
  * A Mate, as a card on the projects screen: who you talk to in this project.
  *
- * The face in its colour wearing the state the conversation is in, the name,
- * and one line about what it is doing — the status word, what it is on, the
- * one verb that would change things ("Ready · Connect"). Nothing about the
- * environment: which Zerops project the Mate lives in and what that project
- * is tagged are the environment's facts, and a Mate is always in a dev box
- * anyway — the card is about somebody, not somewhere. The card does what its
- * line says: the name is the button and stretches over the card, opening a
- * connected Mate's conversation or connecting to a ready one; the menu sits
- * above it.
+ * The face in its colour wearing the state the conversation is in — that is
+ * where the state is read, never from a word — the name, and one line under
+ * it: what the Mate is on, or was last on, while it is connected; the one
+ * verb that would change things ("Connect", "Set up Mate") or the sentence
+ * about its container otherwise. Nothing about the environment: which Zerops
+ * project the Mate lives in and what that project is tagged are the
+ * environment's facts, and a Mate is always in a dev box anyway — the card is
+ * about somebody, not somewhere. The card does what its line says: the name is
+ * the button and stretches over the card, opening a connected Mate's
+ * conversation or connecting to a ready one; the menu sits above it.
  *
- * Structural: every word about state and every verb is the caller's (R5).
+ * Structural: every word on the line and every verb is the caller's (R5).
  */
-import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
-const TONE_TEXT_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "text-[var(--zerops-status-ok-text,var(--foreground))]",
-  busy: "text-[var(--zerops-status-busy-text,var(--foreground))]",
-  attention: "text-[var(--zerops-status-attention-text,var(--foreground))]",
-  failed: "text-[var(--zerops-status-failed-text,var(--foreground))]",
-  off: "text-muted-foreground",
-};
-
-/**
- * The status word beside a face — the design system's dot-and-word rule with
- * the face as the dot. Sentence case at text size, not a label: it is read,
- * not scanned, and six of them down a page must not shout.
- */
-export function ZeropsMateWord({
-  label,
-  tone,
-  className,
-  pulse = false,
-}: {
-  readonly label: string;
-  /** A platform tone, for a Mate whose socket is not up. */
-  readonly tone?: ServiceStatusToneId;
-  /** The thread status pill's own colour class, for a connected Mate. */
-  readonly className?: string;
-  readonly pulse?: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 text-xs font-medium",
-        tone === undefined ? className : TONE_TEXT_CLASS[tone],
-        pulse && "animate-status-pulse motion-reduce:animate-none",
-      )}
-      data-zerops-surface="mate-word"
-    >
-      {label}
-    </span>
-  );
-}
-
-/** A verb at the end of a status phrase — "Ready · Connect". Blue acts. */
+/** A verb on a Mate's line or at an environment's end — "Connect", "Set up Mate". Blue acts. */
 export function ZeropsMateVerb({
   label,
   onClick,
@@ -86,8 +47,12 @@ export interface ZeropsMateCardProps {
   readonly name: string;
   readonly tint: MateTintId;
   readonly face: MateMarkState;
-  /** One line: a `ZeropsMateWord`, what the Mate is on, a `ZeropsMateVerb`. */
-  readonly activity: ReactNode;
+  /**
+   * The line under the name: what the Mate is on or was last on, a
+   * `ZeropsMateVerb`, or a sentence about its container. Absent, the name
+   * sits alone — a Mate that has not been spoken to yet has nothing to say.
+   */
+  readonly line?: ReactNode;
   /**
    * What clicking the Mate does — opens its conversation, or connects to it.
    * Absent, the card is still: the line then carries whatever verb there is.
@@ -102,7 +67,7 @@ export function ZeropsMateCard({
   name,
   tint,
   face,
-  activity,
+  line,
   onSelect,
   menu,
   busy = false,
@@ -112,7 +77,7 @@ export function ZeropsMateCard({
     <div
       aria-busy={busy || undefined}
       className={cn(
-        "group/card relative flex w-full items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-3 ps-3 pe-2 transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none sm:w-80",
+        "group/card relative flex min-h-[3.75rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2 transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
         onSelect &&
           "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
         className,
@@ -120,7 +85,7 @@ export function ZeropsMateCard({
       data-zerops-mate-card={onSelect ? "opens" : "still"}
     >
       <MateFace size="md" state={face} tint={tint} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col">
         {onSelect ? (
           <button
             className="min-w-0 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring"
@@ -135,12 +100,14 @@ export function ZeropsMateCard({
             {name}
           </span>
         )}
-        <div
-          className="flex min-w-0 items-center gap-1.5 text-xs leading-4"
-          data-zerops-surface="mate-activity"
-        >
-          {activity}
-        </div>
+        {line === undefined || line === null ? null : (
+          <div
+            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="mate-line"
+          >
+            {line}
+          </div>
+        )}
       </div>
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">

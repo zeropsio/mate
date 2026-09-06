@@ -60,7 +60,9 @@ import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
-import { ZeropsMateCard, ZeropsMateVerb, ZeropsMateWord } from "./ZeropsMateCard";
+import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
+import { cn } from "~/lib/utils";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -80,6 +82,7 @@ import {
   type ZeropsRowInput,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
+  environmentSummaryLine,
   isZeropsToolCandidate,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
@@ -565,57 +568,38 @@ function ZeropsProjectsContent() {
   };
 
   /**
-   * What a Mate is up to, as one phrase under its name: the status
-   * word, then what it is on, then the one verb that would change things —
-   * "Ready · Connect". Connected, the words are the thread's own
-   * (`agentActivity`); otherwise they are the row logic's, which already
-   * knows about the probe and the socket.
+   * The line under a Mate's name. Connected, it is what the Mate is on, or
+   * was last on (`agentActivity`) — the state itself is the face's to show,
+   * never a word's. Otherwise it is what would change things: the one verb
+   * ("Connect", "Set up Mate"), after the sentence about the container when
+   * the row logic has one; or just that sentence.
    */
-  const renderMateActivity = (
+  const renderMateLine = (
     candidate: ZeropsCandidatePresentation,
     presentation: ZeropsRowPresentation,
     action: ZeropsRowAction,
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
-    const dot = (
-      <span aria-hidden="true" className="text-muted-foreground/50">
-        ·
-      </span>
-    );
     if (candidate.group === "connected") {
-      return (
-        <>
-          {live?.status ? (
-            <ZeropsMateWord
-              className={live.status.colorClass}
-              label={live.status.label}
-              pulse={live.status.pulse}
-            />
-          ) : (
-            <ZeropsMateWord label="Idle" tone="off" />
-          )}
-          {live?.subject === undefined ? null : (
-            <>
-              {dot}
-              <span
-                className="min-w-0 truncate text-muted-foreground"
-                data-zerops-surface="mate-subject"
-              >
-                {live.subject}
-              </span>
-            </>
-          )}
-        </>
+      return live?.subject === undefined ? null : (
+        <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
+          {live.subject}
+        </span>
       );
     }
-    const word = (
-      <ZeropsMateWord
-        label={presentation.status.label}
-        pulse={presentation.status.pulse ?? presentation.status.tone === "busy"}
-        tone={presentation.status.tone}
-      />
-    );
+    const detail =
+      presentation.detail === undefined ? null : (
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            presentation.detailIsError && "text-[var(--zerops-status-failed-text)]",
+          )}
+          data-zerops-surface="mate-subject"
+        >
+          {presentation.detail}
+        </span>
+      );
     switch (action.kind) {
       case "connect":
       case "enable":
@@ -623,8 +607,7 @@ function ZeropsProjectsContent() {
       case "set-up-mate":
         return (
           <>
-            {word}
-            {dot}
+            {detail}
             <ZeropsMateVerb
               disabled={busy}
               label={action.kind === "set-up-mate" && busy ? "Setting up…" : action.label}
@@ -635,28 +618,13 @@ function ZeropsProjectsContent() {
           </>
         );
       default:
-        return (
-          <>
-            {word}
-            {presentation.detail === undefined ? null : (
-              <>
-                {dot}
-                <span
-                  className={
-                    presentation.detailIsError
-                      ? "min-w-0 truncate text-[var(--zerops-status-failed-text)]"
-                      : "min-w-0 truncate text-muted-foreground"
-                  }
-                  data-zerops-surface="mate-subject"
-                >
-                  {presentation.detail}
-                </span>
-              </>
-            )}
-          </>
-        );
+        return detail;
     }
   };
+
+  /** What an environment holds, phrased once for every row on the page. */
+  const summaryOf = (candidate: ZeropsCandidatePresentation): React.ReactNode =>
+    environmentSummaryLine(candidate.services, formatRelativeTimeLabel);
 
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
   const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
@@ -1070,6 +1038,7 @@ function ZeropsProjectsContent() {
                   />
                 ) : undefined
               }
+              summary={summaryOf(candidate)}
               tag={environmentRoleTag(role)}
             />
           );
@@ -1114,9 +1083,9 @@ function ZeropsProjectsContent() {
                 : undefined;
           return (
             <ZeropsMateCard
-              activity={renderMateActivity(candidate, presentation, action, live, busy)}
               busy={busy}
               face={mateFace(candidate)}
+              line={renderMateLine(candidate, presentation, action, live, busy)}
               menu={renderEnvironmentMenu(candidate, tags, true)}
               name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
               onSelect={select}
@@ -1147,6 +1116,7 @@ function ZeropsProjectsContent() {
                   />
                 )
               }
+              summary={summaryOf(candidate)}
               // Under a heading that says Tools, a pill that says the same is one accessory too many.
               tag={null}
             />
@@ -1290,6 +1260,7 @@ export function ZeropsProjectsPage() {
 
   return (
     <ZeropsHostedFrame
+      width="readable"
       actions={
         <>
           {scoped ? (

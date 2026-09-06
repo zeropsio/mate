@@ -2,14 +2,18 @@
  * One environment on the projects screen — a Zerops project that is not a
  * Mate's: stage, production, a dev box nobody has set a Mate up in.
  *
- * A row of a list, not of a table. The name and, trailing it, the role as a
- * pill; then, at the far end, only what is worth saying when there is
- * something: a word about the project when it is not simply there (creating,
- * stopped), the one verb ("Set up Mate", on a dev environment), and the menu
- * — which is where the environment's public access and its quieter actions
- * live. A row with nothing to say says nothing: no empty columns, no dashes.
+ * A row of a list with three places, the same three down the page so the
+ * eye can run a column: the name with its role trailing it as a pill; what
+ * the environment holds, in one muted line — its services and when code last
+ * landed, or that there is nothing in it yet; and at the end only what is
+ * worth saying when there is something — a word about the project when it is
+ * not simply there (creating, stopped), the one verb ("Set up Mate", on a dev
+ * environment), and the menu, where the environment's public access and its
+ * quieter actions live. On a phone the line about what it holds drops under
+ * the name.
  *
- * Structural: every word about state and every verb is the caller's (R5).
+ * Structural: every word about state, the summary and every verb are the
+ * caller's (R5).
  */
 import type { ReactNode } from "react";
 
@@ -45,6 +49,11 @@ export interface ZeropsEnvironmentRowProps {
   readonly name: string;
   /** The role as its tag reads (`dev`, `stage`, `prod`), or nothing for an environment with no role. */
   readonly tag: string | null;
+  /**
+   * What the environment holds, in one line: `app, db · deployed 2h ago`,
+   * or "No services yet". Absent while the services are unread.
+   */
+  readonly summary?: ReactNode;
   /** A `StatusDot` when the project is not simply there: creating, stopped. */
   readonly status?: ReactNode;
   /** The one verb — a `ZeropsMateVerb` — when there is one. */
@@ -57,6 +66,7 @@ export interface ZeropsEnvironmentRowProps {
 export function ZeropsEnvironmentRow({
   name,
   tag,
+  summary,
   status,
   action,
   menu,
@@ -66,17 +76,28 @@ export function ZeropsEnvironmentRow({
   return (
     <li
       aria-busy={busy || undefined}
-      className={cn("group/row flex min-h-9 items-center gap-2.5", className)}
+      className={cn(
+        "group/row grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0",
+        className,
+      )}
       data-zerops-environment-row="true"
     >
-      <span
-        className="min-w-0 truncate text-[13px] text-foreground"
-        data-zerops-surface="environment-name"
-      >
-        {name}
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span
+          className="min-w-0 truncate text-[13px] text-foreground"
+          data-zerops-surface="environment-name"
+        >
+          {name}
+        </span>
+        {tag === null ? null : <ZeropsRoleTag label={tag} />}
       </span>
-      {tag === null ? null : <ZeropsRoleTag label={tag} />}
-      <span className="ms-auto flex shrink-0 items-center gap-3">
+      <span
+        className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1"
+        data-zerops-surface="environment-summary"
+      >
+        {summary}
+      </span>
+      <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-end gap-3 sm:col-start-3">
         {status}
         {action}
         {menu === undefined || menu === null ? null : (

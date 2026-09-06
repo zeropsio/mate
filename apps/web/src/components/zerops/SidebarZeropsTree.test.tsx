@@ -53,7 +53,7 @@ function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string
 }
 
 describe("SidebarZeropsTree", () => {
-  it("names the project as a name, then its Mate as a card with its face and word", () => {
+  it("names the project as a name, then its Mate as the menu's own row with its face", () => {
     const html = render([CRM_DEV, CRM_STAGE]);
     const projectAt = html.indexOf('data-zerops-surface="sidebar-project"');
     const project = html.slice(
@@ -70,13 +70,45 @@ describe("SidebarZeropsTree", () => {
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
     expect(html).toContain('data-zerops-primitive="mate-face"');
     expect(html).toContain('data-mate-face-size="sm"');
-    expect(html).toContain(">Ready<");
-    // A card: a bordered surface that presses, not a line of text.
-    const cardAt = html.indexOf('data-zerops-surface="sidebar-mate"');
-    const card = html.slice(html.lastIndexOf("<button", cardAt), cardAt);
-    expect(card).toContain("border");
-    expect(card).toContain("cursor-pointer");
-    expect(card).toContain("active:scale-[0.99]");
+    // The state is the face's: a Mate whose socket is down sleeps, and no
+    // word says "Ready" or "Idle" beside it.
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain(">Ready<");
+    expect(html).not.toContain(">Idle<");
+    // The menu's own row — the surface every thread row has, lit on hover —
+    // not a bordered card. The whole row is the button.
+    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
+    const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
+    expect(row).toContain("w-full");
+    expect(row).toContain("rounded-md");
+    expect(row).toContain("hover:bg-sidebar-row-hover");
+    expect(row).not.toContain("border");
+  });
+
+  it("keeps saying what a connected Mate is on, or was last on, under its name", () => {
+    const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
+    const idle: ZeropsAgentActivity = {
+      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Fix the login redirect",
+      at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    };
+    const html = render([connected], { getActivity: () => idle });
+    expect(html).toContain('data-mate-face-state="idle"');
+    expect(html).toContain('data-zerops-surface="sidebar-mate-subject"');
+    expect(html).toContain("Fix the login redirect");
+    expect(html).not.toContain(">Idle<");
+    // When it last did something, at the right edge, the way a messenger dates its rows.
+    expect(html).toContain('data-zerops-surface="sidebar-mate-time"');
+    expect(html).toContain(">3h<");
+  });
+
+  it("lights the open Mate's row the way the menu lights its open thread", () => {
+    const html = render([CRM_DEV], { activeProjectId: "crm-dev" });
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain("bg-sidebar-row-active");
   });
 
   it("folds the other environments under the project and counts them, the Mate's own left out", () => {
@@ -122,7 +154,7 @@ describe("SidebarZeropsTree", () => {
     };
     const html = render([asleep]);
     expect(html).toContain('data-mate-face-state="sleep"');
-    expect(html).toContain("Unavailable");
+    expect(html).toContain('data-zerops-surface="sidebar-mate"');
   });
 
   it("keeps a declared Mate whose container is gone — the tag is its existence", () => {
@@ -181,6 +213,7 @@ describe("the Mate's card", () => {
     },
     face: "working",
     subject: "Reviewing the migration",
+    at: "2026-09-06T10:00:00.000Z",
   };
 
   it("leads with the agent's name — not the project's, not its tag", () => {
@@ -193,35 +226,35 @@ describe("the Mate's card", () => {
   it("wears the conversation's state and says what it is on, when the caller knows", () => {
     const html = render([{ ...NAMED, group: "connected" }], { getActivity: () => working });
     expect(html).toContain('data-mate-face-state="working"');
-    expect(html).toContain(">Working<");
-    expect(html).toContain("text-sky-600");
-    expect(html).toContain("animate-status-pulse");
     expect(html).toContain('data-zerops-surface="sidebar-mate-subject"');
     expect(html).toContain("Reviewing the migration");
+    // The face is the state; the word would say it twice.
+    expect(html).not.toContain(">Working<");
+    expect(html).not.toContain("animate-status-pulse");
   });
 
-  it("calls a connected environment with nothing running idle, with open eyes", () => {
-    // The socket is the client's business; the card answers what the agent
-    // is up to.
+  it("gives a connected environment with nothing running open eyes, and no word about it", () => {
+    // The socket is the client's business; the row answers what the agent is
+    // up to — with its face. Nothing known about the conversation, no line.
     const html = render([{ ...NAMED, group: "connected" }]);
-    expect(html).toContain(">Idle<");
     expect(html).toContain('data-mate-face-state="idle"');
+    expect(html).not.toContain(">Idle<");
     expect(html).not.toContain("Connected");
     expect(html).not.toContain("sidebar-mate-subject");
   });
 
-  it("is asleep, and says Ready, for a container nobody has connected to", () => {
+  it("is asleep for a container nobody has connected to", () => {
     const html = render([NAMED]);
-    expect(html).toContain(">Ready<");
     expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain(">Ready<");
   });
 
-  it("says Connecting while a registered environment's socket comes up", () => {
+  it("stays asleep while a registered environment's socket comes up — the face wakes with the socket", () => {
     const connecting: ZeropsCandidate & {
       readonly connection: { phase: "connecting"; error: null; traceId: null };
     } = { ...NAMED, connection: { phase: "connecting", error: null, traceId: null } };
     const html = render([connecting]);
-    expect(html).toContain(">Connecting<");
-    expect(html).not.toContain(">Ready<");
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).not.toContain(">Connecting<");
   });
 });

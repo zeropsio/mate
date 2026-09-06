@@ -1,43 +1,35 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsMateCard, ZeropsMateVerb, ZeropsMateWord } from "./ZeropsMateCard";
+import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 
 function card(props: Partial<React.ComponentProps<typeof ZeropsMateCard>> = {}) {
-  return renderToStaticMarkup(
-    <ZeropsMateCard
-      activity={<ZeropsMateWord label="Idle" tone="off" />}
-      face="idle"
-      name="Fen"
-      tint="coral"
-      {...props}
-    />,
-  );
+  return renderToStaticMarkup(<ZeropsMateCard face="idle" name="Fen" tint="coral" {...props} />);
 }
 
 describe("ZeropsMateCard", () => {
-  it("is the face in its colour, the name, and one line about what the Mate is doing", () => {
-    const html = card({
-      activity: (
-        <>
-          <ZeropsMateWord className="text-sky-600" label="Working" pulse />
-          <span>Reviewing the migration</span>
-        </>
-      ),
-      face: "working",
-    });
+  it("is the face in its colour wearing the state, the name, and the line about what the Mate is on", () => {
+    const html = card({ face: "working", line: <span>Reviewing the migration</span> });
     expect(html).toContain('data-zerops-mate-card="still"');
     expect(html).toContain('data-mate-face-state="working"');
     expect(html).toContain('data-mate-face-tint="coral"');
     expect(html).toContain('data-mate-face-size="md"');
     expect(html).toContain(">Fen<");
-    expect(html).toContain('data-zerops-surface="mate-activity"');
-    expect(html).toContain(">Working<");
+    expect(html).toContain('data-zerops-surface="mate-line"');
     expect(html).toContain("Reviewing the migration");
-    expect(html.indexOf(">Fen<")).toBeLessThan(html.indexOf(">Working<"));
-    // Nothing about the environment: no tag, no Zerops project name.
+    expect(html.indexOf(">Fen<")).toBeLessThan(html.indexOf("Reviewing the migration"));
+    // The state is the face's: no status word, no label of any kind, nothing
+    // about the environment — no tag, no Zerops project name.
+    expect(html).not.toContain("Working");
+    expect(html).not.toContain("Idle");
     expect(html).not.toContain("role-tag");
     expect(html).not.toContain("micro-label");
+  });
+
+  it("lets the name sit alone for a Mate with nothing to say yet, at the card's full height", () => {
+    const html = card();
+    expect(html).not.toContain("mate-line");
+    expect(html).toContain("min-h-[3.75rem]");
   });
 
   it("is the way in when it can be: the name is the button and stretches over the card", () => {
@@ -65,23 +57,7 @@ describe("ZeropsMateCard", () => {
   });
 });
 
-describe("the activity words", () => {
-  it("takes a platform tone for a Mate whose socket is down", () => {
-    const html = renderToStaticMarkup(<ZeropsMateWord label="Starting" tone="busy" />);
-    expect(html).toContain("text-[var(--zerops-status-busy-text,var(--foreground))]");
-    expect(html).toContain(">Starting<");
-    // Read, not scanned: a word, not a label.
-    expect(html).not.toContain("uppercase");
-  });
-
-  it("takes the thread status pill's own colour for a connected Mate, and pulses when told", () => {
-    const html = renderToStaticMarkup(
-      <ZeropsMateWord className="text-amber-600" label="Approval" pulse />,
-    );
-    expect(html).toContain("text-amber-600");
-    expect(html).toContain("animate-status-pulse");
-  });
-
+describe("ZeropsMateVerb", () => {
   it("writes a verb in the acting colour", () => {
     const html = renderToStaticMarkup(<ZeropsMateVerb label="Connect" onClick={() => {}} />);
     expect(html).toContain("text-primary");

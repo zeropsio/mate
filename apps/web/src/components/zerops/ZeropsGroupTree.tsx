@@ -5,10 +5,12 @@
  * inside it is an **environment** — dev, stage, production. A dev environment
  * with a Mate in it is, to the person reading this page, the **Mate**: one
  * agent, one conversation, a name a person addresses. So a project is its
- * name, then its Mates as cards — who you talk to — then its other
- * environments as a list — where the code runs. Two registers because they
- * are two things; the cards carry colour and a face, the rows carry a name
- * and a tag, and neither pretends to be the other. Account-level tools
+ * name, then its Mates as cards, two to a line — who you talk to — then its
+ * other environments as a list — where the code runs. Two registers because
+ * they are two things; the cards carry colour and a face, the rows carry a
+ * name, a tag and what the environment holds, and neither pretends to be the
+ * other. Cards and rows share one width, so every menu on the page sits in
+ * one column. Account-level tools
  * (Gitea) sit in their own list, never inside a project, because a tool the
  * whole account shares has no dev/stage/production axis.
  *
@@ -120,7 +122,7 @@ function Members<T>({
   return (
     <>
       {mates.length > 0 ? (
-        <div className="flex flex-wrap gap-3" data-zerops-surface="mate-cards">
+        <div className="grid gap-3 sm:grid-cols-2" data-zerops-surface="mate-cards">
           {mates.map(({ item, role }) => (
             <Fragment key={getKey(item)}>{renderMate(item, role)}</Fragment>
           ))}
