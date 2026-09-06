@@ -49,9 +49,9 @@ export function ZeropsAgentAuthCard({
 }) {
   return (
     <FlatCard className="overflow-hidden" data-zerops-agent-auth-card>
-      <header className="border-b border-border/60 px-4 py-3">
+      <header className="border-b border-border/60 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-foreground">Authorize coding agents</h3>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
           Sign in inside this Zerops Control Plane. Access is shared by this project.
         </p>
       </header>
@@ -103,20 +103,24 @@ function ZeropsAgentAuthRow({
 
   return (
     <div
-      className="flex flex-col items-stretch gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
       data-agent-id={agent.agentId}
       data-agent-state={agent.state}
       data-agent-login-phase={login.kind}
       data-zerops-agent-auth-row
     >
-      <div className="flex min-w-0 items-start gap-3" data-zerops-agent-identity>
+      <div className="flex min-w-0 items-center gap-3" data-zerops-agent-identity>
         <AgentLogo agentId={agent.agentId} />
         <div className="min-w-0">
-          <span className="block font-medium text-foreground">{AGENT_NAMES[agent.agentId]}</span>
-          <StatusDot className="mt-1" label={status.label} tone={status.tone} />
-          {label === status.label ? null : (
-            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{label}</span>
-          )}
+          <span className="block leading-5 font-medium text-foreground">
+            {AGENT_NAMES[agent.agentId]}
+          </span>
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <StatusDot label={status.label} tone={status.tone} />
+            {label === status.label ? null : (
+              <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
+            )}
+          </div>
         </div>
       </div>
       <ZeropsAgentAuthActionSlot
@@ -130,12 +134,12 @@ function ZeropsAgentAuthRow({
 }
 
 function AgentLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
-  const logoClassName = "size-5";
+  const logoClassName = "size-4";
 
   return (
     <span
       aria-hidden="true"
-      className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-xs"
+      className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background shadow-xs"
       data-zerops-agent-logo={agentId}
     >
       {agentId === "claude-code" ? (

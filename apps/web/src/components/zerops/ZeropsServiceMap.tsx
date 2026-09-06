@@ -570,7 +570,7 @@ export function ZeropsServiceMap({
   }
 
   return (
-    <div className="space-y-4" data-zerops-service-map>
+    <div className="space-y-6" data-zerops-service-map>
       {error !== undefined ? (
         <LivenessLine data-zerops-map-degraded="true" label={error} state="last-read-failed" />
       ) : liveness === "live" ? (
