@@ -25,6 +25,7 @@ import {
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import ProjectScriptsControl, {
@@ -43,6 +44,7 @@ import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsMates } from "~/zerops/useZeropsMates";
+import { ZeropsMark } from "../ZeropsMark";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -107,8 +109,14 @@ export function shouldShowOpenInPicker(input: {
   readonly activeThreadEnvironmentId: EnvironmentId;
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly remoteOpenMode: RemoteOpenMode;
+  /** Where a Mate lives, the way in is Zerops — see `ZeropsProjectLink`. */
+  readonly mateLivesHere: boolean;
 }): boolean {
   if (!input.activeProjectName) return false;
+  // A Zerops container is nobody's SSH host: the editor picker would hand the
+  // OS a deep link to a machine the person cannot reach. Its place in the
+  // header goes to the project on the dashboard.
+  if (input.mateLivesHere) return false;
   if (
     input.primaryEnvironmentId !== null &&
     input.activeThreadEnvironmentId === input.primaryEnvironmentId
@@ -119,6 +127,30 @@ export function shouldShowOpenInPicker(input: {
   // "no SSH route" state). Non-primary local backends (e.g. WSL) keep it
   // hidden, matching pre-remote behavior.
   return input.remoteOpenMode !== "local-exec";
+}
+
+/**
+ * The way into Zerops from a Mate's conversation: its project on the
+ * dashboard, in a new tab. It stands where the editor picker stands in a
+ * conversation on a machine of one's own — the same outline button, the
+ * Zerops loop, and the label only where the header has room for it.
+ */
+function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
+  return (
+    <Button
+      className="ps-[8.5px]"
+      render={
+        <a aria-label="Open in Zerops" href={projectUrl} rel="noreferrer" target="_blank">
+          <ZeropsMark className="size-3.5 shrink-0" />
+          <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
+            Open in Zerops
+          </span>
+        </a>
+      }
+      size="xs"
+      variant="outline"
+    />
+  );
 }
 
 export const ChatHeader = memo(function ChatHeader({
@@ -155,27 +187,28 @@ export const ChatHeader = memo(function ChatHeader({
   const stackedActionsSupported =
     useEnvironment(activeThreadEnvironmentId)?.serverConfig?.environment.capabilities
       .vcsStackedActions !== false;
-  const showOpenInPicker = shouldShowOpenInPicker({
-    activeProjectName,
-    activeThreadEnvironmentId,
-    primaryEnvironmentId,
-    remoteOpenMode: remoteOpenState.mode,
-  });
-  const activeThreadRef = useMemo(
-    () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
-    [activeThreadEnvironmentId, activeThreadId],
-  );
   // A Mate's conversation is headed by the Mate — its face wearing the
   // conversation's state, its name — not by the folder it runs in, and it
   // carries a title only once somebody has spoken into it. Elsewhere the
   // header is upstream's: the project, then the thread.
   const mate = useZeropsMates().get(activeThreadEnvironmentId);
-  // Idle is the safe floor here, never a lie: a Mate is keyed by an
-  // environment id, which only a connected candidate carries, so a Mate whose
-  // socket is down has no identity to head a conversation with — the sleeping
-  // face belongs to the lists, which do see disconnected candidates.
+  const showOpenInPicker = shouldShowOpenInPicker({
+    activeProjectName,
+    activeThreadEnvironmentId,
+    primaryEnvironmentId,
+    remoteOpenMode: remoteOpenState.mode,
+    mateLivesHere: mate !== undefined,
+  });
+  const activeThreadRef = useMemo(
+    () => scopeThreadRef(activeThreadEnvironmentId, activeThreadId),
+    [activeThreadEnvironmentId, activeThreadId],
+  );
+  // The face the lists draw, by the same rule: a Mate is known from its
+  // project's tags and its container's origin — before its socket is up, and
+  // from the last reload's cache — so an unconnected one sleeps here too
+  // rather than wearing an idle face it has not earned.
   const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
-  const mateFace = mateActivity?.face ?? "idle";
+  const mateFace = mate?.connected === true ? (mateActivity?.face ?? "idle") : "sleep";
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
   // A Mate's conversation is headed by what the Mate is on — the same subject
   // its row shows (`agentActivity.ts`): the last task as the person put it,
@@ -448,6 +481,7 @@ export const ChatHeader = memo(function ChatHeader({
             openInCwd={openInCwd}
           />
         )}
+        {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
         {activeProjectName && stackedActionsSupported && (
           <GitActionsControl
             gitCwd={gitCwd}

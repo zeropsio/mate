@@ -21,6 +21,7 @@ import {
   readZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 
@@ -29,6 +30,15 @@ export interface ZeropsMateIdentity {
   readonly tint: MateTintId;
   /** The project the Mate belongs to, as its label tag reads; absent for one in no project. */
   readonly project: string | undefined;
+  /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
+  readonly projectUrl: string;
+  /**
+   * Whether the Mate's container is connected right now. A Mate is known from
+   * its project's tags and its container's origin — seconds before its socket
+   * is up, and from the last reload's cache on the first frame — so a surface
+   * that draws its face must ask this rather than assume it is awake.
+   */
+  readonly connected: boolean;
 }
 
 const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
@@ -48,6 +58,8 @@ export function zeropsMateIdentities(
       name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
       tint: tints.get(candidate.project.id) ?? "slate",
       project: tags.label,
+      projectUrl: zeropsProjectUrl(candidate.project.id),
+      connected: candidate.group === "connected",
     });
   }
   return mates;

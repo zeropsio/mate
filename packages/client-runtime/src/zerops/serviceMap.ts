@@ -44,7 +44,8 @@ const DEV_SUFFIX = "dev";
 const PRODUCTION_LAUNCH = /^(.*?)\s*\(([^()\s]+)\)$/u;
 
 /** Zerops' own dashboard, the same deep link zcp hands out on a launch failure. */
-const projectUrl = (projectId: string): string => `https://app.zerops.io/project/${projectId}`;
+export const zeropsProjectUrl = (projectId: string): string =>
+  `https://app.zerops.io/project/${projectId}`;
 
 export interface ZeropsProductionLink {
   readonly label: string;
@@ -396,7 +397,7 @@ export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink
   const projectId = match?.[2];
   return label === undefined || label.length === 0 || projectId === undefined
     ? { label: entry.trim() }
-    : { label, projectId, url: projectUrl(projectId) };
+    : { label, projectId, url: zeropsProjectUrl(projectId) };
 }
 
 const productionOf = (

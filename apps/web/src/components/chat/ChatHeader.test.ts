@@ -13,6 +13,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: primaryEnvironmentId,
         primaryEnvironmentId,
         remoteOpenMode: "local-exec",
+        mateLivesHere: false,
       }),
     ).toBe(true);
   });
@@ -24,6 +25,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId,
         remoteOpenMode: "remote-links",
+        mateLivesHere: false,
       }),
     ).toBe(true);
   });
@@ -35,6 +37,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId: null,
         remoteOpenMode: "remote-unavailable",
+        mateLivesHere: false,
       }),
     ).toBe(true);
   });
@@ -46,6 +49,19 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: EnvironmentId.make("environment-remote"),
         primaryEnvironmentId,
         remoteOpenMode: "local-exec",
+        mateLivesHere: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("hides the picker where a Mate lives: the way in is Zerops, not an editor on a machine nobody can reach", () => {
+    expect(
+      shouldShowOpenInPicker({
+        activeProjectName: "acme-docs-dev",
+        activeThreadEnvironmentId: primaryEnvironmentId,
+        primaryEnvironmentId,
+        remoteOpenMode: "remote-links",
+        mateLivesHere: true,
       }),
     ).toBe(false);
   });
@@ -57,6 +73,7 @@ describe("shouldShowOpenInPicker", () => {
         activeThreadEnvironmentId: primaryEnvironmentId,
         primaryEnvironmentId,
         remoteOpenMode: "remote-links",
+        mateLivesHere: false,
       }),
     ).toBe(false);
   });

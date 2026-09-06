@@ -31,6 +31,8 @@ describe("zeropsMateIdentities", () => {
   it("names the Mate in each connected environment, with its colour and its project", () => {
     const mates = zeropsMateIdentities([FEN_DEV, JUNO_LOOSE, ACME_STAGE]);
     expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
+    // The way into Zerops for this Mate: its project on the dashboard.
+    expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
     expect(mates.get(JUNO)).toMatchObject({ name: "Juno", project: undefined });
     // Two Mates, two colours — the same assignment the left menu makes.
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
@@ -54,19 +56,33 @@ describe("zeropsMateIdentities", () => {
       new Map([["https://node-id-1.runtime.zcp.zerops.app", FEN]]),
     );
     expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
+    // The way into Zerops for this Mate: its project on the dashboard.
+    expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
   });
 });
 
 describe("mateQuestion", () => {
   it("asks what the Mate should do on its project", () => {
-    expect(mateQuestion({ name: "Fen", tint: "coral", project: "Acme Docs" })).toBe(
-      "What should Fen do on Acme Docs?",
-    );
+    expect(
+      mateQuestion({
+        name: "Fen",
+        tint: "coral",
+        project: "Acme Docs",
+        projectUrl: "https://app.zerops.io/project/acme-docs-dev",
+        connected: true,
+      }),
+    ).toBe("What should Fen do on Acme Docs?");
   });
 
   it("asks without a project for a Mate in none", () => {
-    expect(mateQuestion({ name: "Nova", tint: "rose", project: undefined })).toBe(
-      "What should Nova do?",
-    );
+    expect(
+      mateQuestion({
+        name: "Nova",
+        tint: "rose",
+        project: undefined,
+        projectUrl: "https://app.zerops.io/project/scratch",
+        connected: true,
+      }),
+    ).toBe("What should Nova do?");
   });
 });
