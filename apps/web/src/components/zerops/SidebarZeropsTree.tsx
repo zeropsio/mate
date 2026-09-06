@@ -40,13 +40,13 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateTintId } from "@t3tools/shared/brand";
 import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
@@ -236,15 +236,6 @@ function ProjectName({
   );
 }
 
-/** The face a Mate wears here: its conversation's state when the socket is up, else asleep. */
-function faceFor(
-  candidate: RosterCandidate,
-  activity: ZeropsAgentActivity | undefined,
-): MateMarkState {
-  if (candidate.group !== "connected") return "sleep";
-  return activity?.face ?? "idle";
-}
-
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
@@ -283,7 +274,11 @@ function MateRow<T extends RosterCandidate>({
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <MateFace size="sm" state={faceFor(candidate, activity)} tint={tint} />
+      <MateFace
+        size="sm"
+        state={mateFaceFor(candidate.group === "connected", activity)}
+        tint={tint}
+      />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">{name}</span>

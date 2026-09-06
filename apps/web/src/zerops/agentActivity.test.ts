@@ -7,6 +7,7 @@ import {
   agentActivitySnippet,
   agentActivitySubject,
   deriveZeropsAgentActivity,
+  mateFaceFor,
 } from "./agentActivity";
 
 const FEN = EnvironmentId.make("env-fen");
@@ -260,5 +261,22 @@ describe("agentActivityAt", () => {
     ],
   ] as const)("is %s", (_, thread, expected) => {
     expect(agentActivityAt(thread)).toBe(expected);
+  });
+});
+
+describe("mateFaceFor", () => {
+  const cases = [
+    { connected: false, activity: undefined, face: "sleep" },
+    // Known before its socket is up, or read back from the last reload's
+    // cache: the state of a conversation nobody is connected to is not a face.
+    { connected: false, activity: { face: "working" }, face: "sleep" },
+    { connected: true, activity: undefined, face: "idle" },
+    { connected: true, activity: { face: "working" }, face: "working" },
+    { connected: true, activity: { face: "needs" }, face: "needs" },
+    { connected: true, activity: { face: "done" }, face: "done" },
+  ] as const;
+
+  it.each(cases)("wears $face when connected=$connected", ({ activity, connected, face }) => {
+    expect(mateFaceFor(connected, activity)).toBe(face);
   });
 });

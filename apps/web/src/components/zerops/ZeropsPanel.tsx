@@ -64,10 +64,12 @@ export function ZeropsPanel({
       : {
           name: mateIdentity.name,
           tint: mateIdentity.tint,
-          // Idle, not asleep: a Mate is keyed by an environment id, which only
-          // a connected candidate carries, so there is no sleeping Mate to
-          // draw here — see `ChatHeader`.
-          face: activity.get(environmentId)?.face ?? "idle",
+          // Asleep until the socket is up, as the lists draw it: a Mate is
+          // known from its project's tags and its container's origin before
+          // there is anything to resolve — see `ChatHeader`.
+          face: mateIdentity.connected
+            ? (activity.get(environmentId)?.face ?? "idle")
+            : ("sleep" as const),
         };
   const agents =
     agentAuthCard === null ? null : (

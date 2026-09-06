@@ -64,6 +64,21 @@ export interface ZeropsAgentActivity {
   readonly snippet: string | undefined;
 }
 
+/**
+ * The face a Mate wears wherever it is named — a row, a card, a conversation's
+ * header, its home on the map. Asleep until its container is connected: a Mate
+ * is known from its project's tags and its container's origin, and from the
+ * last reload's cache, seconds before there is any conversation to resolve.
+ * Connected with nothing resolved yet is idle, the floor of the same rule.
+ */
+export function mateFaceFor(
+  connected: boolean,
+  activity: Pick<ZeropsAgentActivity, "face"> | undefined,
+): MateMarkState {
+  if (!connected) return "sleep";
+  return activity?.face ?? "idle";
+}
+
 export function agentActivitySnippet(
   thread: Pick<EnvironmentThreadShell, "latestMessagePreview">,
 ): string | undefined {

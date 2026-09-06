@@ -42,6 +42,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { MateFace } from "../zerops/primitives";
 import { useThreadShell } from "../../state/entities";
+import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsMates } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
@@ -208,7 +209,7 @@ export const ChatHeader = memo(function ChatHeader({
   // from the last reload's cache — so an unconnected one sleeps here too
   // rather than wearing an idle face it has not earned.
   const mateActivity = useZeropsAgentActivity().get(activeThreadEnvironmentId);
-  const mateFace = mate?.connected === true ? (mateActivity?.face ?? "idle") : "sleep";
+  const mateFace = mateFaceFor(mate?.connected === true, mateActivity);
   const spoken = useThreadShell(activeThreadRef)?.latestUserMessageAt != null;
   // A Mate's conversation is headed by what the Mate is on — the same subject
   // its row shows (`agentActivity.ts`): the last task as the person put it,

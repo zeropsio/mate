@@ -61,7 +61,10 @@ vi.mock("../../zerops/useAgentLoginCancel", () => ({
 }));
 
 const mateState = vi.hoisted(() => ({
-  mates: new Map<string, { name: string; tint: string; project: string | undefined }>(),
+  mates: new Map<
+    string,
+    { name: string; tint: string; project: string | undefined; connected: boolean }
+  >(),
   faces: new Map<string, { face: string }>(),
 }));
 
@@ -353,7 +356,12 @@ describe("ZeropsPanel — the Mate's home", () => {
 
   it("says who lives in the control plane, with the face the conversation wears", () => {
     feedState.topology = resolved(VIEW_WITH_ZCP);
-    mateState.mates.set(THREAD_REF.environmentId, { name: "Fen", tint: "coral", project: "Acme" });
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+    });
     mateState.faces.set(THREAD_REF.environmentId, { face: "needs" });
     const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
 
@@ -365,7 +373,12 @@ describe("ZeropsPanel — the Mate's home", () => {
 
   it("wears the idle face until the conversation has an activity, and names nobody it does not know", () => {
     feedState.topology = resolved(VIEW_WITH_ZCP);
-    mateState.mates.set(THREAD_REF.environmentId, { name: "Fen", tint: "sky", project: undefined });
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "sky",
+      project: undefined,
+      connected: true,
+    });
     const idle = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
     expect(idle).toContain('data-mate-face-state="idle"');
 
@@ -374,5 +387,22 @@ describe("ZeropsPanel — the Mate's home", () => {
       <ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />,
     );
     expect(nobody).not.toContain("data-zerops-mate-home");
+  });
+
+  it("sleeps while the container is not connected, whatever the last activity said", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    // Known from the project's tags, or from the last reload's cache, before
+    // this session's socket is up: the home says who, not that it is awake.
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: false,
+    });
+    mateState.faces.set(THREAD_REF.environmentId, { face: "working" });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).toContain(">Fen</span>");
   });
 });

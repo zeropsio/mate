@@ -35,7 +35,7 @@ import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import type { AuthGateState } from "~/environments/primary/auth";
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
@@ -512,10 +512,11 @@ function ZeropsProjectsContent() {
    * The face a Mate wears: the state of its conversation when its socket is
    * up, else asleep — a container that is not connected is the Zerops mark.
    */
-  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
-    if (candidate.group !== "connected" || candidate.environmentId === undefined) return "sleep";
-    return activity.get(candidate.environmentId)?.face ?? "idle";
-  };
+  const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState =>
+    mateFaceFor(
+      candidate.group === "connected" && candidate.environmentId !== undefined,
+      candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
+    );
 
   /**
    * The quiet actions of a card or a row: the environment's public access,
