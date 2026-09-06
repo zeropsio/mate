@@ -3,16 +3,17 @@
  *
  * Presentational only — every rule it renders is decided in
  * `@t3tools/client-runtime/zerops/serviceMap` and tested there. It mutates
- * nothing: the agent owns every change to the project, and the only links
- * offered here open URLs the feed already carries (a service's public
- * routes, and its own page in the Zerops dashboard).
+ * nothing: the only links offered open URLs the feed already carries (a
+ * service's public routes, and its own page in the Zerops dashboard).
  *
- * One card per service, the Zerops dashboard's service card compressed for a
- * side panel: the name with its port and the status word on one line, one
- * line of what it is and how it got there, its public routes, and the live
- * strip — containers, cores, RAM, disk — with how much of each is in use.
+ * One small card per service — two lines. The name with its port and the
+ * status word; then the three resources it holds — cores, RAM, disk — each
+ * a figure beside its own inline graph of the last day. Everything the
+ * dashboard shows around those — what the service is, how it was deployed,
+ * where it answers, what is in use of its allocation — waits in a pop that
+ * opens on hover. A service holding nothing (not deployed yet) is one line.
  */
-import { ArrowRightIcon, ExternalLinkIcon } from "lucide-react";
+import { ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
 
 import type {
   ZeropsServiceFact,
@@ -21,15 +22,20 @@ import type {
   ZeropsServiceMetric,
   ZeropsServiceRow,
   ZeropsServiceTone,
+  ZeropsServiceTrends,
+  ZeropsTrendPoint,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type {
   ZeropsServiceRoute,
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
+import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
+import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "../../zerops/projectTopologyWatcher";
 import { FlatCard, LivenessLine, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import { sparklineGeometry } from "./sparkline";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -38,8 +44,22 @@ const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> =
   muted: "off",
 };
 
-/** The strip's shape, so a card holds its height while the first usage read is out. */
-const STRIP_PLACEHOLDER = ["container", "Cores", "RAM", "Disk"] as const;
+/** A graph's box, in its own units; the stroke does not scale with it. */
+const GRAPH_WIDTH = 48;
+const GRAPH_HEIGHT = 14;
+
+/** The three resources, in the dashboard's order. */
+const RESOURCES: ReadonlyArray<{
+  readonly id: "cores" | "memory" | "disk";
+  readonly label: string;
+}> = [
+  { id: "cores", label: "Cores" },
+  { id: "memory", label: "RAM" },
+  { id: "disk", label: "Disk" },
+];
+
+const HOVER_OPEN_DELAY_MS = 220;
+const HOVER_CLOSE_DELAY_MS = 120;
 
 function ServiceStatus({
   service,
@@ -65,11 +85,153 @@ function ServiceStatus({
 const factText = (fact: ZeropsServiceFact): string =>
   fact.at === undefined ? fact.label : `${fact.label} ${formatRelativeTimeLabel(fact.at)}`;
 
+/** The name with its port. `as` decides whether it is the card's title or the pop's link. */
+function ServiceName({ row, className }: { row: ZeropsServiceRow; className?: string }) {
+  return (
+    <span className={cn("flex min-w-0 max-w-full items-baseline gap-1", className)}>
+      <span className="min-w-0 max-w-full break-all font-semibold tracking-tight">{row.title}</span>
+      {row.portLabel === undefined ? null : (
+        <span className="shrink-0 font-normal text-muted-foreground">{row.portLabel}</span>
+      )}
+    </span>
+  );
+}
+
+/** One resource's graph: what was used over the last day as a filled curve, the last hour marked. */
+function ResourceGraph({ trend, id }: { trend: ReadonlyArray<ZeropsTrendPoint>; id: string }) {
+  const geometry = sparklineGeometry(trend, GRAPH_WIDTH, GRAPH_HEIGHT, 1.5);
+  const gradientId = `zerops-graph-${id}`;
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-12 shrink-0 self-end text-info"
+      data-zerops-service-graph="live"
+      preserveAspectRatio="none"
+      viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.22" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {geometry.area === "" ? null : <path d={geometry.area} fill={`url(#${gradientId})`} />}
+      {geometry.line === "" ? null : (
+        <path
+          d={geometry.line}
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.5"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      {geometry.end === undefined ? null : (
+        <circle cx={geometry.end.x} cy={geometry.end.y} fill="currentColor" r="1.5" />
+      )}
+    </svg>
+  );
+}
+
+/** One resource on the line: its label, the figure it holds, and its graph beside it. */
+function ResourceItem({
+  label,
+  metric,
+  trend,
+  graphId,
+}: {
+  label: string;
+  metric: ZeropsServiceMetric | undefined;
+  trend: ReadonlyArray<ZeropsTrendPoint> | undefined;
+  graphId: string;
+}) {
+  return (
+    <span
+      className="inline-flex min-w-0 items-baseline gap-1.5"
+      data-zerops-service-resource={metric?.id ?? label.toLowerCase()}
+    >
+      <MicroLabel>{label}</MicroLabel>
+      {metric === undefined ? (
+        <Skeleton className="h-3 w-8 self-center" data-zerops-service-figure="pending" />
+      ) : (
+        <span
+          className="text-xs leading-none font-medium text-foreground tabular-nums"
+          data-zerops-service-figure="live"
+        >
+          {metric.value}
+          {metric.unit === undefined ? null : (
+            <span className="ml-0.5 font-normal text-muted-foreground">{metric.unit}</span>
+          )}
+        </span>
+      )}
+      {trend === undefined ? (
+        <Skeleton
+          className="h-3.5 w-12 self-center rounded-sm"
+          data-zerops-service-graph="pending"
+        />
+      ) : (
+        <ResourceGraph id={graphId} trend={trend} />
+      )}
+    </span>
+  );
+}
+
+/**
+ * The resources line under the name. Its shape is reserved until the reads
+ * answer; a service holding nothing — not deployed yet, stopped — shows no
+ * resources at all once usage is known.
+ */
+function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  if (usageRead && row.metrics.length === 0) {
+    return null;
+  }
+  const trends: ZeropsServiceTrends | undefined = row.trends;
+  return (
+    <div
+      className="mt-2 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-5 gap-y-1.5"
+      data-zerops-service-resources
+    >
+      {RESOURCES.map((resource) => (
+        <ResourceItem
+          graphId={`${row.service.serviceId}-${resource.id}`}
+          key={resource.id}
+          label={resource.label}
+          metric={usageRead ? row.metrics.find((metric) => metric.id === resource.id) : undefined}
+          trend={trends?.[resource.id]}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A public route as one glyph beside the name — the one thing a person
+ * reaches for without hovering. The click stays the link's: it must not
+ * toggle the card's pop underneath.
+ */
+function RouteGlyph({ route }: { route: ZeropsServiceRoute }) {
+  return (
+    <a
+      aria-label={route.host}
+      className="inline-flex shrink-0 self-center rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden motion-reduce:transition-none"
+      data-zerops-service-route-glyph
+      href={route.url}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+    </a>
+  );
+}
+
 function RouteLink({ href, label }: { href: string; label: string }) {
   return (
     <li className="flex min-w-0 max-w-full">
       <a
-        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden motion-reduce:transition-none"
+        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-sm text-xs text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
         href={href}
         rel="noreferrer"
         target="_blank"
@@ -94,10 +256,7 @@ function ServiceRoutes({
     return null;
   }
   return (
-    <ul
-      className="mt-1.5 flex min-w-0 max-w-full flex-wrap gap-x-3 gap-y-1"
-      data-zerops-service-routes
-    >
+    <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-service-routes>
       {routes.map((route) => (
         <RouteLink href={route.url} key={route.url} label={route.host} />
       ))}
@@ -114,10 +273,48 @@ function ServiceRoutes({
   );
 }
 
-/** The name, a link into the Zerops dashboard, with its port; the status word at the end of the line. */
-function ServiceHeader({ row }: { row: ZeropsServiceRow }) {
+function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
   return (
-    <div className="flex min-w-0 max-w-full items-start justify-between gap-3">
+    <div
+      className="grid grid-cols-[4.5rem_1fr] items-center gap-x-3"
+      data-zerops-service-metric={metric.id}
+    >
+      <MicroLabel>{metric.label}</MicroLabel>
+      <div className="min-w-0">
+        <div className="text-xs text-foreground tabular-nums">
+          {metric.used === undefined ? null : (
+            <>
+              <span>{metric.used}</span>
+              <span className="text-muted-foreground"> / </span>
+            </>
+          )}
+          <span>{metric.value}</span>
+          {metric.unit === undefined ? null : (
+            <span className="ml-1 text-muted-foreground">{metric.unit}</span>
+          )}
+        </div>
+        {metric.fraction === undefined ? null : (
+          <div aria-hidden="true" className="mt-1 h-0.5 w-full rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-info"
+              data-zerops-service-metric-fill
+              style={{ width: `${Math.round(metric.fraction * 100)}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the pop holds: the dashboard card's chrome, in reading order. The
+ * name as the way into the Zerops dashboard, what the service is and how
+ * it was deployed, where it answers, then used against allocated.
+ */
+export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
+  return (
+    <div className="flex w-72 max-w-full flex-col text-sm" data-zerops-service-detail>
       <a
         className="group flex min-w-0 max-w-full items-baseline gap-1 text-foreground"
         data-zerops-service-dashboard
@@ -125,20 +322,32 @@ function ServiceHeader({ row }: { row: ZeropsServiceRow }) {
         rel="noreferrer"
         target="_blank"
       >
-        <span className="min-w-0 max-w-full break-all text-base leading-snug font-semibold tracking-tight">
-          {row.title}
-        </span>
-        {row.portLabel === undefined ? null : (
-          <span className="shrink-0 text-base leading-snug font-normal text-muted-foreground">
-            {row.portLabel}
-          </span>
-        )}
-        <ArrowRightIcon
+        <ServiceName className="flex-1" row={row} />
+        <ArrowUpRightIcon
           aria-hidden="true"
-          className="ml-0.5 size-3.5 shrink-0 self-center text-muted-foreground opacity-0 transition-[opacity,translate] duration-150 group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
+          className="size-3.5 shrink-0 self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
         />
       </a>
-      <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
+      {row.meta.length === 0 ? null : (
+        <p
+          className="mt-0.5 min-w-0 max-w-full break-words text-xs text-muted-foreground"
+          data-zerops-service-meta
+        >
+          {row.meta.map(factText).join(" · ")}
+        </p>
+      )}
+      <ServiceRoutes routes={row.service.routes} row={row} />
+      {row.stage === undefined ? null : <ServiceRoutes routes={row.stage.routes} />}
+      {row.metrics.length === 0 ? null : (
+        <div
+          className="mt-3 flex flex-col gap-2 border-t border-border/60 pt-3"
+          data-zerops-service-metrics
+        >
+          {row.metrics.map((metric) => (
+            <MetricRow key={metric.id} metric={metric} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -154,64 +363,15 @@ function StageLine({
   label: string;
 }) {
   return (
-    <div className="mt-2.5 border-t border-border/60 pt-2.5" data-zerops-service-stage>
-      <div className="flex min-w-0 max-w-full items-baseline justify-between gap-3">
-        <span className="min-w-0 max-w-full break-all text-sm font-medium text-foreground">
-          {stage.hostname}
-          <span className="ml-1.5 text-xs font-normal text-muted-foreground">stage</span>
-        </span>
-        <ServiceStatus label={label} service={stage} tone={tone} />
-      </div>
-      <ServiceRoutes routes={stage.routes} />
-    </div>
-  );
-}
-
-function MetricCell({ metric }: { metric: ZeropsServiceMetric }) {
-  return (
-    <div className="min-w-0" data-zerops-service-metric={metric.id}>
-      <MicroLabel>{metric.label}</MicroLabel>
-      <div className="mt-0.5 text-sm leading-tight font-medium text-foreground tabular-nums">
-        {metric.value}
-        {metric.unit === undefined ? null : (
-          <span className="ml-1 text-xs font-normal text-muted-foreground">{metric.unit}</span>
-        )}
-      </div>
-      {metric.fraction === undefined ? null : (
-        <div aria-hidden="true" className="mt-1.5 h-0.5 w-full rounded-full bg-border">
-          <div
-            className="h-full rounded-full bg-[var(--zerops-status-ok)]"
-            data-zerops-service-metric-fill
-            style={{ width: `${Math.round(metric.fraction * 100)}%` }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * The live strip: what the service holds right now. Until the first usage
- * read answers, the strip's shape is reserved so nothing appears from
- * nothing; once it has, a service with no container shows no strip at all.
- */
-function ServiceStrip({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
-  if (usageRead && row.metrics.length === 0) {
-    return null;
-  }
-  return (
     <div
-      className="mt-3 grid grid-cols-4 gap-3 border-t border-border/60 pt-2.5"
-      data-zerops-service-strip={usageRead ? "live" : "pending"}
+      className="mt-2 flex min-w-0 max-w-full items-baseline justify-between gap-3 border-t border-border/60 pt-2"
+      data-zerops-service-stage
     >
-      {usageRead
-        ? row.metrics.map((metric) => <MetricCell key={metric.id} metric={metric} />)
-        : STRIP_PLACEHOLDER.map((label) => (
-            <div className="min-w-0" key={label}>
-              <MicroLabel>{label}</MicroLabel>
-              <Skeleton className="mt-1 h-4 w-10" />
-            </div>
-          ))}
+      <span className="min-w-0 max-w-full break-all text-sm font-medium text-foreground">
+        {stage.hostname}
+        <span className="ml-1.5 text-xs font-normal text-muted-foreground">stage</span>
+      </span>
+      <ServiceStatus label={label} service={stage} tone={tone} />
     </div>
   );
 }
@@ -220,49 +380,52 @@ function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: bool
   // The infrastructure group is, by the client projection's own grouping
   // rule, the zcp container and nothing else — it gets the mint panel.
   const isControlPlane = row.service.group === "infrastructure";
-  const content = (
-    <>
-      <ServiceHeader row={row} />
-      {row.meta.length === 0 ? null : (
-        <p
-          className="mt-0.5 min-w-0 max-w-full break-words text-xs text-muted-foreground"
-          data-zerops-service-meta
-        >
-          {row.meta.map(factText).join(" · ")}
-        </p>
-      )}
-      <ServiceRoutes routes={row.service.routes} row={row} />
-      {row.stage === undefined ||
-      row.stageTone === undefined ||
-      row.stageStatusLabel === undefined ? null : (
-        <StageLine label={row.stageStatusLabel} stage={row.stage} tone={row.stageTone} />
-      )}
-      <ServiceStrip row={row} usageRead={usageRead} />
-    </>
-  );
-  const cardClassName = "px-4 py-3";
-
+  const Card = isControlPlane ? MintPanel : FlatCard;
   return (
     <li data-zerops-service-row={isControlPlane ? "control-plane" : "service"}>
-      {isControlPlane ? (
-        <MintPanel className={cardClassName}>{content}</MintPanel>
-      ) : (
-        <FlatCard className={cardClassName}>{content}</FlatCard>
-      )}
+      <Popover>
+        <PopoverTrigger
+          className="block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          closeDelay={HOVER_CLOSE_DELAY_MS}
+          delay={HOVER_OPEN_DELAY_MS}
+          nativeButton={false}
+          openOnHover
+          render={<Card className="px-3.5 py-2.5" />}
+        >
+          <div className="flex min-w-0 max-w-full items-baseline justify-between gap-3">
+            <span className="flex min-w-0 max-w-full items-baseline gap-2">
+              <ServiceName className="text-sm leading-snug" row={row} />
+              {row.service.routes.map((route) => (
+                <RouteGlyph key={route.url} route={route} />
+              ))}
+            </span>
+            <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
+          </div>
+          <ServiceResources row={row} usageRead={usageRead} />
+          {row.stage === undefined ||
+          row.stageTone === undefined ||
+          row.stageStatusLabel === undefined ? null : (
+            <StageLine label={row.stageStatusLabel} stage={row.stage} tone={row.stageTone} />
+          )}
+        </PopoverTrigger>
+        <PopoverPopup align="start" side="left" sideOffset={8}>
+          <ZeropsServiceDetail row={row} />
+        </PopoverPopup>
+      </Popover>
     </li>
   );
 }
 
 function ServiceGroup({ group, usageRead }: { group: ZeropsServiceMapGroup; usageRead: boolean }) {
   return (
-    <section className="space-y-2" data-zerops-service-group={group.group}>
+    <section className="space-y-1.5" data-zerops-service-group={group.group}>
       <h3 className="flex items-baseline gap-1.5">
         <MicroLabel>{group.title}</MicroLabel>
         {group.rows.length < 2 ? null : (
           <span className="text-xs text-muted-foreground tabular-nums">{group.rows.length}</span>
         )}
       </h3>
-      <ul className="space-y-2">
+      <ul className="space-y-1.5">
         {group.rows.map((row) => (
           <ServiceRow key={row.service.hostname} row={row} usageRead={usageRead} />
         ))}
@@ -288,7 +451,7 @@ export function ZeropsServiceMap({
   }
 
   return (
-    <div className="space-y-5" data-zerops-service-map>
+    <div className="space-y-4" data-zerops-service-map>
       {error !== undefined ? (
         <LivenessLine data-zerops-map-degraded="true" label={error} state="last-read-failed" />
       ) : liveness === "live" ? (

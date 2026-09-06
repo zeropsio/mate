@@ -9,6 +9,7 @@ import {
   zeropsServiceFacts,
   zeropsServiceMetrics,
   zeropsStatusWord,
+  zeropsUsageTrends,
 } from "./serviceMap.ts";
 import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
 
@@ -371,9 +372,16 @@ describe("zeropsServiceMetrics", () => {
       }),
     ).toEqual([
       { id: "containers", label: "container", value: "1" },
-      { id: "cores", label: "Cores", value: "2", fraction: 0.038 },
-      { id: "memory", label: "RAM", value: "2.63", unit: "GB", fraction: 0.512 / 2.625 },
-      { id: "disk", label: "Disk", value: "2", unit: "GB", fraction: 0.0805 },
+      { id: "cores", label: "Cores", value: "2", used: "0.08", fraction: 0.038 },
+      {
+        id: "memory",
+        label: "RAM",
+        value: "2.63",
+        used: "0.51",
+        unit: "GB",
+        fraction: 0.512 / 2.625,
+      },
+      { id: "disk", label: "Disk", value: "2", used: "0.16", unit: "GB", fraction: 0.0805 },
     ]);
   });
 
@@ -393,6 +401,56 @@ describe("zeropsServiceMetrics", () => {
 
   it("is empty when usage is unknown", () => {
     expect(zeropsServiceMetrics(undefined)).toEqual([]);
+  });
+});
+
+describe("zeropsUsageTrends", () => {
+  const samples = [
+    {
+      at: "2026-09-05T01:00:00+02:00",
+      containers: 0,
+      cores: { used: 0, limit: 0 },
+      memoryGb: { used: 0, limit: 0 },
+      diskGb: { used: 0, limit: 0 },
+    },
+    {
+      at: "2026-09-06T00:00:00+02:00",
+      containers: 1,
+      cores: { used: 0.062, limit: 2 },
+      memoryGb: { used: 0.512, limit: 2.75 },
+      diskGb: { used: 0.167, limit: 2 },
+    },
+  ];
+
+  it("is absent until the history answers", () => {
+    expect(zeropsUsageTrends(undefined)).toBeUndefined();
+  });
+
+  it("is each resource held and used per bucket", () => {
+    expect(zeropsUsageTrends(samples)).toEqual({
+      cores: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.062, limit: 2 },
+      ],
+      memory: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.512, limit: 2.75 },
+      ],
+      disk: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.167, limit: 2 },
+      ],
+    });
+  });
+
+  it("rides on the row", () => {
+    const row = buildZeropsServiceMap(topology([service({ hostname: "app", history: samples })]))
+      ?.groups[0]?.rows[0];
+
+    expect(row?.trends?.memory).toHaveLength(2);
+    expect(
+      buildZeropsServiceMap(topology([service({ hostname: "app" })]))?.groups[0]?.rows[0],
+    ).not.toHaveProperty("trends");
   });
 });
 

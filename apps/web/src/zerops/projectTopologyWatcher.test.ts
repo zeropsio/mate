@@ -6,6 +6,8 @@ import {
   type ZeropsProject,
   type ZeropsService,
   type ZeropsCurrentStat,
+  type ZeropsStatHistoryItem,
+  type ZeropsStatHistoryWindow,
 } from "@t3tools/client-runtime/zerops";
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/platformWatch";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops/session";
@@ -67,18 +69,22 @@ interface FakeClientOptions {
   readonly servicesByProject?: Readonly<Record<string, ReadonlyArray<ZeropsService>>>;
   /** The current-stats answer, or a thrower to simulate a failed read. */
   readonly usage?: ReadonlyArray<ZeropsCurrentStat> | (() => never);
+  /** The stats-history answer, or a thrower. */
+  readonly history?: ReadonlyArray<ZeropsStatHistoryItem> | (() => never);
 }
 
 function fakeClient(options: FakeClientOptions = {}): {
   readonly client: ZeropsApiClient;
   readonly listProjectServicesCalls: number;
   readonly searchCurrentStatsCalls: ReadonlyArray<{ clientId: string; projectId: string }>;
+  readonly searchStatsHistoryCalls: ReadonlyArray<ZeropsStatHistoryWindow>;
   readonly fetchOrganizationsCalls: number;
   readonly loadCandidatesOrgCalls: string[];
 } {
   const state = {
     listProjectServicesCalls: 0,
     searchCurrentStatsCalls: [] as Array<{ clientId: string; projectId: string }>,
+    searchStatsHistoryCalls: [] as Array<ZeropsStatHistoryWindow>,
     fetchOrganizationsCalls: 0,
     loadCandidatesOrgCalls: [] as string[],
   };
@@ -93,6 +99,15 @@ function fakeClient(options: FakeClientOptions = {}): {
       state.searchCurrentStatsCalls.push({ clientId, projectId });
       if (typeof options.usage === "function") options.usage();
       return options.usage ?? [];
+    },
+    searchStatsHistory: async (
+      _clientId: string,
+      _projectId: string,
+      window: ZeropsStatHistoryWindow,
+    ) => {
+      state.searchStatsHistoryCalls.push(window);
+      if (typeof options.history === "function") options.history();
+      return options.history ?? [];
     },
     fetchProjectProcesses: async () => ({ list: [] }),
     exchangeWebSocketToken: async () => ({ webSocketToken: "ws-token" }),
@@ -113,6 +128,9 @@ function fakeClient(options: FakeClientOptions = {}): {
     },
     get searchCurrentStatsCalls() {
       return state.searchCurrentStatsCalls;
+    },
+    get searchStatsHistoryCalls() {
+      return state.searchStatsHistoryCalls;
     },
     get fetchOrganizationsCalls() {
       return state.fetchOrganizationsCalls;
@@ -742,6 +760,20 @@ describe("ProjectTopologyWatcher", () => {
           diskGBytes: { used: 0.3, limit: 1 },
         },
       ],
+      history: [
+        {
+          from: "2026-09-06T00:00:00+02:00",
+          till: "2026-09-06T00:59:59+02:00",
+          serviceStackId: "s1",
+          containerCount: 1,
+          vCpuLimit: 1,
+          vCpuUsed: 0.1,
+          ramLimit: 0.5,
+          ramUsed: 0.2,
+          diskLimit: 1,
+          diskUsed: 0.3,
+        },
+      ],
     });
     const storage = fakeStorage();
     await rememberEnvironmentProjectRef(storage, ENV, {
@@ -754,12 +786,26 @@ describe("ProjectTopologyWatcher", () => {
       client: fake.client,
       storage,
       isHidden: () => hidden,
+      timeZone: () => "Europe/Prague",
     });
     const watcher = new ProjectTopologyWatcher(options);
     const unsubscribe = watcher.subscribe(() => undefined);
 
     await vi.advanceTimersByTimeAsync(0);
     expect(fake.searchCurrentStatsCalls).toEqual([{ clientId: "client-1", projectId: "proj-1" }]);
+    // The history rides along: the dashboard's own last-24-hours window, in the given zone.
+    expect(fake.searchStatsHistoryCalls).toEqual([
+      { timeGroupBy: "1h", limit: 24, timeZone: "Europe/Prague" },
+    ]);
+    expect(watcher.getSnapshot().view?.services[0]?.history).toEqual([
+      {
+        at: "2026-09-06T00:00:00+02:00",
+        containers: 1,
+        cores: { used: 0.1, limit: 1 },
+        memoryGb: { used: 0.2, limit: 0.5 },
+        diskGb: { used: 0.3, limit: 1 },
+      },
+    ]);
     expect(watcher.getSnapshot().view?.usageRead).toBe(true);
     expect(watcher.getSnapshot().view?.services[0]?.usage).toEqual({
       containers: 1,
@@ -813,6 +859,9 @@ describe("ProjectTopologyWatcher", () => {
       services: [service({ id: "s1", name: "api" })],
       usage: () => {
         throw new Error("stats down");
+      },
+      history: () => {
+        throw new Error("history down");
       },
     });
     const second = new ProjectTopologyWatcher(

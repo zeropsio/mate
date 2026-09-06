@@ -37,7 +37,11 @@ import {
 } from "@t3tools/client-runtime/zerops/platformWatch";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops/session";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
-import type { ZeropsCurrentStat } from "@t3tools/client-runtime/zerops";
+import type {
+  ZeropsCurrentStat,
+  ZeropsStatHistoryItem,
+  ZeropsStatHistoryWindow,
+} from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -54,6 +58,11 @@ const DISCONNECTED_POLL_IDLE_MS = 30_000;
  * topology's doorbell.
  */
 const USAGE_POLL_MS = 30_000;
+/** The dashboard card's own default window: the last 24 hours, hour by hour. */
+const HISTORY_WINDOW: Omit<ZeropsStatHistoryWindow, "timeZone"> = {
+  timeGroupBy: "1h",
+  limit: 24,
+};
 /** How long a hidden tab keeps its live socket open before the watcher closes it and falls back to polling. */
 const HIDDEN_CLOSE_AFTER_MS = 60_000;
 
@@ -88,6 +97,8 @@ export interface ProjectTopologyWatcherOptions {
   readonly makeReceiverId?: () => string;
   /** Registers a tab-visibility listener, returning its unsubscribe. Defaults to `document`'s `visibilitychange`. */
   readonly onVisibilityChange?: (callback: () => void) => () => void;
+  /** The zone the history's buckets align to; defaults to the browser's. */
+  readonly timeZone?: () => string;
 }
 
 function errorMessage(cause: unknown): string {
@@ -115,6 +126,7 @@ export class ProjectTopologyWatcher {
   readonly #isHidden: () => boolean;
   readonly #makeReceiverId: () => string;
   readonly #onVisibilityChange: (callback: () => void) => () => void;
+  readonly #timeZone: () => string;
 
   readonly #listeners = new Set<() => void>();
   #snapshot: ProjectTopologySnapshot = EMPTY_SNAPSHOT;
@@ -124,6 +136,8 @@ export class ProjectTopologyWatcher {
   #servicesCache: ReadonlyArray<ZeropsService> | undefined;
   /** Undefined until the first current-stats read answers. */
   #usageCache: ReadonlyArray<ZeropsCurrentStat> | undefined;
+  /** Undefined until the first history read answers. */
+  #historyCache: ReadonlyArray<ZeropsStatHistoryItem> | undefined;
   #latestProcesses: ReadonlyArray<ActivityProcess> = [];
 
   #watch: PlatformWatch | undefined;
@@ -161,6 +175,8 @@ export class ProjectTopologyWatcher {
         document.addEventListener("visibilitychange", callback);
         return () => document.removeEventListener("visibilitychange", callback);
       });
+    this.#timeZone =
+      options.timeZone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC");
   }
 
   getSnapshot(): ProjectTopologySnapshot {
@@ -421,13 +437,26 @@ export class ProjectTopologyWatcher {
   async #readUsage(): Promise<void> {
     const clientId = this.#project?.clientId;
     if (this.#ref === undefined || clientId === undefined) return;
-    try {
-      const usage = await this.#client.searchCurrentStats(clientId, this.#ref.projectId);
-      if (this.#disposed) return;
-      this.#usageCache = usage;
-    } catch {
-      // Keep the last known allocation; the topology read reports its own errors.
-    }
+    const projectId = this.#ref.projectId;
+    // Each read keeps its own last answer over its own failure; the topology
+    // read reports its own errors and neither of these ever fails it.
+    await Promise.all([
+      this.#client
+        .searchCurrentStats(clientId, projectId)
+        .then((usage) => {
+          if (!this.#disposed) this.#usageCache = usage;
+        })
+        .catch(() => undefined),
+      this.#client
+        .searchStatsHistory(clientId, projectId, {
+          ...HISTORY_WINDOW,
+          timeZone: this.#timeZone(),
+        })
+        .then((history) => {
+          if (!this.#disposed) this.#historyCache = history;
+        })
+        .catch(() => undefined),
+    ]);
   }
 
   #scheduleNextUsagePoll(): void {
@@ -460,6 +489,7 @@ export class ProjectTopologyWatcher {
       this.#servicesCache,
       this.#latestProcesses,
       this.#usageCache,
+      this.#historyCache,
     );
     this.#publish({ view });
   }

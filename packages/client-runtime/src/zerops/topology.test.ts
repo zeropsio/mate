@@ -380,3 +380,72 @@ describe("projectTopology — live usage", () => {
     expect(view.services[0]?.usage?.cores).toEqual({ used: 1.5, limit: 2 });
   });
 });
+
+/**
+ * `POST /stats-history/group-by-search` grouped by stack, hourly, for
+ * `scratch-playground`, captured 2026-09-06: the first and last of a zcp's
+ * 24 buckets.
+ */
+const historyItems = [
+  {
+    from: "2026-09-05T01:00:00+02:00",
+    till: "2026-09-05T01:59:59+02:00",
+    serviceStackId: "svc-zcp",
+    containerCount: 0,
+    cpuLimit: 0,
+    cpuUsed: 0,
+    vCpuLimit: 0,
+    vCpuUsed: 0,
+    ramLimit: 0,
+    ramUsed: 0,
+    diskLimit: 0,
+    diskUsed: 0,
+  },
+  {
+    from: "2026-09-06T00:00:00+02:00",
+    till: "2026-09-06T00:59:59+02:00",
+    serviceStackId: "svc-zcp",
+    containerCount: 1,
+    cpuLimit: 0,
+    cpuUsed: 0,
+    vCpuLimit: 2,
+    vCpuUsed: 0.062,
+    ramLimit: 2.75,
+    ramUsed: 0.512,
+    diskLimit: 2,
+    diskUsed: 0.167,
+  },
+];
+
+describe("projectTopology — history", () => {
+  const zcp = service({ id: "svc-zcp", name: "zcp" });
+  const app = service({ id: "svc-app", name: "app" });
+
+  it("attaches a service's buckets oldest first, cores summed over shared and dedicated", () => {
+    const view = projectTopology(project, [zcp, app], [], [], historyItems);
+
+    expect(view.services.find((entry) => entry.hostname === "zcp")?.history).toEqual([
+      {
+        at: "2026-09-05T01:00:00+02:00",
+        containers: 0,
+        cores: { used: 0, limit: 0 },
+        memoryGb: { used: 0, limit: 0 },
+        diskGb: { used: 0, limit: 0 },
+      },
+      {
+        at: "2026-09-06T00:00:00+02:00",
+        containers: 1,
+        cores: { used: 0.062, limit: 2 },
+        memoryGb: { used: 0.512, limit: 2.75 },
+        diskGb: { used: 0.167, limit: 2 },
+      },
+    ]);
+    expect(view.services.find((entry) => entry.hostname === "app")).not.toHaveProperty("history");
+  });
+
+  it("has no history at all until the read answers", () => {
+    const view = projectTopology(project, [zcp], [], []);
+
+    expect(view.services[0]).not.toHaveProperty("history");
+  });
+});

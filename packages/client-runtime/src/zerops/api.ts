@@ -166,6 +166,37 @@ export interface ZeropsCurrentStat {
 }
 
 /**
+ * One bucket of `POST /stats-history/group-by-search` grouped by service
+ * stack: the allocation and use over `[from, till]`, in the unit the field
+ * says. Measured on `scratch-playground` 2026-09-06 (`verified.md`).
+ */
+export interface ZeropsStatHistoryItem {
+  readonly from: string;
+  readonly till: string;
+  readonly projectId?: string;
+  readonly serviceStackId: string;
+  readonly containerCount?: number;
+  readonly cpuLimit?: number;
+  readonly cpuUsed?: number;
+  readonly vCpuLimit?: number;
+  readonly vCpuUsed?: number;
+  readonly ramLimit?: number;
+  readonly ramUsed?: number;
+  readonly diskLimit?: number;
+  readonly diskUsed?: number;
+}
+
+/** The dashboard's "Last 24 Hours": hourly buckets, 24 of them. */
+export interface ZeropsStatHistoryWindow {
+  /** `1m`, `1h`, `1d`, `1w` or `1M` — the bucket. */
+  readonly timeGroupBy: string;
+  /** How many buckets back from now. */
+  readonly limit: number;
+  /** An IANA zone; buckets are aligned to it. */
+  readonly timeZone: string;
+}
+
+/**
  * A git integration as the Zerops GUI's own service-stack template reads it
  * (`service-stack-info-chips.component.html`); every captured fixture carries
  * `null` here, so the field names are the GUI's, not a measurement.
@@ -850,6 +881,35 @@ export class ZeropsApiClient {
         }),
       },
     );
+    return response.items ?? [];
+  }
+
+  /**
+   * `POST /stats-history/group-by-search` — the allocation and use of every
+   * stack in a project over a window of buckets, the read behind the
+   * dashboard card's graph. Same `clientId` rule as the current read.
+   * Measured 2026-09-06 (`verified.md`).
+   */
+  async searchStatsHistory(
+    clientId: string,
+    projectId: string,
+    window: ZeropsStatHistoryWindow,
+  ): Promise<ReadonlyArray<ZeropsStatHistoryItem>> {
+    const response = await this.#request<{
+      readonly items?: ReadonlyArray<ZeropsStatHistoryItem>;
+    }>("/stats-history/group-by-search", {
+      method: "POST",
+      body: JSON.stringify({
+        search: [
+          { name: "clientId", operator: "eq", value: clientId },
+          { name: "projectId", operator: "eq", value: projectId },
+        ],
+        groupBy: "serviceStackId",
+        timeGroupBy: window.timeGroupBy,
+        limit: window.limit,
+        timeZone: window.timeZone,
+      }),
+    });
     return response.items ?? [];
   }
 

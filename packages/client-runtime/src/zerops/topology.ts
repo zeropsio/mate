@@ -17,6 +17,7 @@ import {
   type ZeropsProject,
   type ZeropsService,
   type ZeropsServicePort,
+  type ZeropsStatHistoryItem,
   type ZeropsStatPair,
 } from "./api.ts";
 
@@ -35,6 +36,15 @@ export interface ZeropsTopologyProject {
  * both in the unit the field says.
  */
 export interface ZeropsServiceUsage {
+  readonly containers: number;
+  readonly cores: ZeropsStatPair;
+  readonly memoryGb: ZeropsStatPair;
+  readonly diskGb: ZeropsStatPair;
+}
+
+/** One bucket of a service's history: what it held and used over the hour starting at `at`. */
+export interface ZeropsUsageSample {
+  readonly at: string;
   readonly containers: number;
   readonly cores: ZeropsStatPair;
   readonly memoryGb: ZeropsStatPair;
@@ -87,6 +97,8 @@ export interface ZeropsTopologyService {
   readonly deploy?: ZeropsServiceDeploy;
   /** Absent until the first current-stats read answers, or when the service has no container. */
   readonly usage?: ZeropsServiceUsage;
+  /** The last buckets of the service's history, oldest first; absent until the read answers. */
+  readonly history?: ReadonlyArray<ZeropsUsageSample>;
 }
 
 export interface ZeropsTopologyView {
@@ -202,6 +214,28 @@ const EMPTY_PAIR: ZeropsStatPair = { used: 0, limit: 0 };
 const addPair = (left: ZeropsStatPair, right: ZeropsStatPair | undefined): ZeropsStatPair =>
   right === undefined ? left : { used: left.used + right.used, limit: left.limit + right.limit };
 
+/** The history read's buckets per stack, in the order the platform returns them (oldest first). */
+function historyByStack(
+  items: ReadonlyArray<ZeropsStatHistoryItem>,
+): ReadonlyMap<string, ReadonlyArray<ZeropsUsageSample>> {
+  const byStack = new Map<string, Array<ZeropsUsageSample>>();
+  for (const item of items) {
+    const samples = byStack.get(item.serviceStackId) ?? [];
+    samples.push({
+      at: item.from,
+      containers: item.containerCount ?? 0,
+      cores: {
+        used: (item.cpuUsed ?? 0) + (item.vCpuUsed ?? 0),
+        limit: (item.cpuLimit ?? 0) + (item.vCpuLimit ?? 0),
+      },
+      memoryGb: { used: item.ramUsed ?? 0, limit: item.ramLimit ?? 0 },
+      diskGb: { used: item.diskUsed ?? 0, limit: item.diskLimit ?? 0 },
+    });
+    byStack.set(item.serviceStackId, samples);
+  }
+  return byStack;
+}
+
 /**
  * Per-stack usage summed over the stack's containers. A container with a
  * dedicated core allocation reports it as `cpu`; a shared one as `vCpu` with
@@ -268,9 +302,11 @@ export function projectTopology(
   services: ReadonlyArray<ZeropsService>,
   processes: ReadonlyArray<ActivityProcess>,
   stats?: ReadonlyArray<ZeropsCurrentStat>,
+  history?: ReadonlyArray<ZeropsStatHistoryItem>,
 ): ZeropsTopologyView {
   const inFlight = inFlightServiceIds(processes);
   const usage = usageByStack(stats ?? []);
+  const samples = historyByStack(history ?? []);
 
   const rows = services
     .filter((service) => !service.isSystem)
@@ -294,6 +330,7 @@ export function projectTopology(
         ...withKey("updatedAt", present(service.lastUpdate)),
         ...withKey("deploy", serviceDeploy(service)),
         ...withKey("usage", usage.get(service.id)),
+        ...withKey("history", samples.get(service.id)),
       };
     });
 

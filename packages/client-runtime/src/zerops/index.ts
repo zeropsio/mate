@@ -17,6 +17,8 @@ export {
   type ZeropsService,
   type ZeropsServicePort,
   type ZeropsCurrentStat,
+  type ZeropsStatHistoryItem,
+  type ZeropsStatHistoryWindow,
   type ZeropsStatPair,
   type ZeropsUser,
 } from "./api.ts";
@@ -97,6 +99,10 @@ export {
 } from "./recipeStore.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export { derivePublicRoutes, type ZeropsPublicRoute } from "./publicRoutes.ts";
+export {
+  summarizeEnvironmentServices,
+  type ZeropsEnvironmentServices,
+} from "./environmentSummary.ts";
 export { assignCandidateMateTints, assignMateTints, preferredMateTint } from "./mateTints.ts";
 export { recipeFromProjectExport, type ExportedRecipe } from "./recipeExport.ts";
 export {

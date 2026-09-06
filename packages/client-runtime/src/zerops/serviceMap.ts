@@ -16,11 +16,13 @@
  */
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
+import type { ZeropsStatPair } from "./api.ts";
 import type {
   ZeropsServiceUsage,
   ZeropsTopologyGroup,
   ZeropsTopologyService,
   ZeropsTopologyView,
+  ZeropsUsageSample,
 } from "./topology.ts";
 
 /** Reading order: what the user builds, what it stores, what runs it. */
@@ -65,9 +67,26 @@ export interface ZeropsServiceFact {
 export interface ZeropsServiceMetric {
   readonly id: "containers" | "cores" | "memory" | "disk";
   readonly label: string;
+  /** The allocation, as the dashboard prints it. */
   readonly value: string;
+  /** What is in use of it; absent on the container count. */
+  readonly used?: string;
   readonly unit?: string;
   readonly fraction?: number;
+}
+
+/** One point of a card's graph: the allocation and what was used of it, at an hour. */
+export interface ZeropsTrendPoint {
+  readonly at: string;
+  readonly used: number;
+  readonly limit: number;
+}
+
+/** The three graphs under a card's figures, oldest point first. */
+export interface ZeropsServiceTrends {
+  readonly cores: ReadonlyArray<ZeropsTrendPoint>;
+  readonly memory: ReadonlyArray<ZeropsTrendPoint>;
+  readonly disk: ReadonlyArray<ZeropsTrendPoint>;
 }
 
 export interface ZeropsServiceRow {
@@ -89,8 +108,10 @@ export interface ZeropsServiceRow {
   readonly meta: ReadonlyArray<ZeropsServiceFact>;
   /** The service's own page in the Zerops dashboard. */
   readonly dashboardUrl: string;
-  /** The live strip; empty until the first current-stats read, or for a service holding no container. */
+  /** The live figures; empty until the first current-stats read, or for a service holding no container. */
   readonly metrics: ReadonlyArray<ZeropsServiceMetric>;
+  /** Cores, RAM and disk over the last day; absent until the history read answers. */
+  readonly trends?: ZeropsServiceTrends;
   /** The paired stage service, folded into its dev row. */
   readonly stage?: ZeropsTopologyService;
   readonly stageTone?: ZeropsServiceTone;
@@ -163,6 +184,9 @@ export function serviceStatusTone(service: ZeropsTopologyService): ZeropsService
   return NOT_RUNNING_STATUSES.has(normalized) ? "muted" : "outline";
 }
 
+const withKey = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> =>
+  value === undefined ? {} : ({ [key]: value } as Record<K, V>);
+
 /** `READY_TO_DEPLOY` → `Ready to deploy`; a token the client has never seen still reads as words. */
 export function zeropsStatusWord(status: string): string {
   const words = status.trim().replaceAll("_", " ").toLowerCase();
@@ -218,12 +242,14 @@ export function zeropsServiceMetrics(
       id: "cores",
       label: "Cores",
       value: formatAmount(usage.cores.limit),
+      used: formatAmount(usage.cores.used),
       ...withFraction(usage.cores.used, usage.cores.limit),
     },
     {
       id: "memory",
       label: "RAM",
       value: formatAmount(usage.memoryGb.limit),
+      used: formatAmount(usage.memoryGb.used),
       unit: "GB",
       ...withFraction(usage.memoryGb.used, usage.memoryGb.limit),
     },
@@ -231,10 +257,29 @@ export function zeropsServiceMetrics(
       id: "disk",
       label: "Disk",
       value: formatAmount(usage.diskGb.limit),
+      used: formatAmount(usage.diskGb.used),
       unit: "GB",
       ...withFraction(usage.diskGb.used, usage.diskGb.limit),
     },
   ];
+}
+
+/** The graphs' series: each resource held and used, hour by hour; nothing until the history answers. */
+export function zeropsUsageTrends(
+  history: ReadonlyArray<ZeropsUsageSample> | undefined,
+): ZeropsServiceTrends | undefined {
+  if (history === undefined) return undefined;
+  const series = (pick: (sample: ZeropsUsageSample) => ZeropsStatPair) =>
+    history.map((sample) => ({
+      at: sample.at,
+      used: pick(sample).used,
+      limit: pick(sample).limit,
+    }));
+  return {
+    cores: series((sample) => sample.cores),
+    memory: series((sample) => sample.memoryGb),
+    disk: series((sample) => sample.diskGb),
+  };
 }
 
 const DEPLOY_SOURCE_WORDS: Readonly<Record<string, string>> = {
@@ -366,6 +411,7 @@ export function buildZeropsServiceMap(
           meta: [...hostnameFact, ...zeropsServiceFacts(entry, title)],
           dashboardUrl: serviceDashboardUrl(entry.serviceId),
           metrics: zeropsServiceMetrics(entry.usage),
+          ...withKey("trends", zeropsUsageTrends(entry.history)),
           ...(stage === undefined
             ? {}
             : {
