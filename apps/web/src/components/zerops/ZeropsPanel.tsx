@@ -15,7 +15,6 @@ import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contract
 import { useState } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { zeropsQuickActions } from "@t3tools/client-runtime/zerops/quickActions";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
@@ -25,7 +24,6 @@ import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { useZeropsMates } from "../../zerops/useZeropsMates";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
-import { ZeropsQuickActions } from "./ZeropsQuickActions";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
 
@@ -78,37 +76,30 @@ export function ZeropsPanel({
     );
   const hasControlPlane =
     view !== undefined && view.groups.some((group) => group.group === "infrastructure");
-  const panelSections =
-    view === undefined
-      ? {
-          body: <ZeropsPanelPlaceholder />,
-          quickActions: null,
-        }
-      : {
-          body: (
-            <ZeropsServiceMap
-              agents={hasControlPlane ? agents : undefined}
-              error={topology.error}
-              liveness={topology.liveness}
-              mate={mate}
-              view={view}
-            />
-          ),
-          quickActions: <ZeropsQuickActions actions={zeropsQuickActions(topology.view)} />,
-        };
+  const body =
+    view === undefined ? (
+      <ZeropsPanelPlaceholder />
+    ) : (
+      <ZeropsServiceMap
+        agents={hasControlPlane ? agents : undefined}
+        error={topology.error}
+        liveness={topology.liveness}
+        mate={mate}
+        view={view}
+      />
+    );
 
   return (
     <>
       <ScrollArea className="h-full">
         <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
-          {panelSections.body}
+          {body}
           {agents === null || hasControlPlane ? null : (
             <section className="space-y-2" data-zerops-agent-auth-tray>
               <MicroLabel>Coding agents</MicroLabel>
               {agents}
             </section>
           )}
-          {panelSections.quickActions}
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (
