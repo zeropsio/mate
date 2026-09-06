@@ -1,13 +1,14 @@
+import type { ZeropsLifecycle } from "@t3tools/contracts";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import type {
   ZeropsTopologyService,
   ZeropsTopologyView,
 } from "@t3tools/client-runtime/zerops/topology";
-import { ZeropsServiceDetail, ZeropsServiceMap } from "./ZeropsServiceMap";
+import { ZeropsServiceDetail, ZeropsServiceMap, type ZeropsMateOnMap } from "./ZeropsServiceMap";
 
 const service = (
   overrides: Partial<ZeropsTopologyService> & { hostname: string },
@@ -64,12 +65,16 @@ const render = (
     readonly liveness?: "live" | "polling";
     readonly error?: string;
     readonly runningTool?: string;
+    readonly mate?: ZeropsMateOnMap;
+    readonly agents?: ReactNode;
   },
 ): string =>
   renderToStaticMarkup(
     <ZeropsServiceMap
+      agents={options?.agents}
       error={options?.error}
       liveness={options?.liveness}
+      mate={options?.mate}
       view={buildZeropsServiceMap(view, options?.lifecycle, options?.runningTool)}
     />,
   );
@@ -298,6 +303,63 @@ describe("ZeropsServiceMap — the card", () => {
     );
 
     expect(html).toContain("2 services can be adopted");
+  });
+});
+
+describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
+  const zcp = service({
+    hostname: "zcp",
+    type: "ubuntu/zcp@1",
+    group: "infrastructure",
+    ports: [{ port: 8080, scheme: "http" }],
+  });
+  const fen: ZeropsMateOnMap = { name: "Fen", tint: "coral", face: "working" };
+
+  it("says who lives in the control plane, the face wearing the conversation's state", () => {
+    const html = render(topology([service({ hostname: "app" }), zcp]), { mate: fen });
+
+    const home = html.slice(html.indexOf('data-zerops-service-row="control-plane"'));
+    expect(home).toContain("data-zerops-mate-home");
+    expect(home).toContain('data-mate-face-tint="coral"');
+    expect(home).toContain('data-mate-face-state="working"');
+    expect(home).toMatch(/>Fen<\/span><span[^>]*> lives here<\/span>/u);
+    // Fen lives in the control plane, not in the app.
+    expect(html.match(/data-zerops-mate-home/gu)).toHaveLength(1);
+    expect(html.indexOf("data-zerops-mate-home")).toBeGreaterThan(
+      html.indexOf("Zerops Control Plane"),
+    );
+  });
+
+  it("says nothing about a Mate when nobody is known to live here", () => {
+    const html = render(topology([zcp]));
+
+    expect(html).not.toContain("data-zerops-mate-home");
+    expect(html).not.toContain("lives here");
+  });
+
+  it("hangs the agents card from the control-plane card, outside its hover pop", () => {
+    const html = render(topology([service({ hostname: "app" }), zcp]), {
+      mate: fen,
+      agents: <div data-test-agents="true">agents</div>,
+    });
+
+    const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
+    const rowEnd = html.indexOf("</li>", rowAt);
+    const row = html.slice(rowAt, rowEnd);
+    const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
+    const mintEnd = row.indexOf("</section>", mintAt);
+    const trayAt = row.indexOf("data-zerops-agent-auth-tray");
+    expect(trayAt).toBeGreaterThan(mintEnd);
+    expect(row).toContain('data-test-agents="true"');
+    // The Mate line is the last thing in the mint before the card grows out of it.
+    expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(mintEnd);
+    expect(html.match(/data-zerops-agent-auth-tray/gu)).toHaveLength(1);
+  });
+
+  it("hangs nothing when there is no agents card", () => {
+    const html = render(topology([zcp]), { mate: fen });
+
+    expect(html).not.toContain("data-zerops-agent-auth-tray");
   });
 });
 

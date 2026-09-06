@@ -4,6 +4,12 @@
  *
  * Reads both feeds and renders. Nothing here mutates the project — the agent
  * owns every change, through MCP.
+ *
+ * The coding agents' card is the control plane's: it is handed to the map,
+ * which grows it out of the control plane's card, beside the Mate who lives
+ * there. Only while the map has no control plane to hang it from — the
+ * project unread, or read and found without one — does the card stand on its
+ * own under a heading.
  */
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { useState } from "react";
@@ -14,7 +20,9 @@ import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
+import { useZeropsMates } from "../../zerops/useZeropsMates";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsQuickActions } from "./ZeropsQuickActions";
@@ -48,6 +56,28 @@ export function ZeropsPanel({
   const authorizationAgent = authorizationSnapshot?.agents.find(
     (agent) => agent.agentId === authorizationAgentId,
   );
+  const mates = useZeropsMates();
+  const activity = useZeropsAgentActivity();
+  const environmentId = threadRef?.environmentId;
+  const mateIdentity = environmentId === undefined ? undefined : mates.get(environmentId);
+  const mate =
+    mateIdentity === undefined || environmentId === undefined
+      ? undefined
+      : {
+          name: mateIdentity.name,
+          tint: mateIdentity.tint,
+          face: activity.get(environmentId)?.face ?? "idle",
+        };
+  const agents =
+    agentAuthCard === null ? null : (
+      <ZeropsAgentAuthCard
+        onCancel={cancelAgentLogin}
+        onSignIn={setAuthorizationAgentId}
+        snapshot={agentAuthCard}
+      />
+    );
+  const hasControlPlane =
+    view !== undefined && view.groups.some((group) => group.group === "infrastructure");
   const panelSections =
     view === undefined
       ? {
@@ -56,7 +86,13 @@ export function ZeropsPanel({
         }
       : {
           body: (
-            <ZeropsServiceMap error={topology.error} liveness={topology.liveness} view={view} />
+            <ZeropsServiceMap
+              agents={hasControlPlane ? agents : undefined}
+              error={topology.error}
+              liveness={topology.liveness}
+              mate={mate}
+              view={view}
+            />
           ),
           quickActions: <ZeropsQuickActions actions={zeropsQuickActions(topology.view)} />,
         };
@@ -66,14 +102,10 @@ export function ZeropsPanel({
       <ScrollArea className="h-full">
         <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
           {panelSections.body}
-          {agentAuthCard === null ? null : (
+          {agents === null || hasControlPlane ? null : (
             <section className="space-y-2" data-zerops-agent-auth-tray>
               <MicroLabel>Coding agents</MicroLabel>
-              <ZeropsAgentAuthCard
-                onCancel={cancelAgentLogin}
-                onSignIn={setAuthorizationAgentId}
-                snapshot={agentAuthCard}
-              />
+              {agents}
             </section>
           )}
           {panelSections.quickActions}

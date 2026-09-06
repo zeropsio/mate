@@ -60,6 +60,19 @@ vi.mock("../../zerops/useAgentLoginCancel", () => ({
   useAgentLoginCancel: () => actions.cancel,
 }));
 
+const mateState = vi.hoisted(() => ({
+  mates: new Map<string, { name: string; tint: string; project: string | undefined }>(),
+  faces: new Map<string, { face: string }>(),
+}));
+
+vi.mock("../../zerops/useZeropsMates", () => ({
+  useZeropsMates: () => mateState.mates,
+}));
+
+vi.mock("../../zerops/useZeropsAgentActivity", () => ({
+  useZeropsAgentActivity: () => mateState.faces,
+}));
+
 vi.mock("~/components/ui/button", () => ({
   Button: ({
     children,
@@ -91,6 +104,23 @@ const VIEW: ZeropsTopologyView = {
   services: [],
   warnings: [],
   usageRead: false,
+};
+
+/** A project with its control plane — the container the Mate lives in. */
+const VIEW_WITH_ZCP: ZeropsTopologyView = {
+  ...VIEW,
+  services: [
+    {
+      serviceId: "svc-zcp",
+      hostname: "zcp",
+      type: "ubuntu/zcp@1",
+      status: "ACTIVE",
+      group: "infrastructure",
+      transient: false,
+      routes: [],
+      ports: [{ port: 8080, scheme: "http" }],
+    },
+  ],
 };
 
 const resolved = (
@@ -165,6 +195,8 @@ beforeEach(() => {
   actions.signIn.mockReset();
   actions.terminalSurface = null;
   buttonState.handlers.clear();
+  mateState.mates.clear();
+  mateState.faces.clear();
   feedState.topology = {
     view: undefined,
     liveness: undefined,
@@ -289,4 +321,58 @@ describe("ZeropsPanel agent authorization ownership", () => {
       }
     },
   );
+});
+
+describe("ZeropsPanel — the Mate's home", () => {
+  it("hangs the agents card from the control-plane card when the project has one", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AGENT_AUTH} threadRef={THREAD_REF} />,
+    );
+
+    const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
+    expect(rowAt).toBeGreaterThan(0);
+    const row = html.slice(rowAt, html.indexOf("</li>", rowAt));
+    expect(row).toContain("data-zerops-agent-auth-tray");
+    expect(row).toContain("data-zerops-agent-auth-card");
+    expect(html.match(/data-zerops-agent-auth-card/gu)).toHaveLength(1);
+    // No second heading: the card is part of the control plane's, not a section of its own.
+    expect(html).not.toContain("Coding agents");
+  });
+
+  it("keeps the agents card on its own under a heading while there is no control plane to hang it from", () => {
+    feedState.topology = resolved(VIEW);
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AGENT_AUTH} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain("Coding agents");
+    expect(html).toContain("data-zerops-agent-auth-tray");
+    expect(html).not.toContain('data-zerops-service-row="control-plane"');
+  });
+
+  it("says who lives in the control plane, with the face the conversation wears", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, { name: "Fen", tint: "coral", project: "Acme" });
+    mateState.faces.set(THREAD_REF.environmentId, { face: "needs" });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain("data-zerops-mate-home");
+    expect(html).toContain('data-mate-face-tint="coral"');
+    expect(html).toContain('data-mate-face-state="needs"');
+    expect(html).toContain(">Fen</span>");
+  });
+
+  it("wears the idle face until the conversation has an activity, and names nobody it does not know", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, { name: "Fen", tint: "sky", project: undefined });
+    const idle = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+    expect(idle).toContain('data-mate-face-state="idle"');
+
+    mateState.mates.clear();
+    const nobody = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />,
+    );
+    expect(nobody).not.toContain("data-zerops-mate-home");
+  });
 });

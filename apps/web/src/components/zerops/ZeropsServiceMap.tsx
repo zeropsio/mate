@@ -12,8 +12,15 @@
  * dashboard shows around those — what the service is, how it was deployed,
  * where it answers, what is in use of its allocation — waits in a pop that
  * opens on hover. A service holding nothing (not deployed yet) is one line.
+ *
+ * The control plane's card is also the Mate's home: under its resources it
+ * says who lives there — the face wearing the conversation's state, the name
+ * — and the coding agents' card, the agents the Mate works through, grows out
+ * of its bottom edge rather than standing on its own further down the panel.
  */
+import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
+import type { ReactElement, ReactNode } from "react";
 
 import type {
   ZeropsServiceFact,
@@ -34,7 +41,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "../../zerops/projectTopologyWatcher";
-import { FlatCard, LivenessLine, MicroLabel, MintPanel, StatusDot } from "./primitives";
+import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
@@ -60,6 +67,13 @@ const RESOURCES: ReadonlyArray<{
 
 const HOVER_OPEN_DELAY_MS = 220;
 const HOVER_CLOSE_DELAY_MS = 120;
+
+/** Who lives in the control plane, as the caller knows them: the name, the colour, today's face. */
+export interface ZeropsMateOnMap {
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly face: MateMarkState;
+}
 
 function ServiceStatus({
   service,
@@ -376,47 +390,134 @@ function StageLine({
   );
 }
 
-function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
-  // The infrastructure group is, by the client projection's own grouping
-  // rule, the zcp container and nothing else — it gets the mint panel.
-  const isControlPlane = row.service.group === "infrastructure";
-  const Card = isControlPlane ? MintPanel : FlatCard;
+/** Who lives here: the Mate's face in its colour, wearing the conversation's state, and the sentence. */
+function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   return (
-    <li data-zerops-service-row={isControlPlane ? "control-plane" : "service"}>
-      <Popover>
-        <PopoverTrigger
-          className="block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          closeDelay={HOVER_CLOSE_DELAY_MS}
-          delay={HOVER_OPEN_DELAY_MS}
-          nativeButton={false}
-          openOnHover
-          render={<Card className="px-3.5 py-2.5" />}
-        >
-          <div className="flex min-w-0 max-w-full items-baseline justify-between gap-3">
-            <span className="flex min-w-0 max-w-full items-baseline gap-2">
-              <ServiceName className="text-sm leading-snug" row={row} />
-              {row.service.routes.map((route) => (
-                <RouteGlyph key={route.url} route={route} />
-              ))}
-            </span>
-            <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
-          </div>
-          <ServiceResources row={row} usageRead={usageRead} />
-          {row.stage === undefined ||
-          row.stageTone === undefined ||
-          row.stageStatusLabel === undefined ? null : (
-            <StageLine label={row.stageStatusLabel} stage={row.stage} tone={row.stageTone} />
-          )}
-        </PopoverTrigger>
-        <PopoverPopup align="start" side="left" sideOffset={8}>
-          <ZeropsServiceDetail row={row} />
-        </PopoverPopup>
-      </Popover>
+    <div className="mt-2.5 flex min-w-0 max-w-full items-center gap-2" data-zerops-mate-home>
+      <MateFace size="sm" state={mate.face} tint={mate.tint} />
+      <span className="min-w-0 text-sm leading-snug">
+        <span className="font-medium text-foreground">{mate.name}</span>
+        <span className="text-muted-foreground"> lives here</span>
+      </span>
+    </div>
+  );
+}
+
+/** The two lines every card has, plus the stage line a dev service folds in. Inside the hover pop's trigger. */
+function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  return (
+    <>
+      <div className="flex min-w-0 max-w-full items-baseline justify-between gap-3">
+        <span className="flex min-w-0 max-w-full items-baseline gap-2">
+          <ServiceName className="text-sm leading-snug" row={row} />
+          {row.service.routes.map((route) => (
+            <RouteGlyph key={route.url} route={route} />
+          ))}
+        </span>
+        <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
+      </div>
+      <ServiceResources row={row} usageRead={usageRead} />
+      {row.stage === undefined ||
+      row.stageTone === undefined ||
+      row.stageStatusLabel === undefined ? null : (
+        <StageLine label={row.stageStatusLabel} stage={row.stage} tone={row.stageTone} />
+      )}
+    </>
+  );
+}
+
+const TRIGGER_CLASS =
+  "block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function ServiceCard({
+  row,
+  usageRead,
+  children,
+  render,
+}: {
+  row: ZeropsServiceRow;
+  usageRead: boolean;
+  children?: ReactNode;
+  render: ReactElement<Record<string, unknown>>;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        className={TRIGGER_CLASS}
+        closeDelay={HOVER_CLOSE_DELAY_MS}
+        delay={HOVER_OPEN_DELAY_MS}
+        nativeButton={false}
+        openOnHover
+        render={render}
+      >
+        <ServiceCardBody row={row} usageRead={usageRead} />
+        {children}
+      </PopoverTrigger>
+      <PopoverPopup align="start" side="left" sideOffset={8}>
+        <ZeropsServiceDetail row={row} />
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+/**
+ * The control plane's card: the mint panel, the Mate's home. The hover pop's
+ * trigger is the card's text alone; the agents card is slotted into the
+ * panel's bottom edge — pulled up over the mint's last 12 px, inset from its
+ * sides — so it reads as growing out of the container it signs in to, and a
+ * hand on it never opens the control plane's pop.
+ */
+function ControlPlaneRow({
+  row,
+  usageRead,
+  mate,
+  agents,
+}: {
+  row: ZeropsServiceRow;
+  usageRead: boolean;
+  mate: ZeropsMateOnMap | undefined;
+  agents: ReactNode;
+}) {
+  const hangs = agents !== undefined && agents !== null;
+  return (
+    <li data-zerops-service-row="control-plane">
+      <MintPanel className={hangs ? "pb-3" : undefined}>
+        <ServiceCard render={<div className="px-3.5 py-2.5" />} row={row} usageRead={usageRead}>
+          {mate === undefined ? null : <MateHome mate={mate} />}
+        </ServiceCard>
+      </MintPanel>
+      {hangs ? (
+        <div className="relative -mt-3 mx-3" data-zerops-agent-auth-tray>
+          {agents}
+        </div>
+      ) : null}
     </li>
   );
 }
 
-function ServiceGroup({ group, usageRead }: { group: ZeropsServiceMapGroup; usageRead: boolean }) {
+function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  return (
+    <li data-zerops-service-row="service">
+      <ServiceCard
+        render={<FlatCard className="px-3.5 py-2.5" />}
+        row={row}
+        usageRead={usageRead}
+      />
+    </li>
+  );
+}
+
+function ServiceGroup({
+  group,
+  usageRead,
+  mate,
+  agents,
+}: {
+  group: ZeropsServiceMapGroup;
+  usageRead: boolean;
+  mate: ZeropsMateOnMap | undefined;
+  agents: ReactNode;
+}) {
   return (
     <section className="space-y-1.5" data-zerops-service-group={group.group}>
       <h3 className="flex items-baseline gap-1.5">
@@ -426,9 +527,21 @@ function ServiceGroup({ group, usageRead }: { group: ZeropsServiceMapGroup; usag
         )}
       </h3>
       <ul className="space-y-1.5">
-        {group.rows.map((row) => (
-          <ServiceRow key={row.service.hostname} row={row} usageRead={usageRead} />
-        ))}
+        {group.rows.map((row) =>
+          // The infrastructure group is, by the client projection's own
+          // grouping rule, the zcp container and nothing else.
+          row.service.group === "infrastructure" ? (
+            <ControlPlaneRow
+              agents={agents}
+              key={row.service.hostname}
+              mate={mate}
+              row={row}
+              usageRead={usageRead}
+            />
+          ) : (
+            <ServiceRow key={row.service.hostname} row={row} usageRead={usageRead} />
+          ),
+        )}
       </ul>
     </section>
   );
@@ -438,12 +551,18 @@ export function ZeropsServiceMap({
   view,
   liveness,
   error,
+  mate,
+  agents,
 }: {
   readonly view: ZeropsServiceMapView | undefined;
   /** The platform-websocket connection's own state — `useProjectTopology`'s signal, not the view's. */
   readonly liveness?: ProjectTopologyLiveness | undefined;
   /** The most recent `listProjectServices` read's failure, if the last one failed. */
   readonly error?: string | undefined;
+  /** Who lives in the control plane, when the caller knows — it is written on the control plane's card. */
+  readonly mate?: ZeropsMateOnMap | undefined;
+  /** The coding agents' card, which grows out of the control plane's card. Nothing when there is none to show. */
+  readonly agents?: ReactNode;
 }) {
   // No view yet — no session, no resolved project, or the first read still pending.
   if (view === undefined) {
@@ -482,7 +601,13 @@ export function ZeropsServiceMap({
         </p>
       ) : (
         view.groups.map((group) => (
-          <ServiceGroup group={group} key={group.group} usageRead={view.usageRead} />
+          <ServiceGroup
+            agents={agents}
+            group={group}
+            key={group.group}
+            mate={mate}
+            usageRead={view.usageRead}
+          />
         ))
       )}
       {view.warnings.map((warning) => (
