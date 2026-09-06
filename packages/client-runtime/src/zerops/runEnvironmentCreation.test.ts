@@ -92,7 +92,7 @@ describe("runEnvironmentCreation", () => {
       undeployed: [],
     });
     expect(calls).toEqual([
-      "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate:bot:Ada",
+      "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
       "container:proj-1",
       `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
     ]);
