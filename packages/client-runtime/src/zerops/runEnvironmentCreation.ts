@@ -28,6 +28,7 @@
  */
 
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
+import type { ZeropsAgentType } from "./newProject.ts";
 
 /** The platform calls a creation makes, in the shape `api.ts` offers them. */
 export interface EnvironmentCreationPlatform {
@@ -39,6 +40,7 @@ export interface EnvironmentCreationPlatform {
   }) => Promise<{ readonly id: string }>;
   readonly importDevelopmentContainer: (input: {
     readonly projectId: string;
+    readonly agents: ReadonlyArray<ZeropsAgentType>;
   }) => Promise<{ readonly serviceName: string }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
   /**
@@ -175,6 +177,7 @@ export async function runEnvironmentCreation(
         case "import-container": {
           const imported = await input.platform.importDevelopmentContainer({
             projectId: requireProject(projectId),
+            agents: step.agents,
           });
           serviceName = imported.serviceName;
           break;

@@ -22,6 +22,7 @@ import {
 } from "./groups.ts";
 import { RECIPE_GROUP_PATH, type ZeropsGroupRecord } from "./recipeStore.ts";
 import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
+import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -1424,6 +1425,18 @@ export class ZeropsApiClient {
       `/service-stack/${serviceId}/env`,
     );
     return body.items ?? [];
+  }
+
+  /**
+   * The coding agents a zcp container has signed in with
+   * (`agentSelection.ts`).
+   *
+   * The env records stop here: they carry every secret the service holds, and
+   * although the platform redacts their values there is no reason for the
+   * shape to travel. Only the derived agent list leaves.
+   */
+  async readAuthorizedAgents(serviceId: string): Promise<ReadonlyArray<ZeropsAgentType>> {
+    return agentsFromOAuthFlags(await this.#serviceEnv(serviceId));
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */

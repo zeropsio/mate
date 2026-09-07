@@ -118,7 +118,7 @@ export const ZEROPS_AGENT_TYPE_CANONICAL_ORDER: ReadonlyArray<ZeropsAgentType> =
 ];
 
 /** Mirrors the GUI's `agentTypeToEnvSuffix`: uppercase, hyphens to underscores. */
-function agentTypeToEnvSuffix(agentType: ZeropsAgentType): string {
+export function agentTypeToEnvSuffix(agentType: ZeropsAgentType): string {
   return agentType.toUpperCase().replace(/-/g, "_");
 }
 
