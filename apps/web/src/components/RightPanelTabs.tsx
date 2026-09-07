@@ -368,7 +368,7 @@ function surfaceTitle(
     case "zerops":
       return "Zerops";
     case "browser":
-      return "Browser";
+      return "service" in surface ? surface.service : "Browser";
   }
 }
 

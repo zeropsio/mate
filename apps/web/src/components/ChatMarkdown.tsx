@@ -1,3 +1,4 @@
+import { ServiceBrowserLink } from "./ServiceBrowserLink";
 import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
@@ -1880,7 +1881,12 @@ function ChatMarkdown({
           const isSameDocumentLink = href?.startsWith("#") ?? false;
           const onClick = props.onClick;
           const link = (
-            <a
+            <ServiceBrowserLink
+              onOpen={
+                threadRef
+                  ? (url) => useRightPanelStore.getState().openUrl(threadRef, url)
+                  : undefined
+              }
               {...props}
               href={href}
               target={isSameDocumentLink ? undefined : "_blank"}
@@ -1891,8 +1897,7 @@ function ChatMarkdown({
                   handleMarkdownFragmentClick(event, href);
                   return;
                 }
-                // Markdown anchors keep their native `_blank` behavior. The context menu below
-                // adds the thread link/unlink actions for recognized change requests.
+                // Modified clicks and links outside a conversation retain external opening.
                 if (href) openChangeRequestLink(event, href);
               }}
               onContextMenu={(event) => {
@@ -1948,7 +1953,7 @@ function ChatMarkdown({
               ) : (
                 children
               )}
-            </a>
+            </ServiceBrowserLink>
           );
           if (!faviconHost || !href) {
             return link;

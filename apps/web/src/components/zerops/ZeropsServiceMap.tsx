@@ -1,3 +1,4 @@
+import { ServiceBrowserLink } from "../ServiceBrowserLink";
 /**
  * The Zerops service map: what exists in the project, grouped and live.
  *
@@ -251,7 +252,7 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
       data-zerops-service-route-button
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      render={<a href={route.url} rel="noreferrer" target="_blank" />}
+      render={<ServiceBrowserLink href={route.url} rel="noreferrer" target="_blank" />}
       size="icon-sm"
       variant="outline"
     >
@@ -263,7 +264,7 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
 function RouteLink({ href, label }: { href: string; label: string }) {
   return (
     <li className="flex min-w-0 max-w-full">
-      <a
+      <ServiceBrowserLink
         className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-sm text-xs text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
         href={href}
         rel="noreferrer"
@@ -271,7 +272,7 @@ function RouteLink({ href, label }: { href: string; label: string }) {
       >
         <span className="min-w-0 break-all">{label}</span>
         <ExternalLinkIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
-      </a>
+      </ServiceBrowserLink>
     </li>
   );
 }

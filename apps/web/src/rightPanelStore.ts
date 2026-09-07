@@ -48,7 +48,8 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" }
   | { id: "zerops"; kind: "zerops" }
-  | { id: "browser"; kind: "browser" };
+  | { id: "browser"; kind: "browser" }
+  | { id: `service:${string}`; kind: "browser"; service: string; url: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -77,6 +78,8 @@ interface RightPanelStoreState {
     input: Pick<DefaultZeropsPanelInput, "topology" | "usesSheet">,
   ) => void;
   open: (ref: ScopedThreadRef, kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
+  openUrl: (ref: ScopedThreadRef, url: string) => void;
+  openService: (ref: ScopedThreadRef, service: string, url: string) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
@@ -176,6 +179,17 @@ function normalizeRevealLine(line: number | undefined): number | null {
   return Math.max(1, Math.trunc(line));
 }
 
+export function isServiceBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function migratePersistedRightPanelState(persistedState: unknown): {
   byThreadKey: Record<string, ThreadRightPanelState>;
   zeropsDefaultHandledByThreadKey: Record<string, true>;
@@ -203,6 +217,17 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       )
                     ) {
                       return [];
+                    }
+                    if (surface.kind === "browser" && surface.id !== "browser") {
+                      if (
+                        !("url" in surface) ||
+                        typeof surface.url !== "string" ||
+                        !isServiceBrowserUrl(surface.url) ||
+                        !("service" in surface) ||
+                        typeof surface.service !== "string" ||
+                        surface.id !== `service:${surface.service}`
+                      )
+                        return [];
                     }
                     if (surface.kind === "file") {
                       const revealLine =
@@ -299,7 +324,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       byThreadKey: {},
       zeropsDefaultHandledByThreadKey: {},
       ensureZeropsDefault: (ref, input) =>
@@ -332,6 +357,59 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             upsertSurface(current, singletonSurface(kind)),
           ),
         })),
+      openUrl: (ref, url) => {
+        if (!isServiceBrowserUrl(url)) return;
+        const target = new URL(url);
+        const surfaces = get().byThreadKey[scopedThreadKey(ref)]?.surfaces ?? [];
+        const existing = surfaces.find(
+          (surface) =>
+            surface.kind === "browser" &&
+            "url" in surface &&
+            new URL(surface.url).origin === target.origin,
+        );
+        get().openService(
+          ref,
+          existing && "service" in existing ? existing.service : target.host,
+          url,
+        );
+      },
+      openService: (ref, service, url) => {
+        if (!isServiceBrowserUrl(url)) return;
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const sameOrigin = current.surfaces.find(
+              (entry) =>
+                entry.kind === "browser" &&
+                "url" in entry &&
+                new URL(entry.url).origin === new URL(url).origin,
+            );
+            const surface: RightPanelSurface = {
+              id: `service:${service}`,
+              kind: "browser",
+              service,
+              url,
+            };
+            return {
+              isOpen: true,
+              activeSurfaceId: surface.id,
+              surfaces: current.surfaces.some(
+                (entry) => entry.id === surface.id || entry.id === sameOrigin?.id,
+              )
+                ? current.surfaces
+                    .filter(
+                      (entry) =>
+                        entry.id !== sameOrigin?.id ||
+                        entry.id === surface.id ||
+                        !current.surfaces.some((other) => other.id === surface.id),
+                    )
+                    .map((entry) =>
+                      entry.id === surface.id || entry.id === sameOrigin?.id ? surface : entry,
+                    )
+                : [...current.surfaces, surface],
+            };
+          }),
+        }));
+      },
       openFile: (ref, relativePath, line) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {

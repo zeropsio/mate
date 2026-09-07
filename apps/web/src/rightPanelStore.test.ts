@@ -762,3 +762,58 @@ describe("rightPanelStore", () => {
     });
   });
 });
+
+describe("service browser tabs", () => {
+  it("reuses a service tab, updates its route and keeps other threads isolated", () => {
+    const store = useRightPanelStore.getState();
+    store.openService(refA, "weatherapp", "https://weather.example/");
+    store.openService(refA, "api", "https://api.example/");
+    store.openService(refA, "weatherapp", "https://weather.example/new");
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces).toHaveLength(2);
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({ service: "weatherapp", url: "https://weather.example/new" });
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refB).surfaces,
+    ).toHaveLength(0);
+    store.closeSurface(refA, state.activeSurfaceId!);
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({ service: "api" });
+  });
+  it("rejects non-web URLs", () => {
+    useRightPanelStore.getState().openService(refA, "app", "javascript:alert(1)");
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toHaveLength(0);
+  });
+});
+
+describe("web links in conversations", () => {
+  it("opens arbitrary websites and reuses the deployed service tab for the same origin", () => {
+    const store = useRightPanelStore.getState();
+    store.openService(refA, "weatherapp", "https://weather.example/");
+    store.openUrl(refA, "https://weather.example/about");
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toHaveLength(1);
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({ service: "weatherapp", url: "https://weather.example/about" });
+    store.openUrl(refA, "https://docs.example/page");
+    expect(
+      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
+    ).toMatchObject({ service: "docs.example" });
+    for (const url of [
+      "mailto:hello@example.com",
+      "file:///tmp/a",
+      "#section",
+      "javascript:alert(1)",
+    ])
+      store.openUrl(refA, url);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toHaveLength(2);
+  });
+});

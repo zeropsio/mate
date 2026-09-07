@@ -96,13 +96,36 @@ function useTick(active: boolean): void {
   }, [active]);
 }
 
-function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
+function UrlChip({
+  label,
+  url,
+  service,
+  threadRef,
+}: {
+  readonly label: string;
+  readonly url: string;
+  readonly service: string;
+  readonly threadRef?: ScopedThreadRef | null | undefined;
+}) {
   return (
     <a
       aria-label={`Open ${url}`}
       className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
       data-zerops-chip-kind="url"
       href={url}
+      onClick={(event) => {
+        if (
+          !threadRef ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        )
+          return;
+        event.preventDefault();
+        useRightPanelStore.getState().openService(threadRef, service, url);
+      }}
       rel="noreferrer"
       target="_blank"
     >
@@ -372,7 +395,13 @@ export function ZeropsOperationCard(props: {
           {links.length > 0 ? (
             <div aria-label="URLs" className="flex flex-wrap gap-1.5">
               {links.map((link) => (
-                <UrlChip key={link.url} label={link.label} url={link.url} />
+                <UrlChip
+                  key={link.url}
+                  label={link.label}
+                  url={link.url}
+                  service={operation.subject}
+                  threadRef={threadRef}
+                />
               ))}
             </div>
           ) : null}

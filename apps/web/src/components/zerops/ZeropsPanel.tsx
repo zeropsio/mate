@@ -1,3 +1,5 @@
+import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
+import { useRightPanelStore } from "../../rightPanelStore";
 /**
  * The Zerops right-panel surface: the service map for the project this thread
  * runs in.
@@ -85,13 +87,28 @@ export function ZeropsPanel({
     view === undefined ? (
       <ZeropsPanelPlaceholder />
     ) : (
-      <ZeropsServiceMap
-        agents={hasControlPlane ? agents : undefined}
-        error={topology.error}
-        liveness={topology.liveness}
-        mate={mate}
-        view={view}
-      />
+      <ServiceBrowserLinkContext
+        value={
+          threadRef
+            ? (url) => {
+                const service =
+                  view.groups
+                    .flatMap((group) => group.rows)
+                    .find((row) => row.service.routes.some((route) => route.url === url))?.service
+                    .hostname ?? new URL(url).hostname;
+                useRightPanelStore.getState().openService(threadRef, service, url);
+              }
+            : null
+        }
+      >
+        <ZeropsServiceMap
+          agents={hasControlPlane ? agents : undefined}
+          error={topology.error}
+          liveness={topology.liveness}
+          mate={mate}
+          view={view}
+        />
+      </ServiceBrowserLinkContext>
     );
 
   return (

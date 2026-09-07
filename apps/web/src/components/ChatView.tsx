@@ -148,6 +148,7 @@ import {
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
@@ -6631,7 +6632,9 @@ function ChatViewContent(props: ChatViewProps) {
                 />
               );
             case "browser":
-              return <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />;
+              return "url" in activeRightPanelSurface ? null : (
+                <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
+              );
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
@@ -7120,6 +7123,11 @@ function ChatViewContent(props: ChatViewProps) {
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
+          <ServiceBrowserPanels
+            key={activeThreadKey}
+            surfaces={rightPanelState.surfaces}
+            activeSurfaceId={activeRightPanelSurface?.id ?? null}
+          />
         </RightPanelTabs>
       ) : null}
       {shouldUseRightPanelSheet && rightPanelOpen && activeThreadRef ? (
@@ -7147,6 +7155,11 @@ function ChatViewContent(props: ChatViewProps) {
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}
+            <ServiceBrowserPanels
+              key={activeThreadKey}
+              surfaces={rightPanelState.surfaces}
+              activeSurfaceId={activeRightPanelSurface?.id ?? null}
+            />
           </RightPanelTabs>
         </RightPanelSheet>
       ) : null}
