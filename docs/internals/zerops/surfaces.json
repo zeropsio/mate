@@ -170,6 +170,65 @@
       "captures": []
     },
     {
+      "id": "zerops-data",
+      "title": "Zerops Data panel",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBlob.tsx",
+        "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
+        "packages/client-runtime/src/zerops/dataConsole.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Data (shortcut V)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/dataConsole",
+        "subscribeZeropsDataConsole",
+        "zerops.dataConsole.call"
+      ],
+      "reverseStates": [
+        {
+          "action": "Expand a container node",
+          "reverse": "Collapse a container node"
+        },
+        {
+          "action": "Collapse a container node",
+          "reverse": "Expand a container node"
+        },
+        {
+          "action": "Select a service, node, or run a query",
+          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Data panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsDataPanel.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTree.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTable.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBlob.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataQuery.test.tsx",
+        "packages/client-runtime/src/zerops/dataConsole.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-service-map",
       "title": "Zerops service map",
       "components": [

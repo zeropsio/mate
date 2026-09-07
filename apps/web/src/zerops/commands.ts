@@ -4,6 +4,8 @@
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
+ * - `dataConsoleCall` — server scope: `AuthOrchestrationReadScope` (read-only
+ *   in this slice — `dataconsole-api.md` §3, spec-dataconsole.md §4.3).
  *
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
@@ -31,5 +33,10 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsBrowserInput,
   });
 
-  return { agentLoginStart, agentLoginCancel, browserInput };
+  const dataConsoleCall = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:dataConsoleCall",
+    tag: WS_METHODS.zeropsDataConsoleCall,
+  });
+
+  return { agentLoginStart, agentLoginCancel, browserInput, dataConsoleCall };
 }

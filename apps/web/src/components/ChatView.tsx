@@ -150,6 +150,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
+import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -3403,6 +3404,10 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "browser");
   }, [activeThreadRef]);
+  const addDataSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "data");
+  }, [activeThreadRef]);
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This is the writer half of
   // the topology split (`useProjectTopology`) — the panel mounts the same
@@ -6576,6 +6581,9 @@ function ChatViewContent(props: ChatViewProps) {
       case "browser":
         addBrowserSurface();
         return;
+      case "data":
+        addDataSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -6634,6 +6642,13 @@ function ChatViewContent(props: ChatViewProps) {
             case "browser":
               return "url" in activeRightPanelSurface ? null : (
                 <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
+              );
+            case "data":
+              return (
+                <ZeropsDataPanel
+                  key={zeropsChrome.threadRef?.environmentId}
+                  threadRef={zeropsChrome.threadRef}
+                />
               );
             case "files":
             case "file":

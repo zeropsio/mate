@@ -206,6 +206,29 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("carries a persisted data surface through the v16 migration unchanged", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "data",
+            surfaces: [{ id: "data", kind: "data" }],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "data",
+          surfaces: [{ id: "data", kind: "data" }],
+        },
+      },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
+    });
+  });
+
   it("drops persisted preview surfaces and does not reopen an empty panel", () => {
     expect(
       migratePersistedRightPanelState({
@@ -477,6 +500,16 @@ describe("rightPanelStore", () => {
       isOpen: true,
       activeSurfaceId: "files",
       surfaces: [{ id: "files", kind: "files" }],
+    });
+  });
+
+  it("keeps data as a singleton surface", () => {
+    useRightPanelStore.getState().open(refA, "data");
+    useRightPanelStore.getState().open(refA, "data");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "data",
+      surfaces: [{ id: "data", kind: "data" }],
     });
   });
 
