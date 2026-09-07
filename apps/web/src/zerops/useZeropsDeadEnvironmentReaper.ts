@@ -9,10 +9,16 @@
  * the Zerops door, cannot connect, and resolves to a project the account no
  * longer has, is removed — with the project it remembered.
  *
- * Deliberately narrow: only a failing socket, only a project this
- * organization knew about, only after a load with no error, once per session.
- * A live environment is never touched, and neither is one whose project we
- * simply have not learned.
+ * It also forgets a container belonging to an account that is not the one
+ * signed in. Signing in as somebody else left those registered and failing
+ * their credential exchange forever, which surfaced as "Could not repair the
+ * Zerops session" about a project the signed-in user has never seen.
+ *
+ * Deliberately narrow: only a failing socket, only after a load with no error,
+ * once per session. A live environment is never touched, neither is one whose
+ * project we simply have not learned, and neither is one in another
+ * organization of the *same* account, whose projects were never read.
+ * `shouldForgetZeropsEnvironment` holds the whole rule.
  */
 
 import { useEffect, useRef } from "react";
@@ -26,6 +32,7 @@ import { environmentCatalog } from "~/connection/catalog";
 import { useEnvironments } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 
+import { shouldForgetZeropsEnvironment } from "./deadEnvironment";
 import { connectionOriginFor } from "./firstPromptStorage";
 import { browserZeropsStorage } from "./storage";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
@@ -35,12 +42,14 @@ export function useZeropsDeadEnvironmentReaper(input: {
   readonly isLoading: boolean;
   readonly error: string | null;
   readonly activeOrgId: string | null;
+  /** Every organization the signed-in account belongs to. */
+  readonly accountOrgIds: ReadonlySet<string>;
   readonly enabled: boolean;
 }): void {
   const { environments } = useEnvironments();
   const remove = useAtomCommand(environmentCatalog.remove, { reportFailure: false });
   const attemptedRef = useRef(new Set<string>());
-  const { activeOrgId, candidates, enabled, error, isLoading } = input;
+  const { accountOrgIds, activeOrgId, candidates, enabled, error, isLoading } = input;
 
   useEffect(() => {
     if (!enabled || isLoading || error !== null || activeOrgId === null) return;
@@ -57,8 +66,14 @@ export function useZeropsDeadEnvironmentReaper(input: {
 
       void lookupEnvironmentProjectRef(browserZeropsStorage, environment.environmentId).then(
         async (ref) => {
-          if (cancelled || ref === undefined) return;
-          if (ref.orgId !== activeOrgId || knownProjectIds.has(ref.projectId)) return;
+          if (cancelled) return;
+          const forget = shouldForgetZeropsEnvironment({
+            ref,
+            activeOrgId,
+            accountOrgIds,
+            knownProjectIds,
+          });
+          if (!forget) return;
           await remove(environment.environmentId);
           await forgetEnvironmentProjectRef(browserZeropsStorage, environment.environmentId);
         },
@@ -67,5 +82,5 @@ export function useZeropsDeadEnvironmentReaper(input: {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, candidates, enabled, environments, error, isLoading, remove]);
+  }, [accountOrgIds, activeOrgId, candidates, enabled, environments, error, isLoading, remove]);
 }

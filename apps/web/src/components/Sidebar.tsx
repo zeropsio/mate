@@ -1696,7 +1696,18 @@ export default function Sidebar() {
   // container's presence, not a live session, so a sleeping container changes
   // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
   // else about the account is the projects screen's job.
-  const { status: zeropsStatus, activeOrganization: zeropsOrganization } = useZeropsSession();
+  const {
+    status: zeropsStatus,
+    activeOrganization: zeropsOrganization,
+    organizations: zeropsOrganizations,
+  } = useZeropsSession();
+  // Which organizations exist decides whether an unreachable registration
+  // belongs to another of this account's organizations or to a different
+  // account entirely — the reaper cannot tell them apart without it.
+  const zeropsAccountOrgIds = useMemo(
+    () => new Set(zeropsOrganizations.map((organization) => organization.id)),
+    [zeropsOrganizations],
+  );
   const zeropsSignedIn = zeropsStatus === "signed-in";
   const {
     candidates: zeropsCandidates,
@@ -1720,6 +1731,7 @@ export default function Sidebar() {
     isLoading: zeropsCandidatesLoading,
     error: zeropsCandidatesError,
     activeOrgId: zeropsOrganization?.id ?? null,
+    accountOrgIds: zeropsAccountOrgIds,
     enabled: zeropsSignedIn,
   });
   const router = useRouter();
