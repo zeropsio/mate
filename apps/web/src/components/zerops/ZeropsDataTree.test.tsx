@@ -86,10 +86,11 @@ describe("ZeropsDataTree", () => {
       rootPath: ROOT_PATH,
       tree: loaded,
     });
+    // `applyTreePage` orders a level by name, so `billing` is the first toggle.
     const toggle = findByAttribute(tree, "data-zerops-data-tree-toggle")!;
     expect(toggle.props["aria-expanded"]).toBe(false);
     (toggle.props.onClick as () => void)();
-    expect(onToggleNode).toHaveBeenCalledWith(CONTAINER_NODE);
+    expect(onToggleNode).toHaveBeenCalledWith(OTHER_CONTAINER_NODE);
   });
 
   it("disables Load more while its own path is pending", () => {

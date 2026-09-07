@@ -160,6 +160,11 @@ interface QueryState {
   readonly model: DataConsoleTableModel;
 }
 
+/** Why the grid region is showing something other than rows. */
+type GridNotice =
+  | { readonly kind: "error"; readonly message: string }
+  | { readonly kind: "unsupported" };
+
 interface OpenRow {
   readonly index: number;
   readonly column?: string;
@@ -229,6 +234,7 @@ export function ZeropsDataPanel({
   const [querySort, setQuerySort] = useState<ZeropsDataTableSort | undefined>(undefined);
   const [queryLoadMorePending, setQueryLoadMorePending] = useState(false);
   const [errorText, setErrorText] = useState<string | undefined>(undefined);
+  const [gridNotice, setGridNotice] = useState<GridNotice | undefined>(undefined);
   const [measuredWidth, setMeasuredWidth] = useState<number | undefined>(undefined);
   const [missingServiceRefreshed, setMissingServiceRefreshed] = useState<string | null>(null);
   const servicesRequestedForRef = useRef<EnvironmentId | null>(null);
@@ -267,8 +273,13 @@ export function ZeropsDataPanel({
   }
   const env = environmentId;
 
+  // `onFailure` takes the failure instead of the panel-wide error line, for
+  // the requests whose failure belongs where their result would have gone —
+  // a table read that fails has to say so in the grid region, not underneath
+  // a grid still showing "No rows".
   const runRequest = async (
     request: ZeropsDataConsoleRequest,
+    onFailure?: (failure: { readonly message: string; readonly code?: string }) => void,
   ): Promise<ZeropsDataConsoleResponse | undefined> => {
     const result = await callDataConsole({ environmentId: env, input: request });
     if (result._tag === "Success") {
@@ -277,12 +288,29 @@ export function ZeropsDataPanel({
     }
     if (!isAtomCommandInterrupted(result)) {
       const cause = squashAtomCommandFailure(result);
-      setErrorText(
-        isZeropsDataConsoleError(cause) ? describeDataConsoleError(cause) : "Something went wrong.",
-      );
+      const isConsoleError = isZeropsDataConsoleError(cause);
+      const message = isConsoleError ? describeDataConsoleError(cause) : "Something went wrong.";
+      if (onFailure === undefined) {
+        setErrorText(message);
+      } else {
+        setErrorText(undefined);
+        onFailure(isConsoleError ? { message, code: cause.code } : { message });
+      }
     }
     return undefined;
   };
+
+  // What the grid region shows in place of rows: a read that failed, or a
+  // value this console can read the shape of but not browse.
+  const noteGridFailure =
+    (token: number) => (failure: { readonly message: string; readonly code?: string }) => {
+      if (selectionTokenRef.current !== token) return;
+      setGridNotice(
+        failure.code === "unsupported"
+          ? { kind: "unsupported" }
+          : { kind: "error", message: failure.message },
+      );
+    };
 
   // Replacing the rows outright — a sort, a filter apply, a new query — has
   // to send the reader back to the top; appending a page deliberately does
@@ -362,6 +390,7 @@ export function ZeropsDataPanel({
     setFilteredSort(undefined);
     setFilteredLoadMorePending(false);
     setBlob(undefined);
+    setGridNotice(undefined);
     selectionTokenRef.current += 1;
     filterTokenRef.current += 1;
   };
@@ -454,12 +483,14 @@ export function ZeropsDataPanel({
     setSelectedNode(node);
     const myToken = selectionTokenRef.current;
     if (node.kind === "tabular") {
-      void runRequest({ kind: "table", path: node.path }).then((response) => {
-        if (selectionTokenRef.current !== myToken) return;
-        if (response?.kind === "table") {
-          setTableModel(applyTablePage(emptyTable, response.page));
-        }
-      });
+      void runRequest({ kind: "table", path: node.path }, noteGridFailure(myToken)).then(
+        (response) => {
+          if (selectionTokenRef.current !== myToken) return;
+          if (response?.kind === "table") {
+            setTableModel(applyTablePage(emptyTable, response.page));
+          }
+        },
+      );
     } else if (node.kind === "blob") {
       void runRequest({ kind: "blob", path: node.path }).then((response) => {
         if (selectionTokenRef.current !== myToken) return;
@@ -490,14 +521,17 @@ export function ZeropsDataPanel({
     const cursor = tableModel.nextCursor;
     setTableLoadMorePending(true);
     const myToken = selectionTokenRef.current;
-    void runRequest({
-      kind: "table",
-      path: selectedNode.path,
-      page: {
-        cursor,
-        ...(tableSort ? { sort: tableSort.column, direction: tableSort.direction } : {}),
+    void runRequest(
+      {
+        kind: "table",
+        path: selectedNode.path,
+        page: {
+          cursor,
+          ...(tableSort ? { sort: tableSort.column, direction: tableSort.direction } : {}),
+        },
       },
-    }).then((response) => {
+      noteGridFailure(myToken),
+    ).then((response) => {
       setTableLoadMorePending(false);
       if (selectionTokenRef.current !== myToken) return;
       if (response?.kind === "table") {
@@ -525,9 +559,14 @@ export function ZeropsDataPanel({
     setOpenRow(undefined);
     setFocusedRowIndex(undefined);
     resetGridScroll();
+    setGridNotice(undefined);
     filterTokenRef.current += 1;
     const myToken = filterTokenRef.current;
-    void runRequest({ kind: "query", service: node.path.service, stmt }).then((response) => {
+    const selectionToken = selectionTokenRef.current;
+    void runRequest(
+      { kind: "query", service: node.path.service, stmt },
+      noteGridFailure(selectionToken),
+    ).then((response) => {
       if (filterTokenRef.current !== myToken) return;
       if (response?.kind === "table") {
         setFiltered({ stmt, model: applyTablePage(emptyTable, response.page) });
@@ -589,7 +628,11 @@ export function ZeropsDataPanel({
     setFocusedRowIndex(undefined);
     selectionTokenRef.current += 1;
     const myToken = selectionTokenRef.current;
-    void runRequest({ kind: "table", path: selectedNode.path, page }).then((response) => {
+    setGridNotice(undefined);
+    void runRequest(
+      { kind: "table", path: selectedNode.path, page },
+      noteGridFailure(myToken),
+    ).then((response) => {
       if (selectionTokenRef.current !== myToken) return;
       if (response?.kind === "table") {
         setTableModel(applyTablePage(emptyTable, response.page));
@@ -610,15 +653,19 @@ export function ZeropsDataPanel({
     if (service === undefined) return;
     setQuerySort(undefined);
     setQueryLoadMorePending(false);
+    setGridNotice(undefined);
     resetGridScroll();
     queryTokenRef.current += 1;
     const myToken = queryTokenRef.current;
-    void runRequest({ kind: "query", service, stmt }).then((response) => {
-      if (queryTokenRef.current !== myToken) return;
-      if (response?.kind === "table") {
-        setQueryState({ stmt, model: applyTablePage(emptyTable, response.page) });
-      }
-    });
+    const selectionToken = selectionTokenRef.current;
+    void runRequest({ kind: "query", service, stmt }, noteGridFailure(selectionToken)).then(
+      (response) => {
+        if (queryTokenRef.current !== myToken) return;
+        if (response?.kind === "table") {
+          setQueryState({ stmt, model: applyTablePage(emptyTable, response.page) });
+        }
+      },
+    );
   };
 
   const handleQueryLoadMore = () => {
@@ -787,16 +834,45 @@ export function ZeropsDataPanel({
   const awaitingMissingServiceRefresh =
     serviceIsMissing && missingServiceRefreshed !== missingServiceKey;
 
+  // A tree loaded before the service had anything in it (a NATS bus whose
+  // streams were created afterwards) has no other way back to the console:
+  // nothing re-fetches a level that answered empty. The reload drops every
+  // cached level, not just the root, so children fetched under the old answer
+  // cannot outlive it.
+  const handleReloadTree = () => {
+    const rootPath: ZeropsDataConsolePath = { service, segments: [] };
+    collapsedLoadedKeysRef.current.clear();
+    resetSelection();
+    setTree(expandTreePath(emptyTree, rootPath));
+    loadTreePage(rootPath);
+  };
+
+  const shownRootEntry = tree.entries[treePathKey({ service, segments: [...treeCollapsedPrefix] })];
+  const treeRootEmpty =
+    shownRootEntry !== undefined && shownRootEntry.loaded && shownRootEntry.nodes.length === 0;
+
   const treeView = (
-    <ZeropsDataTree
-      loadingKeys={pendingTreeKeys}
-      onLoadMore={handleLoadMoreTree}
-      onSelectNode={handleSelectNode}
-      onToggleNode={handleToggleNode}
-      rootPath={{ service, segments: [] }}
-      tree={tree}
-      {...(selectedNode ? { selectedNodeKey: treePathKey(selectedNode.path) } : {})}
-    />
+    <div className="space-y-1">
+      {treeRootEmpty ? (
+        <Button
+          data-zerops-data-tree-reload
+          onClick={handleReloadTree}
+          size="micro"
+          variant="ghost"
+        >
+          Reload
+        </Button>
+      ) : null}
+      <ZeropsDataTree
+        loadingKeys={pendingTreeKeys}
+        onLoadMore={handleLoadMoreTree}
+        onSelectNode={handleSelectNode}
+        onToggleNode={handleToggleNode}
+        rootPath={{ service, segments: [] }}
+        tree={tree}
+        {...(selectedNode ? { selectedNodeKey: treePathKey(selectedNode.path) } : {})}
+      />
+    </div>
   );
 
   const filtersProps =
@@ -836,6 +912,7 @@ export function ZeropsDataPanel({
             setFiltered(undefined);
             setFilteredSort(undefined);
             setOpenRow(undefined);
+            setGridNotice(undefined);
             resetGridScroll();
             filterTokenRef.current += 1;
           },
@@ -863,6 +940,7 @@ export function ZeropsDataPanel({
     setQueryState(undefined);
     setQuerySort(undefined);
     setQueryLoadMorePending(false);
+    setGridNotice(undefined);
     resetGridScroll();
     queryTokenRef.current += 1;
   };
@@ -887,6 +965,18 @@ export function ZeropsDataPanel({
     </>
   );
 
+  const gridNoticeView =
+    gridNotice === undefined ? undefined : gridNotice.kind === "unsupported" ? (
+      <p className="text-muted-foreground text-xs" data-zerops-data-grid-unsupported>
+        This value can't be browsed yet.
+      </p>
+    ) : (
+      <div className="space-y-1 text-xs" data-zerops-data-grid-error>
+        <p className="text-destructive-foreground">Couldn't load rows</p>
+        <p className="text-muted-foreground">{gridNotice.message}</p>
+      </div>
+    );
+
   // One grid region, so a query result replaces the table model rather than
   // stacking a second scrolling grid under it; "Back to table" drops the
   // query state and the untouched table model is on screen again.
@@ -900,6 +990,7 @@ export function ZeropsDataPanel({
         onSort={handleQuerySort}
         scrollRegionRef={gridScrollRef}
         toolbarTrailing={sqlToggle}
+        {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(querySort ? { sort: querySort } : {})}
       />
     ) : selectedNode?.kind === "tabular" ? (
@@ -949,6 +1040,7 @@ export function ZeropsDataPanel({
         onToggleColumnsOpen={() => setColumnsOpen((current) => !current)}
         scrollRegionRef={gridScrollRef}
         toolbarTrailing={sqlToggle}
+        {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(filtersProps === null
           ? {}
           : {
@@ -991,7 +1083,7 @@ export function ZeropsDataPanel({
     ) : null;
 
   const contentPane = (
-    <div className="flex min-w-0 flex-1 flex-col" data-zerops-data-content>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-zerops-data-content>
       {gridView ?? (
         <>
           {sqlToggle === null ? null : (
@@ -1000,7 +1092,7 @@ export function ZeropsDataPanel({
           {belowToolbar}
           {selectedNode?.kind === "blob" && blob !== undefined ? (
             <div className="min-h-0 flex-1 overflow-auto">
-              <ZeropsDataBlob blob={blob} />
+              <ZeropsDataBlob blob={blob} name={selectedNode.name} />
             </div>
           ) : null}
         </>

@@ -320,6 +320,27 @@ describe("ZeropsDataTable", () => {
     expect(onCopyPageJson).toHaveBeenCalledTimes(1);
   });
 
+  describe("notice", () => {
+    it("replaces the rows and drops the status bar entirely", () => {
+      hooks.beginRender();
+      const tree = ZeropsDataTable({
+        count: 12,
+        model: { ...MODEL, rows: [], nextCursor: "cursor-1" },
+        notice: "Couldn't load rows",
+        onLoadMore: vi.fn(),
+        onRequestCount: vi.fn(),
+        onSort: vi.fn(),
+      });
+      expect(findByAttribute(tree, "data-zerops-data-table-empty")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-table-status")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-table-request-count")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-table-sentinel")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-table-notice")!.props.children).toBe(
+        "Couldn't load rows",
+      );
+    });
+  });
+
   describe("paging by scroll", () => {
     interface ObserverStub {
       readonly callback: (entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void;

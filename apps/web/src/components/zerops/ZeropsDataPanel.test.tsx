@@ -53,6 +53,7 @@ import { collapsedPrefix, treePathKey } from "@t3tools/client-runtime/zerops/dat
 import type { DataConsoleTree } from "@t3tools/client-runtime/zerops/dataConsole";
 
 import { ZeropsDataPanel } from "./ZeropsDataPanel";
+import { ZeropsDataBlob } from "./ZeropsDataBlob";
 import { ZeropsDataBreadcrumbs } from "./ZeropsDataBreadcrumbs";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
 import { ZeropsDataQuery } from "./ZeropsDataQuery";
@@ -645,6 +646,130 @@ describe("ZeropsDataPanel", () => {
       tree = render({ service: "db1", widthForTest: 1200, ...options });
       return tree;
     }
+
+    it("lets the content column shrink, so the grid region is the one thing that scrolls", async () => {
+      const tree = await selectOrders(() => undefined);
+      expect(findByAttribute(tree, "data-zerops-data-content")!.props.className).toContain(
+        "min-h-0",
+      );
+    });
+
+    it("passes the browsed node's name to the blob preview, for the image alt", async () => {
+      const AVATAR: ZeropsDataConsoleNode = {
+        name: "avatar.png",
+        kind: "blob",
+        path: { service: "db1", segments: ["avatar.png"] },
+        hasChildren: false,
+        meta: {},
+      };
+      respond([SERVICE_SUPPORTED], (request) =>
+        request.kind === "blob"
+          ? {
+              kind: "blob",
+              data: "aGk=",
+              contentType: "text/plain",
+              truncated: false,
+              size: 2,
+              vector: false,
+              streamMetadata: false,
+            }
+          : undefined,
+      );
+      await serviceTab();
+      findComponent<{ readonly onSelectNode: (node: ZeropsDataConsoleNode) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataTree,
+      )!.props.onSelectNode(AVATAR);
+      await flush();
+
+      expect(
+        findComponent<{ readonly name?: string }>(
+          render({ service: "db1", widthForTest: 1200 }),
+          ZeropsDataBlob,
+        )!.props.name,
+      ).toBe("avatar.png");
+    });
+
+    /** Fails every request of one kind, answering everything else the way `respond` does. */
+    function failKind(kind: ZeropsDataConsoleRequest["kind"], code: "internal" | "unsupported") {
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+        if (args.input.kind === "services" || args.input.kind === "refresh") {
+          return Promise.resolve(AsyncResult.success(servicesResponse([SERVICE_SUPPORTED])));
+        }
+        if (args.input.kind === kind) {
+          return Promise.resolve(
+            AsyncResult.failure(Cause.fail(new ZeropsDataConsoleError({ code, message: "raw" }))),
+          );
+        }
+        return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+      });
+    }
+
+    async function selectOrdersFailing(code: "internal" | "unsupported") {
+      respond([SERVICE_SUPPORTED]);
+      await serviceTab();
+      failKind("table", code);
+      findComponent<{ readonly onSelectNode: (node: ZeropsDataConsoleNode) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataTree,
+      )!.props.onSelectNode(ORDERS);
+      await flush();
+      return render({ service: "db1", widthForTest: 1200 });
+    }
+
+    it("a failed table read fills the grid region, instead of leaving No rows standing", async () => {
+      const tree = await selectOrdersFailing("internal");
+      const notice = visitElements(
+        tree,
+        (element) => "data-zerops-data-grid-error" in element.props,
+      )!;
+      expect(notice.props.children).toEqual([
+        expect.objectContaining({
+          props: expect.objectContaining({ children: "Couldn't load rows" }),
+        }),
+        expect.objectContaining({
+          props: expect.objectContaining({ children: "Something went wrong." }),
+        }),
+      ]);
+      expect(findByAttribute(tree, "data-zerops-data-error")).toBeNull();
+      expect(
+        findComponent<{ readonly notice?: unknown }>(tree, ZeropsDataTable)!.props.notice,
+      ).not.toBeUndefined();
+    });
+
+    it("a tabular node the console can't read says so quietly, with no rows claim", async () => {
+      const tree = await selectOrdersFailing("unsupported");
+      expect(
+        visitElements(tree, (element) => "data-zerops-data-grid-unsupported" in element.props)!
+          .props.children,
+      ).toBe("This value can't be browsed yet.");
+      expect(findByAttribute(tree, "data-zerops-data-error")).toBeNull();
+    });
+
+    it("offers a tree reload only while the root came back empty, and it refetches the root", async () => {
+      respond([SERVICE_SUPPORTED]);
+      await serviceTab();
+      const empty = render({ service: "db1", widthForTest: 1200 });
+      const reload = findByAttribute(empty, "data-zerops-data-tree-reload")!;
+      commandSpy.mockClear();
+      (reload.props.onClick as () => void)();
+      await flush();
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: { kind: "tree", path: { service: "db1", segments: [] } },
+      });
+
+      hooks.reset();
+      commandSpy.mockReset();
+      respond([SERVICE_SUPPORTED], (request) =>
+        request.kind === "tree"
+          ? { kind: "tree", nodes: [ORDERS, { ...ORDERS, name: "customers" }], nextCursor: "" }
+          : undefined,
+      );
+      await serviceTab();
+      const populated = render({ service: "db1", widthForTest: 1200 });
+      expect(findByAttribute(populated, "data-zerops-data-tree-reload")).toBeNull();
+    });
 
     it("breadcrumbs name the selected path, and a crumb click walks back up it", async () => {
       const tree = await selectOrders(() => undefined);

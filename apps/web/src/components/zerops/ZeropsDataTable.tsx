@@ -107,6 +107,13 @@ export interface ZeropsDataTableProps {
   readonly belowToolbar?: ReactNode;
   /** Receives the scroll region, so the panel can send it back to the top when it replaces the rows. */
   readonly scrollRegionRef?: RefObject<HTMLDivElement | null> | undefined;
+  /**
+   * Stands in for the rows when there are none to show for a reason of its
+   * own — a failed read, a value the console can't browse. It replaces the
+   * table rather than joining it, and takes the status bar with it: "No rows"
+   * and a row count would both be claims about a table that never arrived.
+   */
+  readonly notice?: ReactNode;
 }
 
 /**
@@ -163,9 +170,10 @@ export function ZeropsDataTable({
   toolbarTrailing,
   belowToolbar,
   scrollRegionRef,
+  notice,
 }: ZeropsDataTableProps) {
   const shown = visibleColumns(model.columns, hiddenColumns);
-  const hasMore = model.nextCursor !== undefined;
+  const hasMore = model.nextCursor !== undefined && notice === undefined;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -301,113 +309,125 @@ export function ZeropsDataTable({
         ref={attachScrollRef.current}
         tabIndex={0}
       >
-        <table className="w-full caption-bottom text-xs" data-slot="table">
-          <TableHeader className="sticky top-0 z-10 bg-card">
-            <TableRow>
-              {shown.map((column) =>
-                column.sortable ? (
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    data-zerops-data-table-sort={column.name}
-                    key={column.name}
-                    onClick={() => handleSortClick(column)}
-                  >
-                    {column.name}
-                    {sort?.column === column.name ? (sort.direction === "asc" ? " ↑" : " ↓") : null}
-                  </TableHead>
-                ) : (
-                  <TableHead
-                    data-zerops-data-table-column={column.name}
-                    key={column.name}
-                    title={column.sortReason === "" ? undefined : column.sortReason}
-                  >
-                    {column.name}
-                  </TableHead>
-                ),
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {model.rows.length === 0 ? (
+        {notice !== undefined ? (
+          <div className="p-2" data-zerops-data-table-notice>
+            {notice}
+          </div>
+        ) : (
+          <table className="w-full caption-bottom text-xs" data-slot="table">
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
-                <TableCell colSpan={Math.max(shown.length, 1)} data-zerops-data-table-empty>
-                  No rows
-                </TableCell>
+                {shown.map((column) =>
+                  column.sortable ? (
+                    <TableHead
+                      className="cursor-pointer select-none"
+                      data-zerops-data-table-sort={column.name}
+                      key={column.name}
+                      onClick={() => handleSortClick(column)}
+                    >
+                      {column.name}
+                      {sort?.column === column.name
+                        ? sort.direction === "asc"
+                          ? " ↑"
+                          : " ↓"
+                        : null}
+                    </TableHead>
+                  ) : (
+                    <TableHead
+                      data-zerops-data-table-column={column.name}
+                      key={column.name}
+                      title={column.sortReason === "" ? undefined : column.sortReason}
+                    >
+                      {column.name}
+                    </TableHead>
+                  ),
+                )}
               </TableRow>
-            ) : null}
-            {model.rows.map((row, rowIndex) => (
-              <TableRow
-                aria-selected={focusedRowIndex === rowIndex}
-                className={cn(focusedRowIndex === rowIndex && "bg-accent")}
-                data-zerops-data-table-row={String(rowIndex)}
-                key={rowKey(model, row, rowIndex)}
-                onClick={() => onOpenRow?.(rowIndex)}
-              >
-                {shown.map((column) => {
-                  const cellIndex = model.columns.indexOf(column);
-                  return (
-                    <TableCell key={column.name}>
-                      <ZeropsDataCell
-                        onExpand={
-                          onExpandCell === undefined
-                            ? undefined
-                            : () => onExpandCell(rowIndex, column.name)
-                        }
-                        value={row[cellIndex]}
-                      />
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableBody>
-        </table>
+            </TableHeader>
+            <TableBody>
+              {model.rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={Math.max(shown.length, 1)} data-zerops-data-table-empty>
+                    No rows
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {model.rows.map((row, rowIndex) => (
+                <TableRow
+                  aria-selected={focusedRowIndex === rowIndex}
+                  className={cn(focusedRowIndex === rowIndex && "bg-accent")}
+                  data-zerops-data-table-row={String(rowIndex)}
+                  key={rowKey(model, row, rowIndex)}
+                  onClick={() => onOpenRow?.(rowIndex)}
+                >
+                  {shown.map((column) => {
+                    const cellIndex = model.columns.indexOf(column);
+                    return (
+                      <TableCell key={column.name}>
+                        <ZeropsDataCell
+                          onExpand={
+                            onExpandCell === undefined
+                              ? undefined
+                              : () => onExpandCell(rowIndex, column.name)
+                          }
+                          value={row[cellIndex]}
+                        />
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </table>
+        )}
         {hasMore ? <div data-zerops-data-table-sentinel ref={attachSentinelRef.current} /> : null}
       </div>
 
-      <div
-        className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-xs"
-        data-zerops-data-table-status
-      >
-        <span className="text-muted-foreground" data-zerops-data-table-loaded>
-          {`${model.rows.length.toLocaleString()} rows loaded${hasMore ? " · more available" : ""}`}
-        </span>
-
-        {loadMorePending ? (
-          <span className="text-muted-foreground" data-zerops-data-table-loading>
-            Loading…
+      {notice !== undefined ? null : (
+        <div
+          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-xs"
+          data-zerops-data-table-status
+        >
+          <span className="text-muted-foreground" data-zerops-data-table-loaded>
+            {`${model.rows.length.toLocaleString()} rows loaded${hasMore ? " · more available" : ""}`}
           </span>
-        ) : null}
 
-        {hasMore ? (
-          <Button
-            data-zerops-data-table-load-more
-            disabled={loadMorePending}
-            onClick={onLoadMore}
-            size="xs"
-            variant="ghost"
-          >
-            Load more
-          </Button>
-        ) : null}
+          {loadMorePending ? (
+            <span className="text-muted-foreground" data-zerops-data-table-loading>
+              Loading…
+            </span>
+          ) : null}
 
-        {count === undefined ? (
-          onRequestCount !== undefined ? (
+          {hasMore ? (
             <Button
-              data-zerops-data-table-request-count
-              onClick={onRequestCount}
+              data-zerops-data-table-load-more
+              disabled={loadMorePending}
+              onClick={onLoadMore}
               size="xs"
               variant="ghost"
             >
-              Count rows
+              Load more
             </Button>
-          ) : null
-        ) : (
-          <MicroLabel className="text-muted-foreground" data-zerops-data-table-count>
-            {`${count.toLocaleString()} rows${model.bestEffort ? " (approximate)" : ""}`}
-          </MicroLabel>
-        )}
-      </div>
+          ) : null}
+
+          {count === undefined ? (
+            onRequestCount !== undefined ? (
+              <Button
+                data-zerops-data-table-request-count
+                onClick={onRequestCount}
+                size="xs"
+                variant="ghost"
+              >
+                Count rows
+              </Button>
+            ) : null
+          ) : (
+            <MicroLabel className="text-muted-foreground" data-zerops-data-table-count>
+              {`${count.toLocaleString()} rows${model.bestEffort ? " (approximate)" : ""}`}
+            </MicroLabel>
+          )}
+        </div>
+      )}
     </div>
   );
 }

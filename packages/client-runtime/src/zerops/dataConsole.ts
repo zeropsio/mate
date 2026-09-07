@@ -78,7 +78,25 @@ export const emptyTree: DataConsoleTree = { entries: {} };
  * was actually asked for); any other case — a fresh load, a mismatched or
  * stale cursor, a first page — replaces the node list instead, so a request
  * racing an unrelated fetch never silently concatenates onto the wrong list.
+ * The merged list is ordered by {@link sortNodes}, not left in the order the
+ * console answered in.
  */
+/**
+ * Orders a level's children by name, numeric-aware. Key/document families
+ * answer in SCAN order (measured: `37, 7, 40, 20, 10`) and the console
+ * ignores `sort` for them, so the order has to be imposed here; a tabular
+ * family already answers sorted, where this is a no-op. Applied to the whole
+ * merged list on every append, so a later page interleaves rather than
+ * trailing behind.
+ */
+function sortNodes(
+  nodes: ReadonlyArray<ZeropsDataConsoleNode>,
+): ReadonlyArray<ZeropsDataConsoleNode> {
+  return [...nodes].sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }),
+  );
+}
+
 export function applyTreePage(
   tree: DataConsoleTree,
   path: ZeropsDataConsolePath,
@@ -89,7 +107,7 @@ export function applyTreePage(
   const existing = tree.entries[key];
   const isAppend =
     requestCursor !== undefined && existing !== undefined && requestCursor === existing.nextCursor;
-  const nodes = isAppend ? [...existing.nodes, ...page.nodes] : page.nodes;
+  const nodes = sortNodes(isAppend ? [...existing.nodes, ...page.nodes] : page.nodes);
   return {
     entries: {
       ...tree.entries,
@@ -256,69 +274,6 @@ function base64ByteLength(base64: string): number {
   const clean = base64.replace(/[\r\n]/g, "");
   const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
   return Math.floor((clean.length * 3) / 4) - padding;
-}
-
-// ---------------------------------------------------------------------------
-// Blob preview
-// ---------------------------------------------------------------------------
-
-const MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
-const TEXT_PREVIEW_CONTENT_TYPES = [/^text\//, /^application\/json$/, /^application\/xml$/];
-
-export type DataConsoleBlobPreview =
-  | {
-      readonly kind: "text";
-      readonly text: string;
-      readonly truncated: boolean;
-      readonly size: number;
-    }
-  | { readonly kind: "vector"; readonly truncated: boolean; readonly size: number }
-  | { readonly kind: "streamMetadata"; readonly truncated: boolean; readonly size: number }
-  | {
-      readonly kind: "binary";
-      readonly contentType: string;
-      readonly truncated: boolean;
-      readonly size: number;
-    }
-  | { readonly kind: "tooLargeForPreview"; readonly contentType: string; readonly size: number };
-
-/** Classifies a fetched blob for the panel to render. Precedence: vector/streamMetadata flags first (they describe *what the bytes mean*, independent of MIME), then content-type-based text decoding (capped, never for an already-truncated body larger than the cap), else binary. */
-export function resolveBlobPreview(blob: ZeropsDataConsoleBlob): DataConsoleBlobPreview {
-  if (blob.vector) return { kind: "vector", truncated: blob.truncated, size: blob.size };
-  if (blob.streamMetadata) {
-    return { kind: "streamMetadata", truncated: blob.truncated, size: blob.size };
-  }
-  const isTextType = TEXT_PREVIEW_CONTENT_TYPES.some((re) => re.test(blob.contentType));
-  if (isTextType) {
-    const byteLength = base64ByteLength(blob.data);
-    if (byteLength > MAX_TEXT_PREVIEW_BYTES) {
-      return { kind: "tooLargeForPreview", contentType: blob.contentType, size: blob.size };
-    }
-    const text = decodeBase64Text(blob.data);
-    if (text !== undefined) {
-      return { kind: "text", text, truncated: blob.truncated, size: blob.size };
-    }
-    // Malformed base64 or invalid UTF-8 under a text-ish content type: never
-    // throw out of a pure model function — fall back to the binary preview.
-  }
-  return {
-    kind: "binary",
-    contentType: blob.contentType,
-    truncated: blob.truncated,
-    size: blob.size,
-  };
-}
-
-/** `undefined` on malformed input (invalid base64, or bytes that aren't valid UTF-8 under `fatal: true`) rather than throwing or silently substituting U+FFFD. */
-function decodeBase64Text(base64: string): string | undefined {
-  try {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return undefined;
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 import type {
-  ZeropsDataConsoleBlob,
   ZeropsDataConsoleColumn,
   ZeropsDataConsoleNode,
   ZeropsDataConsolePath,
@@ -32,7 +31,6 @@ import {
   hasActiveFilters,
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
-  resolveBlobPreview,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -171,6 +169,39 @@ describe("applyTreePage", () => {
     );
     const second = applyTreePage(first, path, { nodes: [node()], nextCursor: "" });
     expect(second.entries[treePathKey(path)]?.expanded).toBe(false);
+  });
+
+  it("orders a level's children by name, numeric-aware, whatever order the console answered in", () => {
+    const path = { service: "kv", segments: [] };
+    const scanOrder = ["37", "7", "40", "20", "10"].map((name) => node({ name }));
+    const tree = applyTreePage(emptyTree, path, { nodes: scanOrder, nextCursor: "" });
+    expect(tree.entries[treePathKey(path)]!.nodes.map((entry) => entry.name)).toEqual([
+      "7",
+      "10",
+      "20",
+      "37",
+      "40",
+    ]);
+  });
+
+  it("re-sorts the whole list on an append, so a later page interleaves", () => {
+    const path = { service: "kv", segments: [] };
+    const first = applyTreePage(emptyTree, path, {
+      nodes: [node({ name: "10" }), node({ name: "40" })],
+      nextCursor: "c1",
+    });
+    const second = applyTreePage(
+      first,
+      path,
+      { nodes: [node({ name: "7" }), node({ name: "20" })], nextCursor: "" },
+      "c1",
+    );
+    expect(second.entries[treePathKey(path)]!.nodes.map((entry) => entry.name)).toEqual([
+      "7",
+      "10",
+      "20",
+      "40",
+    ]);
   });
 });
 
@@ -370,95 +401,6 @@ describe("formatCell", () => {
     expect(formatCell("Zm9vYg==", column({ dataType: "bytea" }))).toBe("<4 bytes>");
   });
 });
-
-// ---------------------------------------------------------------------------
-// Blob preview
-// ---------------------------------------------------------------------------
-
-const blob = (overrides: Partial<ZeropsDataConsoleBlob> = {}): ZeropsDataConsoleBlob => ({
-  data: "aGVsbG8=", // "hello"
-  contentType: "text/plain",
-  truncated: false,
-  size: 5,
-  vector: false,
-  streamMetadata: false,
-  ...overrides,
-});
-
-describe("resolveBlobPreview", () => {
-  it("decodes a text/* blob to text", () => {
-    expect(resolveBlobPreview(blob())).toEqual({
-      kind: "text",
-      text: "hello",
-      truncated: false,
-      size: 5,
-    });
-  });
-
-  it("decodes application/json as text", () => {
-    const b = blob({ contentType: "application/json", data: btoa('{"a":1}') });
-    expect(resolveBlobPreview(b)).toEqual({
-      kind: "text",
-      text: '{"a":1}',
-      truncated: false,
-      size: 5,
-    });
-  });
-
-  it("treats vector as its own kind regardless of content type", () => {
-    expect(resolveBlobPreview(blob({ vector: true })).kind).toBe("vector");
-  });
-
-  it("treats streamMetadata as its own kind regardless of content type", () => {
-    expect(resolveBlobPreview(blob({ streamMetadata: true })).kind).toBe("streamMetadata");
-  });
-
-  it("falls back to binary for a non-text content type", () => {
-    expect(resolveBlobPreview(blob({ contentType: "image/png" }))).toEqual({
-      kind: "binary",
-      contentType: "image/png",
-      truncated: false,
-      size: 5,
-    });
-  });
-
-  it("refuses to decode a text-typed blob whose body exceeds the 256 KiB cap", () => {
-    const big = "A".repeat(260 * 1024);
-    const encoded = btoa(big);
-    const b = blob({ contentType: "text/plain", data: encoded, size: big.length });
-    expect(resolveBlobPreview(b)).toEqual({
-      kind: "tooLargeForPreview",
-      contentType: "text/plain",
-      size: big.length,
-    });
-  });
-
-  it("falls back to binary for a text-typed blob whose base64 is malformed, rather than throwing", () => {
-    const b = blob({ contentType: "text/plain", data: "not valid base64!!", size: 5 });
-    expect(resolveBlobPreview(b)).toEqual({
-      kind: "binary",
-      contentType: "text/plain",
-      truncated: false,
-      size: 5,
-    });
-  });
-
-  it("falls back to binary for a text-typed blob whose bytes aren't valid UTF-8, rather than throwing", () => {
-    // A lone continuation byte (0x80) is never valid as the start of a UTF-8 sequence.
-    const invalidUtf8 = btoa(String.fromCharCode(0x80, 0x80));
-    const b = blob({ contentType: "text/plain", data: invalidUtf8, size: 2 });
-    expect(resolveBlobPreview(b)).toEqual({
-      kind: "binary",
-      contentType: "text/plain",
-      truncated: false,
-      size: 2,
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Service affordances
-// ---------------------------------------------------------------------------
 
 const service = (
   actions: ZeropsDataConsoleService["actions"] = [],
