@@ -145,6 +145,7 @@ import {
   selectThreadRightPanelState,
   type RightPanelSurface,
   useRightPanelStore,
+  serviceBrowserTabs,
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
@@ -3400,15 +3401,28 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "zerops");
   }, [activeThreadRef]);
-  const addBrowserSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "browser");
-  }, [activeThreadRef]);
+
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This is the writer half of
   // the topology split (`useProjectTopology`) — the panel mounts the same
   // ref-counted watcher, so opening it costs nothing extra.
   const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
+  // Browser opens on what the project actually serves: a tab per service with
+  // a public route, first one focused. Only a project with nothing public
+  // falls back to the empty surface.
+  const addBrowserSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    const tabs = serviceBrowserTabs(zeropsTopology?.services ?? []);
+    if (tabs.length === 0) {
+      useRightPanelStore.getState().open(activeThreadRef, "browser");
+      return;
+    }
+    for (const tab of tabs) {
+      useRightPanelStore.getState().openService(activeThreadRef, tab.service, tab.url);
+    }
+    const first = tabs[0];
+    if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
+  }, [activeThreadRef, zeropsTopology]);
   const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,

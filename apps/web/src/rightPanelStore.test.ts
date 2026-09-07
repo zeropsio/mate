@@ -10,6 +10,7 @@ import {
   selectSelectedRightPanelSurface,
   selectThreadRightPanelState,
   useRightPanelStore,
+  serviceBrowserTabs,
 } from "./rightPanelStore";
 
 const refA = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-A"));
@@ -787,5 +788,54 @@ describe("service browser tabs", () => {
     expect(
       selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
     ).toHaveLength(0);
+  });
+});
+
+describe("serviceBrowserTabs", () => {
+  const svc = (hostname: string, urls: ReadonlyArray<string>, group = "runtimes") => ({
+    hostname,
+    group,
+    routes: urls.map((url) => ({ url })),
+  });
+
+  /**
+   * Picking "Browser" opened one empty singleton panel: the view existed but
+   * nothing was in it, and the services that DO answer on a public URL were
+   * reachable only by finding a link to click. The owner: "there are no tabs
+   * per service with public link".
+   */
+  it("gives one tab per service that answers publicly, in topology order", () => {
+    expect(
+      serviceBrowserTabs([
+        svc("appdev", ["https://appdev-1-3000.zerops.app"]),
+        svc("db", []),
+        svc("appstage", ["https://appstage-1-3000.zerops.app"]),
+      ]),
+    ).toEqual([
+      { service: "appdev", url: "https://appdev-1-3000.zerops.app" },
+      { service: "appstage", url: "https://appstage-1-3000.zerops.app" },
+    ]);
+  });
+
+  it("takes a service's first route, not one tab per port", () => {
+    expect(
+      serviceBrowserTabs([
+        svc("app", ["https://app-1-3000.zerops.app", "https://app-1-8080.zerops.app"]),
+      ]),
+    ).toEqual([{ service: "app", url: "https://app-1-3000.zerops.app" }]);
+  });
+
+  it("drops anything that is not a browsable url", () => {
+    expect(serviceBrowserTabs([svc("worker", ["ftp://nope"]), svc("db", [])])).toEqual([]);
+  });
+
+  /** The control plane serves Mate itself; browsing it from inside Mate is noise. */
+  it("leaves the control plane out", () => {
+    expect(
+      serviceBrowserTabs([
+        svc("app", ["https://app-1-3000.zerops.app"]),
+        svc("zcp", ["https://zcp-1-8080.zerops.app"], "infrastructure"),
+      ]),
+    ).toEqual([{ service: "app", url: "https://app-1-3000.zerops.app" }]);
   });
 });

@@ -179,6 +179,38 @@ function normalizeRevealLine(line: number | undefined): number | null {
   return Math.max(1, Math.trunc(line));
 }
 
+/**
+ * The tabs the Browser view opens with: one per service that answers on a
+ * public URL, in the topology's own order.
+ *
+ * Picking "Browser" used to open a single empty surface — the view existed
+ * and nothing was in it, and the services that DO answer publicly were
+ * reachable only by finding a link in the conversation to click. A service's
+ * FIRST browsable route is the tab; a second port on the same service is the
+ * same page to a reader, not another thing to look at.
+ */
+export function serviceBrowserTabs(
+  services: ReadonlyArray<{
+    readonly hostname: string;
+    readonly group?: string;
+    readonly routes: ReadonlyArray<{ readonly url: string }>;
+  }>,
+): ReadonlyArray<{ readonly service: string; readonly url: string }> {
+  const tabs: Array<{ service: string; url: string }> = [];
+  const seen = new Set<string>();
+  for (const service of services) {
+    // The control plane serves Mate itself; browsing it from inside Mate is noise.
+    if (service.group === "infrastructure") continue;
+    const route = service.routes.find(
+      (entry) => isServiceBrowserUrl(entry.url) && !seen.has(entry.url),
+    );
+    if (route === undefined) continue;
+    seen.add(route.url);
+    tabs.push({ service: service.hostname, url: route.url });
+  }
+  return tabs;
+}
+
 export function migratePersistedRightPanelState(persistedState: unknown): {
   byThreadKey: Record<string, ThreadRightPanelState>;
   zeropsDefaultHandledByThreadKey: Record<string, true>;
