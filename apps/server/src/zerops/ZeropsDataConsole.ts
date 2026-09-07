@@ -54,6 +54,8 @@ import * as NodeChildProcess from "node:child_process";
 import {
   ZeropsDataConsoleError,
   ZeropsDataConsoleNode as ZeropsDataConsoleNodeSchema,
+  ZeropsDataConsoleNodeMeta as ZeropsDataConsoleNodeMetaSchema,
+  ZeropsDataConsolePath as ZeropsDataConsolePathSchema,
   ZeropsDataConsoleService as ZeropsDataConsoleServiceSchema,
   ZeropsDataConsoleTablePage as ZeropsDataConsoleTablePageSchema,
   type ZeropsDataConsoleErrorCode,
@@ -371,22 +373,110 @@ export const routeRequest = (
   }
 };
 
-/** Every non-blob console response body, decoded against the SAME contract schemas the client trusts — a body that doesn't match is never passed through loosely typed. */
+/**
+ * Every non-blob console response body is decoded, but NOT against the
+ * strict contract schemas directly — the console's Go structs mark almost
+ * every field `omitempty`, so a false bool, an empty string, or a nil slice
+ * routinely drops off the wire entirely (or, for a slice, arrives as literal
+ * `null` rather than being omitted at all — confirmed live: `POST
+ * /api/query`'s `rowKeyCols` came back `null`, not absent). Each "lenient"
+ * schema below accepts the field missing/`undefined`/`null` and this module
+ * normalizes it to the strict contract's default (a schema mismatch on
+ * anything else still fails with `ZeropsDataConsoleError{code:"internal"}` —
+ * only omission is tolerated, not a genuinely wrong shape).
+ */
+const LenientServiceActionSchema = Schema.Struct({
+  id: Schema.String,
+  enabled: Schema.Boolean,
+  readOnly: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+});
+const LenientServiceSchema = Schema.Struct({
+  hostname: Schema.String,
+  type: Schema.String,
+  family: Schema.String,
+  support: Schema.String,
+  actions: Schema.Array(LenientServiceActionSchema),
+  status: Schema.optional(Schema.String),
+});
+const normalizeService = (
+  service: typeof LenientServiceSchema.Type,
+): typeof ZeropsDataConsoleServiceSchema.Type => ({
+  ...service,
+  status: service.status ?? "",
+  actions: service.actions.map((action) => ({ ...action, reason: action.reason ?? "" })),
+});
+
 const ServicesEnvelopeSchema = Schema.Struct({
   project: Schema.Struct({ id: Schema.String, name: Schema.String }),
-  services: Schema.Array(ZeropsDataConsoleServiceSchema),
+  services: Schema.Array(LenientServiceSchema),
   allowWrites: Schema.Boolean,
 });
 const decodeServicesEnvelope = Schema.decodeUnknownResult(ServicesEnvelopeSchema);
+const normalizeServicesEnvelope = (envelope: typeof ServicesEnvelopeSchema.Type) => ({
+  project: envelope.project,
+  services: envelope.services.map(normalizeService),
+  allowWrites: envelope.allowWrites,
+});
+
+const LenientNodeSchema = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["container", "tabular", "blob"]),
+  path: ZeropsDataConsolePathSchema,
+  hasChildren: Schema.optional(Schema.Boolean),
+  meta: Schema.optional(ZeropsDataConsoleNodeMetaSchema),
+});
+const normalizeNode = (
+  node: typeof LenientNodeSchema.Type,
+): typeof ZeropsDataConsoleNodeSchema.Type => ({
+  ...node,
+  hasChildren: node.hasChildren ?? false,
+});
 
 const TreeEnvelopeSchema = Schema.Struct({
-  nodes: Schema.Array(ZeropsDataConsoleNodeSchema),
-  nextCursor: Schema.String,
+  nodes: Schema.Array(LenientNodeSchema),
+  nextCursor: Schema.optional(Schema.String),
 });
 const decodeTreeEnvelope = Schema.decodeUnknownResult(TreeEnvelopeSchema);
 
-const decodeNode = Schema.decodeUnknownResult(ZeropsDataConsoleNodeSchema);
-const decodeTablePage = Schema.decodeUnknownResult(ZeropsDataConsoleTablePageSchema);
+const decodeNode = Schema.decodeUnknownResult(LenientNodeSchema);
+
+const LenientColumnSchema = Schema.Struct({
+  name: Schema.String,
+  dataType: Schema.optional(Schema.String),
+  pk: Schema.optional(Schema.Boolean),
+  editable: Schema.optional(Schema.Boolean),
+  reason: Schema.optional(Schema.String),
+  sortable: Schema.optional(Schema.Boolean),
+  sortReason: Schema.optional(Schema.String),
+});
+const LenientTablePageSchema = Schema.Struct({
+  columns: Schema.Array(LenientColumnSchema),
+  rows: Schema.Array(Schema.Array(Schema.Unknown)),
+  nextCursor: Schema.optional(Schema.String),
+  rowKeyCols: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  bestEffort: Schema.optional(Schema.Boolean),
+  numbered: Schema.optional(Schema.Boolean),
+});
+const decodeTablePage = Schema.decodeUnknownResult(LenientTablePageSchema);
+const normalizeTablePage = (
+  page: typeof LenientTablePageSchema.Type,
+): typeof ZeropsDataConsoleTablePageSchema.Type => ({
+  columns: page.columns.map((column) => ({
+    name: column.name,
+    dataType: column.dataType ?? "",
+    pk: column.pk ?? false,
+    editable: column.editable ?? false,
+    reason: column.reason ?? "",
+    sortable: column.sortable ?? false,
+    sortReason: column.sortReason ?? "",
+  })),
+  rows: page.rows,
+  nextCursor: page.nextCursor ?? "",
+  rowKeyCols: page.rowKeyCols ?? [],
+  bestEffort: page.bestEffort ?? false,
+  numbered: page.numbered ?? false,
+});
 
 const CountEnvelopeSchema = Schema.Struct({ count: Schema.Number });
 const decodeCountEnvelope = Schema.decodeUnknownResult(CountEnvelopeSchema);
@@ -396,7 +486,7 @@ const RESPONSE_DECODE_ERROR = new ZeropsDataConsoleError({
   message: "console returned a response that doesn't match the expected shape",
 });
 
-/** Decodes one non-blob console response body per request `kind`, against the real contract schema — a schema mismatch fails with `ZeropsDataConsoleError{code:"internal"}` rather than passing the raw body through. */
+/** Decodes one non-blob console response body per request `kind` — leniently (see the block comment above), against the console's actual `omitempty`-shaped wire body, then normalizes into the strict contract shape. A body that genuinely doesn't match fails with `ZeropsDataConsoleError{code:"internal"}` rather than passing the raw body through. */
 const decodeResponseBody = (
   kind: Exclude<ZeropsDataConsoleRequest["kind"], "blob">,
   body: unknown,
@@ -407,27 +497,31 @@ const decodeResponseBody = (
       const decoded = decodeServicesEnvelope(body);
       return Result.isFailure(decoded)
         ? Effect.fail(RESPONSE_DECODE_ERROR)
-        : Effect.succeed({ kind: "services", ...decoded.success });
+        : Effect.succeed({ kind: "services", ...normalizeServicesEnvelope(decoded.success) });
     }
     case "tree": {
       const decoded = decodeTreeEnvelope(body);
       return Result.isFailure(decoded)
         ? Effect.fail(RESPONSE_DECODE_ERROR)
-        : Effect.succeed({ kind: "tree", ...decoded.success });
+        : Effect.succeed({
+            kind: "tree",
+            nodes: decoded.success.nodes.map(normalizeNode),
+            nextCursor: decoded.success.nextCursor ?? "",
+          });
     }
     case "stat": {
       // GET /api/stat returns the Node unwrapped.
       const decoded = decodeNode(body);
       return Result.isFailure(decoded)
         ? Effect.fail(RESPONSE_DECODE_ERROR)
-        : Effect.succeed({ kind: "node", node: decoded.success });
+        : Effect.succeed({ kind: "node", node: normalizeNode(decoded.success) });
     }
     case "table":
     case "query": {
       const decoded = decodeTablePage(body);
       return Result.isFailure(decoded)
         ? Effect.fail(RESPONSE_DECODE_ERROR)
-        : Effect.succeed({ kind: "table", page: decoded.success });
+        : Effect.succeed({ kind: "table", page: normalizeTablePage(decoded.success) });
     }
     case "tableCount": {
       const decoded = decodeCountEnvelope(body);

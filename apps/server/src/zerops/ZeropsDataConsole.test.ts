@@ -596,6 +596,79 @@ describe("ZeropsDataConsole", () => {
       }),
     );
 
+    it.effect(
+      "decodes a real console query response — omitempty dropped sortable/sortReason/nextCursor/bestEffort/numbered, rowKeyCols is literal null",
+      () =>
+        Effect.gen(function* () {
+          // Captured live from `POST /api/query` against the rig (2026-09-07).
+          const liveQueryBody = {
+            columns: [
+              {
+                name: "one",
+                dataType: "",
+                pk: false,
+                editable: false,
+                reason: "query results are read-only",
+              },
+            ],
+            rows: [[1, "2026-09-07T13:05:34.841934Z"]],
+            rowKeyCols: null,
+          };
+          const http = fakeHttpClient(() => jsonResponse(liveQueryBody));
+          const result = yield* withService(
+            { spawn: makeAutoReadySpawner().spawn, http },
+            (service) => service.call({ kind: "query", service: "db", stmt: "select 1" }),
+          ).pipe(Effect.orDie);
+          expect(result).toEqual({
+            kind: "table",
+            page: {
+              columns: [
+                {
+                  name: "one",
+                  dataType: "",
+                  pk: false,
+                  editable: false,
+                  reason: "query results are read-only",
+                  sortable: false,
+                  sortReason: "",
+                },
+              ],
+              rows: [[1, "2026-09-07T13:05:34.841934Z"]],
+              nextCursor: "",
+              rowKeyCols: [],
+              bestEffort: false,
+              numbered: false,
+            },
+          });
+        }),
+    );
+
+    it.effect("decodes a console node whose hasChildren was omitted as false", () =>
+      Effect.gen(function* () {
+        const http = fakeHttpClient(() =>
+          jsonResponse({
+            name: "orders",
+            kind: "tabular",
+            path: { service: "db", segments: ["public", "orders"] },
+          }),
+        );
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({ kind: "stat", path: { service: "db", segments: ["public", "orders"] } }),
+        ).pipe(Effect.orDie);
+        expect(result).toEqual({
+          kind: "node",
+          node: {
+            name: "orders",
+            kind: "tabular",
+            path: { service: "db", segments: ["public", "orders"] },
+            hasChildren: false,
+          },
+        });
+      }),
+    );
+
     it.effect("fails with code internal when a 2xx body doesn't match the contract schema", () =>
       Effect.gen(function* () {
         const http = fakeHttpClient(() =>
