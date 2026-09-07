@@ -56,23 +56,22 @@ operations check the original session generation before subsequent writes.
 ## Server door and compatibility
 
 `packages/client-runtime/src/zerops/serverCompatibility.ts` defines the GUI's minimum supported
-server version, currently 0.3.0, independently of its own release version. This is the first release
-whose descriptor identifies the Zerops project (commit `1e5cb5948`), needed to reject a reassigned
-address before transmitting credentials. Only a known version
-below that baseline blocks connection before sending the Zerops token. Raise the minimum only
+server version, currently 0.7.0, independently of its own release version. This release supplies
+mandatory effective project-role checks, identity-only sessions and own-session logout. The floor
+was raised only after zcp 9.170.0 publicly distributed the server, so container restart can install it.
+The descriptor must also identify the expected project before credentials are transmitted.
+A known version below the baseline blocks identity exchange. Raise the minimum only
 with a documented required protocol change and compatibility evidence. Unrecognized development
 versions are not presumed incompatible; the normal descriptor and identity protocol must succeed.
 The optional `accountLifecycleVersion: 1` describes the new server semantics; its absence is not a
 connection blocker. The project list displays the server-reported version, and an upgrade error
 shows both the actual and required versions. Restart recovery uses this same minimum.
 
-Older supported servers retain their original access policy. In particular, they may accept
-historical pairing sessions and lack own-session logout. The GUI still clears credentials, closes
-connections and locks immediately; server-side invalidation on these older versions relies on
-the identity membership TTL. Strict effective-role checks and own-session revocation below require
-the updated server. Accepting the old identity protocol does not backport these server guarantees.
+Servers below 0.7.0 retain their older authorization and logout behavior and must be upgraded
+before the current hosted GUI connects. The previous 0.3.0 floor allowed staged publication; it
+was superseded once the new zcp release became available.
 
-On the updated server, an identity-issued grant is still
+On the supported server, an identity-issued grant is still
 exchanged at `/oauth/token`; that short internal grant is not a manual pairing flow. Only grants
 from the Zerops identity door are accepted in a Zerops environment. Sessions use the
 `zerops-user:<id>` subject namespace, rejecting historical manually issued sessions.

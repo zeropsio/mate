@@ -18,9 +18,9 @@ and offers a connection check instead of automatically restarting again.
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
 Mate's access; you can revoke Mate's token in Zerops account settings.
-On older supported servers, the browser locks immediately but its server session may remain valid
-until the membership window expires (normally 15 minutes). Updated servers also support immediate
-revocation of that session.
+Mate also asks each connected server to revoke that browser session. If a server cannot be reached,
+the browser still locks immediately and the remote session expires within its membership window
+(normally 15 minutes).
 
 When you sign in again, Mate checks current permissions and reconnects available remembered
 projects. It restores your local view and unsent message when their target still exists. Tabs can

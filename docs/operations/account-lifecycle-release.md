@@ -4,21 +4,29 @@ The lifecycle change is contained in Mate. It preserves zcp's `serve` arguments,
 base path, project/API/origin environment contract, readiness path and `zerops@mate` supervision.
 Production zcp code and its Mate pin must not be changed as part of an unreviewed development push.
 
-| Client       | Server                            | Result                                                                                                                     |
-| ------------ | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Lifecycle v1 | Lifecycle v1                      | Zerops account entry, independent bounded sessions, own-session logout                                                     |
-| Lifecycle v1 | Supported older server (>= 0.3.0) | Identity connection works; older server authorization and session-expiry rules remain                                      |
-| Lifecycle v1 | Server below 0.3.0                | Upgrade required before identity exchange; actual and minimum versions shown                                               |
-| Older client | Lifecycle v1                      | Manual cookie/pairing entry fails; identity-compatible clients still need the new client for full logout/restore semantics |
+| Client             | Server             | Result                                                                                                                     |
+| ------------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Lifecycle v1       | Lifecycle v1       | Zerops account entry, independent bounded sessions, own-session logout                                                     |
+| Current hosted GUI | Server >= 0.7.0    | Supported account lifecycle protocol; GUI/server versions need not match                                                   |
+| Current hosted GUI | Server below 0.7.0 | Upgrade required before identity exchange; actual and minimum versions shown                                               |
+| Older client       | Lifecycle v1       | Manual cookie/pairing entry fails; identity-compatible clients still need the new client for full logout/restore semantics |
 
 The minimum lives in `packages/client-runtime/src/zerops/serverCompatibility.ts`; it changes only
-for a concrete mandatory protocol requirement, not every GUI release. The lifecycle capability is
-informational. Supported old servers lack immediate own-session logout and the new effective-role
-policy; do not report those guarantees until their server is upgraded. Before changing zcp's pin,
-attach the exact Mate version,
-artifact SHA-256, focused test results and disposable-container evidence to the maintainer's local
-review record. The concrete pin change is version plus digest; do not manufacture a digest before
-the final artifact exists. Obtain the production review before applying it.
+for a concrete mandatory protocol requirement, not every GUI release. The current minimum is
+0.7.0: effective project roles, identity-only sessions and own-session logout are required. The
+optional lifecycle capability remains informational. Unrecognized development versions still
+have to pass the descriptor/project and identity protocol checks.
+
+Publication order is server first, zcp second, hosted minimum last. Mate
+[0.7.0](https://github.com/zeropsio/mate/releases/tag/v0.7.0) was published before
+[zcp 9.170.0](https://github.com/zeropsio/zcp/releases/tag/v9.170.0), which pins its independently
+verified artifact. Only after zcp became publicly available was the hosted minimum raised from
+0.3.0 to 0.7.0. Existing containers can use the pre-connection restart to obtain the required server.
+
+Before a future zcp pin change, attach the exact Mate version, artifact SHA-256, focused test
+results and disposable-container evidence to the maintainer's local review record. The concrete
+pin change is version plus digest; do not manufacture a digest before the final artifact exists.
+Obtain the production review before applying it.
 
 No schema migration or destructive data conversion is introduced. Server rollback remains
 connectable while the version is at or above the documented minimum. Restoring an older build also

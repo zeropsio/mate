@@ -262,7 +262,7 @@ describe("ZeropsProvisioningPanel", () => {
     const initial = ZeropsProvisioningPanel(props);
     expect(renderToStaticMarkup(initial)).toContain("Update Mate to connect");
     expect(renderToStaticMarkup(initial)).toContain("Server version: 0.2.9");
-    expect(renderToStaticMarkup(initial)).toContain("Minimum required: 0.3.0");
+    expect(renderToStaticMarkup(initial)).toContain("Minimum required: 0.7.0");
     expect(renderToStaticMarkup(initial)).not.toContain("Zerops Mate is ready in this project");
     findAction(initial, "Restart and check for updates").props.onClick?.();
     expect(request).toHaveBeenCalledTimes(1);

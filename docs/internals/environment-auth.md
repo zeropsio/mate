@@ -48,7 +48,8 @@ Origin and DPoP request checks remain in force.
 
 The GUI checks the shared minimum server version and expected Zerops project before submitting
 its platform credential. The optional lifecycle capability does not block otherwise supported
-versions. Older servers retain their older authorization and logout behavior. See the
+versions. The minimum is 0.7.0 for effective project roles, identity-only sessions and own-session
+logout, activated after zcp 9.170.0 publication. Older servers require an upgrade. See the
 [release and recovery procedure](../operations/account-lifecycle-release.md).
 
 The database retains existing auth table names and internal grant storage. There is no destructive
