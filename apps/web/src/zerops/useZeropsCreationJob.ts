@@ -54,10 +54,11 @@ export function useZeropsCreationJob(input: {
    * Sends what is in the composer, and reports whether it actually went.
    *
    * It must report, because the thing that decides is not observable from
-   * here: the composer needs a *provider*, and the provider registry lags the
-   * agent's sign-in — measured on a live container, where the auth flag was
-   * already `true` while the send was still refused. A caller that returned
-   * nothing left the job spent and unsaid.
+   * here: the composer needs a *provider*, and it refuses the send without
+   * one. Not measured failing — the live run sent on the first attempt — but a
+   * caller that returns nothing has no way to tell a refused send from a sent
+   * one, and spending the job on the attempt loses it in the case it cannot
+   * see.
    */
   readonly send: () => boolean;
 }): void {
