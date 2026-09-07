@@ -1,4 +1,4 @@
-import { ServiceBrowserLink } from "../ServiceBrowserLink";
+import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrowserLink";
 /**
  * The Zerops service map: what exists in the project, grouped and live.
  *
@@ -22,7 +22,7 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  * of its bottom edge rather than standing on its own further down the panel.
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
-import { ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
+import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
 import type {
@@ -325,11 +325,18 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
       data-zerops-service-route-button
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      render={<ServiceBrowserLink href={route.url} rel="noreferrer" target="_blank" />}
+      render={
+        <ServiceBrowserLink
+          showIndicator={false}
+          href={route.url}
+          rel="noreferrer"
+          target="_blank"
+        />
+      }
       size="icon-sm"
       variant="outline"
     >
-      <ExternalLinkIcon aria-hidden="true" />
+      <ServiceBrowserLinkIndicator href={route.url} />
     </Button>
   );
 }
@@ -344,7 +351,6 @@ function RouteLink({ href, label }: { href: string; label: string }) {
         target="_blank"
       >
         <span className="min-w-0 break-all">{label}</span>
-        <ExternalLinkIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
       </ServiceBrowserLink>
     </li>
   );

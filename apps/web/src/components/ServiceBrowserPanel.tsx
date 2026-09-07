@@ -1,6 +1,8 @@
+import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowserPolicy";
+import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { useState } from "react";
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
-import { isServiceBrowserUrl, type RightPanelSurface } from "../rightPanelStore";
+import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
 
 /** Public websites run in the user's browser, independently of the agent's browser session. */
@@ -68,9 +70,11 @@ export function ServiceBrowserPanel({ service, url }: { service: string; url: st
 export function ServiceBrowserPanels({
   surfaces,
   activeSurfaceId,
+  services,
 }: {
   surfaces: RightPanelSurface[];
   activeSurfaceId: string | null;
+  services: readonly ZeropsTopologyService[] | undefined;
 }) {
   return surfaces.map((surface) =>
     surface.kind === "browser" && "url" in surface ? (
@@ -78,7 +82,16 @@ export function ServiceBrowserPanels({
         key={`${surface.id}:${surface.url}`}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        <ServiceBrowserPanel service={surface.service} url={surface.url} />
+        {serviceForPreview(surface.url, services) ? (
+          <ServiceBrowserPanel service={surface.service} url={surface.url} />
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            Preview is available only for known service domains.{" "}
+            <a className="underline" href={surface.url} target="_blank" rel="noreferrer">
+              Open in new tab
+            </a>
+          </p>
+        )}
       </div>
     ) : null,
   );

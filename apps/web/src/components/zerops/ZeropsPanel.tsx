@@ -1,3 +1,4 @@
+import { serviceForPreview } from "../../zerops/serviceBrowserPolicy";
 import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { useRightPanelStore } from "../../rightPanelStore";
 /**
@@ -91,12 +92,9 @@ export function ZeropsPanel({
         value={
           threadRef
             ? (url) => {
-                const service =
-                  view.groups
-                    .flatMap((group) => group.rows)
-                    .find((row) => row.service.routes.some((route) => route.url === url))?.service
-                    .hostname ?? new URL(url).hostname;
-                useRightPanelStore.getState().openService(threadRef, service, url);
+                const service = serviceForPreview(url, topology.view?.services);
+                if (!service) return null;
+                return () => useRightPanelStore.getState().openService(threadRef, service, url);
               }
             : null
         }

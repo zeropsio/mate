@@ -1,3 +1,4 @@
+import { isServiceBrowserUrl } from "./zerops/serviceBrowserPolicy";
 /**
  * Thread-scoped right-panel surface state.
  *
@@ -78,7 +79,6 @@ interface RightPanelStoreState {
     input: Pick<DefaultZeropsPanelInput, "topology" | "usesSheet">,
   ) => void;
   open: (ref: ScopedThreadRef, kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
-  openUrl: (ref: ScopedThreadRef, url: string) => void;
   openService: (ref: ScopedThreadRef, service: string, url: string) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
@@ -177,17 +177,6 @@ const updateThread = (
 function normalizeRevealLine(line: number | undefined): number | null {
   if (line === undefined || !Number.isFinite(line)) return null;
   return Math.max(1, Math.trunc(line));
-}
-
-export function isServiceBrowserUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password
-    );
-  } catch {
-    return false;
-  }
 }
 
 export function migratePersistedRightPanelState(persistedState: unknown): {
@@ -324,7 +313,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       byThreadKey: {},
       zeropsDefaultHandledByThreadKey: {},
       ensureZeropsDefault: (ref, input) =>
@@ -357,22 +346,6 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             upsertSurface(current, singletonSurface(kind)),
           ),
         })),
-      openUrl: (ref, url) => {
-        if (!isServiceBrowserUrl(url)) return;
-        const target = new URL(url);
-        const surfaces = get().byThreadKey[scopedThreadKey(ref)]?.surfaces ?? [];
-        const existing = surfaces.find(
-          (surface) =>
-            surface.kind === "browser" &&
-            "url" in surface &&
-            new URL(surface.url).origin === target.origin,
-        );
-        get().openService(
-          ref,
-          existing && "service" in existing ? existing.service : target.host,
-          url,
-        );
-      },
       openService: (ref, service, url) => {
         if (!isServiceBrowserUrl(url)) return;
         set((state) => ({

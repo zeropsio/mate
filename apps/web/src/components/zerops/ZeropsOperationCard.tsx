@@ -1,3 +1,4 @@
+import { ServiceBrowserLink } from "../ServiceBrowserLink";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
  * (bootstrap · deploy · import · mount · verify · subdomain · delete · scale
@@ -7,7 +8,7 @@
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
 import { useEffect, useReducer, type JSX, type ReactNode } from "react";
-import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
+import { GlobeIcon } from "lucide-react";
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -96,43 +97,19 @@ function useTick(active: boolean): void {
   }, [active]);
 }
 
-function UrlChip({
-  label,
-  url,
-  service,
-  threadRef,
-}: {
-  readonly label: string;
-  readonly url: string;
-  readonly service: string;
-  readonly threadRef?: ScopedThreadRef | null | undefined;
-}) {
+function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
-    <a
+    <ServiceBrowserLink
       aria-label={`Open ${url}`}
       className="inline-flex items-center gap-1.5 rounded-md bg-background/90 px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
       data-zerops-chip-kind="url"
       href={url}
-      onClick={(event) => {
-        if (
-          !threadRef ||
-          event.button !== 0 ||
-          event.metaKey ||
-          event.ctrlKey ||
-          event.shiftKey ||
-          event.altKey
-        )
-          return;
-        event.preventDefault();
-        useRightPanelStore.getState().openService(threadRef, service, url);
-      }}
       rel="noreferrer"
       target="_blank"
     >
       <GlobeIcon aria-hidden="true" className="size-3 text-success-foreground" />
       <span>{label}</span>
-      <ExternalLinkIcon aria-hidden="true" className="size-3" />
-    </a>
+    </ServiceBrowserLink>
   );
 }
 
@@ -395,13 +372,7 @@ export function ZeropsOperationCard(props: {
           {links.length > 0 ? (
             <div aria-label="URLs" className="flex flex-wrap gap-1.5">
               {links.map((link) => (
-                <UrlChip
-                  key={link.url}
-                  label={link.label}
-                  url={link.url}
-                  service={operation.subject}
-                  threadRef={threadRef}
-                />
+                <UrlChip key={link.url} label={link.label} url={link.url} />
               ))}
             </div>
           ) : null}

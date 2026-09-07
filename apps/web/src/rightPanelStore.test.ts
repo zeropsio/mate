@@ -789,31 +789,3 @@ describe("service browser tabs", () => {
     ).toHaveLength(0);
   });
 });
-
-describe("web links in conversations", () => {
-  it("opens arbitrary websites and reuses the deployed service tab for the same origin", () => {
-    const store = useRightPanelStore.getState();
-    store.openService(refA, "weatherapp", "https://weather.example/");
-    store.openUrl(refA, "https://weather.example/about");
-    expect(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
-    ).toHaveLength(1);
-    expect(
-      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
-    ).toMatchObject({ service: "weatherapp", url: "https://weather.example/about" });
-    store.openUrl(refA, "https://docs.example/page");
-    expect(
-      selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA),
-    ).toMatchObject({ service: "docs.example" });
-    for (const url of [
-      "mailto:hello@example.com",
-      "file:///tmp/a",
-      "#section",
-      "javascript:alert(1)",
-    ])
-      store.openUrl(refA, url);
-    expect(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
-    ).toHaveLength(2);
-  });
-});

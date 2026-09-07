@@ -1,3 +1,4 @@
+import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import {
   type ApprovalRequestId,
   DEFAULT_MODEL,
@@ -6675,7 +6676,11 @@ function ChatViewContent(props: ChatViewProps) {
     composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+    <ServiceBrowserScope
+      threadRef={activeThreadRef}
+      services={zeropsTopology?.services}
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+    >
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
       <div
         className={cn(
@@ -7127,6 +7132,7 @@ function ChatViewContent(props: ChatViewProps) {
             key={activeThreadKey}
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
+            services={zeropsTopology?.services}
           />
         </RightPanelTabs>
       ) : null}
@@ -7159,6 +7165,7 @@ function ChatViewContent(props: ChatViewProps) {
               key={activeThreadKey}
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
+              services={zeropsTopology?.services}
             />
           </RightPanelTabs>
         </RightPanelSheet>
@@ -7171,7 +7178,7 @@ function ChatViewContent(props: ChatViewProps) {
           onClose={closeExpandedImage}
         />
       )}
-    </div>
+    </ServiceBrowserScope>
   );
 }
 

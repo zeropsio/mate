@@ -1882,11 +1882,6 @@ function ChatMarkdown({
           const onClick = props.onClick;
           const link = (
             <ServiceBrowserLink
-              onOpen={
-                threadRef
-                  ? (url) => useRightPanelStore.getState().openUrl(threadRef, url)
-                  : undefined
-              }
               {...props}
               href={href}
               target={isSameDocumentLink ? undefined : "_blank"}
