@@ -53,6 +53,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
+  | typeof WS_METHODS.subscribeZeropsDataConsole
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.terminalAttach;
 

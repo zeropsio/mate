@@ -95,6 +95,11 @@ export const RPC_REQUIRED_SCOPES = {
   // authority as any other environment-mutating RPC.
   [WS_METHODS.subscribeZeropsBrowserStream]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsBrowserInput]: AuthOrchestrationOperateScope,
+  // Every Data Console request in this slice is a read (no write token ever
+  // passed to the console); slice 2 splits mutating request kinds onto
+  // AuthOrchestrationOperateScope.
+  [WS_METHODS.zeropsDataConsoleCall]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribeZeropsDataConsole]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsPull]: AuthOrchestrationOperateScope,
   [WS_METHODS.gitRunStackedAction]: AuthOrchestrationOperateScope,

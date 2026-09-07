@@ -123,6 +123,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
+import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -602,6 +603,7 @@ const makeWsRpcLayer = (
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
+      const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -2024,6 +2026,7 @@ const makeWsRpcLayer = (
           zeropsAgentAuth,
           zeropsAgentLogin,
           zeropsBrowserStream,
+          zeropsDataConsole,
           subject: currentSession.subject,
           observeRpcEffect,
           observeRpcStream,

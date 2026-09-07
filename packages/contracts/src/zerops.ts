@@ -489,3 +489,224 @@ export const ZeropsBrowserInput = Schema.Union([
   ZeropsBrowserKeyboardInput,
 ]);
 export type ZeropsBrowserInput = typeof ZeropsBrowserInput.Type;
+
+// ---------------------------------------------------------------------------
+// Data Console surface — read-only slice 1 (spec-dataconsole.md §4.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * `idle` — no console process spawned yet. `starting` — spawned, waiting on
+ * its stdout ready-line. `ready` — ready-line read, requests can be brokered.
+ * `unavailable` — the child exited before printing a ready-line for a reason
+ * that isn't "unknown subcommand" (sanitized one-line `reason` rides along,
+ * never the raw stderr). `unsupported` — the zcp build has no
+ * `studio console serve` subcommand; a permanent state for this zcp version,
+ * never retried into `starting`.
+ */
+export const ZeropsDataConsoleStatus = Schema.Literals([
+  "idle",
+  "starting",
+  "ready",
+  "unavailable",
+  "unsupported",
+]);
+export type ZeropsDataConsoleStatus = typeof ZeropsDataConsoleStatus.Type;
+
+/** One session-status transition, published by `subscribeZeropsDataConsole`. */
+export const ZeropsDataConsoleSessionEvent = Schema.Struct({
+  status: ZeropsDataConsoleStatus,
+  reason: Schema.optional(Schema.String),
+  allowWrites: Schema.optional(Schema.Boolean),
+});
+export type ZeropsDataConsoleSessionEvent = typeof ZeropsDataConsoleSessionEvent.Type;
+
+/** Addresses one node in a service's tree — schema/table, kv key, or object-storage prefix, family-specific. */
+export const ZeropsDataConsolePath = Schema.Struct({
+  service: Schema.String,
+  segments: Schema.Array(Schema.String),
+});
+export type ZeropsDataConsolePath = typeof ZeropsDataConsolePath.Type;
+
+/** Cursor-based paging, shared by every listing request (console `dataconsole-api.md` §3). */
+export const ZeropsDataConsolePage = Schema.Struct({
+  cursor: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.Number),
+  sort: Schema.optional(Schema.String),
+  direction: Schema.optional(Schema.Literals(["asc", "desc"])),
+});
+export type ZeropsDataConsolePage = typeof ZeropsDataConsolePage.Type;
+
+/** One entry of a service's `actions[]` — the sole source of truth for which affordance to render/enable (never infer from `family`/`support`). */
+export const ZeropsDataConsoleServiceAction = Schema.Struct({
+  id: Schema.String,
+  enabled: Schema.Boolean,
+  readOnly: Schema.Boolean,
+  reason: Schema.String,
+});
+export type ZeropsDataConsoleServiceAction = typeof ZeropsDataConsoleServiceAction.Type;
+
+export const ZeropsDataConsoleService = Schema.Struct({
+  hostname: Schema.String,
+  type: Schema.String,
+  family: Schema.String,
+  support: Schema.String,
+  actions: Schema.Array(ZeropsDataConsoleServiceAction),
+  status: Schema.String,
+});
+export type ZeropsDataConsoleService = typeof ZeropsDataConsoleService.Type;
+
+/** Optional per-node metadata (console `NodeMeta`) — every field is family-specific and may be absent. */
+export const ZeropsDataConsoleNodeMeta = Schema.Struct({
+  size: Schema.optional(Schema.Number),
+  modified: Schema.optional(Schema.String),
+  contentType: Schema.optional(Schema.String),
+  etag: Schema.optional(Schema.String),
+  entryType: Schema.optional(Schema.String),
+  count: Schema.optional(Schema.Number),
+  ttlSeconds: Schema.optional(Schema.Number),
+});
+export type ZeropsDataConsoleNodeMeta = typeof ZeropsDataConsoleNodeMeta.Type;
+
+export const ZeropsDataConsoleNode = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["container", "tabular", "blob"]),
+  path: ZeropsDataConsolePath,
+  hasChildren: Schema.Boolean,
+  // The console's Go `Node.Meta` is a `*NodeMeta` with `omitempty` — absent
+  // entirely from the wire (not `null`) whenever a provider set no metadata.
+  meta: Schema.optional(ZeropsDataConsoleNodeMeta),
+});
+export type ZeropsDataConsoleNode = typeof ZeropsDataConsoleNode.Type;
+
+export const ZeropsDataConsoleColumn = Schema.Struct({
+  name: Schema.String,
+  dataType: Schema.String,
+  pk: Schema.Boolean,
+  editable: Schema.Boolean,
+  reason: Schema.String,
+  sortable: Schema.Boolean,
+  sortReason: Schema.String,
+});
+export type ZeropsDataConsoleColumn = typeof ZeropsDataConsoleColumn.Type;
+
+/**
+ * `rows` are positional, parallel to `columns`. A cell value is left
+ * `Schema.Unknown` — the console sends exact-decimal JSON numbers (big ints
+ * included) that would round through `number`, so the client-runtime formats
+ * cells from the raw JSON value rather than this schema coercing it.
+ * `rowKeyCols` empty ⇒ not row-addressable (view-only, e.g. a query result).
+ */
+export const ZeropsDataConsoleTablePage = Schema.Struct({
+  columns: Schema.Array(ZeropsDataConsoleColumn),
+  rows: Schema.Array(Schema.Array(Schema.Unknown)),
+  nextCursor: Schema.String,
+  rowKeyCols: Schema.Array(Schema.String),
+  bestEffort: Schema.Boolean,
+  numbered: Schema.Boolean,
+});
+export type ZeropsDataConsoleTablePage = typeof ZeropsDataConsoleTablePage.Type;
+
+/**
+ * A `blob` request's response — always a bounded preview, server-capped at
+ * 256 KiB regardless of the value's real size (`size` carries the true
+ * pre-truncation byte count). `vector`/`streamMetadata` tell the panel to
+ * collapse an embedding array or label the body as generated stream
+ * metadata rather than real message content (console §3 headers).
+ */
+export const ZeropsDataConsoleBlob = Schema.Struct({
+  /** Base64, already capped server-side. */
+  data: Schema.String,
+  contentType: Schema.String,
+  truncated: Schema.Boolean,
+  size: Schema.Number,
+  vector: Schema.Boolean,
+  streamMetadata: Schema.Boolean,
+  ttlSeconds: Schema.optional(Schema.Number),
+});
+export type ZeropsDataConsoleBlob = typeof ZeropsDataConsoleBlob.Type;
+
+/**
+ * `zeropsDataConsoleCall`'s payload — one typed request per allowlisted
+ * console route (read-only slice 1, `dataconsole-api.md` §3). `refresh`
+ * re-runs discovery and answers with the same shape as `services`.
+ */
+export const ZeropsDataConsoleRequest = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("services") }),
+  Schema.Struct({ kind: Schema.Literal("refresh") }),
+  Schema.Struct({
+    kind: Schema.Literal("tree"),
+    path: ZeropsDataConsolePath,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+  Schema.Struct({ kind: Schema.Literal("stat"), path: ZeropsDataConsolePath }),
+  Schema.Struct({ kind: Schema.Literal("blob"), path: ZeropsDataConsolePath }),
+  Schema.Struct({
+    kind: Schema.Literal("table"),
+    path: ZeropsDataConsolePath,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+  Schema.Struct({ kind: Schema.Literal("tableCount"), path: ZeropsDataConsolePath }),
+  Schema.Struct({
+    kind: Schema.Literal("query"),
+    service: Schema.String,
+    stmt: Schema.String,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+]);
+export type ZeropsDataConsoleRequest = typeof ZeropsDataConsoleRequest.Type;
+
+/** `zeropsDataConsoleCall`'s success payload, one variant per request `kind` (`refresh` answers as `services`). */
+export const ZeropsDataConsoleResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("services"),
+    project: Schema.Struct({ id: Schema.String, name: Schema.String }),
+    services: Schema.Array(ZeropsDataConsoleService),
+    allowWrites: Schema.Boolean,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("tree"),
+    nodes: Schema.Array(ZeropsDataConsoleNode),
+    nextCursor: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("node"), node: ZeropsDataConsoleNode }),
+  Schema.Struct({ kind: Schema.Literal("blob"), ...ZeropsDataConsoleBlob.fields }),
+  Schema.Struct({ kind: Schema.Literal("table"), page: ZeropsDataConsoleTablePage }),
+  Schema.Struct({ kind: Schema.Literal("count"), count: Schema.Number }),
+]);
+export type ZeropsDataConsoleResponse = typeof ZeropsDataConsoleResponse.Type;
+
+/**
+ * Mirrors the console's error envelope (`dataconsole-api.md` §3 sentinel
+ * table) verbatim, plus `session_unavailable`/`session_unsupported` for a
+ * broker-side failure before any HTTP request reached the console (no
+ * session spawned, or this zcp build lacks the subcommand).
+ */
+export const ZeropsDataConsoleErrorCode = Schema.Literals([
+  "not_found",
+  "read_only",
+  "needs_confirm",
+  "conflict",
+  "wrong_type",
+  "too_large",
+  "unsupported",
+  "unreachable",
+  "upstream",
+  "invalid",
+  "timeout",
+  "internal",
+  "session_unavailable",
+  "session_unsupported",
+]);
+export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
+
+export class ZeropsDataConsoleError extends Schema.TaggedErrorClass<ZeropsDataConsoleError>()(
+  "ZeropsDataConsoleError",
+  {
+    code: ZeropsDataConsoleErrorCode,
+    message: Schema.String,
+    service: Schema.optional(Schema.String),
+    family: Schema.optional(Schema.String),
+    action: Schema.optional(Schema.String),
+    requestId: Schema.optional(Schema.String),
+  },
+) {}

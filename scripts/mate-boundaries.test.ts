@@ -1,9 +1,11 @@
-// Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for exactly
-// one thing, `agent mark-oauth`. Everything else the product needs from the
-// platform is read by the client with the user's own token (rule 1), and zcp
-// never grows a layer for mate (rule 3). This is a source scan, not an AST:
-// every `zcp` argv in the zone is written as `[...baseArgs, "<verb>", …]`
-// (ZeropsCli.ts), so a literal-sequence match is exact.
+// Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for
+// exactly two things, `agent mark-oauth` (ZeropsCli.ts) and
+// `studio console serve` (ZeropsDataConsole.ts, the Data Console engine host).
+// Everything else the product needs from the platform is read by the client
+// with the user's own token (rule 1), and zcp never grows a layer for mate
+// (rule 3). This is a source scan, not an AST: every `zcp` argv in the zone
+// is written as `[...baseArgs, "<verb>", …]`, so a literal-sequence match is
+// exact.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -13,7 +15,7 @@ import type { PlatformError } from "effect/PlatformError";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const ZONE = "apps/server/src/zerops";
-const ALLOWED_ARGV = "agent mark-oauth";
+const ALLOWED_ARGV = ["agent mark-oauth", "studio console serve"];
 
 // The leading string literals of the argv; a trailing identifier (`agentId`) is not a verb.
 const ZCP_ARGV_PATTERN = /\[\s*\.\.\.baseArgs\s*,\s*((?:"[^"\n]*"\s*,\s*)*"[^"\n]*")/g;
@@ -83,7 +85,9 @@ it.layer(NodeServices.layer)("mate boundaries (spec §0)", (it) => {
     Effect.gen(function* () {
       const spawns = yield* scanZone;
       assert.isAbove(spawns.length, 0);
-      const violations = spawns.filter((spawn) => !spawn.argv.startsWith(ALLOWED_ARGV));
+      const violations = spawns.filter(
+        (spawn) => !ALLOWED_ARGV.some((allowed) => spawn.argv.startsWith(allowed)),
+      );
       assert.deepStrictEqual(violations, []);
     }),
   );
