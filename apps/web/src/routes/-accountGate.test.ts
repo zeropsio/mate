@@ -17,56 +17,24 @@ describe("resolveZeropsAccountGate", () => {
     expect(resolveZeropsAccountGate({ pathname, status })).toBe(expected);
   });
 
-  it("sends a browser that has signed in before back to the login when its session expires", () => {
-    // A standalone pairing and an expired Zerops session both read
-    // `signed-out`; only `accountRequired` tells them apart, and degrading a
-    // Zerops user into the pairing shell is what this prevents.
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: true,
-        pathname: "/projects/example/threads/example",
-        status: "signed-out",
-      }),
-    ).toBe("auth-only");
+  it("requires the account on every route, whatever the server is", () => {
+    // There is no second product behind the login: without this, a signed-out
+    // client fell through to the upstream shell — project tree, branch
+    // toolbar, and somebody's threads still readable.
+    ["/", "/projects/example/threads/example", "/settings/general", "/usage"].forEach(
+      (pathname) => {
+        expect(resolveZeropsAccountGate({ pathname, status: "signed-out" })).toBe("auth-only");
+      },
+    );
   });
 
-  it("does not apply Zerops account auth over an authenticated local server session", () => {
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: false,
-        pathname: "/projects/example/threads/example",
-        status: "signed-out",
-      }),
-    ).toBe("app");
+  it("keeps pairing reachable — it is how a client is pointed at a container", () => {
+    expect(resolveZeropsAccountGate({ pathname: "/pair", status: "signed-out" })).toBe("pairing");
   });
 
-  it("keeps a Zerops entry's sub-route a bare login too, so the project wizard is not reachable signed out", () => {
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: false,
-        pathname: "/zerops/new",
-        status: "signed-out",
-      }),
-    ).toBe("auth-only");
-  });
-
-  it("still hands the identity callback over rather than gating it as a Zerops sub-route", () => {
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: false,
-        pathname: "/zerops/authorized",
-        status: "signed-out",
-      }),
-    ).toBe("handover");
-  });
-
-  it("keeps the explicit Zerops entry as a bare login even beside a local server", () => {
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: false,
-        pathname: "/zerops",
-        status: "signed-out",
-      }),
-    ).toBe("auth-only");
+  it("keeps the identity callback ahead of the gate that its credential creates", () => {
+    expect(resolveZeropsAccountGate({ pathname: "/zerops/authorized", status: "signed-out" })).toBe(
+      "handover",
+    );
   });
 });

@@ -4,7 +4,6 @@ import {
   ZEROPS_SELECTION_STORAGE_KEY,
   ZEROPS_SESSION_STORAGE_KEY,
   clearZeropsSession,
-  hasRememberedZeropsAccount,
   loadZeropsSelection,
   loadZeropsSession,
   parseZeropsSession,
@@ -165,52 +164,5 @@ describe("Zerops session storage", () => {
       clientId: "org-1",
       projectId: "p1",
     });
-  });
-});
-
-describe("hasRememberedZeropsAccount", () => {
-  const storageOf = (raw: string | null): ZeropsStorageAdapter => ({
-    get: () => Promise.resolve(raw),
-    set: () => Promise.resolve(),
-    remove: () => Promise.resolve(),
-  });
-
-  it.each([
-    { label: "a browser that never signed in", raw: null, expected: false },
-    { label: "a corrupt record", raw: "{oops", expected: false },
-    { label: "a record with no user", raw: JSON.stringify({ clientId: "c" }), expected: false },
-    {
-      label: "a remembered account",
-      raw: JSON.stringify({ userId: "u", clientUserId: null, clientId: "c", projectId: null }),
-      expected: true,
-    },
-  ])("reads $label as $expected", async ({ raw, expected }) => {
-    expect(await hasRememberedZeropsAccount(storageOf(raw))).toBe(expected);
-  });
-
-  it("survives the session being cleared, which is the whole point", async () => {
-    const values = new Map<string, string>();
-    const storage: ZeropsStorageAdapter = {
-      get: (key) => Promise.resolve(values.get(key) ?? null),
-      set: (key, value) => {
-        values.set(key, value);
-        return Promise.resolve();
-      },
-      remove: (key) => {
-        values.delete(key);
-        return Promise.resolve();
-      },
-    };
-
-    await saveZeropsSelection(storage, {
-      userId: "u",
-      clientUserId: null,
-      clientId: "c",
-      projectId: null,
-    });
-    await clearZeropsSession(storage);
-
-    expect(await loadZeropsSession(storage)).toBeNull();
-    expect(await hasRememberedZeropsAccount(storage)).toBe(true);
   });
 });

@@ -96,23 +96,13 @@ export const Route = createRootRoute({
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const { status: zeropsSessionStatus, accountRemembered } = useZeropsSession();
+  const { status: zeropsSessionStatus } = useZeropsSession();
   const { environments } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: countDoorEnvironments(environments),
   });
-  const accountGate = resolveZeropsAccountGate({
-    // The hosted client always needs an account. A local server does not — a
-    // standalone pairing is a real way in — *unless* this browser has been a
-    // Zerops client before, in which case a signed-out status is an expired
-    // session, and dropping it into the pairing shell would answer "your
-    // session ended" with a different product. `null` is "not read yet", and
-    // reads as required so nothing paints before the answer arrives.
-    accountRequired: authGateState.status === "hosted-static" || accountRemembered !== false,
-    pathname,
-    status: zeropsSessionStatus,
-  });
+  const accountGate = resolveZeropsAccountGate({ pathname, status: zeropsSessionStatus });
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
 
   useEffect(() => {

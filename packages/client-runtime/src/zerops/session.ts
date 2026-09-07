@@ -137,29 +137,6 @@ function parseSelection(value: unknown): ZeropsSelection | null {
   };
 }
 
-/**
- * Whether this client has signed in to a Zerops account before.
- *
- * The selection record outlives the session — it is keyed by the account and
- * nothing clears it on sign-out — which makes it the one durable answer to a
- * question the session status cannot answer: a browser that never had an
- * account and one whose session just expired both read `signed-out`.
- *
- * The distinction decides whether an expired session lands on the Zerops login
- * or quietly degrades into the standalone-pairing shell (`-accountGate.ts`).
- * It is deliberately not proof of a *current* account — only that this browser
- * was one, which is exactly what "send them back to sign in" needs.
- */
-export async function hasRememberedZeropsAccount(storage: ZeropsStorageAdapter): Promise<boolean> {
-  const raw = await storage.get(ZEROPS_SELECTION_STORAGE_KEY);
-  if (!raw) return false;
-  try {
-    return parseSelection(JSON.parse(raw)) !== null;
-  } catch {
-    return false;
-  }
-}
-
 export async function loadZeropsSelection(
   storage: ZeropsStorageAdapter,
   userId: string,
