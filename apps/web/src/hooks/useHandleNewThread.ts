@@ -103,6 +103,12 @@ export function useNewThreadHandler() {
          * keep mint-fresh semantics.
          */
         carryComposerContent?: boolean;
+        /**
+         * Start over: create a thread even where a Mate lives. Set when the
+         * Mate's conversation was just archived — the redirect below would
+         * otherwise read a projection that may not know yet and reopen it.
+         */
+        fresh?: boolean;
       },
       // Which draft the thread ended up in, so a caller that has something to put in it — a
       // prepared checkout, a task to write — addresses that one rather than looking the project
@@ -125,13 +131,14 @@ export function useNewThreadHandler() {
       // already has — typed content following when the caller carries it, zcp's
       // introduction composed into it when nobody has spoken there yet — and
       // creates nothing, because a second thread would be a second Mate.
-      const mateConversation = mates.has(projectRef.environmentId)
-        ? resolvePrimaryConversation(
-            readThreadShells().filter(
-              (thread) => thread.environmentId === projectRef.environmentId,
-            ),
-          ).primary
-        : undefined;
+      const mateConversation =
+        options?.fresh !== true && mates.has(projectRef.environmentId)
+          ? resolvePrimaryConversation(
+              readThreadShells().filter(
+                (thread) => thread.environmentId === projectRef.environmentId,
+              ),
+            ).primary
+          : undefined;
       if (mateConversation !== undefined) {
         return (async () => {
           const ref = scopeThreadRef(projectRef.environmentId, mateConversation.id);

@@ -243,7 +243,11 @@ export function useThreadActions() {
 
       if (shouldNavigateToDraft) {
         const navigationResult = await settlePromise(() =>
-          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId)),
+          // Fresh: the archived thread may still read as the Mate's one
+          // conversation until the projection catches up.
+          handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId), {
+            fresh: true,
+          }),
         );
         if (navigationResult._tag === "Failure") {
           return navigationResult;

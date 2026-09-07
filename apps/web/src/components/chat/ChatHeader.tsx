@@ -74,8 +74,8 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   gitCwd: string | null;
   onNewThreadInProject: () => void;
-  /** Sends the provider's `/clear`: a Mate has one conversation, so starting over means the session forgets, not a second thread. */
-  onClearSession: () => void;
+  /** Archives the Mate's conversation and opens a fresh one in its place. */
+  onStartFresh: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -157,17 +157,17 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 }
 
 /**
- * Starting over in a Mate's conversation. A Mate is one conversation by
- * design, so this is not a second thread: it sends the provider's `/clear`,
- * and the session forgets what came before while the transcript stays.
+ * Starting over in a Mate's conversation: the current one is archived and a
+ * fresh thread takes its place, so the Mate still has one conversation and
+ * it is empty.
  */
-function ClearSessionButton({ onClearSession }: { readonly onClearSession: () => void }) {
+function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
   return (
     <Button
       aria-label="New session"
       className="ps-[8.5px]"
-      data-zerops-clear-session
-      onClick={onClearSession}
+      data-zerops-start-fresh
+      onClick={onStartFresh}
       size="xs"
       variant="outline"
     >
@@ -197,7 +197,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   gitCwd,
   onNewThreadInProject,
-  onClearSession,
+  onStartFresh,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -508,7 +508,7 @@ export const ChatHeader = memo(function ChatHeader({
             openInCwd={openInCwd}
           />
         )}
-        {mate === undefined ? null : <ClearSessionButton onClearSession={onClearSession} />}
+        {mate === undefined ? null : <StartFreshButton onStartFresh={onStartFresh} />}
         {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
         {activeProjectName && stackedActionsSupported && (
           <GitActionsControl

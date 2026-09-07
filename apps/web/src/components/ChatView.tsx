@@ -196,7 +196,7 @@ import {
 import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { useThreadActions } from "../hooks/useThreadActions";
+import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -1268,7 +1268,7 @@ function ChatViewContent(props: ChatViewProps) {
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
-  const { settleThread, pinThread, unpinThread } = useThreadActions();
+  const { settleThread, pinThread, unpinThread, archiveThread } = useThreadActions();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -5837,14 +5837,27 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
-  // A Mate has one conversation, so "start over" is not a new thread but the
-  // provider's own `/clear`: sent as a message, the way the composer sends
-  // it, so the transcript shows what happened and the session forgets.
-  const clearSession = () => {
+  // Starting over in a Mate's conversation: the conversation is archived —
+  // it leaves the sidebar and stays readable under Archived — and a fresh
+  // thread in the same project takes its place as the Mate's one
+  // conversation (archived threads never rank as primary). Blocked while a
+  // turn is running, the same as archiving from the sidebar.
+  const startFreshConversation = async () => {
     if (!activeThreadRef) return;
-    promptRef.current = "/clear";
-    setComposerDraftPrompt(composerDraftTarget, "/clear");
-    void onSend();
+    const result = await archiveThread(activeThreadRef);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      const blocked = Schema.is(ThreadArchiveBlockedError)(error);
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: blocked
+            ? "Stop the agent before starting a new session"
+            : "Couldn't start a new session",
+          description: blocked ? undefined : String(error),
+        }),
+      );
+    }
   };
 
   // An environment that was just created has a job waiting, and a coding agent
@@ -6764,7 +6777,7 @@ function ChatViewContent(props: ChatViewProps) {
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
-            onClearSession={clearSession}
+            onStartFresh={startFreshConversation}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}
