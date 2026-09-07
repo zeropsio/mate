@@ -14,6 +14,7 @@ import { appBasePath } from "~/basePath";
 import { connectZeropsIdentity } from "~/connection/onboarding";
 import { useAtomCommand } from "~/state/use-atom-command";
 
+import { promoteCreationHandoff } from "./creationHandoffStorage";
 import { rememberZeropsEnvironment } from "./firstPromptStorage";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -73,6 +74,7 @@ export function useZeropsIdentityExchange() {
       if (result._tag === "Success" && alive()) {
         rememberEnvironment({ key: candidate.key, environmentId: String(result.environmentId) });
         rememberZeropsEnvironment(String(result.environmentId));
+        promoteCreationHandoff(candidate.project.id, String(result.environmentId));
       }
       return result;
     },

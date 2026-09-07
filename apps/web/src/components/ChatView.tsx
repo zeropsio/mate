@@ -262,6 +262,7 @@ import {
   type ZeropsAgentId,
 } from "./zerops/ZeropsAgentAuthorizationHost";
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
+import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -5822,6 +5823,19 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  // An environment that was just created has a job waiting, and a coding agent
+  // to sign in before anything can run it. This says the job the moment there
+  // is (`useZeropsCreationJob`).
+  useZeropsCreationJob({
+    environmentId: activeThreadEnvironmentId,
+    target: activeThreadRef,
+    agentSignInRequired: zeropsChrome.agentSignInRequired,
+    ready: activeThread !== null && !isWorking && !activeEnvironmentUnavailable,
+    send: () => {
+      void onSend();
+    },
+  });
 
   const onInterrupt = async () => {
     if (!activeThread) return;

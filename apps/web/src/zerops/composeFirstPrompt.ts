@@ -5,6 +5,9 @@
  *
  * It is composed, not sent: zcp needs a first message before it greets anyone,
  * and the person gets to read what will be said before it costs them a turn.
+ * An environment that a creation is waiting on is the one exception, and it is
+ * not made here — `useZeropsCreationJob` sends that one once a coding agent is
+ * signed in, because until then there is nothing to run it.
  */
 
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -17,6 +20,9 @@ import {
   shouldComposeFirstPrompt,
 } from "@t3tools/client-runtime/zerops/firstPrompt";
 
+import { creationHandoffPrompt } from "@t3tools/client-runtime/zerops";
+
+import { creationHandoffFor } from "./creationHandoffStorage";
 import {
   connectionOriginFor,
   readFirstPromptMarkers,
@@ -37,7 +43,16 @@ export function composeZeropsFirstPrompt(input: {
   ) {
     return false;
   }
-  useComposerDraftStore.getState().setPrompt(input.target, ZEROPS_ONBOARDING_PROMPT);
+  // An environment somebody created has a reason to exist, and the creation
+  // wrote it down (`creationHandoff.ts`). Asking a Mate that was made for a
+  // job to introduce itself instead is a wasted turn.
+  const handoff = creationHandoffFor(input.environmentId);
+  useComposerDraftStore
+    .getState()
+    .setPrompt(
+      input.target,
+      handoff === undefined ? ZEROPS_ONBOARDING_PROMPT : creationHandoffPrompt(handoff),
+    );
   rememberFirstPromptComposed(input.environmentId);
   return true;
 }

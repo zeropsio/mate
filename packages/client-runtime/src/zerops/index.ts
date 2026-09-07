@@ -99,6 +99,19 @@ export {
   type ZeropsGroupRecord,
 } from "./recipeStore.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
+export {
+  ZEROPS_CREATION_HANDOFF_STORAGE_KEY,
+  creationHandoffPrompt,
+  parseCreationHandoffs,
+  readCreationHandoff,
+  creationJobToStart,
+  withCreationHandoff,
+  withCreationHandoffPromoted,
+  withoutCreationHandoff,
+  type ZeropsCreationHandoff,
+  type ZeropsCreationHandoffs,
+  type ZeropsCreationSource,
+} from "./creationHandoff.ts";
 export { withRecipeStoreMock, type RecipeStoreMockOptions } from "./recipeStoreMock.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export { derivePublicRoutes, type ZeropsPublicRoute } from "./publicRoutes.ts";

@@ -54,7 +54,12 @@ export function recipeOptions(input: {
       id: `clone:${source.projectId}`,
       label: `Clone ${who}`,
       detail: `${source.services.join(", ")}${needsDeploy}`,
-      choice: { kind: "services", yaml: source.yaml, source: source.name },
+      choice: {
+        kind: "services",
+        yaml: source.yaml,
+        source: source.name,
+        needsDeploy: source.builtFromGit,
+      },
     });
   }
   options.push({

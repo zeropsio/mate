@@ -65,7 +65,18 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
  */
 export type EnvironmentRecipeChoice =
   | { readonly kind: "store" }
-  | { readonly kind: "services"; readonly yaml: string; readonly source: string }
+  | {
+      readonly kind: "services";
+      readonly yaml: string;
+      readonly source: string;
+      /**
+       * Services this YAML declares but cannot build: the export carries no
+       * `zeropsSetup`, so they come up with nothing deployed
+       * (`recipeExport.ts`). Carried through so the environment's opening
+       * message can name them — it is the job the new Mate is created for.
+       */
+      readonly needsDeploy?: ReadonlyArray<string>;
+    }
   | { readonly kind: "none" };
 
 export interface EnvironmentCreationInput {

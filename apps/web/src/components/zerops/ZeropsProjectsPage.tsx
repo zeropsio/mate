@@ -23,6 +23,7 @@ import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/en
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
+import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import {
@@ -897,6 +898,24 @@ function ZeropsProjectsContent() {
         refresh();
         return;
       }
+
+      // What this environment is for, said once, where the Mate that has to do
+      // it will read it (`creationHandoff.ts`). Written against the project
+      // because that is all a creation knows; the connect moves it onto the
+      // environment id.
+      rememberCreationHandoff(outcome.projectId, {
+        environmentName: name,
+        groupName: group.name,
+        role,
+        source:
+          choice.recipe.kind === "services"
+            ? {
+                kind: "clone",
+                name: choice.recipe.source,
+                needsDeploy: choice.recipe.needsDeploy ?? [],
+              }
+            : { kind: choice.recipe.kind },
+      });
 
       refresh();
       if (outcome.awaitingAgent) {
