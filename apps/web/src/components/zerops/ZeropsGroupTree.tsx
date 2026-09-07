@@ -117,11 +117,12 @@ function FirstRun({
             Start with a Mate
           </h2>
           <p className="text-sm leading-6 text-muted-foreground">
-            A Mate is a coding agent with a Zerops project of its own: a terminal, somewhere to run
-            what it builds, and one conversation you come back to.
+            A Mate is a coding agent with a dev environment of its own: a terminal, somewhere to run
+            what it builds, and one conversation you come back to. A project holds as many as the
+            people on it want.
           </p>
         </div>
-        <Pill disabled={creating} label="New Mate" onClick={onCreateProject} />
+        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
       </div>
     </section>
   );

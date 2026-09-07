@@ -116,7 +116,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           onClick={onBrowseProjects}
           type="button"
         >
-          {emptyReason === "no-projects" ? "New Mate" : "Set up Mate"}
+          {emptyReason === "no-projects" ? "New project" : "Set up Mate"}
         </button>
       </div>
     );

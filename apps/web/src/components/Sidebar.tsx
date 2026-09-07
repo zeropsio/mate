@@ -3541,7 +3541,7 @@ export default function Sidebar() {
                 onClick={navigateToNewZeropsProject}
               >
                 <PlusIcon className="size-4 shrink-0" />
-                <span>New Mate</span>
+                <span>New project</span>
               </SidebarMenuButton>
             ) : (
               <div className="flex items-center gap-1">
@@ -3735,7 +3735,7 @@ export default function Sidebar() {
                         className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                         onClick={navigateToNewZeropsProject}
                         type="button"
-                        aria-label="New Mate"
+                        aria-label="New project"
                       />
                     }
                   >
@@ -3745,7 +3745,7 @@ export default function Sidebar() {
                       aria-hidden="true"
                     />
                   </TooltipTrigger>
-                  <TooltipPopup side="right">New Mate</TooltipPopup>
+                  <TooltipPopup side="right">New project</TooltipPopup>
                 </Tooltip>
               </div>
             ) : null}
@@ -4290,7 +4290,7 @@ export default function Sidebar() {
                     className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                   >
                     <PlusIcon className="-mx-0.5 size-3" />
-                    New Mate
+                    New project
                   </button>
                 </>
               ) : scopedProjectGroup ? (

@@ -220,7 +220,7 @@ describe("ZeropsGroupTree", () => {
     const html = render([], { onCreateProject: () => {} });
     expect(html).toContain('data-zerops-surface="first-run"');
     expect(html).toContain("Start with a Mate");
-    expect(html).toContain("New Mate");
+    expect(html).toContain("New project");
     expect(html).toContain('data-mate-face-state="idle"');
   });
 

@@ -402,14 +402,15 @@ export function ZeropsNewProjectWizard() {
             </Link>
           </WorkspaceBreadcrumbItem>
           <WorkspaceBreadcrumbSeparator />
-          <WorkspaceBreadcrumbItem current>New Mate</WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbItem current>New project</WorkspaceBreadcrumbItem>
         </WorkspaceBreadcrumb>
       }
     >
       <div className="space-y-1" data-zerops-project-scope="true">
-        <h1 className="text-xl font-medium text-foreground">New Mate</h1>
+        <h1 className="text-xl font-medium text-foreground">New project</h1>
         <p className="text-sm text-muted-foreground">
-          A dev environment with a Mate in it. Stage and production come later, from here.
+          A project, with its first Mate in it. More Mates, a stage and a production come later,
+          from here.
         </p>
       </div>
       <ZeropsNewProjectContent />

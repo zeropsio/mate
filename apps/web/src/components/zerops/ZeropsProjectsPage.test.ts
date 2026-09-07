@@ -87,7 +87,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(markup).not.toContain(">Zerops<");
     expect(markup).not.toContain("<p");
     // The creating action sits in the title row, not under the list.
-    expect(markup).toContain("New Mate");
+    expect(markup).toContain("New project");
     expect(connect).toHaveBeenCalledTimes(1);
   });
 
