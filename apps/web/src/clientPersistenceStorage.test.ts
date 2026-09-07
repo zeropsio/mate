@@ -1,5 +1,5 @@
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 function createLocalStorageStub(): Storage {
   const store = new Map<string, string>();
@@ -31,6 +31,11 @@ function getTestWindow(): Window & typeof globalThis {
   return testWindow;
 }
 
+beforeEach(async () => {
+  const { openAccountLifetime } = await import("./zerops/accountLifetime");
+  openAccountLifetime("storage-test");
+});
+
 afterEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
@@ -54,7 +59,10 @@ describe("clientPersistenceStorage", () => {
 
   it("reports structured decode failures while preserving the fallback", async () => {
     const testWindow = getTestWindow();
-    testWindow.localStorage.setItem("t3code:client-settings:v1", "not-json");
+    testWindow.localStorage.setItem(
+      "mate:account:storage-test:t3code:client-settings:v1",
+      "not-json",
+    );
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { readBrowserClientSettings } = await import("./clientPersistenceStorage");
 
@@ -73,7 +81,7 @@ describe("clientPersistenceStorage", () => {
   it("defaults word wrap on and discards obsolete wrapping preferences", async () => {
     const testWindow = getTestWindow();
     testWindow.localStorage.setItem(
-      "t3code:client-settings:v1",
+      "mate:account:storage-test:t3code:client-settings:v1",
       JSON.stringify({
         chatWordWrap: false,
         diffWordWrap: false,

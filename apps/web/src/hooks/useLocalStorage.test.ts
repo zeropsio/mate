@@ -23,6 +23,8 @@ function createStorage(overrides: Partial<Storage> = {}): Storage {
 async function loadWithStorage(storage: Storage) {
   vi.stubGlobal("window", { localStorage: storage });
   vi.stubGlobal("localStorage", storage);
+  const { openAccountLifetime } = await import("../zerops/accountLifetime");
+  openAccountLifetime("storage-test");
   return import("./useLocalStorage");
 }
 

@@ -49,7 +49,7 @@ function testWindow(): Window & typeof globalThis {
   return globalThis.window ?? (globalThis as unknown as Window & typeof globalThis);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   if (globalThis.window === undefined) {
@@ -63,6 +63,8 @@ beforeEach(() => {
     configurable: true,
     value: createLocalStorageStub(),
   });
+  const { openAccountLifetime } = await import("./zerops/accountLifetime");
+  openAccountLifetime("storage-test");
 });
 
 afterEach(() => {
