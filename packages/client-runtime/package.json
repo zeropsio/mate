@@ -215,6 +215,10 @@
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"
     },
+    "./zerops/dataConsole": {
+      "types": "./src/zerops/dataConsole.ts",
+      "default": "./src/zerops/dataConsole.ts"
+    },
     "./zerops/errors": {
       "types": "./src/zerops/errors.ts",
       "default": "./src/zerops/errors.ts"
