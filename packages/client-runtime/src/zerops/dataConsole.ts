@@ -143,6 +143,31 @@ export function isNodeUnloaded(tree: DataConsoleTree, node: ZeropsDataConsoleNod
   return entry === undefined || !entry.loaded;
 }
 
+/**
+ * The chain of container segments a service's tree collapses away, read from
+ * the root down.
+ *
+ * A level collapses when its loaded page holds exactly one node, that node is
+ * a container with children, and no cursor promises more: the container then
+ * carries no information the level above did not already give, so the panel
+ * shows its children in its place. `public` on a single-schema database is
+ * the case that motivated it, but the rule is family-blind. Two nodes at a
+ * level, or a cursor, and nothing below that level collapses either.
+ */
+export function collapsedPrefix(tree: DataConsoleTree, service: string): ReadonlyArray<string> {
+  const prefix: string[] = [];
+  for (;;) {
+    const entry = tree.entries[treePathKey({ service, segments: prefix })];
+    if (entry === undefined || !entry.loaded) return prefix;
+    if (entry.nodes.length !== 1 || entry.nextCursor !== undefined) return prefix;
+    const only = entry.nodes[0]!;
+    if (only.kind !== "container" || !only.hasChildren) return prefix;
+    const segment = only.path.segments[only.path.segments.length - 1];
+    if (segment === undefined || only.path.segments.length !== prefix.length + 1) return prefix;
+    prefix.push(segment);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Table model
 // ---------------------------------------------------------------------------
@@ -640,10 +665,13 @@ export function describeTableContext(input: {
   readonly path: ZeropsDataConsolePath;
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
   readonly approxRowCount?: number;
+  readonly collapsedPrefix?: ReadonlyArray<string>;
 }): { readonly label: string; readonly text: string } {
-  const { service, path, columns, approxRowCount } = input;
+  const { service, path, columns, approxRowCount, collapsedPrefix: collapsed } = input;
   const tableLabel = tablePathLabel(path);
-  const label = `${path.service} · ${tableLabel}`;
+  // The chip reads the way the tree does; the heading keeps the full path so
+  // the agent knows which schema the table lives in.
+  const label = `${path.service} · ${visibleSegments(path.segments, collapsed).join(".")}`;
   const lines = [
     `## ${service.hostname} (${service.type}) · ${tableLabel}`,
     ...columns.map((column) => `- ${column.name}: ${column.dataType}${column.pk ? " (pk)" : ""}`),
@@ -662,12 +690,13 @@ export function describeRowContext(input: {
   readonly path: ZeropsDataConsolePath;
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
   readonly row: ReadonlyArray<unknown>;
+  readonly collapsedPrefix?: ReadonlyArray<string>;
 }): { readonly label: string; readonly text: string } {
-  const { service, path, columns, row } = input;
+  const { service, path, columns, row, collapsedPrefix: collapsed } = input;
   const tableLabel = tablePathLabel(path);
   const pk = firstPrimaryKey(columns, row);
   const rowLabel = pk ? `${pk.name}=${String(pk.value)}` : "row";
-  const label = `${path.service} · ${tableLabel} · ${rowLabel}`;
+  const label = `${path.service} · ${visibleSegments(path.segments, collapsed).join(".")} · ${rowLabel}`;
   const lines = [
     `## ${service.hostname} (${service.type}) · ${tableLabel} · ${rowLabel}`,
     "```json",
@@ -696,20 +725,38 @@ export function resolveDataLayout(containerWidth: number): "narrow" | "wide" {
 // Breadcrumbs
 // ---------------------------------------------------------------------------
 
-/** One breadcrumb per path prefix, starting at the service root (no segments) through the full path. */
+/**
+ * One breadcrumb per path prefix, starting at the service root (no segments)
+ * through the full path. Segments named by `collapsed` get no crumb of their
+ * own — the trail reads `db / orders`, not `db / public / orders` — while
+ * every remaining crumb still carries its full path, so navigating to one
+ * addresses the console exactly as before.
+ */
 export function breadcrumbsFor(
   path: ZeropsDataConsolePath,
+  collapsed: ReadonlyArray<string> = [],
 ): ReadonlyArray<{ readonly label: string; readonly path: ZeropsDataConsolePath }> {
   const crumbs: Array<{ readonly label: string; readonly path: ZeropsDataConsolePath }> = [
     { label: path.service, path: { service: path.service, segments: [] } },
   ];
   for (let i = 0; i < path.segments.length; i++) {
+    if (i < collapsed.length && path.segments[i] === collapsed[i]) continue;
     crumbs.push({
       label: path.segments[i]!,
       path: { service: path.service, segments: path.segments.slice(0, i + 1) },
     });
   }
   return crumbs;
+}
+
+/** `segments` with a leading `collapsed` run removed — the short form a person reads and types. */
+export function visibleSegments(
+  segments: ReadonlyArray<string>,
+  collapsed: ReadonlyArray<string> = [],
+): ReadonlyArray<string> {
+  let skipped = 0;
+  while (skipped < collapsed.length && segments[skipped] === collapsed[skipped]) skipped += 1;
+  return segments.slice(skipped);
 }
 
 // ---------------------------------------------------------------------------
@@ -746,6 +793,7 @@ export function dataMentionToken(path: ZeropsDataConsolePath): string {
 export function buildDataMentionEntries(
   services: ReadonlyArray<ZeropsDataConsoleService>,
   tabularNodes: ReadonlyArray<ZeropsDataConsoleNode>,
+  collapsedByService: Readonly<Record<string, ReadonlyArray<string>>> = {},
 ): ReadonlyArray<DataMentionEntry> {
   const browsable = new Map<string, ZeropsDataConsoleService>();
   for (const service of services) {
@@ -769,16 +817,24 @@ export function buildDataMentionEntries(
     const service = browsable.get(node.path.service);
     if (service === undefined || node.kind !== "tabular") continue;
     const segments = [...node.path.segments];
-    const token = dataMentionToken(node.path);
-    const shortToken = `${service.hostname}.${segments[segments.length - 1] ?? ""}`;
+    const fullToken = dataMentionToken(node.path);
+    // The collapsed levels are not in the name a person reads, so they are not
+    // in the name they type either: the short form is what the menu inserts,
+    // and the full path stays an alias so typing it still finds the table.
+    const visible = visibleSegments(segments, collapsedByService[service.hostname] ?? []);
+    const token = `${service.hostname}.${visible.join(".")}`;
+    const lastToken = `${service.hostname}.${visible[visible.length - 1] ?? ""}`;
+    const aliases = [fullToken, lastToken].filter(
+      (alias, index, all) => alias !== token && all.indexOf(alias) === index,
+    );
     entries.push({
       kind: "table",
       service: service.hostname,
       serviceType: service.type,
       segments,
       token,
-      aliases: shortToken !== token ? [shortToken] : [],
-      label: `${service.hostname} · ${segments.join(".")}`,
+      aliases,
+      label: `${service.hostname} · ${visible.join(".")}`,
     });
   }
   return entries;

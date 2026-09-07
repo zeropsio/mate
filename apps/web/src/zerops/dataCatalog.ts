@@ -45,12 +45,38 @@ interface DataCatalogState {
   readonly load: (environmentId: EnvironmentId, call: DataConsoleCaller) => Promise<void>;
 }
 
+/**
+ * Walks one service's tree for the tables to offer as mentions, and reports
+ * which leading levels collapsed on the way down.
+ *
+ * A level holding exactly one container with no cursor is collapsed — the
+ * same rule the tree renders by (`collapsedPrefix`) — so a lone `public`
+ * schema is neither shown nor typed: the mention is `db.orders`, with
+ * `db.public.orders` kept as an alias.
+ */
 async function collectTabularNodes(
   service: ZeropsDataConsoleService,
   call: DataConsoleCaller,
-): Promise<ReadonlyArray<ZeropsDataConsoleNode>> {
-  const root = await call({ kind: "tree", path: { service: service.hostname, segments: [] } });
-  if (root?.kind !== "tree") return [];
+): Promise<{
+  readonly tables: ReadonlyArray<ZeropsDataConsoleNode>;
+  readonly collapsed: ReadonlyArray<string>;
+}> {
+  const collapsed: string[] = [];
+  let root = await call({ kind: "tree", path: { service: service.hostname, segments: [] } });
+  while (
+    root?.kind === "tree" &&
+    root.nodes.length === 1 &&
+    root.nextCursor === "" &&
+    root.nodes[0]!.kind === "container" &&
+    root.nodes[0]!.hasChildren
+  ) {
+    const only = root.nodes[0]!;
+    const segment = only.path.segments[only.path.segments.length - 1];
+    if (segment === undefined || only.path.segments.length !== collapsed.length + 1) break;
+    collapsed.push(segment);
+    root = await call({ kind: "tree", path: only.path });
+  }
+  if (root?.kind !== "tree") return { tables: [], collapsed };
   const tables: ZeropsDataConsoleNode[] = [];
   for (const node of root.nodes) {
     if (tables.length >= MAX_TABLES_PER_SERVICE) break;
@@ -68,7 +94,7 @@ async function collectTabularNodes(
       if (child.kind === "tabular") tables.push(child);
     }
   }
-  return tables;
+  return { tables, collapsed };
 }
 
 export const useZeropsDataCatalogStore = create<DataCatalogState>((set, get) => ({
@@ -92,10 +118,16 @@ export const useZeropsDataCatalogStore = create<DataCatalogState>((set, get) => 
         .filter((service) => resolveServiceAffordances(service).canBrowse)
         .slice(0, MAX_SERVICES);
       const tables: ZeropsDataConsoleNode[] = [];
+      const collapsedByService: Record<string, ReadonlyArray<string>> = {};
       for (const service of browsable) {
-        tables.push(...(await collectTabularNodes(service, call)));
+        const walked = await collectTabularNodes(service, call);
+        tables.push(...walked.tables);
+        collapsedByService[service.hostname] = walked.collapsed;
       }
-      write({ status: "ready", entries: buildDataMentionEntries(browsable, tables) });
+      write({
+        status: "ready",
+        entries: buildDataMentionEntries(browsable, tables, collapsedByService),
+      });
     } catch {
       write({ status: "failed", entries: [] });
     }

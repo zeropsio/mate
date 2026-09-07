@@ -49,6 +49,9 @@ vi.mock("../../state/zeropsCommands", () => ({
   zeropsCommands: { dataConsoleCall: Symbol("dataConsoleCall") },
 }));
 
+import { collapsedPrefix, treePathKey } from "@t3tools/client-runtime/zerops/dataConsole";
+import type { DataConsoleTree } from "@t3tools/client-runtime/zerops/dataConsole";
+
 import { ZeropsDataPanel } from "./ZeropsDataPanel";
 import { ZeropsDataBreadcrumbs } from "./ZeropsDataBreadcrumbs";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
@@ -503,6 +506,85 @@ describe("ZeropsDataPanel", () => {
       expect(findByAttribute(tree, "data-zerops-data-not-browsable")!.props.children).toBe(
         "This service can't be browsed yet.",
       );
+    });
+
+    it("loads a lone schema itself and shows its tables with no schema row", async () => {
+      const SCHEMA: ZeropsDataConsoleNode = {
+        name: "public",
+        kind: "container",
+        path: { service: "db1", segments: ["public"] },
+        hasChildren: true,
+        meta: {},
+      };
+      const TABLE: ZeropsDataConsoleNode = {
+        name: "orders",
+        kind: "tabular",
+        path: { service: "db1", segments: ["public", "orders"] },
+        hasChildren: false,
+        meta: {},
+      };
+      respond([SERVICE_SUPPORTED], (request) =>
+        request.kind === "tree"
+          ? {
+              kind: "tree",
+              nodes: request.path.segments.length === 0 ? [SCHEMA] : [TABLE],
+              nextCursor: "",
+            }
+          : undefined,
+      );
+
+      await serviceTab();
+      await flush();
+      render({ service: "db1", widthForTest: 1200 });
+      await flush();
+      const settled = render({ service: "db1", widthForTest: 1200 });
+
+      // Nothing in the UI names the lone schema, so the panel asks for its
+      // page itself; the tree it hands down then reports it as collapsed and
+      // carries the table underneath.
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: { kind: "tree", path: SCHEMA.path },
+      });
+      const treeProps = findComponent<{ readonly tree: DataConsoleTree }>(
+        settled,
+        ZeropsDataTree,
+      )!.props;
+      expect(collapsedPrefix(treeProps.tree, "db1")).toEqual(["public"]);
+      expect(
+        treeProps.tree.entries[treePathKey(SCHEMA.path)]?.nodes.map((node) => node.name),
+      ).toEqual(["orders"]);
+      expect(TABLE.name).toBe("orders");
+    });
+
+    it("breadcrumbs skip a collapsed schema", async () => {
+      const SCHEMA: ZeropsDataConsoleNode = {
+        name: "public",
+        kind: "container",
+        path: { service: "db1", segments: ["public"] },
+        hasChildren: true,
+        meta: {},
+      };
+      respond([SERVICE_SUPPORTED], (request) =>
+        request.kind === "tree"
+          ? {
+              kind: "tree",
+              nodes: request.path.segments.length === 0 ? [SCHEMA] : [],
+              nextCursor: "",
+            }
+          : undefined,
+      );
+
+      await serviceTab();
+      await flush();
+      const settled = render({ service: "db1", widthForTest: 1200 });
+
+      expect(
+        findComponent<{ readonly collapsedPrefix: ReadonlyArray<string> }>(
+          settled,
+          ZeropsDataBreadcrumbs,
+        )!.props.collapsedPrefix,
+      ).toEqual(["public"]);
     });
 
     it("says so quietly when the console does not classify this service", async () => {

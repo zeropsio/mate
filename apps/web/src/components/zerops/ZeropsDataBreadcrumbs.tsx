@@ -14,12 +14,18 @@ import { breadcrumbsFor } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsDataConsolePath } from "@t3tools/contracts";
 
 export interface ZeropsDataBreadcrumbsProps {
+  /** Segments the tree collapses away — they get no crumb (`db / orders`, not `db / public / orders`). */
+  readonly collapsedPrefix?: ReadonlyArray<string>;
   readonly path: ZeropsDataConsolePath;
   readonly onNavigate: (path: ZeropsDataConsolePath) => void;
 }
 
-export function ZeropsDataBreadcrumbs({ path, onNavigate }: ZeropsDataBreadcrumbsProps) {
-  const crumbs = breadcrumbsFor(path);
+export function ZeropsDataBreadcrumbs({
+  path,
+  onNavigate,
+  collapsedPrefix,
+}: ZeropsDataBreadcrumbsProps) {
+  const crumbs = breadcrumbsFor(path, collapsedPrefix);
 
   return (
     <nav

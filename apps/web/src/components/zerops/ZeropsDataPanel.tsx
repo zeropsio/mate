@@ -85,7 +85,7 @@ import {
   buildSortPage,
   collapseTreePath,
   describeDataConsoleError,
-  dataMentionToken,
+  collapsedPrefix,
   describeRowContext,
   describeTableContext,
   emptyTable,
@@ -99,6 +99,7 @@ import {
   rowAsJson,
   toggleHiddenColumn,
   treePathKey,
+  visibleSegments,
   type DataConsoleFilter,
   type DataConsoleTableModel,
   type DataConsoleTree,
@@ -170,6 +171,9 @@ const FILTERED_LIMIT = 200;
 const ASSUMED_WIDTH_MAXIMIZED = 1200;
 const ASSUMED_WIDTH_INLINE = 420;
 
+/** Stable empty prefix, so a service without a collapsed level keeps one identity across renders. */
+const EMPTY_PREFIX: ReadonlyArray<string> = [];
+
 const isZeropsDataConsoleError = Schema.is(ZeropsDataConsoleError);
 
 function copyToClipboard(text: string): void {
@@ -224,6 +228,7 @@ export function ZeropsDataPanel({
   const servicesRequestedForRef = useRef<EnvironmentId | null>(null);
   const openedServiceRef = useRef<string | null>(null);
   const missingServiceRefreshRef = useRef<string | null>(null);
+  const collapsedLoadedKeysRef = useRef<Set<string>>(new Set());
   const treeTokenRef = useRef<Map<string, number>>(new Map());
   const selectionTokenRef = useRef(0);
   const filterTokenRef = useRef(0);
@@ -364,6 +369,22 @@ export function ZeropsDataPanel({
       }
       setMissingServiceRefreshed(missingServiceKey);
     });
+  }
+
+  // The collapsed chain has no row to click, so nothing else would ever ask
+  // for its page: the panel expands and loads it itself, once per path.
+  const treeCollapsedPrefix = service === undefined ? EMPTY_PREFIX : collapsedPrefix(tree, service);
+  if (service !== undefined && treeCollapsedPrefix.length > 0) {
+    const collapsedPath: ZeropsDataConsolePath = {
+      service,
+      segments: [...treeCollapsedPrefix],
+    };
+    const collapsedKey = treePathKey(collapsedPath);
+    if (!collapsedLoadedKeysRef.current.has(collapsedKey)) {
+      collapsedLoadedKeysRef.current.add(collapsedKey);
+      setTree((current) => expandTreePath(current, collapsedPath));
+      loadTreePage(collapsedPath);
+    }
   }
 
   const openServiceRoot = (hostname: string) => {
@@ -654,7 +675,7 @@ export function ZeropsDataPanel({
     if (service === undefined) return;
     onAddContext({
       kind: "data",
-      token: dataMentionToken(path),
+      token: `${path.service}.${visibleSegments(path.segments, treeCollapsedPrefix).join(".")}`,
       terminalId: `data:${context.label}`,
       terminalLabel: context.label,
       lineStart: 1,
@@ -805,6 +826,7 @@ export function ZeropsDataPanel({
                     path: selectedNode.path,
                     columns: gridModel.columns,
                     ...(tableCount !== undefined ? { approxRowCount: tableCount } : {}),
+                    collapsedPrefix: treeCollapsedPrefix,
                   }),
                   selectedNode.path,
                 )
@@ -856,6 +878,7 @@ export function ZeropsDataPanel({
               path: currentPath,
               columns: gridModel.columns,
               row: drawerRow,
+              collapsedPrefix: treeCollapsedPrefix,
             }),
             currentPath,
           )
@@ -891,7 +914,11 @@ export function ZeropsDataPanel({
       ref={measureRef.current}
     >
       <div className="flex items-center justify-between gap-2">
-        <ZeropsDataBreadcrumbs onNavigate={handleNavigatePath} path={currentPath} />
+        <ZeropsDataBreadcrumbs
+          collapsedPrefix={treeCollapsedPrefix}
+          onNavigate={handleNavigatePath}
+          path={currentPath}
+        />
         {onToggleMaximized !== undefined ? (
           <Button
             aria-label={maximized ? "Restore panel" : "Maximize panel"}

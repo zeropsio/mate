@@ -20,6 +20,14 @@ const CONTAINER_NODE: ZeropsDataConsoleNode = {
   meta: {},
 };
 
+const OTHER_CONTAINER_NODE: ZeropsDataConsoleNode = {
+  name: "billing",
+  kind: "container",
+  path: { service: "db", segments: ["billing"] },
+  hasChildren: true,
+  meta: {},
+};
+
 const LEAF_NODE: ZeropsDataConsoleNode = {
   name: "orders",
   kind: "tabular",
@@ -63,9 +71,11 @@ describe("ZeropsDataTree", () => {
     expect(leaf?.props.children).toBe("orders");
   });
 
+  // Two containers: one alone at a level is collapsed away and has no toggle
+  // of its own, so a toggle only exists where a level holds more than one node.
   it("clicking a collapsed container's toggle calls onToggleNode with that node", () => {
     const loaded = applyTreePage(emptyTree, ROOT_PATH, {
-      nodes: [CONTAINER_NODE],
+      nodes: [CONTAINER_NODE, OTHER_CONTAINER_NODE],
       nextCursor: "",
     });
     const onToggleNode = vi.fn();
@@ -209,5 +219,47 @@ describe("ZeropsDataTree", () => {
     });
     const leaf = findByAttribute(tree, "data-zerops-data-tree-node")!;
     expect(leaf.props["aria-selected"]).toBe(true);
+  });
+
+  it("renders a lone container's children in its place, at the parent's indent", () => {
+    let withRoot = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE],
+      nextCursor: "",
+    });
+    withRoot = applyTreePage(withRoot, CONTAINER_NODE.path, {
+      nodes: [LEAF_NODE],
+      nextCursor: "",
+    });
+
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: withRoot,
+    });
+
+    expect(findByAttribute(tree, "data-zerops-data-tree-toggle")).toBeNull();
+    const leaf = findByAttribute(tree, "data-zerops-data-tree-node")!;
+    expect(leaf.props["data-zerops-data-tree-node"]).toBe(treePathKey(LEAF_NODE.path));
+    const list = findByAttribute(tree, "data-zerops-data-tree-list")!;
+    expect(list.props["data-zerops-data-tree-list"]).toBe(treePathKey(CONTAINER_NODE.path));
+  });
+
+  it("keeps a lone container's row when a cursor promises more nodes at that level", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE],
+      nextCursor: "more",
+    });
+
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: loaded,
+    });
+
+    expect(findByAttribute(tree, "data-zerops-data-tree-toggle")).not.toBeNull();
   });
 });

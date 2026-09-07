@@ -81,13 +81,13 @@ describe("useZeropsDataCatalogStore", () => {
     expect(caller.requests[0]).toEqual({ kind: "refresh" });
   });
 
-  it("walks browsable services one container level deep and lists their tables", async () => {
+  it("walks browsable services down through their containers and lists their tables", async () => {
     const caller = twoLevelCaller();
     await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
 
     const entry = useZeropsDataCatalogStore.getState().byEnvironment[environmentId];
     expect(entry?.status).toBe("ready");
-    expect(entry?.entries.map((mention) => mention.token)).toEqual(["db", "db.public.orders"]);
+    expect(entry?.entries.map((mention) => mention.token)).toEqual(["db", "db.orders"]);
     expect(caller.requests.filter((request) => request.kind === "tree").length).toBe(2);
   });
 
@@ -134,5 +134,73 @@ describe("useZeropsDataCatalogStore", () => {
     const entry = useZeropsDataCatalogStore.getState().byEnvironment[environmentId];
     expect(entry?.status).toBe("ready");
     expect(entry?.entries.map((mention) => mention.token)).toEqual(["db"]);
+  });
+
+  it("drops a lone schema from the mention token and keeps the full path as an alias", async () => {
+    const caller = callerFor((request) => {
+      if (request.kind === "refresh") {
+        return {
+          kind: "services",
+          project: { id: "p", name: "p" },
+          services: [service("db")],
+          allowWrites: false,
+        } as ZeropsDataConsoleResponse;
+      }
+      if (request.kind === "tree" && request.path.segments.length === 0) {
+        return {
+          kind: "tree",
+          nodes: [node("db", ["public"], "container")],
+          nextCursor: "",
+        } as ZeropsDataConsoleResponse;
+      }
+      if (request.kind === "tree") {
+        return {
+          kind: "tree",
+          nodes: [node("db", ["public", "orders"], "tabular")],
+          nextCursor: "",
+        } as ZeropsDataConsoleResponse;
+      }
+      return undefined;
+    });
+    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+
+    const entries = useZeropsDataCatalogStore.getState().byEnvironment[environmentId]?.entries;
+    expect(entries?.map((entry) => entry.token)).toEqual(["db", "db.orders"]);
+    expect(entries?.[1]?.aliases).toEqual(["db.public.orders"]);
+  });
+
+  it("keeps both schemas in the token when a service has two", async () => {
+    const caller = callerFor((request) => {
+      if (request.kind === "refresh") {
+        return {
+          kind: "services",
+          project: { id: "p", name: "p" },
+          services: [service("db")],
+          allowWrites: false,
+        } as ZeropsDataConsoleResponse;
+      }
+      if (request.kind === "tree" && request.path.segments.length === 0) {
+        return {
+          kind: "tree",
+          nodes: [node("db", ["public"], "container"), node("db", ["billing"], "container")],
+          nextCursor: "",
+        } as ZeropsDataConsoleResponse;
+      }
+      if (request.kind === "tree") {
+        return {
+          kind: "tree",
+          nodes: [node("db", [...request.path.segments, "orders"], "tabular")],
+          nextCursor: "",
+        } as ZeropsDataConsoleResponse;
+      }
+      return undefined;
+    });
+    await useZeropsDataCatalogStore.getState().load(environmentId, caller.call);
+
+    expect(
+      useZeropsDataCatalogStore
+        .getState()
+        .byEnvironment[environmentId]?.entries.map((entry) => entry.token),
+    ).toEqual(["db", "db.public.orders", "db.billing.orders"]);
   });
 });

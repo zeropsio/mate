@@ -8,6 +8,7 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 
+import type { DataConsoleTree } from "./dataConsole.ts";
 import {
   applyTablePage,
   applyTreePage,
@@ -15,6 +16,7 @@ import {
   buildDataMentionEntries,
   buildFilteredTableStatement,
   buildSortPage,
+  collapsedPrefix,
   collapseTreePath,
   describeCell,
   describeDataConsoleError,
@@ -1140,5 +1142,146 @@ describe("describeServiceContext", () => {
     expect(describeServiceContext(entries[0]!, []).text).toBe(
       ["## db (postgresql@16)", "No tables."].join("\n"),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collapsed single-container levels
+// ---------------------------------------------------------------------------
+
+const containerNode = (
+  serviceName: string,
+  segments: ReadonlyArray<string>,
+): ZeropsDataConsoleNode => ({
+  name: segments[segments.length - 1] ?? serviceName,
+  kind: "container",
+  path: { service: serviceName, segments },
+  hasChildren: true,
+});
+
+function treeOf(
+  pages: ReadonlyArray<{
+    readonly segments: ReadonlyArray<string>;
+    readonly nodes: ReadonlyArray<ZeropsDataConsoleNode>;
+    readonly nextCursor?: string;
+  }>,
+): DataConsoleTree {
+  let tree = emptyTree;
+  for (const page of pages) {
+    tree = applyTreePage(
+      tree,
+      { service: "db", segments: page.segments },
+      { nodes: page.nodes, nextCursor: page.nextCursor ?? "" },
+    );
+  }
+  return tree;
+}
+
+describe("collapsedPrefix", () => {
+  it("collapses a chain of single containers, level after level", () => {
+    const tree = treeOf([
+      { segments: [], nodes: [containerNode("db", ["main"])] },
+      { segments: ["main"], nodes: [containerNode("db", ["main", "public"])] },
+      {
+        segments: ["main", "public"],
+        nodes: [tabularNode("db", ["main", "public", "orders"])],
+      },
+    ]);
+    expect(collapsedPrefix(tree, "db")).toEqual(["main", "public"]);
+  });
+
+  it("collapses nothing when a level holds two nodes", () => {
+    const tree = treeOf([
+      {
+        segments: [],
+        nodes: [containerNode("db", ["public"]), containerNode("db", ["billing"])],
+      },
+    ]);
+    expect(collapsedPrefix(tree, "db")).toEqual([]);
+  });
+
+  it("collapses nothing when a cursor says more nodes exist at that level", () => {
+    const tree = treeOf([
+      { segments: [], nodes: [containerNode("db", ["public"])], nextCursor: "next" },
+    ]);
+    expect(collapsedPrefix(tree, "db")).toEqual([]);
+  });
+
+  it("collapses nothing when the single node is a table rather than a container", () => {
+    const tree = treeOf([{ segments: [], nodes: [tabularNode("db", ["orders"])] }]);
+    expect(collapsedPrefix(tree, "db")).toEqual([]);
+  });
+
+  it("stops at a level that has not loaded yet", () => {
+    const tree = treeOf([{ segments: [], nodes: [containerNode("db", ["public"])] }]);
+    expect(collapsedPrefix(tree, "db")).toEqual(["public"]);
+  });
+});
+
+describe("breadcrumbsFor with a collapsed prefix", () => {
+  it("skips the collapsed segments while keeping each crumb's full path", () => {
+    expect(breadcrumbsFor(tablePath, ["public"])).toEqual([
+      { label: "db", path: { service: "db", segments: [] } },
+      { label: "orders", path: { service: "db", segments: ["public", "orders"] } },
+    ]);
+  });
+
+  it("keeps a segment the prefix does not name", () => {
+    expect(
+      breadcrumbsFor({ service: "db", segments: ["billing", "orders"] }, ["public"]).map(
+        (crumb) => crumb.label,
+      ),
+    ).toEqual(["db", "billing", "orders"]);
+  });
+});
+
+describe("mention tokens over a collapsed level", () => {
+  it("makes the short form primary and keeps the full path as an alias", () => {
+    const entries = buildDataMentionEntries(
+      [browsableService("db")],
+      [tabularNode("db", ["public", "orders"])],
+      { db: ["public"] },
+    );
+    expect(entries[1]).toMatchObject({
+      token: "db.orders",
+      aliases: ["db.public.orders"],
+      label: "db · orders",
+    });
+  });
+
+  it("still matches the full path a user types", () => {
+    const entries = buildDataMentionEntries(
+      [browsableService("db")],
+      [tabularNode("db", ["public", "orders"])],
+      { db: ["public"] },
+    );
+    expect(searchDataMentions(entries, "db.public.orders").map((entry) => entry.token)).toEqual([
+      "db.orders",
+    ]);
+  });
+});
+
+describe("context labels over a collapsed level", () => {
+  it("labels the table by its short path but keeps the full path in the heading", () => {
+    const result = describeTableContext({
+      service: contextService,
+      path: tablePath,
+      columns: [column({ name: "id", pk: true })],
+      collapsedPrefix: ["public"],
+    });
+    expect(result.label).toBe("db · orders");
+    expect(result.text.split("\n")[0]).toBe("## db (postgresql@16) · public.orders");
+  });
+
+  it("labels a row by its short path too", () => {
+    const result = describeRowContext({
+      service: contextService,
+      path: tablePath,
+      columns: [column({ name: "id", pk: true })],
+      row: [7],
+      collapsedPrefix: ["public"],
+    });
+    expect(result.label).toBe("db · orders · id=7");
+    expect(result.text.split("\n")[0]).toBe("## db (postgresql@16) · public.orders · id=7");
   });
 });

@@ -62,6 +62,28 @@ function renderNodeList({
   const key = treePathKey(path);
   const entry = tree.entries[key];
 
+  // A level holding exactly one container, with no cursor promising more,
+  // says nothing the level above did not: render its children in its place,
+  // at this indent, with no row of its own (`collapsedPrefix`, client-runtime).
+  const onlyNode = entry?.loaded === true && entry.nodes.length === 1 ? entry.nodes[0] : undefined;
+  if (
+    onlyNode !== undefined &&
+    onlyNode.kind === "container" &&
+    onlyNode.hasChildren &&
+    entry?.nextCursor === undefined
+  ) {
+    return renderNodeList({
+      depth,
+      loadingKeys,
+      onLoadMore,
+      onSelectNode,
+      onToggleNode,
+      path: onlyNode.path,
+      selectedNodeKey,
+      tree,
+    });
+  }
+
   if (entry === undefined || !entry.loaded) {
     return (
       <p
