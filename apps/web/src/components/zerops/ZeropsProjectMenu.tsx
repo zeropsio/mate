@@ -4,7 +4,7 @@
  * first, as a group, when the caller knows it; then the actions. What each
  * action does belongs to the caller.
  */
-import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute, ZeropsRouteOffer } from "@t3tools/client-runtime/zerops";
 import { EllipsisIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -22,6 +22,9 @@ export function ZeropsProjectMenu({
   label,
   actions,
   routes,
+  offers,
+  onEnableRoute,
+  enablingServiceId,
 }: {
   /** What the trigger is for, read by assistive tech. */
   readonly label: string;
@@ -31,6 +34,10 @@ export function ZeropsProjectMenu({
    * left out; an empty list is known, and the group says so.
    */
   readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
+  /** What could be published and is not (`publicRoutes.ts`). */
+  readonly offers?: ReadonlyArray<ZeropsRouteOffer> | undefined;
+  readonly onEnableRoute?: (offer: ZeropsRouteOffer) => void;
+  readonly enablingServiceId?: string | null;
 }): ReactNode {
   if (actions.length === 0 && routes === undefined) return null;
   return (
@@ -48,7 +55,14 @@ export function ZeropsProjectMenu({
         <EllipsisIcon className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" className="min-w-48 max-w-[24rem]">
-        {routes === undefined ? null : <ZeropsRouteMenuItems routes={routes} />}
+        {routes === undefined ? null : (
+          <ZeropsRouteMenuItems
+            enablingServiceId={enablingServiceId ?? null}
+            offers={offers ?? []}
+            routes={routes}
+            {...(onEnableRoute === undefined ? {} : { onEnable: onEnableRoute })}
+          />
+        )}
         {routes !== undefined && actions.length > 0 ? <MenuSeparator /> : null}
         {actions.map((action) => (
           <MenuItem key={action.id} onClick={action.onSelect}>

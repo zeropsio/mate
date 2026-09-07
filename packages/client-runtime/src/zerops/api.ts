@@ -1469,6 +1469,19 @@ export class ZeropsApiClient {
     return agentsFromOAuthFlags(await this.#serviceEnv(serviceId));
   }
 
+  /**
+   * `PUT /service-stack/{id}/enable-subdomain-access` — publish a service on
+   * its `*.zerops.app` subdomain.
+   *
+   * A separate call rather than an import field because the import field does
+   * not apply to a service created without code: a production environment
+   * cloned from dev comes up unpublished whatever its recipe said, and answers
+   * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
+   */
+  async enableSubdomainAccess(serviceId: string): Promise<void> {
+    await this.#request(`/service-stack/${serviceId}/enable-subdomain-access`, { method: "PUT" });
+  }
+
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
   async #createMateFlag(serviceId: string): Promise<void> {
     await this.#request(`/service-stack/${serviceId}/user-data`, {

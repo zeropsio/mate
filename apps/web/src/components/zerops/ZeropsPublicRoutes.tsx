@@ -11,8 +11,8 @@
  * time. The icon menu is the left menu's, where there is room for one glyph
  * beside a name.
  */
-import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { ExternalLinkIcon } from "lucide-react";
+import type { ZeropsPublicRoute, ZeropsRouteOffer } from "@t3tools/client-runtime/zerops";
+import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
@@ -42,19 +42,35 @@ export function routeMenuEntries(
   }));
 }
 
-/** The public-access group of a menu: a label, then a route per item. */
+/**
+ * The public-access group of a menu: a label, then a route per item, then
+ * whatever could be published and is not.
+ *
+ * An offer is an ordinary item, not a recovery affordance tucked away: the
+ * question "where is this reachable" and "why is it not" are the same question,
+ * and a person asking the first is exactly the person who needs the second.
+ * "None yet" is only honest when there is also nothing to offer.
+ */
 export function ZeropsRouteMenuItems({
   routes,
+  offers = [],
+  onEnable,
+  enablingServiceId = null,
   label = "Public access",
 }: {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Services that serve HTTP with their subdomain off (`publicRoutes.ts`). */
+  readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
+  readonly onEnable?: (offer: ZeropsRouteOffer) => void;
+  readonly enablingServiceId?: string | null;
   readonly label?: string;
 }) {
   const entries = routeMenuEntries(routes);
+  const offered = onEnable === undefined ? [] : offers;
   return (
     <MenuGroup data-zerops-surface="public-routes">
       <MenuGroupLabel>{label}</MenuGroupLabel>
-      {entries.length === 0 ? (
+      {entries.length === 0 && offered.length === 0 ? (
         <MenuItem data-zerops-surface="public-routes-empty" disabled>
           None yet
         </MenuItem>
@@ -76,6 +92,21 @@ export function ZeropsRouteMenuItems({
           </MenuItem>
         ))
       )}
+      {offered.map((offer) => (
+        <MenuItem
+          closeOnClick={false}
+          data-zerops-surface="public-route-offer"
+          disabled={enablingServiceId !== null}
+          key={`offer:${offer.serviceId}`}
+          onClick={() => onEnable?.(offer)}
+        >
+          <GlobeIcon aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {enablingServiceId === offer.serviceId ? "Publishing" : "Publish"}{" "}
+            <span className="font-medium">{offer.service}</span>
+          </span>
+        </MenuItem>
+      ))}
     </MenuGroup>
   );
 }

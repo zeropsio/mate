@@ -114,7 +114,12 @@ export {
 } from "./creationHandoff.ts";
 export { withRecipeStoreMock, type RecipeStoreMockOptions } from "./recipeStoreMock.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
-export { derivePublicRoutes, type ZeropsPublicRoute } from "./publicRoutes.ts";
+export {
+  derivePublicRouteOffers,
+  derivePublicRoutes,
+  type ZeropsPublicRoute,
+  type ZeropsRouteOffer,
+} from "./publicRoutes.ts";
 export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,

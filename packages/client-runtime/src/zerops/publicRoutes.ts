@@ -30,6 +30,43 @@ function byServiceThenPort(left: ZeropsPublicRoute, right: ZeropsPublicRoute): n
   return left.service.localeCompare(right.service, "en") || left.port - right.port;
 }
 
+/**
+ * A service that would answer publicly if somebody said so: it serves HTTP and
+ * its subdomain is off.
+ *
+ * Enabling one is a first-class act, not a recovery step. A production
+ * environment cloned from dev comes up with its subdomain **not** taken —
+ * `enableSubdomainAccess` does not apply to a service imported without code
+ * (`verified.md`) — so the first deploy lands and the page answers 502 with
+ * nothing anywhere saying why. The routes menu already tells a person where an
+ * environment is reachable; this is what it needs to also tell them where it
+ * could be.
+ */
+export interface ZeropsRouteOffer {
+  readonly service: string;
+  readonly serviceId: string;
+  /** The lowest HTTP port it serves — the one enabling would publish. */
+  readonly port: number;
+}
+
+export function derivePublicRouteOffers(
+  services: ReadonlyArray<ZeropsService>,
+): ReadonlyArray<ZeropsRouteOffer> {
+  const offers: Array<ZeropsRouteOffer> = [];
+  for (const service of services) {
+    if (service.isSystem === true || isZcpService(service)) continue;
+    if (service.subdomainAccess === true) continue;
+    const http = (service.ports ?? [])
+      .filter((port) => port.scheme === "http" || port.scheme === "https")
+      .map((port) => port.port)
+      .sort((left, right) => left - right);
+    const port = http[0];
+    if (port === undefined) continue;
+    offers.push({ service: service.name, serviceId: service.id, port });
+  }
+  return offers.sort((left, right) => left.service.localeCompare(right.service, "en"));
+}
+
 export function derivePublicRoutes(
   project: ZeropsProject,
   services: ReadonlyArray<ZeropsService>,
