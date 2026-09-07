@@ -77,6 +77,45 @@ describe("submitZeropsNewProject", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("hands the created project's id back so its job can be written down", async () => {
+    const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
+    const onCreated = vi.fn();
+
+    await submitZeropsNewProject({
+      createProject,
+      clientId: "client-1",
+      name: "zerops-mate",
+      locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
+      agents: ["claude-code"],
+      onCreated,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(onCreated).toHaveBeenCalledWith("project-1");
+  });
+
+  it("says nothing was created when the create fails", async () => {
+    const onCreated = vi.fn();
+
+    await submitZeropsNewProject({
+      createProject: vi.fn().mockRejectedValue(new Error("nope")),
+      clientId: "client-1",
+      name: "zerops-mate",
+      locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
+      agents: [],
+      onCreated,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(onCreated).not.toHaveBeenCalled();
+  });
+
   it("carries the chosen location through to the create call", async () => {
     const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
 

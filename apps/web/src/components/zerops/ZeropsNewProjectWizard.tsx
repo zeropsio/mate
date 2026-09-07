@@ -24,6 +24,8 @@ import {
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
+
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -87,12 +89,17 @@ export async function submitZeropsNewProject(input: {
   readonly groupId: string;
   readonly botName: string;
   readonly onStartWaiting: (clientId: string) => void;
+  /**
+   * The project exists. Called before the wait starts, so what this project is
+   * for can be written down while its id is in hand (`creationHandoff.ts`).
+   */
+  readonly onCreated?: (projectId: string) => void;
   readonly onError: (message: string) => void;
   readonly onUncertain?: () => void;
 }): Promise<void> {
   const groupName = input.name.trim();
   try {
-    await input.createProject({
+    const created = await input.createProject({
       clientId: input.clientId,
       // A project IS a group, and what is created inside it is its first dev
       // environment — so the environment carries the role in its name, the way
@@ -103,6 +110,7 @@ export async function submitZeropsNewProject(input: {
       group: { groupId: input.groupId, role: "dev", label: groupName },
       botName: input.botName,
     });
+    input.onCreated?.(created.project.id);
     input.onStartWaiting(input.clientId);
   } catch (cause) {
     if (cause instanceof ZeropsApiError && cause.kind === "uncertain") input.onUncertain?.();
@@ -313,6 +321,17 @@ function ZeropsNewProjectContent() {
       agents: selectedAgents,
       groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
       botName: generateBotName([], (bytes) => crypto.getRandomValues(bytes)),
+      onCreated: (projectId) => {
+        // The first Mate of a project is the one that most needs a job: there
+        // is nothing in the environment yet, and setting that up is the whole
+        // reason it exists.
+        rememberCreationHandoff(projectId, {
+          environmentName: `${name.trim()} - dev`,
+          groupName: name.trim(),
+          role: "dev",
+          source: { kind: "none" },
+        });
+      },
       onStartWaiting: (clientId) => {
         setCreatingIn(clientId);
         provisioning.start({ zcpClaimed: true });
