@@ -115,6 +115,60 @@ function ServiceName({ row, className }: { row: ZeropsServiceRow; className?: st
   );
 }
 
+/**
+ * A service's top line, shared by a card and by the stage folded into it.
+ *
+ * Both halves of a dev/stage pair are services, so both read the same way:
+ * the status word above the name, the name with its port, a word beside it
+ * (what the service is, or `stage`), and a button per public route at the
+ * right. The stage half used to put its status at the far right and offer no
+ * route at all — the owner asked why, which is the only question a difference
+ * like that ever produces.
+ */
+function ServiceHeader({
+  service,
+  tone,
+  statusLabel,
+  title,
+  portLabel,
+  aside,
+}: {
+  service: ZeropsTopologyService;
+  tone: ZeropsServiceTone;
+  statusLabel: string;
+  title: string;
+  portLabel: string | undefined;
+  aside: string | undefined;
+}) {
+  return (
+    <div className="flex min-w-0 max-w-full items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <ServiceStatus label={statusLabel} service={service} tone={tone} />
+        <div className="mt-0.5 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2">
+          <span className="flex min-w-0 max-w-full items-baseline gap-1 text-sm leading-snug">
+            <span className="min-w-0 max-w-full break-all font-semibold tracking-tight">
+              {title}
+            </span>
+            {portLabel === undefined ? null : (
+              <span className="shrink-0 font-normal text-muted-foreground">{portLabel}</span>
+            )}
+          </span>
+          {aside === undefined ? null : (
+            <span className="text-xs text-muted-foreground">{aside}</span>
+          )}
+        </div>
+      </div>
+      {service.routes.length === 0 ? null : (
+        <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
+          {service.routes.map((route) => (
+            <RouteButton key={route.url} route={route} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One resource's graph: what was used over the last day as a filled curve, the last hour marked. */
 function ResourceGraph({ trend, id }: { trend: ReadonlyArray<ZeropsTrendPoint>; id: string }) {
   const geometry = sparklineGeometry(trend, GRAPH_WIDTH, GRAPH_HEIGHT, 1.5);
@@ -213,11 +267,32 @@ function ResourceItem({
  * resources at all once usage is known.
  */
 function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  return (
+    <ResourcesRow
+      idPrefix={row.service.serviceId}
+      metrics={row.metrics}
+      trends={row.trends}
+      usageRead={usageRead}
+    />
+  );
+}
+
+/** The line itself, so a dev half and the stage folded under it read alike. */
+function ResourcesRow({
+  idPrefix,
+  metrics,
+  trends,
+  usageRead,
+}: {
+  idPrefix: string;
+  metrics: ReadonlyArray<ZeropsServiceMetric>;
+  trends: ZeropsServiceTrends | undefined;
+  usageRead: boolean;
+}) {
   // The envelope alone (`range` without `value`) is the pop's, not the card's.
-  if (usageRead && row.metrics.every((metric) => metric.value === undefined)) {
+  if (usageRead && metrics.every((metric) => metric.value === undefined)) {
     return null;
   }
-  const trends: ZeropsServiceTrends | undefined = row.trends;
   return (
     <div
       className="mt-2 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-5 gap-y-1.5"
@@ -225,12 +300,10 @@ function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead
     >
       {RESOURCES.map((resource) => (
         <ResourceItem
-          graphId={`${row.service.serviceId}-${resource.id}`}
+          graphId={`${idPrefix}-${resource.id}`}
           key={resource.id}
           figure={
-            usageRead
-              ? figureOf(row.metrics.find((metric) => metric.id === resource.id))
-              : undefined
+            usageRead ? figureOf(metrics.find((metric) => metric.id === resource.id)) : undefined
           }
           label={resource.label}
           trend={trends?.[resource.id]}
@@ -408,26 +481,48 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
   );
 }
 
-/** The stage half of a dev service, folded into the dev card as one quiet line. */
+/**
+ * The stage half of a dev service, folded into the dev card under a hairline.
+ *
+ * It carries its own resources for the same reason every other card does: it
+ * is a separate container with its own allocation and its own load. Without
+ * them it rendered identically to a service holding nothing — the card's other
+ * one-line state — so a running stage read as one that had never been
+ * deployed.
+ */
 function StageLine({
   stage,
   tone,
   label,
+  metrics,
+  trends,
+  portLabel,
+  usageRead,
 }: {
   stage: ZeropsTopologyService;
   tone: ZeropsServiceTone;
   label: string;
+  metrics: ReadonlyArray<ZeropsServiceMetric>;
+  trends: ZeropsServiceTrends | undefined;
+  portLabel: string | undefined;
+  usageRead: boolean;
 }) {
   return (
-    <div
-      className="mt-2 flex min-w-0 max-w-full items-baseline justify-between gap-3 border-t border-border/60 pt-2"
-      data-zerops-service-stage
-    >
-      <span className="min-w-0 max-w-full break-all text-sm font-medium text-foreground">
-        {stage.hostname}
-        <span className="ml-1.5 text-xs font-normal text-muted-foreground">stage</span>
-      </span>
-      <ServiceStatus label={label} service={stage} tone={tone} />
+    <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
+      <ServiceHeader
+        aside="stage"
+        portLabel={portLabel}
+        service={stage}
+        statusLabel={label}
+        title={stage.hostname}
+        tone={tone}
+      />
+      <ResourcesRow
+        idPrefix={stage.serviceId}
+        metrics={metrics}
+        trends={trends}
+        usageRead={usageRead}
+      />
     </div>
   );
 }
@@ -454,29 +549,27 @@ function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
 function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
   return (
     <>
-      <div className="flex min-w-0 max-w-full items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <ServiceStatus label={row.statusLabel} service={row.service} tone={row.tone} />
-          <div className="mt-0.5 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2">
-            <ServiceName className="text-sm leading-snug" row={row} />
-            {row.typeShort === undefined ? null : (
-              <span className="text-xs text-muted-foreground">{row.typeShort}</span>
-            )}
-          </div>
-        </div>
-        {row.service.routes.length === 0 ? null : (
-          <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
-            {row.service.routes.map((route) => (
-              <RouteButton key={route.url} route={route} />
-            ))}
-          </div>
-        )}
-      </div>
+      <ServiceHeader
+        aside={row.typeShort}
+        portLabel={row.portLabel}
+        service={row.service}
+        statusLabel={row.statusLabel}
+        title={row.title}
+        tone={row.tone}
+      />
       <ServiceResources row={row} usageRead={usageRead} />
       {row.stage === undefined ||
       row.stageTone === undefined ||
       row.stageStatusLabel === undefined ? null : (
-        <StageLine label={row.stageStatusLabel} stage={row.stage} tone={row.stageTone} />
+        <StageLine
+          label={row.stageStatusLabel}
+          metrics={row.stageMetrics ?? []}
+          portLabel={row.stagePortLabel}
+          stage={row.stage}
+          tone={row.stageTone}
+          trends={row.stageTrends}
+          usageRead={usageRead}
+        />
       )}
     </>
   );

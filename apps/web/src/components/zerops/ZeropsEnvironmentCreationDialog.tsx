@@ -129,11 +129,7 @@ export function ZeropsEnvironmentCreationForm({
         <label className="flex items-center justify-between gap-3 text-sm" htmlFor={`${id}-agent`}>
           <span className="flex flex-col gap-0.5">
             <span>Runs an agent</span>
-            <span className="text-xs text-muted-foreground">
-              {role === "prod"
-                ? "Production usually does not: an agent with a shell in production is a separate decision."
-                : "A Zerops Mate container with a coding agent you can talk to."}
-            </span>
+            <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
           </span>
           <Switch
             checked={withAgent}
@@ -214,6 +210,21 @@ export function ZeropsEnvironmentCreationForm({
   );
 }
 
+/**
+ * Why this default, in the role's own terms. Production argues for its own
+ * "off"; a stage was left with the generic line and so argued for nothing,
+ * even though its default is "on".
+ */
+function agentSwitchNote(role: ZeropsEnvironmentRole): string {
+  if (role === "prod") {
+    return "Production usually does not: an agent with a shell in production is a separate decision.";
+  }
+  if (role === "stage") {
+    return "A stage is usually a deploy target, so this is only worth it if someone will work here.";
+  }
+  return "A Zerops Mate container with a coding agent you can talk to.";
+}
+
 function FieldError({ children }: { readonly children: string }) {
   return (
     <p className="text-xs text-[var(--zerops-status-failed-text)]" role="alert">
@@ -235,11 +246,11 @@ export function ZeropsEnvironmentCreationDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            Add {roleLabel.toLowerCase()} to {form.groupName}
-          </DialogTitle>
+          {/* The title names the thing, the button names what happens to it.
+              Carrying one string in both said nothing twice. */}
+          <DialogTitle>New {roleLabel.toLowerCase()} environment</DialogTitle>
           <DialogDescription>
-            A new Zerops project in this group. It takes a couple of minutes to come up.
+            A new Zerops project in {form.groupName}. It takes a couple of minutes to come up.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>

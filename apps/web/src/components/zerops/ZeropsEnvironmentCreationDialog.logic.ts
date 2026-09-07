@@ -46,14 +46,20 @@ export function recipeOptions(input: {
   for (const source of input.sources) {
     const who =
       source.agentName === undefined ? source.name : `${source.agentName} (${source.name})`;
-    const needsDeploy =
+    // A clone imports services, never their contents, so every runtime in one
+    // arrives empty — whatever the source was built by. Saying so only when
+    // `builtFromGit` was non-empty left a cloned stage and production coming
+    // up READY_TO_DEPLOY with nothing said. That list is a sharper, separate
+    // warning: the export carries no build setup for those, so their first
+    // build fails rather than merely being empty.
+    const buildSetup =
       source.builtFromGit.length === 0
         ? ""
-        : ` · ${source.builtFromGit.join(", ")} will need a deploy`;
+        : ` · ${source.builtFromGit.join(", ")} builds from a repository, and its build setup is not carried`;
     options.push({
       id: `clone:${source.projectId}`,
       label: `Clone ${who}`,
-      detail: `${source.services.join(", ")}${needsDeploy}`,
+      detail: `${source.services.join(", ")} · copied without code; the first deploy fills them${buildSetup}`,
       choice: {
         kind: "services",
         yaml: source.yaml,
@@ -62,10 +68,15 @@ export function recipeOptions(input: {
       },
     });
   }
+  // On a group with nothing built yet this is the only option, and a radio
+  // list of one reads like a stub unless it says why it is alone.
+  const alone = options.length === 0;
   options.push({
     id: "none",
     label: "Nothing yet",
-    detail: "The agent sets the application up.",
+    detail: alone
+      ? "Nothing in this project has services to copy yet. The agent sets the application up."
+      : "The agent sets the application up.",
     choice: { kind: "none" },
   });
   return options;
@@ -121,7 +132,13 @@ export function validateCreationForm(
   const option = context.options.find((entry) => entry.id === form.recipeId);
   if (option === undefined) errors.recipe = "Choose what goes in the environment.";
   else if (option.choice.kind === "none" && !form.withAgent) {
-    errors.recipe = "Without an agent, the environment needs an application.";
+    // Name the way out, not just the rule. A production is a copy of a dev's
+    // services, so on a group that has not built anything the fix is not in
+    // this dialog at all — it is one environment over.
+    const nothingToCopy = context.options.every((entry) => entry.choice.kind === "none");
+    errors.recipe = nothingToCopy
+      ? "Nothing in this project has services to copy yet. Build something in a dev environment first, or switch the agent on."
+      : "Choose an application to copy, or switch the agent on to have one set up.";
   }
   return errors;
 }

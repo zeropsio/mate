@@ -134,6 +134,14 @@ export interface ZeropsServiceRow {
   readonly stage?: ZeropsTopologyService;
   readonly stageTone?: ZeropsServiceTone;
   readonly stageStatusLabel?: string;
+  /**
+   * The stage half's own resources. It is a separate container with its own
+   * allocation and load, and without these it rendered like a service holding
+   * nothing — the card's other one-line state.
+   */
+  readonly stageMetrics?: ReadonlyArray<ZeropsServiceMetric>;
+  readonly stageTrends?: ZeropsServiceTrends;
+  readonly stagePortLabel?: string;
   /** Production projects this service feeds, from the lifecycle envelope. */
   readonly production: ReadonlyArray<ZeropsProductionLink>;
 }
@@ -474,6 +482,9 @@ export function buildZeropsServiceMap(
                 stage,
                 stageTone: serviceStatusTone(stage),
                 stageStatusLabel: zeropsStatusWord(stage.status),
+                stageMetrics: zeropsServiceMetrics(stage.usage, stage.scaling),
+                ...withKey("stageTrends", zeropsUsageTrends(stage.history)),
+                ...withKey("stagePortLabel", zeropsPortLabel(stage)),
               }),
           production: productionOf(entry.hostname, lifecycle),
         };

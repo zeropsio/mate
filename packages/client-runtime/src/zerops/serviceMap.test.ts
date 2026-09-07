@@ -133,6 +133,64 @@ describe("buildZeropsServiceMap", () => {
     expect(rows[0]?.stage?.transient).toBe(true);
   });
 
+  /**
+   * A stage half is a container of its own, with its own allocation and its
+   * own load. Folding it in as a bare status line rendered it exactly like a
+   * service holding nothing — the card's other one-line state — so a running
+   * stage read as one that had never been deployed. The owner asked why the
+   * pair had no graphs; this is the answer.
+   */
+  it("derives the folded stage's resources, not just its status", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "kanbandev" }),
+        service({
+          hostname: "kanbanstage",
+          usage: {
+            containers: 1,
+            cores: { used: 0.08, limit: 1 },
+            memoryGb: { used: 0.12, limit: 0.25 },
+            diskGb: { used: 0.4, limit: 1 },
+          },
+        }),
+      ]),
+    );
+    const row = view?.groups[0]?.rows[0];
+
+    expect(row?.stage?.hostname).toBe("kanbanstage");
+    expect(row?.stageMetrics?.map((metric) => metric.id)).toEqual([
+      "containers",
+      "cores",
+      "memory",
+      "disk",
+    ]);
+  });
+
+  /**
+   * The owner, on the first pass: "why is the active on different place and
+   * there is no link to the appstage?" Both halves of a pair are services, so
+   * both get the same header — status word, name with its port, and a button
+   * per public route.
+   */
+  it("carries the folded stage's port so its name reads like the dev's", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "kanbandev", ports: [{ port: 3000, httpSupport: true }] }),
+        service({ hostname: "kanbanstage", ports: [{ port: 3000, httpSupport: true }] }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.stagePortLabel).toBe(":3000");
+  });
+
+  it("gives a stage holding nothing no resources, the same as any service", () => {
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.stageMetrics).toEqual([]);
+  });
+
   it("leaves a stage service standing alone when it has no dev partner", () => {
     const view = buildZeropsServiceMap(topology([service({ hostname: "orphanstage" })]));
     const rows = view?.groups[0]?.rows ?? [];
