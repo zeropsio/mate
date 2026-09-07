@@ -2,6 +2,7 @@ import {
   ApprovalRequestId,
   ChatAttachment,
   CheckpointRef,
+  CheckpointHistory,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -121,6 +122,7 @@ const ProjectionThreadRuntimeContextDbRowSchema = Schema.Struct({
 const ProjectionCheckpointDbRowSchema = ProjectionCheckpoint.mapFields(
   Struct.assign({
     files: Schema.fromJsonString(Schema.Array(OrchestrationCheckpointFile)),
+    history: Schema.optionalKey(Schema.NullOr(Schema.fromJsonString(CheckpointHistory))),
   }),
 );
 const ProjectionLatestTurnDbRowSchema = Schema.Struct({
@@ -728,6 +730,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           checkpoint_ref AS "checkpointRef",
           checkpoint_status AS "status",
           checkpoint_files_json AS "files",
+          checkpoint_history_json AS "history",
           assistant_message_id AS "assistantMessageId",
           completed_at AS "completedAt"
         FROM projection_turns
@@ -1331,6 +1334,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           checkpoint_ref AS "checkpointRef",
           checkpoint_status AS "status",
           checkpoint_files_json AS "files",
+          checkpoint_history_json AS "history",
           assistant_message_id AS "assistantMessageId",
           completed_at AS "completedAt"
         FROM projection_turns
@@ -1893,6 +1897,7 @@ pending_approval_requests AS (
                   checkpointRef: row.checkpointRef,
                   status: row.status,
                   files: row.files,
+                  ...(row.history == null ? {} : { history: row.history }),
                   assistantMessageId: row.assistantMessageId,
                   completedAt: row.completedAt,
                 });
@@ -2705,6 +2710,7 @@ pending_approval_requests AS (
           checkpointRef: row.checkpointRef,
           status: row.status,
           files: row.files,
+          ...(row.history == null ? {} : { history: row.history }),
           assistantMessageId: row.assistantMessageId,
           completedAt: row.completedAt,
         })),
@@ -3082,6 +3088,7 @@ pending_approval_requests AS (
           checkpointRef: row.checkpointRef,
           status: row.status,
           files: row.files,
+          ...(row.history == null ? {} : { history: row.history }),
           assistantMessageId: row.assistantMessageId,
           completedAt: row.completedAt,
         })),

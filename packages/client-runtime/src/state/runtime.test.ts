@@ -883,3 +883,14 @@ describe("runtime command runner", () => {
     registry.dispose();
   });
 });
+
+it("isolates checkpoint caches when a new run reuses the same turn ordinal", () => {
+  const target = {
+    environmentId: QUERY_ENVIRONMENT.environmentId,
+    input: { threadId: "thread", fromTurnCount: 0, toTurnCount: 1, rootId: "api" },
+  };
+  expect(environmentRpcKey({ ...target, cacheScope: "run-1" })).not.toBe(
+    environmentRpcKey({ ...target, cacheScope: "run-2" }),
+  );
+  expect(environmentRpcKey({ ...target, cacheScope: null })).toBe(environmentRpcKey(target));
+});

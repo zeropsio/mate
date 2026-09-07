@@ -357,25 +357,31 @@ export function useCheckpointDiff(
     target.fromTurnCount !== null &&
     target.toTurnCount !== null;
   const fullThreadTarget =
-    enabled && target.fromTurnCount === 0
+    enabled && target.fromTurnCount === 0 && target.runId === undefined
       ? {
           environmentId: target.environmentId!,
+          cacheScope: target.cacheScope ?? null,
           input: {
             threadId: target.threadId!,
             toTurnCount: target.toTurnCount!,
             ignoreWhitespace: target.ignoreWhitespace,
+            ...(target.rootId === undefined ? {} : { rootId: target.rootId }),
+            ...(target.runId === undefined ? {} : { runId: target.runId }),
           },
         }
       : null;
   const turnTarget =
-    enabled && target.fromTurnCount !== 0
+    enabled && (target.fromTurnCount !== 0 || target.runId !== undefined)
       ? {
           environmentId: target.environmentId!,
+          cacheScope: target.cacheScope ?? null,
           input: {
             threadId: target.threadId!,
             fromTurnCount: target.fromTurnCount!,
             toTurnCount: target.toTurnCount!,
             ignoreWhitespace: target.ignoreWhitespace,
+            ...(target.rootId === undefined ? {} : { rootId: target.rootId }),
+            ...(target.runId === undefined ? {} : { runId: target.runId }),
           },
         }
       : null;

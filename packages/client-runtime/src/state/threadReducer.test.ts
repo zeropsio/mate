@@ -1258,3 +1258,41 @@ describe("applyThreadDetailEvent", () => {
     });
   });
 });
+
+it("retains per-root incomplete history in the live thread projection", () => {
+  const history = {
+    runId: "run-1",
+    coverage: "partial" as const,
+    semantics: "observed-workspace" as const,
+    representation: "git-normalized" as const,
+    policyVersion: "git-v1",
+    roots: [
+      {
+        root: { rootId: "api", label: "api", remotePath: "/var/www", pathPrefix: "api/" },
+        before: { status: "missing-baseline" as const, reason: "Initial state is unavailable." },
+        after: { status: "unavailable" as const, reason: "Service is unreachable." },
+      },
+    ],
+  };
+  const result = applyThreadDetailEvent(baseThread, {
+    ...baseEventFields,
+    sequence: 1,
+    occurredAt: "2026-09-07T10:00:00.000Z",
+    aggregateKind: "thread",
+    aggregateId: baseThread.id,
+    type: "thread.turn-diff-completed",
+    payload: {
+      threadId: baseThread.id,
+      turnId: TurnId.make("turn-1"),
+      checkpointTurnCount: 1,
+      checkpointRef: CheckpointRef.make("refs/mate/run-1"),
+      status: "ready",
+      files: [],
+      history,
+      assistantMessageId: null,
+      completedAt: "2026-09-07T10:00:00.000Z",
+    },
+  });
+  expect(result.kind).toBe("updated");
+  if (result.kind === "updated") expect(result.thread.checkpoints[0]?.history).toEqual(history);
+});

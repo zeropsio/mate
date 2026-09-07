@@ -8,6 +8,7 @@
  */
 import {
   CheckpointRef,
+  CheckpointHistory,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -48,6 +49,7 @@ export const ProjectionTurn = Schema.Struct({
   checkpointRef: Schema.NullOr(CheckpointRef),
   checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
   checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
+  checkpointHistory: Schema.optionalKey(Schema.NullOr(CheckpointHistory)),
 });
 export type ProjectionTurn = typeof ProjectionTurn.Type;
 
@@ -66,6 +68,7 @@ export const ProjectionTurnById = Schema.Struct({
   checkpointRef: Schema.NullOr(CheckpointRef),
   checkpointStatus: Schema.NullOr(OrchestrationCheckpointStatus),
   checkpointFiles: Schema.Array(OrchestrationCheckpointFile),
+  checkpointHistory: Schema.optionalKey(Schema.NullOr(CheckpointHistory)),
 });
 export type ProjectionTurnById = typeof ProjectionTurnById.Type;
 

@@ -1,3 +1,4 @@
+import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import {
   type ChatAttachment,
   CommandId,
@@ -19,6 +20,8 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Deferred from "effect/Deferred";
 import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -318,6 +321,12 @@ const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerAuthService = yield* ProviderAuthService;
   const providerService = yield* ProviderService;
+  const workspaceHistory = yield* Effect.serviceOption(WorkspaceHistory);
+  const pendingStarts = new Map<ThreadId, Set<Fiber.Fiber<void, never>>>();
+  const interruptPendingStarts = (threadId: ThreadId) =>
+    Effect.forEach([...(pendingStarts.get(threadId) ?? [])], (fiber) => Fiber.interrupt(fiber), {
+      discard: true,
+    });
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -1408,32 +1417,87 @@ const make = Effect.gen(function* () {
         "Wait for context compaction to finish before sending another message.",
       );
     }
-    const sendTurnRequest = yield* buildSendTurnRequestForThread({
-      threadId: event.payload.threadId,
-      messageText: message.text,
-      ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-      ...(event.payload.modelSelection !== undefined
-        ? { modelSelection: event.payload.modelSelection }
-        : {}),
-      interactionMode: event.payload.interactionMode,
-      createdAt: event.payload.createdAt,
+    const sendPreparedTurn = Effect.gen(function* () {
+      const coordinator = Option.getOrUndefined(workspaceHistory);
+      if (coordinator) {
+        const project = yield* resolveProject(thread.projectId);
+        const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
+        if (cwd)
+          yield* coordinator.prepare({
+            threadId: thread.id,
+            runId: event.payload.messageId,
+            cwd,
+            ...(thread.session?.status === "running" && thread.session.activeTurnId
+              ? { continuationOf: thread.session.activeTurnId }
+              : {}),
+          });
+      }
+      const sendTurnRequest = yield* buildSendTurnRequestForThread({
+        threadId: event.payload.threadId,
+        messageText: message.text,
+        ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
+        ...(event.payload.modelSelection !== undefined
+          ? { modelSelection: event.payload.modelSelection }
+          : {}),
+        interactionMode: event.payload.interactionMode,
+        createdAt: event.payload.createdAt,
+      }).pipe(
+        Effect.map(Option.some),
+        Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      );
+
+      if (Option.isNone(sendTurnRequest)) {
+        if (coordinator) yield* coordinator.release(thread.id, undefined, event.payload.messageId);
+        return;
+      }
+
+      if (coordinator) yield* coordinator.markDispatched(thread.id, event.payload.messageId);
+      yield* providerService.sendTurn(sendTurnRequest.value).pipe(
+        Effect.asVoid,
+        Effect.catchCause((cause) =>
+          recoverTurnStartFailure(cause).pipe(
+            Effect.ensuring(
+              coordinator
+                ? coordinator.release(thread.id, undefined, event.payload.messageId)
+                : Effect.void,
+            ),
+          ),
+        ),
+      );
     }).pipe(
-      Effect.map(Option.some),
-      Effect.catchCause((cause) => handleTurnStartFailure(cause).pipe(Effect.as(Option.none()))),
+      Effect.catchCause((cause) =>
+        recoverTurnStartFailure(cause).pipe(
+          Effect.ensuring(
+            Option.isSome(workspaceHistory)
+              ? workspaceHistory.value.release(thread.id, undefined, event.payload.messageId)
+              : Effect.void,
+          ),
+        ),
+      ),
     );
-
-    if (Option.isNone(sendTurnRequest)) {
-      return;
-    }
-
-    yield* providerService
-      .sendTurn(sendTurnRequest.value)
-      .pipe(Effect.asVoid, Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+    if (Option.isSome(workspaceHistory)) {
+      const gate = yield* Deferred.make<void>();
+      const running = pendingStarts.get(thread.id) ?? new Set<Fiber.Fiber<void, never>>();
+      pendingStarts.set(thread.id, running);
+      const fiber = yield* Deferred.await(gate).pipe(
+        Effect.andThen(sendPreparedTurn),
+        Effect.ensuring(
+          Effect.sync(() => {
+            running.delete(fiber);
+            if (running.size === 0) pendingStarts.delete(thread.id);
+          }),
+        ),
+        Effect.forkScoped,
+      );
+      running.add(fiber);
+      yield* Deferred.succeed(gate, undefined);
+    } else yield* sendPreparedTurn;
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.turn-interrupt-requested" }>,
   ) {
+    yield* interruptPendingStarts(event.payload.threadId);
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;
@@ -1617,6 +1681,7 @@ const make = Effect.gen(function* () {
   const processSessionStopRequested = Effect.fn("processSessionStopRequested")(function* (
     event: Extract<ProviderIntentEvent, { type: "thread.session-stop-requested" }>,
   ) {
+    yield* interruptPendingStarts(event.payload.threadId);
     const thread = yield* resolveThread(event.payload.threadId);
     if (!thread) {
       return;

@@ -19,6 +19,29 @@ export interface VcsCaptureCheckpointInput {
   readonly checkpointRef: CheckpointRef;
 }
 
+export interface VcsSnapshotPolicy {
+  readonly maxPaths?: number;
+  readonly maxPathBytes?: number;
+  readonly maxFileBytes?: number;
+  readonly maxTotalBytes?: number;
+}
+
+export interface VcsCaptureSnapshotInput extends VcsCaptureCheckpointInput {
+  readonly policy?: VcsSnapshotPolicy;
+  readonly baselineOid?: string;
+}
+
+export interface VcsResolveSnapshotInput extends VcsCaptureCheckpointInput {
+  readonly expectedOid?: string;
+}
+
+export interface VcsSnapshotResult {
+  readonly oid: string;
+  readonly representation: "git-normalized";
+  readonly policyVersion: "git-v1";
+  readonly reused: boolean;
+}
+
 export interface VcsRestoreCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
@@ -32,6 +55,7 @@ export interface VcsDiffCheckpointsInput {
   readonly fallbackFromToHead?: boolean;
   readonly ignoreWhitespace: boolean;
   readonly format?: "patch" | "numstat";
+  readonly maxOutputBytes?: number;
 }
 
 export interface VcsDeleteCheckpointRefsInput {
@@ -40,6 +64,12 @@ export interface VcsDeleteCheckpointRefsInput {
 }
 
 export interface VcsCheckpointOps {
+  readonly captureSnapshot: (
+    input: VcsCaptureSnapshotInput,
+  ) => Effect.Effect<VcsSnapshotResult, VcsError>;
+  readonly resolveSnapshot: (
+    input: VcsResolveSnapshotInput,
+  ) => Effect.Effect<string | null, VcsError>;
   readonly captureCheckpoint: (input: VcsCaptureCheckpointInput) => Effect.Effect<void, VcsError>;
   readonly hasCheckpointRef: (
     input: Omit<VcsRestoreCheckpointInput, "fallbackToHead">,

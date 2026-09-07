@@ -30,13 +30,10 @@ import {
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@t3tools/contracts";
-import {
-  makeGitVcsDriverCore,
-  PATCH_RENDER_PREFIX_ARGS,
-  splitNullSeparatedGitStdoutPaths,
-} from "./GitVcsDriverCore.ts";
+import { makeGitVcsDriverCore, PATCH_RENDER_PREFIX_ARGS } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
+import { makeSnapshotOperations } from "./GitVcsDriverSnapshot.ts";
 import { zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 
 export interface ExecuteGitInput {
@@ -717,6 +714,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     });
 
   const checkpoints: VcsDriver.VcsCheckpointOps = {
+    ...makeSnapshotOperations(execute),
     captureCheckpoint: Effect.fn("GitVcsDriver.checkpoints.captureCheckpoint")(function* (input) {
       const operation = "GitVcsDriver.checkpoints.captureCheckpoint";
       const gitCommonDir = yield* resolveGitCommonDir(input.cwd);
@@ -894,8 +892,9 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           `${input.toCheckpointRef}^{commit}`,
         ],
         allowNonZeroExit: true,
-        maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
-        outputMode: input.format === "numstat" ? "error" : "truncate",
+        maxOutputBytes: input.maxOutputBytes ?? CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
+        outputMode:
+          input.maxOutputBytes !== undefined || input.format === "numstat" ? "error" : "truncate",
       });
 
       if (result.exitCode !== 0) {

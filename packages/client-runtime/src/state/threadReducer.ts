@@ -494,6 +494,7 @@ export function applyThreadDetailEvent(
         checkpointRef: event.payload.checkpointRef,
         status: event.payload.status,
         files: event.payload.files,
+        ...(event.payload.history === undefined ? {} : { history: event.payload.history }),
         assistantMessageId: event.payload.assistantMessageId,
         completedAt: event.payload.completedAt,
       };

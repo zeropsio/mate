@@ -5,6 +5,12 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import {
+  checkpointDetailState,
+  legacyCheckpointDiffNotice,
+  checkpointHistoryNotice,
+} from "@t3tools/client-runtime/state/threads";
+import { CheckpointHistoryDiff } from "./CheckpointHistoryDiff";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import {
@@ -247,9 +253,10 @@ export default function DiffPanel({
       fromTurnCount: selectedCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: selectedCheckpointRange?.toTurnCount ?? null,
       ignoreWhitespace: diffIgnoreWhitespace,
-      cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : null,
+      cacheScope:
+        selectedTurn?.history?.runId ?? (selectedTurn ? `turn:${selectedTurn.turnId}` : null),
     },
-    { enabled: checkpointDiffAvailability.enabled },
+    { enabled: checkpointDiffAvailability.enabled && !selectedTurn?.history },
   );
   const primaryBranchDiffPreview = useEnvironmentQuery(
     selectedTurnId === null && activeThread && activeCwd
@@ -396,7 +403,15 @@ export default function DiffPanel({
     : branchDiffPreview.isPending;
   const selectedPatchError = selectedTurn ? activeCheckpointDiff.error : branchDiffPreview.error;
   const hasResolvedPatch = typeof selectedPatch === "string";
-  const hasNoNetChanges = hasResolvedPatch && selectedPatch.trim().length === 0;
+  const legacyCheckpointState = checkpointDetailState(
+    activeCheckpointDiff.data,
+    activeCheckpointDiff.error,
+    activeCheckpointDiff.isPending,
+  );
+  const hasNoNetChanges =
+    hasResolvedPatch &&
+    selectedPatch.trim().length === 0 &&
+    (!selectedTurn || legacyCheckpointState.kind === "empty");
   const renderablePatch = useMemo(
     () =>
       getRenderablePatch(selectedPatch, `diff-panel:${resolvedTheme}`, {
@@ -726,6 +741,11 @@ export default function DiffPanel({
             layout="inline"
           />
         )}
+        {selectedTurn && !selectedTurn.history && (
+          <Button size="xs" variant="outline" onClick={activeCheckpointDiff.refresh}>
+            Retry diff
+          </Button>
+        )}
         {canRefreshGitDiff && (
           <Tooltip>
             <TooltipTrigger
@@ -842,6 +862,21 @@ export default function DiffPanel({
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Select a thread to inspect turn diffs.
         </div>
+      ) : selectedTurn?.history && activeThread && selectedCheckpointRange ? (
+        <CheckpointHistoryDiff
+          history={selectedTurn.history}
+          environmentId={activeThread.environmentId}
+          threadId={activeThread.id}
+          fromTurnCount={selectedCheckpointRange.fromTurnCount}
+          toTurnCount={selectedCheckpointRange.toTurnCount}
+          ignoreWhitespace={diffIgnoreWhitespace}
+          resolvedTheme={resolvedTheme}
+          diffRenderMode={diffRenderMode}
+          wordWrap={wordWrap}
+          composerDraftTarget={composerDraftTarget}
+          selectedFilePath={selectedFilePath}
+          revealRequestId={selectedFileRevealRequestId}
+        />
       ) : checkpointDiffAvailability.showNotRepository ? (
         <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
           Working tree and branch changes are unavailable because this workspace is not one Git
@@ -854,19 +889,25 @@ export default function DiffPanel({
       ) : (
         <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            {selectedTurn && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {legacyCheckpointDiffNotice(activeCheckpointDiff.data) ??
+                  checkpointHistoryNotice(selectedTurn.history)}
+              </p>
+            )}
             {isSelectedPatchTruncated && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
                 This diff was truncated because it exceeded the preview limit. The changes shown are
                 incomplete.
               </p>
             )}
-            {selectedPatchError && !renderablePatch && (
+            {selectedPatchError && (
               <div className="px-3">
                 <p className="mb-2 text-[11px] text-error/80">{selectedPatchError}</p>
               </div>
             )}
             {!renderablePatch ? (
-              isLoadingSelectedPatch ? (
+              isLoadingSelectedPatch && !selectedPatchError ? (
                 <DiffPanelLoadingState
                   label={
                     selectedTurn
@@ -881,7 +922,10 @@ export default function DiffPanel({
                   <p>
                     {hasNoNetChanges
                       ? "No net changes in this selection."
-                      : "No patch available for this selection."}
+                      : selectedTurn
+                        ? (legacyCheckpointState.message ??
+                          "No patch available for this selection.")
+                        : "No patch available for this selection."}
                   </p>
                 </div>
               )

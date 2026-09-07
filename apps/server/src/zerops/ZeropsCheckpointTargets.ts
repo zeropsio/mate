@@ -174,7 +174,7 @@ const prefixBinaryHeader = (line: string, prefix: string): string => {
 };
 
 /** Prefixes Git patch metadata while leaving hunk bodies byte-for-byte intact. */
-const prefixUnifiedPatch = (patch: string, prefix: string): string => {
+export const prefixUnifiedPatch = (patch: string, prefix: string): string => {
   if (prefix.length === 0 || patch.length === 0) {
     return patch;
   }

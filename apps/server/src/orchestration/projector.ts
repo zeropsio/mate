@@ -703,6 +703,7 @@ export function projectEvent(
             checkpointRef: payload.checkpointRef,
             status: payload.status,
             files: payload.files,
+            ...(payload.history === undefined ? {} : { history: payload.history }),
             assistantMessageId: payload.assistantMessageId,
             completedAt: payload.completedAt,
           },

@@ -361,12 +361,94 @@ export type OrchestrationCheckpointFile = typeof OrchestrationCheckpointFile.Typ
 export const OrchestrationCheckpointStatus = Schema.Literals(["ready", "missing", "error"]);
 export type OrchestrationCheckpointStatus = typeof OrchestrationCheckpointStatus.Type;
 
+/** Historical identity is independent of the root's current transport address. */
+export const CheckpointRoot = Schema.Struct({
+  rootId: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  projectId: Schema.optionalKey(TrimmedNonEmptyString),
+  serviceId: Schema.optionalKey(TrimmedNonEmptyString),
+  remotePath: TrimmedNonEmptyString,
+  host: Schema.optionalKey(TrimmedNonEmptyString),
+  mountPath: Schema.optionalKey(TrimmedNonEmptyString),
+  pathPrefix: Schema.String,
+});
+export type CheckpointRoot = typeof CheckpointRoot.Type;
+
+export const CheckpointCaptureSnapshot = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("captured"),
+    oid: TrimmedNonEmptyString,
+    ref: CheckpointRef,
+    startedAt: IsoDateTime,
+    completedAt: IsoDateTime,
+  }),
+  Schema.Struct({
+    status: Schema.Literals([
+      "missing-baseline",
+      "missing-end",
+      "unavailable",
+      "unsupported",
+      "refused",
+      "interrupted",
+      "error",
+    ]),
+    reason: TrimmedNonEmptyString,
+    startedAt: Schema.optionalKey(IsoDateTime),
+    completedAt: Schema.optionalKey(IsoDateTime),
+  }),
+]);
+export type CheckpointCaptureSnapshot = typeof CheckpointCaptureSnapshot.Type;
+
+export const CheckpointHistoryCoverage = Schema.Literals(["complete", "partial", "unknown"]);
+export type CheckpointHistoryCoverage = typeof CheckpointHistoryCoverage.Type;
+
+export const CheckpointHistoryRoot = Schema.Struct({
+  root: CheckpointRoot,
+  before: CheckpointCaptureSnapshot,
+  after: CheckpointCaptureSnapshot,
+  files: Schema.optionalKey(Schema.Array(OrchestrationCheckpointFile)),
+});
+export type CheckpointHistoryRoot = typeof CheckpointHistoryRoot.Type;
+
+/** Bounded capture metadata only. Patch bodies are computed on demand. */
+export const CheckpointHistory = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  coverage: CheckpointHistoryCoverage,
+  semantics: Schema.Literal("observed-workspace"),
+  representation: Schema.Literal("git-normalized"),
+  policyVersion: TrimmedNonEmptyString,
+  roots: Schema.Array(CheckpointHistoryRoot),
+  overlappingRunIds: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+});
+export type CheckpointHistory = typeof CheckpointHistory.Type;
+
+export const CheckpointDiffRootResult = Schema.Struct({
+  rootId: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  pathPrefix: Schema.String,
+  status: Schema.Literals([
+    "available",
+    "missing-baseline",
+    "missing-end",
+    "unavailable",
+    "identity-unresolved",
+    "missing-objects",
+    "unsupported",
+    "oversized",
+    "error",
+  ]),
+  reason: Schema.optionalKey(TrimmedNonEmptyString),
+  truncated: Schema.optionalKey(Schema.Boolean),
+});
+export type CheckpointDiffRootResult = typeof CheckpointDiffRootResult.Type;
+
 export const OrchestrationCheckpointSummary = Schema.Struct({
   turnId: TurnId,
   checkpointTurnCount: NonNegativeInt,
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  history: Schema.optionalKey(CheckpointHistory),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
 });
@@ -1091,6 +1173,7 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  history: Schema.optionalKey(CheckpointHistory),
   assistantMessageId: Schema.optional(MessageId),
   checkpointTurnCount: NonNegativeInt,
   createdAt: IsoDateTime,
@@ -1394,6 +1477,7 @@ export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  history: Schema.optionalKey(CheckpointHistory),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
 });
@@ -1622,6 +1706,8 @@ export const ThreadTurnDiff = TurnCountRange.mapFields(
   Struct.assign({
     threadId: ThreadId,
     diff: Schema.String,
+    coverage: Schema.optionalKey(CheckpointHistoryCoverage),
+    roots: Schema.optionalKey(Schema.Array(CheckpointDiffRootResult)),
   }),
   { unsafePreserveChecks: true },
 );
@@ -1649,6 +1735,7 @@ const ProjectionCheckpointRow = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  history: Schema.optionalKey(CheckpointHistory),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
 });
@@ -1669,6 +1756,8 @@ export const OrchestrationGetTurnDiffInput = TurnCountRange.mapFields(
   Struct.assign({
     threadId: ThreadId,
     ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+    rootId: Schema.optionalKey(TrimmedNonEmptyString),
+    runId: Schema.optionalKey(TrimmedNonEmptyString),
   }),
   { unsafePreserveChecks: true },
 );
@@ -1681,6 +1770,8 @@ export const OrchestrationGetFullThreadDiffInput = Schema.Struct({
   threadId: ThreadId,
   toTurnCount: NonNegativeInt,
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
+  rootId: Schema.optionalKey(TrimmedNonEmptyString),
+  runId: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type OrchestrationGetFullThreadDiffInput = typeof OrchestrationGetFullThreadDiffInput.Type;
 

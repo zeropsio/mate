@@ -19,8 +19,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import type { CheckpointStoreError } from "./Errors.ts";
-import type { VcsCheckpointOps } from "../vcs/VcsDriver.ts";
+import type {
+  VcsCheckpointOps,
+  VcsCaptureSnapshotInput,
+  VcsSnapshotResult,
+  VcsResolveSnapshotInput,
+} from "../vcs/VcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import { CurrentZeropsRepository } from "../zerops/ZeropsWorkspaceAccess.ts";
 
 export interface CaptureCheckpointInput {
   readonly cwd: string;
@@ -40,6 +46,7 @@ export interface DiffCheckpointsInput {
   readonly fallbackFromToHead?: boolean;
   readonly ignoreWhitespace: boolean;
   readonly format?: "patch" | "numstat";
+  readonly maxOutputBytes?: number;
 }
 
 export interface DeleteCheckpointRefsInput {
@@ -51,6 +58,12 @@ export interface DeleteCheckpointRefsInput {
 export class CheckpointStore extends Context.Service<
   CheckpointStore,
   {
+    readonly captureSnapshot: (
+      input: VcsCaptureSnapshotInput,
+    ) => Effect.Effect<VcsSnapshotResult, CheckpointStoreError>;
+    readonly resolveSnapshot: (
+      input: VcsResolveSnapshotInput,
+    ) => Effect.Effect<string | null, CheckpointStoreError>;
     /** Check whether cwd is inside a Git worktree. */
     readonly isGitRepository: (cwd: string) => Effect.Effect<boolean, CheckpointStoreError>;
 
@@ -100,12 +113,23 @@ export class CheckpointStore extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
+  const isScopedRemote = (cwd: string) =>
+    Effect.map(
+      CurrentZeropsRepository,
+      (repository) =>
+        repository?.identity !== undefined &&
+        (cwd === repository.mountPath || cwd.startsWith(`${repository.mountPath}/`)),
+    );
 
   const resolveCheckpoints = Effect.fn("CheckpointStore.resolveCheckpoints")(function* (
     operation: string,
     cwd: string,
   ) {
-    const handle = yield* vcsRegistry.resolve({ cwd });
+    // A verified service binding already chooses Git. Discovery would inspect
+    // the SSHFS mount and enter a cache that does not carry this identity scope.
+    const handle = (yield* isScopedRemote(cwd))
+      ? { kind: "git" as const, driver: yield* vcsRegistry.get("git") }
+      : yield* vcsRegistry.resolve({ cwd });
     if (!handle.driver.checkpoints) {
       return yield* new VcsUnsupportedOperationError({
         operation,
@@ -116,16 +140,32 @@ export const make = Effect.gen(function* () {
     return handle.driver.checkpoints satisfies VcsCheckpointOps;
   });
 
-  const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = (cwd) =>
-    vcsRegistry
-      .detect({ cwd, requestedKind: "git" })
-      .pipe(Effect.map((repository) => repository !== null));
+  const isGitRepository: CheckpointStore["Service"]["isGitRepository"] = Effect.fn(
+    "CheckpointStore.isGitRepository",
+  )(function* (cwd) {
+    if (yield* isScopedRemote(cwd))
+      return yield* (yield* vcsRegistry.get("git")).isInsideWorkTree(cwd);
+    return (yield* vcsRegistry.detect({ cwd, requestedKind: "git" })) !== null;
+  });
 
   const captureCheckpoint: CheckpointStore["Service"]["captureCheckpoint"] = Effect.fn(
     "captureCheckpoint",
   )(function* (input) {
     const checkpoints = yield* resolveCheckpoints("CheckpointStore.captureCheckpoint", input.cwd);
     return yield* checkpoints.captureCheckpoint(input);
+  });
+
+  const captureSnapshot: CheckpointStore["Service"]["captureSnapshot"] = Effect.fn(
+    "CheckpointStore.captureSnapshot",
+  )(function* (input) {
+    const checkpoints = yield* resolveCheckpoints("CheckpointStore.captureSnapshot", input.cwd);
+    return yield* checkpoints.captureSnapshot(input);
+  });
+  const resolveSnapshot: CheckpointStore["Service"]["resolveSnapshot"] = Effect.fn(
+    "CheckpointStore.resolveSnapshot",
+  )(function* (input) {
+    const checkpoints = yield* resolveCheckpoints("CheckpointStore.resolveSnapshot", input.cwd);
+    return yield* checkpoints.resolveSnapshot(input);
   });
 
   const hasCheckpointRef: CheckpointStore["Service"]["hasCheckpointRef"] = Effect.fn(
@@ -160,6 +200,8 @@ export const make = Effect.gen(function* () {
   });
 
   return CheckpointStore.of({
+    captureSnapshot,
+    resolveSnapshot,
     isGitRepository,
     captureCheckpoint,
     hasCheckpointRef,

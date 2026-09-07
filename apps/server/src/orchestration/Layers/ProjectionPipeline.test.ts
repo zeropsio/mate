@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   CheckpointRef,
+  CheckpointHistory,
   CommandId,
   CorrelationId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
@@ -46,6 +47,7 @@ import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.
 import { ServerConfig } from "../../config.ts";
 
 // The shell's previews, read back off the row for the assertions below.
+const decodeCheckpointHistory = Schema.decodeUnknownSync(Schema.fromJsonString(CheckpointHistory));
 const decodePreview = Schema.decodeUnknownSync(Schema.fromJsonString(ThreadMessagePreview));
 function parsePreview(preview: string | null): ThreadMessagePreview | null {
   return preview === null ? null : decodePreview(preview);
@@ -4106,6 +4108,92 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         WHERE command_id = ${cleanupFailureCommandId}
       `;
       assert.deepEqual(cleanupFailureReceipts, [{ status: "accepted" }]);
+    }),
+  );
+});
+
+it.layer(Layer.fresh(BaseTestLayer))("checkpoint root history", (it) => {
+  it.effect("preserves bounded root metadata through persistence and projector replay", () =>
+    Effect.gen(function* () {
+      const pipeline = yield* OrchestrationProjectionPipeline;
+      const events = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const now = "2026-09-07T10:00:00.000Z";
+      const history = {
+        runId: "run-1",
+        coverage: "partial" as const,
+        semantics: "observed-workspace" as const,
+        representation: "git-normalized" as const,
+        policyVersion: "git-v1",
+        roots: [
+          {
+            root: { rootId: "service-1", label: "api", remotePath: "/var/www", pathPrefix: "api/" },
+            before: {
+              status: "missing-baseline" as const,
+              reason: "First observed during this run.",
+            },
+            after: { status: "unavailable" as const, reason: "Service cannot be reached." },
+          },
+        ],
+      };
+      const saved = yield* events.append({
+        type: "thread.turn-diff-completed",
+        eventId: EventId.make("history-event"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("history-thread"),
+        occurredAt: now,
+        commandId: CommandId.make("history-command"),
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("history-thread"),
+          turnId: TurnId.make("history-turn"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("refs/mate/run-1/after"),
+          status: "ready",
+          files: [],
+          history,
+          assistantMessageId: null,
+          completedAt: now,
+        },
+      });
+      yield* pipeline.projectEvent(saved);
+      const readHistory = Effect.gen(function* () {
+        const rows = yield* sql<{ checkpoint_history_json: string | null }>`
+          SELECT checkpoint_history_json FROM projection_turns WHERE thread_id = 'history-thread'
+        `;
+        assert.strictEqual(rows.length, 1);
+        assert.deepEqual(decodeCheckpointHistory(rows[0]!.checkpoint_history_json!), history);
+      });
+      yield* readHistory;
+      const latePlaceholder = yield* events.append({
+        type: "thread.turn-diff-completed",
+        eventId: EventId.make("late-history-placeholder"),
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("history-thread"),
+        occurredAt: now,
+        commandId: CommandId.make("late-history-command"),
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        payload: {
+          threadId: ThreadId.make("history-thread"),
+          turnId: TurnId.make("history-turn"),
+          checkpointTurnCount: 1,
+          checkpointRef: CheckpointRef.make("provider-diff:late"),
+          status: "missing",
+          files: [],
+          assistantMessageId: null,
+          completedAt: now,
+        },
+      });
+      yield* pipeline.projectEvent(latePlaceholder);
+      yield* readHistory;
+      yield* sql`DELETE FROM projection_turns WHERE thread_id = 'history-thread'`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* pipeline.bootstrap;
+      yield* readHistory;
     }),
   );
 });

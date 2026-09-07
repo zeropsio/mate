@@ -352,3 +352,40 @@ describe("buildReviewParsedDiff", () => {
     ]);
   });
 });
+
+it("keeps incomplete zero-file services reviewable with independent run-scoped sections", () => {
+  const checkpoint = makeCheckpoint({
+    turnId: TurnId.make("turn-1"),
+    checkpointTurnCount: 1,
+    completedAt: "2026-09-07T10:00:00.000Z",
+    status: "error",
+    history: {
+      runId: "run-new",
+      coverage: "partial",
+      semantics: "observed-workspace",
+      representation: "git-normalized",
+      policyVersion: "git-v1",
+      roots: ["api", "web"].map((rootId) => ({
+        root: { rootId, label: rootId, remotePath: "/var/www", pathPrefix: `${rootId}/` },
+        before: { status: "missing-baseline", reason: `${rootId} baseline unavailable` },
+        after: { status: "unavailable", reason: "Service unreachable" },
+      })),
+    },
+  });
+  const sections = buildReviewSectionItems({
+    checkpoints: [checkpoint],
+    gitSections: [],
+    turnDiffById: {},
+    loadingTurnIds: {},
+    loadingGitSections: false,
+  });
+  expect(sections.map((section) => section.id)).toEqual([
+    "run:run-new:root:api",
+    "run:run-new:root:web",
+  ]);
+  expect(sections[0]).toMatchObject({
+    coverage: "partial",
+    rootId: "api",
+    subtitle: "api baseline unavailable",
+  });
+});

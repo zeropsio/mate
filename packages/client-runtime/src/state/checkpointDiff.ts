@@ -13,6 +13,7 @@ export interface CheckpointDiffState {
   readonly data: CheckpointDiffResult | null;
   readonly error: string | null;
   readonly isPending: boolean;
+  readonly refresh: () => void;
 }
 
 export interface CheckpointDiffTarget {
@@ -22,4 +23,6 @@ export interface CheckpointDiffTarget {
   readonly toTurnCount: number | null;
   readonly ignoreWhitespace: boolean;
   readonly cacheScope?: string | null;
+  readonly rootId?: string;
+  readonly runId?: string;
 }

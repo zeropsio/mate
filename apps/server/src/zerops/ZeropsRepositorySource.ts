@@ -1,34 +1,4 @@
-/**
- * ZeropsRepositorySource - which git repositories exist in this Zerops
- * project, and where each one really lives.
- *
- * On Zerops a repository is not a directory inside the workspace: it is a
- * sibling *service*. zcp sshfs-mounts every dev service's `/var/www` at
- * `/var/www/<hostname>` on the container, and the `.git` directory sits on
- * that service's own disk. So each entry here carries both sides of the same
- * repository - the `mountPath` the server and the agent see, and the
- * `remotePath` git must actually run against over SSH.
- *
- * The set is read from the container's own mount table (`/proc/mounts` by
- * default), never a platform call and never a scan of `/var/www` for `.git`:
- * a repository is a `fuse.sshfs` mount whose mountpoint is `/var/www/<host>`
- * and whose mountpoint answers a bounded probe - the same check zcp itself
- * runs (`stat`ing `/var/www/<hostname>`) before it will call a service
- * "mounted". A stale mount-table line for a service that has since gone away
- * fails the probe and is dropped, one mount at a time, without failing the
- * whole read.
- *
- * Three outcomes, deliberately distinct:
- * - `disabled` - not a Zerops environment; nothing to enumerate, nothing to
- *   warn about, and the mount table is never read.
- * - `unavailable` - Zerops, but the mount table could not be read at all
- *   (permissions, `/proc` unmounted, ...). Callers degrade and name the
- *   reason; they must not read it as "this project has no repositories".
- * - `available` - the answer, possibly an empty list, which is the honest
- *   "no repositories yet" of a project with no mounted runtime.
- *
- * @module ZeropsRepositorySource
- */
+/** Kernel attachment observations, independent of remote availability and Git state. */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -41,6 +11,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+export { withRepository } from "./ZeropsWorkspaceAccess.ts";
 
 /** Where zcp mounts every sibling service on the container. */
 export const ZEROPS_WORKSPACE_ROOT = "/var/www";
@@ -61,14 +32,7 @@ export const MOUNT_TABLE_PATH = "/proc/mounts";
 /** The fstype zcp mounts every dev service with. */
 const SSHFS_FSTYPE = "fuse.sshfs";
 
-/**
- * How long a mountpoint probe may take before it is treated as a timeout, not
- * a real answer. Matches zcp's own bound before it will report a service
- * `mounted`.
- */
-export const MOUNTPOINT_PROBE_TIMEOUT = Duration.seconds(2);
-
-/** One repository: a mounted dev service with its `.git` on its own disk. */
+/** Access descriptor for a service working root; Git is optional. */
 export interface ZeropsRepository {
   /** The service hostname, which is also the SSH host inside the project. */
   readonly host: string;
@@ -76,15 +40,21 @@ export interface ZeropsRepository {
   readonly mountPath: string;
   /** `/var/www` - the path git must run against on `host`. */
   readonly remotePath: string;
+  readonly identity?: { readonly projectId: string; readonly serviceId: string };
+  readonly rootId?: string;
 }
 
 /** The result of an enumeration. See the module doc for why there are three. */
 export type ZeropsRepositories =
   | { readonly _tag: "disabled" }
   | { readonly _tag: "unavailable"; readonly reason: string }
-  | { readonly _tag: "available"; readonly repositories: ReadonlyArray<ZeropsRepository> };
+  | {
+      readonly _tag: "available";
+      readonly repositories: ReadonlyArray<ZeropsRepository>;
+      readonly limitations?: ReadonlyArray<string>;
+    };
 
-/** The mount table could not be read at all - distinct from a stale line failing its probe. */
+/** The mount table could not be read; this is not an empty attachment set. */
 export class MountTableReadError extends Schema.TaggedErrorClass<MountTableReadError>()(
   "MountTableReadError",
   {
@@ -97,7 +67,7 @@ export class MountTableReadError extends Schema.TaggedErrorClass<MountTableReadE
   }
 }
 
-/** A candidate mount, before its probe decides whether it is really reachable. */
+/** A kernel attachment candidate; remote access and identity remain unverified. */
 interface ZeropsMountCandidate {
   readonly host: string;
   readonly mountPath: string;
@@ -119,12 +89,15 @@ export const parseMountTable = (text: string): ReadonlyArray<ZeropsMountCandidat
     if (fields.length < 3) {
       continue;
     }
-    const [, mountPoint, fsType] = fields;
+    const [source, mountPoint, fsType] = fields;
     if (fsType !== SSHFS_FSTYPE || mountPoint === undefined || !mountPoint.startsWith(prefix)) {
       continue;
     }
     const host = mountPoint.slice(prefix.length);
-    if (host.length === 0 || host.includes("/")) {
+    if (
+      !/^[a-zA-Z0-9][a-zA-Z0-9-]*$/u.test(host) ||
+      (source !== `${host}:/var/www` && source !== `zerops@${host}:/var/www`)
+    ) {
       continue;
     }
     candidates.push({ host, mountPath: mountPoint });
@@ -132,57 +105,22 @@ export const parseMountTable = (text: string): ReadonlyArray<ZeropsMountCandidat
   return candidates;
 };
 
-/**
- * The one dependency the source has: a mount-table read.
- *
- * `/proc/mounts` in production. Reading it can fail outright (permissions,
- * `/proc` unmounted); it is never expected to omit a real mount, so a
- * successful read is trusted completely - the bounded probe is what tells a
- * live mount from a stale line.
- */
+/** A kernel-table read only, never a filesystem probe of the remote mount. */
 export type ZeropsMountTableReader = Effect.Effect<string, MountTableReadError>;
 
-/**
- * Whether `path` is really mounted right now. Bounded so a wedged fuse
- * mountpoint (the disconnected-service case) cannot hang an enumeration -
- * `stat` with a 2 s timeout in production, matching zcp's own check. Never
- * fails: a timeout and an ordinary "not there" both answer `false`.
- */
-export type ZeropsMountpointProbe = (path: string) => Effect.Effect<boolean>;
-
 export interface ZeropsRepositorySourceOptions {
-  /** `isZeropsEnvironment(config)`, passed in so the rule has one home. */
   readonly enabled: boolean;
   readonly readMountTable: ZeropsMountTableReader;
-  readonly probeMountpoint: ZeropsMountpointProbe;
 }
-
-const probeCandidates = (
-  candidates: ReadonlyArray<ZeropsMountCandidate>,
-  probeMountpoint: ZeropsMountpointProbe,
-): Effect.Effect<ReadonlyArray<ZeropsRepository>> =>
-  Effect.forEach(
-    candidates,
-    (candidate) =>
-      probeMountpoint(candidate.mountPath).pipe(
-        Effect.map((mounted): ZeropsRepository | undefined =>
-          mounted
-            ? {
-                host: candidate.host,
-                mountPath: candidate.mountPath,
-                remotePath: ZEROPS_REMOTE_REPOSITORY_PATH,
-              }
-            : undefined,
-        ),
-      ),
-    { concurrency: "unbounded" },
-  ).pipe(Effect.map((probed) => probed.filter((repository) => repository !== undefined)));
 
 export interface ZeropsRepositorySourceService {
   /** The repository set, re-read when the cached one is older than the TTL. */
   readonly list: Effect.Effect<ZeropsRepositories>;
   /** An unconditional re-read - what a turn start uses. */
   readonly refresh: Effect.Effect<ZeropsRepositories>;
+  /** Access hints only; historical membership belongs to the persisted run. */
+  readonly known: Effect.Effect<ReadonlyArray<ZeropsRepository>>;
+  readonly remember: (repository: ZeropsRepository) => Effect.Effect<void>;
 }
 
 export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make")(function* (
@@ -191,9 +129,15 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
   const disabled = { _tag: "disabled" } as const;
   if (!options.enabled) {
     const off = Effect.succeed<ZeropsRepositories>(disabled);
-    return { list: off, refresh: off };
+    return { list: off, refresh: off, known: Effect.succeed([]), remember: () => Effect.void };
   }
 
+  const remembered = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
+  const remember = (repository: ZeropsRepository) =>
+    Ref.update(remembered, (previous) => [
+      ...previous.filter((entry) => entry.mountPath !== repository.mountPath),
+      repository,
+    ]);
   const cache = yield* Ref.make<{ value: ZeropsRepositories; readAt: number } | undefined>(
     undefined,
   );
@@ -206,14 +150,49 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
 
   const read = Effect.gen(function* () {
     const outcome = yield* options.readMountTable.pipe(
-      Effect.map(parseMountTable),
-      Effect.flatMap((candidates) => probeCandidates(candidates, options.probeMountpoint)),
-      Effect.map((repositories): ZeropsRepositories => ({ _tag: "available", repositories })),
+      Effect.map((text): ZeropsRepositories => {
+        const candidates = parseMountTable(text);
+        const mountCounts = new Map<string, number>();
+        for (const line of text.split("\n")) {
+          const [, mountPath, type] = line.trim().split(/\s+/u);
+          if (type === SSHFS_FSTYPE && mountPath?.startsWith(`${ZEROPS_WORKSPACE_ROOT}/`)) {
+            mountCounts.set(mountPath, (mountCounts.get(mountPath) ?? 0) + 1);
+          }
+        }
+        const unambiguous = candidates.filter(
+          (candidate) => mountCounts.get(candidate.mountPath) === 1,
+        );
+        const count = [...mountCounts.values()].reduce((sum, n) => sum + n, 0);
+        return {
+          _tag: "available",
+          repositories: unambiguous.map((candidate) => ({
+            ...candidate,
+            remotePath: ZEROPS_REMOTE_REPOSITORY_PATH,
+          })),
+          ...(count > unambiguous.length
+            ? {
+                limitations: [
+                  "Some SSHFS attachments have an unsupported source or ambiguous mountpoint and could not be identified.",
+                ],
+              }
+            : {}),
+        };
+      }),
       Effect.catch((error) =>
         Effect.succeed<ZeropsRepositories>({ _tag: "unavailable", reason: error.message }),
       ),
     );
 
+    if (outcome._tag === "available") {
+      for (const repository of outcome.repositories) {
+        // Retain verified bindings across disconnects, but current attachment
+        // discovery never asserts that the same hostname still has that identity.
+        const entries = yield* Ref.get(remembered);
+        if (!entries.some((entry) => entry.mountPath === repository.mountPath)) {
+          yield* remember(repository);
+        }
+      }
+    }
     if (outcome._tag === "unavailable") {
       const alreadyWarned = yield* Ref.getAndSet(warned, true);
       if (!alreadyWarned) {
@@ -244,7 +223,7 @@ export const makeZeropsRepositorySource = Effect.fn("ZeropsRepositorySource.make
     }),
   );
 
-  return { list, refresh: gate.withPermits(1)(read) };
+  return { list, refresh: gate.withPermits(1)(read), known: Ref.get(remembered), remember };
 });
 
 export class ZeropsRepositorySource extends Context.Service<
@@ -252,7 +231,7 @@ export class ZeropsRepositorySource extends Context.Service<
   ZeropsRepositorySourceService
 >()("t3/zerops/ZeropsRepositorySource") {}
 
-/** The live source, reading `/proc/mounts` and `stat`-probing each candidate. */
+/** The live source, reading only `/proc/mounts`, never touching FUSE. */
 export const layer = Layer.effect(
   ZeropsRepositorySource,
   Effect.gen(function* () {
@@ -264,18 +243,8 @@ export const layer = Layer.effect(
       .readFileString(MOUNT_TABLE_PATH)
       .pipe(Effect.mapError((cause) => new MountTableReadError({ path: MOUNT_TABLE_PATH, cause })));
 
-    const probeMountpoint: ZeropsMountpointProbe = (path) =>
-      fileSystem.stat(path).pipe(
-        Effect.map(() => true),
-        Effect.catch(() => Effect.succeed(false)),
-        Effect.timeoutOrElse({
-          duration: MOUNTPOINT_PROBE_TIMEOUT,
-          orElse: () => Effect.succeed(false),
-        }),
-      );
-
     return ZeropsRepositorySource.of(
-      yield* makeZeropsRepositorySource({ enabled, readMountTable, probeMountpoint }),
+      yield* makeZeropsRepositorySource({ enabled, readMountTable }),
     );
   }),
 );

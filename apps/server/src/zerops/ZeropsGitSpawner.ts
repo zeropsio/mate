@@ -17,10 +17,11 @@
  * directly. All three bottom out here, so all three are covered without
  * touching a single vcs file.
  *
- * Everything that is not `git`, and every `git` outside a known mount, is
- * handed to the platform spawner byte-identically: `claude`, `codex`, `gh`,
- * shells, node-pty and the `zcp` call that discovers the repositories in the
- * first place all keep their upstream behaviour.
+ * Verified historical bindings remain routable after unmount. Each remote
+ * command checks the project and service IDs in the same shell before Git.
+ * An unresolved remote location fails instead of falling back to local Git.
+ * Non-Git commands and Git outside the remote workspace keep their platform
+ * behaviour. Compound Git pipelines involving remote locations are refused.
  *
  * The path map has one rule in both directions: everything T3 hands us is
  * mount-side, everything we hand git is host-side, everything git hands back
@@ -30,7 +31,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type * as PlatformError from "effect/PlatformError";
+import * as PlatformError from "effect/PlatformError";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
@@ -44,27 +45,17 @@ import {
   type ZeropsRepository,
 } from "./ZeropsRepositorySource.ts";
 
-/**
- * The connection options the driver pins rather than inherits.
- *
- * zcp's managed `~/.ssh/config` block already sets all of these for `Host *`,
- * but a driver that depends on a file another program owns breaks silently
- * when that file changes. The `ControlPath` deliberately matches zcp's
- * (`zcp:internal/content/templates/ssh-config`) so mate reuses the master zcp
- * already holds - 8 ms per round trip instead of 59 ms, which is 1.2 s per
- * repository per turn across a turn's 24 round trips.
- */
-export const SSH_PINNED_OPTIONS: ReadonlyArray<string> = [
-  "ControlMaster=auto",
-  "ControlPath=/tmp/ssh-mux-%r@%h:%p",
-  "ControlPersist=600",
-  "BatchMode=yes",
-  "StrictHostKeyChecking=no",
-  "UserKnownHostsFile=/dev/null",
-  "LogLevel=ERROR",
-  "ServerAliveInterval=15",
-  "ServerAliveCountMax=3",
-];
+import {
+  CurrentZeropsRepository,
+  identityGuard,
+  shellQuote,
+  SSH_PINNED_OPTIONS,
+} from "./ZeropsWorkspaceAccess.ts";
+import {
+  ZeropsWorkspaceObserver,
+  type ZeropsWorkspaceObservation,
+} from "./ZeropsWorkspaceObserver.ts";
+export { shellQuote, SSH_PINNED_OPTIONS } from "./ZeropsWorkspaceAccess.ts";
 
 /** The user every Zerops container runs its services as. */
 export const SSH_USER = "zerops";
@@ -119,21 +110,6 @@ const PATH_VALUED_ENV: ReadonlySet<string> = new Set([
 
 /** Git's own leading options whose value is a path. */
 const PATH_VALUED_FLAGS: ReadonlySet<string> = new Set(["--git-dir", "--work-tree", "--namespace"]);
-
-/** Tokens a POSIX shell passes through untouched, so quoting only adds noise. */
-const SHELL_SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-/**
- * Quotes one token for the remote login shell.
- *
- * ssh has no argv: everything after the host is concatenated and handed to a
- * shell, so a commit message with a space, a quote or a `$(...)` in it is a
- * command injection unless it is quoted here. Single quotes are absolute in
- * POSIX - the only character they cannot contain is a single quote, which is
- * why that one case closes the quote, escapes the character and reopens.
- */
-export const shellQuote = (token: string): string =>
-  SHELL_SAFE.test(token) && token.length > 0 ? token : `'${token.replaceAll("'", `'\\''`)}'`;
 
 /** A git spawn rewritten into an ssh spawn. */
 export interface ZeropsGitInvocation {
@@ -193,6 +169,51 @@ interface SpawnShape {
   };
 }
 
+/** Read Git's leading -C options even when configuration flags precede them. */
+const gitLocation = (
+  spawn: SpawnShape,
+): { location: string | undefined; args: ReadonlyArray<string> } => {
+  let location = spawn.options.cwd;
+  const args: string[] = [];
+  for (let i = 0; i < spawn.args.length; i++) {
+    const token = spawn.args[i]!;
+    if (token === "-C" && spawn.args[i + 1] !== undefined) {
+      const next = spawn.args[++i]!;
+      if (next !== "")
+        location = next.startsWith("/") ? next : location ? `${location}/${next}` : undefined;
+      continue;
+    }
+    args.push(token);
+    if (["-c", "--config-env", "--git-dir", "--work-tree", "--namespace"].includes(token)) {
+      if (spawn.args[i + 1] !== undefined) args.push(spawn.args[++i]!);
+    } else if (!token.startsWith("-") || token === "--") {
+      args.push(...spawn.args.slice(i + 1));
+      break;
+    }
+  }
+  return { location, args };
+};
+
+const mentionsRemoteLocation = (command: ChildProcess.Command): boolean => {
+  if (command._tag === "PipedCommand")
+    return mentionsRemoteLocation(command.left) || mentionsRemoteLocation(command.right);
+  if (command.command !== "git") return false;
+  const { location } = gitLocation(command);
+  return (
+    location?.startsWith("/var/www/") === true ||
+    Object.entries(command.options.env ?? {}).some(
+      ([key, value]) => PATH_VALUED_ENV.has(key) && value?.startsWith("/var/www/"),
+    ) ||
+    command.args.some(
+      (token, i) =>
+        token.startsWith("/var/www/") && PATH_VALUED_FLAGS.has(command.args[i - 1] ?? ""),
+    ) ||
+    command.args.some((token) =>
+      [...PATH_VALUED_FLAGS].some((flag) => token.startsWith(`${flag}=/var/www/`)),
+    )
+  );
+};
+
 /**
  * Decides whether this spawn is a git command inside a mounted repository and,
  * if it is, what to run instead.
@@ -208,17 +229,12 @@ export const rewriteGitSpawn = (
     return undefined;
   }
 
-  // `-C <path>` wins over the process cwd: `GitVcsDriver.gitCommand` spawns
-  // from the server's own cwd and puts the repository in `-C`, so the cwd of
-  // that spawn says nothing about which repository is meant.
-  const hasLeadingC = spawn.args[0] === "-C" && spawn.args[1] !== undefined;
-  const location = hasLeadingC ? spawn.args[1] : spawn.options.cwd;
+  const { location, args: rest } = gitLocation(spawn);
   const repository = findRepository(location, repositories);
-  if (repository === undefined || location === undefined) {
+  if (repository === undefined || location === undefined || location.split("/").includes("..")) {
     return undefined;
   }
 
-  const rest = hasLeadingC ? spawn.args.slice(2) : [...spawn.args];
   const mappedRest: Array<string> = [];
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
@@ -265,7 +281,13 @@ export const rewriteGitSpawn = (
     toRemotePath(location, repository),
     ...mappedRest,
   ];
-  const remoteCommand = remoteTokens.map(shellQuote).join(" ");
+  const gitCommand = remoteTokens.map(shellQuote).join(" ");
+  const boundedCommand = mappedRest.includes("mate-snapshot")
+    ? `timeout -k 2 30 ${gitCommand}`
+    : gitCommand;
+  const remoteCommand = repository.identity
+    ? `${identityGuard(repository.identity)}exec ${boundedCommand}`
+    : boundedCommand;
 
   return {
     command: "ssh",
@@ -319,6 +341,8 @@ export interface ZeropsGitSpawnerOptions {
   readonly enabled: boolean;
   /** The repository set, re-read per spawn behind the source's own TTL. */
   readonly repositories: Effect.Effect<ZeropsRepositories>;
+  readonly known?: Effect.Effect<ReadonlyArray<ZeropsRepository>>;
+  readonly observe?: (repository: ZeropsRepository) => Effect.Effect<ZeropsWorkspaceObservation>;
   /** The platform spawner every untouched command still goes to. */
   readonly inner: ChildProcessSpawner.ChildProcessSpawner["Service"];
 }
@@ -366,21 +390,59 @@ export const makeZeropsGitSpawner = (
 
   const spawn: ChildProcessSpawner.ChildProcessSpawner["Service"]["spawn"] = (command) =>
     Effect.gen(function* () {
+      if (command._tag === "PipedCommand" && mentionsRemoteLocation(command)) {
+        return yield* PlatformError.badArgument({
+          module: "ZeropsGitSpawner",
+          method: "spawn",
+          description: "Remote Git pipelines require explicit remote execution",
+        });
+      }
       if (command._tag !== "StandardCommand" || command.command !== "git") {
         return yield* options.inner.spawn(command);
       }
 
       const repositories = yield* options.repositories;
-      if (repositories._tag !== "available") {
-        // No enumeration means no path map. Passing git through unchanged is
-        // the honest degradation: it runs against the mount, slowly, exactly
-        // as it did before this module existed.
+      const scoped = yield* CurrentZeropsRepository;
+      const known = options.known ? yield* options.known : [];
+      const candidates = [
+        ...(scoped ? [scoped] : []),
+        ...known.filter((entry) => entry.identity !== undefined),
+        ...(repositories._tag === "available" ? repositories.repositories : []),
+        ...known,
+      ];
+      let invocation = rewriteGitSpawn(command, candidates);
+      if (invocation === undefined) {
+        if (mentionsRemoteLocation(command)) {
+          return yield* Effect.fail(
+            PlatformError.badArgument({
+              module: "ZeropsGitSpawner",
+              method: "spawn",
+              description:
+                "Remote workspace is not resolved; refusing local Git under the Zerops mount root",
+            }),
+          );
+        }
         return yield* options.inner.spawn(command);
       }
-
-      const invocation = rewriteGitSpawn(command, repositories.repositories);
-      if (invocation === undefined) {
-        return yield* options.inner.spawn(command);
+      if (invocation.repository.identity === undefined && options.observe) {
+        const observation = yield* options.observe(invocation.repository);
+        if (observation._tag === "unavailable")
+          return yield* Effect.fail(
+            PlatformError.badArgument({
+              module: "ZeropsGitSpawner",
+              method: "spawn",
+              description: observation.reason,
+            }),
+          );
+        invocation = rewriteGitSpawn(command, [observation.repository]);
+        if (invocation === undefined)
+          return yield* Effect.fail(
+            PlatformError.badArgument({
+              module: "ZeropsGitSpawner",
+              method: "spawn",
+              description: "Remote binding changed during resolution",
+            }),
+          );
       }
 
       const gate = gateFor(invocation.host);
@@ -429,9 +491,12 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const inner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const source = yield* ZeropsRepositorySource;
+    const observer = yield* ZeropsWorkspaceObserver;
     return makeZeropsGitSpawner({
       enabled: isZeropsEnvironment(config),
       repositories: source.list,
+      known: source.known,
+      observe: observer.observe,
       inner,
     });
   }),

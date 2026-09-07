@@ -1,3 +1,8 @@
+import {
+  checkpointDiffNotice,
+  legacyCheckpointDiffNotice,
+  checkpointRootResponseError,
+} from "@t3tools/client-runtime/state/threads";
 import { useCallback, useEffect, useMemo } from "react";
 
 import type { EnvironmentId, OrchestrationCheckpointSummary, ThreadId } from "@t3tools/contracts";
@@ -55,10 +60,14 @@ export function useReviewSections(input: {
   const checkpointBySectionId = useMemo(
     () =>
       Object.fromEntries(
-        readyCheckpoints.map((checkpoint) => [
-          getReviewSectionIdForCheckpoint(checkpoint),
-          checkpoint,
-        ]),
+        readyCheckpoints.flatMap((checkpoint) =>
+          checkpoint.history?.roots.length
+            ? checkpoint.history.roots.map((entry) => [
+                getReviewSectionIdForCheckpoint(checkpoint, entry.root.rootId),
+                checkpoint,
+              ])
+            : [[getReviewSectionIdForCheckpoint(checkpoint), checkpoint]],
+        ),
       ) as Record<string, OrchestrationCheckpointSummary>,
     [readyCheckpoints],
   );
@@ -118,8 +127,12 @@ export function useReviewSections(input: {
   if (selectedSection?.kind === "turn") {
     activeCheckpoint = checkpointBySectionId[selectedSection.id] ?? activeCheckpoint;
   }
+  const activeRootId =
+    selectedSection?.kind === "turn"
+      ? selectedSection.rootId
+      : activeCheckpoint?.history?.roots[0]?.root.rootId;
   const activeSectionId = activeCheckpoint
-    ? getReviewSectionIdForCheckpoint(activeCheckpoint)
+    ? getReviewSectionIdForCheckpoint(activeCheckpoint, activeRootId)
     : null;
   const activeTurnDiff = useCheckpointDiff({
     environmentId: enabled ? (environmentId ?? null) : null,
@@ -128,7 +141,12 @@ export function useReviewSections(input: {
       enabled && activeCheckpoint ? Math.max(0, activeCheckpoint.checkpointTurnCount - 1) : null,
     toTurnCount: enabled ? (activeCheckpoint?.checkpointTurnCount ?? null) : null,
     ignoreWhitespace: false,
+    ...(activeRootId === undefined ? {} : { rootId: activeRootId }),
+    cacheScope: activeCheckpoint?.history?.runId ?? null,
+    ...(activeCheckpoint?.history ? { runId: activeCheckpoint.history.runId } : {}),
   });
+
+  const responseError = checkpointRootResponseError(activeTurnDiff.data, activeRootId);
 
   useEffect(() => {
     if (!reviewCache.threadKey || !activeSectionId) {
@@ -138,12 +156,12 @@ export function useReviewSections(input: {
   }, [activeSectionId, activeTurnDiff.isPending, reviewCache.threadKey]);
 
   useEffect(() => {
-    if (!reviewCache.threadKey || !activeSectionId || !activeTurnDiff.data) {
+    if (!reviewCache.threadKey || !activeSectionId || !activeTurnDiff.data || responseError) {
       return;
     }
     setReviewTurnDiff(reviewCache.threadKey, activeSectionId, activeTurnDiff.data.diff);
     setReviewAsyncError(reviewCache.threadKey, null);
-  }, [activeSectionId, activeTurnDiff.data, reviewCache.threadKey]);
+  }, [activeSectionId, activeTurnDiff.data, reviewCache.threadKey, responseError]);
 
   useEffect(() => {
     if (reviewCache.threadKey && activeTurnDiff.error) {
@@ -165,6 +183,7 @@ export function useReviewSections(input: {
   const selectSection = useCallback(
     (sectionId: string) => {
       if (reviewCache.threadKey) {
+        setReviewAsyncError(reviewCache.threadKey, null);
         setReviewSelectedSectionId(reviewCache.threadKey, sectionId);
       }
     },
@@ -172,11 +191,23 @@ export function useReviewSections(input: {
   );
 
   return {
-    error: diffPreview.error ?? activeTurnDiff.error ?? reviewCache.asyncState.error,
+    error:
+      selectedSection?.kind === "turn"
+        ? (activeTurnDiff.error ??
+          responseError ??
+          (activeCheckpoint?.history ? checkpointDiffNotice(activeTurnDiff.data?.roots) : null))
+        : (diffPreview.error ?? reviewCache.asyncState.error),
+    historyNotice:
+      selectedSection?.kind === "turn" && !activeCheckpoint?.history
+        ? legacyCheckpointDiffNotice(activeTurnDiff.data)
+        : null,
     loadingGitDiffs: diffPreview.isPending,
     loadingTurnIds,
     reviewSections,
-    selectedSection,
+    selectedSection:
+      selectedSection?.kind === "turn" && activeTurnDiff.data && !responseError
+        ? { ...selectedSection, coverage: activeTurnDiff.data.coverage ?? ("unknown" as const) }
+        : selectedSection,
     refreshSelectedSection,
     selectSection,
   };

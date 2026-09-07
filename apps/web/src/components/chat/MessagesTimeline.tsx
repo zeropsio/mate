@@ -1672,7 +1672,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
-  if (checkpointFiles.length === 0) return null;
+  if (checkpointFiles.length === 0 && !turnSummary.history) return null;
 
   return (
     <AssistantChangedFilesSectionInner
@@ -1715,6 +1715,7 @@ function AssistantChangedFilesSectionInner({
   return (
     <ChangedFilesCard
       turnId={turnSummary.turnId}
+      history={turnSummary.history}
       files={checkpointFiles}
       expanded={expanded}
       showCompactPreview={isLatestTurn}

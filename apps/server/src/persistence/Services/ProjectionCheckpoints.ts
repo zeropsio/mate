@@ -8,6 +8,7 @@
  */
 import {
   CheckpointRef,
+  CheckpointHistory,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -30,6 +31,7 @@ export const ProjectionCheckpoint = Schema.Struct({
   checkpointRef: CheckpointRef,
   status: OrchestrationCheckpointStatus,
   files: Schema.Array(OrchestrationCheckpointFile),
+  history: Schema.optionalKey(Schema.NullOr(CheckpointHistory)),
   assistantMessageId: Schema.NullOr(MessageId),
   completedAt: IsoDateTime,
 });

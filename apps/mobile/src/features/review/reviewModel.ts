@@ -1,3 +1,7 @@
+import {
+  checkpointHistoryNotice,
+  checkpointRootNotice,
+} from "@t3tools/client-runtime/state/threads";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { ChangeTypes, FileDiffMetadata } from "@pierre/diffs/types";
 import type { OrchestrationCheckpointSummary, ReviewDiffPreviewSource } from "@t3tools/contracts";
@@ -18,6 +22,8 @@ export interface ReviewSectionItem {
   readonly subtitle: string | null;
   readonly diff: string | null;
   readonly isLoading: boolean;
+  readonly rootId?: string;
+  readonly coverage?: "complete" | "partial" | "unknown";
 }
 
 export interface ReviewRenderableHunkRow {
@@ -137,7 +143,7 @@ function checkpointSubtitle(checkpoint: OrchestrationCheckpointSummary): string 
   if (checkpoint.status !== "ready") {
     return `Diff ${checkpoint.status}`;
   }
-  return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+  return `${fileCount} recorded file${fileCount === 1 ? "" : "s"}. ${checkpointHistoryNotice(checkpoint.history)}`;
 }
 
 function compareCheckpointTurnCountDescending(
@@ -510,9 +516,12 @@ function mapRenderableFile(file: FileDiffMetadata): ReviewRenderableFile {
 }
 
 export function getReviewSectionIdForCheckpoint(
-  checkpoint: Pick<OrchestrationCheckpointSummary, "checkpointTurnCount">,
+  checkpoint: Pick<OrchestrationCheckpointSummary, "checkpointTurnCount" | "history">,
+  rootId?: string,
 ): string {
-  return `turn:${checkpoint.checkpointTurnCount}`;
+  return checkpoint.history
+    ? `run:${checkpoint.history.runId}${rootId ? `:root:${rootId}` : ""}`
+    : `turn:${checkpoint.checkpointTurnCount}`;
 }
 
 export function getReadyReviewCheckpoints(
@@ -520,7 +529,7 @@ export function getReadyReviewCheckpoints(
 ): ReadonlyArray<OrchestrationCheckpointSummary> {
   return pipe(
     checkpoints,
-    Arr.filter((checkpoint) => checkpoint.status === "ready"),
+    Arr.filter((checkpoint) => checkpoint.status === "ready" || checkpoint.history !== undefined),
     Arr.sort(readyCheckpointOrder),
   );
 }
@@ -532,17 +541,37 @@ export function buildReviewSectionItems(input: {
   readonly loadingTurnIds: Readonly<Record<string, boolean | undefined>>;
   readonly loadingGitSections: boolean;
 }): ReadonlyArray<ReviewSectionItem> {
-  const turnItems = getReadyReviewCheckpoints(input.checkpoints).map<ReviewSectionItem>(
+  const turnItems = getReadyReviewCheckpoints(input.checkpoints).flatMap<ReviewSectionItem>(
     (checkpoint) => {
+      if (checkpoint.history?.roots.length)
+        return checkpoint.history.roots.map((entry) => {
+          const id = getReviewSectionIdForCheckpoint(checkpoint, entry.root.rootId);
+          return {
+            id,
+            kind: "turn",
+            rootId: entry.root.rootId,
+            coverage:
+              entry.before.status === "captured" && entry.after.status === "captured"
+                ? "unknown"
+                : "partial",
+            title: `${checkpointTitle(checkpoint)} · ${entry.root.label}`,
+            subtitle: checkpointRootNotice(entry),
+            diff: input.turnDiffById[id] ?? null,
+            isLoading: input.loadingTurnIds[id] === true,
+          };
+        });
       const id = getReviewSectionIdForCheckpoint(checkpoint);
-      return {
-        id,
-        kind: "turn",
-        title: checkpointTitle(checkpoint),
-        subtitle: checkpointSubtitle(checkpoint),
-        diff: input.turnDiffById[id] ?? null,
-        isLoading: input.loadingTurnIds[id] === true,
-      };
+      return [
+        {
+          id,
+          kind: "turn",
+          coverage: checkpoint.history?.coverage ?? "unknown",
+          title: checkpointTitle(checkpoint),
+          subtitle: checkpointSubtitle(checkpoint),
+          diff: input.turnDiffById[id] ?? null,
+          isLoading: input.loadingTurnIds[id] === true,
+        },
+      ];
     },
   );
 

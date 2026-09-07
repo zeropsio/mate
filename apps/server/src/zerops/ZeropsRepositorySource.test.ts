@@ -24,10 +24,19 @@ const MEASURED_MOUNT_TABLE = [
   "weatherdash:/var/www /var/www/weatherdash fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0",
 ].join("\n");
 
-/** A probe that always answers `mounted`. */
-const alwaysMounted = (_path: string) => Effect.succeed(true);
-
 describe("parseMountTable", () => {
+  it("does not route an unrelated remote source through the mountpoint hostname", () => {
+    assert.deepStrictEqual(
+      parseMountTable(
+        [
+          "other:/var/www /var/www/app fuse.sshfs rw 0 0",
+          "app:/somewhere /var/www/app fuse.sshfs rw 0 0",
+          "app:/var/www /var/www/app fuse.sshfs rw 0 0",
+        ].join("\n"),
+      ),
+      [{ host: "app", mountPath: "/var/www/app" }],
+    );
+  });
   it("lists a repository per fuse.sshfs mount under /var/www", () => {
     assert.deepStrictEqual(parseMountTable(MEASURED_MOUNT_TABLE), [
       { host: "s3git1", mountPath: "/var/www/s3git1" },
@@ -52,13 +61,54 @@ describe("parseMountTable", () => {
 });
 
 describe("ZeropsRepositorySource", () => {
+  it.effect("keeps valid roots while reporting unsupported attachment coverage", () =>
+    Effect.gen(function* () {
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable: Effect.succeed(
+          MEASURED_MOUNT_TABLE + "\nother:/data /var/www/broken fuse.sshfs rw 0 0",
+        ),
+      });
+      const result = yield* source.refresh;
+      assert.strictEqual(result._tag, "available");
+      if (result._tag === "available") {
+        assert.strictEqual(result.repositories.length, 3);
+        assert.strictEqual(result.limitations?.length, 1);
+      }
+    }),
+  );
+
+  it.effect("retains verified access after unmount without calling it currently attached", () =>
+    Effect.gen(function* () {
+      const table = yield* Ref.make(MEASURED_MOUNT_TABLE);
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable: Ref.get(table),
+      });
+      yield* source.refresh;
+      const verified = {
+        host: "s3git1",
+        mountPath: "/var/www/s3git1",
+        remotePath: "/var/www",
+        identity: { projectId: "p", serviceId: "s" },
+      };
+      yield* source.remember(verified);
+      yield* Ref.set(table, "");
+      const now = yield* source.refresh;
+      assert.deepStrictEqual(now, { _tag: "available", repositories: [] });
+      assert.deepStrictEqual(
+        (yield* source.known).find((entry) => entry.host === "s3git1"),
+        verified,
+      );
+    }),
+  );
+
   it.effect("is disabled off Zerops and never reads the mount table", () =>
     Effect.gen(function* () {
       const reads = yield* Ref.make(0);
       const source = yield* makeZeropsRepositorySource({
         enabled: false,
         readMountTable: Ref.update(reads, (n) => n + 1).pipe(Effect.andThen(Effect.succeed(""))),
-        probeMountpoint: alwaysMounted,
       });
 
       const result = yield* source.list;
@@ -68,13 +118,11 @@ describe("ZeropsRepositorySource", () => {
     }),
   );
 
-  it.effect("drops a mount whose probe times out and keeps the others", () =>
+  it.effect("retains all kernel attachments without probing their remote filesystems", () =>
     Effect.gen(function* () {
       const source = yield* makeZeropsRepositorySource({
         enabled: true,
         readMountTable: Effect.succeed(MEASURED_MOUNT_TABLE),
-        // The bounded probe reports a timeout as `false`, never a failure.
-        probeMountpoint: (path) => Effect.succeed(!path.endsWith("/s3git2")),
       });
 
       const result = yield* source.list;
@@ -83,7 +131,7 @@ describe("ZeropsRepositorySource", () => {
       if (result._tag === "available") {
         assert.deepStrictEqual(
           result.repositories.map((repository) => repository.host),
-          ["s3git1", "weatherdash"],
+          ["s3git1", "s3git2", "weatherdash"],
         );
       }
     }),
@@ -98,7 +146,6 @@ describe("ZeropsRepositorySource", () => {
           readMountTable: Effect.fail(
             new MountTableReadError({ path: MOUNT_TABLE_PATH, cause: "EACCES" }),
           ),
-          probeMountpoint: alwaysMounted,
         });
 
         const result = yield* source.list;
@@ -119,7 +166,6 @@ describe("ZeropsRepositorySource", () => {
       const source = yield* makeZeropsRepositorySource({
         enabled: true,
         readMountTable,
-        probeMountpoint: alwaysMounted,
       });
 
       yield* source.list;

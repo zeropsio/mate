@@ -33,6 +33,9 @@ import {
 } from "./Errors.ts";
 import type { CheckpointServiceError } from "./Errors.ts";
 import { checkpointRefForThreadTurn } from "./Utils.ts";
+import { readLegacyWorkspaceDiff } from "./LegacyWorkspaceDiff.ts";
+import { WorkspaceHistory } from "./WorkspaceHistory.ts";
+import { workspaceHistoryRange } from "./WorkspaceHistoryRange.ts";
 import * as CheckpointStore from "./CheckpointStore.ts";
 
 /** Service tag for checkpoint diff queries. */
@@ -80,6 +83,7 @@ function buildTurnDiffResult(
 export const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const workspaceHistory = yield* Effect.serviceOption(WorkspaceHistory);
   const repositorySource = yield* Effect.serviceOption(ZeropsRepositorySource);
 
   const diffCheckpointRange = Effect.fn("CheckpointDiffQuery.diffCheckpointRange")(
@@ -152,6 +156,59 @@ export const make = Effect.gen(function* () {
         });
       }
 
+      const history = workspaceHistoryRange(
+        threadContext.value.checkpoints,
+        input.fromTurnCount,
+        input.toTurnCount,
+      );
+      if (input.runId !== undefined && (!history || Option.isNone(workspaceHistory)))
+        return {
+          threadId: input.threadId,
+          fromTurnCount: input.fromTurnCount,
+          toTurnCount: input.toTurnCount,
+          diff: "",
+          coverage: "unknown" as const,
+          roots: [
+            {
+              rootId: input.rootId ?? "unknown",
+              label: "History unavailable",
+              pathPrefix: "",
+              status: "identity-unresolved" as const,
+              reason:
+                "The selected run metadata is unavailable. Reload the conversation before opening its diff.",
+            },
+          ],
+        };
+      if (history && Option.isSome(workspaceHistory)) {
+        if (input.runId !== undefined && input.runId !== history.runId)
+          return {
+            threadId: input.threadId,
+            fromTurnCount: input.fromTurnCount,
+            toTurnCount: input.toTurnCount,
+            diff: "",
+            coverage: "unknown" as const,
+            roots: [
+              {
+                rootId: input.rootId ?? "unknown",
+                label: "History changed",
+                pathPrefix: "",
+                status: "identity-unresolved" as const,
+                reason:
+                  "The selected run has changed. Reload the conversation before opening its diff.",
+              },
+            ],
+          };
+        const result = yield* workspaceHistory.value.read(history, {
+          ignoreWhitespace,
+          ...(input.rootId !== undefined ? { rootId: input.rootId } : {}),
+        });
+        return {
+          threadId: input.threadId,
+          fromTurnCount: input.fromTurnCount,
+          toTurnCount: input.toTurnCount,
+          ...result,
+        };
+      }
       const workspaceCwd = threadContext.value.worktreePath ?? threadContext.value.workspaceRoot;
       if (!workspaceCwd) {
         return yield* new CheckpointWorkspacePathMissingError({
@@ -187,6 +244,29 @@ export const make = Effect.gen(function* () {
         });
       }
 
+      if (Option.isSome(workspaceHistory)) {
+        const repositories = Option.isSome(repositorySource)
+          ? yield* repositorySource.value.list
+          : ({ _tag: "disabled" } as const);
+        const legacy = yield* readLegacyWorkspaceDiff(checkpointStore, {
+          cwd: workspaceCwd,
+          repositories,
+          checkpoints: threadContext.value.checkpoints.filter(
+            (c) =>
+              c.checkpointTurnCount > input.fromTurnCount &&
+              c.checkpointTurnCount <= input.toTurnCount,
+          ),
+          fromCheckpointRef,
+          toCheckpointRef,
+          ignoreWhitespace,
+        });
+        return {
+          threadId: input.threadId,
+          fromTurnCount: input.fromTurnCount,
+          toTurnCount: input.toTurnCount,
+          ...legacy,
+        };
+      }
       const diff = yield* diffCheckpointRange({
         cwd: workspaceCwd,
         fromCheckpointRef,
@@ -237,6 +317,60 @@ export const make = Effect.gen(function* () {
       return emptyDiff satisfies OrchestrationGetFullThreadDiffResult;
     }
 
+    if (Option.isSome(workspaceHistory)) {
+      const context = yield* projectionSnapshotQuery.getThreadCheckpointContext(input.threadId);
+      if (Option.isSome(context)) {
+        const history = workspaceHistoryRange(context.value.checkpoints, 0, input.toTurnCount);
+        if (history) {
+          if (input.runId !== undefined && input.runId !== history.runId)
+            return {
+              threadId: input.threadId,
+              fromTurnCount: 0,
+              toTurnCount: input.toTurnCount,
+              diff: "",
+              coverage: "unknown" as const,
+              roots: [
+                {
+                  rootId: input.rootId ?? "unknown",
+                  label: "History changed",
+                  pathPrefix: "",
+                  status: "identity-unresolved" as const,
+                  reason:
+                    "The selected range has changed. Reload the conversation before opening its diff.",
+                },
+              ],
+            };
+          const result = yield* workspaceHistory.value.read(history, {
+            ignoreWhitespace,
+            ...(input.rootId !== undefined ? { rootId: input.rootId } : {}),
+          });
+          return {
+            threadId: input.threadId,
+            fromTurnCount: 0,
+            toTurnCount: input.toTurnCount,
+            ...result,
+          };
+        }
+      }
+      return yield* getTurnDiff({ ...input, fromTurnCount: 0 });
+    }
+    if (input.runId !== undefined)
+      return {
+        threadId: input.threadId,
+        fromTurnCount: 0,
+        toTurnCount: input.toTurnCount,
+        diff: "",
+        coverage: "unknown" as const,
+        roots: [
+          {
+            rootId: input.rootId ?? "unknown",
+            label: "History unavailable",
+            pathPrefix: "",
+            status: "identity-unresolved" as const,
+            reason: "The selected run cannot be read by this server.",
+          },
+        ],
+      };
     const threadContext = yield* projectionSnapshotQuery
       .getFullThreadDiffContext(input.threadId, input.toTurnCount)
       .pipe(Effect.withSpan("checkpoint.fullThread.lookupContext"));

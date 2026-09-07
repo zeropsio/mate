@@ -58,6 +58,7 @@ import {
   providerErrorLabelFromInstanceHint,
   ProviderCommandReactorLive,
 } from "./ProviderCommandReactor.ts";
+import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
@@ -152,6 +153,8 @@ describe("ProviderCommandReactor", () => {
 
   async function createHarness(input?: {
     readonly baseDir?: string;
+    readonly workspaceHistory?: Partial<WorkspaceHistory["Service"]>;
+    readonly onSendTurn?: Effect.Effect<void>;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
@@ -249,7 +252,7 @@ describe("ProviderCommandReactor", () => {
       Effect.succeed({
         threadId: ThreadId.make("thread-1"),
         turnId: asTurnId("turn-1"),
-      }),
+      }).pipe(Effect.tap(() => input?.onSendTurn ?? Effect.void)),
     );
     const compactThread = vi.fn((_: ThreadId) => input?.compactThreadEffect?.() ?? Effect.void);
     const interruptTurn = vi.fn((_: unknown) => input?.interruptTurnEffect?.() ?? Effect.void);
@@ -430,6 +433,14 @@ describe("ProviderCommandReactor", () => {
       }),
     ).pipe(Layer.provide(orchestrationLayer));
     const layer = ProviderCommandReactorLive.pipe(
+      Layer.provide(
+        input?.workspaceHistory
+          ? Layer.mock(WorkspaceHistory)({
+              markDispatched: () => Effect.void,
+              ...input.workspaceHistory,
+            })
+          : Layer.empty,
+      ),
       Layer.provideMerge(reactorOrchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
@@ -579,6 +590,125 @@ describe("ProviderCommandReactor", () => {
       },
     };
   }
+
+  effectIt.effect.each(["stop", "interrupt"] as const)(
+    "%s during snapshot preparation cancels pending startup and leaves the next request usable",
+    (action) =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const barrier = yield* Deferred.make<void>();
+        const cancelled = yield* Deferred.make<void>();
+        const sent = yield* Deferred.make<void>();
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            workspaceHistory: {
+              prepare: () =>
+                Deferred.succeed(entered, undefined).pipe(
+                  Effect.andThen(Deferred.await(barrier)),
+                  Effect.onInterrupt(() =>
+                    Deferred.succeed(cancelled, undefined).pipe(Effect.asVoid),
+                  ),
+                ),
+              release: () => Effect.void,
+            },
+            onSendTurn: Deferred.succeed(sent, undefined).pipe(Effect.asVoid),
+          }),
+        );
+        const threadId = ThreadId.make("thread-1");
+        const start = (suffix: string) =>
+          harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make(`cmd-preparation-${action}-${suffix}`),
+            threadId,
+            message: {
+              messageId: MessageId.make(`message-preparation-${action}-${suffix}`),
+              role: "user",
+              text: `Request ${suffix}`,
+              attachments: [],
+            },
+            modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex"),
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+        yield* start("cancelled");
+        yield* Deferred.await(entered);
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        yield* harness.engine.dispatch({
+          type: action === "stop" ? "thread.session.stop" : "thread.turn.interrupt",
+          commandId: CommandId.make(`cmd-preparation-${action}`),
+          threadId,
+          createdAt: "2026-01-01T00:00:01.000Z",
+        });
+        yield* Deferred.await(cancelled);
+        yield* Effect.promise(harness.drain);
+        yield* Deferred.succeed(barrier, undefined);
+        yield* Effect.promise(harness.drain);
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        yield* start("next");
+        yield* Deferred.await(sent);
+        yield* Effect.promise(harness.drain);
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+      }),
+  );
+
+  effectIt.effect(
+    "awaits the persisted preparation receipt before provider session startup or user work",
+    () =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const prepared = yield* Deferred.make<void>();
+        const sent = yield* Deferred.make<void>();
+        const order: string[] = [];
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            workspaceHistory: {
+              markDispatched: () =>
+                Effect.sync(() => {
+                  order.push("dispatched");
+                }),
+              prepare: () =>
+                Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(prepared))),
+              release: () => Effect.void,
+            },
+            startSessionEffect: (session) =>
+              Effect.sync(() => {
+                order.push("session");
+                return session;
+              }),
+            onSendTurn: Effect.sync(() => {
+              order.push("sent");
+            }).pipe(Effect.andThen(Deferred.succeed(sent, undefined)), Effect.asVoid),
+          }),
+        );
+        yield* harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-capture-order"),
+          threadId: ThreadId.make("thread-1"),
+          message: {
+            messageId: MessageId.make("message-capture-order"),
+            role: "user",
+            text: "Update API and app",
+            attachments: [],
+          },
+          modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex"),
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        yield* Deferred.await(entered);
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        expect(harness.startSession).not.toHaveBeenCalled();
+        expect(order).toEqual([]);
+        yield* Deferred.succeed(prepared, undefined);
+        yield* Deferred.await(sent);
+        expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+        expect(order).toEqual(["session", "dispatched", "sent"]);
+      }),
+  );
 
   effectIt.effect.each(["new", "ready", "stopped"] as const)(
     "handles sign-out for a %s thread before worktree repair, text helpers, or startup",

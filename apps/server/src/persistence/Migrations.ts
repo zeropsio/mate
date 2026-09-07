@@ -59,6 +59,7 @@ import Migration0043 from "./Migrations/043_ProjectionThreadsUnsettledAt.ts";
 import Migration0044 from "./Migrations/044_ZeropsThreadLifecycle.ts";
 import Migration0045 from "./Migrations/045_ProjectionThreadsLatestMessagePreview.ts";
 import Migration0046 from "./Migrations/046_ProjectionThreadsLatestUserMessagePreview.ts";
+import Migration0047 from "./Migrations/047_ProjectionCheckpointHistory.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -70,6 +71,8 @@ import Migration0046 from "./Migrations/046_ProjectionThreadsLatestUserMessagePr
  * Uses Migrator.fromRecord which parses the key format and
  * returns migrations sorted by ID.
  */
+import Migration0048 from "./Migrations/048_WorkspaceCaptureJournal.ts";
+
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
@@ -117,6 +120,8 @@ export const migrationEntries = [
   [44, "ZeropsThreadLifecycle", Migration0044],
   [45, "ProjectionThreadsLatestMessagePreview", Migration0045],
   [46, "ProjectionThreadsLatestUserMessagePreview", Migration0046],
+  [47, "ProjectionCheckpointHistory", Migration0047],
+  [48, "WorkspaceCaptureJournal", Migration0048],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

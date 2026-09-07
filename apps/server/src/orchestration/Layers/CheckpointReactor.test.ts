@@ -34,6 +34,7 @@ import { it as effectIt } from "@effect/vitest";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
+import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
@@ -288,6 +289,10 @@ describe("CheckpointReactor", () => {
   });
 
   async function createHarness(options?: {
+    readonly workspaceHistory?: Partial<WorkspaceHistory["Service"]>;
+    readonly failSessionLookup?: boolean;
+    readonly currentSessionStatus?: ProviderSession["status"];
+    readonly onSessionLookup?: Effect.Effect<void>;
     readonly hasSession?: boolean;
     readonly seedFilesystemCheckpoints?: boolean;
     readonly projectWorkspaceRoot?: string;
@@ -348,10 +353,32 @@ describe("CheckpointReactor", () => {
     });
 
     const layer = CheckpointReactorLive.pipe(
+      Layer.provide(
+        options?.workspaceHistory
+          ? Layer.mock(WorkspaceHistory)(options.workspaceHistory)
+          : Layer.empty,
+      ),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusTest),
-      Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
+      Layer.provideMerge(
+        Layer.succeed(ProviderService, {
+          ...provider.service,
+          listSessions: () =>
+            options?.failSessionLookup
+              ? Effect.die("provider session lookup failed")
+              : provider.service.listSessions().pipe(
+                  Effect.map((sessions) =>
+                    sessions.map((session) =>
+                      options?.currentSessionStatus
+                        ? { ...session, status: options.currentSessionStatus }
+                        : session,
+                    ),
+                  ),
+                  Effect.tap(() => options?.onSessionLookup ?? Effect.void),
+                ),
+        }),
+      ),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
       Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistry.layer))),
       Layer.provideMerge(
@@ -479,6 +506,75 @@ describe("CheckpointReactor", () => {
       nextReceipt: Queue.take(receipts),
     };
   }
+
+  effectIt.effect.each(["connecting", "ready", "running", "error", "closed"] as const)(
+    "delayed old-session exit respects the current %s session",
+    (status) =>
+      Effect.gen(function* () {
+        const inspected = yield* Deferred.make<void>();
+        const release = vi.fn<WorkspaceHistory["Service"]["release"]>(() => Effect.void);
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            seedFilesystemCheckpoints: false,
+            currentSessionStatus: status,
+            onSessionLookup: Deferred.succeed(inspected, undefined).pipe(Effect.asVoid),
+            workspaceHistory: { release },
+          }),
+        );
+        harness.provider.emit({
+          type: "session.exited",
+          eventId: EventId.make("evt-old-session-exit"),
+          provider: ProviderDriverKind.make("codex"),
+          threadId: ThreadId.make("thread-1"),
+          createdAt: "2025-12-31T23:59:59.000Z",
+          payload: { exitKind: "graceful" },
+        });
+        yield* Deferred.await(inspected);
+        yield* Effect.promise(harness.drain);
+        if (status === "error" || status === "closed")
+          expect(release).toHaveBeenCalledWith(
+            ThreadId.make("thread-1"),
+            undefined,
+            undefined,
+            true,
+          );
+        else expect(release).not.toHaveBeenCalled();
+      }),
+  );
+
+  effectIt.effect.each(["turn.completed", "turn.aborted"] as const)(
+    "%s releases its run when workspace lookup fails before capture",
+    (eventType) =>
+      Effect.gen(function* () {
+        const released = yield* Deferred.make<void>();
+        const release = vi.fn<WorkspaceHistory["Service"]["release"]>(() =>
+          Deferred.succeed(released, undefined).pipe(Effect.asVoid),
+        );
+        const finish = vi.fn<WorkspaceHistory["Service"]["finish"]>(() =>
+          Effect.die("capture must not start without a workspace"),
+        );
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            seedFilesystemCheckpoints: false,
+            failSessionLookup: true,
+            workspaceHistory: { release, finish },
+          }),
+        );
+        harness.provider.emit({
+          type: eventType,
+          eventId: EventId.make(`evt-lookup-failure-${eventType}`),
+          provider: ProviderDriverKind.make("codex"),
+          threadId: ThreadId.make("thread-1"),
+          turnId: "turn-1",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          payload: { state: "completed" },
+        });
+        yield* Deferred.await(released);
+        yield* Effect.promise(harness.drain);
+        expect(finish).not.toHaveBeenCalled();
+        expect(release).toHaveBeenCalledWith(ThreadId.make("thread-1"), TurnId.make("turn-1"));
+      }),
+  );
 
   effectIt.effect("captures baseline and large turn summaries before completion receipts", () =>
     Effect.gen(function* () {

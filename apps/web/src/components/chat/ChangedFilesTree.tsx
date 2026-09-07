@@ -1,3 +1,8 @@
+import type { CheckpointHistory } from "@t3tools/contracts";
+import {
+  checkpointHistoryNotice,
+  checkpointRootNotice,
+} from "@t3tools/client-runtime/state/threads";
 import { type TurnId } from "@t3tools/contracts";
 import { memo, useCallback, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "../../types";
@@ -29,6 +34,7 @@ const EMPTY_DIRECTORY_OVERRIDES: Record<string, boolean> = {};
 
 export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   turnId: TurnId;
+  history?: CheckpointHistory | undefined;
   files: ReadonlyArray<TurnDiffFileChange>;
   expanded: boolean;
   showCompactPreview: boolean;
@@ -40,6 +46,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
 }) {
   const {
     turnId,
+    history,
     files,
     expanded,
     showCompactPreview,
@@ -86,7 +93,11 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             />
             <span className="flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground text-xs leading-4">
               <span>
-                {files.length} changed file{files.length === 1 ? "" : "s"}
+                {files.length}{" "}
+                {history?.coverage !== undefined && history.coverage !== "complete"
+                  ? "recorded"
+                  : "changed"}{" "}
+                file{files.length === 1 ? "" : "s"}
               </span>
               {hasNonZeroStat(summaryStat) && (
                 <DiffStatLabel
@@ -150,6 +161,24 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
           </Tooltip>
         </div>
       </div>
+      <p className="break-words px-2 py-1 text-[11px] text-muted-foreground">
+        {checkpointHistoryNotice(history)}
+      </p>
+      {history && (
+        <ul className="space-y-1 break-words px-2 py-1 text-[11px]">
+          {history.roots.map((entry) => (
+            <li key={entry.root.rootId}>
+              <button
+                className="text-left font-medium hover:underline"
+                onClick={() => onOpenTurnDiff(turnId, entry.root.pathPrefix)}
+              >
+                {entry.root.label}
+              </button>
+              <span className="ml-2 text-muted-foreground">{checkpointRootNotice(entry)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {expanded ? (
         <ChangedFilesTree
           key={`changed-files-tree:${turnId}`}

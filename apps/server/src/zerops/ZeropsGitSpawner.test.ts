@@ -10,6 +10,7 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
+import { withRepository } from "./ZeropsWorkspaceAccess.ts";
 import type { ZeropsRepositories, ZeropsRepository } from "./ZeropsRepositorySource.ts";
 import {
   MAX_GIT_SESSIONS_PER_HOST,
@@ -63,6 +64,14 @@ describe("shellQuote", () => {
 });
 
 describe("rewriteGitSpawn — what gets rewritten and what does not", () => {
+  it("resolves -C after Git configuration flags", () => {
+    assert.strictEqual(
+      remoteOf(["-c", "core.fsmonitor=false", "-C", kanban.mountPath, "status"]),
+      "git -C /var/www -c core.fsmonitor=false status",
+    );
+    assert.isUndefined(rewrite(["-C", `${kanban.mountPath}/../elsewhere`, "status"]));
+  });
+
   it("leaves every non-git command alone", () => {
     for (const command of ["claude", "codex", "gh", "glab", "az", "bash", "node", "zcp"]) {
       assert.isUndefined(
@@ -289,6 +298,69 @@ const available = (list: ReadonlyArray<ZeropsRepository>): Effect.Effect<ZeropsR
   Effect.succeed({ _tag: "available", repositories: list });
 
 describe("makeZeropsGitSpawner", () => {
+  it.effect("does not let an unsupported pipeline bypass the remote boundary", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inner = yield* makeInnerSpawner();
+        const spawner = makeZeropsGitSpawner({
+          enabled: true,
+          repositories: Effect.succeed({ _tag: "available", repositories }),
+          inner: inner.spawner,
+        });
+        const command = ChildProcess.make("git", ["status"], { cwd: kanban.mountPath }).pipe(
+          ChildProcess.pipeTo(ChildProcess.make("cat")),
+        );
+        const outcome = yield* Effect.result(spawner.spawn(command));
+        assert.strictEqual(outcome._tag, "Failure");
+        assert.deepStrictEqual(yield* Ref.get(inner.calls), []);
+      }),
+    ),
+  );
+
+  it.effect(
+    "routes an unmounted historical binding over SSH and preserves its expected identity",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const current = {
+            ...kanban,
+            identity: { projectId: "project", serviceId: "new-service" },
+          };
+          const historical = {
+            ...kanban,
+            identity: { projectId: "project", serviceId: "old-service" },
+          };
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: Effect.succeed({ _tag: "available", repositories: [] }),
+            known: Effect.succeed([current]),
+            inner: inner.spawner,
+          });
+          yield* withRepository(
+            historical,
+            spawner.spawn(ChildProcess.make("git", ["show", "abc"], { cwd: kanban.mountPath })),
+          );
+          const [call] = yield* Ref.get(inner.calls);
+          assert.strictEqual(call?.command, "ssh");
+          assert.include(call?.args.at(-1) ?? "", '"${serviceId-}" = old-service');
+          assert.notInclude(call?.args.at(-1) ?? "", "new-service");
+        }),
+      ),
+  );
+
+  it("bounds snapshot scripts on the remote side after identity verification", () => {
+    const invocation = rewriteGitSpawn(
+      {
+        command: "git",
+        args: ["-c", "alias.mate-snapshot=!echo test", "mate-snapshot"],
+        options: { cwd: kanban.mountPath },
+      },
+      [{ ...kanban, identity: { projectId: "p", serviceId: "s" } }],
+    );
+    assert.include(invocation?.remoteCommand ?? "", "exit 126; }; exec timeout -k 2 30 git");
+  });
+
   it.effect("hands a non-git command to the inner spawner untouched", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -329,22 +401,26 @@ describe("makeZeropsGitSpawner", () => {
     ),
   );
 
-  it.effect("hands git through untouched when the topology is unavailable", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const inner = yield* makeInnerSpawner();
-        const spawner = makeZeropsGitSpawner({
-          enabled: true,
-          repositories: Effect.succeed({ _tag: "unavailable", reason: "no credentials" }),
-          inner: inner.spawner,
-        });
+  it.effect(
+    "refuses local Git against an unresolved remote path when discovery is unavailable",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: Effect.succeed({ _tag: "unavailable", reason: "no credentials" }),
+            inner: inner.spawner,
+          });
 
-        yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/kanbandev" }));
+          const result = yield* Effect.result(
+            spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/kanbandev" })),
+          );
+          assert.strictEqual(result._tag, "Failure");
 
-        const [call] = yield* Ref.get(inner.calls);
-        assert.strictEqual(call?.command, "git");
-      }),
-    ),
+          assert.deepStrictEqual(yield* Ref.get(inner.calls), []);
+        }),
+      ),
   );
 
   it.effect("spawns ssh for a git command inside a mount", () =>

@@ -240,3 +240,37 @@ describe("ChangedFilesTree", () => {
     },
   );
 });
+
+it("keeps a zero-file incomplete history card actionable", () => {
+  const html = renderToStaticMarkup(
+    <ChangedFilesCard
+      turnId={TurnId.make("turn-incomplete")}
+      files={[]}
+      expanded={false}
+      showCompactPreview={false}
+      allDirectoriesExpanded={false}
+      resolvedTheme="light"
+      onExpandedChange={() => {}}
+      onToggleAllDirectories={() => {}}
+      onOpenTurnDiff={() => {}}
+      history={{
+        runId: "run-1",
+        coverage: "partial",
+        semantics: "observed-workspace",
+        representation: "git-normalized",
+        policyVersion: "git-v1",
+        roots: [
+          {
+            root: { rootId: "api", label: "api", remotePath: "/var/www", pathPrefix: "api/" },
+            before: { status: "missing-baseline", reason: "The initial snapshot is unavailable." },
+            after: { status: "unavailable", reason: "Service is unreachable." },
+          },
+        ],
+      }}
+    />,
+  );
+  expect(html).toContain("0 recorded files");
+  expect(html).toContain("History is incomplete");
+  expect(html).toContain("The initial snapshot is unavailable.");
+  expect(html).toContain("Open diff");
+});

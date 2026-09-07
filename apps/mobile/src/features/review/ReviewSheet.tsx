@@ -383,13 +383,19 @@ export function ReviewSheet(props: ReviewSheetProps) {
   useEffect(() => {
     showAuxiliaryPane("inspector");
   }, [environmentId, showAuxiliaryPane, threadId]);
-  const { error, reviewSections, selectedSection, refreshSelectedSection, selectSection } =
-    useReviewSections({
-      enabled: isEnvironmentReady,
-      environmentId,
-      threadId,
-      reviewCache,
-    });
+  const {
+    error,
+    historyNotice,
+    reviewSections,
+    selectedSection,
+    refreshSelectedSection,
+    selectSection,
+  } = useReviewSections({
+    enabled: isEnvironmentReady,
+    environmentId,
+    threadId,
+    reviewCache,
+  });
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,
     sections: reviewSections,
@@ -608,6 +614,13 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const listHeader = useMemo(() => {
     const children: ReactElement[] = [];
 
+    if (historyNotice) {
+      children.push(
+        <View key="review-history-coverage" className="border-b border-border bg-card px-4 py-3">
+          <Text className="text-xs leading-normal text-foreground-muted">{historyNotice}</Text>
+        </View>,
+      );
+    }
     if (error) {
       children.push(
         <View key="review-error" className="border-b border-border bg-card px-4 py-3">
@@ -626,7 +639,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     }
 
     return <>{children}</>;
-  }, [error, parsedDiffNotice]);
+  }, [error, historyNotice, parsedDiffNotice]);
   const headerSubtitle = [
     headerDiffSummary.additions,
     headerDiffSummary.deletions,
@@ -846,14 +859,21 @@ export function ReviewSheet(props: ReviewSheetProps) {
                   This thread has no ready turn diffs and the worktree diff is empty.
                 </Text>
               </View>
-            ) : selectedSection.isLoading && selectedSection.diff === null ? (
+            ) : selectedSection.isLoading && selectedSection.diff === null && !error ? (
               <View className="items-center gap-3 border-b border-border bg-card px-4 py-6">
                 <ActivityIndicator size="small" />
                 <Text className="text-xs text-foreground-muted">Loading diff…</Text>
               </View>
             ) : parsedDiff.kind === "empty" ? (
               <View className="border-b border-border bg-card px-4 py-5">
-                <Text className="text-sm font-t3-bold text-foreground">No changes</Text>
+                <Text className="text-sm font-t3-bold text-foreground">
+                  {error
+                    ? "Diff unavailable"
+                    : selectedSection.kind !== "turn" ||
+                        (selectedSection.diff !== null && selectedSection.coverage === "complete")
+                      ? "No changes"
+                      : "No recorded patch"}
+                </Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
                   {selectedSection.subtitle ?? "This diff is empty."}
                 </Text>

@@ -43,6 +43,9 @@ import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper.ts";
 import { ProviderUsageLimitsIngestionLive } from "./provider/Layers/ProviderUsageLimitsIngestion.ts";
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
+import * as WorkspaceHistory from "./checkpointing/WorkspaceHistory.ts";
+import * as WorkspaceCaptureJournal from "./checkpointing/WorkspaceCaptureJournal.ts";
+import * as ZeropsWorkspaceObserver from "./zerops/ZeropsWorkspaceObserver.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -327,6 +330,7 @@ const VcsLayerLive = Layer.empty.pipe(
 
 const CheckpointingLayerLive = Layer.empty.pipe(
   Layer.provideMerge(CheckpointDiffQuery.layer),
+  Layer.provideMerge(WorkspaceHistory.layer.pipe(Layer.provide(WorkspaceCaptureJournal.layer))),
   Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(VcsDriverRegistryLayerLive))),
 );
 
@@ -669,6 +673,7 @@ export const makeServerLayer = Layer.unwrap(
       // merged here rather than buried in the spawner because the checkpoint
       // reactor reads it too.
       Layer.provideMerge(ZeropsGitSpawner.layer),
+      Layer.provideMerge(ZeropsWorkspaceObserver.layer),
       Layer.provideMerge(ZeropsRepositorySource.layer),
       Layer.provideMerge(PlatformServicesLive),
     );
