@@ -257,6 +257,70 @@ const KNOWN_ENVELOPE_CODES: ReadonlySet<string> = new Set([
   "internal",
 ]);
 
+/**
+ * A reviver's third argument (`{source}`, the exact source text of the
+ * value just parsed) is a Node ≥21 JSON.parse extension (the mate server
+ * container runs Node 24) — TypeScript's `lib.es5` `JSON.parse` overload
+ * predates it and only declares `(key: string, value: any) => any`. Rather
+ * than a global augmentation, {@link preserveBigIntegers} simply declares
+ * its third parameter OPTIONAL: a function with an extra optional parameter
+ * still structurally satisfies the narrower 2-parameter reviver type, so
+ * `JSON.parse(text, preserveBigIntegers)` typechecks without touching
+ * `lib.d.ts` — while the value actually passed at runtime (on Node 24) is
+ * used to recover a bigint cell exactly.
+ */
+interface JsonReviverContext {
+  readonly source?: string;
+}
+
+/**
+ * `JSON.parse` reviver: an out-of-`Number.isSafeInteger`-range integer
+ * (e.g. a bigint primary key) is replaced by its EXACT decimal source text
+ * instead of the already-rounded `number` `JSON.parse` produced — every
+ * console cell value is `Schema.Unknown` in the contract (`zerops.ts`), so a
+ * string here passes straight through to the client unchanged. A float
+ * (`context.source` doesn't match `/^-?\d+$/`) or anything already exactly
+ * representable is left as the `number` `JSON.parse` produced.
+ */
+const preserveBigIntegers = (
+  _key: string,
+  value: unknown,
+  context?: JsonReviverContext,
+): unknown =>
+  typeof value === "number" &&
+  !Number.isSafeInteger(value) &&
+  context?.source !== undefined &&
+  /^-?\d+$/.test(context.source)
+    ? context.source
+    : value;
+
+/** Parses one console JSON body, preserving exact big-integer cell values (see {@link preserveBigIntegers}) — used for every `/api/*` JSON body, success or error envelope. Never used for the ready-line (no numeric cell values there). Exported only for a direct table-driven test. */
+export const parseConsoleJson = (text: string): unknown => JSON.parse(text, preserveBigIntegers);
+
+/** Reads and parses one console JSON response body — `response.json` is never used directly in this module, since Effect's own accessor doesn't run a reviver and would silently round a bigint cell. */
+const readConsoleJson = <E>(response: {
+  readonly text: Effect.Effect<string, E>;
+}): Effect.Effect<unknown, ZeropsDataConsoleError> =>
+  response.text.pipe(
+    Effect.mapError(
+      () =>
+        new ZeropsDataConsoleError({
+          code: "internal",
+          message: "console returned an unreadable response",
+        }),
+    ),
+    Effect.flatMap((text) =>
+      Effect.try({
+        try: () => parseConsoleJson(text),
+        catch: () =>
+          new ZeropsDataConsoleError({
+            code: "internal",
+            message: "console returned an unreadable response",
+          }),
+      }),
+    ),
+  );
+
 const toEnvelopeError = (envelope: unknown, status: number): ZeropsDataConsoleError => {
   const record = isRecord(envelope) ? envelope : {};
   const rawCode = typeof record.code === "string" ? record.code : undefined;
@@ -805,18 +869,12 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
           return yield* UNAUTHORIZED_ERROR;
         }
         if (response.status < 200 || response.status >= 300) {
-          const envelope = yield* response.json.pipe(Effect.orElseSucceed(() => undefined));
+          const envelope = yield* readConsoleJson(response).pipe(
+            Effect.orElseSucceed(() => undefined),
+          );
           return yield* toEnvelopeError(envelope, response.status);
         }
-        return yield* response.json.pipe(
-          Effect.mapError(
-            () =>
-              new ZeropsDataConsoleError({
-                code: "internal",
-                message: "console returned an unreadable response",
-              }),
-          ),
-        );
+        return yield* readConsoleJson(response);
       });
 
     const readHeaderBool = (headers: Headers.Headers, name: string): boolean =>
@@ -853,7 +911,9 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
           return yield* UNAUTHORIZED_ERROR;
         }
         if (response.status < 200 || response.status >= 300) {
-          const envelope = yield* response.json.pipe(Effect.orElseSucceed(() => undefined));
+          const envelope = yield* readConsoleJson(response).pipe(
+            Effect.orElseSucceed(() => undefined),
+          );
           return yield* toEnvelopeError(envelope, response.status);
         }
         const bytes = yield* response.arrayBuffer.pipe(

@@ -21,6 +21,7 @@ import {
   isLoopbackReadyUrl,
   make,
   makeRealSpawn,
+  parseConsoleJson,
   parseReadyLine,
   routeRequest,
   type DataConsoleProcess,
@@ -202,6 +203,25 @@ describe("ZeropsDataConsole", () => {
       expect(
         parseReadyLine(JSON.stringify({ url: READY_URL, allowWrites: false })),
       ).toBeUndefined();
+    });
+  });
+
+  describe("parseConsoleJson", () => {
+    const cases: ReadonlyArray<{ readonly source: string; readonly expected: unknown }> = [
+      { source: "9007199254740993", expected: "9007199254740993" },
+      { source: "1.5", expected: 1.5 },
+      { source: "42", expected: 42 },
+    ];
+    for (const { source, expected } of cases) {
+      it(`parses ${source} as ${JSON.stringify(expected)}`, () => {
+        expect(parseConsoleJson(`{"value":${source}}`)).toEqual({ value: expected });
+      });
+    }
+
+    it("preserves an unsafe integer inside a table cell array", () => {
+      expect(parseConsoleJson('{"rows":[[9007199254740993,"alice"]]}')).toEqual({
+        rows: [["9007199254740993", "alice"]],
+      });
     });
   });
 
@@ -641,6 +661,33 @@ describe("ZeropsDataConsole", () => {
             },
           });
         }),
+    );
+
+    it.effect("preserves an unsafe-integer cell exactly, end to end through the broker", () =>
+      Effect.gen(function* () {
+        const rawBody =
+          '{"columns":[{"name":"id","dataType":"integer","pk":true,"editable":false,"reason":"","sortable":true,"sortReason":""}],"rows":[[9007199254740993,"alice"]],"nextCursor":"","rowKeyCols":["id"],"bestEffort":false,"numbered":false}';
+        const http = HttpClient.make((request) =>
+          Effect.sync(() =>
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(rawBody, {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+            ),
+          ),
+        );
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({ kind: "table", path: { service: "db", segments: ["public", "users"] } }),
+        ).pipe(Effect.orDie);
+        expect(result).toMatchObject({
+          kind: "table",
+          page: { rows: [["9007199254740993", "alice"]] },
+        });
+      }),
     );
 
     it.effect("decodes a console node whose hasChildren was omitted as false", () =>
