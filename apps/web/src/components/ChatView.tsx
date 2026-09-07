@@ -5837,6 +5837,15 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+  // A Mate has one conversation, so "start over" is not a new thread but the
+  // provider's own `/clear`: sent as a message, the way the composer sends
+  // it, so the transcript shows what happened and the session forgets.
+  const clearSession = () => {
+    if (!activeThreadRef) return;
+    promptRef.current = "/clear";
+    setComposerDraftPrompt(composerDraftTarget, "/clear");
+    void onSend();
+  };
 
   // An environment that was just created has a job waiting, and a coding agent
   // to sign in before anything can run it. This says the job the moment there
@@ -6755,6 +6764,7 @@ function ChatViewContent(props: ChatViewProps) {
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
+            onClearSession={clearSession}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}

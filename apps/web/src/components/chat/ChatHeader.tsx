@@ -74,6 +74,8 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   gitCwd: string | null;
   onNewThreadInProject: () => void;
+  /** Sends the provider's `/clear`: a Mate has one conversation, so starting over means the session forgets, not a second thread. */
+  onClearSession: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -155,29 +157,23 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
 }
 
 /**
- * A fresh thread in the same project, from the header: the Mate breadcrumb
- * took the place of the project name that used to be this affordance, so a
- * Mate's conversation gets an explicit button beside its Zerops link.
+ * Starting over in a Mate's conversation. A Mate is one conversation by
+ * design, so this is not a second thread: it sends the provider's `/clear`,
+ * and the session forgets what came before while the transcript stays.
  */
-function NewThreadButton({
-  projectName,
-  onNewThread,
-}: {
-  readonly projectName: string;
-  readonly onNewThread: () => void;
-}) {
+function ClearSessionButton({ onClearSession }: { readonly onClearSession: () => void }) {
   return (
     <Button
-      aria-label={`New thread in ${projectName}`}
+      aria-label="New session"
       className="ps-[8.5px]"
-      data-zerops-new-thread
-      onClick={onNewThread}
+      data-zerops-clear-session
+      onClick={onClearSession}
       size="xs"
       variant="outline"
     >
       <SquarePenIcon className="size-3.5 shrink-0" />
       <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
-        New thread
+        New session
       </span>
     </Button>
   );
@@ -201,6 +197,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   gitCwd,
   onNewThreadInProject,
+  onClearSession,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -511,9 +508,7 @@ export const ChatHeader = memo(function ChatHeader({
             openInCwd={openInCwd}
           />
         )}
-        {mate === undefined || !activeProjectName ? null : (
-          <NewThreadButton onNewThread={onNewThreadInProject} projectName={activeProjectName} />
-        )}
+        {mate === undefined ? null : <ClearSessionButton onClearSession={onClearSession} />}
         {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
         {activeProjectName && stackedActionsSupported && (
           <GitActionsControl
