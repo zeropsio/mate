@@ -7,6 +7,7 @@ import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
+  Link,
   Outlet,
   createRootRoute,
   type ErrorComponentProps,
@@ -123,10 +124,25 @@ function SignedInRootRouteView() {
     <CommandPalette>
       <AppSidebarLayout>
         {routeTargetsEnvironment && !availableEnvironmentIds.has(targetEnvironmentId) ? (
-          <div className="p-8">
-            {restoring
-              ? "Checking this environment…"
-              : "This environment is currently unavailable. Open a project from the sidebar."}
+          <div className="flex flex-col items-start gap-3 p-8">
+            <p className="text-sm text-muted-foreground">
+              {restoring
+                ? "Checking this environment…"
+                : "This environment is not reachable right now. It may be restarting, or it may be gone."}
+            </p>
+            {/*
+              Not a redirect: an environment is "unavailable" while its
+              container restarts too, and throwing somebody out of their
+              conversation for that is worse than saying so. But the old copy
+              sent them to a sidebar that is empty on an account whose
+              projects were just deleted — advice you cannot follow. The
+              projects screen always exists.
+            */}
+            {restoring ? null : (
+              <Button render={<Link to="/zerops" />} size="sm" variant="secondary">
+                Go to projects
+              </Button>
+            )}
           </div>
         ) : (
           <Outlet />
