@@ -6651,21 +6651,33 @@ function ChatViewContent(props: ChatViewProps) {
                 <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
               );
             case "data":
-              return (
-                <ZeropsDataPanel
-                  key={`${zeropsChrome.threadRef?.environmentId}:${"service" in activeRightPanelSurface ? activeRightPanelSurface.service : ""}`}
-                  maximized={rightPanelMaximized}
-                  onAddContext={addTerminalContextToDraft}
-                  onOpenService={openDataSurface}
-                  onToggleMaximized={canMaximizeRightPanel ? toggleRightPanelMaximized : undefined}
-                  service={
-                    "service" in activeRightPanelSurface
-                      ? activeRightPanelSurface.service
-                      : undefined
-                  }
-                  threadRef={zeropsChrome.threadRef}
-                />
-              );
+              // Every open Data tab stays mounted, the inactive ones hidden:
+              // a switch between db and db2 keeps each tab's tree, selection,
+              // sort and filters exactly where they were.
+              return rightPanelState.surfaces
+                .filter((surface) => surface.kind === "data")
+                .map((surface) => {
+                  const service = "service" in surface ? surface.service : undefined;
+                  return (
+                    <div
+                      className="contents"
+                      data-zerops-data-surface={surface.id}
+                      hidden={surface.id !== activeRightPanelSurface.id}
+                      key={`${zeropsChrome.threadRef?.environmentId}:${service ?? ""}`}
+                    >
+                      <ZeropsDataPanel
+                        maximized={rightPanelMaximized}
+                        onAddContext={addTerminalContextToDraft}
+                        onOpenService={openDataSurface}
+                        onToggleMaximized={
+                          canMaximizeRightPanel ? toggleRightPanelMaximized : undefined
+                        }
+                        service={service}
+                        threadRef={zeropsChrome.threadRef}
+                      />
+                    </div>
+                  );
+                });
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
