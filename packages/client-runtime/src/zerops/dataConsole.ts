@@ -363,3 +363,345 @@ export function describeDataConsoleError(err: Pick<ZeropsDataConsoleError, "code
       return "Something went wrong.";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Filters → read-only SQL
+// ---------------------------------------------------------------------------
+
+export type DataConsoleFilterOp =
+  | "eq"
+  | "neq"
+  | "lt"
+  | "lte"
+  | "gt"
+  | "gte"
+  | "contains"
+  | "startsWith"
+  | "isNull"
+  | "notNull";
+
+/** `value` is absent for `isNull`/`notNull` — those ops carry no operand. */
+export interface DataConsoleFilter {
+  readonly column: string;
+  readonly op: DataConsoleFilterOp;
+  readonly value?: string;
+}
+
+export type DataConsoleSqlDialect = "postgresql" | "mysql";
+
+/** Maps a service `type` to the SQL dialect its console query builder should speak. `undefined` for anything not a Postgres/MySQL-family engine — no filtered-table query builder applies there (e.g. object storage, KV, Mongo). */
+export function resolveSqlDialect(serviceType: string): DataConsoleSqlDialect | undefined {
+  if (serviceType.startsWith("postgresql")) return "postgresql";
+  if (serviceType.startsWith("mariadb") || serviceType.startsWith("mysql")) return "mysql";
+  return undefined;
+}
+
+function quoteIdentifier(name: string, dialect: DataConsoleSqlDialect): string {
+  const quote = dialect === "mysql" ? "`" : '"';
+  return quote + name.split(quote).join(quote + quote) + quote;
+}
+
+function qualifiedTableName(path: ZeropsDataConsolePath, dialect: DataConsoleSqlDialect): string {
+  return path.segments.map((segment) => quoteIdentifier(segment, dialect)).join(".");
+}
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.split("'").join("''")}'`;
+}
+
+/** Escapes `%`, `_` and `\` in a LIKE operand and pairs it with `ESCAPE '\'`, so a literal wildcard character in a `contains`/`startsWith` filter value never behaves as a wildcard. */
+function likeLiteral(value: string, pattern: (escaped: string) => string): string {
+  const escaped = value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  return `${sqlStringLiteral(pattern(escaped))} ESCAPE '\\'`;
+}
+
+const COMPARISON_OPERATORS: Partial<Record<DataConsoleFilterOp, string>> = {
+  eq: "=",
+  neq: "<>",
+  lt: "<",
+  lte: "<=",
+  gt: ">",
+  gte: ">=",
+};
+
+function filterClause(filter: DataConsoleFilter, dialect: DataConsoleSqlDialect): string {
+  const column = quoteIdentifier(filter.column, dialect);
+  switch (filter.op) {
+    case "isNull":
+      return `${column} IS NULL`;
+    case "notNull":
+      return `${column} IS NOT NULL`;
+    case "contains":
+      return `${column} LIKE ${likeLiteral(filter.value ?? "", (v) => `%${v}%`)}`;
+    case "startsWith":
+      return `${column} LIKE ${likeLiteral(filter.value ?? "", (v) => `${v}%`)}`;
+    default: {
+      const operator = COMPARISON_OPERATORS[filter.op];
+      return `${column} ${operator} ${sqlStringLiteral(filter.value ?? "")}`;
+    }
+  }
+}
+
+/** `true` when the query would carry a `WHERE` clause — either a structured filter or non-empty raw SQL — used to gate "clear filters" UI. */
+export function hasActiveFilters(
+  filters: ReadonlyArray<DataConsoleFilter>,
+  rawWhere?: string,
+): boolean {
+  return filters.length > 0 || (rawWhere?.trim().length ?? 0) > 0;
+}
+
+/**
+ * Builds a read-only `SELECT * FROM … WHERE … ORDER BY … LIMIT n` statement
+ * for the table filter panel. Structured filters are ANDed together;
+ * `rawWhere` — the user's own SQL escape hatch — is appended as a further
+ * `AND (rawWhere)` clause verbatim (trimmed only to test for emptiness),
+ * never parsed or rewritten. No trailing semicolon: the console appends its
+ * own statement terminator.
+ */
+export function buildFilteredTableStatement(input: {
+  readonly dialect: DataConsoleSqlDialect;
+  readonly path: ZeropsDataConsolePath;
+  readonly filters: ReadonlyArray<DataConsoleFilter>;
+  readonly rawWhere?: string;
+  readonly sort?: { readonly column: string; readonly direction: "asc" | "desc" };
+  readonly limit: number;
+}): string {
+  const { dialect, path, filters, rawWhere, sort, limit } = input;
+  const clauses = filters.map((filter) => filterClause(filter, dialect));
+  const trimmedRaw = rawWhere?.trim();
+  if (trimmedRaw) clauses.push(`(${trimmedRaw})`);
+
+  const parts = [`SELECT * FROM ${qualifiedTableName(path, dialect)}`];
+  if (clauses.length > 0) parts.push(`WHERE ${clauses.join(" AND ")}`);
+  if (sort) {
+    parts.push(`ORDER BY ${quoteIdentifier(sort.column, dialect)} ${sort.direction.toUpperCase()}`);
+  }
+  parts.push(`LIMIT ${limit}`);
+  return parts.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Column visibility
+// ---------------------------------------------------------------------------
+
+/** Filters `columns` down to the visible set, in original order. A primary-key column is never hidden — a `hidden` set naming one is silently ignored for it — so the row's identity is always on screen. */
+export function visibleColumns(
+  columns: ReadonlyArray<ZeropsDataConsoleColumn>,
+  hidden: ReadonlySet<string>,
+): ZeropsDataConsoleColumn[] {
+  return columns.filter((column) => column.pk || !hidden.has(column.name));
+}
+
+/** Toggles one column name in/out of the hidden set, returning a new set. */
+export function toggleHiddenColumn(hidden: ReadonlySet<string>, name: string): ReadonlySet<string> {
+  const next = new Set(hidden);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Cell detail
+// ---------------------------------------------------------------------------
+
+export interface DataConsoleCellDetail {
+  readonly kind: "null" | "boolean" | "number" | "text" | "json" | "binary";
+  readonly detail: string;
+  readonly oneLine: string;
+  readonly hasMore: boolean;
+}
+
+const TEXT_PREVIEW_LIMIT = 120;
+
+function truncateOneLine(text: string): { readonly oneLine: string; readonly hasMore: boolean } {
+  if (text.length <= TEXT_PREVIEW_LIMIT) return { oneLine: text, hasMore: false };
+  return { oneLine: `${text.slice(0, TEXT_PREVIEW_LIMIT)}…`, hasMore: true };
+}
+
+function tryParseJsonContainer(text: string): unknown {
+  const trimmed = text.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return typeof parsed === "object" && parsed !== null ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Classifies one cell value for the row-detail expander. Distinct from
+ * {@link formatCell} (which renders a table cell inline): this always looks
+ * at the raw JSON value, never the column's `dataType`, so it also handles
+ * an already-decoded object/array or a big-int string arriving from a
+ * `describeCell` call site that never had column context. A `Uint8Array`/
+ * `ArrayBuffer` is the only `binary` case — the console's own wire format
+ * always base64-encodes bytes, so a raw byte buffer only ever reaches this
+ * function from client-side reconstruction, not directly off the wire.
+ */
+export function describeCell(value: unknown): DataConsoleCellDetail {
+  if (value === null || value === undefined) {
+    return { kind: "null", detail: "NULL", oneLine: "NULL", hasMore: false };
+  }
+  if (typeof value === "boolean") {
+    const text = value ? "true" : "false";
+    return { kind: "boolean", detail: text, oneLine: text, hasMore: false };
+  }
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
+    const text = `<${value.byteLength} bytes>`;
+    return { kind: "binary", detail: text, oneLine: text, hasMore: false };
+  }
+  if (typeof value === "object") {
+    const detail = JSON.stringify(value, null, 2);
+    const oneLine = JSON.stringify(value);
+    return { kind: "json", detail, oneLine: truncateOneLine(oneLine).oneLine, hasMore: false };
+  }
+  if (typeof value === "number") {
+    const text = String(value);
+    return { kind: "number", detail: text, oneLine: text, hasMore: false };
+  }
+  if (typeof value === "string") {
+    if (/^-?\d+$/.test(value)) {
+      return { kind: "number", detail: value, oneLine: value, hasMore: false };
+    }
+    const parsedJson = tryParseJsonContainer(value);
+    if (parsedJson !== undefined) {
+      const detail = JSON.stringify(parsedJson, null, 2);
+      const oneLine = JSON.stringify(parsedJson);
+      return { kind: "json", detail, oneLine: truncateOneLine(oneLine).oneLine, hasMore: false };
+    }
+    if (value.length > TEXT_PREVIEW_LIMIT || value.includes("\n")) {
+      const { oneLine } = truncateOneLine(value);
+      return { kind: "text", detail: value, oneLine, hasMore: true };
+    }
+    return { kind: "text", detail: value, oneLine: value, hasMore: false };
+  }
+  const text = String(value);
+  return { kind: "text", detail: text, oneLine: text, hasMore: false };
+}
+
+// ---------------------------------------------------------------------------
+// Row helpers
+// ---------------------------------------------------------------------------
+
+/** Zips `columns`/`row` into a plain record, primary-key columns first (so the identity fields lead a JSON dump or a key/value listing). */
+export function rowRecord(
+  columns: ReadonlyArray<ZeropsDataConsoleColumn>,
+  row: ReadonlyArray<unknown>,
+): Record<string, unknown> {
+  const indexed = columns.map((column, index) => ({ column, value: row[index] }));
+  const ordered = [...indexed].sort((a, b) => Number(b.column.pk) - Number(a.column.pk));
+  const record: Record<string, unknown> = {};
+  for (const { column, value } of ordered) record[column.name] = value;
+  return record;
+}
+
+/** Pretty-printed (2-space) JSON of {@link rowRecord} — the payload behind "copy row as JSON" and the context hand-off. */
+export function rowAsJson(
+  columns: ReadonlyArray<ZeropsDataConsoleColumn>,
+  row: ReadonlyArray<unknown>,
+): string {
+  return JSON.stringify(rowRecord(columns, row), null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Context hand-off text
+// ---------------------------------------------------------------------------
+
+function tablePathLabel(path: ZeropsDataConsolePath): string {
+  return path.segments.join(".");
+}
+
+/** Finds the first primary-key column and its value in `row`, for a row label/heading. `undefined` when the table has no declared primary key. */
+function firstPrimaryKey(
+  columns: ReadonlyArray<ZeropsDataConsoleColumn>,
+  row: ReadonlyArray<unknown>,
+): { readonly name: string; readonly value: unknown } | undefined {
+  const index = columns.findIndex((column) => column.pk);
+  if (index === -1) return undefined;
+  return { name: columns[index]!.name, value: row[index] };
+}
+
+/**
+ * Builds the markdown hand-off block a "send to composer" action attaches
+ * for an entire table: a heading naming the service/type/path, one line per
+ * column (data type, `(pk)` where applicable), and — when the caller has it
+ * — an approximate row count. Vocabulary follows the design-system glossary
+ * (`project`, never `environment`).
+ */
+export function describeTableContext(input: {
+  readonly service: ZeropsDataConsoleService;
+  readonly path: ZeropsDataConsolePath;
+  readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
+  readonly approxRowCount?: number;
+}): { readonly label: string; readonly text: string } {
+  const { service, path, columns, approxRowCount } = input;
+  const tableLabel = tablePathLabel(path);
+  const label = `${path.service} · ${tableLabel}`;
+  const lines = [
+    `## ${service.hostname} (${service.type}) · ${tableLabel}`,
+    ...columns.map((column) => `- ${column.name}: ${column.dataType}${column.pk ? " (pk)" : ""}`),
+  ];
+  if (approxRowCount !== undefined) lines.push(`~${approxRowCount} rows`);
+  return { label, text: lines.join("\n") };
+}
+
+/**
+ * Builds the markdown hand-off block for a single row: a heading naming the
+ * service/type/path/primary-key, then the row as a fenced JSON block (via
+ * {@link rowAsJson}).
+ */
+export function describeRowContext(input: {
+  readonly service: ZeropsDataConsoleService;
+  readonly path: ZeropsDataConsolePath;
+  readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
+  readonly row: ReadonlyArray<unknown>;
+}): { readonly label: string; readonly text: string } {
+  const { service, path, columns, row } = input;
+  const tableLabel = tablePathLabel(path);
+  const pk = firstPrimaryKey(columns, row);
+  const rowLabel = pk ? `${pk.name}=${String(pk.value)}` : "row";
+  const label = `${path.service} · ${tableLabel} · ${rowLabel}`;
+  const lines = [
+    `## ${service.hostname} (${service.type}) · ${tableLabel} · ${rowLabel}`,
+    "```json",
+    rowAsJson(columns, row),
+    "```",
+  ];
+  return { label, text: lines.join("\n") };
+}
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+
+const WIDE_LAYOUT_MIN_WIDTH = 720;
+
+/**
+ * `wide` once the container can hold the tree rail, the grid and the detail
+ * drawer side by side (≥ 720px); below that, the panel shows one zone at a
+ * time (`narrow`) rather than cramming three columns into too little space.
+ */
+export function resolveDataLayout(containerWidth: number): "narrow" | "wide" {
+  return containerWidth >= WIDE_LAYOUT_MIN_WIDTH ? "wide" : "narrow";
+}
+
+// ---------------------------------------------------------------------------
+// Breadcrumbs
+// ---------------------------------------------------------------------------
+
+/** One breadcrumb per path prefix, starting at the service root (no segments) through the full path. */
+export function breadcrumbsFor(
+  path: ZeropsDataConsolePath,
+): ReadonlyArray<{ readonly label: string; readonly path: ZeropsDataConsolePath }> {
+  const crumbs: Array<{ readonly label: string; readonly path: ZeropsDataConsolePath }> = [
+    { label: path.service, path: { service: path.service, segments: [] } },
+  ];
+  for (let i = 0; i < path.segments.length; i++) {
+    crumbs.push({
+      label: path.segments[i]!,
+      path: { service: path.service, segments: path.segments.slice(0, i + 1) },
+    });
+  }
+  return crumbs;
+}

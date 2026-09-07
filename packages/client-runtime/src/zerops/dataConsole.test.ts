@@ -3,6 +3,7 @@ import type {
   ZeropsDataConsoleBlob,
   ZeropsDataConsoleColumn,
   ZeropsDataConsoleNode,
+  ZeropsDataConsolePath,
   ZeropsDataConsoleService,
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
@@ -10,19 +11,31 @@ import type {
 import {
   applyTablePage,
   applyTreePage,
+  breadcrumbsFor,
+  buildFilteredTableStatement,
   buildSortPage,
   collapseTreePath,
+  describeCell,
   describeDataConsoleError,
+  describeRowContext,
+  describeTableContext,
   emptyTable,
   emptyTree,
   expandTreePath,
   foldDataConsoleSessionEvent,
   formatCell,
+  hasActiveFilters,
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
   resolveBlobPreview,
+  resolveDataLayout,
   resolveServiceAffordances,
+  resolveSqlDialect,
+  rowAsJson,
+  rowRecord,
+  toggleHiddenColumn,
   treePathKey,
+  visibleColumns,
 } from "./dataConsole.ts";
 
 // ---------------------------------------------------------------------------
@@ -532,5 +545,440 @@ describe("describeDataConsoleError", () => {
     expect(describeDataConsoleError({ code: "session_unavailable" })).toBe(
       "Data isn't available right now.",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Filters → read-only SQL
+// ---------------------------------------------------------------------------
+
+describe("resolveSqlDialect", () => {
+  it.each([
+    ["postgresql", "postgresql"],
+    ["postgresql@14", "postgresql"],
+    ["mariadb", "mysql"],
+    ["mariadb@10.6", "mysql"],
+    ["mysql", "mysql"],
+    ["mysql@8", "mysql"],
+    ["mongodb", undefined],
+    ["objectstorage", undefined],
+    ["keydb", undefined],
+  ])("maps %s -> %s", (serviceType, expected) => {
+    expect(resolveSqlDialect(serviceType)).toBe(expected);
+  });
+});
+
+const tablePath: ZeropsDataConsolePath = { service: "db", segments: ["public", "orders"] };
+
+describe("buildFilteredTableStatement", () => {
+  it("builds a bare SELECT with just a LIMIT when there are no filters", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [],
+        limit: 50,
+      }),
+    ).toBe('SELECT * FROM "public"."orders" LIMIT 50');
+  });
+
+  it("quotes mysql identifiers with backticks instead of double quotes", () => {
+    expect(
+      buildFilteredTableStatement({ dialect: "mysql", path: tablePath, filters: [], limit: 50 }),
+    ).toBe("SELECT * FROM `public`.`orders` LIMIT 50");
+  });
+
+  it("escapes a double quote inside a postgresql identifier by doubling it", () => {
+    const path: ZeropsDataConsolePath = { service: "db", segments: ['weird"table'] };
+    expect(
+      buildFilteredTableStatement({ dialect: "postgresql", path, filters: [], limit: 10 }),
+    ).toBe('SELECT * FROM "weird""table" LIMIT 10');
+  });
+
+  it("ANDs multiple comparison filters and single-quotes string values, doubling an embedded quote", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [
+          { column: "status", op: "eq", value: "O'Brien" },
+          { column: "total", op: "gte", value: "100" },
+        ],
+        limit: 50,
+      }),
+    ).toBe(
+      `SELECT * FROM "public"."orders" WHERE "status" = 'O''Brien' AND "total" >= '100' LIMIT 50`,
+    );
+  });
+
+  it("renders isNull/notNull without a value operand", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [
+          { column: "deleted_at", op: "isNull" },
+          { column: "email", op: "notNull" },
+        ],
+        limit: 50,
+      }),
+    ).toBe(
+      'SELECT * FROM "public"."orders" WHERE "deleted_at" IS NULL AND "email" IS NOT NULL LIMIT 50',
+    );
+  });
+
+  it("renders contains as a wrapped LIKE with wildcard characters in the value escaped", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [{ column: "name", op: "contains", value: "50%_off\\deal" }],
+        limit: 50,
+      }),
+    ).toBe(
+      `SELECT * FROM "public"."orders" WHERE "name" LIKE '%50\\%\\_off\\\\deal%' ESCAPE '\\' LIMIT 50`,
+    );
+  });
+
+  it("renders startsWith as a right-open LIKE", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [{ column: "name", op: "startsWith", value: "Acme" }],
+        limit: 50,
+      }),
+    ).toBe(`SELECT * FROM "public"."orders" WHERE "name" LIKE 'Acme%' ESCAPE '\\' LIMIT 50`);
+  });
+
+  it("appends a trimmed non-empty rawWhere as a further AND (...) clause, untouched", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [{ column: "status", op: "eq", value: "open" }],
+        rawWhere: "  total > 10 OR total IS NULL  ",
+        limit: 50,
+      }),
+    ).toBe(
+      `SELECT * FROM "public"."orders" WHERE "status" = 'open' AND (total > 10 OR total IS NULL) LIMIT 50`,
+    );
+  });
+
+  it("ignores a blank rawWhere", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [],
+        rawWhere: "   ",
+        limit: 50,
+      }),
+    ).toBe('SELECT * FROM "public"."orders" LIMIT 50');
+  });
+
+  it("adds ORDER BY only when a sort is given", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [],
+        sort: { column: "created_at", direction: "desc" },
+        limit: 50,
+      }),
+    ).toBe('SELECT * FROM "public"."orders" ORDER BY "created_at" DESC LIMIT 50');
+  });
+
+  it("never appends a trailing semicolon", () => {
+    const sql = buildFilteredTableStatement({
+      dialect: "postgresql",
+      path: tablePath,
+      filters: [],
+      limit: 50,
+    });
+    expect(sql.endsWith(";")).toBe(false);
+  });
+});
+
+describe("hasActiveFilters", () => {
+  it("is false with no filters and no rawWhere", () => {
+    expect(hasActiveFilters([])).toBe(false);
+    expect(hasActiveFilters([], "   ")).toBe(false);
+  });
+
+  it("is true with at least one structured filter", () => {
+    expect(hasActiveFilters([{ column: "a", op: "isNull" }])).toBe(true);
+  });
+
+  it("is true with a non-blank rawWhere even with no structured filters", () => {
+    expect(hasActiveFilters([], "total > 10")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Column visibility
+// ---------------------------------------------------------------------------
+
+describe("visibleColumns", () => {
+  it("filters out hidden non-pk columns, preserving order", () => {
+    const columns = [
+      column({ name: "id" }),
+      column({ name: "email", pk: false }),
+      column({ name: "notes", pk: false }),
+    ];
+    expect(visibleColumns(columns, new Set(["notes"]))).toEqual([
+      column({ name: "id" }),
+      column({ name: "email", pk: false }),
+    ]);
+  });
+
+  it("never hides a pk column even if named in the hidden set", () => {
+    const columns = [column({ name: "id", pk: true }), column({ name: "email", pk: false })];
+    expect(visibleColumns(columns, new Set(["id", "email"]))).toEqual([
+      column({ name: "id", pk: true }),
+    ]);
+  });
+});
+
+describe("toggleHiddenColumn", () => {
+  it("adds an absent column name", () => {
+    expect([...toggleHiddenColumn(new Set(), "email")]).toEqual(["email"]);
+  });
+
+  it("removes a present column name", () => {
+    expect([...toggleHiddenColumn(new Set(["email"]), "email")]).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cell detail
+// ---------------------------------------------------------------------------
+
+describe("describeCell", () => {
+  it("classifies null", () => {
+    expect(describeCell(null)).toEqual({
+      kind: "null",
+      detail: "NULL",
+      oneLine: "NULL",
+      hasMore: false,
+    });
+  });
+
+  it("classifies a boolean", () => {
+    expect(describeCell(true)).toEqual({
+      kind: "boolean",
+      detail: "true",
+      oneLine: "true",
+      hasMore: false,
+    });
+  });
+
+  it("classifies a plain number", () => {
+    expect(describeCell(42)).toEqual({
+      kind: "number",
+      detail: "42",
+      oneLine: "42",
+      hasMore: false,
+    });
+  });
+
+  it("classifies a big-int wire string as number", () => {
+    expect(describeCell("9223372036854775807")).toEqual({
+      kind: "number",
+      detail: "9223372036854775807",
+      oneLine: "9223372036854775807",
+      hasMore: false,
+    });
+  });
+
+  it("classifies a negative big-int wire string as number", () => {
+    expect(describeCell("-42").kind).toBe("number");
+  });
+
+  it("classifies an object as json with pretty detail and compact oneLine", () => {
+    const result = describeCell({ a: 1 });
+    expect(result.kind).toBe("json");
+    expect(result.detail).toBe('{\n  "a": 1\n}');
+    expect(result.oneLine).toBe('{"a":1}');
+  });
+
+  it("classifies an array as json", () => {
+    expect(describeCell([1, 2, 3]).kind).toBe("json");
+  });
+
+  it("classifies a string that parses as a JSON object as json", () => {
+    const result = describeCell('{"a":1}');
+    expect(result.kind).toBe("json");
+    expect(result.detail).toBe('{\n  "a": 1\n}');
+  });
+
+  it("classifies a string that parses as a JSON array as json", () => {
+    expect(describeCell("[1,2,3]").kind).toBe("json");
+  });
+
+  it("does not treat an ordinary short string as json", () => {
+    expect(describeCell("hello").kind).toBe("text");
+  });
+
+  it("classifies a long plain string as text with hasMore and a truncated oneLine", () => {
+    const long = "x".repeat(200);
+    const result = describeCell(long);
+    expect(result.kind).toBe("text");
+    expect(result.hasMore).toBe(true);
+    expect(result.oneLine).toBe(`${"x".repeat(120)}…`);
+    expect(result.detail).toBe(long);
+  });
+
+  it("classifies a string containing a newline as text with hasMore even if short", () => {
+    const result = describeCell("line one\nline two");
+    expect(result.kind).toBe("text");
+    expect(result.hasMore).toBe(true);
+  });
+
+  it("classifies a short single-line string as text without hasMore", () => {
+    expect(describeCell("hello")).toEqual({
+      kind: "text",
+      detail: "hello",
+      oneLine: "hello",
+      hasMore: false,
+    });
+  });
+
+  it("classifies a Uint8Array as binary with a byte count", () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    expect(describeCell(bytes)).toEqual({
+      kind: "binary",
+      detail: "<4 bytes>",
+      oneLine: "<4 bytes>",
+      hasMore: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Row helpers
+// ---------------------------------------------------------------------------
+
+describe("rowRecord", () => {
+  it("zips columns and row values into a record, primary key columns first", () => {
+    const columns = [column({ name: "email", pk: false }), column({ name: "id", pk: true })];
+    expect(rowRecord(columns, ["a@b.com", 1])).toEqual({ id: 1, email: "a@b.com" });
+    expect(Object.keys(rowRecord(columns, ["a@b.com", 1]))).toEqual(["id", "email"]);
+  });
+});
+
+describe("rowAsJson", () => {
+  it("pretty-prints the row record", () => {
+    const columns = [column({ name: "id", pk: true })];
+    expect(rowAsJson(columns, [1])).toBe('{\n  "id": 1\n}');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Context hand-off text
+// ---------------------------------------------------------------------------
+
+const contextService: ZeropsDataConsoleService = {
+  hostname: "db",
+  type: "postgresql@16",
+  family: "sql",
+  support: "full",
+  actions: [],
+  status: "running",
+};
+
+describe("describeTableContext", () => {
+  it("builds a label and heading naming the service, type and path, one line per column, and the row count when given", () => {
+    const columns = [
+      column({ name: "id", pk: true, dataType: "integer" }),
+      column({ name: "email", pk: false, dataType: "text" }),
+    ];
+    const result = describeTableContext({
+      service: contextService,
+      path: tablePath,
+      columns,
+      approxRowCount: 42,
+    });
+    expect(result.label).toBe("db · public.orders");
+    expect(result.text).toBe(
+      [
+        "## db (postgresql@16) · public.orders",
+        "- id: integer (pk)",
+        "- email: text",
+        "~42 rows",
+      ].join("\n"),
+    );
+  });
+
+  it("omits the row count line when not given", () => {
+    const columns = [column({ name: "id", pk: true, dataType: "integer" })];
+    const result = describeTableContext({ service: contextService, path: tablePath, columns });
+    expect(result.text).toBe(
+      ["## db (postgresql@16) · public.orders", "- id: integer (pk)"].join("\n"),
+    );
+  });
+});
+
+describe("describeRowContext", () => {
+  it("builds a label naming the first pk column and its value, and a fenced JSON body", () => {
+    const columns = [column({ name: "id", pk: true }), column({ name: "email", pk: false })];
+    const row = [1, "a@b.com"];
+    const result = describeRowContext({ service: contextService, path: tablePath, columns, row });
+    expect(result.label).toBe("db · public.orders · id=1");
+    expect(result.text).toBe(
+      [
+        "## db (postgresql@16) · public.orders · id=1",
+        "```json",
+        rowAsJson(columns, row),
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("falls back to a generic 'row' label when the table has no primary key", () => {
+    const columns = [column({ name: "email", pk: false })];
+    const result = describeRowContext({
+      service: contextService,
+      path: tablePath,
+      columns,
+      row: ["a@b.com"],
+    });
+    expect(result.label).toBe("db · public.orders · row");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+
+describe("resolveDataLayout", () => {
+  it("is wide at exactly the 720px threshold and above", () => {
+    expect(resolveDataLayout(720)).toBe("wide");
+    expect(resolveDataLayout(1200)).toBe("wide");
+  });
+
+  it("is narrow below the threshold", () => {
+    expect(resolveDataLayout(719)).toBe("narrow");
+    expect(resolveDataLayout(320)).toBe("narrow");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Breadcrumbs
+// ---------------------------------------------------------------------------
+
+describe("breadcrumbsFor", () => {
+  it("gives just the service root for a path with no segments", () => {
+    expect(breadcrumbsFor({ service: "db", segments: [] })).toEqual([
+      { label: "db", path: { service: "db", segments: [] } },
+    ]);
+  });
+
+  it("gives the service root plus one entry per segment prefix", () => {
+    expect(breadcrumbsFor(tablePath)).toEqual([
+      { label: "db", path: { service: "db", segments: [] } },
+      { label: "public", path: { service: "db", segments: ["public"] } },
+      { label: "orders", path: { service: "db", segments: ["public", "orders"] } },
+    ]);
   });
 });
