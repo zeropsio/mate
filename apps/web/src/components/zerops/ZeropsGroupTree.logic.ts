@@ -66,7 +66,19 @@ export function groupNameIsPlaceholder(group: ZeropsGroup): boolean {
  * because it is a thing you mark an existing environment as, not a thing you
  * create.
  */
+/**
+ * Which roles a group can still be given.
+ *
+ * Only production is capped, and only at one: it is what the pipeline deploys
+ * into, and a group holding two has no answer for which. A dev environment is
+ * a Mate, and a project is worked on by as many Mates as the people on it
+ * want; stage is likewise a thing you may want several of.
+ *
+ * Capping all three at one was what left a group with dev, stage and
+ * production showing no way to add anything at all — the state that reads as
+ * a missing feature rather than a full set.
+ */
 export function creatableRoles(group: ZeropsGroup): ReadonlyArray<ZeropsEnvironmentRole> {
-  const taken = new Set(group.environments.map((entry) => entry.role));
-  return (["dev", "stage", "prod"] as const).filter((role) => !taken.has(role));
+  const hasProduction = group.environments.some((entry) => entry.role === "prod");
+  return (["dev", "stage", "prod"] as const).filter((role) => role !== "prod" || !hasProduction);
 }

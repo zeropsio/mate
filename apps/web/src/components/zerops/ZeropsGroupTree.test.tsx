@@ -86,14 +86,32 @@ describe("groupNameIsPlaceholder", () => {
 });
 
 describe("creatableRoles", () => {
-  it("offers only the roles a group does not have", () => {
+  it("offers every role to a group that has only a dev", () => {
     const [group] = buildZeropsGroupTree([CRM_DEV]).groups;
-    expect(creatableRoles(group!.group)).toEqual(["stage", "prod"]);
+    expect(creatableRoles(group!.group)).toEqual(["dev", "stage", "prod"]);
   });
 
-  it("offers nothing once dev, stage and production all exist", () => {
+  // A Mate is a dev environment, and a project is worked on by as many Mates
+  // as the people on it want. Capping dev at one is what left a full group —
+  // dev, stage and production — with no way to add anything at all.
+  it("keeps offering dev however many Mates a group already has", () => {
     const [group] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD]).groups;
-    expect(creatableRoles(group!.group)).toEqual([]);
+    expect(creatableRoles(group!.group)).toContain("dev");
+  });
+
+  it("keeps offering stage, which a group may have more than one of", () => {
+    const [group] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD]).groups;
+    expect(creatableRoles(group!.group)).toContain("stage");
+  });
+
+  // The one cap: production is the thing the pipeline deploys into, and a
+  // group with two of them has no answer for which.
+  it("offers production only while the group has none", () => {
+    const [without] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE]).groups;
+    expect(creatableRoles(without!.group)).toContain("prod");
+
+    const [withProd] = buildZeropsGroupTree([CRM_DEV, CRM_STAGE, CRM_PROD]).groups;
+    expect(creatableRoles(withProd!.group)).not.toContain("prod");
   });
 });
 
@@ -170,9 +188,10 @@ describe("ZeropsGroupTree", () => {
       onCreateEnvironment: () => {},
       onCreateTool: () => {},
     });
+    expect(html).toContain("Add Mate");
     expect(html).toContain("Add production");
     expect(html).toContain("Add Gitea");
-    expect(html.match(/<button[^>]*disabled/gu)).toHaveLength(3);
+    expect(html.match(/<button[^>]*disabled/gu)).toHaveLength(4);
   });
 
   it("offers Gitea only when the account has none", () => {
@@ -245,5 +264,36 @@ describe("an account of loose projects", () => {
     expect(html).toContain('data-test-mate="loose"');
     expect(html).toContain('data-test-environment="other"');
     expect(html).not.toContain(">Ungrouped<");
+  });
+});
+
+describe("adding to a group that already has everything", () => {
+  // The state that started this: dev, stage and production all present, and
+  // the group offered nothing at all — which reads as a missing feature, not
+  // as a full set.
+  const full = { onCreateEnvironment: () => {}, onCreateTool: () => {} };
+
+  it("still invites another Mate", () => {
+    expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], full)).toContain("Add Mate");
+  });
+
+  it("still invites another stage", () => {
+    expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], full)).toContain("Add stage");
+  });
+
+  it("does not invite a second production", () => {
+    expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], full)).not.toContain("Add production");
+  });
+
+  it("puts the Mate invitation with the Mates, not in the row of pills", () => {
+    // "Add Mate" belongs beside the cards it makes; stage and production are
+    // rows in the table, so their pills sit with the table.
+    const html = render([CRM_DEV, CRM_STAGE], full);
+    const cards = html.indexOf('data-zerops-surface="mate-cards"');
+    const pills = html.indexOf('data-zerops-surface="add-roles"');
+    expect(cards).toBeGreaterThanOrEqual(0);
+    expect(pills).toBeGreaterThan(cards);
+    expect(html.slice(cards, pills)).toContain("Add Mate");
+    expect(html.slice(pills)).toContain("Add production");
   });
 });
