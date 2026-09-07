@@ -8,12 +8,15 @@ const readSource = (relativePath: string) =>
   NodeFS.readFileSync(new URL(relativePath, mobileRoot), "utf8");
 
 describe("mobile Zerops integration", () => {
-  it("keeps the Zerops session outside the legacy relay provider", () => {
+  it("directs users to hosted Mate without mounting the dormant native runtime", () => {
     const app = readSource("src/App.tsx");
-    expect(app.indexOf("<ZeropsSessionProvider>")).toBeLessThan(app.indexOf("<CloudAuthProvider>"));
+    expect(app).toContain('Linking.openURL("https://mate.zerops.io")');
+    expect(app).not.toContain("ZeropsSessionProvider");
+    expect(app).not.toContain("CloudAuthProvider");
+    expect(app).not.toContain('from "./Stack"');
   });
 
-  it("uses account-backed connection as the primary route and keeps pairing as fallback", () => {
+  it("retains the dormant native connection source for a future account lifecycle implementation", () => {
     const stack = readSource("src/Stack.tsx");
     const onboarding = readSource("src/connection/onboarding.ts");
 
