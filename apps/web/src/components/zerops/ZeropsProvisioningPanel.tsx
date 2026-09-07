@@ -1,3 +1,5 @@
+import { MINIMUM_MATE_SERVER_VERSION } from "@t3tools/client-runtime/zerops/serverCompatibility";
+import type { UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
  * "Preparing your project" — every wait says what it is waiting for and how
  * long it will wait, and a wait that runs out offers a way on rather than an
@@ -49,12 +51,16 @@ export function ZeropsProvisioningPanel({
   error,
   onRetry,
   onEnable,
+  upgradeRecovery,
+  serverVersion,
 }: {
   readonly state: ProvisioningState;
   readonly busy: boolean;
   readonly error: string | null;
   readonly onRetry: () => void;
   readonly onEnable: () => void;
+  readonly serverVersion?: string | undefined;
+  readonly upgradeRecovery?: UpgradeRecovery | null;
 }) {
   // Enable was already tried this wait — the flag was written and the container
   // restarted — and it still is not serving Zerops Mate. With the flag no
@@ -86,11 +92,13 @@ export function ZeropsProvisioningPanel({
       }
     />
   );
-  const status = provisioningStatus(state);
+  const status = upgradeRecovery
+    ? { label: "Update required", tone: "attention" as const }
+    : provisioningStatus(state);
 
   return (
     <FlatCard
-      aria-busy={busy}
+      aria-busy={busy || upgradeRecovery?.state === "waiting"}
       className="space-y-5 p-5 sm:p-6"
       data-zerops-provisioning-phase={state.phase}
     >
@@ -98,7 +106,11 @@ export function ZeropsProvisioningPanel({
         <div className="space-y-1">
           <MicroLabel className="text-muted-foreground">Project setup</MicroLabel>
           <h2 className="text-lg font-medium text-foreground">
-            {state.phase === "ready" ? "Project ready" : "Preparing your project"}
+            {upgradeRecovery
+              ? "Update Mate to connect"
+              : state.phase === "ready"
+                ? "Project ready"
+                : "Preparing your project"}
           </h2>
         </div>
         <StatusDot
@@ -155,7 +167,7 @@ export function ZeropsProvisioningPanel({
         </div>
       ) : null}
 
-      {state.phase === "ready" ? (
+      {state.phase === "ready" && !upgradeRecovery ? (
         <p className="text-sm text-foreground">Zerops Mate is ready in this project.</p>
       ) : null}
 
@@ -170,8 +182,61 @@ export function ZeropsProvisioningPanel({
           className="space-y-3 rounded-[var(--zerops-card-radius)] bg-destructive/8 px-4 py-3 text-destructive-foreground"
           role="alert"
         >
-          <p className="text-sm">{error}</p>
-          <Pill disabled={busy} label="Try again" onClick={onRetry} tone="secondary" />
+          <p className="text-sm">
+            {upgradeRecovery
+              ? "This container runs an older version of Mate. Update it to connect."
+              : error}
+          </p>
+          {upgradeRecovery ? (
+            <div className="space-y-3">
+              <p className="text-sm">
+                Server version: {upgradeRecovery.serverVersion ?? serverVersion ?? "Unknown"}.
+                Minimum required: {MINIMUM_MATE_SERVER_VERSION}.
+              </p>
+              <p className="text-sm">
+                Restarting this container installs the latest available Mate release.
+              </p>
+              {upgradeRecovery.error ? <p className="text-sm">{upgradeRecovery.error}</p> : null}
+              {upgradeRecovery.state === "confirm" ? (
+                <>
+                  <p className="text-sm">
+                    This restarts the zcp container and interrupts running work in it. Restart now?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Pill
+                      label="Restart container"
+                      onClick={upgradeRecovery.confirm}
+                      disabled={busy}
+                    />
+                    <Pill label="Cancel" onClick={upgradeRecovery.cancel} tone="secondary" />
+                  </div>
+                </>
+              ) : upgradeRecovery.state === "waiting" ? (
+                <p className="text-sm" role="status">
+                  Restart requested. Waiting for a compatible Mate server…
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {upgradeRecovery.state === "idle" ? (
+                    <Pill
+                      label="Restart and check for updates"
+                      onClick={upgradeRecovery.request}
+                      disabled={busy}
+                    />
+                  ) : null}
+                  <Pill
+                    label="Check connection"
+                    onClick={onRetry}
+                    disabled={busy}
+                    tone="secondary"
+                  />
+                  {guiLink}
+                </div>
+              )}
+            </div>
+          ) : (
+            <Pill disabled={busy} label="Try again" onClick={onRetry} tone="secondary" />
+          )}
         </div>
       ) : null}
     </FlatCard>

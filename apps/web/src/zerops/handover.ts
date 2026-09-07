@@ -1,3 +1,4 @@
+import { rememberSignInReturn } from "./navigationStorage";
 /**
  * The browser half of the Zerops sign-in hand-over.
  *
@@ -112,6 +113,7 @@ function loopbackPortOf(origin: string): number | null {
 export function mintZeropsHandoverNonce(
   input: { readonly store?: ZeropsHandoverNonceStore } = {},
 ): string {
+  if (!input.store) rememberSignInReturn();
   const store = input.store ?? sessionHandoverNonceStore;
   const state = mintNonce();
   store.remember(state);
@@ -131,6 +133,7 @@ export function startZeropsHandover(
     readonly guiBaseUrl?: string;
   } = {},
 ): string {
+  if (!input.store) rememberSignInReturn();
   const store = input.store ?? sessionHandoverNonceStore;
   const state = mintZeropsHandoverNonce({ store });
   const loopbackPort = loopbackPortOf(input.origin ?? currentOrigin());

@@ -91,7 +91,7 @@ it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
 
       const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
       assert.strictEqual(links.length, 1);
-      assert.strictEqual(links[0]!.subject, USER_ID);
+      assert.strictEqual(links[0]!.subject, `zerops-user:${USER_ID}`);
       assert.deepStrictEqual([...links[0]!.scopes], [...zeropsGrantScopes]);
     }).pipe(Effect.provide(makeLayer(memberRoute))),
   );
@@ -127,7 +127,7 @@ it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
 
       const sessions = yield* serverAuth.listSessions();
       assert.strictEqual(sessions.length, 1);
-      assert.strictEqual(sessions[0]!.subject, USER_ID);
+      assert.strictEqual(sessions[0]!.subject, `zerops-user:${USER_ID}`);
       void now;
     }).pipe(Effect.provide(makeLayer(memberRoute))),
   );

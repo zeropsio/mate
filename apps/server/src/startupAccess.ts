@@ -1,19 +1,9 @@
 import * as NodeOS from "node:os";
 
-import { QrCode } from "@t3tools/shared/qrCode";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
-import { ServerConfig, type StartupPresentation } from "./config.ts";
-import type { ZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import { withBasePath } from "@t3tools/shared/basePath";
-
-export interface HeadlessServeAccessInfo {
-  readonly connectionString: string;
-  readonly token: string;
-  readonly pairingUrl: string;
-}
+import { ServerConfig } from "./config.ts";
 
 type NetworkInterfacesMap = ReturnType<typeof NodeOS.networkInterfaces>;
 
@@ -91,73 +81,6 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const buildPairingUrl = (connectionString: string, token: string): string => {
-  // The connection string may carry the prefix the server is published under,
-  // and the pair route lives below it.
-  const url = new URL(withBasePath(connectionString, "/pair"));
-  url.searchParams.delete("token");
-  url.hash = new URLSearchParams([["token", token]]).toString();
-  return url.toString();
-};
-
-export const renderTerminalQrCode = (value: string, margin = 2): string => {
-  const qrCode = QrCode.encodeText(value, QrCode.Ecc.MEDIUM);
-  const rows: Array<string> = [];
-  const isDark = (x: number, y: number): boolean =>
-    x >= 0 && x < qrCode.size && y >= 0 && y < qrCode.size && qrCode.getModule(x, y);
-
-  for (let y = -margin; y < qrCode.size + margin; y += 2) {
-    let row = "";
-
-    for (let x = -margin; x < qrCode.size + margin; x += 1) {
-      const topDark = isDark(x, y);
-      const bottomDark = isDark(x, y + 1);
-
-      row += topDark ? (bottomDark ? "█" : "▀") : bottomDark ? "▄" : " ";
-    }
-
-    rows.push(row);
-  }
-
-  return rows.join("\n");
-};
-
-export const formatHeadlessServeOutput = (accessInfo: HeadlessServeAccessInfo): string =>
-  [
-    "T3 Code server is ready.",
-    `Connection string: ${accessInfo.connectionString}`,
-    `Token: ${accessInfo.token}`,
-    `Pairing URL: ${accessInfo.pairingUrl}`,
-    "",
-    renderTerminalQrCode(accessInfo.pairingUrl),
-    "",
-  ].join("\n");
-
-/**
- * Which of the three things a boot announces.
- *
- * Upstream has two, and both mint an `administrative-bootstrap` pairing
- * credential with administrative scopes: `headless` prints it, `browser` turns
- * it into a `/pair#token=` link. Whoever can read the process output therefore
- * gets an admin credential on every boot - survivable when the reader is the
- * person who started the server on their own machine, not when the process is
- * a supervised unit in a container whose logs are an operations surface.
- *
- * Inside a Zerops project neither path runs. Nothing is minted at boot at all:
- * the way in is the identity door, where the caller proves who they are.
- */
-export type StartupAccessMode = "zerops" | "headless" | "browser";
-
-export const resolveStartupAccessMode = (config: {
-  readonly zerops: ZeropsEnvironment | undefined;
-  readonly startupPresentation: StartupPresentation;
-}): StartupAccessMode =>
-  config.zerops !== undefined
-    ? "zerops"
-    : config.startupPresentation === "headless"
-      ? "headless"
-      : "browser";
-
 /** What a Zerops container prints in place of a credential. */
 export const formatZeropsServeOutput = (connectionString: string): string =>
   [
@@ -176,16 +99,4 @@ export const resolveServeConnectionString = Effect.fn("resolveServeConnectionStr
     serverConfig.host,
     resolveListeningPort(httpServer.address, serverConfig.port),
   );
-});
-
-export const issueHeadlessServeAccessInfo = Effect.fn("issueHeadlessServeAccessInfo")(function* () {
-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-  const connectionString = yield* resolveServeConnectionString();
-  const issued = yield* serverAuth.issueStartupPairingCredential();
-
-  return {
-    connectionString,
-    token: issued.credential,
-    pairingUrl: buildPairingUrl(connectionString, issued.credential),
-  } satisfies HeadlessServeAccessInfo;
 });

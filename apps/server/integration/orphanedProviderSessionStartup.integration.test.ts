@@ -85,9 +85,7 @@ const startupDependencies = Layer.mergeAll(
       capabilities: {},
     } as never),
   }),
-  Layer.mock(EnvironmentAuth.EnvironmentAuth)({
-    issueStartupPairingUrl: (baseUrl: string) => Effect.succeed(`${baseUrl}/pair`),
-  }),
+  Layer.mock(EnvironmentAuth.EnvironmentAuth)({}),
   Layer.mock(ExternalLauncher.ExternalLauncher)({
     launchBrowser: () => Effect.void,
   }),

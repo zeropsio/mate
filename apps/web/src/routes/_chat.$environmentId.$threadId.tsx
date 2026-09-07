@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import ChatView from "../components/ChatView";
@@ -7,17 +7,11 @@ import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../comp
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
 import { SidebarInset } from "~/components/ui/sidebar";
-import {
-  useEnvironmentThreadRefs,
-  useThreadDetail,
-  useThreadShell,
-  useThreadStatus,
-} from "../state/entities";
+import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 
 function ChatThreadRouteView() {
-  const navigate = useNavigate();
   const threadRef = Route.useParams({
     select: (params) => resolveThreadRouteRef(params),
   });
@@ -27,21 +21,13 @@ function ChatThreadRouteView() {
   const serverThreadShell = useThreadShell(threadRef);
   const serverThreadDetail = useThreadDetail(threadRef);
   const serverThreadStatus = useThreadStatus(threadRef);
-  const environmentThreadRefs = useEnvironmentThreadRefs(threadRef?.environmentId ?? null);
   const bootstrapComplete = shell.data?.snapshot._tag === "Some";
-  const environmentHasServerThreads = environmentThreadRefs.length > 0;
   const draftThreadExists = useComposerDraftStore((store) =>
     threadRef ? store.getDraftThreadByRef(threadRef) !== null : false,
   );
   const draftThread = useComposerDraftStore((store) =>
     threadRef ? store.getDraftThreadByRef(threadRef) : null,
   );
-  const environmentHasDraftThreads = useComposerDraftStore((store) => {
-    if (!threadRef) {
-      return false;
-    }
-    return store.hasDraftThreadsInEnvironment(threadRef.environmentId);
-  });
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete,
     serverThreadShellExists: serverThreadShell !== null,
@@ -55,18 +41,6 @@ function ChatThreadRouteView() {
     status: serverThreadStatus,
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
-  const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;
-
-  useEffect(() => {
-    if (!threadRef || !bootstrapComplete) {
-      return;
-    }
-
-    if (renderState === "missing" && environmentHasAnyThreads) {
-      void navigate({ to: "/", replace: true });
-    }
-  }, [bootstrapComplete, environmentHasAnyThreads, navigate, renderState, threadRef]);
-
   useEffect(() => {
     if (!threadRef || !serverThreadStarted || !draftThread) {
       return;
@@ -87,6 +61,10 @@ function ChatThreadRouteView() {
           routeKind="server"
           threadSyncPhase={threadSyncPhase}
         />
+      ) : renderState === "missing" ? (
+        <div role="status" className="p-8">
+          This conversation is no longer available. <Link to="/zerops">Open your projects</Link>
+        </div>
       ) : null}
     </SidebarInset>
   );

@@ -12,7 +12,19 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { resolveStorage } from "./lib/storage";
+import {
+  accountLocalStorage,
+  onAccountLifetimeOpen,
+  onAccountLifetimeClose,
+} from "./zerops/accountLifetime";
+
+let resettingAccount = false;
+const storage = {
+  ...accountLocalStorage,
+  setItem(key: string, value: string) {
+    if (!resettingAccount) accountLocalStorage.setItem(key, value);
+  },
+};
 import { DROPPED_RIGHT_PANEL_KINDS, type RightPanelKind } from "./rightPanelKinds";
 import { resolveDefaultZeropsPanel, type DefaultZeropsPanelInput } from "./zerops/defaultPanel";
 
@@ -580,9 +592,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
     {
       name: RIGHT_PANEL_STORAGE_KEY,
       version: RIGHT_PANEL_STORAGE_VERSION,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
+      skipHydration: true,
+      storage: createJSONStorage(() => storage),
       partialize: (state) => ({
         byThreadKey: state.byThreadKey,
         zeropsDefaultHandledByThreadKey: state.zeropsDefaultHandledByThreadKey,
@@ -626,3 +637,15 @@ export function selectSelectedRightPanelSurface(
   const state = selectThreadRightPanelState(byThreadKey, ref);
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
 }
+
+onAccountLifetimeOpen(() => {
+  void useRightPanelStore.persist.rehydrate();
+});
+onAccountLifetimeClose(() => {
+  resettingAccount = true;
+  try {
+    useRightPanelStore.setState(useRightPanelStore.getInitialState(), true);
+  } finally {
+    resettingAccount = false;
+  }
+});

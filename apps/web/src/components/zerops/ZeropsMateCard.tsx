@@ -53,6 +53,7 @@ export interface ZeropsMateCardProps {
    * sits alone — a Mate that has not been spoken to yet has nothing to say.
    */
   readonly line?: ReactNode;
+  readonly serverVersion?: string | undefined;
   /**
    * What clicking the Mate does — opens its conversation, or connects to it.
    * Absent, the card is still: the line then carries whatever verb there is.
@@ -68,6 +69,7 @@ export function ZeropsMateCard({
   tint,
   face,
   line,
+  serverVersion,
   onSelect,
   menu,
   busy = false,
@@ -108,6 +110,9 @@ export function ZeropsMateCard({
             {line}
           </div>
         )}
+        {serverVersion ? (
+          <span className="text-xs text-muted-foreground">Server {serverVersion}</span>
+        ) : null}
       </div>
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">

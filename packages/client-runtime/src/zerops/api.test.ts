@@ -500,7 +500,7 @@ describe("ZeropsApiClient project reads", () => {
 
     expect(services.map((service) => service.id)).toEqual(["s1"]);
     expect(stub.requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/p1/service-stack`,
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/p1/service-stack?limit=500`,
     );
   });
 
@@ -1119,5 +1119,128 @@ describe("ZeropsApiClient.adoptPersonalToken", () => {
 
     await expect(client.adoptPersonalToken("  ")).rejects.toBeInstanceOf(ZeropsApiError);
     expect(stub.requests).toHaveLength(0);
+  });
+});
+
+describe("AL-06 account lifetime", () => {
+  it("locks locally before a remote logout returns and cannot clear a later login", async () => {
+    let finish!: (response: Response) => void;
+    const started = Promise.withResolvers<void>();
+    const client = new ZeropsApiClient({
+      fetch: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+          started.resolve();
+        }),
+    });
+    client.restoreSession(SESSION);
+    const logout = client.logout();
+    expect(client.session).toBeNull();
+    await started.promise;
+    client.restoreSession({ accessToken: "next-account" });
+    finish(new Response(null, { status: 204 }));
+    await logout;
+    expect(client.session?.accessToken).toBe("next-account");
+  });
+
+  it("rejects a login response that arrives after local logout", async () => {
+    let finish!: (response: Response) => void;
+    const client = new ZeropsApiClient({
+      fetch: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    const login = client.login("user@example.com", "password");
+    await client.signOutLocally();
+    finish(jsonResponse(200, { auth: SESSION }));
+    await expect(login).rejects.toMatchObject({ kind: "expired-session" });
+    expect(client.session).toBeNull();
+  });
+
+  it("does not let an old read sign a new account out", async () => {
+    let finish!: (response: Response) => void;
+    const client = new ZeropsApiClient({
+      fetch: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    client.restoreSession(SESSION);
+    const read = client.fetchUser();
+    client.restoreSession({ accessToken: "next-account" });
+    finish(jsonResponse(401, {}));
+    await expect(read).rejects.toMatchObject({ kind: "expired-session" });
+    expect(client.session?.accessToken).toBe("next-account");
+  });
+
+  it("does not fabricate an empty list for an incomplete inventory", async () => {
+    const client = new ZeropsApiClient({ fetch: async () => jsonResponse(200, {}) });
+    client.restoreSession(SESSION);
+    await expect(client.listAccessibleClientProjects("org")).rejects.toMatchObject({
+      kind: "unexpected",
+    });
+  });
+});
+
+describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => {
+  it("reads every direct project page before publishing the inventory", async () => {
+    const stub = recordingFetch((request) =>
+      jsonResponse(200, {
+        list: [
+          {
+            id: request.url.includes("offset=1") ? "p2" : "p1",
+            name: "Project",
+            status: "ACTIVE",
+            clientId: "org",
+          },
+        ],
+        totalCount: 2,
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    expect((await client.listClientProjects("org", { limit: 1 })).map((p) => p.id)).toEqual([
+      "p1",
+      "p2",
+    ]);
+    expect(stub.requests).toHaveLength(2);
+  });
+  it("rejects a repeated page instead of treating a partial inventory as complete", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        list: [{ id: "p1", name: "Project", status: "ACTIVE", clientId: "org" }],
+        totalCount: 2,
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(client.listClientProjects("org", { limit: 1 })).rejects.toMatchObject({
+      kind: "unexpected",
+    });
+  });
+  it("reports a lost creation response as uncertain and never resubmits it", async () => {
+    const stub = recordingFetch(() => {
+      throw new TypeError("connection lost");
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(
+      client.createProject({ clientId: "org", name: "Project", tagList: [] }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
+    expect(stub.requests).toHaveLength(1);
+  });
+  it("does not re-arm project creation when the project exists but container import failed", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/project")
+        ? jsonResponse(200, { id: "created", name: "Project", clientId: "org", status: "ACTIVE" })
+        : jsonResponse(400, { code: "invalidRecipe" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(
+      client.createProjectWithZeropsMate({ clientId: "org", name: "Project" }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
+    expect(stub.requests).toHaveLength(2);
   });
 });

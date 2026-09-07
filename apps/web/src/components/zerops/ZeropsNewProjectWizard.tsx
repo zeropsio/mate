@@ -1,3 +1,4 @@
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 /**
  * `/zerops/new` — creates a Zerops project with a Zerops Mate container in
  * it, in the shape of the platform's own "add project" flow: scope (skipped
@@ -75,6 +76,7 @@ export async function submitZeropsNewProject(input: {
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   readonly onStartWaiting: (clientId: string) => void;
   readonly onError: (message: string) => void;
+  readonly onUncertain?: () => void;
 }): Promise<void> {
   try {
     await input.createProject({
@@ -85,6 +87,7 @@ export async function submitZeropsNewProject(input: {
     });
     input.onStartWaiting(input.clientId);
   } catch (cause) {
+    if (cause instanceof ZeropsApiError && cause.kind === "uncertain") input.onUncertain?.();
     input.onError(zeropsErrorMessage(cause));
   }
 }
@@ -117,8 +120,15 @@ function ZeropsNewProjectContent() {
     status,
   } = useZeropsSession();
   const navigate = useNavigate();
-  const { provisioning, connectError, connectingOrigin, retryProjectConnection, setCreatingIn } =
-    useZeropsProjectConnection(activeOrganization?.id ?? null);
+  const {
+    provisioning,
+    connectError,
+    upgradeRecovery,
+    serverVersion,
+    connectingOrigin,
+    retryProjectConnection,
+    setCreatingIn,
+  } = useZeropsProjectConnection(activeOrganization?.id ?? null);
 
   const [step, setStep] = useState<ZeropsNewProjectStep>("project");
   const [name, setName] = useState("zerops-mate");
@@ -130,6 +140,7 @@ function ZeropsNewProjectContent() {
     ZEROPS_NEW_PROJECT_AGENTS_DEFAULT_SELECTION,
   );
   const [creating, setCreating] = useState(false);
+  const [createUncertain, setCreateUncertain] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const canCreate = activeOrganization
@@ -249,6 +260,8 @@ function ZeropsNewProjectContent() {
           error={connectError ?? provisioning.error}
           onRetry={retryProjectConnection}
           onEnable={provisioning.enable}
+          upgradeRecovery={upgradeRecovery}
+          serverVersion={serverVersion}
         />
         <Button
           size="sm"
@@ -285,6 +298,7 @@ function ZeropsNewProjectContent() {
         provisioning.start({ zcpClaimed: true });
       },
       onError: setCreateError,
+      onUncertain: () => setCreateUncertain(true),
     }).finally(() => {
       setCreating(false);
     });
@@ -374,7 +388,7 @@ function ZeropsNewProjectContent() {
             >
               Back
             </Button>
-            <Button size="sm" disabled={creating} onClick={createProject}>
+            <Button size="sm" disabled={creating || createUncertain} onClick={createProject}>
               {creating ? <Spinner className="size-4" /> : null}
               Create project
             </Button>

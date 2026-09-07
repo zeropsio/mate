@@ -381,13 +381,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     (mode: SearchOverlayMode) => dispatch({ _tag: "ToggleMode", mode }),
     [],
   );
+  const navigate = useNavigate();
   const openAddProject = useCallback(
-    (environmentId?: EnvironmentId) =>
-      dispatch({
-        _tag: "OpenAddProject",
-        ...(environmentId !== undefined ? { environmentId } : {}),
-      }),
-    [],
+    (_environmentId?: EnvironmentId) => {
+      setOpen(false);
+      void navigate({ to: "/zerops/new" });
+    },
+    [navigate, setOpen],
   );
   const openNewThreadIn = useCallback(() => dispatch({ _tag: "OpenNewThreadIn" }), []);
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
@@ -1500,30 +1500,12 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:add-project",
-    searchTerms: [
-      "add project",
-      "folder",
-      "directory",
-      "browse",
-      "clone",
-      "remote",
-      "repository",
-      "repo",
-      "git",
-      "github",
-      "gitlab",
-      "bitbucket",
-      "azure",
-      "devops",
-      "url",
-      "environment",
-    ],
-    title: "Add project",
-    disabled: defaultAddProjectEnvironmentId === null,
+    searchTerms: ["add project", "create", "zerops", "environment"],
+    title: "Create Zerops project",
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-    keepOpen: true,
     run: async () => {
-      openAddProjectFlow();
+      setOpen(false);
+      await navigate({ to: "/zerops/new" });
     },
   });
 

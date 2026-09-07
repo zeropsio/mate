@@ -1,3 +1,8 @@
+import { rememberAccountRoute } from "../zerops/navigationStorage";
+import {
+  useAvailableEnvironmentIds,
+  useEnvironmentRestorePending,
+} from "../zerops/ZeropsEnvironmentLifetime";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -39,9 +44,7 @@ import {
 import { useUiStateStore } from "../uiStateStore";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
-import { resolveInitialServerAuthGateState } from "../environments/primary";
 import type { AuthGateState } from "../environments/primary/auth";
-import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
 import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -62,30 +65,7 @@ import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 export const Route = createRootRoute({
-  beforeLoad: async ({ location }) => {
-    if (location.pathname === "/pair" && hasHostedPairingRequest(new URL(window.location.href))) {
-      const authGateState: AuthGateState = {
-        status: "hosted-pairing",
-      };
-      return {
-        authGateState,
-      };
-    }
-
-    if (isHostedStaticApp(new URL(window.location.href))) {
-      const authGateState: AuthGateState = {
-        status: "hosted-static",
-      };
-      return {
-        authGateState,
-      };
-    }
-
-    const authGateState = await resolveInitialServerAuthGateState();
-    return {
-      authGateState,
-    };
-  },
+  beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
   component: RootRouteView,
   errorComponent: RootRouteErrorView,
   head: () => ({
@@ -95,25 +75,27 @@ export const Route = createRootRoute({
 
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
+  const { status: zeropsSessionStatus } = useZeropsSession();
+  const accountGate = resolveZeropsAccountGate({ pathname, status: zeropsSessionStatus });
+  if (accountGate === "handover") return <Outlet />;
+  if (accountGate === "auth-only") return <ZeropsHostedLanding />;
+  return <SignedInRootRouteView />;
+}
+
+function SignedInRootRouteView() {
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const { status: zeropsSessionStatus, accountRemembered } = useZeropsSession();
   const { environments } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: countDoorEnvironments(environments),
   });
-  const accountGate = resolveZeropsAccountGate({
-    // The hosted client always needs an account. A local server does not — a
-    // standalone pairing is a real way in — *unless* this browser has been a
-    // Zerops client before, in which case a signed-out status is an expired
-    // session, and dropping it into the pairing shell would answer "your
-    // session ended" with a different product. `null` is "not read yet", and
-    // reads as required so nothing paints before the answer arrives.
-    accountRequired: authGateState.status === "hosted-static" || accountRemembered !== false,
-    pathname,
-    status: zeropsSessionStatus,
-  });
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
+  const restoring = useEnvironmentRestorePending();
+  const availableEnvironmentIds = useAvailableEnvironmentIds();
+  useEffect(() => {
+    rememberAccountRoute(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -124,19 +106,6 @@ function RootRouteView() {
     };
   }, [pathname]);
 
-  // The identity callback must consume its URL fragment before any account
-  // gate can redirect or replace it.
-  if (accountGate === "handover") {
-    return <Outlet />;
-  }
-
-  // Fail closed before the route outlet, sidebar, environment bootstrap and
-  // every other product coordinator mounts. Deep links therefore expose the
-  // same one-purpose login surface as `/`.
-  if (accountGate === "auth-only") {
-    return <ZeropsHostedLanding exclusive manualFallback={null} />;
-  }
-
   if (door.shell === "bare") {
     return (
       <>
@@ -146,10 +115,22 @@ function RootRouteView() {
     );
   }
 
+  const targetEnvironmentId = /^\/([^/]+)\/[^/]+\/?$/.exec(pathname)?.[1];
+  const routeTargetsEnvironment =
+    targetEnvironmentId !== undefined && !["settings", "zerops"].includes(targetEnvironmentId);
+
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        <Outlet />
+        {routeTargetsEnvironment && !availableEnvironmentIds.has(targetEnvironmentId) ? (
+          <div className="p-8">
+            {restoring
+              ? "Checking this environment…"
+              : "This environment is currently unavailable. Open a project from the sidebar."}
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </AppSidebarLayout>
     </CommandPalette>
   );

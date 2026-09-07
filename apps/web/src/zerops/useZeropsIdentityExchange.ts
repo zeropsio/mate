@@ -1,3 +1,7 @@
+import { captureAccountLifetime } from "./accountLifetime";
+import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { rememberEnvironment } from "./rememberedEnvironments";
+import { deriveZeropsCandidates, normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -34,22 +38,44 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
 
 export function useZeropsIdentityExchange() {
   const { client } = useZeropsSession();
+  const inventory = useZeropsInventory();
   const connect = useAtomCommand(connectZeropsIdentity, { reportFailure: false });
 
   return useCallback(
     async (containerOrigin: string): Promise<ZeropsIdentityExchangeResult> => {
+      const alive = captureAccountLifetime();
+      const candidate = inventory.projects
+        .flatMap((project) => {
+          const outcome = inventory.services.get(project.id);
+          return deriveZeropsCandidates(
+            project,
+            outcome?.status === "resolved" ? outcome.services : null,
+            new Map(),
+          );
+        })
+        .find(
+          (entry) =>
+            entry.containerOrigin &&
+            normalizeOrigin(entry.containerOrigin) === normalizeOrigin(containerOrigin),
+        );
+      if (!alive() || !candidate || inventory.error)
+        return {
+          _tag: "Failure",
+          error: "This environment is not in your verified Zerops projects.",
+        };
       const result = await exchangeZeropsContainerIdentity({
         containerOrigin,
         appOrigin: window.location.origin,
         basePath: appBasePath(),
         zeropsToken: client.session?.accessToken ?? null,
-        connect,
+        connect: (input) => connect({ ...input, expectedProjectId: candidate.project.id }),
       });
-      if (result._tag === "Success") {
+      if (result._tag === "Success" && alive()) {
+        rememberEnvironment({ key: candidate.key, environmentId: String(result.environmentId) });
         rememberZeropsEnvironment(String(result.environmentId));
       }
       return result;
     },
-    [client, connect],
+    [client, connect, inventory.projects, inventory.services, inventory.error],
   );
 }

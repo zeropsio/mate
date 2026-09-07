@@ -1,3 +1,7 @@
+import {
+  mateServerCompatibility,
+  MINIMUM_MATE_SERVER_VERSION,
+} from "../zerops/serverCompatibility.ts";
 import type { DesktopSshEnvironmentTarget, EnvironmentId } from "@t3tools/contracts";
 import { resolveRemotePairingTarget } from "@t3tools/shared/remote";
 import * as Context from "effect/Context";
@@ -46,6 +50,7 @@ export interface SshConnectionInput {
 }
 
 export interface ZeropsIdentityConnectionInput {
+  readonly expectedProjectId?: string;
   /**
    * The container's mate base URL — the public origin plus the path prefix it is
    * proxied under, `https://<container>/mate`.
@@ -183,6 +188,21 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
   const descriptor = yield* fetchRemoteEnvironmentDescriptor({ httpBaseUrl }).pipe(
     Effect.mapError(mapRemoteEnvironmentError),
   );
+  if (mateServerCompatibility(descriptor.serverVersion) === "too-old") {
+    return yield* new ConnectionBlockedError({
+      reason: "unsupported",
+      serverVersion: descriptor.serverVersion,
+      minimumServerVersion: MINIMUM_MATE_SERVER_VERSION,
+      detail: `Mate server ${descriptor.serverVersion} is below the minimum supported version ${MINIMUM_MATE_SERVER_VERSION}. Restart the container to check for updates.`,
+    });
+  }
+  if (input.expectedProjectId && descriptor.zerops?.projectId !== input.expectedProjectId) {
+    return yield* new ConnectionBlockedError({
+      reason: "configuration",
+      detail:
+        "This URL no longer belongs to the selected Zerops project. Refresh your projects before connecting.",
+    });
+  }
   const minted = yield* mintZeropsIdentityCredential({
     httpBaseUrl,
     zeropsToken: input.zeropsToken,

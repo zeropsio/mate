@@ -1,3 +1,5 @@
+import { accountDraftStorage } from "./zerops/draftStorage";
+import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./zerops/accountLifetime";
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -29,7 +31,6 @@ import * as Effect from "effect/Effect";
 import { DeepMutable } from "effect/Types";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { useMemo } from "react";
-import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
 import {
@@ -41,7 +42,7 @@ import {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
-import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
+import { createDebouncedStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -60,7 +61,12 @@ export type DraftId = typeof DraftId.Type;
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
 const composerDebouncedStorage = createDebouncedStorage(
-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
+  {
+    ...accountDraftStorage,
+    setItem: (key, value) => {
+      if (!changingAccount) accountDraftStorage.setItem(key, value);
+    },
+  },
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
 
@@ -1922,15 +1928,17 @@ function normalizeCurrentPersistedComposerDraftStoreState(
   };
 }
 
+const decodePersistedDraftStorage = Schema.decodeSync(
+  Schema.fromJsonString(PersistedComposerDraftStoreStorage),
+);
+
 function readPersistedAttachmentIdsFromStorage(threadKey: string): string[] {
   if (threadKey.length === 0) {
     return [];
   }
   try {
-    const persisted = getLocalStorageItem(
-      COMPOSER_DRAFT_STORAGE_KEY,
-      PersistedComposerDraftStoreStorage,
-    );
+    const raw = accountDraftStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY);
+    const persisted = raw === null ? null : decodePersistedDraftStorage(raw);
     if (!persisted || persisted.version !== COMPOSER_DRAFT_STORAGE_VERSION) {
       return [];
     }
@@ -3246,8 +3254,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
     },
     {
       name: COMPOSER_DRAFT_STORAGE_KEY,
+      skipHydration: true,
       version: COMPOSER_DRAFT_STORAGE_VERSION,
-      storage: createJSONStorage(() => composerDebouncedStorage),
+      storage: createJSONStorage(() => ({
+        ...composerDebouncedStorage,
+        setItem: (key, value) => {
+          if (!changingAccount) composerDebouncedStorage.setItem(key, value);
+        },
+      })),
       migrate: migratePersistedComposerDraftStoreState,
       partialize: partializeComposerDraftStoreState,
       merge: (persistedState, currentState) => {
@@ -3279,6 +3293,17 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
 );
 
 export const useComposerDraftStore = composerDraftStore;
+
+let changingAccount = false;
+onAccountLifetimeClose(() => {
+  composerDebouncedStorage.flush();
+  changingAccount = true;
+  useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+  changingAccount = false;
+});
+onAccountLifetimeOpen(() => {
+  void useComposerDraftStore.persist.rehydrate();
+});
 
 export function beginBackgroundDraftSubmissionByRef(threadRef: ScopedThreadRef): void {
   const threadKey = scopedThreadKey(threadRef);

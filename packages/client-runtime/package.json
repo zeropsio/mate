@@ -278,6 +278,10 @@
     "./zerops/topology": {
       "types": "./src/zerops/topology.ts",
       "default": "./src/zerops/topology.ts"
+    },
+    "./zerops/serverCompatibility": {
+      "types": "./src/zerops/serverCompatibility.ts",
+      "default": "./src/zerops/serverCompatibility.ts"
     }
   },
   "scripts": {

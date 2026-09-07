@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "./accountLifetime";
 /**
  * Keeps first-prompt storage synchronous at the web boundary. The shared
  * `ZeropsStorageAdapter` is async, so using it here would make
@@ -23,7 +24,7 @@ export function rememberFirstPromptComposed(environmentId: string): void {
 
 function readStringList(key: string): ReadonlyArray<string> {
   try {
-    return parseFirstPromptMarkers(window.localStorage.getItem(key));
+    return parseFirstPromptMarkers(accountLocalStorage.getItem(key));
   } catch {
     return [];
   }
@@ -32,7 +33,7 @@ function readStringList(key: string): ReadonlyArray<string> {
 function appendStringList(key: string, value: string): void {
   try {
     const next = withFirstPromptComposed(readStringList(key), value);
-    window.localStorage.setItem(key, JSON.stringify(next));
+    accountLocalStorage.setItem(key, JSON.stringify(next));
   } catch {
     // See above: losing the record only costs a second composed prompt.
   }

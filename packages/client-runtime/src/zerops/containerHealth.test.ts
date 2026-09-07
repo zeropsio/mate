@@ -53,6 +53,13 @@ function stub(routes: Record<string, () => Response>) {
 }
 
 describe("probeZeropsContainerHealth", () => {
+  it("reports the actual server version from the existing descriptor read", async () => {
+    const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35");
+    expect(read.calls).toHaveLength(1);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });

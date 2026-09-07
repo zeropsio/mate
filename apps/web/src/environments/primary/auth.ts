@@ -1,8 +1,6 @@
 import type {
-  AuthBrowserSessionResult,
   AuthClientMetadata,
   AuthEnvironmentScope,
-  AuthPairingCredentialResult,
   ServerAuthDescriptor,
   ServerAuthSessionMethod,
   AuthSessionId,
@@ -203,33 +201,6 @@ function readEnvironmentHttpErrorStatus(error: EnvironmentHttpCommonErrorType): 
   }
 }
 
-async function exchangeBootstrapCredential(credential: string): Promise<AuthBrowserSessionResult> {
-  return retryTransientBootstrap(async () => {
-    try {
-      return await runPrimaryHttp(
-        PrimaryEnvironmentHttpClient.pipe(
-          Effect.flatMap((client) => client.auth.browserSession({ payload: { credential } })),
-        ),
-      );
-    } catch (error) {
-      if (
-        isEnvironmentHttpCommonError(error) &&
-        error._tag === "EnvironmentAuthInvalidError" &&
-        error.reason === "invalid_credential"
-      ) {
-        throw new PrimaryEnvironmentPairingCredentialRejectedError({
-          providedLength: credential.length,
-          cause: error,
-        });
-      }
-      throw PrimaryEnvironmentRequestError.fromCause({
-        operation: "exchange-bootstrap-credential",
-        cause: error,
-      });
-    }
-  });
-}
-
 const TRANSIENT_BOOTSTRAP_STATUS_CODES = new Set([502, 503, 504]);
 const BOOTSTRAP_RETRY_TIMEOUT_MS = 15_000;
 const BOOTSTRAP_RETRY_STEP_MS = 500;
@@ -281,101 +252,6 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     status: "requires-auth",
     auth: currentSession.auth,
   };
-}
-
-export async function submitServerAuthCredential(credential: string): Promise<void> {
-  const trimmedCredential = credential.trim();
-  if (!trimmedCredential) {
-    throw new PrimaryEnvironmentPairingCredentialRequiredError({
-      providedLength: credential.length,
-    });
-  }
-
-  resolvedServerAuthGateState = null;
-  await exchangeBootstrapCredential(trimmedCredential);
-  bootstrapPromise = null;
-  stripPairingTokenFromUrl();
-}
-
-export async function createServerPairingCredential(input?: {
-  readonly label?: string;
-  readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
-}): Promise<AuthPairingCredentialResult> {
-  const trimmedLabel = input?.label?.trim();
-  try {
-    return await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) =>
-          client.auth.pairingCredential({
-            headers: {},
-            payload: {
-              ...(trimmedLabel ? { label: trimmedLabel } : {}),
-              ...(input?.scopes ? { scopes: input.scopes } : {}),
-            },
-          }),
-        ),
-      ),
-    );
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "create-pairing-credential",
-      cause: error,
-    });
-  }
-}
-
-export async function listServerPairingLinks(): Promise<ReadonlyArray<ServerPairingLinkRecord>> {
-  try {
-    const pairingLinks = await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) => client.auth.pairingLinks({ headers: {} })),
-      ),
-    );
-    return pairingLinks.map((pairingLink) => {
-      const timestamps = {
-        createdAt: DateTime.formatIso(pairingLink.createdAt),
-        expiresAt: DateTime.formatIso(pairingLink.expiresAt),
-      };
-      if (pairingLink.label === undefined) {
-        return {
-          id: pairingLink.id,
-          scopes: pairingLink.scopes,
-          subject: pairingLink.subject,
-          createdAt: timestamps.createdAt,
-          expiresAt: timestamps.expiresAt,
-        };
-      }
-      return {
-        id: pairingLink.id,
-        scopes: pairingLink.scopes,
-        subject: pairingLink.subject,
-        label: pairingLink.label,
-        createdAt: timestamps.createdAt,
-        expiresAt: timestamps.expiresAt,
-      };
-    });
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "list-pairing-links",
-      cause: error,
-    });
-  }
-}
-
-export async function revokeServerPairingLink(id: string): Promise<void> {
-  try {
-    await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) => client.auth.revokePairingLink({ headers: {}, payload: { id } })),
-      ),
-    );
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "revoke-pairing-link",
-      pairingLinkId: id,
-      cause: error,
-    });
-  }
 }
 
 export async function listServerClientSessions(): Promise<

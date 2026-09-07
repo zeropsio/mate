@@ -1,3 +1,4 @@
+import { accountLocalStorage, accountStorageKey } from "../zerops/accountLifetime";
 import * as Schema from "effect/Schema";
 import * as Record from "effect/Record";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
@@ -15,15 +16,15 @@ export class LocalStorageOperationError extends Schema.TaggedErrorClass<LocalSto
   }
 }
 
-const isomorphicLocalStorage: Storage =
+const isomorphicLocalStorage: Pick<Storage, "getItem" | "setItem" | "removeItem"> =
   typeof window !== "undefined"
-    ? window.localStorage
+    ? accountLocalStorage
     : (function () {
         const store = new Map<string, string>();
         return {
           clear: () => store.clear(),
           getItem: (_) => store.get(_) ?? null,
-          key: (_) => Record.keys(store).at(_) ?? null,
+          key: (_: number) => Record.keys(store).at(_) ?? null,
           get length() {
             return store.size;
           },
@@ -114,7 +115,7 @@ export function useLocalStorage<T, E>(
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       const handleStorageChange = (event: StorageEvent) => {
-        if (event.key === key) {
+        if (event.key === accountStorageKey(key)) {
           onStoreChange();
         }
       };

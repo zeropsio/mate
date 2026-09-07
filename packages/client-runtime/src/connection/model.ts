@@ -93,6 +93,8 @@ export class ConnectionBlockedError extends Schema.TaggedErrorClass<ConnectionBl
   {
     reason: ConnectionBlockedReason,
     detail: Schema.String,
+    serverVersion: Schema.optionalKey(Schema.String),
+    minimumServerVersion: Schema.optionalKey(Schema.String),
     traceId: Schema.optionalKey(Schema.String),
   },
 ) {

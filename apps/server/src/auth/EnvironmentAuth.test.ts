@@ -1,5 +1,4 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { AuthAdministrativeScopes } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -104,49 +103,6 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }),
   );
 
-  it.effect("issues standard pairing credentials by default", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const sessions = yield* SessionStore.SessionStore;
-
-      const pairingCredential = yield* serverAuth.issuePairingCredential();
-      const exchanged = yield* serverAuth.createBrowserSession(
-        pairingCredential.credential,
-        requestMetadata,
-      );
-      const verified = yield* serverAuth.authenticateHttpRequest(
-        makeCookieRequest(sessions.cookieName, exchanged.sessionToken),
-      );
-
-      expect(verified.sessionId.length).toBeGreaterThan(0);
-      expect(verified.scopes).toEqual([
-        "orchestration:read",
-        "orchestration:operate",
-        "terminal:operate",
-        "review:write",
-        "relay:read",
-      ]);
-      expect(verified.subject).toBe("one-time-token");
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
-
-  it.effect("accepts session cookies for HTTP and websocket auth outside Zerops", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const sessions = yield* SessionStore.SessionStore;
-      const issued = yield* serverAuth.issueSession();
-      const request = makeCookieRequest(sessions.cookieName, issued.token);
-
-      const [httpSession, websocketSession] = yield* Effect.all([
-        serverAuth.authenticateHttpRequest(request),
-        serverAuth.authenticateWebSocketUpgrade(request),
-      ]);
-
-      expect(httpSession.sessionId).toBe(issued.sessionId);
-      expect(websocketSession.sessionId).toBe(issued.sessionId);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
-
   it.effect("ignores session cookies for HTTP and websocket auth inside Zerops", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -173,7 +129,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const pairingCredential = yield* serverAuth.issuePairingCredential();
+      const pairingCredential = yield* serverAuth.createPairingLink();
 
       const error = yield* serverAuth
         .exchangeBootstrapCredentialForAccessToken(
@@ -183,14 +139,16 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         )
         .pipe(Effect.flip);
 
-      expect(error._tag).toBe("ServerAuthScopeNotGrantedError");
+      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
-  it.effect("inherits a constrained pairing grant when token exchange omits scope", () =>
+  it.effect("inherits the identity grant scopes when token exchange omits scope", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const pairingCredential = yield* serverAuth.issuePairingCredential({
+      const pairingCredential = yield* serverAuth.createPairingLink({
+        method: "zerops-identity",
+        subject: "zerops-user:test",
         scopes: ["orchestration:read"],
       });
 
@@ -201,193 +159,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       );
 
       expect(token.scope).toBe("orchestration:read");
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
-
-  it.effect("rotates desktop bearer sessions without accumulating authorized clients", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const sessions = yield* SessionStore.SessionStore;
-      const browser = yield* serverAuth.createBrowserSession(
-        "desktop-bootstrap-token",
-        requestMetadata,
-      );
-      const browserSession = yield* serverAuth.authenticateHttpRequest(
-        makeCookieRequest(sessions.cookieName, browser.sessionToken),
-      );
-      const staleSessions = yield* Effect.forEach([1, 2, 3], () =>
-        sessions.issue({ subject: "desktop-bootstrap", method: "bearer-access-token" }),
-      );
-      const pairing = yield* serverAuth.issuePairingCredential();
-      const paired = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        pairing.credential,
-        undefined,
-        { ...requestMetadata, label: "T3 Code Desktop" },
-      );
-      const first = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        "desktop-bootstrap-token",
-        undefined,
-        requestMetadata,
-      );
-      const firstSession = yield* serverAuth.authenticateHttpRequest(
-        makeBearerRequest(first.access_token),
-      );
-      const second = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        "desktop-bootstrap-token",
-        undefined,
-        requestMetadata,
-      );
-
-      const active = yield* serverAuth.listSessions();
-      const firstError = yield* serverAuth
-        .authenticateHttpRequest(makeBearerRequest(first.access_token))
-        .pipe(Effect.flip);
-      const secondSession = yield* serverAuth.authenticateHttpRequest(
-        makeBearerRequest(second.access_token),
-      );
-
-      expect(active).toHaveLength(3);
-      expect(active.map((entry) => entry.sessionId)).toContain(browserSession.sessionId);
-      expect(active.map((entry) => entry.sessionId)).toContain(secondSession.sessionId);
-      expect(active.map((entry) => entry.sessionId)).not.toContain(firstSession.sessionId);
-      expect(firstError._tag).toBe("ServerAuthInvalidCredentialError");
-      for (const stale of staleSessions) {
-        const error = yield* sessions.verify(stale.token).pipe(Effect.flip);
-        expect(error._tag).toBe("SessionTokenRevokedError");
-      }
-      const pairedSession = yield* serverAuth.authenticateHttpRequest(
-        makeBearerRequest(paired.access_token),
-      );
-      expect(pairedSession.subject).toBe("one-time-token");
-      expect(active.map((entry) => entry.sessionId)).toContain(pairedSession.sessionId);
-    }).pipe(
-      Effect.provide(
-        makeEnvironmentAuthLayer({
-          desktopBootstrapToken: "desktop-bootstrap-token",
-        }),
-      ),
-    ),
-  );
-
-  it.effect("keeps user-issued administrative pairing links manageable", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const pairingCredential = yield* serverAuth.issuePairingCredential({
-        scopes: AuthAdministrativeScopes,
-      });
-      const listedPairingLinks = yield* serverAuth.listPairingLinks();
-
-      expect(
-        listedPairingLinks.find((pairingLink) => pairingLink.id === pairingCredential.id)?.subject,
-      ).toBe("one-time-token");
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
-
-  it.effect("issues startup pairing URLs that bootstrap administrative sessions", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const sessions = yield* SessionStore.SessionStore;
-
-      const pairingUrl = yield* serverAuth.issueStartupPairingUrl("http://127.0.0.1:3773");
-      const token = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
-      const listedPairingLinks = yield* serverAuth.listPairingLinks();
-      expect(token).toBeTruthy();
-      expect(
-        listedPairingLinks.some(
-          (pairingLink) => pairingLink.subject === "administrative-bootstrap",
-        ),
-      ).toBe(false);
-
-      const exchanged = yield* serverAuth.createBrowserSession(token ?? "", requestMetadata);
-      const verified = yield* serverAuth.authenticateHttpRequest(
-        makeCookieRequest(sessions.cookieName, exchanged.sessionToken),
-      );
-
-      expect(verified.scopes).toEqual([
-        "orchestration:read",
-        "orchestration:operate",
-        "terminal:operate",
-        "review:write",
-        "relay:read",
-        "access:read",
-        "access:write",
-        "relay:write",
-      ]);
-      expect(verified.subject).toBe("administrative-bootstrap");
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
-
-  it.effect(
-    "lists pairing links and revokes other sessions while keeping the administrative session",
-    () =>
-      Effect.gen(function* () {
-        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        const sessions = yield* SessionStore.SessionStore;
-
-        const administrativeExchange = yield* serverAuth.createBrowserSession(
-          "desktop-bootstrap-token",
-          requestMetadata,
-        );
-        const administrativeSession = yield* serverAuth.authenticateHttpRequest(
-          makeCookieRequest(sessions.cookieName, administrativeExchange.sessionToken),
-        );
-        const pairingCredential = yield* serverAuth.issuePairingCredential({
-          label: "Julius iPhone",
-        });
-        const listedPairingLinks = yield* serverAuth.listPairingLinks();
-        const clientExchange = yield* serverAuth.createBrowserSession(
-          pairingCredential.credential,
-          {
-            ...requestMetadata,
-            deviceType: "mobile",
-            os: "iOS",
-            browser: "Safari",
-            ipAddress: "192.168.1.88",
-          },
-        );
-        const clientSession = yield* serverAuth.authenticateHttpRequest(
-          makeCookieRequest(sessions.cookieName, clientExchange.sessionToken),
-        );
-        const clientsBeforeRevoke = yield* serverAuth.listClientSessions(
-          administrativeSession.sessionId,
-        );
-        const revokedCount = yield* serverAuth.revokeOtherClientSessions(
-          administrativeSession.sessionId,
-        );
-        const clientsAfterRevoke = yield* serverAuth.listClientSessions(
-          administrativeSession.sessionId,
-        );
-
-        expect(listedPairingLinks.map((entry) => entry.id)).toContain(pairingCredential.id);
-        expect(listedPairingLinks.find((entry) => entry.id === pairingCredential.id)?.label).toBe(
-          "Julius iPhone",
-        );
-        expect(clientsBeforeRevoke).toHaveLength(2);
-        expect(
-          clientsBeforeRevoke.find((entry) => entry.sessionId === administrativeSession.sessionId)
-            ?.current,
-        ).toBe(true);
-        expect(
-          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.current,
-        ).toBe(false);
-        expect(
-          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
-            .label,
-        ).toBe("Julius iPhone");
-        expect(
-          clientsBeforeRevoke.find((entry) => entry.sessionId === clientSession.sessionId)?.client
-            .deviceType,
-        ).toBe("mobile");
-        expect(revokedCount).toBe(1);
-        expect(clientsAfterRevoke).toHaveLength(1);
-        expect(clientsAfterRevoke[0]?.sessionId).toBe(administrativeSession.sessionId);
-      }).pipe(
-        Effect.provide(
-          makeEnvironmentAuthLayer({
-            desktopBootstrapToken: "desktop-bootstrap-token",
-          }),
-        ),
-      ),
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
   );
 
   it.effect("caps a session from the identity door at the membership window", () =>
@@ -395,7 +167,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const issued = yield* serverAuth.createPairingLink({
         method: "zerops-identity",
-        subject: "a-zerops-user-id",
+        subject: "zerops-user:a-zerops-user-id",
       });
       const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
         issued.credential,
@@ -410,47 +182,12 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
   );
 
-  it.effect("leaves a one-time-token pairing on the ordinary session lifetime", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* serverAuth.issuePairingCredential({});
-      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        issued.credential,
-        undefined,
-        requestMetadata,
-      );
-
-      // A second device paired with a one-time token holds no Zerops token, so
-      // it has nothing to re-mint with. Capping it at the membership window
-      // would log it out with no way back in.
-      expect(access.expires_in).toBeGreaterThan(MEMBERSHIP_TTL_SECONDS);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-
-  it.effect("keeps DPoP's own lifetime for a one-time-token pairing", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* serverAuth.createPairingLink({
-        proofKeyThumbprint: "a-jwk-thumbprint",
-      });
-      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        issued.credential,
-        undefined,
-        requestMetadata,
-        { proofKeyThumbprint: "a-jwk-thumbprint" },
-      );
-
-      expect(access.token_type).toBe("DPoP");
-      expect(access.expires_in).toBeGreaterThan(MEMBERSHIP_TTL_SECONDS);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-
   it.effect("caps a DPoP session from the identity door at the window, not the hour", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const issued = yield* serverAuth.createPairingLink({
         method: "zerops-identity",
-        subject: "a-zerops-user-id",
+        subject: "zerops-user:a-zerops-user-id",
         proofKeyThumbprint: "a-jwk-thumbprint",
       });
       const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
@@ -463,20 +200,6 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(access.token_type).toBe("DPoP");
       expect(access.expires_in).toBeLessThanOrEqual(MEMBERSHIP_TTL_SECONDS);
     }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
-  );
-
-  it.effect("leaves the identity door's own lifetime alone outside a Zerops project", () =>
-    Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* serverAuth.createPairingLink({ method: "zerops-identity" });
-      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
-        issued.credential,
-        undefined,
-        requestMetadata,
-      );
-
-      expect(access.expires_in).toBeGreaterThan(MEMBERSHIP_TTL_SECONDS);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
   it.effect("revokes every session belonging to one subject and leaves the rest", () =>

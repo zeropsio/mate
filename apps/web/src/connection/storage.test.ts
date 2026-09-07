@@ -56,22 +56,16 @@ describe("makeCatalogStore", () => {
 });
 
 describe("makeCatalogBackend", () => {
-  it.effect("fails writes when desktop secure storage declines the catalog", () =>
+  it.effect("AL-01 never reads the historical desktop catalog and isolates each login", () =>
     Effect.gen(function* () {
-      const setConnectionCatalog = vi.fn().mockResolvedValue(false);
-      vi.stubGlobal("window", {
-        desktopBridge: {
-          getConnectionCatalog: vi.fn().mockResolvedValue(null),
-          setConnectionCatalog,
-        },
-      });
-      const backend = makeCatalogBackend({} as IDBDatabase);
-
-      const error = yield* backend.write("{}").pipe(Effect.flip);
-
-      expect(error).toBeInstanceOf(ConnectionTransientError);
-      expect(error.message).toContain("Desktop secure storage is unavailable");
-      expect(setConnectionCatalog).toHaveBeenCalledWith("{}");
+      const getConnectionCatalog = vi.fn();
+      vi.stubGlobal("window", { desktopBridge: { getConnectionCatalog } });
+      const first = makeCatalogBackend();
+      yield* first.write("private-session");
+      const next = makeCatalogBackend();
+      expect(yield* next.read).toBeNull();
+      expect(yield* first.read).toBe("private-session");
+      expect(getConnectionCatalog).not.toHaveBeenCalled();
     }),
   );
 });

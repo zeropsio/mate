@@ -158,6 +158,8 @@ export const AuthEnvironmentBootstrapTokenType =
  * single access method.
  */
 export const ServerAuthDescriptor = Schema.Struct({
+  /** Verified-account-only sessions and self logout; absent on older servers. */
+  accountLifecycleVersion: Schema.optionalKey(Schema.Literal(1)),
   policy: ServerAuthPolicy,
   bootstrapMethods: Schema.Array(ServerAuthBootstrapMethod),
   sessionMethods: Schema.Array(ServerAuthSessionMethod),

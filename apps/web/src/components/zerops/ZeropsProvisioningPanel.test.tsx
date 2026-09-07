@@ -246,4 +246,39 @@ describe("ZeropsProvisioningPanel", () => {
     expect(markup).toContain("zcp release does not carry Zerops Mate");
     expect(markup).not.toContain("ZCP_MATE_ENABLED");
   });
+  it("offers restart before connection, asks before interrupting work, and never calls an incompatible server ready", () => {
+    const confirm = vi.fn();
+    const request = vi.fn();
+    const recovery = { state: "idle" as const, error: null, request, confirm, cancel: noop };
+    const props = {
+      state: awaitingHealth,
+      busy: false,
+      error: "Upgrade required",
+      serverVersion: "0.2.9",
+      onRetry: noop,
+      onEnable: noop,
+      upgradeRecovery: recovery,
+    };
+    const initial = ZeropsProvisioningPanel(props);
+    expect(renderToStaticMarkup(initial)).toContain("Update Mate to connect");
+    expect(renderToStaticMarkup(initial)).toContain("Server version: 0.2.9");
+    expect(renderToStaticMarkup(initial)).toContain("Minimum required: 0.3.0");
+    expect(renderToStaticMarkup(initial)).not.toContain("Zerops Mate is ready in this project");
+    findAction(initial, "Restart and check for updates").props.onClick?.();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+    const confirmation = ZeropsProvisioningPanel({
+      ...props,
+      upgradeRecovery: { ...recovery, state: "confirm" },
+    });
+    expect(renderToStaticMarkup(confirmation)).toContain("interrupts running work");
+    findAction(confirmation, "Restart container").props.onClick?.();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(() =>
+      findAction(
+        ZeropsProvisioningPanel({ ...props, upgradeRecovery: { ...recovery, state: "waiting" } }),
+        "Restart container",
+      ),
+    ).toThrow();
+  });
 });

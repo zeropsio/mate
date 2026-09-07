@@ -33,6 +33,7 @@ export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn"
 export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
 
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
+  accountLifecycleVersion: Schema.optionalKey(Schema.Literal(1)),
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   connectionProbe: Schema.optionalKey(Schema.Boolean),
   /** Missing on older servers, which still accept inline image attachments. */

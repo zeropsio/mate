@@ -1,3 +1,5 @@
+import { accountDraftStorage } from "./zerops/draftStorage";
+import { onAccountLifetimeOpen, onAccountLifetimeClose } from "./zerops/accountLifetime";
 import * as Schema from "effect/Schema";
 import { create } from "zustand";
 
@@ -11,7 +13,6 @@ export const PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v2";
  * payload is deleted at startup rather than migrated — left behind it would
  * silently hold megabytes of the origin's ~5MB localStorage quota forever.
  */
-const LEGACY_PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v1";
 const PROMPT_STASH_STORAGE_VERSION = 2;
 
 export const MAX_STASH_ENTRIES = 20;
@@ -131,7 +132,7 @@ export function partitionStashAttachments(
 function resolveBaseStorage(): { storage: StateStorage; durable: boolean } {
   try {
     if (typeof localStorage !== "undefined") {
-      return { storage: localStorage, durable: true };
+      return { storage: accountDraftStorage, durable: true };
     }
   } catch {
     // Fall through to the in-memory store.
@@ -267,20 +268,12 @@ export const usePromptStashStore = create<PromptStashStoreState>()((set, get) =>
   },
 }));
 
-// Hydrate once at startup. Like the app's other persisted stores, tabs are
-// last-write-wins: no cross-tab merging or storage-event syncing.
-{
-  try {
-    baseStashStorage.removeItem(LEGACY_PROMPT_STASH_STORAGE_KEY);
-  } catch {
-    // Purging the v1 payload is best-effort; a storage policy that rejects
-    // the delete must not take down module init.
-  }
-  const persisted = readPersistedEntries();
-  if (persisted) {
-    usePromptStashStore.setState({ entries: persisted });
-  }
-}
+onAccountLifetimeOpen(() => {
+  usePromptStashStore.setState({ entries: readPersistedEntries() ?? [] });
+});
+onAccountLifetimeClose(() => {
+  usePromptStashStore.setState({ entries: [] });
+});
 
 /**
  * Test seam: seeds the persisted payload through the same storage the store

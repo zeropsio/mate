@@ -10,14 +10,9 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import {
   AuthAccessTokenResult,
-  AuthBrowserSessionRequest,
-  AuthBrowserSessionResult,
   AuthClientSession,
-  AuthCreatePairingCredentialInput,
   AuthPairingCredentialResult,
-  AuthPairingLink,
   AuthRevokeClientSessionInput,
-  AuthRevokePairingLinkInput,
   AuthEnvironmentScope,
   AuthTokenExchangeRequest,
   AuthSessionState,
@@ -297,13 +292,6 @@ export class EnvironmentCloudEndpointUnavailableError extends Schema.TaggedError
     });
   }
 }
-const EnvironmentSessionCreationErrors = [
-  EnvironmentAuthInvalidError,
-  // An environment can decline to issue cookie sessions at all - the Zerops
-  // door is bearer/DPoP only.
-  EnvironmentOperationForbiddenError,
-  EnvironmentInternalError,
-] as const;
 const EnvironmentTokenExchangeErrors = [
   EnvironmentRequestInvalidError,
   EnvironmentAuthInvalidError,
@@ -312,10 +300,6 @@ const EnvironmentTokenExchangeErrors = [
 const EnvironmentScopedOperationErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
-] as const;
-const EnvironmentPairingCredentialErrors = [
-  EnvironmentRequestInvalidError,
-  ...EnvironmentScopedOperationErrors,
 ] as const;
 // The Zerops door answers the platform's own three-way verdict: a bad token is
 // 401, a valid token from someone outside the project is 403, and an
@@ -431,12 +415,13 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     }),
   )
   .add(
-    HttpApiEndpoint.post("browserSession", "/api/auth/browser-session", {
-      payload: AuthBrowserSessionRequest,
-      success: AuthBrowserSessionResult,
-      error: EnvironmentSessionCreationErrors,
-    }),
+    HttpApiEndpoint.post("logout", "/api/auth/logout", {
+      headers: OptionalBearerHeaders,
+      success: AuthClientSessionRevokeResult,
+      error: [EnvironmentInternalError],
+    }).middleware(EnvironmentAuthenticatedAuth),
   )
+
   .add(
     HttpApiEndpoint.post("token", "/oauth/token", {
       headers: OptionalDpopProofHeaders,
@@ -452,29 +437,7 @@ export class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
       error: [EnvironmentInternalError],
     }).middleware(EnvironmentAuthenticatedAuth),
   )
-  .add(
-    HttpApiEndpoint.post("pairingCredential", "/api/auth/pairing-token", {
-      headers: OptionalBearerHeaders,
-      payload: AuthCreatePairingCredentialInput,
-      success: AuthPairingCredentialResult,
-      error: EnvironmentPairingCredentialErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.get("pairingLinks", "/api/auth/pairing-links", {
-      headers: OptionalBearerHeaders,
-      success: Schema.Array(AuthPairingLink),
-      error: EnvironmentScopedOperationErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("revokePairingLink", "/api/auth/pairing-links/revoke", {
-      headers: OptionalBearerHeaders,
-      payload: AuthRevokePairingLinkInput,
-      success: AuthPairingLinkRevokeResult,
-      error: EnvironmentScopedOperationErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
+
   .add(
     HttpApiEndpoint.get("clients", "/api/auth/clients", {
       headers: OptionalBearerHeaders,

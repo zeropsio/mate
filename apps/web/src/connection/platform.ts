@@ -10,36 +10,28 @@ import {
   ConnectionBlockedError,
   Connectivity,
   CredentialRenewal,
-  mapRemoteEnvironmentError,
   type PlatformConnectionRegistration,
-  PrimaryConnectionRegistration,
-  PrimaryConnectionTarget,
   renewZeropsIdentityCredential,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
-import { fetchRemoteEnvironmentDescriptor } from "@t3tools/client-runtime/environment";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
 import { AuthStandardClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { APP_VERSION } from "../branding";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
 import type { AuthGateState } from "../environments/primary/auth";
-import { primaryEnvironmentHttpLayer } from "../environments/primary/httpLayer";
 import {
   readPrimaryEnvironmentTarget,
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
-import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
 import { loadZeropsSession } from "@t3tools/client-runtime/zerops/session";
@@ -187,25 +179,6 @@ const capabilitiesLayer = Layer.effectContext(
   }),
 );
 
-const loadPrimaryConnectionRegistration = Effect.fn(
-  "web.connectionPlatform.loadPrimaryConnectionRegistration",
-)(function* (resolved: PrimaryEnvironmentTarget) {
-  const descriptor = yield* fetchRemoteEnvironmentDescriptor({
-    httpBaseUrl: resolved.target.httpBaseUrl,
-  }).pipe(Effect.provide(primaryEnvironmentHttpLayer), Effect.mapError(mapRemoteEnvironmentError));
-  return new PrimaryConnectionRegistration({
-    target: new PrimaryConnectionTarget({
-      environmentId: descriptor.environmentId,
-      label: descriptor.label,
-      httpBaseUrl: resolved.target.httpBaseUrl,
-      wsBaseUrl: resolved.target.wsBaseUrl,
-    }),
-  });
-});
-
-// Poll cadence for the primary environment topology.
-const PLATFORM_POLL_INTERVAL = "3 seconds";
-
 interface CachedPlatformRegistration {
   readonly signature: string;
   readonly registration: PlatformConnectionRegistration;
@@ -287,87 +260,15 @@ export function readPrimaryPlatformAuthGate(
   );
 }
 
-const platformConnectionSourceLayer = Layer.effect(
+const platformConnectionSourceLayer = Layer.succeed(
   PlatformConnectionSource,
-  Effect.gen(function* () {
-    if (isHostedStaticApp()) {
-      return PlatformConnectionSource.of({
-        registrations: Stream.empty,
-      });
-    }
-    const authGate = yield* readPrimaryPlatformAuthGate();
-    const cacheRef = yield* Ref.make(new Map<string, CachedPlatformRegistration>());
-
-    // Resolve the primary (same-origin cookie auth) environment. The cached
-    // registration is reused across polls; a failed load is retried on the
-    // next poll.
-    const buildPlatformRegistrations = Effect.gen(function* () {
-      const previous = yield* Ref.get(cacheRef);
-      const nowEpochMs = yield* Clock.currentTimeMillis;
-      const next = new Map<string, CachedPlatformRegistration>();
-      const registrations: Array<PlatformConnectionRegistration> = [];
-
-      const primaryTopologyRead = readPrimaryEnvironmentTargetResult();
-      const retainedPrimary = primaryRegistrationToRetainAfterTopologyRead(
-        previous,
-        primaryTopologyRead,
-      );
-      if (retainedPrimary !== undefined) {
-        next.set(PRIMARY_LOCAL_ENVIRONMENT_ID, retainedPrimary);
-        registrations.push(retainedPrimary.registration);
-      }
-
-      if (primaryTopologyRead._tag === "Failure") {
-        yield* Effect.logWarning("Could not read the primary environment topology.", {
-          cause: primaryTopologyRead.cause,
-        });
-      } else if (primaryTopologyRead.target !== null) {
-        const primaryTarget = primaryTopologyRead.target;
-        const signature = `primary|${primaryTarget.target.httpBaseUrl}|${primaryTarget.target.wsBaseUrl}`;
-        const cached = previous.get(PRIMARY_LOCAL_ENVIRONMENT_ID);
-        if (
-          cached !== undefined &&
-          canReuseCachedPlatformRegistration(cached, signature, nowEpochMs)
-        ) {
-          next.set(PRIMARY_LOCAL_ENVIRONMENT_ID, cached);
-          registrations.push(cached.registration);
-        } else {
-          const built = yield* loadPrimaryConnectionRegistration(primaryTarget).pipe(
-            Effect.tapError((error) =>
-              Effect.logWarning("Could not discover the primary environment.", { error }),
-            ),
-            Effect.option,
-          );
-          if (Option.isSome(built)) {
-            const cacheEntry = { signature, registration: built.value };
-            next.set(PRIMARY_LOCAL_ENVIRONMENT_ID, cacheEntry);
-            registrations.push(built.value);
-          }
-        }
-      }
-
-      yield* Ref.set(cacheRef, next);
-      return registrations as ReadonlyArray<PlatformConnectionRegistration>;
-    }).pipe(Effect.provide(FetchHttpClient.layer));
-
-    return PlatformConnectionSource.of({
-      registrations: primaryPlatformRegistrationStream(
-        authGate,
-        Stream.tick(PLATFORM_POLL_INTERVAL).pipe(
-          Stream.mapEffect(() => buildPlatformRegistrations),
-        ),
-      ),
-    });
-  }),
+  PlatformConnectionSource.of({ registrations: Stream.empty }),
 );
 
 const environmentOwnedDataCleanupLayer = Layer.succeed(
   EnvironmentOwnedDataCleanup,
   EnvironmentOwnedDataCleanup.of({
-    clear: (environmentId) =>
-      Effect.sync(() => {
-        clearComposerDraftsEnvironment(environmentId);
-      }),
+    clear: () => Effect.void,
   }),
 );
 

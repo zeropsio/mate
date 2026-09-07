@@ -69,7 +69,7 @@ export const mintZeropsPairingCredential = Effect.fn("Zerops.mintPairingCredenti
       // itself by re-proving membership.
       method: "zerops-identity",
       scopes: zeropsGrantScopes,
-      subject: member.userId,
+      subject: `zerops-user:${member.userId}`,
       ttl: ZEROPS_PAIRING_GRANT_TTL,
       label: member.role === undefined ? "Zerops" : `Zerops ${member.role}`,
       ...(input.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),

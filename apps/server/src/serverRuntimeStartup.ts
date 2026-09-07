@@ -35,7 +35,6 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
-import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
@@ -47,13 +46,10 @@ import {
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
 import {
-  formatHeadlessServeOutput,
   formatHostForUrl,
   formatZeropsServeOutput,
   isWildcardHost,
-  issueHeadlessServeAccessInfo,
   resolveServeConnectionString,
-  resolveStartupAccessMode,
 } from "./startupAccess.ts";
 
 export class ServerRuntimeStartupError extends Schema.TaggedErrorClass<ServerRuntimeStartupError>()(
@@ -340,18 +336,13 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
 
 const resolveStartupBrowserTarget = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
   const localUrl = `http://localhost:${serverConfig.port}`;
   const bindUrl =
     serverConfig.host && !isWildcardHost(serverConfig.host)
       ? `http://${formatHostForUrl(serverConfig.host)}:${serverConfig.port}`
       : localUrl;
   const baseTarget = serverConfig.devUrl?.toString() ?? bindUrl;
-  return yield* Effect.succeed(serverConfig.mode === "desktop" ? baseTarget : undefined).pipe(
-    Effect.flatMap((target) =>
-      target ? Effect.succeed(target) : serverAuth.issueStartupPairingUrl(baseTarget),
-    ),
-  );
+  return baseTarget;
 });
 
 const maybeOpenBrowser = (target: string) =>
@@ -576,30 +567,16 @@ export const make = (options?: StartupOptions) =>
             Effect.withSpan("server.startup.heartbeat.record"),
             Effect.ignoreCause({ log: true }),
           );
-          const startupAccessMode = resolveStartupAccessMode(serverConfig);
-          if (startupAccessMode === "zerops") {
-            // Neither minting path runs: a credential in this unit's output
-            // would be an admin credential per boot, for anybody who can read
-            // the logs. Members come in through the identity door instead.
-            const connectionString = yield* resolveServeConnectionString();
+          const connectionString = yield* resolveServeConnectionString();
+          yield* runStartupPhase(
+            "zerops.output",
+            Console.log(formatZeropsServeOutput(connectionString)),
+          );
+          if (!serverConfig.noBrowser) {
             yield* runStartupPhase(
-              "zerops.output",
-              Console.log(formatZeropsServeOutput(connectionString)),
+              "browser.open",
+              maybeOpenBrowser(yield* resolveStartupBrowserTarget),
             );
-          } else if (startupAccessMode === "headless") {
-            const accessInfo = yield* issueHeadlessServeAccessInfo();
-            yield* runStartupPhase(
-              "headless.output",
-              Console.log(formatHeadlessServeOutput(accessInfo)),
-            );
-          } else {
-            const startupBrowserTarget = yield* resolveStartupBrowserTarget;
-            if (serverConfig.mode !== "desktop") {
-              yield* Effect.logInfo(
-                "Authentication required. Open T3 Code using the pairing URL.",
-              ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
-            }
-            yield* runStartupPhase("browser.open", maybeOpenBrowser(startupBrowserTarget));
           }
         }),
       );

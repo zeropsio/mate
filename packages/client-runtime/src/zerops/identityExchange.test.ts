@@ -1,3 +1,5 @@
+import { ConnectionBlockedError } from "../connection/model.ts";
+import * as Cause from "effect/Cause";
 import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -61,5 +63,29 @@ describe("exchangeZeropsContainerIdentity", () => {
     );
 
     expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+  it("carries a typed upgrade action instead of asking the UI to parse the message", async () => {
+    const result = await exchangeZeropsContainerIdentity(
+      {
+        zeropsToken: "token",
+        connect: async () =>
+          AsyncResult.failure(
+            Cause.fail(
+              new ConnectionBlockedError({
+                reason: "unsupported",
+                detail: "Upgrade needed",
+                serverVersion: "0.2.9",
+                minimumServerVersion: "0.3.0",
+              }),
+            ),
+          ),
+      },
+      CONTAINER_ORIGIN,
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      upgradeRequired: true,
+      serverVersion: "0.2.9",
+    });
   });
 });

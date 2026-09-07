@@ -1,3 +1,6 @@
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { accountActionsAllowed, captureAccountLifetime } from "../zerops/accountLifetime";
 import { RegistryContext } from "@effect/atom-react";
 import {
   type AtomCommand,
@@ -17,7 +20,16 @@ export function useAtomCommand<A, E, W>(
   const reportDefect = typeof options === "string" ? true : (options?.reportDefect ?? true);
 
   return useCallback(
-    (value: W) => runAtomCommand(registry, command, value, { label, reportFailure, reportDefect }),
+    async (value: W) => {
+      const alive = captureAccountLifetime();
+      if (!alive() || !accountActionsAllowed()) return AsyncResult.failure(Cause.interrupt(0));
+      const result = await runAtomCommand(registry, command, value, {
+        label,
+        reportFailure,
+        reportDefect,
+      });
+      return alive() ? result : AsyncResult.failure(Cause.interrupt(0));
+    },
     [command, label, registry, reportDefect, reportFailure],
   );
 }

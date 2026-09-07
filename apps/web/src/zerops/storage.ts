@@ -1,33 +1,40 @@
+import { accountLocalStorage } from "./accountLifetime";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 
-/**
- * `localStorage` behind the runtime's async storage contract, so the web and
- * mobile clients share one Zerops auth model. Every access is guarded: a
- * browser with site data blocked throws on `localStorage` itself, and a
- * signed-out UI is a better answer there than a blank screen.
- */
+const isSelection = (key: string) => key.startsWith("zerops-mate.zerops-selection.");
+const isSession = (key: string) => key.startsWith("zerops-mate.zerops-session.");
+
+/** Identity is shared across tabs. Each tab restores its own organization;
+ * the account's last selection is only the initial value for a new tab. */
 export const browserZeropsStorage: ZeropsStorageAdapter = {
-  get: (key) => {
+  async get(key) {
     try {
-      return Promise.resolve(window.localStorage.getItem(key));
+      if (isSelection(key))
+        return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key);
+      return (isSession(key) ? window.localStorage : accountLocalStorage).getItem(key);
     } catch {
-      return Promise.resolve(null);
+      return null;
     }
   },
-  set: (key, value) => {
+  async set(key, value) {
     try {
-      window.localStorage.setItem(key, value);
+      if (isSelection(key)) window.sessionStorage.setItem(key, value);
+      (isSession(key) || isSelection(key) ? window.localStorage : accountLocalStorage).setItem(
+        key,
+        value,
+      );
     } catch {
-      // Nothing to recover: the session simply does not survive a reload.
+      /* A storage policy can make this session memory-only. */
     }
-    return Promise.resolve();
   },
-  remove: (key) => {
+  async remove(key) {
     try {
-      window.localStorage.removeItem(key);
+      if (isSelection(key)) window.sessionStorage.removeItem(key);
+      (isSession(key) || isSelection(key) ? window.localStorage : accountLocalStorage).removeItem(
+        key,
+      );
     } catch {
-      // Same.
+      /* Best effort when site data is blocked. */
     }
-    return Promise.resolve();
   },
 };

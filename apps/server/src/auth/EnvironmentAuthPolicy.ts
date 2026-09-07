@@ -33,16 +33,11 @@ export const make = Effect.gen(function* () {
         : "loopback-browser";
 
   const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = isZerops
-    ? // The Zerops identity door comes first; the authenticated pairing-token
-      // path stays so a signed-in member can still pair a second device.
-      ["zerops-identity", "one-time-token"]
-    : policy === "desktop-managed-local"
-      ? ["desktop-bootstrap"]
-      : config.mode === "desktop" && policy === "remote-reachable"
-        ? ["desktop-bootstrap", "one-time-token"]
-        : ["one-time-token"];
+    ? ["zerops-identity"]
+    : [];
 
   const descriptor: ServerAuthDescriptor = {
+    accountLifecycleVersion: 1,
     policy,
     bootstrapMethods,
     // A cookie is the one credential a browser attaches to a cross-origin
@@ -50,9 +45,7 @@ export const make = Effect.gen(function* () {
     // the public internet, so it issues none: the hosted client is bearer or
     // DPoP only, and CSRF stops being a category of bug rather than a thing to
     // defend against.
-    sessionMethods: isZerops
-      ? ["bearer-access-token", "dpop-access-token"]
-      : ["browser-session-cookie", "bearer-access-token", "dpop-access-token"],
+    sessionMethods: ["bearer-access-token", "dpop-access-token"],
     sessionCookieName: resolveSessionCookieName({
       mode: config.mode,
       port: config.port,

@@ -1,3 +1,8 @@
+import {
+  openAccountLifetime,
+  closeAccountLifetime,
+  accountStorageKey,
+} from "./zerops/accountLifetime";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -244,9 +249,11 @@ describe("uiStateStore persistence", () => {
     localStorageStub = createLocalStorageStub();
     vi.stubGlobal("window", { localStorage: localStorageStub });
     vi.stubGlobal("localStorage", localStorageStub);
+    openAccountLifetime("ui-state-test");
   });
 
   afterEach(() => {
+    closeAccountLifetime();
     vi.unstubAllGlobals();
   });
 
@@ -270,7 +277,7 @@ describe("uiStateStore persistence", () => {
     persistState(state);
 
     const persisted = JSON.parse(
-      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+      localStorageStub.getItem(accountStorageKey(PERSISTED_STATE_KEY)!) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
       projectExpandedById: {
@@ -301,7 +308,7 @@ describe("uiStateStore persistence", () => {
     persistState(migrated);
 
     const persisted = JSON.parse(
-      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+      localStorageStub.getItem(accountStorageKey(PERSISTED_STATE_KEY)!) ?? "{}",
     ) as PersistedUiState;
     expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
   });

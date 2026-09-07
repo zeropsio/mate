@@ -1,3 +1,8 @@
+import {
+  accountLocalStorage,
+  onAccountLifetimeClose,
+  onAccountLifetimeOpen,
+} from "./zerops/accountLifetime";
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
@@ -132,10 +137,10 @@ function readPersistedState(): UiState {
     return initialState;
   }
   try {
-    const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
+    const raw = accountLocalStorage.getItem(PERSISTED_STATE_KEY);
     if (!raw) {
       for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        const legacyRaw = window.localStorage.getItem(legacyKey);
+        const legacyRaw = accountLocalStorage.getItem(legacyKey);
         if (!legacyRaw) {
           continue;
         }
@@ -187,7 +192,7 @@ export function persistState(state: UiState): void {
         ([key]) => key !== LEGACY_PROJECT_EXPANSION_DEFAULT_KEY,
       ),
     );
-    window.localStorage.setItem(
+    accountLocalStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
         projectExpandedById,
@@ -200,7 +205,7 @@ export function persistState(state: UiState): void {
     if (!legacyKeysCleanedUp) {
       legacyKeysCleanedUp = true;
       for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        window.localStorage.removeItem(legacyKey);
+        accountLocalStorage.removeItem(legacyKey);
       }
     }
   } catch {
@@ -386,7 +391,21 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     ),
 }));
 
-useUiStateStore.subscribe((state) => debouncedPersistState.maybeExecute(state));
+let changingAccount = false;
+useUiStateStore.subscribe((state) => {
+  if (!changingAccount) debouncedPersistState.maybeExecute(state);
+});
+onAccountLifetimeClose(() => {
+  debouncedPersistState.flush();
+  changingAccount = true;
+  useUiStateStore.setState(initialState);
+  changingAccount = false;
+});
+onAccountLifetimeOpen(() => {
+  changingAccount = true;
+  useUiStateStore.setState(readPersistedState());
+  changingAccount = false;
+});
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("beforeunload", () => {

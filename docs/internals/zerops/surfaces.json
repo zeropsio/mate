@@ -4,7 +4,11 @@
     {
       "id": "zerops-session",
       "title": "Zerops session provider",
-      "components": ["apps/web/src/zerops/ZeropsSessionProvider.tsx"],
+      "components": [
+        "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+        "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx"
+      ],
       "entryPoints": [
         {
           "kind": "provider",
@@ -15,12 +19,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile only has zeropsToken connection plumbing; the Zerops session UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": ["@t3tools/client-runtime/zerops"],
       "reverseStates": [
         {
@@ -44,11 +48,13 @@
           "reverse": "none: Clearing consumed registration handoff state is intentionally one-way."
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents the browser-owned Zerops account session yet."
-      },
-      "tests": ["apps/web/src/AppRoot.test.tsx"],
-      "untested": "AppRoot.test.tsx pins the provider mount, but the session provider behavior has no focused test.",
+      "docs": "docs/user/zerops-account.md",
+      "tests": [
+        "apps/web/src/AppRoot.test.tsx",
+        "apps/web/src/zerops/accountLifetime.test.ts",
+        "apps/web/src/zerops/draftStorage.test.ts"
+      ],
+      "untested": "Provider races are covered by lifetime/API tests and the maintainer\u2019s two-tab acceptance pass; there is no React-rendered provider race suite.",
       "captures": []
     },
     {
@@ -76,12 +82,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops right panel yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": ["claude-code", "codex"],
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
         "@t3tools/client-runtime/zerops/platformWatch",
@@ -133,8 +139,8 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops right panel yet; the Browser surface is planned alongside S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
@@ -180,12 +186,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops service map yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
         "@t3tools/client-runtime/zerops/platformWatch",
@@ -230,12 +236,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops quick actions yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
         "@t3tools/client-runtime/zerops/platformWatch"
@@ -281,12 +287,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no agent authorization card yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": ["claude-code", "codex"],
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": [
         "zerops.agentLogin.start",
         "zerops.agentLogin.cancel",
@@ -349,12 +355,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops lifecycle strip yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": ["subscribeZeropsLifecycle"],
       "reverseStates": [
         {
@@ -400,12 +406,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops tool result cards yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": ["projection:zeropsResult"],
       "reverseStates": [
         {
@@ -456,8 +462,8 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile primitives are owned by the coordinated W4-F5b-MOB slice."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
@@ -492,64 +498,38 @@
       "entryPoints": [
         {
           "kind": "route",
-          "value": "/"
-        },
-        {
-          "kind": "escape",
-          "value": "Connect a backend manually"
+          "value": "Every unauthenticated product URL; /zerops/authorized only consumes the handover"
         }
       ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no hosted Zerops landing yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": ["@t3tools/client-runtime/zerops"],
       "reverseStates": [
         {
-          "action": "Switch to registration",
-          "reverse": "Switch to sign in"
+          "action": "Open Zerops sign-in or registration",
+          "reverse": "none: Return or cancel in the Zerops account application"
         },
         {
-          "action": "Switch to sign in",
-          "reverse": "Switch to registration"
-        },
-        {
-          "action": "Sign in",
-          "reverse": "none: Successful sign-in leaves the landing; sign-out lives in Zerops settings."
-        },
-        {
-          "action": "Register",
-          "reverse": "none: Successful registration leaves the landing; sign-out lives in Zerops settings."
-        },
-        {
-          "action": "Verify TOTP",
-          "reverse": "none: Verification completes the pending sign-in and has no separate reverse action."
-        },
-        {
-          "action": "Open Zerops registration",
-          "reverse": "none: The action opens the external Zerops registration page."
-        },
-        {
-          "action": "Open manual connection",
-          "reverse": "none: The landing has no in-component way back after selecting the manual fallback."
+          "action": "Retry verification",
+          "reverse": "none: Sign out"
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents the hosted Zerops landing yet."
-      },
+      "docs": "docs/user/zerops-account.md",
       "tests": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.test.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.test.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHostedFrame.test.tsx",
-        "apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx"
+        "apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedLanding.test.tsx"
       ],
-      "untested": "ZeropsLandingShell has focused markup tests, but ZeropsHostedLanding orchestration has no component test.",
       "captures": []
     },
     {
@@ -612,12 +592,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops project picker or provisioning UI yet; it is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops",
         "apps/web/src/connection/onboarding:connectZeropsIdentity"
@@ -662,6 +642,22 @@
         {
           "action": "Check it in the Zerops GUI",
           "reverse": "none: The action opens the external Zerops GUI."
+        },
+        {
+          "action": "Restart and check for updates",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Check connection",
+          "reverse": "none: Readiness and identity are checked again; a restart is never automatically resubmitted."
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Restart and check for updates"
+        },
+        {
+          "action": "Restart container",
+          "reverse": "none: A confirmed container restart cannot be undone. Leaving the target or signing out stops the subsequent compatibility checks."
         }
       ],
       "docs": {
@@ -683,7 +679,9 @@
         "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
-        "apps/web/src/zerops/turnstile.test.ts"
+        "apps/web/src/zerops/turnstile.test.ts",
+        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
     },
@@ -717,8 +715,8 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile's AddProjectScreen still means a workspace, not a Zerops project; the wizard is planned alongside the rest of the Zerops mobile UI."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
@@ -751,6 +749,22 @@
         {
           "action": "Enable",
           "reverse": "none: Enable restarts the service and the wizard exposes no inverse operation."
+        },
+        {
+          "action": "Restart and check for updates",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Check connection",
+          "reverse": "none: Readiness and identity are checked again; a restart is never automatically resubmitted."
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Restart and check for updates"
+        },
+        {
+          "action": "Restart container",
+          "reverse": "none: A confirmed container restart cannot be undone. Leaving the target or signing out stops the subsequent compatibility checks."
         }
       ],
       "docs": {
@@ -759,7 +773,9 @@
       "tests": [
         "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewProjectAgents.test.tsx",
-        "packages/client-runtime/src/zerops/newProject.test.ts"
+        "packages/client-runtime/src/zerops/newProject.test.ts",
+        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
     },
@@ -789,12 +805,12 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops settings section yet; the Zerops mobile UI is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
+      "connectionModes": ["zerops-door"],
       "contracts": ["@t3tools/client-runtime/zerops"],
       "reverseStates": [
         {
@@ -831,13 +847,13 @@
         "web": "yes",
         "desktop": "yes",
         "mobile": {
-          "status": "planned",
-          "reason": "Mobile has no Zerops first-prompt composition yet; that flow is planned for S5-3."
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
         }
       },
       "providers": "n/a",
-      "connectionModes": ["zerops-door", "manual-link"],
-      "connectionModeNote": "The Zerops door composes the opening prompt once per environment; a manual link never composes it.",
+      "connectionModes": ["zerops-door"],
+      "connectionModeNote": "The Zerops door composes the opening prompt only on explicit onboarding. Account restoration never sends a prompt.",
       "contracts": [
         "local-storage:zerops-mate.first-prompt.v1",
         "local-storage:zerops-mate.zerops-environments.v1"
@@ -856,9 +872,8 @@
     },
     {
       "id": "manual-link",
-      "title": "Manual pairing link",
+      "title": "Retained inactive native connection source",
       "components": [
-        "apps/web/src/components/auth/PairingRouteSurface.tsx",
         "apps/web/src/hostedPairing.ts",
         "apps/web/src/routes/_chat.index.tsx",
         "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
@@ -868,61 +883,35 @@
       "entryPoints": [
         {
           "kind": "route",
-          "value": "/pair"
-        },
-        {
-          "kind": "route",
-          "value": "/pair?token="
-        },
-        {
-          "kind": "route",
-          "value": "mobile connections/new"
-        },
-        {
-          "kind": "escape",
-          "value": "Zerops landing manual-connect fallback"
+          "value": "/pair: retired bookmark redirects to Zerops sign-in without exchanging a credential"
         }
       ],
       "clients": {
         "web": "yes",
         "desktop": "yes",
-        "mobile": "yes"
+        "mobile": {
+          "status": "n/a",
+          "reason": "Retained source is unreachable from the dormant native entry."
+        }
       },
       "providers": "n/a",
       "connectionModes": ["manual-link"],
       "contracts": [
-        "apps/web/src/connection/onboarding:connectPairing",
-        "apps/mobile/src/connection/onboarding:connectPairingUrl",
-        "auth.bootstrapMethods"
+        "Retained native source only; no public pairing endpoint or native product release"
       ],
       "reverseStates": [
         {
-          "action": "Continue",
-          "reverse": "none: A successful pairing leaves the connection surface; disconnect is managed from the connected environment."
-        },
-        {
-          "action": "Try again",
-          "reverse": "none: Retrying repeats a failed hosted pairing attempt and creates no reversible state of its own."
-        },
-        {
-          "action": "Scan QR code",
-          "reverse": "Close scanner"
-        },
-        {
-          "action": "Close scanner",
-          "reverse": "Scan QR code"
+          "action": "Open a retired pairing bookmark",
+          "reverse": "none: Its credential is discarded and the account entry is shown."
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents manual pairing links yet."
-      },
+      "docs": "docs/user/zerops-account.md",
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
-        "apps/web/src/components/auth/PairingRouteSurface.test.tsx",
         "apps/web/src/routes/-chatIndexTitlebar.test.ts",
         "apps/mobile/src/features/connection/pairing.test.ts"
       ],
-      "untested": "PairingRouteSurface and ConnectionsNewRouteScreen have no focused component tests; the declared tests cover pairing logic and the web manual empty state only.",
+      "untested": "Native pairing source is retained but is not reachable from the dormant native entry. Released web has no manual connection flow.",
       "captures": []
     }
   ]

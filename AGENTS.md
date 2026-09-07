@@ -33,8 +33,8 @@ repainting effects, especially on high-refresh displays.
 ### 3. Account-backed remote access
 
 Every released web client reaches the server on the container's public origin through the
-Zerops-identity door. A standalone server run outside Zerops can use one-time pairing. A Zerops
-container never bootstraps a browser session from a pairing credential.
+Zerops-identity door. Manual pairing is removed. Local client development uses the same Zerops account entry; server
+integration uses a disposable Zerops container. Internal identity grants are not an onboarding flow.
 
 ### 4. Multi-surface codebase
 
@@ -97,8 +97,8 @@ Before calling frontend work done, decide which entries apply:
 - **Contracts.** Anything crossing the wire is typed in `packages/contracts`. Schema changes must
   be followed through server, web, mobile, and desktop.
 - **Reverse states.** If you add a way in, add the way out and the way to see it.
-- **Connection modes.** The Zerops identity door and standalone one-time pairing have different
-  rules. Multi-device and multi-project cases are real.
+- **Connection modes.** Zerops identity is the only product door. Multi-device and multi-project
+  cases are real; internal grants must not become manual pairing credentials.
 - **Docs.** User-visible behavior belongs in `docs/user/`; architecture and contributor changes in
   `docs/internals/`; runbooks in `docs/operations/`; new vocabulary in
   `docs/internals/glossary.md`.
@@ -111,9 +111,7 @@ Before calling frontend work done, decide which entries apply:
   `.t3`, which deliberately outranks an ambient `T3CODE_HOME`. An explicit `--home-dir` still wins.
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from
   the `[dev-runner]` line because occupied ports shift.
-- Local dev web requires pairing. Hand over the pairing URL, not the bare origin. If its token was
-  consumed, mint a fresh one with `node apps/server/src/bin.ts pair`; the startup URL carries admin
-  scopes needed for Connections management while `pair` carries standard scopes.
+- Local dev web uses Zerops account sign-in at the printed localhost origin. There is no `pair` command.
 - Stop only what you started, by the PID you tracked.
 
 ## Test data
@@ -157,8 +155,8 @@ server at live state:
 
 - Do not commit implementation plans, research notes, or scratch files. `.plans/` is gitignored only
   as a safety net for legacy tooling.
-- Track active maintainer work in its GitHub issue or project item. External proposals follow
-  `CONTRIBUTING.md` and belong in Ideas discussions.
+- Track active maintainer work in a local, gitignored brief and status file. Do not create GitHub
+  issues for this workflow. External proposals follow `CONTRIBUTING.md`.
 - Put durable architecture, constraints, and decisions in `docs/internals/`.
 - A merged PR is the implementation record. Close or update its tracking item when the work lands.
 

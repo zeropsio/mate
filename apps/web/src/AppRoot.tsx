@@ -1,3 +1,9 @@
+import { useEffect } from "react";
+import { ZeropsEnvironmentLifetime } from "./zerops/ZeropsEnvironmentLifetime";
+import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
+import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
+import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
+import { appBasePath } from "./basePath";
 import { RouterProvider } from "@tanstack/react-router";
 
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
@@ -15,27 +21,38 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
   return <QuitHoldOverlay />;
 }
 
-function SignedInProductHosts() {
-  const { status } = useZeropsSession();
-  return <ZeropsProductHosts status={status} />;
+function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
+  const { status, user } = useZeropsSession();
+  useEffect(() => {
+    if (window.location.pathname.replace(/\/$/, "") === `${appBasePath()}/pair`) {
+      window.history.replaceState(null, "", `${appBasePath()}/zerops`);
+    }
+  }, []);
+  const callback = window.location.pathname === `${appBasePath()}${ZEROPS_HANDOVER_CALLBACK_PATH}`;
+  if (status !== "signed-in" && !callback) {
+    return <ZeropsHostedLanding />;
+  }
+  return (
+    <AppAtomRegistryProvider key={user?.id ?? "handover"}>
+      {callback ? (
+        <RouterProvider router={router} />
+      ) : (
+        <ZeropsInventoryProvider>
+          <ZeropsEnvironmentLifetime>
+            <RouterProvider router={router} />
+            <ZeropsProductHosts status={status} />
+          </ZeropsEnvironmentLifetime>
+        </ZeropsInventoryProvider>
+      )}
+    </AppAtomRegistryProvider>
+  );
 }
 
-/**
- * Owns renderer-wide providers. The Electron browser host intentionally sits
- * outside the router so its webviews survive route transitions, but it must
- * share the same atom registry as routed UI.
- *
- * The Zerops session is the outer product boundary. The router stays mounted
- * so the bare handover route can consume its fragment, but renderer-wide
- * product hosts do not mount until the account is signed in.
- */
+/** No route loader or connection runtime exists before account verification. */
 export function AppRoot({ router }: { readonly router: AppRouter }) {
   return (
-    <AppAtomRegistryProvider>
-      <ZeropsSessionProvider>
-        <RouterProvider router={router} />
-        <SignedInProductHosts />
-      </ZeropsSessionProvider>
-    </AppAtomRegistryProvider>
+    <ZeropsSessionProvider>
+      <AccountProductBoundary router={router} />
+    </ZeropsSessionProvider>
   );
 }

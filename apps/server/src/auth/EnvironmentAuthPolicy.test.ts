@@ -35,7 +35,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("desktop-managed-local");
-      expect(descriptor.bootstrapMethods).toEqual(["desktop-bootstrap"]);
+      expect(descriptor.bootstrapMethods).toEqual([]);
       // Packaged desktop has no devUrl, but still needs the port scope: it
       // scans upward from 3773 for a free port and binds 127.0.0.1, so a second
       // instance shares this one's hostname on a different port.
@@ -72,7 +72,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("remote-reachable");
-      expect(descriptor.bootstrapMethods).toEqual(["desktop-bootstrap", "one-time-token"]);
+      expect(descriptor.bootstrapMethods).toEqual([]);
     }).pipe(
       Effect.provide(
         makeEnvironmentAuthPolicyLayer({
@@ -89,12 +89,8 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("loopback-browser");
-      expect(descriptor.bootstrapMethods).toEqual(["one-time-token"]);
-      expect(descriptor.sessionMethods).toEqual([
-        "browser-session-cookie",
-        "bearer-access-token",
-        "dpop-access-token",
-      ]);
+      expect(descriptor.bootstrapMethods).toEqual([]);
+      expect(descriptor.sessionMethods).toEqual(["bearer-access-token", "dpop-access-token"]);
       expect(descriptor.sessionCookieName).toMatch(/^t3_session_3773_[a-f0-9]{12}$/);
     }).pipe(
       Effect.provide(
@@ -113,7 +109,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("remote-reachable");
-      expect(descriptor.bootstrapMethods).toEqual(["one-time-token"]);
+      expect(descriptor.bootstrapMethods).toEqual([]);
       expect(descriptor.sessionCookieName).toBe("t3_session");
     }).pipe(
       Effect.provide(
@@ -170,7 +166,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       expect(descriptor.policy).toBe("remote-reachable");
       // The identity door first; the authenticated pairing-token path stays so
       // a signed-in member can still pair a second device.
-      expect(descriptor.bootstrapMethods).toEqual(["zerops-identity", "one-time-token"]);
+      expect(descriptor.bootstrapMethods).toEqual(["zerops-identity"]);
       // No cookie inside a Zerops project: the hosted client is bearer/DPoP
       // only, so nothing this server issues can ride a cross-origin request by
       // itself.
@@ -197,7 +193,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("loopback-browser");
-      expect(descriptor.bootstrapMethods).toEqual(["one-time-token"]);
+      expect(descriptor.bootstrapMethods).toEqual([]);
     }).pipe(
       Effect.provide(
         makeEnvironmentAuthPolicyLayer({

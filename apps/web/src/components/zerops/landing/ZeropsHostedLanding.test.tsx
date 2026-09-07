@@ -35,31 +35,29 @@ vi.mock("../ZeropsProjectsPage", () => ({
 
 import { ZeropsHostedLanding } from "./ZeropsHostedLanding";
 
-function renderLanding(exclusive = false): string {
-  return renderToStaticMarkup(
-    <ZeropsHostedLanding exclusive={exclusive} manualFallback={<div>Manual connect</div>} />,
-  );
+function renderLanding(): string {
+  return renderToStaticMarkup(<ZeropsHostedLanding />);
 }
 
 describe("ZeropsHostedLanding entry action", () => {
-  it("keeps the hand-over primary and password form collapsed, on every client", () => {
+  it("offers account handover without a second authentication implementation", () => {
     const markup = renderLanding();
 
     expect(markup).toContain("Sign in to Mate");
     expect(markup).not.toContain("Sign in to Zerops");
-    expect(markup).toContain("Pick an environment and start talking to the agent inside it.");
+    expect(markup).toContain("Sign in with your Zerops account to open your projects.");
     expect(markup).toContain("Continue with your Zerops account");
     expect(markup).toContain("Create one on Zerops");
     expect(markup).toContain("Mate by Zerops");
     // No bar above the composition: the mark is the brand here.
     expect(markup).not.toContain("<header");
-    expect(markup).toContain("Sign in with a password instead");
+    expect(markup).not.toContain("Sign in with a password instead");
     expect(markup).not.toContain('name="email"');
     expect(markup).not.toContain('name="password"');
   });
 
   it("shows only Zerops account entry when used as the outer auth gate", () => {
-    const markup = renderLanding(true);
+    const markup = renderLanding();
 
     expect(markup).toContain("Continue with your Zerops account");
     expect(markup).not.toContain("Connect a backend manually");
@@ -72,9 +70,9 @@ describe("ZeropsHostedLanding while the session is checked", () => {
     session.status = "loading";
     try {
       const markup = renderLanding();
-      expect(markup).toContain('data-zerops-session-check="true"');
+
       expect(markup).toContain("data-mate-mark");
-      expect(markup).toContain("Checking your Zerops session…");
+      expect(markup).toContain("Checking your Zerops account…");
       expect(markup).not.toContain("<h1");
       expect(markup).not.toContain(">Zerops Mate<");
       expect(markup).not.toContain("Continue with your Zerops account");

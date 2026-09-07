@@ -1,3 +1,4 @@
+import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
  * candidate to connect to or wait on, and a way to `/zerops/new` (also where
@@ -16,10 +17,6 @@ import { RotateCcwIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  newestProvisioningCandidate,
-  shouldAutoEnterProvisioning,
-} from "@t3tools/client-runtime/zerops/autoEnterProvisioning";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -244,6 +241,8 @@ export function useZeropsProjectConnection(orgId: string | null): {
   readonly creatingIn: string | null;
   readonly setCreatingIn: (clientId: string | null) => void;
   readonly provisioning: ReturnType<typeof useZeropsProvisioning>;
+  readonly upgradeRecovery: UpgradeRecovery | null;
+  readonly serverVersion: string | undefined;
   readonly connectError: string | null;
   readonly setConnectError: (error: string | null) => void;
   readonly connectingOrigin: string | null;
@@ -259,6 +258,8 @@ export function useZeropsProjectConnection(orgId: string | null): {
   const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [serverVersion, setServerVersion] = useState<string | undefined>();
+  const [upgradeOrigin, setUpgradeOrigin] = useState<string | null>(null);
   const [connectingOrigin, setConnectingOrigin] = useState<string | null>(null);
   // One connect per settled provisioning wait, however many renders that takes.
   const connectingRef = useRef<string | null>(null);
@@ -266,11 +267,15 @@ export function useZeropsProjectConnection(orgId: string | null): {
   const connectContainer = useCallback(
     async (containerOrigin: string) => {
       setConnectError(null);
+      setUpgradeOrigin(null);
+      setServerVersion(undefined);
       setConnectingOrigin(containerOrigin);
       try {
         const result = await exchangeZeropsIdentity(containerOrigin);
         if (result._tag === "Failure") {
           setConnectError(result.error);
+          setServerVersion(result.serverVersion);
+          setUpgradeOrigin(result.upgradeRequired ? containerOrigin : null);
           return;
         }
         // The environment is real now. When the lists last reloaded — right
@@ -310,6 +315,11 @@ export function useZeropsProjectConnection(orgId: string | null): {
     });
   }, [connectContainer, connectError, provisioning.retry, readyOrigin]);
 
+  const upgradeRecovery = useZeropsUpgradeRestart(
+    connectError ? upgradeOrigin : null,
+    retryProjectConnection,
+  );
+
   useEffect(() => {
     if (!readyOrigin || connectingRef.current === readyOrigin) return;
     connectingRef.current = readyOrigin;
@@ -325,6 +335,8 @@ export function useZeropsProjectConnection(orgId: string | null): {
     setCreatingIn,
     provisioning,
     connectError,
+    upgradeRecovery,
+    serverVersion,
     setConnectError,
     connectingOrigin,
     retryProjectConnection,
@@ -349,12 +361,14 @@ function ZeropsProjectsContent() {
     status,
   } = useZeropsSession();
   const { candidates, isLoading, error, refresh } = useZeropsCandidates();
-  const candidateHealth = useZeropsCandidateHealth(candidates);
+  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
   const {
     creatingIn,
     setCreatingIn,
     provisioning,
     connectError,
+    upgradeRecovery,
+    serverVersion,
     setConnectError,
     connectingOrigin,
     retryProjectConnection,
@@ -920,8 +934,8 @@ function ZeropsProjectsContent() {
   }, [authGate, candidates, client.session?.accessToken, connectContainer, status]);
 
   // Enters the provisioning wait without the user clicking anything, for the
-  // two-hop registration flow: sign in here with nothing connected yet, but a
-  // pool-claimed project already on its way in.
+  // two-hop registration flow only. A returning account never infers a new
+  // setup flow from an unrelated provisioning project in the inventory.
   useEffect(() => {
     if (autoEnteredRef.current || creatingIn) return;
 
@@ -937,17 +951,7 @@ function ZeropsProjectsContent() {
       }
       return;
     }
-
-    // Otherwise, wait for the first candidate load and fall back to reading
-    // it off the candidate list — the plain sign-in path.
-    if (isLoading) return;
-    if (!shouldAutoEnterProvisioning(candidates)) return;
-    const target = newestProvisioningCandidate(candidates);
-    if (!target) return;
-    autoEnteredRef.current = true;
-    setCreatingIn(target.project.clientId ?? null);
-    provisioning.start({ zcpClaimed: true });
-  }, [candidates, clearLastRegistration, creatingIn, isLoading, lastRegistration, provisioning]);
+  }, [clearLastRegistration, creatingIn, lastRegistration, provisioning]);
 
   if (status === "loading") {
     return (
@@ -985,6 +989,8 @@ function ZeropsProjectsContent() {
           error={connectError ?? provisioning.error}
           onRetry={retryProjectConnection}
           onEnable={provisioning.enable}
+          upgradeRecovery={upgradeRecovery}
+          serverVersion={serverVersion}
         />
         <Button
           size="sm"
@@ -1135,6 +1141,7 @@ function ZeropsProjectsContent() {
               busy={busy}
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}
+              serverVersion={serverVersions.get(candidate.key)}
               menu={renderEnvironmentMenu(candidate, tags, true)}
               name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
               onSelect={select}

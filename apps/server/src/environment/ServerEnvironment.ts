@@ -78,6 +78,7 @@ export const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
+    accountLifecycleVersion: 1,
     repositoryIdentity: true,
     connectionProbe: true,
     attachmentUploads: true,

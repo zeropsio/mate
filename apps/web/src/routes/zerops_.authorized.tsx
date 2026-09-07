@@ -1,3 +1,4 @@
+import { accountReturnPath } from "../zerops/navigationStorage";
 /**
  * Where `app.zerops.io` sends the browser back after the user signed in there.
  *
@@ -92,7 +93,7 @@ function ZeropsHandoverCallback() {
       clientId: outcome.clientId,
       zcpClaimed: outcome.zcpClaimed,
     })
-      .then(() => navigate({ to: "/zerops", replace: true }))
+      .then(() => window.location.replace(accountReturnPath()))
       .catch((cause: unknown) => {
         setState({ kind: "failed", message: zeropsErrorMessage(cause) });
       });

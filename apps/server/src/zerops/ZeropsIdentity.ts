@@ -5,8 +5,8 @@
  * Two reads against the public Zerops REST API, both with the caller's own
  * token and never with the container's:
  *
- * 1. `GET /project/{projectId}` - the membership check. The status code alone
- *    is three-way: `200` member, `403 insufficientPermissions` non-member,
+ * 1. `GET /project/{projectId}` - project visibility and role overrides. The status code
+ *    is three-way: `200` visible, `403 insufficientPermissions` non-member,
  *    `401 notAuthorized` bad token. A project id this account cannot see never
  *    blurs with one that does not exist: a wrong id answers `400
  *    projectNotFound` (measured 2026-08-28, `verified.md` S0.1).
@@ -25,7 +25,7 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
-/** The caller holds a valid token but is not a member of this project. */
+/** The caller holds a valid token but cannot operate this project. */
 export class ZeropsNotAMemberError extends Schema.TaggedErrorClass<ZeropsNotAMemberError>()(
   "ZeropsNotAMemberError",
   {},
@@ -63,12 +63,15 @@ export interface ZeropsMember {
   readonly userId: string;
   /** The organisation that owns the project. */
   readonly clientId: string;
-  /** `OWNER`, `MANAGER`, ... - absent when the caller has no org-level entry. */
-  readonly role: string | undefined;
+  /** Effective project role, including overrides that lower organization access. */
+  readonly role: "OWNER" | "ADMIN" | "BASIC_USER";
 }
 
 const ProjectResponse = Schema.Struct({
   clientId: Schema.String,
+  userRoles: Schema.optional(
+    Schema.Array(Schema.Struct({ clientUserId: Schema.String, roleCode: Schema.String })),
+  ),
 });
 
 const UserInfoResponse = Schema.Struct({
@@ -76,6 +79,7 @@ const UserInfoResponse = Schema.Struct({
   clientUserList: Schema.optional(
     Schema.Array(
       Schema.Struct({
+        id: Schema.optional(Schema.String),
         clientId: Schema.String,
         userId: Schema.optional(Schema.String),
         roleCode: Schema.optional(Schema.String),
@@ -153,6 +157,8 @@ export const verifyProjectMembership = Effect.fn("ZeropsIdentity.verifyProjectMe
       url: `${apiBaseUrl}/user/info`,
       token: input.token,
     });
+    if (userInfoResponse.status === 401) return yield* new ZeropsInvalidTokenError({});
+    if (userInfoResponse.status === 403) return yield* new ZeropsNotAMemberError({});
     if (userInfoResponse.status !== 200) {
       return yield* unavailable(
         `The Zerops API answered ${String(userInfoResponse.status)} for the user read.`,
@@ -174,11 +180,25 @@ export const verifyProjectMembership = Effect.fn("ZeropsIdentity.verifyProjectMe
     if (userId === undefined || userId.length === 0) {
       return yield* unavailable("The Zerops user read carried no user id.");
     }
+    if (!membership) return yield* new ZeropsNotAMemberError({});
+    if (project.userRoles?.length && !membership.id) {
+      return yield* unavailable(
+        "The Zerops membership carried no id for resolving project overrides.",
+      );
+    }
+    // A project override can lower organization permissions as well as grant
+    // them. Visibility alone does not authorize an agent or terminal.
+    const role =
+      project.userRoles?.find((entry) => entry.clientUserId === membership.id)?.roleCode ??
+      membership.roleCode;
+    if (role !== "OWNER" && role !== "ADMIN" && role !== "BASIC_USER") {
+      return yield* new ZeropsNotAMemberError({});
+    }
 
     return {
       userId,
       clientId: project.clientId,
-      role: membership?.roleCode,
+      role,
     } satisfies ZeropsMember;
   },
 );

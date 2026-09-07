@@ -90,29 +90,9 @@ export async function installEnvironmentHttpTest(scenario: EnvironmentHttpTestSc
                 return yield* scenario.session?.() ?? unexpectedEndpoint("auth.session");
               }),
             )
-            .handle(
-              "browserSession",
-              Effect.fn("test.environment.auth.browserSession")(function* ({ payload }) {
-                calls.browserSession.push(payload);
-                return yield* (
-                  scenario.browserSession?.(payload) ?? unexpectedEndpoint("auth.browserSession")
-                );
-              }),
-            )
+            .handle("logout", () => unexpectedEndpoint("auth.logout"))
             .handle("token", () => unexpectedEndpoint("auth.token"))
             .handle("webSocketTicket", () => unexpectedEndpoint("auth.webSocketTicket"))
-            .handle(
-              "pairingCredential",
-              Effect.fn("test.environment.auth.pairingCredential")(function* ({ payload }) {
-                calls.pairingCredential.push(payload);
-                return yield* (
-                  scenario.pairingCredential?.(payload) ??
-                    unexpectedEndpoint("auth.pairingCredential")
-                );
-              }),
-            )
-            .handle("pairingLinks", () => unexpectedEndpoint("auth.pairingLinks"))
-            .handle("revokePairingLink", () => unexpectedEndpoint("auth.revokePairingLink"))
             .handle("clients", () => unexpectedEndpoint("auth.clients"))
             .handle("revokeClient", () => unexpectedEndpoint("auth.revokeClient"))
             .handle("revokeOtherClients", () => unexpectedEndpoint("auth.revokeOtherClients")),

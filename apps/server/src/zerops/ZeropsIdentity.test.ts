@@ -61,6 +61,45 @@ const memberRoute = (url: string) =>
       : json({ message: "unexpected route" }, 500);
 
 describe("verifyProjectMembership", () => {
+  for (const [orgRole, override, allowed] of [
+    ["OWNER", undefined, true],
+    ["ADMIN", undefined, true],
+    ["BASIC_USER", undefined, true],
+    ["READ_ONLY", undefined, false],
+    ["NO_ACCESS", "BASIC_USER", true],
+    ["OWNER", "READ_ONLY", false],
+    ["ADMIN", "NO_ACCESS", false],
+    ["OWNER", "UNKNOWN", false],
+    ["UNKNOWN", undefined, false],
+  ] as const) {
+    it.effect(`AL-10 ${orgRole} with project override ${override} may operate: ${allowed}`, () => {
+      const { layer } = stub((url) =>
+        url.endsWith("/user/info")
+          ? json({
+              id: USER_ID,
+              clientUserList: [
+                { id: "cu-1", clientId: CLIENT_ID, userId: USER_ID, roleCode: orgRole },
+              ],
+            })
+          : json({
+              id: PROJECT_ID,
+              clientId: CLIENT_ID,
+              userRoles: override ? [{ clientUserId: "cu-1", roleCode: override }] : [],
+            }),
+      );
+      const result = verifyProjectMembership({ environment, token: TOKEN });
+      return Effect.gen(function* () {
+        if (allowed) {
+          const member = yield* result;
+          assert.strictEqual(member.role, override ?? orgRole);
+        } else {
+          const error = yield* Effect.flip(result);
+          assert.strictEqual(error._tag, "ZeropsNotAMemberError");
+        }
+      }).pipe(Effect.provide(layer));
+    });
+  }
+
   it.effect("returns the Zerops user id and the role for a member (200)", () => {
     const { layer, seen } = stub(memberRoute);
     return verifyProjectMembership({ environment, token: TOKEN }).pipe(
@@ -85,7 +124,7 @@ describe("verifyProjectMembership", () => {
     );
   });
 
-  it.effect("matches the role by the project's clientId, never 'has any org'", () => {
+  it.effect("AL-10 refuses membership in an unrelated organization", () => {
     // The caller sits in two orgs; only the entry whose clientId equals the
     // project's may decide the role (verified.md S0.1).
     const { layer } = stub((url) =>
@@ -99,11 +138,9 @@ describe("verifyProjectMembership", () => {
         : memberRoute(url),
     );
     return verifyProjectMembership({ environment, token: TOKEN }).pipe(
-      Effect.tap((member) =>
-        Effect.sync(() => {
-          assert.strictEqual(member.userId, USER_ID);
-          assert.strictEqual(member.role, undefined);
-        }),
+      Effect.flip,
+      Effect.tap((error) =>
+        Effect.sync(() => assert.strictEqual(error._tag, "ZeropsNotAMemberError")),
       ),
       Effect.provide(layer),
     );

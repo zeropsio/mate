@@ -20,7 +20,7 @@
     "kind": "Literal",
     "fingerprint": "\"Pairing...\"",
     "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
+    "reason": "legacy pairing copy \u2014 reworded by the door slice",
     "expires": "F6"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "JSXText",
     "fingerprint": "Pairing code",
     "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
+    "reason": "legacy pairing copy \u2014 reworded by the door slice",
     "expires": "F6"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "Literal",
     "fingerprint": "\"Scanned QR code did not contain a pairing URL.\"",
     "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
+    "reason": "legacy pairing copy \u2014 reworded by the door slice",
     "expires": "F6"
   },
   {
@@ -296,126 +296,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Desktop-managed pairing and one-time pairing tokens are both accepted for this environment.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Enter a pairing token to start a session with this environment.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing backend\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing failed\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing token\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing with this environment\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing...\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing...\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Paste a one-time token or pairing secret\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This environment accepts one-time pairing tokens. Pairing links can open this page directly, or you can paste the token here.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This environment expects a trusted pairing credential before the app can connect.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This one-time pairing token was already submitted. Request a new pairing link.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This pairing link is missing its backend host or token.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Validating the pairing link and preparing your session.\"",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/auth/manualLinkCopy.ts",
-    "kind": "TemplateElement",
-    "fingerprint": "} If the backend accepted this one-time token, request a new pairing link before retrying.`",
-    "owner": "karel",
-    "reason": "manual one-time-link fallback copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ChatComposer.tsx",
     "kind": "JSXText",
     "fingerprint": "Preparing worktree...",
@@ -438,190 +318,6 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Clipboard copy is unavailable here. Open or manually copy this full pairing URL on the device you want to connect.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Could not copy pairing URL\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Could not copy pairing code\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Could not create pairing URL\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Could not revoke pairing link\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Enter a backend host and pairing code.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Hosted app pairing link\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Inspect pairing links and authorized clients.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Other paired clients will need a new pairing link before reconnecting.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing URL copied\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing code copied\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing code\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing link scopes\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing link — scan to open on another device\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing link — scan to open on another device\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing link\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Pairing links and client-session management require the access:write scope for this backend.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"Paste it into another client to finish pairing.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing.\"",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Create pairing link",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "No pairing links or client sessions.",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Pairing code",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ConnectionsSettings.tsx",
-    "kind": "JSXText",
-    "fingerprint": "Paste a full pairing URL here to fill both fields automatically.",
-    "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
-    "expires": "F6"
   },
   {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
@@ -668,7 +364,7 @@
     "kind": "Literal",
     "fingerprint": "\"Enter a pairing token to continue.\"",
     "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
+    "reason": "legacy pairing copy \u2014 reworded by the door slice",
     "expires": "F6"
   },
   {
@@ -676,7 +372,7 @@
     "kind": "Literal",
     "fingerprint": "\"Invalid pairing token. Check the token and try again.\"",
     "owner": "karel",
-    "reason": "legacy pairing copy — reworded by the door slice",
+    "reason": "legacy pairing copy \u2014 reworded by the door slice",
     "expires": "F6"
   },
   {

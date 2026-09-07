@@ -3,7 +3,19 @@ import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { resolveStorage } from "./lib/storage";
+import {
+  accountLocalStorage,
+  onAccountLifetimeOpen,
+  onAccountLifetimeClose,
+} from "./zerops/accountLifetime";
+
+let resettingAccount = false;
+const storage = {
+  ...accountLocalStorage,
+  setItem(key: string, value: string) {
+    if (!resettingAccount) accountLocalStorage.setItem(key, value);
+  },
+};
 
 export type DiffPanelSelection =
   | { kind: "branch"; baseRef: string | null }
@@ -126,9 +138,8 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
     {
       name: "t3code:diff-panel-state:v1",
       version: 1,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
+      skipHydration: true,
+      storage: createJSONStorage(() => storage),
       partialize: (state) => ({
         byThreadKey: state.byThreadKey,
         branchBaseRefByThreadKey: state.branchBaseRefByThreadKey,
@@ -149,3 +160,15 @@ export function selectThreadDiffPanelSelection(
     (hasWorkingTreeChanges ? DEFAULT_WORKING_TREE_SELECTION : DEFAULT_SELECTION)
   );
 }
+
+onAccountLifetimeOpen(() => {
+  void useDiffPanelStore.persist.rehydrate();
+});
+onAccountLifetimeClose(() => {
+  resettingAccount = true;
+  try {
+    useDiffPanelStore.setState(useDiffPanelStore.getInitialState(), true);
+  } finally {
+    resettingAccount = false;
+  }
+});

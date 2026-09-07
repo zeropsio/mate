@@ -16,21 +16,17 @@ export {
 } from "./context";
 
 export {
-  createServerPairingCredential,
   fetchSessionState,
   isPrimaryEnvironmentPairingCredentialRejectedError,
   isPrimaryEnvironmentRequestError,
   listServerClientSessions,
-  listServerPairingLinks,
   peekPairingTokenFromUrl,
   PrimaryEnvironmentPairingCredentialRejectedError,
   PrimaryEnvironmentRequestError,
   resolveInitialServerAuthGateState,
   revokeOtherServerClientSessions,
   revokeServerClientSession,
-  revokeServerPairingLink,
   stripPairingTokenFromUrl,
-  submitServerAuthCredential,
   takePairingTokenFromUrl,
   type ServerClientSessionRecord,
   type ServerPairingLinkRecord,

@@ -4,13 +4,10 @@ import {
   AuthAdministrativeScopes,
   AuthStandardClientScopes,
   type AuthAccessTokenResult,
-  type AuthBrowserSessionResult,
   type AuthClientMetadata,
   type AuthClientSession,
-  type AuthCreatePairingCredentialInput,
   type AuthEnvironmentScope,
   type AuthPairingLink,
-  type AuthPairingCredentialResult,
   type AuthSessionId,
   type AuthSessionState,
   type ServerAuthBootstrapMethod,
@@ -36,8 +33,6 @@ import * as SessionStore from "./SessionStore.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 import * as ServerConfig from "../config.ts";
 import { layerConfig as SqlitePersistenceLayer } from "../persistence/Layers/Sqlite.ts";
-import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
-import { withBasePath } from "@t3tools/shared/basePath";
 
 export const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
 export const INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT = "administrative-bootstrap";
@@ -427,16 +422,6 @@ export class EnvironmentAuth extends Context.Service<
     readonly getSessionState: (
       request: HttpServerRequest.HttpServerRequest,
     ) => Effect.Effect<AuthSessionState, ServerAuthInternalError>;
-    readonly createBrowserSession: (
-      credential: string,
-      requestMetadata: AuthClientMetadata,
-    ) => Effect.Effect<
-      {
-        readonly response: AuthBrowserSessionResult;
-        readonly sessionToken: string;
-      },
-      ServerAuthInvalidCredentialError | ServerAuthInternalError
-    >;
     readonly exchangeBootstrapCredentialForAccessToken: (
       credential: string,
       requestedScopes: ReadonlyArray<AuthEnvironmentScope> | undefined,
@@ -458,13 +443,6 @@ export class EnvironmentAuth extends Context.Service<
       readonly proofKeyThumbprint?: string;
       readonly purpose?: "startup";
     }) => Effect.Effect<IssuedPairingLink, ServerAuthInternalError>;
-    readonly issuePairingCredential: (
-      input?: AuthCreatePairingCredentialInput,
-    ) => Effect.Effect<AuthPairingCredentialResult, ServerAuthInternalError>;
-    readonly issueStartupPairingCredential: () => Effect.Effect<
-      AuthPairingCredentialResult,
-      ServerAuthInternalError
-    >;
     readonly listPairingLinks: (input?: {
       readonly excludeSubjects?: ReadonlyArray<string>;
     }) => Effect.Effect<ReadonlyArray<AuthPairingLink>, ServerAuthInternalError>;
@@ -510,16 +488,8 @@ export class EnvironmentAuth extends Context.Service<
     readonly issueWebSocketTicket: (
       session: Pick<AuthenticatedSession, "sessionId">,
     ) => Effect.Effect<AuthWebSocketTicketResult, ServerAuthInternalError>;
-    readonly issueStartupPairingUrl: (
-      baseUrl: string,
-    ) => Effect.Effect<string, ServerAuthInternalError>;
   }
 >()("t3/auth/EnvironmentAuth") {}
-
-type BootstrapExchangeResult = {
-  readonly response: AuthBrowserSessionResult;
-  readonly sessionToken: string;
-};
 
 const AUTHORIZATION_PREFIX = "Bearer ";
 const DPOP_AUTHORIZATION_PREFIX = "DPoP ";
@@ -586,7 +556,6 @@ export const make = Effect.gen(function* () {
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const crypto = yield* Crypto.Crypto;
   const descriptor = yield* policy.getDescriptor();
-  const acceptsSessionCookie = !isZeropsEnvironment(serverConfig);
 
   const authenticateToken = (
     token: string,
@@ -620,15 +589,21 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
     // Zerops never issues a browser session cookie, so it must not accept one
     // left on the public hostname by another deployment or older server.
-    const cookieToken = acceptsSessionCookie ? request.cookies[sessions.cookieName] : undefined;
     const bearerToken = parseBearerToken(request);
     const dpopToken = parseDpopToken(request);
-    const credential = cookieToken ?? bearerToken ?? dpopToken;
+    const credential = bearerToken ?? dpopToken;
     if (!credential) {
       return Effect.fail(new ServerAuthMissingCredentialError({}));
     }
     return authenticateToken(credential).pipe(
       Effect.flatMap((session) => {
+        if (!session.subject.startsWith("zerops-user:")) {
+          return Effect.fail(
+            new ServerAuthInvalidCredentialError({
+              diagnostic: "This session predates Zerops account access. Sign in again.",
+            }),
+          );
+        }
         if (session.proofKeyThumbprint) {
           if (!dpopToken || dpopToken !== credential) {
             return Effect.fail(
@@ -680,66 +655,23 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.getSessionState"),
     );
 
-  const createBrowserSession: EnvironmentAuth["Service"]["createBrowserSession"] = (
-    credential,
-    requestMetadata,
-  ) =>
-    bootstrapCredentials.consume(credential).pipe(
-      Effect.mapError(toBootstrapExchangeError),
-      Effect.flatMap((grant) =>
-        sessions
-          .issue({
-            method: "browser-session-cookie",
-            subject: grant.subject,
-            scopes: grant.scopes,
-            client: {
-              ...requestMetadata,
-              ...(grant.label ? { label: grant.label } : {}),
-            },
-          })
-          .pipe(
-            Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })),
-          ),
-      ),
-      Effect.map(
-        (session) =>
-          ({
-            response: {
-              authenticated: true,
-              scopes: session.scopes,
-              sessionMethod: session.method,
-              expiresAt: DateTime.toUtc(session.expiresAt),
-            } satisfies AuthBrowserSessionResult,
-            sessionToken: session.token,
-          }) satisfies BootstrapExchangeResult,
-      ),
-      Effect.withSpan("EnvironmentAuth.createBrowserSession"),
-    );
-
   const exchangeBootstrapCredentialForAccessToken: EnvironmentAuth["Service"]["exchangeBootstrapCredentialForAccessToken"] =
     (credential, requestedScopes, requestMetadata, input) =>
       bootstrapCredentials.consume(credential, input).pipe(
         Effect.mapError(toBootstrapExchangeError),
         Effect.flatMap((grant) =>
           Effect.gen(function* () {
+            if (grant.method !== "zerops-identity" || !serverConfig.zerops) {
+              return yield* new ServerAuthInvalidCredentialError({
+                diagnostic: "Sign in with Zerops to access Mate.",
+              });
+            }
             const grantedScopes = requestedScopes ?? grant.scopes;
             if (!grantedScopes.every((scope) => grant.scopes.includes(scope))) {
               return yield* new ServerAuthScopeNotGrantedError({});
             }
-            // A session minted at the Zerops identity door lives exactly one
-            // membership window: the server holds no Zerops token and the
-            // platform exposes no member list, so membership cannot be
-            // re-checked server-side. When the window lapses the next connect
-            // fails and the client re-mints with the Zerops token it already
-            // holds - and THAT re-mint is the real membership call. Removing a
-            // member therefore ends their access within one window.
-            //
-            // The window follows the door, not the environment. A second
-            // device paired with a one-time token holds no Zerops token and so
-            // has nothing to re-mint with; capping it here would log it out
-            // every window with no way back in.
-            const sessionTtl =
-              grant.method === "zerops-identity" ? serverConfig.zerops?.membershipTtl : undefined;
+            // Renewal repeats the project permission check at the identity door.
+            const sessionTtl = serverConfig.zerops.membershipTtl;
             return yield* sessions
               .issue({
                 method: input?.proofKeyThumbprint ? "dpop-access-token" : "bearer-access-token",
@@ -755,7 +687,7 @@ export const make = Effect.gen(function* () {
                     : {}),
                 // Desktop restarts forget the previous bearer token. Replace
                 // its session, including stale entries left by older versions.
-                replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
+                replaceActiveForSubjectAndMethod: false,
                 client: {
                   ...requestMetadata,
                   ...(grant.label ? { label: grant.label } : {}),
@@ -789,29 +721,6 @@ export const make = Effect.gen(function* () {
         ),
         Effect.withSpan("EnvironmentAuth.exchangeBootstrapCredentialForAccessToken"),
       );
-
-  const issuePairingCredentialForSubject = (input: {
-    readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
-    readonly subject: string;
-    readonly label?: string;
-    readonly purpose?: "startup";
-  }) =>
-    createPairingLink({
-      scopes: input.scopes,
-      subject: input.subject,
-      ...(input.label ? { label: input.label } : {}),
-      ...(input.purpose ? { purpose: input.purpose } : {}),
-    }).pipe(
-      Effect.map(
-        (issued) =>
-          ({
-            id: issued.id,
-            credential: issued.credential,
-            ...(issued.label ? { label: issued.label } : {}),
-            expiresAt: issued.expiresAt,
-          }) satisfies AuthPairingCredentialResult,
-      ),
-    );
 
   const createPairingLink: EnvironmentAuth["Service"]["createPairingLink"] = Effect.fn(
     "EnvironmentAuth.createPairingLink",
@@ -918,21 +827,6 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.revokeBySubject"),
     );
 
-  const issuePairingCredential: EnvironmentAuth["Service"]["issuePairingCredential"] = (input) =>
-    issuePairingCredentialForSubject({
-      scopes: input?.scopes ?? AuthStandardClientScopes,
-      subject: "one-time-token",
-      ...(input?.label ? { label: input.label } : {}),
-    }).pipe(Effect.withSpan("EnvironmentAuth.issuePairingCredential"));
-
-  const issueStartupPairingCredential: EnvironmentAuth["Service"]["issueStartupPairingCredential"] =
-    () =>
-      issuePairingCredentialForSubject({
-        scopes: AuthAdministrativeScopes,
-        subject: INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT,
-        purpose: "startup",
-      }).pipe(Effect.withSpan("EnvironmentAuth.issueStartupPairingCredential"));
-
   const listClientSessions: EnvironmentAuth["Service"]["listClientSessions"] = (currentSessionId) =>
     listSessions().pipe(
       Effect.map((clientSessions) =>
@@ -960,17 +854,6 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.revokeOtherClientSessions"),
     );
 
-  const issueStartupPairingUrl: EnvironmentAuth["Service"]["issueStartupPairingUrl"] = (baseUrl) =>
-    issueStartupPairingCredential().pipe(
-      Effect.map((issued) => {
-        const url = new URL(withBasePath(baseUrl, "/pair"));
-        url.searchParams.delete("token");
-        url.hash = new URLSearchParams([["token", issued.credential]]).toString();
-        return url.toString();
-      }),
-      Effect.withSpan("EnvironmentAuth.issueStartupPairingUrl"),
-    );
-
   const issueWebSocketTicket: EnvironmentAuth["Service"]["issueWebSocketTicket"] = (session) =>
     sessions.issueWebSocketToken(session.sessionId).pipe(
       Effect.mapError((cause) => new ServerAuthWebSocketTokenIssueError({ cause })),
@@ -996,14 +879,22 @@ export const make = Effect.gen(function* () {
         const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
         if (websocketTicket && websocketTicket.trim().length > 0) {
           return yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
-            Effect.map((session) => ({
-              sessionId: session.sessionId,
-              subject: session.subject,
-              method: session.method,
-              scopes: session.scopes,
-              ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
-            })),
             mapSessionVerificationErrors,
+            Effect.flatMap((session) =>
+              !session.subject.startsWith("zerops-user:")
+                ? Effect.fail(
+                    new ServerAuthInvalidCredentialError({
+                      diagnostic: "Sign in with Zerops to access Mate.",
+                    }),
+                  )
+                : Effect.succeed({
+                    sessionId: session.sessionId,
+                    subject: session.subject,
+                    method: session.method,
+                    scopes: session.scopes,
+                    ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
+                  }),
+            ),
           );
         }
       }
@@ -1015,11 +906,8 @@ export const make = Effect.gen(function* () {
     getDescriptor: () =>
       Effect.succeed(descriptor).pipe(Effect.withSpan("EnvironmentAuth.getDescriptor")),
     getSessionState,
-    createBrowserSession,
     exchangeBootstrapCredentialForAccessToken,
     createPairingLink,
-    issuePairingCredential,
-    issueStartupPairingCredential,
     listPairingLinks,
     revokePairingLink,
     issueSession,
@@ -1033,7 +921,6 @@ export const make = Effect.gen(function* () {
     authenticateHttpRequest,
     authenticateWebSocketUpgrade,
     issueWebSocketTicket,
-    issueStartupPairingUrl,
   });
 });
 

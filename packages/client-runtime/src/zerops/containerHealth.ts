@@ -101,11 +101,14 @@ function isZeropsMateDescriptor(body: Record<string, unknown>): boolean {
 export async function probeZeropsContainerHealth(
   origin: string,
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis),
+  onServerVersion?: (version: string) => void,
 ): Promise<ZeropsContainerHealth> {
   const base = origin.replace(/\/+$/, "");
 
   const descriptor = await read(`${zeropsMateBaseUrl(base)}/.well-known/t3/environment`, fetchImpl);
   if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
+    if (typeof descriptor.body.serverVersion === "string")
+      onServerVersion?.(descriptor.body.serverVersion);
     return "ready";
   }
 

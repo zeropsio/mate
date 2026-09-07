@@ -7,8 +7,8 @@ describe("resolveZeropsAccountGate", () => {
     ["loading", "/settings/general", "auth-only"],
     ["signed-out", "/projects/example/threads/example", "auth-only"],
     ["totp-required", "/usage", "auth-only"],
-    ["signed-out", "/pair", "pairing"],
-    ["loading", "/pair/", "pairing"],
+    ["signed-out", "/pair", "auth-only"],
+    ["loading", "/pair/", "auth-only"],
     ["signed-in", "/settings/general", "app"],
     ["loading", "/zerops/authorized", "handover"],
     ["signed-out", "/zerops/authorized/", "handover"],
@@ -17,27 +17,14 @@ describe("resolveZeropsAccountGate", () => {
     expect(resolveZeropsAccountGate({ pathname, status })).toBe(expected);
   });
 
-  it("sends a browser that has signed in before back to the login when its session expires", () => {
-    // A standalone pairing and an expired Zerops session both read
-    // `signed-out`; only `accountRequired` tells them apart, and degrading a
-    // Zerops user into the pairing shell is what this prevents.
-    expect(
-      resolveZeropsAccountGate({
-        accountRequired: true,
-        pathname: "/projects/example/threads/example",
-        status: "signed-out",
-      }),
-    ).toBe("auth-only");
-  });
-
-  it("does not apply Zerops account auth over an authenticated local server session", () => {
+  it("AL-01 requires Zerops identity even beside an authenticated local server", () => {
     expect(
       resolveZeropsAccountGate({
         accountRequired: false,
         pathname: "/projects/example/threads/example",
         status: "signed-out",
       }),
-    ).toBe("app");
+    ).toBe("auth-only");
   });
 
   it("keeps a Zerops entry's sub-route a bare login too, so the project wizard is not reachable signed out", () => {

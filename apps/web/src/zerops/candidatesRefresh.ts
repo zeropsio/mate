@@ -1,13 +1,4 @@
-/**
- * One "reload the account" signal shared by every `useZeropsCandidates`
- * mount.
- *
- * The hook keeps its own fetch per mount — the sidebar has one, the projects
- * screen another — and a refresh that only bumped its own counter would leave
- * the other showing the account as it was. Creating an environment on the
- * projects screen must put it in the left menu without a reload, so the
- * counter lives here, outside any one mount.
- */
+/** One invalidation signal for the shared, account-owned inventory. */
 
 import { useSyncExternalStore } from "react";
 
@@ -25,7 +16,7 @@ function read(): number {
   return version;
 }
 
-/** Every mounted candidates hook reloads. */
+/** Refresh after a confirmed local platform change or an external event. */
 export function refreshZeropsCandidates(): void {
   version += 1;
   for (const listener of listeners) listener();

@@ -1,10 +1,27 @@
+import { openAccountLifetime, closeAccountLifetime } from "./zerops/accountLifetime";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "./diffPanelStore";
 
 const THREAD_REF = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-1"));
+
+const values = new Map<string, string>();
+beforeEach(() => {
+  vi.stubGlobal("window", {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    },
+  });
+  openAccountLifetime("panel-test");
+});
+afterEach(() => {
+  closeAccountLifetime();
+  vi.unstubAllGlobals();
+});
 
 describe("diffPanelStore", () => {
   beforeEach(() =>

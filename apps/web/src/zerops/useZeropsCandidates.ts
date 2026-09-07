@@ -1,3 +1,4 @@
+import { useZeropsInventory } from "./ZeropsInventoryProvider";
 /**
  * Web wiring around the shared `loadZeropsCandidates` fetch shell: reads the
  * active clientUser scope, feeds it in as the single organization to load
@@ -9,13 +10,12 @@ import type {
   EnvironmentConnectionPhase,
   EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import {
   derivePublicRoutes,
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
-  type ZeropsProject,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 
@@ -25,15 +25,10 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  loadZeropsCandidates,
-  type ZeropsCandidateServiceOutcome,
-} from "@t3tools/client-runtime/zerops/candidateLoading";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { writeCachedZeropsMates } from "./mateIdentitiesCache";
-import { refreshZeropsCandidates, useZeropsCandidatesVersion } from "./candidatesRefresh";
+import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import { zeropsMateIdentities } from "./mateIdentities";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -103,11 +98,6 @@ function zeropsConnectionsByOrigin(
   return byOrigin;
 }
 
-// The fetch shell derives its own final candidate list too, but this hook
-// keeps its own progressive derivation (below) so a project can render the
-// moment its services arrive rather than waiting for the whole load — the
-// shell is given a stable empty map here since that derivation is unused.
-const NO_CONNECTED_ORIGINS = new Map<string, EnvironmentId>();
 /** A project that is not up holds nothing anyone deployed. */
 const NO_SERVICES: ZeropsEnvironmentServices = { hostnames: [], deployedAt: undefined };
 
@@ -117,73 +107,16 @@ export function useZeropsCandidates(): {
   readonly error: string | null;
   readonly refresh: () => void;
 } {
-  const { activeOrganization, client, organizationStatus, status } = useZeropsSession();
+  const { activeOrganization, organizationStatus, status } = useZeropsSession();
   const { environments } = useEnvironments();
-  const [projects, setProjects] = useState<ReadonlyArray<ZeropsProject>>([]);
-  const [services, setServices] = useState<ReadonlyMap<string, ZeropsCandidateServiceOutcome>>(
-    new Map(),
+  const inventory = useZeropsInventory();
+  const projects = useMemo(
+    () => inventory.projects.filter((project) => project.clientId === activeOrganization?.id),
+    [inventory.projects, activeOrganization?.id],
   );
-  const [error, setError] = useState<string | null>(null);
-  // Shared across mounts: a refresh from the projects screen reloads the
-  // sidebar's copy too (`candidatesRefresh.ts`).
-  const reloadCount = useZeropsCandidatesVersion();
-
-  // Bumped per load so a superseded run's callbacks become no-ops.
-  const generationRef = useRef(0);
-  const organizationId = activeOrganization?.id ?? null;
-  const canLoad = status === "signed-in" && organizationStatus === "selected" && !!organizationId;
-  // Loading is a fact about the load the current session and organisation
-  // call for, not a flag an effect raises a render later: the render in
-  // which the session settles already reports loading, so nobody publishes
-  // or paints "none" from the empty list that render still holds.
-  const loadKey = canLoad ? `${organizationId}:${reloadCount}` : null;
-  const [settledLoadKey, setSettledLoadKey] = useState<string | null>(null);
-  const isLoading = loadKey !== null && settledLoadKey !== loadKey;
-
-  useEffect(() => {
-    if (!canLoad || loadKey === null) {
-      setProjects([]);
-      setServices(new Map());
-      return;
-    }
-
-    generationRef.current += 1;
-    const generation = generationRef.current;
-    const isCancelled = () => generationRef.current !== generation;
-
-    setError(null);
-    setProjects([]);
-    setServices(new Map());
-
-    loadZeropsCandidates(client, {
-      organizationIds: [organizationId],
-      connectedOrigins: NO_CONNECTED_ORIGINS,
-      isCancelled,
-      onProjectsLoaded: (loaded) => {
-        if (isCancelled()) return;
-        setProjects(loaded);
-      },
-      onServiceOutcome: (project, outcome) => {
-        if (isCancelled()) return;
-        setServices((current) => new Map(current).set(project.id, outcome));
-      },
-    })
-      .then((result) => {
-        if (isCancelled()) return;
-        const failure = result.failures[0];
-        if (failure) setError(zeropsErrorMessage(failure.cause));
-        setSettledLoadKey(loadKey);
-      })
-      .catch((cause: unknown) => {
-        if (isCancelled()) return;
-        setError(zeropsErrorMessage(cause));
-        setSettledLoadKey(loadKey);
-      });
-
-    return () => {
-      generationRef.current += 1;
-    };
-  }, [canLoad, client, loadKey, organizationId]);
+  const { services, error } = inventory;
+  const canLoad = status === "signed-in" && organizationStatus === "selected";
+  const isLoading = inventory.isLoading || !canLoad;
 
   const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
   const connectionsByOrigin = useMemo(

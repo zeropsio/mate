@@ -456,7 +456,6 @@ it.layer(NodeServices.layer)("surface manifest filesystem", (it) => {
         ...discoveredZeropsComponents,
         ...(yield* collectNonTestTsxFiles(path.join(root, "apps/web/src/zerops"))),
         path.join(root, "apps/web/src/components/settings/ZeropsSettings.tsx"),
-        path.join(root, "apps/web/src/components/auth/PairingRouteSurface.tsx"),
       ].map((file) => path.relative(root, file));
 
       const claimed = new Set(manifest.surfaces.flatMap(({ components }) => components));

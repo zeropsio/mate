@@ -1,3 +1,8 @@
+import {
+  accountLocalStorage,
+  onAccountLifetimeOpen,
+  onAccountLifetimeClose,
+} from "./zerops/accountLifetime";
 /**
  * Single Zustand store for terminal UI state keyed by scoped thread identity.
  *
@@ -54,8 +59,14 @@ export function migratePersistedTerminalUiStateStoreState(
   return { terminalUiStateByThreadKey };
 }
 
+let changingAccount = false;
 function createTerminalUiStateStorage() {
-  return resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+  return resolveStorage({
+    ...accountLocalStorage,
+    setItem: (key, value) => {
+      if (!changingAccount) accountLocalStorage.setItem(key, value);
+    },
+  });
 }
 
 function normalizeTerminalIds(terminalIds: string[]): string[] {
@@ -779,3 +790,13 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
     },
   ),
 );
+
+onAccountLifetimeOpen(() => {
+  void useTerminalUiStateStore.persist.rehydrate();
+});
+
+onAccountLifetimeClose(() => {
+  changingAccount = true;
+  useTerminalUiStateStore.setState(useTerminalUiStateStore.getInitialState(), true);
+  changingAccount = false;
+});

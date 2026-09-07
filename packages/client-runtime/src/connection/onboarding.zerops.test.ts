@@ -41,7 +41,15 @@ function bodyText(init: RequestInit): string {
   return "";
 }
 
-function zeropsHttpLayer(calls: Array<Call>, options?: { readonly identityStatus?: number }) {
+function zeropsHttpLayer(
+  calls: Array<Call>,
+  options?: {
+    readonly identityStatus?: number;
+    readonly lifecycleVersion?: boolean;
+    readonly serverVersion?: string;
+    readonly projectId?: string;
+  },
+) {
   const fetchFn = ((input, init = {}) => {
     const url = String(input);
     calls.push({ url, init });
@@ -52,8 +60,12 @@ function zeropsHttpLayer(calls: Array<Call>, options?: { readonly identityStatus
           environmentId: "environment-zerops",
           label: "z3-eval",
           platform: { os: "linux", arch: "x64" },
-          serverVersion: "0.0.35",
-          capabilities: { repositoryIdentity: true },
+          serverVersion: options?.serverVersion ?? "0.3.0",
+          capabilities: {
+            repositoryIdentity: true,
+            ...(options?.lifecycleVersion === false ? {} : { accountLifecycleVersion: 1 }),
+          },
+          ...(options?.projectId ? { zerops: { projectId: options.projectId } } : {}),
         }),
       );
     }
@@ -101,6 +113,68 @@ function zeropsHttpLayer(calls: Array<Call>, options?: { readonly identityStatus
 }
 
 describe("Zerops identity onboarding", () => {
+  it.effect("rejects an older server before transmitting the Zerops credential", () =>
+    Effect.gen(function* () {
+      const calls: Array<Call> = [];
+      const failure = yield* prepareZeropsIdentityRegistration({
+        httpBaseUrl: BASE_URL,
+        zeropsToken: ZEROPS_TOKEN,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            CLIENT_PRESENTATION_LAYER,
+            zeropsHttpLayer(calls, { lifecycleVersion: false, serverVersion: "0.2.9" }),
+          ),
+        ),
+        Effect.flip,
+      );
+      expect(failure).toMatchObject({
+        _tag: "ConnectionBlockedError",
+        serverVersion: "0.2.9",
+        minimumServerVersion: "0.3.0",
+      });
+      expect(calls).toHaveLength(1);
+      expect(headerText(calls[0]!.init)).not.toContain(ZEROPS_TOKEN);
+    }),
+  );
+  it.effect("accepts the minimum supported server without the optional lifecycle capability", () =>
+    Effect.gen(function* () {
+      const calls: Array<Call> = [];
+      const registration = yield* prepareZeropsIdentityRegistration({
+        httpBaseUrl: BASE_URL,
+        zeropsToken: ZEROPS_TOKEN,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            CLIENT_PRESENTATION_LAYER,
+            zeropsHttpLayer(calls, { lifecycleVersion: false }),
+          ),
+        ),
+      );
+      expect(registration.credential.token).toBe("bearer-token");
+      expect(calls).toHaveLength(3);
+    }),
+  );
+  it.effect("rejects a URL reassigned to a different project before transmitting credentials", () =>
+    Effect.gen(function* () {
+      const calls: Array<Call> = [];
+      yield* prepareZeropsIdentityRegistration({
+        httpBaseUrl: BASE_URL,
+        zeropsToken: ZEROPS_TOKEN,
+        expectedProjectId: "expected",
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            CLIENT_PRESENTATION_LAYER,
+            zeropsHttpLayer(calls, { projectId: "different" }),
+          ),
+        ),
+        Effect.flip,
+      );
+      expect(calls).toHaveLength(1);
+    }),
+  );
+
   it.effect("turns a Zerops session into an ordinary bearer registration", () =>
     Effect.gen(function* () {
       const calls: Array<Call> = [];

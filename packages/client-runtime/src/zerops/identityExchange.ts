@@ -1,3 +1,5 @@
+import * as Schema from "effect/Schema";
+import { ConnectionBlockedError } from "../connection/model.ts";
 /**
  * The container's `/mate` identity door, shared by every client: hand the
  * account's Zerops token to `connect`, addressed at the container's mate
@@ -12,9 +14,16 @@ import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runti
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import { zeropsErrorMessage } from "./errors.ts";
 
+const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
+
 export type ZeropsIdentityExchangeResult =
   | { readonly _tag: "Success"; readonly environmentId: EnvironmentId }
-  | { readonly _tag: "Failure"; readonly error: string };
+  | {
+      readonly _tag: "Failure";
+      readonly error: string;
+      readonly upgradeRequired?: boolean;
+      readonly serverVersion?: string;
+    };
 
 export interface ZeropsIdentityExchangeDeps<E> {
   readonly zeropsToken: string | null;
@@ -45,10 +54,17 @@ export async function exchangeZeropsContainerIdentity<E>(
     zeropsToken: deps.zeropsToken,
   });
   if (result._tag === "Failure") {
-    const reason = zeropsErrorMessage(squashAtomCommandFailure(result));
+    const failure = squashAtomCommandFailure(result);
+    const reason = zeropsErrorMessage(failure);
     return {
       _tag: "Failure",
       error: `Could not connect to this container. ${reason}`,
+      ...(isConnectionBlockedError(failure) && failure.reason === "unsupported"
+        ? {
+            upgradeRequired: true,
+            ...(failure.serverVersion ? { serverVersion: failure.serverVersion } : {}),
+          }
+        : {}),
     };
   }
   return { _tag: "Success", environmentId: result.value };

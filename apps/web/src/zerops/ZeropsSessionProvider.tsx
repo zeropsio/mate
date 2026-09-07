@@ -10,11 +10,10 @@
  */
 
 import {
-  ZEROPS_SELECTION_STORAGE_KEY,
+  ZEROPS_SESSION_STORAGE_KEY,
   withRecipeStoreMock,
   ZeropsApiClient,
   clearZeropsSession,
-  hasRememberedZeropsAccount,
   loadZeropsSelection,
   loadZeropsSession,
   requiresZeropsTwoFactor,
@@ -29,38 +28,28 @@ import {
   type ZeropsStorageAdapter,
   type ZeropsUser,
 } from "@t3tools/client-runtime/zerops";
-import { forgetAllEnvironmentProjectRefs } from "@t3tools/client-runtime/zerops/environmentProjectRef";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { browserZeropsStorage } from "./storage";
 
-export type ZeropsSessionStatus = "loading" | "signed-out" | "totp-required" | "signed-in";
+export type ZeropsSessionStatus =
+  | "loading"
+  | "unavailable"
+  | "signed-out"
+  | "totp-required"
+  | "signed-in";
 export type ZeropsOrganizationStatus = "idle" | "loading" | "needs-selection" | "selected";
 
 export interface ZeropsSessionValue {
   readonly client: ZeropsApiClient;
   readonly status: ZeropsSessionStatus;
-  /**
-   * Whether this browser has signed in to a Zerops account before, which
-   * `status` alone cannot say: a standalone pairing and an expired session
-   * both read `signed-out`. `null` while it is still being read, so nothing
-   * decides on an absence it has not confirmed.
-   */
-  readonly accountRemembered: boolean | null;
   readonly user: ZeropsUser | null;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
   /** Exact active clientUser scope, matching the Zerops GUI. */
   readonly activeOrganization: ZeropsOrganization | null;
   readonly organizationStatus: ZeropsOrganizationStatus;
+  readonly updateVerifiedMemberships: (verified: ZeropsUser) => void;
   readonly selectOrganization: (membershipId: string) => Promise<void>;
   readonly signIn: (email: string, password: string) => Promise<void>;
   /**
@@ -89,7 +78,8 @@ export interface ZeropsSessionValue {
   readonly clearLastRegistration: () => void;
 }
 
-const ZeropsSessionContext = createContext<ZeropsSessionValue | null>(null);
+import { ZeropsSessionContext } from "./sessionContext";
+export { useZeropsSession, useZeropsSessionOptional } from "./sessionContext";
 
 export function ZeropsSessionProvider({
   children,
@@ -99,26 +89,31 @@ export function ZeropsSessionProvider({
   readonly storage?: ZeropsStorageAdapter;
 }) {
   const [status, setStatus] = useState<ZeropsSessionStatus>("loading");
-  const [accountRemembered, setAccountRemembered] = useState<boolean | null>(null);
   const [user, setUser] = useState<ZeropsUser | null>(null);
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
   const preferredClientIdRef = useRef<string | null>(null);
 
+  const lifetimeGeneration = useRef(0);
+  const acceptUser = useCallback((verified: ZeropsUser) => {
+    openAccountLifetime(verified.id);
+    setUser(verified);
+    setStatus("signed-in");
+  }, []);
+
   const client = useMemo(
     () =>
       new ZeropsApiClient({
-        // `GET /recipe-group/{id}` is not built yet. Until it is, the mock
-        // answers exactly that route and passes every other request to the
-        // network — so `readRecipeGroup` is real client code, not a branch.
-        // Delete this line and the endpoint takes over (`recipeStoreMock.ts`).
+        // The recipe endpoint mock passes all other traffic to the platform.
         fetch: withRecipeStoreMock(globalThis.fetch.bind(globalThis)),
         onSessionChange: (session: ZeropsSession | null) => {
           if (session === null) {
             // The client clears itself when a refresh fails mid-flight, so a
             // session that dies between renders cannot leave an
             // authorized-looking UI behind.
+            lifetimeGeneration.current += 1;
+            closeAccountLifetime();
             setStatus("signed-out");
             setUser(null);
             return clearZeropsSession(storage);
@@ -131,16 +126,10 @@ export function ZeropsSessionProvider({
 
   useEffect(() => {
     let cancelled = false;
+    const generation = lifetimeGeneration.current;
     void (async () => {
-      // Read together and set together: the gate reads both, and a status that
-      // said "signed out" while the marker was still unknown would paint the
-      // login at a standalone pairing and then take it back.
-      const [remembered, session] = await Promise.all([
-        hasRememberedZeropsAccount(storage),
-        loadZeropsSession(storage),
-      ]);
-      if (cancelled) return;
-      setAccountRemembered(remembered);
+      const session = await loadZeropsSession(storage);
+      if (cancelled || generation !== lifetimeGeneration.current) return;
       if (!session) {
         setStatus("signed-out");
         return;
@@ -148,20 +137,19 @@ export function ZeropsSessionProvider({
       client.restoreSession(session);
       try {
         const restored = await client.fetchUser();
-        if (cancelled) return;
-        setUser(restored);
-        setStatus("signed-in");
+        if (cancelled || generation !== lifetimeGeneration.current) return;
+        acceptUser(restored);
       } catch {
         // A stored session that no longer works reads as signed out; the
         // client has already cleared it if the API said so.
-        if (cancelled) return;
-        setStatus("signed-out");
+        if (cancelled || generation !== lifetimeGeneration.current) return;
+        setStatus(client.session ? "unavailable" : "signed-out");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [client, storage]);
+  }, [acceptUser, client, storage]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(
@@ -207,28 +195,21 @@ export function ZeropsSessionProvider({
     };
   }, [organizations, storage, user]);
 
-  // Keep tabs on one account scope. Unlike the legacy GUI we can update the
-  // inactive tab in place because all scoped queries are cancellable React
-  // effects, so a hard invalidation dialog is unnecessary.
+  // Identity is shared across tabs; organization and navigation are not.
+  // A full renderer reload also drops stale route loaders and module stores.
   useEffect(() => {
-    if (!user || typeof window === "undefined") return;
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== ZEROPS_SELECTION_STORAGE_KEY) return;
-      void loadZeropsSelection(storage, user.id).then((selection) => {
-        const selected = resolveActiveZeropsOrganization(organizations, {
-          preferredClientId: null,
-          storedClientUserId: selection.clientUserId,
-          storedClientId: selection.clientId,
-        });
-        setSelectedMembershipId(selected?.membershipId ?? null);
-        setOrganizationStatus(selected ? "selected" : "needs-selection");
-      });
+      if (event.key !== ZEROPS_SESSION_STORAGE_KEY && event.key !== null) return;
+      if (event.oldValue === event.newValue && event.key !== null) return;
+      lifetimeGeneration.current += 1;
+      closeAccountLifetime();
+      setUser(null);
+      setStatus("loading");
+      window.location.reload();
     };
     window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [organizations, storage, user]);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const selectOrganization = useCallback(
     async (membershipId: string) => {
@@ -249,23 +230,35 @@ export function ZeropsSessionProvider({
     [organizations, storage, user],
   );
 
+  const updateVerifiedMemberships = useCallback((verified: ZeropsUser) => {
+    setUser((previous) => {
+      if (!previous || previous.id !== verified.id) return previous;
+      return JSON.stringify(zeropsClientsFromUser(previous)) ===
+        JSON.stringify(zeropsClientsFromUser(verified))
+        ? previous
+        : verified;
+    });
+  }, []);
+
   const value = useMemo<ZeropsSessionValue>(
     () => ({
       client,
       status,
-      accountRemembered,
       user,
       organizations,
       activeOrganization,
       organizationStatus,
       selectOrganization,
+      updateVerifiedMemberships,
       adoptHandover: async ({ token, clientId, zcpClaimed }) => {
+        const generation = lifetimeGeneration.current;
         preferredClientIdRef.current = clientId;
         try {
           const session = await client.adoptPersonalToken(token);
           const adopted = await client.fetchUser();
-          setUser(adopted);
-          setStatus("signed-in");
+          if (generation !== lifetimeGeneration.current)
+            throw new Error("This sign-in was cancelled.");
+          acceptUser(adopted);
           if (zcpClaimed) {
             // The picker reads this to enter the provisioning wait for the
             // project the claim handed over, instead of waiting for a candidate
@@ -285,31 +278,41 @@ export function ZeropsSessionProvider({
         }
       },
       signIn: async (email, password) => {
+        const generation = lifetimeGeneration.current;
         const response = await client.login(email, password);
+        if (generation !== lifetimeGeneration.current)
+          throw new Error("This sign-in was cancelled.");
         if (requiresZeropsTwoFactor(response.auth)) {
           setStatus("totp-required");
           return;
         }
-        setUser(response.user ?? (await client.fetchUser()));
-        setStatus("signed-in");
+        const verified = response.user ?? (await client.fetchUser());
+        if (generation !== lifetimeGeneration.current)
+          throw new Error("This sign-in was cancelled.");
+        acceptUser(verified);
       },
       register: async (input) => {
+        const generation = lifetimeGeneration.current;
         const response = await client.register(input);
         preferredClientIdRef.current = response.clientId ?? null;
-        setUser(response.user ?? (await client.fetchUser()));
-        setStatus("signed-in");
+        const verified = response.user ?? (await client.fetchUser());
+        if (generation !== lifetimeGeneration.current)
+          throw new Error("This sign-in was cancelled.");
+        acceptUser(verified);
         setLastRegistration(response);
         return response;
       },
       verifyTotp: async (code) => {
+        const generation = lifetimeGeneration.current;
         await client.verifyTotp(code);
-        setUser(await client.fetchUser());
-        setStatus("signed-in");
+        const verified = await client.fetchUser();
+        if (generation !== lifetimeGeneration.current)
+          throw new Error("This sign-in was cancelled.");
+        acceptUser(verified);
       },
       signOut: async () => {
-        await client.logout();
-        await forgetAllEnvironmentProjectRefs(storage);
         setLastRegistration(null);
+        await client.logout();
       },
       lastRegistration,
       clearLastRegistration: () => {
@@ -317,13 +320,14 @@ export function ZeropsSessionProvider({
       },
     }),
     [
-      accountRemembered,
+      acceptUser,
       activeOrganization,
       client,
       lastRegistration,
       organizationStatus,
       organizations,
       selectOrganization,
+      updateVerifiedMemberships,
       status,
       storage,
       user,
@@ -331,22 +335,4 @@ export function ZeropsSessionProvider({
   );
 
   return <ZeropsSessionContext value={value}>{children}</ZeropsSessionContext>;
-}
-
-export function useZeropsSession(): ZeropsSessionValue {
-  const value = useContext(ZeropsSessionContext);
-  if (!value) {
-    throw new Error("useZeropsSession must be used inside a ZeropsSessionProvider.");
-  }
-  return value;
-}
-
-/**
- * `useZeropsSession`, without the throw. For a component that renders in
- * contexts outside `AppRoot`'s provider tree (a render test in isolation) and
- * has to treat "no session available" as its own `idle`/off state rather than
- * crash — e.g. the operation card's `useOperationObservation`.
- */
-export function useZeropsSessionOptional(): ZeropsSessionValue | null {
-  return useContext(ZeropsSessionContext);
 }

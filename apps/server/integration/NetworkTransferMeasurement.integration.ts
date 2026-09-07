@@ -124,7 +124,7 @@ export function makeWebSocketTransferRecorder(): WebSocketTransferRecorder {
   return {
     connect: (url, protocols, cookie) => {
       const nextSocket = new NodeSocket.NodeWS.WebSocket(url, protocols, {
-        headers: { cookie },
+        headers: { authorization: cookie },
         perMessageDeflate: true,
       }) as NodeWebSocketWithTransport;
       socket = nextSocket;

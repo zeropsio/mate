@@ -98,6 +98,7 @@ export interface ZeropsLocation {
 }
 
 export interface ZeropsProject {
+  readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
   readonly id: string;
   readonly name: string;
   readonly status: string;
@@ -339,6 +340,7 @@ export interface ZeropsLoginResponse {
  */
 export type ZeropsApiErrorKind =
   | "network"
+  | "uncertain"
   | "expired-session"
   | "forbidden"
   | "not-found"
@@ -525,15 +527,61 @@ export interface ListProjectsOptions {
   readonly limit?: number;
 }
 
+/** Offset pagination is shared by the direct list and permission-filtered
+ * search. A changing count, duplicate page, or short incomplete response must
+ * be retried as an inventory read, never published as confirmed deletion. */
+async function readProjectPages<T extends { readonly id: string }>(
+  limit: number,
+  load: (offset: number) => Promise<{
+    readonly items: ReadonlyArray<T> | undefined;
+    readonly total: number | undefined;
+  }>,
+): Promise<ReadonlyArray<T>> {
+  const projects: T[] = [];
+  const seen = new Set<string>();
+  let expectedTotal: number | undefined;
+  const incomplete = () =>
+    new ZeropsApiError("Zerops returned an incomplete project inventory. Try again.", "unexpected");
+  if (!Number.isInteger(limit) || limit < 1) throw incomplete();
+  for (let page = 0; page < 100; page += 1) {
+    const response = await load(projects.length);
+    if (!Array.isArray(response.items)) throw incomplete();
+    if (response.total !== undefined) {
+      if (
+        !Number.isInteger(response.total) ||
+        response.total < 0 ||
+        (expectedTotal !== undefined && expectedTotal !== response.total)
+      )
+        throw incomplete();
+      expectedTotal = response.total;
+    }
+    for (const project of response.items) {
+      if (seen.has(project.id)) throw incomplete();
+      seen.add(project.id);
+      projects.push(project);
+    }
+    if (expectedTotal !== undefined) {
+      if (projects.length === expectedTotal) return projects;
+      if (projects.length > expectedTotal || response.items.length === 0) throw incomplete();
+    } else if (response.items.length < limit) return projects;
+  }
+  throw incomplete();
+}
+
 /**
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
 export class ZeropsApiClient {
+  #writesAllowed = true;
+  setWritesAllowed(allowed: boolean): void {
+    this.#writesAllowed = allowed;
+  }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   #session: ZeropsSession | null = null;
+  #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
   /** OR'd across every caller sharing the current `#refreshPromise` — see `#refreshSession`'s doc comment. */
   #refreshClearOnFailure = true;
@@ -557,6 +605,7 @@ export class ZeropsApiClient {
 
   /** Adopts a session read back from storage without re-notifying the owner. */
   restoreSession(session: ZeropsSession): void {
+    this.#generation += 1;
     this.#session = session;
   }
 
@@ -583,18 +632,22 @@ export class ZeropsApiClient {
       );
     }
     const session: ZeropsSession = { accessToken };
+    const generation = ++this.#generation;
     this.#session = session;
     try {
       await this.fetchUser();
     } catch (cause) {
-      this.#session = null;
+      if (generation === this.#generation) this.#session = null;
       throw cause;
     }
+    this.#assertGeneration(generation);
     await this.#setSession(session);
+    this.#assertGeneration(generation);
     return session;
   }
 
   async signOutLocally(): Promise<void> {
+    this.#generation += 1;
     await this.#setSession(null);
   }
 
@@ -665,16 +718,26 @@ export class ZeropsApiClient {
   }
 
   async logout(): Promise<void> {
-    try {
-      if (this.#session) {
-        await this.#request(
-          "/auth/logout",
-          { method: "POST", body: JSON.stringify({}) },
-          { retryAfterRefresh: false },
-        );
-      }
-    } finally {
-      await this.#setSession(null);
+    const session = this.#session;
+    // Local closure precedes network work, including an offline logout. This
+    // request holds the old credential and cannot clear a subsequent login.
+    await this.signOutLocally();
+    if (session) {
+      const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/logout`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      });
+      if (!response.ok && response.status !== 401) throw await apiErrorFromResponse(response);
+    }
+  }
+
+  #assertGeneration(generation: number): void {
+    if (generation !== this.#generation) {
+      throw new ZeropsApiError("This account session has ended.", "expired-session", 401);
     }
   }
 
@@ -696,12 +759,17 @@ export class ZeropsApiClient {
     clientId: string,
     options: ListProjectsOptions = {},
   ): Promise<ReadonlyArray<ZeropsProject>> {
-    const query = new URLSearchParams({ limit: String(options.limit ?? 500) });
-    if (options.statuses?.length) query.set("statuses", options.statuses.join(","));
-    const response = await this.#request<{ readonly list?: ReadonlyArray<ZeropsProject> }>(
-      `/client/${clientId}/project?${query.toString()}`,
-    );
-    return response.list ?? [];
+    const limit = options.limit ?? 500;
+    return readProjectPages(limit, async (offset) => {
+      const query = new URLSearchParams({ limit: String(limit) });
+      if (offset) query.set("offset", String(offset));
+      if (options.statuses?.length) query.set("statuses", options.statuses.join(","));
+      const response = await this.#request<{
+        readonly list?: ReadonlyArray<ZeropsProject>;
+        readonly totalCount?: number;
+      }>(`/client/${clientId}/project?${query.toString()}`);
+      return { items: response.list, total: response.totalCount };
+    });
   }
 
   /**
@@ -723,17 +791,20 @@ export class ZeropsApiClient {
     }
 
     const limit = options.limit ?? 500;
-    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsProject> }>(
-      "/project/search",
-      {
+    const projects = await readProjectPages(limit, async (offset) => {
+      const response = await this.#request<{
+        readonly items?: ReadonlyArray<ZeropsProject>;
+        readonly totalHits?: number;
+      }>("/project/search", {
         method: "POST",
         body: JSON.stringify({
           limit,
+          ...(offset ? { offset } : {}),
           search: [{ name: "clientId", operator: "eq", value: clientId }],
         }),
-      },
-    );
-    const projects = response.items ?? [];
+      });
+      return { items: response.items, total: response.totalHits };
+    });
     if (!options.statuses?.length) return projects;
     const statuses = new Set(options.statuses);
     return projects.filter((project) => statuses.has(project.status));
@@ -759,7 +830,10 @@ export class ZeropsApiClient {
       readonly label?: string;
     },
   ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
     const project = await this.fetchProject(projectId);
+    this.#assertGeneration(generation);
     return this.#request<ZeropsProject>(`/project/${projectId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -791,8 +865,11 @@ export class ZeropsApiClient {
    * rename heals a project the marker never reached.
    */
   async nameProjectAgent(projectId: string, name: string): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
     const project = await this.fetchProject(projectId);
     const named = withZeropsBotTag(project.tagList, name);
+    this.#assertGeneration(generation);
     return this.#request<ZeropsProject>(`/project/${projectId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -844,6 +921,8 @@ export class ZeropsApiClient {
     readonly name: string;
     readonly location?: string;
   }): Promise<{ readonly project: ZeropsProject }> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
     const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
       method: "POST",
       body: JSON.stringify(
@@ -864,6 +943,7 @@ export class ZeropsApiClient {
       );
     }
 
+    this.#assertGeneration(generation);
     await this.importServicesIntoProject(project.id, buildGiteaImportYaml(region));
     return { project };
   }
@@ -903,10 +983,15 @@ export class ZeropsApiClient {
   }
 
   async listProjectServices(projectId: string): Promise<ReadonlyArray<ZeropsService>> {
-    const response = await this.#request<{ readonly list?: ReadonlyArray<ZeropsService> }>(
-      `/project/${projectId}/service-stack`,
-    );
-    return response.list ?? [];
+    return readProjectPages(500, async (offset) => {
+      const response = await this.#request<{
+        readonly list?: ReadonlyArray<ZeropsService>;
+        readonly totalCount?: number;
+      }>(
+        `/project/${projectId}/service-stack${offset ? `?limit=500&offset=${offset}` : "?limit=500"}`,
+      );
+      return { items: response.list, total: response.totalCount };
+    });
   }
 
   /**
@@ -1207,6 +1292,8 @@ export class ZeropsApiClient {
     /** The group this environment joins, and what it is for (`groups.ts`). */
     readonly group?: { readonly groupId: string; readonly role?: ZeropsEnvironmentRole };
   }): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
     const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
       method: "POST",
       body: JSON.stringify(
@@ -1228,19 +1315,28 @@ export class ZeropsApiClient {
     });
 
     const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
-    await this.#request(`/project/${project.id}/first-class-recipe/development-container`, {
-      method: "PUT",
-      body: JSON.stringify(
-        buildDevelopmentContainerImportBody({
-          serviceImportYaml: buildZcpServiceImportYaml({
-            serviceName,
-            vscodePassword: generateVscodePassword(),
-            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-            ...(input.agents ? { agents: input.agents } : {}),
+    this.#assertGeneration(generation);
+    try {
+      await this.#request(`/project/${project.id}/first-class-recipe/development-container`, {
+        method: "PUT",
+        body: JSON.stringify(
+          buildDevelopmentContainerImportBody({
+            serviceImportYaml: buildZcpServiceImportYaml({
+              serviceName,
+              vscodePassword: generateVscodePassword(),
+              ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+              ...(input.agents ? { agents: input.agents } : {}),
+            }),
           }),
-        }),
-      ),
-    });
+        ),
+      });
+    } catch (cause) {
+      if (generation !== this.#generation) throw cause;
+      throw new ZeropsApiError(
+        `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`,
+        "uncertain",
+      );
+    }
 
     return { project, serviceName };
   }
@@ -1368,28 +1464,34 @@ export class ZeropsApiClient {
    * an unbounded retry loop, before the container restarts either way.
    */
   async enableZeropsMate(serviceId: string): Promise<void> {
+    const generation = this.#generation;
     const current = (await this.#serviceEnv(serviceId)).find(
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
 
     if (!current || !readsAsEnabled(current.content)) {
       if (current) {
+        this.#assertGeneration(generation);
         await this.#request(`/user-data/${current.id}`, { method: "DELETE" });
       }
+      this.#assertGeneration(generation);
       await this.#createMateFlag(serviceId);
 
       const after = (await this.#serviceEnv(serviceId)).find(
         (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
       );
       if (!after || !readsAsEnabled(after.content)) {
+        this.#assertGeneration(generation);
         await this.#createMateFlag(serviceId);
       }
     }
 
+    this.#assertGeneration(generation);
     await this.restartService(serviceId);
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {
+    if (session === null) this.#generation += 1;
     this.#session = session;
     await this.#onSessionChange(session);
   }
@@ -1412,6 +1514,7 @@ export class ZeropsApiClient {
       this.#refreshClearOnFailure ||= clearOnFailure;
       return this.#refreshPromise;
     }
+    const generation = this.#generation;
     const current = this.#session;
     if (!current?.refreshToken) {
       if (clearOnFailure) await this.#setSession(null);
@@ -1433,8 +1536,10 @@ export class ZeropsApiClient {
         },
         body: JSON.stringify({ refreshTokenId: current.refreshToken }),
       });
+      this.#assertGeneration(generation);
       if (!response.ok) {
         const error = await apiErrorFromResponse(response);
+        this.#assertGeneration(generation);
         if (error.kind === "expired-session" && this.#refreshClearOnFailure) {
           await this.#setSession(null);
         }
@@ -1443,6 +1548,7 @@ export class ZeropsApiClient {
       // `/auth/refresh` answers with the session fields at the top level, not
       // wrapped in `auth` the way `/auth/login` does.
       const session = (await response.json()) as ZeropsSession;
+      this.#assertGeneration(generation);
       if (!isUsableZeropsSession(session)) {
         if (this.#refreshClearOnFailure) await this.#setSession(null);
         throw new ZeropsApiError(
@@ -1466,6 +1572,24 @@ export class ZeropsApiClient {
     init: RequestInit = {},
     options: RequestOptions = {},
   ): Promise<T> {
+    const method = init.method ?? "GET";
+    const mutatesProject =
+      method !== "GET" &&
+      !path.endsWith("/search") &&
+      !path.endsWith("/websocket-token") &&
+      !path.startsWith("/auth/");
+    if (
+      !this.#writesAllowed &&
+      method !== "GET" &&
+      !path.endsWith("/search") &&
+      !path.endsWith("/websocket-token")
+    ) {
+      throw new ZeropsApiError(
+        "Project access could not be verified. Refresh your projects before making changes.",
+        "unexpected",
+      );
+    }
+    const generation = this.#generation;
     const authenticated = options.authenticated ?? true;
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
@@ -1474,6 +1598,7 @@ export class ZeropsApiClient {
       const session = this.#session;
       return this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}${path}`, {
         ...init,
+        signal: init.signal ?? AbortSignal.timeout(15_000),
         headers: {
           Accept: "application/json",
           ...(init.body ? { "Content-Type": "application/json" } : {}),
@@ -1486,16 +1611,23 @@ export class ZeropsApiClient {
     let response: Response;
     try {
       response = await run();
+      this.#assertGeneration(generation);
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
         if (session?.refreshToken) {
           await this.#refreshSession(clearSessionOnUnauthorized);
           response = await run();
+          this.#assertGeneration(generation);
         }
         if (response.status === 401 && clearSessionOnUnauthorized) await this.#setSession(null);
       }
     } catch (cause) {
       if (cause instanceof ZeropsApiError) throw cause;
+      if (mutatesProject)
+        throw new ZeropsApiError(
+          "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",
+          "uncertain",
+        );
       throw new ZeropsApiError(
         cause instanceof Error
           ? `Network error contacting Zerops: ${cause.message}`
@@ -1505,9 +1637,18 @@ export class ZeropsApiClient {
     }
 
     if (!response.ok) {
-      throw await apiErrorFromResponse(response);
+      const error = await apiErrorFromResponse(response);
+      if (mutatesProject && response.status >= 500)
+        throw new ZeropsApiError(
+          "Zerops could not confirm whether this operation finished. Check the project before trying again.",
+          "uncertain",
+          response.status,
+        );
+      throw error;
     }
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    const result = (await response.json()) as T;
+    this.#assertGeneration(generation);
+    return result;
   }
 }

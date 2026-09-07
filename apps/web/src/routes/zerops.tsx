@@ -7,5 +7,5 @@ export const Route = createFileRoute("/zerops")({
 });
 
 function ZeropsRoute() {
-  return <ZeropsHostedLanding exclusive manualFallback={null} />;
+  return <ZeropsHostedLanding />;
 }

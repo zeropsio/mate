@@ -190,9 +190,8 @@ import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./u
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
-import { connectionOriginFor, rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
+import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
 import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
-import { useZeropsDeadEnvironmentReaper } from "../zerops/useZeropsDeadEnvironmentReaper";
 import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
@@ -1696,42 +1695,18 @@ export default function Sidebar() {
   // container's presence, not a live session, so a sleeping container changes
   // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
   // else about the account is the projects screen's job.
-  const {
-    status: zeropsStatus,
-    activeOrganization: zeropsOrganization,
-    organizations: zeropsOrganizations,
-  } = useZeropsSession();
-  // Which organizations exist decides whether an unreachable registration
-  // belongs to another of this account's organizations or to a different
-  // account entirely — the reaper cannot tell them apart without it.
-  const zeropsAccountOrgIds = useMemo(
-    () => new Set(zeropsOrganizations.map((organization) => organization.id)),
-    [zeropsOrganizations],
-  );
+  const { status: zeropsStatus } = useZeropsSession();
   const zeropsSignedIn = zeropsStatus === "signed-in";
-  const {
-    candidates: zeropsCandidates,
-    isLoading: zeropsCandidatesLoading,
-    error: zeropsCandidatesError,
-  } = useZeropsCandidates();
+  const { candidates: zeropsCandidates, isLoading: zeropsCandidatesLoading } =
+    useZeropsCandidates();
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
   // health probe is registered on the user's behalf; from then on its socket
   // and its thread status arrive like any other environment's.
-  const zeropsHealth = useZeropsCandidateHealth(zeropsCandidates);
+  const { health: zeropsHealth } = useZeropsCandidateHealth(zeropsCandidates);
   useZeropsAutoConnect({
     candidates: zeropsCandidates,
     health: zeropsHealth,
-    enabled: zeropsSignedIn,
-  });
-  // And a registration whose project the account no longer has is forgotten,
-  // rather than left reconnecting forever with its leftovers on disk.
-  useZeropsDeadEnvironmentReaper({
-    candidates: zeropsCandidates,
-    isLoading: zeropsCandidatesLoading,
-    error: zeropsCandidatesError,
-    activeOrgId: zeropsOrganization?.id ?? null,
-    accountOrgIds: zeropsAccountOrgIds,
     enabled: zeropsSignedIn,
   });
   const router = useRouter();
@@ -1834,26 +1809,10 @@ export default function Sidebar() {
   // environment counts as Zerops when it is a roster candidate now or came in
   // through the Zerops door — a container deleted on the platform is still
   // registered here, and its leftovers must not resurface as a tree.
-  const zeropsEnvironmentIds = useMemo(() => {
-    const ids = new Set<EnvironmentId>();
-    // Not yet known which environments are Zerops — the session is still
-    // resolving, or the candidate list is on its first read: hide every tree
-    // rather than list each environment for the first second of a reload.
-    if (zeropsStatus === "loading" || (zeropsSignedIn && zeropsCandidatesLoading)) {
-      for (const environment of environments) ids.add(environment.environmentId);
-      return ids;
-    }
-    if (!zeropsSignedIn) return ids;
-    for (const candidate of zeropsCandidates) {
-      if (candidate.environmentId !== undefined) ids.add(candidate.environmentId);
-    }
-    for (const environment of environments) {
-      if (connectionOriginFor(String(environment.environmentId)) === "zerops-identity") {
-        ids.add(environment.environmentId);
-      }
-    }
-    return ids;
-  }, [environments, zeropsCandidates, zeropsCandidatesLoading, zeropsSignedIn, zeropsStatus]);
+  const zeropsEnvironmentIds = useMemo(
+    () => new Set(environments.map((environment) => environment.environmentId)),
+    [environments],
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);

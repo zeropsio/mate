@@ -1,3 +1,4 @@
+import { useZeropsCandidatesVersion } from "./candidatesRefresh";
 /**
  * Probes each reachable candidate's container so the picker can say, per row,
  * whether Zerops Mate is actually there — rather than making the user click
@@ -15,10 +16,15 @@ import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provi
 
 const PROBE_CONCURRENCY = 4;
 
-export function useZeropsCandidateHealth(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-): ReadonlyMap<string, ZeropsContainerHealth> {
-  const [health, setHealth] = useState<ReadonlyMap<string, ZeropsContainerHealth>>(new Map());
+export function useZeropsCandidateHealth(candidates: ReadonlyArray<ZeropsCandidate>): {
+  readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
+  readonly serverVersions: ReadonlyMap<string, string>;
+} {
+  const refreshVersion = useZeropsCandidatesVersion();
+  const [snapshot, setSnapshot] = useState<{
+    health: ReadonlyMap<string, ZeropsContainerHealth>;
+    serverVersions: ReadonlyMap<string, string>;
+  }>({ health: new Map(), serverVersions: new Map() });
 
   // Only the rows that have an origin to probe, keyed so the effect re-runs
   // when the set changes rather than on every re-render.
@@ -32,6 +38,7 @@ export function useZeropsCandidateHealth(
   const targetKey = targets.map((target) => `${target.key}=${target.origin}`).join(",");
 
   useEffect(() => {
+    setSnapshot({ health: new Map(), serverVersions: new Map() });
     if (targets.length === 0) return;
     let cancelled = false;
     let cursor = 0;
@@ -42,9 +49,18 @@ export function useZeropsCandidateHealth(
         const target = targets[cursor];
         cursor += 1;
         if (!target) return;
-        const verdict = await probeZeropsContainerHealth(target.origin);
+        let serverVersion: string | undefined;
+        const verdict = await probeZeropsContainerHealth(target.origin, undefined, (version) => {
+          serverVersion = version;
+        });
         if (cancelled) return;
-        setHealth((current) => new Map(current).set(target.key, verdict));
+        setSnapshot((current) => ({
+          health: new Map(current.health).set(target.key, verdict),
+          serverVersions:
+            serverVersion === undefined
+              ? current.serverVersions
+              : new Map(current.serverVersions).set(target.key, serverVersion),
+        }));
       }
     };
 
@@ -56,7 +72,7 @@ export function useZeropsCandidateHealth(
     };
     // `targetKey` is the identity of `targets`; depending on the array itself
     // would restart every probe on each incremental render.
-  }, [targetKey]);
+  }, [targetKey, refreshVersion]);
 
-  return health;
+  return snapshot;
 }
