@@ -81,6 +81,14 @@ const ADD_BUTTON_CLASS =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
 
 /**
+ * "Add Mate" sits in the Mate grid rather than the pill row below, because a
+ * Mate is what the cards beside it are: the invitation belongs where the
+ * things it makes already live.
+ */
+const ADD_MATE_CLASS =
+  "flex min-h-[4.5rem] items-center justify-center gap-1.5 rounded-[var(--zerops-card-radius)] border border-dashed border-border/70 px-4 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
+
+/**
  * What the page is, said once, to an account that has nothing in it yet.
  *
  * A sleeping face rather than an illustration: the mark is the product's own,
@@ -113,7 +121,7 @@ function FirstRun({
             what it builds, and one conversation you come back to.
           </p>
         </div>
-        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+        <Pill disabled={creating} label="New Mate" onClick={onCreateProject} />
       </div>
     </section>
   );
@@ -157,6 +165,7 @@ function Members<T>({
   isMate,
   renderMate,
   renderEnvironment,
+  addMate,
 }: {
   readonly entries: ReadonlyArray<{
     readonly item: T;
@@ -166,16 +175,19 @@ function Members<T>({
   readonly isMate: (item: T) => boolean;
   readonly renderMate: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
+  /** The "Add Mate" tile, or null where the caller cannot create one. */
+  readonly addMate: ReactNode;
 }) {
   const mates = entries.filter(({ item }) => isMate(item));
   const others = entries.filter(({ item }) => !isMate(item));
   return (
     <>
-      {mates.length > 0 ? (
+      {mates.length > 0 || addMate !== null ? (
         <div className="grid gap-3 sm:grid-cols-2" data-zerops-surface="mate-cards">
           {mates.map(({ item, role }) => (
             <Fragment key={getKey(item)}>{renderMate(item, role)}</Fragment>
           ))}
+          {addMate}
         </div>
       ) : null}
       {others.length > 0 ? (
@@ -208,8 +220,10 @@ export function ZeropsGroupTree<T>({
 }: ZeropsGroupTreeProps<T>) {
   const members = (
     entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
+    addMate: ReactNode,
   ) => (
     <Members
+      addMate={addMate}
       entries={entries}
       getKey={getKey}
       isMate={isMate}
@@ -231,7 +245,21 @@ export function ZeropsGroupTree<T>({
     >
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       {view.groups.map(({ group, environments }) => {
-        const missing = onCreateEnvironment ? creatableRoles(group) : [];
+        const creatable = onCreateEnvironment ? creatableRoles(group) : [];
+        // Dev is a Mate, and its invitation belongs beside the Mates. The rest
+        // are rows in the table below, so their invitation goes there.
+        const missing = creatable.filter((role) => role !== "dev");
+        const addMate = creatable.includes("dev") ? (
+          <button
+            className={ADD_MATE_CLASS}
+            disabled={creating}
+            onClick={() => onCreateEnvironment?.(group.groupId, "dev")}
+            type="button"
+          >
+            <span aria-hidden="true">+</span>
+            <span>Add Mate</span>
+          </button>
+        ) : null;
         return (
           <section
             className="flex flex-col gap-3"
@@ -250,7 +278,7 @@ export function ZeropsGroupTree<T>({
                 <span className="text-xs text-muted-foreground">This project has no name yet</span>
               ) : null}
             </div>
-            {members(environments)}
+            {members(environments, addMate)}
             {missing.length > 0 ? (
               <div
                 className="-ms-1.5 flex flex-wrap items-center gap-1"
@@ -279,7 +307,10 @@ export function ZeropsGroupTree<T>({
         // project to be distinct from; an account of loose environments is a list.
         <section className="flex flex-col gap-3" data-zerops-ungrouped="true">
           {view.groups.length > 0 ? <Heading muted name="Ungrouped" /> : null}
-          {members(view.ungrouped.map((item) => ({ item, role: undefined })))}
+          {members(
+            view.ungrouped.map((item) => ({ item, role: undefined })),
+            null,
+          )}
         </section>
       ) : null}
 

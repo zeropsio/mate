@@ -1,5 +1,5 @@
 /**
- * "New project" step 3: pick which coding agents the container comes up
+ * "New Mate" step 3: pick which coding agents the container comes up
  * with. Purely presentational — the wizard step around it owns the
  * provisioning call and turns the selection into the
  * `ZCP_AGENT_AUTH_TYPE_<SUFFIX>` secrets `buildZcpServiceImportYaml` stages.

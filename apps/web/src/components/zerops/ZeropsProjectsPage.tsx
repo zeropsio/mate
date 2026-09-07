@@ -217,7 +217,7 @@ export function ZeropsProjectsHeader({
           </Tooltip>
         )}
         {onCreate === undefined ? null : (
-          <Pill className="shrink-0" label="New project" onClick={onCreate} />
+          <Pill className="shrink-0" label="New Mate" onClick={onCreate} />
         )}
       </div>
     </div>

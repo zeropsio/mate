@@ -214,7 +214,7 @@ describe("SidebarZeropsTree", () => {
   it("says there are no projects only when there are none", () => {
     const html = render([]);
     expect(html).toContain("No Zerops projects yet");
-    expect(html).toContain("New project");
+    expect(html).toContain("New Mate");
   });
 
   it("marks the active Mate", () => {
