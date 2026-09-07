@@ -1,11 +1,26 @@
 import type { DataConsoleTableModel } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsDataConsoleColumn } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 import { visitElements } from "../../test/reactElementTree";
 
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  return {
+    ...actual,
+    useRef: reactHookHarness.useRef,
+  };
+});
+
+vi.mock("react/compiler-runtime", async () => {
+  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  return { c: reactHookHarness.useMemoCache };
+});
+
 import { ZeropsDataCell } from "./ZeropsDataCell";
-import { ZeropsDataTable } from "./ZeropsDataTable";
+import { ZeropsDataTable, type ZeropsDataTableProps } from "./ZeropsDataTable";
 
 function findByAttribute(tree: unknown, attribute: string) {
   return visitElements(tree, (element) => attribute in element.props);
@@ -52,6 +67,10 @@ const MODEL: DataConsoleTableModel = {
 };
 
 describe("ZeropsDataTable", () => {
+  beforeEach(() => {
+    hooks.reset();
+  });
+
   it("renders one cell per visible column, in row order", () => {
     const tree = ZeropsDataTable({
       model: MODEL,
@@ -299,6 +318,151 @@ describe("ZeropsDataTable", () => {
     (findByAttribute(wired, "data-zerops-data-table-copy")!.props.onClick as () => void)();
     expect(onAskAboutTable).toHaveBeenCalledTimes(1);
     expect(onCopyPageJson).toHaveBeenCalledTimes(1);
+  });
+
+  describe("paging by scroll", () => {
+    interface ObserverStub {
+      readonly callback: (entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void;
+      readonly options: { readonly root: unknown; readonly rootMargin: string };
+      readonly observed: unknown[];
+      readonly disconnected: () => number;
+    }
+
+    let stubs: ObserverStub[] = [];
+    const original = Reflect.get(globalThis, "IntersectionObserver") as unknown;
+
+    beforeEach(() => {
+      stubs = [];
+      Reflect.set(
+        globalThis,
+        "IntersectionObserver",
+        class {
+          constructor(callback: ObserverStub["callback"], options: ObserverStub["options"]) {
+            const observed: unknown[] = [];
+            let disconnects = 0;
+            stubs.push({ callback, options, observed, disconnected: () => disconnects });
+            Object.assign(this, {
+              observe: (node: unknown) => observed.push(node),
+              disconnect: () => {
+                disconnects += 1;
+              },
+              unobserve: () => {},
+            });
+          }
+        },
+      );
+    });
+
+    afterEach(() => {
+      Reflect.set(globalThis, "IntersectionObserver", original);
+    });
+
+    function renderTable(overrides: Partial<ZeropsDataTableProps> = {}) {
+      hooks.beginRender();
+      return ZeropsDataTable({
+        model: { ...MODEL, nextCursor: "cursor-1" },
+        onLoadMore: vi.fn(),
+        onSort: vi.fn(),
+        ...overrides,
+      });
+    }
+
+    /** Runs the ref callbacks React would run on mount: the scroll region, then the sentinel. */
+    function mount(tree: unknown): void {
+      const grid = findByAttribute(tree, "data-zerops-data-table-grid")!;
+      (grid.props.ref as (node: unknown) => void)({ id: "scroll-region" });
+      const sentinel = findByAttribute(tree, "data-zerops-data-table-sentinel")!;
+      (sentinel.props.ref as (node: unknown) => void)({ id: "sentinel" });
+    }
+
+    it("renders the sentinel only while another page exists", () => {
+      expect(
+        findByAttribute(renderTable({ model: MODEL }), "data-zerops-data-table-sentinel"),
+      ).toBeNull();
+      expect(findByAttribute(renderTable(), "data-zerops-data-table-sentinel")).not.toBeNull();
+    });
+
+    it("roots the observer on the scroll region and watches the sentinel", () => {
+      mount(renderTable());
+      expect(stubs).toHaveLength(1);
+      expect(stubs[0]!.options.root).toEqual({ id: "scroll-region" });
+      expect(stubs[0]!.options.rootMargin).toBe("200px");
+      expect(stubs[0]!.observed).toEqual([{ id: "sentinel" }]);
+    });
+
+    it("pages once when the sentinel comes into view", () => {
+      const onLoadMore = vi.fn();
+      mount(renderTable({ onLoadMore }));
+      stubs[0]!.callback([{ isIntersecting: false }]);
+      expect(onLoadMore).not.toHaveBeenCalled();
+      stubs[0]!.callback([{ isIntersecting: true }]);
+      expect(onLoadMore).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not page while a page is already in flight", () => {
+      const onLoadMore = vi.fn();
+      mount(renderTable({ onLoadMore }));
+      renderTable({ onLoadMore, loadMorePending: true });
+      stubs[0]!.callback([{ isIntersecting: true }]);
+      expect(onLoadMore).not.toHaveBeenCalled();
+    });
+
+    it("leaves paging to the button where IntersectionObserver is missing", () => {
+      Reflect.set(globalThis, "IntersectionObserver", undefined);
+      const onLoadMore = vi.fn();
+      const tree = renderTable({ onLoadMore });
+      mount(tree);
+      expect(stubs).toHaveLength(0);
+      (findByAttribute(tree, "data-zerops-data-table-load-more")!.props.onClick as () => void)();
+      expect(onLoadMore).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("status bar", () => {
+    it("counts the rows it has and says whether more are available", () => {
+      hooks.beginRender();
+      expect(
+        findByAttribute(
+          ZeropsDataTable({ model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() }),
+          "data-zerops-data-table-loaded",
+        )!.props.children,
+      ).toBe("2 rows loaded");
+
+      hooks.beginRender();
+      expect(
+        findByAttribute(
+          ZeropsDataTable({
+            model: { ...MODEL, nextCursor: "cursor-1" },
+            onLoadMore: vi.fn(),
+            onSort: vi.fn(),
+          }),
+          "data-zerops-data-table-loaded",
+        )!.props.children,
+      ).toBe("2 rows loaded · more available");
+    });
+
+    it("says a page is in flight while one is", () => {
+      hooks.beginRender();
+      expect(
+        findByAttribute(
+          ZeropsDataTable({ model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() }),
+          "data-zerops-data-table-loading",
+        ),
+      ).toBeNull();
+
+      hooks.beginRender();
+      expect(
+        findByAttribute(
+          ZeropsDataTable({
+            loadMorePending: true,
+            model: { ...MODEL, nextCursor: "cursor-1" },
+            onLoadMore: vi.fn(),
+            onSort: vi.fn(),
+          }),
+          "data-zerops-data-table-loading",
+        )!.props.children,
+      ).toBe("Loading…");
+    });
   });
 
   describe("grid keyboard", () => {

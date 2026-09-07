@@ -91,6 +91,7 @@ import {
   emptyTable,
   emptyTree,
   expandTreePath,
+  filtersDirty,
   hasActiveFilters,
   isNodeUnloaded,
   resolveDataLayout,
@@ -215,6 +216,11 @@ export function ZeropsDataPanel({
   const [focusedRowIndex, setFocusedRowIndex] = useState<number | undefined>(undefined);
   const [filters, setFilters] = useState<ReadonlyArray<DataConsoleFilter>>([]);
   const [rawWhere, setRawWhere] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<ReadonlyArray<DataConsoleFilter>>([]);
+  const [appliedRawWhere, setAppliedRawWhere] = useState("");
+  const [rawWhereOpen, setRawWhereOpen] = useState(false);
+  const [autoFocusFilterIndex, setAutoFocusFilterIndex] = useState<number | undefined>(undefined);
+  const [sqlOpen, setSqlOpen] = useState(false);
   const [filtered, setFiltered] = useState<QueryState | undefined>(undefined);
   const [filteredSort, setFilteredSort] = useState<ZeropsDataTableSort | undefined>(undefined);
   const [filteredLoadMorePending, setFilteredLoadMorePending] = useState(false);
@@ -234,6 +240,7 @@ export function ZeropsDataPanel({
   const filterTokenRef = useRef(0);
   const queryTokenRef = useRef(0);
   const filterValueInputRef = useRef<HTMLInputElement | null>(null);
+  const gridScrollRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const measureRef = useRef<((node: HTMLDivElement | null) => void) | null>(null);
   if (measureRef.current === null) {
@@ -275,6 +282,13 @@ export function ZeropsDataPanel({
       );
     }
     return undefined;
+  };
+
+  // Replacing the rows outright — a sort, a filter apply, a new query — has
+  // to send the reader back to the top; appending a page deliberately does
+  // not (`ZeropsDataTable` keeps the scroll position across an append).
+  const resetGridScroll = () => {
+    gridScrollRef.current?.scrollTo({ top: 0 });
   };
 
   // Always `refresh`, never `services`: discovery runs when the console
@@ -340,6 +354,10 @@ export function ZeropsDataPanel({
     setFocusedRowIndex(undefined);
     setFilters([]);
     setRawWhere("");
+    setAppliedFilters([]);
+    setAppliedRawWhere("");
+    setRawWhereOpen(false);
+    setAutoFocusFilterIndex(undefined);
     setFiltered(undefined);
     setFilteredSort(undefined);
     setFilteredLoadMorePending(false);
@@ -506,6 +524,7 @@ export function ZeropsDataPanel({
     setFilteredLoadMorePending(false);
     setOpenRow(undefined);
     setFocusedRowIndex(undefined);
+    resetGridScroll();
     filterTokenRef.current += 1;
     const myToken = filterTokenRef.current;
     void runRequest({ kind: "query", service: node.path.service, stmt }).then((response) => {
@@ -565,6 +584,7 @@ export function ZeropsDataPanel({
     if (page === undefined) return;
     setTableSort({ column: column.name, direction });
     setTableLoadMorePending(false);
+    resetGridScroll();
     setOpenRow(undefined);
     setFocusedRowIndex(undefined);
     selectionTokenRef.current += 1;
@@ -590,6 +610,7 @@ export function ZeropsDataPanel({
     if (service === undefined) return;
     setQuerySort(undefined);
     setQueryLoadMorePending(false);
+    resetGridScroll();
     queryTokenRef.current += 1;
     const myToken = queryTokenRef.current;
     void runRequest({ kind: "query", service, stmt }).then((response) => {
@@ -639,6 +660,7 @@ export function ZeropsDataPanel({
     if (page === undefined) return;
     setQuerySort({ column: column.name, direction });
     setQueryLoadMorePending(false);
+    resetGridScroll();
     queryTokenRef.current += 1;
     const myToken = queryTokenRef.current;
     void runRequest({
@@ -777,40 +799,112 @@ export function ZeropsDataPanel({
     />
   );
 
-  const filterBar =
-    selectedNode?.kind === "tabular" && selectedServiceDialect !== undefined ? (
-      <ZeropsDataFilters
-        canClear={filtered !== undefined || hasActiveFilters(filters, rawWhere)}
-        columns={gridModel.columns}
-        filters={filters}
-        onApply={() => {
-          if (selectedNode === null) return;
-          runFilteredStatement(
-            selectedNode,
-            selectedServiceDialect,
-            filters,
-            rawWhere,
-            filteredSort,
-          );
-        }}
-        onChangeFilters={setFilters}
-        onChangeRawWhere={setRawWhere}
-        onClear={() => {
-          setFilters([]);
-          setRawWhere("");
-          setFiltered(undefined);
-          setFilteredSort(undefined);
-          setOpenRow(undefined);
-          filterTokenRef.current += 1;
-        }}
-        rawWhere={rawWhere}
-        valueInputRef={filterValueInputRef}
-      />
+  const filtersProps =
+    selectedNode?.kind === "tabular" && selectedServiceDialect !== undefined
+      ? {
+          canClear: filtered !== undefined || hasActiveFilters(filters, rawWhere),
+          columns: gridModel.columns,
+          dirty: filtersDirty(
+            { filters, rawWhere },
+            { filters: appliedFilters, rawWhere: appliedRawWhere },
+          ),
+          filters,
+          onApply: () => {
+            if (selectedNode === null || selectedServiceDialect === undefined) return;
+            setAppliedFilters(filters);
+            setAppliedRawWhere(rawWhere);
+            setAutoFocusFilterIndex(undefined);
+            runFilteredStatement(
+              selectedNode,
+              selectedServiceDialect,
+              filters,
+              rawWhere,
+              filteredSort,
+            );
+          },
+          onChangeFilters: (next: ReadonlyArray<DataConsoleFilter>) => {
+            setFilters(next);
+            setAutoFocusFilterIndex(next.length > filters.length ? next.length - 1 : undefined);
+          },
+          onChangeRawWhere: setRawWhere,
+          onClear: () => {
+            setFilters([]);
+            setRawWhere("");
+            setAppliedFilters([]);
+            setAppliedRawWhere("");
+            setAutoFocusFilterIndex(undefined);
+            setFiltered(undefined);
+            setFilteredSort(undefined);
+            setOpenRow(undefined);
+            resetGridScroll();
+            filterTokenRef.current += 1;
+          },
+          onToggleRaw: () => setRawWhereOpen((current) => !current),
+          rawOpen: rawWhereOpen,
+          rawWhere,
+          valueInputRef: filterValueInputRef,
+          ...(autoFocusFilterIndex !== undefined ? { autoFocusIndex: autoFocusFilterIndex } : {}),
+        }
+      : null;
+
+  const sqlToggle =
+    affordances?.canQuery === true ? (
+      <Button
+        data-zerops-data-query-toggle
+        onClick={() => setSqlOpen((current) => !current)}
+        size="xs"
+        variant={sqlOpen ? "secondary" : "ghost"}
+      >
+        SQL
+      </Button>
     ) : null;
 
+  const backToTable = () => {
+    setQueryState(undefined);
+    setQuerySort(undefined);
+    setQueryLoadMorePending(false);
+    resetGridScroll();
+    queryTokenRef.current += 1;
+  };
+
+  const belowToolbar = (
+    <>
+      {filtersProps === null ? null : <ZeropsDataFilters slot="rows" {...filtersProps} />}
+      {affordances?.canQuery === true && sqlOpen ? (
+        <ZeropsDataQuery onSubmit={handleQuerySubmit} />
+      ) : null}
+      {queryState === undefined ? null : (
+        <div
+          className="flex shrink-0 items-center justify-between gap-2 py-1 text-muted-foreground text-xs"
+          data-zerops-data-query-result
+        >
+          <span>{`Query result · ${queryState.model.rows.length.toLocaleString()} rows loaded`}</span>
+          <Button data-zerops-data-query-back onClick={backToTable} size="xs" variant="ghost">
+            Back to table
+          </Button>
+        </div>
+      )}
+    </>
+  );
+
+  // One grid region, so a query result replaces the table model rather than
+  // stacking a second scrolling grid under it; "Back to table" drops the
+  // query state and the untouched table model is on screen again.
   const gridView =
-    selectedNode?.kind === "tabular" ? (
+    queryState !== undefined ? (
       <ZeropsDataTable
+        belowToolbar={belowToolbar}
+        loadMorePending={queryLoadMorePending}
+        model={queryState.model}
+        onLoadMore={handleQueryLoadMore}
+        onSort={handleQuerySort}
+        scrollRegionRef={gridScrollRef}
+        toolbarTrailing={sqlToggle}
+        {...(querySort ? { sort: querySort } : {})}
+      />
+    ) : selectedNode?.kind === "tabular" ? (
+      <ZeropsDataTable
+        belowToolbar={belowToolbar}
         columnsOpen={columnsOpen}
         filtered={filtered !== undefined}
         hiddenColumns={hiddenColumns}
@@ -853,9 +947,14 @@ export function ZeropsDataPanel({
         onSort={handleTableSort}
         onToggleColumn={(name) => setHiddenColumns((current) => toggleHiddenColumn(current, name))}
         onToggleColumnsOpen={() => setColumnsOpen((current) => !current)}
-        {...(filterBar !== null
-          ? { onFocusFilter: () => filterValueInputRef.current?.focus() }
-          : {})}
+        scrollRegionRef={gridScrollRef}
+        toolbarTrailing={sqlToggle}
+        {...(filtersProps === null
+          ? {}
+          : {
+              onFocusFilter: () => filterValueInputRef.current?.focus(),
+              toolbarLeading: <ZeropsDataFilters slot="toolbar" {...filtersProps} />,
+            })}
         {...(filtered === undefined ? { onRequestCount: handleTableCount } : {})}
         {...(gridSort ? { sort: gridSort } : {})}
         {...(tableCount !== undefined ? { count: tableCount } : {})}
@@ -865,7 +964,10 @@ export function ZeropsDataPanel({
 
   const drawerRow = openRow === undefined ? undefined : gridModel.rows[openRow.index];
   const drawerView =
-    drawerRow !== undefined && openRow !== undefined && selectedService !== null ? (
+    queryState === undefined &&
+    drawerRow !== undefined &&
+    openRow !== undefined &&
+    selectedService !== null ? (
       <ZeropsDataRowDrawer
         columns={gridModel.columns}
         layout={layout}
@@ -889,84 +991,95 @@ export function ZeropsDataPanel({
     ) : null;
 
   const contentPane = (
-    <div className="min-w-0 flex-1 space-y-3" data-zerops-data-content>
-      {filterBar}
-      {gridView}
-      {selectedNode?.kind === "blob" && blob !== undefined ? <ZeropsDataBlob blob={blob} /> : null}
-      {affordances?.canQuery === true ? <ZeropsDataQuery onSubmit={handleQuerySubmit} /> : null}
-      {queryState !== undefined ? (
-        <ZeropsDataTable
-          loadMorePending={queryLoadMorePending}
-          model={queryState.model}
-          onLoadMore={handleQueryLoadMore}
-          onSort={handleQuerySort}
-          {...(querySort ? { sort: querySort } : {})}
-        />
-      ) : null}
+    <div className="flex min-w-0 flex-1 flex-col" data-zerops-data-content>
+      {gridView ?? (
+        <>
+          {sqlToggle === null ? null : (
+            <div className="flex shrink-0 flex-wrap items-center gap-1 pb-1">{sqlToggle}</div>
+          )}
+          {belowToolbar}
+          {selectedNode?.kind === "blob" && blob !== undefined ? (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <ZeropsDataBlob blob={blob} />
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 
+  const notBrowsableLine =
+    services !== undefined && !browsable && !awaitingMissingServiceRefresh ? (
+      <p className="text-muted-foreground text-xs" data-zerops-data-not-browsable>
+        This service can't be browsed yet.
+      </p>
+    ) : null;
+  const showBrowse = sessionLine === null && notBrowsableLine === null;
+
   return (
     <FlatCard
-      className="relative space-y-3 p-3"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
       data-zerops-data-panel="service"
       data-zerops-data-layout={layout}
       ref={measureRef.current}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
         <ZeropsDataBreadcrumbs
           collapsedPrefix={treeCollapsedPrefix}
           onNavigate={handleNavigatePath}
           path={currentPath}
         />
-        {onToggleMaximized !== undefined ? (
-          <Button
-            aria-label={maximized ? "Restore panel" : "Maximize panel"}
-            data-zerops-data-maximize
-            onClick={onToggleMaximized}
-            size="icon-xs"
-            variant="ghost"
-          >
-            {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-1">
+          {showBrowse && layout === "wide" ? (
+            <Button
+              data-zerops-data-tree-toggle-rail
+              onClick={() => setTreeCollapsed((current) => !current)}
+              size="micro"
+              variant="ghost"
+            >
+              {treeCollapsed ? "Show tree" : "Hide tree"}
+            </Button>
+          ) : null}
+          {onToggleMaximized !== undefined ? (
+            <Button
+              aria-label={maximized ? "Restore panel" : "Maximize panel"}
+              data-zerops-data-maximize
+              onClick={onToggleMaximized}
+              size="icon-xs"
+              variant="ghost"
+            >
+              {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      {sessionLine ??
-        (services !== undefined && !browsable && !awaitingMissingServiceRefresh ? (
-          <p className="text-muted-foreground text-xs" data-zerops-data-not-browsable>
-            This service can't be browsed yet.
-          </p>
-        ) : layout === "wide" ? (
-          <div className="flex gap-3" data-zerops-data-browse>
-            {treeCollapsed ? null : (
-              <div className="w-60 shrink-0" data-zerops-data-tree-rail>
-                {treeView}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <Button
-                data-zerops-data-tree-toggle-rail
-                onClick={() => setTreeCollapsed((current) => !current)}
-                size="micro"
-                variant="ghost"
-              >
-                {treeCollapsed ? "Show tree" : "Hide tree"}
-              </Button>
-              <div className="flex gap-3">
-                {contentPane}
-                {drawerView}
-              </div>
+      {!showBrowse ? (
+        <div className="shrink-0 px-3 pb-3">{sessionLine ?? notBrowsableLine}</div>
+      ) : layout === "wide" ? (
+        <div className="flex min-h-0 flex-1 gap-3 px-3" data-zerops-data-browse>
+          {treeCollapsed ? null : (
+            <div className="w-60 shrink-0 overflow-y-auto" data-zerops-data-tree-rail>
+              {treeView}
             </div>
-          </div>
-        ) : (
-          <div className="relative space-y-3" data-zerops-data-browse>
-            {selectedNode === null ? treeView : contentPane}
-            {drawerView}
-          </div>
-        ))}
+          )}
+          {contentPane}
+          {drawerView === null ? null : (
+            <div className="min-h-0 shrink-0 overflow-y-auto">{drawerView}</div>
+          )}
+        </div>
+      ) : (
+        <div className="relative flex min-h-0 flex-1 flex-col px-3" data-zerops-data-browse>
+          {selectedNode === null && queryState === undefined ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">{treeView}</div>
+          ) : (
+            contentPane
+          )}
+          {drawerView}
+        </div>
+      )}
 
-      {errorLine}
+      {errorLine === null ? null : <div className="shrink-0 px-3 py-2">{errorLine}</div>}
     </FlatCard>
   );
 }

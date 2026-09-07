@@ -481,6 +481,35 @@ export function hasActiveFilters(
   return filters.length > 0 || (rawWhere?.trim().length ?? 0) > 0;
 }
 
+/** A filter draft: the chips plus the raw `WHERE` escape hatch, as the filter bar holds them. */
+export interface DataConsoleFilterDraft {
+  readonly filters: ReadonlyArray<DataConsoleFilter>;
+  readonly rawWhere: string;
+}
+
+/**
+ * Whether a filter draft still differs from what was last applied — the one
+ * condition under which the filter bar offers `Apply` at all. Chips compare in
+ * order by column, operator and operand, where an absent operand
+ * (`isNull`/`notNull`) and an empty one are the same thing; `rawWhere`
+ * compares trimmed, because the statement builder trims it too.
+ */
+export function filtersDirty(
+  draft: DataConsoleFilterDraft,
+  applied: DataConsoleFilterDraft,
+): boolean {
+  if (draft.rawWhere.trim() !== applied.rawWhere.trim()) return true;
+  if (draft.filters.length !== applied.filters.length) return true;
+  return draft.filters.some((filter, index) => {
+    const other = applied.filters[index]!;
+    return (
+      filter.column !== other.column ||
+      filter.op !== other.op ||
+      (filter.value ?? "") !== (other.value ?? "")
+    );
+  });
+}
+
 /**
  * Builds a read-only `SELECT * FROM … WHERE … ORDER BY … LIMIT n` statement
  * for the table filter panel. Structured filters are ANDed together;

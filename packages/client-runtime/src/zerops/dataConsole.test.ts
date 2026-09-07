@@ -8,7 +8,7 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 
-import type { DataConsoleTree } from "./dataConsole.ts";
+import type { DataConsoleFilterDraft, DataConsoleTree } from "./dataConsole.ts";
 import {
   applyTablePage,
   applyTreePage,
@@ -28,6 +28,7 @@ import {
   expandTreePath,
   foldDataConsoleSessionEvent,
   formatCell,
+  filtersDirty,
   hasActiveFilters,
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
@@ -742,6 +743,102 @@ describe("hasActiveFilters", () => {
   it("is true with a non-blank rawWhere even with no structured filters", () => {
     expect(hasActiveFilters([], "total > 10")).toBe(true);
   });
+});
+
+describe("filtersDirty", () => {
+  interface Case {
+    readonly name: string;
+    readonly draft: DataConsoleFilterDraft;
+    readonly applied: DataConsoleFilterDraft;
+    readonly dirty: boolean;
+  }
+
+  const cases: ReadonlyArray<Case> = [
+    {
+      name: "two empty drafts are clean",
+      draft: { filters: [], rawWhere: "" },
+      applied: { filters: [], rawWhere: "" },
+      dirty: false,
+    },
+    {
+      name: "an added chip is dirty",
+      draft: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      applied: { filters: [], rawWhere: "" },
+      dirty: true,
+    },
+    {
+      name: "a removed chip is dirty",
+      draft: { filters: [], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      dirty: true,
+    },
+    {
+      name: "identical chips are clean",
+      draft: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      dirty: false,
+    },
+    {
+      name: "a changed column is dirty",
+      draft: { filters: [{ column: "b", op: "eq", value: "1" }], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      dirty: true,
+    },
+    {
+      name: "a changed operator is dirty",
+      draft: { filters: [{ column: "a", op: "neq", value: "1" }], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      dirty: true,
+    },
+    {
+      name: "a changed value is dirty",
+      draft: { filters: [{ column: "a", op: "eq", value: "2" }], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "eq", value: "1" }], rawWhere: "" },
+      dirty: true,
+    },
+    {
+      name: "an absent value and an empty one are the same operand",
+      draft: { filters: [{ column: "a", op: "isNull" }], rawWhere: "" },
+      applied: { filters: [{ column: "a", op: "isNull", value: "" }], rawWhere: "" },
+      dirty: false,
+    },
+    {
+      name: "chip order matters",
+      draft: {
+        filters: [
+          { column: "b", op: "eq", value: "2" },
+          { column: "a", op: "eq", value: "1" },
+        ],
+        rawWhere: "",
+      },
+      applied: {
+        filters: [
+          { column: "a", op: "eq", value: "1" },
+          { column: "b", op: "eq", value: "2" },
+        ],
+        rawWhere: "",
+      },
+      dirty: true,
+    },
+    {
+      name: "rawWhere compares trimmed",
+      draft: { filters: [], rawWhere: "  total > 10  " },
+      applied: { filters: [], rawWhere: "total > 10" },
+      dirty: false,
+    },
+    {
+      name: "a typed rawWhere over an applied blank one is dirty",
+      draft: { filters: [], rawWhere: "total > 10" },
+      applied: { filters: [], rawWhere: "" },
+      dirty: true,
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      expect(filtersDirty(testCase.draft, testCase.applied)).toBe(testCase.dirty);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------

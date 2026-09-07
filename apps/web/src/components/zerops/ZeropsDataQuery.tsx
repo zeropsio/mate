@@ -1,7 +1,9 @@
 /**
  * The Data panel's read-only query box: shown only by its caller
  * (`ZeropsDataPanel`) for a selected service whose
- * `resolveServiceAffordances(service).canQuery` is true.
+ * `resolveServiceAffordances(service).canQuery` is true, and only while the
+ * toolbar's SQL toggle is open — it is a row of the panel's content column,
+ * not a card of its own, so it renders as a plain bordered block.
  *
  * NOT a protected root (design-system.md R2): the submit button issues a
  * read-only `query` request directly from the user's own click, and nothing
@@ -11,7 +13,6 @@ import { useState, type ChangeEvent } from "react";
 
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { FlatCard, MicroLabel } from "./primitives";
 
 export interface ZeropsDataQueryProps {
   readonly onSubmit: (stmt: string) => void;
@@ -30,8 +31,10 @@ export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
   };
 
   return (
-    <FlatCard className="space-y-2 p-3" data-zerops-data-query>
-      <MicroLabel>Query</MicroLabel>
+    <div
+      className="shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2"
+      data-zerops-data-query
+    >
       <Textarea
         data-zerops-data-query-input
         onChange={handleChange}
@@ -48,6 +51,6 @@ export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
       >
         Run
       </Button>
-    </FlatCard>
+    </div>
   );
 }

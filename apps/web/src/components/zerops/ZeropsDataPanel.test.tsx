@@ -80,6 +80,16 @@ function findComponent<P>(tree: unknown, type: unknown): { readonly props: P } |
   return found as { readonly props: P } | null;
 }
 
+/** Every mounted element of one component type — the grid is meant to be a single region. */
+function allComponents(tree: unknown, type: unknown): ReadonlyArray<{ readonly props: unknown }> {
+  const found: { readonly props: unknown }[] = [];
+  visitElements(tree, (element) => {
+    if (element.type === type) found.push(element);
+    return false;
+  });
+  return found;
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 6; i += 1) {
     await Promise.resolve();
@@ -1100,12 +1110,16 @@ describe("ZeropsDataPanel", () => {
       ).not.toThrow();
     });
 
-    it("keeps the query box for a service that can query, and submits its statement", async () => {
+    it("the SQL toggle reveals the query box, which submits its statement", async () => {
       const tree = await selectOrders((request) =>
         request.kind === "table" ? { kind: "table", page: tablePage() } : undefined,
       );
+      expect(findComponent(tree, ZeropsDataQuery)).toBeNull();
+
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      const opened = render({ service: "db1", widthForTest: 1200 });
       const query = findComponent<{ readonly onSubmit: (stmt: string) => void }>(
-        tree,
+        opened,
         ZeropsDataQuery,
       )!;
       commandSpy.mockClear();
@@ -1116,14 +1130,82 @@ describe("ZeropsDataPanel", () => {
       });
     });
 
-    it("only renders the query box when the service can query", async () => {
+    it("only offers the SQL toggle when the service can query", async () => {
       respond([SERVICE_VIEW_ONLY]);
       feedState.session = { status: "ready", allowWrites: false };
       render({ service: "kv1", widthForTest: 1200 });
       await flush();
+      const tree = render({ service: "kv1", widthForTest: 1200 });
+      expect(findByAttribute(tree, "data-zerops-data-query-toggle")).toBeNull();
+      expect(findComponent(tree, ZeropsDataQuery)).toBeNull();
+    });
+
+    it("a query result takes over the one grid, and Back to table gives it back", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : { kind: "table", page: tablePage({ rows: [["queried"], ["queried-2"]] }) },
+      );
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      findComponent<{ readonly onSubmit: (stmt: string) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataQuery,
+      )!.props.onSubmit("select 1");
+      await flush();
+
+      const withResult = render({ service: "db1", widthForTest: 1200 });
+      const grids = allComponents(withResult, ZeropsDataTable);
+      expect(grids).toHaveLength(1);
       expect(
-        findComponent(render({ service: "kv1", widthForTest: 1200 }), ZeropsDataQuery),
-      ).toBeNull();
+        (grids[0]!.props as { readonly model: { readonly rows: ReadonlyArray<unknown> } }).model
+          .rows,
+      ).toEqual([["queried"], ["queried-2"]]);
+      expect(findByAttribute(withResult, "data-zerops-data-query-result")).not.toBeNull();
+      expect(
+        visitElements(
+          withResult,
+          (element) => element.props.children === "Query result · 2 rows loaded",
+        ),
+      ).not.toBeNull();
+
+      (findByAttribute(withResult, "data-zerops-data-query-back")!.props.onClick as () => void)();
+      const back = render({ service: "db1", widthForTest: 1200 });
+      expect(findByAttribute(back, "data-zerops-data-query-result")).toBeNull();
+      expect(
+        findComponent<{ readonly model: { readonly rows: ReadonlyArray<unknown> } }>(
+          back,
+          ZeropsDataTable,
+        )!.props.model.rows,
+      ).toEqual([["plain"]]);
+    });
+
+    it("offers Apply only while the filter draft differs from what is applied", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ columns: [column({ name: "status" })] }) }
+          : { kind: "table", page: tablePage({ rows: [["filtered"]] }) },
+      );
+      const filters = findComponent<{
+        readonly dirty: boolean;
+        readonly onChangeFilters: (filters: ReadonlyArray<unknown>) => void;
+      }>(tree, ZeropsDataFilters)!;
+      expect(filters.props.dirty).toBe(false);
+
+      filters.props.onChangeFilters([{ column: "status", op: "eq", value: "paid" }]);
+      const dirty = findComponent<{ readonly dirty: boolean; readonly onApply: () => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataFilters,
+      )!;
+      expect(dirty.props.dirty).toBe(true);
+
+      dirty.props.onApply();
+      await flush();
+      expect(
+        findComponent<{ readonly dirty: boolean }>(
+          render({ service: "db1", widthForTest: 1200 }),
+          ZeropsDataFilters,
+        )!.props.dirty,
+      ).toBe(false);
     });
 
     it("shows describeDataConsoleError's text for a rejected ZeropsDataConsoleError", async () => {
