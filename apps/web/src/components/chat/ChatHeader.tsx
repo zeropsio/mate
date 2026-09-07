@@ -11,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -151,6 +151,35 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
       size="xs"
       variant="outline"
     />
+  );
+}
+
+/**
+ * A fresh thread in the same project, from the header: the Mate breadcrumb
+ * took the place of the project name that used to be this affordance, so a
+ * Mate's conversation gets an explicit button beside its Zerops link.
+ */
+function NewThreadButton({
+  projectName,
+  onNewThread,
+}: {
+  readonly projectName: string;
+  readonly onNewThread: () => void;
+}) {
+  return (
+    <Button
+      aria-label={`New thread in ${projectName}`}
+      className="ps-[8.5px]"
+      data-zerops-new-thread
+      onClick={onNewThread}
+      size="xs"
+      variant="outline"
+    >
+      <SquarePenIcon className="size-3.5 shrink-0" />
+      <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
+        New thread
+      </span>
+    </Button>
   );
 }
 
@@ -481,6 +510,9 @@ export const ChatHeader = memo(function ChatHeader({
             availableEditors={availableEditors}
             openInCwd={openInCwd}
           />
+        )}
+        {mate === undefined || !activeProjectName ? null : (
+          <NewThreadButton onNewThread={onNewThreadInProject} projectName={activeProjectName} />
         )}
         {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
         {activeProjectName && stackedActionsSupported && (
