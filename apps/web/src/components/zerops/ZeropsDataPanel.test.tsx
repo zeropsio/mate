@@ -733,6 +733,61 @@ describe("ZeropsDataPanel", () => {
       expect(grid.props.model.rows).toEqual([["filtered"]]);
     });
 
+    it("drops a stale row count for a node the user has since left", async () => {
+      const OTHER: ZeropsDataConsoleNode = {
+        ...ORDERS,
+        name: "customers",
+        path: { service: "db1", segments: ["public", "customers"] },
+      };
+      let resolveCount: (() => void) | undefined;
+      respond([SERVICE_SUPPORTED]);
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+        if (args.input.kind === "services") {
+          return Promise.resolve(AsyncResult.success(servicesResponse([SERVICE_SUPPORTED])));
+        }
+        if (args.input.kind === "tableCount") {
+          return new Promise((resolve) => {
+            resolveCount = () =>
+              resolve(
+                AsyncResult.success({ kind: "count", count: 250 } as ZeropsDataConsoleResponse),
+              );
+          });
+        }
+        if (args.input.kind === "table") {
+          return Promise.resolve(
+            AsyncResult.success({ kind: "table", page: tablePage() } as ZeropsDataConsoleResponse),
+          );
+        }
+        return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+      });
+
+      await serviceTab();
+      let tree = render({ service: "db1", widthForTest: 1200 });
+      findComponent<{ readonly onSelectNode: (node: ZeropsDataConsoleNode) => void }>(
+        tree,
+        ZeropsDataTree,
+      )!.props.onSelectNode(ORDERS);
+      await flush();
+      tree = render({ service: "db1", widthForTest: 1200 });
+      findComponent<{ readonly onRequestCount: () => void }>(
+        tree,
+        ZeropsDataTable,
+      )!.props.onRequestCount();
+      findComponent<{ readonly onSelectNode: (node: ZeropsDataConsoleNode) => void }>(
+        tree,
+        ZeropsDataTree,
+      )!.props.onSelectNode(OTHER);
+      await flush();
+      resolveCount?.();
+      await flush();
+      expect(
+        findComponent<{ readonly count?: number }>(
+          render({ service: "db1", widthForTest: 1200 }),
+          ZeropsDataTable,
+        )!.props.count,
+      ).toBeUndefined();
+    });
+
     it("sorting a filtered grid rebuilds the statement's ORDER BY instead of paging", async () => {
       const STATUS = column({ name: "status" });
       const tree = await selectOrders((request) =>

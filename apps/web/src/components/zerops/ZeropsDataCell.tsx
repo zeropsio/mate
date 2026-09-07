@@ -28,7 +28,7 @@ export function cellNeedsExpander(value: unknown): boolean {
 
 export function ZeropsDataCell({ value, onExpand }: ZeropsDataCellProps) {
   const detail = describeCell(value);
-  const expandable = detail.hasMore || detail.kind === "json";
+  const expandable = cellNeedsExpander(value);
 
   return (
     <span className="inline-flex max-w-full items-center gap-1" data-zerops-data-cell={detail.kind}>

@@ -632,12 +632,36 @@ describe("buildFilteredTableStatement", () => {
       buildFilteredTableStatement({
         dialect: "postgresql",
         path: tablePath,
-        filters: [{ column: "name", op: "contains", value: "50%_off\\deal" }],
+        filters: [{ column: "name", op: "contains", value: "50%_off!deal\\x" }],
         limit: 50,
       }),
     ).toBe(
-      `SELECT * FROM "public"."orders" WHERE "name" LIKE '%50\\%\\_off\\\\deal%' ESCAPE '\\' LIMIT 50`,
+      `SELECT * FROM "public"."orders" WHERE "name" LIKE '%50!%!_off!!deal\\x%' ESCAPE '!' LIMIT 50`,
     );
+  });
+
+  it("doubles backslashes in MySQL literals, where a backslash escapes, and leaves PostgreSQL's alone", () => {
+    expect(
+      buildFilteredTableStatement({
+        dialect: "mysql",
+        path: tablePath,
+        filters: [
+          { column: "name", op: "eq", value: "a\\b'c" },
+          { column: "name", op: "contains", value: "x\\%" },
+        ],
+        limit: 5,
+      }),
+    ).toBe(
+      "SELECT * FROM `public`.`orders` WHERE `name` = 'a\\\\b''c' AND `name` LIKE '%x\\\\!%%' ESCAPE '!' LIMIT 5",
+    );
+    expect(
+      buildFilteredTableStatement({
+        dialect: "postgresql",
+        path: tablePath,
+        filters: [{ column: "name", op: "eq", value: "a\\b" }],
+        limit: 5,
+      }),
+    ).toBe(`SELECT * FROM "public"."orders" WHERE "name" = 'a\\b' LIMIT 5`);
   });
 
   it("renders startsWith as a right-open LIKE", () => {
@@ -648,7 +672,7 @@ describe("buildFilteredTableStatement", () => {
         filters: [{ column: "name", op: "startsWith", value: "Acme" }],
         limit: 50,
       }),
-    ).toBe(`SELECT * FROM "public"."orders" WHERE "name" LIKE 'Acme%' ESCAPE '\\' LIMIT 50`);
+    ).toBe(`SELECT * FROM "public"."orders" WHERE "name" LIKE 'Acme%' ESCAPE '!' LIMIT 50`);
   });
 
   it("appends a trimmed non-empty rawWhere as a further AND (...) clause, untouched", () => {

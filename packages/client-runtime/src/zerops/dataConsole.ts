@@ -405,14 +405,20 @@ function qualifiedTableName(path: ZeropsDataConsolePath, dialect: DataConsoleSql
   return path.segments.map((segment) => quoteIdentifier(segment, dialect)).join(".");
 }
 
-function sqlStringLiteral(value: string): string {
-  return `'${value.split("'").join("''")}'`;
+/** A quoted literal: `'` doubled everywhere; `\` doubled for MySQL, whose literals treat a backslash as an escape by default (PostgreSQL's standard-conforming strings do not). */
+function sqlStringLiteral(value: string, dialect: DataConsoleSqlDialect): string {
+  const body = dialect === "mysql" ? value.split("\\").join("\\\\") : value;
+  return `'${body.split("'").join("''")}'`;
 }
 
-/** Escapes `%`, `_` and `\` in a LIKE operand and pairs it with `ESCAPE '\'`, so a literal wildcard character in a `contains`/`startsWith` filter value never behaves as a wildcard. */
-function likeLiteral(value: string, pattern: (escaped: string) => string): string {
-  const escaped = value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-  return `${sqlStringLiteral(pattern(escaped))} ESCAPE '\\'`;
+/** Escapes `%`, `_` and `!` in a LIKE operand and pairs it with `ESCAPE '!'` — a non-backslash escape character reads the same in both dialects, so a literal wildcard in a `contains`/`startsWith` filter value never behaves as a wildcard and no backslash rule gets in the way. */
+function likeLiteral(
+  value: string,
+  dialect: DataConsoleSqlDialect,
+  pattern: (escaped: string) => string,
+): string {
+  const escaped = value.replace(/[!%_]/g, (ch) => `!${ch}`);
+  return `${sqlStringLiteral(pattern(escaped), dialect)} ESCAPE '!'`;
 }
 
 const COMPARISON_OPERATORS: Partial<Record<DataConsoleFilterOp, string>> = {
@@ -432,12 +438,12 @@ function filterClause(filter: DataConsoleFilter, dialect: DataConsoleSqlDialect)
     case "notNull":
       return `${column} IS NOT NULL`;
     case "contains":
-      return `${column} LIKE ${likeLiteral(filter.value ?? "", (v) => `%${v}%`)}`;
+      return `${column} LIKE ${likeLiteral(filter.value ?? "", dialect, (v) => `%${v}%`)}`;
     case "startsWith":
-      return `${column} LIKE ${likeLiteral(filter.value ?? "", (v) => `${v}%`)}`;
+      return `${column} LIKE ${likeLiteral(filter.value ?? "", dialect, (v) => `${v}%`)}`;
     default: {
       const operator = COMPARISON_OPERATORS[filter.op];
-      return `${column} ${operator} ${sqlStringLiteral(filter.value ?? "")}`;
+      return `${column} ${operator} ${sqlStringLiteral(filter.value ?? "", dialect)}`;
     }
   }
 }

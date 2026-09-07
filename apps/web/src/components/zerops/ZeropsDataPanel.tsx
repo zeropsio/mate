@@ -123,7 +123,6 @@ import * as Schema from "effect/Schema";
 import { Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { cn } from "~/lib/utils";
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
@@ -515,6 +514,8 @@ export function ZeropsDataPanel({
     if (page === undefined) return;
     setTableSort({ column: column.name, direction });
     setTableLoadMorePending(false);
+    setOpenRow(undefined);
+    setFocusedRowIndex(undefined);
     selectionTokenRef.current += 1;
     const myToken = selectionTokenRef.current;
     void runRequest({ kind: "table", path: selectedNode.path, page }).then((response) => {
@@ -527,7 +528,9 @@ export function ZeropsDataPanel({
 
   const handleTableCount = () => {
     if (selectedNode === null) return;
+    const myToken = selectionTokenRef.current;
     void runRequest({ kind: "tableCount", path: selectedNode.path }).then((response) => {
+      if (selectionTokenRef.current !== myToken) return; // the user has moved on; that count is another node's
       if (response?.kind === "count") setTableCount(response.count);
     });
   };
@@ -886,7 +889,7 @@ export function ZeropsDataPanel({
             </div>
           </div>
         ) : (
-          <div className={cn("relative", "space-y-3")} data-zerops-data-browse>
+          <div className="relative space-y-3" data-zerops-data-browse>
             {selectedNode === null ? treeView : contentPane}
             {drawerView}
           </div>
