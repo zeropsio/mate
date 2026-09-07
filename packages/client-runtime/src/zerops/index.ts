@@ -104,6 +104,7 @@ export {
   creationHandoffPrompt,
   parseCreationHandoffs,
   readCreationHandoff,
+  creationJobSendable,
   creationJobToStart,
   withCreationHandoff,
   withCreationHandoffPromoted,

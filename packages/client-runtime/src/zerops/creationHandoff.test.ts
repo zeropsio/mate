@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  creationJobSendable,
   creationHandoffPrompt,
   parseCreationHandoffs,
   readCreationHandoff,
@@ -153,5 +154,34 @@ describe("creationJobToStart", () => {
   it("waits rather than gives up: the same input answers again once it is ready", () => {
     expect(creationJobToStart({ ...READY, ready: false })).toBeUndefined();
     expect(creationJobToStart(READY)).toEqual(CLONED);
+  });
+});
+
+describe("creationJobSendable", () => {
+  it("sends when the provider is there and the job is in the composer", () => {
+    expect(
+      creationJobSendable({ providerAvailable: true, composerText: "Check what is running." }),
+    ).toBe(true);
+  });
+
+  it("refuses while no provider will take it", () => {
+    expect(
+      creationJobSendable({ providerAvailable: false, composerText: "Check what is running." }),
+    ).toBe(false);
+  });
+
+  /**
+   * The job is written to the composer's store and read back from a ref that
+   * the store fills on the next render. A send in the same tick reads the
+   * empty ref, sends nothing, and — reported as sent — spends the handoff on
+   * nothing. Measured on a second Mate: the prompt was written, the handoff
+   * was gone, and the thread had no messages at all.
+   */
+  it("refuses an empty composer rather than reporting an empty send as sent", () => {
+    expect(creationJobSendable({ providerAvailable: true, composerText: "" })).toBe(false);
+  });
+
+  it("reads whitespace as empty", () => {
+    expect(creationJobSendable({ providerAvailable: true, composerText: "  \n\t " })).toBe(false);
   });
 });

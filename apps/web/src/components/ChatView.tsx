@@ -262,6 +262,7 @@ import {
   type ZeropsAgentId,
 } from "./zerops/ZeropsAgentAuthorizationHost";
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
+import { creationJobSendable } from "@t3tools/client-runtime/zerops";
 import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
@@ -5833,9 +5834,17 @@ function ChatViewContent(props: ChatViewProps) {
     agentSignInRequired: zeropsChrome.agentSignInRequired,
     ready: activeThread !== null && !isWorking && !activeEnvironmentUnavailable,
     send: () => {
-      // The composer's own gate: a thread with no provider refuses the send,
-      // and the hook needs to know so it can try again rather than lose the job.
-      if (composerRef.current?.getSendContext()?.providerAvailable !== true) return false;
+      // Both gates the send itself applies: a thread with no provider refuses
+      // the message, and `onSend` sends what `promptRef` holds — which the
+      // store write that just put the job there does not reach until the next
+      // render. Reporting either as sent would spend the handoff on nothing.
+      if (
+        !creationJobSendable({
+          providerAvailable: composerRef.current?.getSendContext()?.providerAvailable === true,
+          composerText: promptRef.current,
+        })
+      )
+        return false;
       void onSend();
       return true;
     },
