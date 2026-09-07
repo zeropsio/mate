@@ -17,6 +17,19 @@ describe("resolveZeropsAccountGate", () => {
     expect(resolveZeropsAccountGate({ pathname, status })).toBe(expected);
   });
 
+  it("sends a browser that has signed in before back to the login when its session expires", () => {
+    // A standalone pairing and an expired Zerops session both read
+    // `signed-out`; only `accountRequired` tells them apart, and degrading a
+    // Zerops user into the pairing shell is what this prevents.
+    expect(
+      resolveZeropsAccountGate({
+        accountRequired: true,
+        pathname: "/projects/example/threads/example",
+        status: "signed-out",
+      }),
+    ).toBe("auth-only");
+  });
+
   it("does not apply Zerops account auth over an authenticated local server session", () => {
     expect(
       resolveZeropsAccountGate({

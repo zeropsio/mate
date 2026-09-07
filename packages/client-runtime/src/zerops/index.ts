@@ -37,6 +37,7 @@ export {
   ZEROPS_SESSION_STORAGE_KEY,
   clearZeropsSelection,
   clearZeropsSession,
+  hasRememberedZeropsAccount,
   loadZeropsSelection,
   loadZeropsSession,
   isUsableZeropsSession,

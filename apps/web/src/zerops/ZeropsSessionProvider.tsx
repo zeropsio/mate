@@ -14,6 +14,7 @@ import {
   withRecipeStoreMock,
   ZeropsApiClient,
   clearZeropsSession,
+  hasRememberedZeropsAccount,
   loadZeropsSelection,
   loadZeropsSession,
   requiresZeropsTwoFactor,
@@ -48,6 +49,13 @@ export type ZeropsOrganizationStatus = "idle" | "loading" | "needs-selection" | 
 export interface ZeropsSessionValue {
   readonly client: ZeropsApiClient;
   readonly status: ZeropsSessionStatus;
+  /**
+   * Whether this browser has signed in to a Zerops account before, which
+   * `status` alone cannot say: a standalone pairing and an expired session
+   * both read `signed-out`. `null` while it is still being read, so nothing
+   * decides on an absence it has not confirmed.
+   */
+  readonly accountRemembered: boolean | null;
   readonly user: ZeropsUser | null;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
   /** Exact active clientUser scope, matching the Zerops GUI. */
@@ -91,6 +99,7 @@ export function ZeropsSessionProvider({
   readonly storage?: ZeropsStorageAdapter;
 }) {
   const [status, setStatus] = useState<ZeropsSessionStatus>("loading");
+  const [accountRemembered, setAccountRemembered] = useState<boolean | null>(null);
   const [user, setUser] = useState<ZeropsUser | null>(null);
   const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
@@ -123,8 +132,15 @@ export function ZeropsSessionProvider({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const session = await loadZeropsSession(storage);
+      // Read together and set together: the gate reads both, and a status that
+      // said "signed out" while the marker was still unknown would paint the
+      // login at a standalone pairing and then take it back.
+      const [remembered, session] = await Promise.all([
+        hasRememberedZeropsAccount(storage),
+        loadZeropsSession(storage),
+      ]);
       if (cancelled) return;
+      setAccountRemembered(remembered);
       if (!session) {
         setStatus("signed-out");
         return;
@@ -237,6 +253,7 @@ export function ZeropsSessionProvider({
     () => ({
       client,
       status,
+      accountRemembered,
       user,
       organizations,
       activeOrganization,
@@ -300,6 +317,7 @@ export function ZeropsSessionProvider({
       },
     }),
     [
+      accountRemembered,
       activeOrganization,
       client,
       lastRegistration,
