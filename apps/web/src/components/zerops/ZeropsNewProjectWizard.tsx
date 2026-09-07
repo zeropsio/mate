@@ -14,7 +14,10 @@ import { useEffect, useState } from "react";
 
 import {
   canCreateProjectsInOrganization,
+  generateBotName,
+  generateZeropsGroupId,
   type ZeropsAgentType,
+  type ZeropsEnvironmentRole,
   type ZeropsLocation,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
@@ -69,21 +72,36 @@ export async function submitZeropsNewProject(input: {
     readonly name: string;
     readonly location?: string;
     readonly agents?: ReadonlyArray<ZeropsAgentType>;
+    readonly group?: {
+      readonly groupId: string;
+      readonly role?: ZeropsEnvironmentRole;
+      readonly label?: string;
+    };
+    readonly botName?: string;
   }) => Promise<{ readonly project: ZeropsProject; readonly serviceName: string }>;
   readonly clientId: string;
   readonly name: string;
   readonly locationId: string | null;
   readonly agents: ReadonlyArray<ZeropsAgentType>;
+  /** The group this project starts as, and the name of the Mate in it. */
+  readonly groupId: string;
+  readonly botName: string;
   readonly onStartWaiting: (clientId: string) => void;
   readonly onError: (message: string) => void;
   readonly onUncertain?: () => void;
 }): Promise<void> {
+  const groupName = input.name.trim();
   try {
     await input.createProject({
       clientId: input.clientId,
-      name: input.name,
+      // A project IS a group, and what is created inside it is its first dev
+      // environment — so the environment carries the role in its name, the way
+      // every environment added afterwards does.
+      name: `${groupName} - dev`,
       ...(input.locationId ? { location: input.locationId } : {}),
       agents: input.agents,
+      group: { groupId: input.groupId, role: "dev", label: groupName },
+      botName: input.botName,
     });
     input.onStartWaiting(input.clientId);
   } catch (cause) {
@@ -293,6 +311,8 @@ function ZeropsNewProjectContent() {
       name,
       locationId,
       agents: selectedAgents,
+      groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      botName: generateBotName([], (bytes) => crypto.getRandomValues(bytes)),
       onStartWaiting: (clientId) => {
         setCreatingIn(clientId);
         provisioning.start({ zcpClaimed: true });

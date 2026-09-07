@@ -58,6 +58,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code", "codex"],
       onStartWaiting,
       onError,
@@ -65,8 +67,11 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      name: "zerops-mate",
+      // A project is a group; what is created in it is its first dev environment.
+      name: "zerops-mate - dev",
       agents: ["claude-code", "codex"],
+      group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
+      botName: "Nia",
     });
     expect(onStartWaiting).toHaveBeenCalledWith("client-1");
     expect(onError).not.toHaveBeenCalled();
@@ -80,6 +85,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: "prg1",
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code"],
       onStartWaiting: vi.fn(),
       onError: vi.fn(),
@@ -87,9 +94,11 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      name: "zerops-mate",
+      name: "zerops-mate - dev",
       location: "prg1",
       agents: ["claude-code"],
+      group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
+      botName: "Nia",
     });
   });
 
@@ -103,6 +112,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code"],
       onStartWaiting,
       onError,
