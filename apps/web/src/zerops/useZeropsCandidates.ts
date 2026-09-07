@@ -13,10 +13,12 @@ import type {
 import { useCallback, useEffect, useMemo } from "react";
 
 import {
+  derivePublicRouteOffers,
   derivePublicRoutes,
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
   type ZeropsPublicRoute,
+  type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
@@ -42,6 +44,8 @@ export interface ZeropsCandidatePresentation extends ZeropsCandidate {
    * from "none".
    */
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  /** Services that serve HTTP with their subdomain off (`publicRoutes.ts`). */
+  readonly routeOffers?: ReadonlyArray<ZeropsRouteOffer>;
   /**
    * What the environment holds — the developer's services and when its code
    * last landed — read off the same list. Absent while it is unread, like
@@ -147,12 +151,13 @@ export function useZeropsCandidates(): {
       if (!outcome) continue;
       const resolved = outcome.status === "resolved" ? outcome.services : null;
       const routes = resolved === null ? undefined : derivePublicRoutes(project, resolved);
+      const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
       const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
       derived.push(
         ...deriveZeropsCandidates(project, resolved, connectedOrigins).map((candidate) =>
           routes === undefined || held === undefined
             ? candidate
-            : { ...candidate, routes, services: held },
+            : { ...candidate, routes, routeOffers: routeOffers ?? [], services: held },
         ),
       );
     }

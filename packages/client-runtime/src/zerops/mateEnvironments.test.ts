@@ -137,12 +137,32 @@ describe("selectMateEnvironments", () => {
   });
 });
 
+function tool(id: string): ZeropsCandidate {
+  return { key: `${id}:tool`, project: project(id, ["mate:tool:gitea"]), group: "ready" };
+}
+
 describe("mateEnvironmentsEmptyReason", () => {
   it.each([
     ["an account with nothing at all", [], "no-projects"],
     ["projects, but Mate on none of them", [withoutMate("a")], "no-mate"],
     ["at least one environment with Mate", [withoutMate("a"), withMate("b")], undefined],
+    // A tool is not an environment (`tools.ts`), so an account holding only
+    // Gitea has no projects to put a Mate in — offering "Set up Mate" there
+    // points at the account's git host.
+    ["an account whose only project is a tool", [tool("gitea")], "no-projects"],
+    ["a tool beside an environment without Mate", [tool("gitea"), withoutMate("a")], "no-mate"],
+    ["a tool beside an environment with one", [tool("gitea"), withMate("b")], undefined],
   ] as const)("%s", (_label, candidates, expected) => {
     expect(mateEnvironmentsEmptyReason(candidates)).toBe(expected);
+  });
+});
+
+describe("selectMateEnvironments", () => {
+  it("never lists a tool project as an environment", () => {
+    // A Gitea import has no zcp, so it fails `hasMate` anyway — this pins the
+    // rule against a tool that happens to carry a container one day.
+    expect(selectMateEnvironments([tool("gitea"), withMate("b")]).map((c) => c.project.id)).toEqual(
+      ["b"],
+    );
   });
 });

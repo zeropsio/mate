@@ -58,6 +58,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code", "codex"],
       onStartWaiting,
       onError,
@@ -65,11 +67,53 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      name: "zerops-mate",
+      // A project is a group; what is created in it is its first dev environment.
+      name: "zerops-mate - dev",
       agents: ["claude-code", "codex"],
+      group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
+      botName: "Nia",
     });
     expect(onStartWaiting).toHaveBeenCalledWith("client-1");
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("hands the created project's id back so its job can be written down", async () => {
+    const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
+    const onCreated = vi.fn();
+
+    await submitZeropsNewProject({
+      createProject,
+      clientId: "client-1",
+      name: "zerops-mate",
+      locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
+      agents: ["claude-code"],
+      onCreated,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(onCreated).toHaveBeenCalledWith("project-1");
+  });
+
+  it("says nothing was created when the create fails", async () => {
+    const onCreated = vi.fn();
+
+    await submitZeropsNewProject({
+      createProject: vi.fn().mockRejectedValue(new Error("nope")),
+      clientId: "client-1",
+      name: "zerops-mate",
+      locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
+      agents: [],
+      onCreated,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(onCreated).not.toHaveBeenCalled();
   });
 
   it("carries the chosen location through to the create call", async () => {
@@ -80,6 +124,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: "prg1",
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code"],
       onStartWaiting: vi.fn(),
       onError: vi.fn(),
@@ -87,9 +133,11 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      name: "zerops-mate",
+      name: "zerops-mate - dev",
       location: "prg1",
       agents: ["claude-code"],
+      group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
+      botName: "Nia",
     });
   });
 
@@ -103,6 +151,8 @@ describe("submitZeropsNewProject", () => {
       clientId: "client-1",
       name: "zerops-mate",
       locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
       agents: ["claude-code"],
       onStartWaiting,
       onError,

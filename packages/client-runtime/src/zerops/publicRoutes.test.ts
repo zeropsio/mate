@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { derivePublicRoutes } from "./publicRoutes.ts";
+import { derivePublicRouteOffers, derivePublicRoutes } from "./publicRoutes.ts";
 
 const PROJECT: ZeropsProject = {
   id: "p1",
@@ -78,5 +78,71 @@ describe("derivePublicRoutes", () => {
   it("has no route at all for a project without a public subdomain", () => {
     const { publicZone: _zone, zeropsSubdomainHost: _host, ...bare } = PROJECT;
     expect(derivePublicRoutes(bare, [service("app")])).toEqual([]);
+  });
+});
+
+describe("derivePublicRouteOffers", () => {
+  const project = { id: "p", name: "p", status: "ACTIVE" };
+
+  function service(over: Record<string, unknown>) {
+    return {
+      id: "svc-1",
+      name: "app",
+      status: "ACTIVE",
+      ports: [{ port: 3000, scheme: "http" }],
+      ...over,
+    } as never;
+  }
+
+  it("offers a service that serves HTTP but is not published", () => {
+    expect(derivePublicRouteOffers([service({ subdomainAccess: false })])).toEqual([
+      { service: "app", serviceId: "svc-1", port: 3000 },
+    ]);
+  });
+
+  it("offers nothing for a service that is already published", () => {
+    expect(derivePublicRouteOffers([service({ subdomainAccess: true })])).toEqual([]);
+  });
+
+  it("offers nothing for a service with no HTTP port", () => {
+    expect(derivePublicRouteOffers([service({ ports: [{ port: 5432, scheme: "tcp" }] })])).toEqual(
+      [],
+    );
+    expect(derivePublicRouteOffers([service({ ports: undefined })])).toEqual([]);
+  });
+
+  it("never offers the Mate's own door or the platform's service", () => {
+    expect(
+      derivePublicRouteOffers([
+        service({
+          id: "z",
+          name: "zcp",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        }),
+        service({ id: "s", name: "core", isSystem: true }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("offers one entry per service, on its lowest HTTP port", () => {
+    expect(
+      derivePublicRouteOffers([
+        service({
+          ports: [
+            { port: 8080, scheme: "http" },
+            { port: 3000, scheme: "http" },
+          ],
+        }),
+      ]),
+    ).toEqual([{ service: "app", serviceId: "svc-1", port: 3000 }]);
+  });
+
+  it("orders by service name, so the menu is stable", () => {
+    expect(
+      derivePublicRouteOffers([
+        service({ id: "b", name: "web" }),
+        service({ id: "a", name: "api" }),
+      ]).map((offer) => offer.service),
+    ).toEqual(["api", "web"]);
   });
 });

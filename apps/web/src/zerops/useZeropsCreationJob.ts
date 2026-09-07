@@ -33,6 +33,15 @@ import { creationHandoffPrompt, creationJobToStart } from "@t3tools/client-runti
 import { useComposerDraftStore } from "../composerDraftStore";
 import { creationHandoffFor, forgetCreationHandoff } from "./creationHandoffStorage";
 
+/**
+ * How long to keep offering the job to a composer that is not ready yet, and
+ * how often. The provider registry can lag a sign-in by a noticeable moment;
+ * past this window the prompt simply stays in the composer for the person to
+ * send, which is where they were before any of this existed.
+ */
+const AUTOSTART_WINDOW_MS = 90_000;
+const AUTOSTART_RETRY_MS = 1_500;
+
 export function useZeropsCreationJob(input: {
   readonly environmentId: string | null;
   /** Where the message goes — null while the conversation is still resolving. */
@@ -41,7 +50,17 @@ export function useZeropsCreationJob(input: {
   readonly agentSignInRequired: boolean;
   /** False while the thread cannot take a message: connecting, busy, gone. */
   readonly ready: boolean;
-  readonly send: () => void;
+  /**
+   * Sends what is in the composer, and reports whether it actually went.
+   *
+   * It must report, because the thing that decides is not observable from
+   * here: the composer needs a *provider*, and it refuses the send without
+   * one. Not measured failing — the live run sent on the first attempt — but a
+   * caller that returns nothing has no way to tell a refused send from a sent
+   * one, and spending the job on the attempt loses it in the case it cannot
+   * see.
+   */
+  readonly send: () => boolean;
 }): void {
   const { agentSignInRequired, environmentId, ready, target } = input;
   // Held in a ref so a caller's inline closure does not re-run the effect,
@@ -63,9 +82,25 @@ export function useZeropsCreationJob(input: {
     });
     if (handoff === undefined || target === null || environmentId === null) return;
 
-    startedFor.current = environmentId;
-    forgetCreationHandoff(environmentId);
+    // The prompt goes in straight away: whether or not the send lands, the
+    // person should find the job written rather than an empty composer.
     useComposerDraftStore.getState().setPrompt(target, creationHandoffPrompt(handoff));
-    sendRef.current();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + AUTOSTART_WINDOW_MS;
+    const attempt = () => {
+      if (sendRef.current()) {
+        // Spent only once it is actually said, so a refused send is retried
+        // rather than lost.
+        startedFor.current = environmentId;
+        forgetCreationHandoff(environmentId);
+        return;
+      }
+      if (Date.now() < deadline) timer = setTimeout(attempt, AUTOSTART_RETRY_MS);
+    };
+    attempt();
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, [agentSignInRequired, environmentId, ready, target]);
 }

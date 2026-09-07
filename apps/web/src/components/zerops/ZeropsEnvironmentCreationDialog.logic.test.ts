@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   hasCreationErrors,
+  proposedEnvironmentName,
   recipeOptions,
   validateCreationForm,
   type RecipeOption,
@@ -112,5 +113,63 @@ describe("validateCreationForm", () => {
     expect(
       validateCreationForm({ ...valid, recipeId: "store" }, { takenBotNames: [], options }).recipe,
     ).toBe("Choose what goes in the environment.");
+  });
+});
+
+describe("proposedEnvironmentName", () => {
+  it("names the environment after its role while that name is free", () => {
+    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "dev", taken: [] })).toBe(
+      "Shortlink - dev",
+    );
+  });
+
+  it("numbers the second Mate rather than proposing the first one's name", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "dev",
+        taken: ["Shortlink - dev"],
+      }),
+    ).toBe("Shortlink - dev 2");
+  });
+
+  it("keeps counting past a run of them", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "dev",
+        taken: ["Shortlink - dev", "Shortlink - dev 2", "Shortlink - dev 3"],
+      }),
+    ).toBe("Shortlink - dev 4");
+  });
+
+  it("fills a gap left by a deleted environment", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "dev",
+        taken: ["Shortlink - dev", "Shortlink - dev 3"],
+      }),
+    ).toBe("Shortlink - dev 2");
+  });
+
+  it("reads a taken name regardless of case or padding", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "dev",
+        taken: ["  SHORTLINK - DEV  "],
+      }),
+    ).toBe("Shortlink - dev 2");
+  });
+
+  it("counts only the role it is naming", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["Shortlink - dev", "Shortlink - dev 2"],
+      }),
+    ).toBe("Shortlink - stage");
   });
 });

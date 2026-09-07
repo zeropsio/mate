@@ -129,3 +129,22 @@ export function validateCreationForm(
 export function hasCreationErrors(errors: CreationFormErrors): boolean {
   return errors.name !== undefined || errors.botName !== undefined || errors.recipe !== undefined;
 }
+
+/**
+ * What to call a new environment: its role, and a number once the plain name
+ * is taken. A group holds N Mates, so `<Group> - dev` is free only for the
+ * first of them — proposing it again would hand two environments one name.
+ */
+export function proposedEnvironmentName(input: {
+  readonly groupName: string;
+  readonly roleLabel: string;
+  readonly taken: ReadonlyArray<string>;
+}): string {
+  const base = `${input.groupName} - ${input.roleLabel}`;
+  const taken = new Set(input.taken.map((name) => name.trim().toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${base} ${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}

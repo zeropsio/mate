@@ -204,3 +204,22 @@ export function creationJobToStart(input: {
   if (input.agentSignInRequired) return undefined;
   return input.handoff;
 }
+
+/**
+ * Whether the one prompt mate sends by itself can actually go.
+ *
+ * The caller reports the answer back to the retry loop, and the loop spends
+ * the handoff on a `true` — so this must not say yes to a send that will do
+ * nothing. Two things stop it: no provider to take the message, and an empty
+ * composer. The second is the race that cost a real one — the job is written
+ * to the composer's store, the send reads it back from a ref the store fills
+ * on the next render, and a send in the same tick reads the ref before the
+ * write reaches it. Answering `false` there retries a moment later, by which
+ * time the prompt has landed; answering `true` loses the job silently.
+ */
+export function creationJobSendable(input: {
+  readonly providerAvailable: boolean;
+  readonly composerText: string;
+}): boolean {
+  return input.providerAvailable && input.composerText.trim().length > 0;
+}

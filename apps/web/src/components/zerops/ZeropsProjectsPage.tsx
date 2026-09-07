@@ -70,7 +70,7 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { proposedEnvironmentName, validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsMoveToGroupDialog } from "./ZeropsMoveToGroupDialog";
 import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
@@ -640,7 +640,12 @@ function ZeropsProjectsContent() {
                 },
               ]),
         ]}
+        enablingServiceId={publishingServiceId}
         label={`More for ${candidate.project.name}`}
+        offers={candidate.routeOffers}
+        onEnableRoute={(offer) => {
+          void enableRoute(offer);
+        }}
         routes={candidate.routes}
       />
     );
@@ -814,6 +819,33 @@ function ZeropsProjectsContent() {
       cancelled = true;
     };
   }, [client, creationRequest]);
+
+  const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
+  /**
+   * Publish a service on its `*.zerops.app` subdomain.
+   *
+   * First class rather than a recovery step: a production environment cloned
+   * from dev comes up unpublished whatever its recipe said, so without this the
+   * first deploy lands and the page answers 502 with nothing saying why
+   * (`verified.md`, 2026-09-07).
+   */
+  const enableRoute = useCallback(
+    async (offer: { readonly serviceId: string }) => {
+      if (publishingServiceId !== null) return;
+      const isCurrent = captureAccountLifetime();
+      setPublishingServiceId(offer.serviceId);
+      setToolError(null);
+      try {
+        await client.enableSubdomainAccess(offer.serviceId);
+        if (isCurrent()) refresh();
+      } catch (cause) {
+        if (isCurrent()) setToolError(zeropsErrorMessage(cause));
+      } finally {
+        if (isCurrent()) setPublishingServiceId(null);
+      }
+    },
+    [client, publishingServiceId, refresh],
+  );
 
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
@@ -1228,7 +1260,12 @@ function ZeropsProjectsContent() {
               menu={
                 <ZeropsProjectMenu
                   actions={[]}
+                  enablingServiceId={publishingServiceId}
                   label={`More for ${TOOL_LABEL[kind]}`}
+                  offers={candidate.routeOffers}
+                  onEnableRoute={(offer) => {
+                    void enableRoute(offer);
+                  }}
                   routes={candidate.routes}
                 />
               }
@@ -1331,9 +1368,12 @@ function ZeropsProjectsContent() {
           }))}
           cloneSourcesLoading={cloneSources.loading}
           defaultBotName={creationRequest.botName}
-          defaultName={`${requestedGroup.group.name} - ${
-            environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role
-          }`}
+          defaultName={proposedEnvironmentName({
+            groupName: requestedGroup.group.name,
+            roleLabel:
+              environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+            taken: requestedGroup.environments.map(({ item }) => item.project.name),
+          })}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}
           key={`${creationRequest.groupId}:${creationRequest.role}`}

@@ -349,6 +349,34 @@ export type ZeropsApiErrorKind =
   | "server"
   | "unexpected";
 
+/**
+ * The tags a project is created with when Mate makes it: its group, its role
+ * in that group, the group's name, the `mate` marker and the agent's own name.
+ *
+ * A project made from the wizard **is** a group with one dev environment in
+ * it — that is what a project is (`spec-mate.md` §10). Creating it ungrouped
+ * left an environment nothing could ever be added to: "Add stage" and "Add
+ * production" render for a group, and a loose project is not one.
+ */
+function taggedProjectAtBirth(input: {
+  readonly group?: {
+    readonly groupId: string;
+    readonly role?: ZeropsEnvironmentRole;
+    readonly label?: string;
+  };
+  readonly botName?: string;
+}): ReadonlyArray<string> {
+  const membership = input.group
+    ? withZeropsGroupTags([], {
+        groupId: input.group.groupId,
+        ...(input.group.role ? { role: input.group.role } : {}),
+        ...(input.group.label ? { label: input.group.label } : {}),
+      })
+    : [];
+  const declared = withZeropsMateTag(membership);
+  return input.botName === undefined ? declared : withZeropsBotTag(declared, input.botName);
+}
+
 export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
   readonly status: number | null;
@@ -1291,7 +1319,14 @@ export class ZeropsApiClient {
     readonly zcpVersion?: string;
     readonly agents?: ReadonlyArray<ZeropsAgentType>;
     /** The group this environment joins, and what it is for (`groups.ts`). */
-    readonly group?: { readonly groupId: string; readonly role?: ZeropsEnvironmentRole };
+    readonly group?: {
+      readonly groupId: string;
+      readonly role?: ZeropsEnvironmentRole;
+      /** The group's display name, mirrored into `mate:name:`. */
+      readonly label?: string;
+    };
+    /** The agent's name, written at birth so its menu row is somebody. */
+    readonly botName?: string;
   }): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
@@ -1302,15 +1337,10 @@ export class ZeropsApiClient {
           clientId: input.clientId,
           name: input.name,
           ...(input.location ? { location: input.location } : {}),
-          // Born a Mate: the marker goes on before the container does.
-          tagList: withZeropsMateTag(
-            input.group
-              ? withZeropsGroupTags([], {
-                  groupId: input.group.groupId,
-                  ...(input.group.role ? { role: input.group.role } : {}),
-                })
-              : [],
-          ),
+          // Born a Mate, in its project, with its name: the whole identity
+          // goes on before the container does, so a creation that fails
+          // halfway still leaves a project that says what it was meant to be.
+          tagList: taggedProjectAtBirth(input),
         }),
       ),
     });
@@ -1437,6 +1467,19 @@ export class ZeropsApiClient {
    */
   async readAuthorizedAgents(serviceId: string): Promise<ReadonlyArray<ZeropsAgentType>> {
     return agentsFromOAuthFlags(await this.#serviceEnv(serviceId));
+  }
+
+  /**
+   * `PUT /service-stack/{id}/enable-subdomain-access` — publish a service on
+   * its `*.zerops.app` subdomain.
+   *
+   * A separate call rather than an import field because the import field does
+   * not apply to a service created without code: a production environment
+   * cloned from dev comes up unpublished whatever its recipe said, and answers
+   * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
+   */
+  async enableSubdomainAccess(serviceId: string): Promise<void> {
+    await this.#request(`/service-stack/${serviceId}/enable-subdomain-access`, { method: "PUT" });
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
