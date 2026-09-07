@@ -11,6 +11,13 @@ const read = (relativePath: string) =>
 const exists = (relativePath: string) => NodeFS.existsSync(NodePath.join(repoRoot, relativePath));
 
 describe("registry-free server releases", () => {
+  it("publishes only the supported server bundle and checksum", () => {
+    const workflow = read(".github/workflows/release.yml");
+    expect(workflow).toContain("needs: build");
+    expect(workflow).not.toContain("build_desktop:");
+    expect(workflow).not.toContain("desktop-assets");
+    expect(workflow).toContain("sha256sum -c SHA256SUMS");
+  });
   it("has no server-side registry installer or self-update runtime", () => {
     for (const relativePath of [
       "apps/server/src/cloud/pinnedRuntime.ts",

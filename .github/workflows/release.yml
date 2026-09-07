@@ -65,18 +65,6 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # The desktop matrix job below packages apps/desktop under this same
-      # tag's version. Catch drift here, before any packaging runner spins up.
-      - name: Check desktop package version
-        run: |
-          server_version="$(node -p "require('./apps/server/package.json').version")"
-          desktop_version="$(node -p "require('./apps/desktop/package.json').version")"
-          if [[ "$desktop_version" != "$server_version" ]]; then
-            echo "apps/desktop/package.json version '$desktop_version' does not match apps/server/package.json version '$server_version'." >&2
-            echo "Keep both versions equal before tagging a release." >&2
-            exit 1
-          fi
-
       - name: Install dependencies
         run: vp install --frozen-lockfile
 
@@ -161,153 +149,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  build_desktop:
-    name: Build desktop (${{ matrix.platform }}/${{ matrix.arch }})
-    # Runs on a rehearsal dispatch too, deliberately. Two things in this job
-    # had never run in this repository's CI — setup-vp on Windows and the Rust
-    # build of native/resource-monitor — and a rehearsal that skipped them
-    # would rehearse only the half that already works. The third, the Linux
-    # icon step's ImageMagick, ran for the first time on v0.2.2 and failed:
-    # the runner image does not carry it, hence the install step below.
-    # Publishing stays push-only, so a dispatch leaves the artifacts as
-    # workflow artifacts and touches no release.
-    needs: build
-    runs-on: ${{ matrix.runs-on }}
-    timeout-minutes: 35
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: mac
-            arch: arm64
-            target: dmg
-            runs-on: macos-latest
-            rust_target: aarch64-apple-darwin
-          - platform: mac
-            arch: x64
-            target: dmg
-            runs-on: macos-latest
-            rust_target: x86_64-apple-darwin
-          - platform: win
-            arch: x64
-            target: nsis
-            runs-on: windows-latest
-            rust_target: x86_64-pc-windows-msvc
-          - platform: linux
-            arch: x64
-            target: AppImage
-            runs-on: ubuntu-latest
-            rust_target: x86_64-unknown-linux-gnu
-    # Unset until the repository secrets exist. build-desktop-artifact.ts
-    # scrubs empty CSC_*/APPLE_* values itself; the Azure vars are read only
-    # when --signed is passed, which "Resolve signing" below gates on these
-    # same secrets — so adding the secrets is enough to turn signing on.
-    env:
-      CSC_LINK: ${{ secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      AZURE_TRUSTED_SIGNING_PUBLISHER_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_PUBLISHER_NAME }}
-      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-      AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME }}
-      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      # build-desktop-artifact.ts resizes the 1024px source icon into the nine
-      # sizes a Linux desktop entry needs, shelling out to `magick` and falling
-      # back to `convert`. The GitHub Ubuntu runner image carries neither, so
-      # the first tagged build that packaged Linux failed on `spawn magick
-      # ENOENT`. Only this leg resizes anything; mac takes an .icns and Windows
-      # an .ico straight from assets/prod.
-      #
-      # Ubuntu's `imagemagick` is still ImageMagick 6, which installs `convert`
-      # but NOT `magick` — that entry point arrived in ImageMagick 7. The
-      # script's fallback is what actually runs here, so this check asserts the
-      # contract it depends on (either tool present) rather than one binary.
-      - name: Install ImageMagick
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends imagemagick
-          if command -v magick >/dev/null 2>&1; then
-            magick -version | head -1
-          elif command -v convert >/dev/null 2>&1; then
-            convert -version | head -1
-          else
-            echo "Neither magick nor convert is on PATH after installing imagemagick." >&2
-            exit 1
-          fi
-
-      # native/resource-monitor is staged into every desktop build by
-      # build-desktop-artifact.ts, which shells out to `cargo build --target
-      # <rust_target>` per platform/arch (see resolveResourceMonitorRustTargets).
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
-      - name: Resolve signing
-        id: signing
-        run: |
-          signed=false
-          if [[ "${{ matrix.platform }}" == "mac" && -n "$CSC_LINK" ]]; then
-            signed=true
-          fi
-          if [[ "${{ matrix.platform }}" == "win" && -n "$AZURE_TRUSTED_SIGNING_ACCOUNT_NAME" ]]; then
-            signed=true
-          fi
-          echo "signed=$signed" >> "$GITHUB_OUTPUT"
-
-      - name: Build desktop artifact
-        run: |
-          args=(
-            --platform "${{ matrix.platform }}"
-            --target "${{ matrix.target }}"
-            --arch "${{ matrix.arch }}"
-            --build-version "${{ needs.build.outputs.version }}"
-            --output-dir "${{ runner.temp }}/desktop-dist"
-          )
-          if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
-            args+=(--signed)
-          fi
-          node scripts/build-desktop-artifact.ts "${args[@]}"
-
-      # Uploads the whole output dir as-is: installer, zip (mac), .blockmap,
-      # and the latest*.yml updater feed files electron-builder writes
-      # alongside it. The release job merges/flattens these per-leg uploads.
-      - name: Stage desktop release assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
-          path: ${{ runner.temp }}/desktop-dist/*
-          if-no-files-found: error
-          retention-days: 1
-
   release:
     name: Publish GitHub release
     if: github.event_name == 'push'
-    needs: [build, build_desktop]
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -321,14 +166,6 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      # Needed to run scripts/merge-update-manifests.ts below.
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: true
-
       - name: Download verified release assets
         uses: actions/download-artifact@v4
         with:
@@ -339,49 +176,6 @@ jobs:
         run: |
           cd release-assets
           sha256sum -c SHA256SUMS
-
-      - name: Download desktop artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: desktop-*
-          path: desktop-assets
-
-      # electron-builder never arch-suffixes the mac updater manifest, so the
-      # arm64 and x64 legs each wrote their own same-named latest-mac.yml with
-      # only their own arch's entry. Merge them into one multi-arch manifest,
-      # or auto-update on one arch silently sees no updates.
-      - name: Merge macOS updater manifest
-        run: |
-          node scripts/merge-update-manifests.ts --platform mac \
-            desktop-assets/desktop-mac-arm64/latest-mac.yml \
-            desktop-assets/desktop-mac-x64/latest-mac.yml
-          rm -f desktop-assets/desktop-mac-x64/latest-mac.yml
-
-      # Windows and Linux are single-arch, so their per-leg files need no
-      # merging; every remaining filename should be unique (electron-builder's
-      # artifactName template embeds ${arch}, the merged mac manifest is the
-      # only file left in the x64 leg's directory that overlapped, and
-      # build-desktop-artifact.ts drops the fixed-name config dumps).
-      #
-      # Copied one at a time rather than with a single `cp -t`: that failed
-      # with a bare "will not overwrite just-created" and named nothing useful,
-      # which cost a release cycle to diagnose. A duplicate is still fatal —
-      # silently shipping one leg's file as another's would be worse — but it
-      # now says which file and which leg.
-      - name: Stage desktop release assets
-        run: |
-          mkdir -p release-assets
-          status=0
-          while IFS= read -r -d '' file; do
-            name="$(basename "$file")"
-            if [[ -e "release-assets/$name" ]]; then
-              echo "Duplicate desktop artifact name across legs: $name (from $file)" >&2
-              status=1
-              continue
-            fi
-            cp "$file" "release-assets/$name"
-          done < <(find desktop-assets -mindepth 2 -maxdepth 2 -type f -print0)
-          exit "$status"
 
       - name: Create GitHub release
         env:
