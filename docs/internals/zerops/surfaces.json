@@ -178,6 +178,10 @@
         "apps/web/src/components/zerops/ZeropsDataTable.tsx",
         "apps/web/src/components/zerops/ZeropsDataBlob.tsx",
         "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBreadcrumbs.tsx",
+        "apps/web/src/components/zerops/ZeropsDataCell.tsx",
+        "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+        "apps/web/src/components/zerops/ZeropsDataRowDrawer.tsx",
         "packages/client-runtime/src/zerops/dataConsole.ts"
       ],
       "entryPoints": [
@@ -224,6 +228,10 @@
         "apps/web/src/components/zerops/ZeropsDataTable.test.tsx",
         "apps/web/src/components/zerops/ZeropsDataBlob.test.tsx",
         "apps/web/src/components/zerops/ZeropsDataQuery.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBreadcrumbs.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataCell.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataFilters.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataRowDrawer.test.tsx",
         "packages/client-runtime/src/zerops/dataConsole.test.ts"
       ],
       "captures": []

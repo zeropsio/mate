@@ -4,10 +4,26 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
 
+import { ZeropsDataCell } from "./ZeropsDataCell";
 import { ZeropsDataTable } from "./ZeropsDataTable";
 
 function findByAttribute(tree: unknown, attribute: string) {
   return visitElements(tree, (element) => attribute in element.props);
+}
+
+function findByAttributeValue(tree: unknown, attribute: string, value: string) {
+  return visitElements(tree, (element) => element.props[attribute] === value);
+}
+
+/** Cells are `ZeropsDataCell` elements, never invoked when the table is called as a plain
+ * function — the value under test is the prop on the element itself. */
+function cellValues(tree: unknown): unknown[] {
+  const values: unknown[] = [];
+  visitElements(tree, (element) => {
+    if (element.type === ZeropsDataCell) values.push(element.props.value);
+    return false;
+  });
+  return values;
 }
 
 const column = (overrides: Partial<ZeropsDataConsoleColumn> = {}): ZeropsDataConsoleColumn => ({
@@ -24,7 +40,7 @@ const column = (overrides: Partial<ZeropsDataConsoleColumn> = {}): ZeropsDataCon
 const MODEL: DataConsoleTableModel = {
   columns: [
     column({ name: "id" }),
-    column({ name: "name", sortable: false, sortReason: "no index" }),
+    column({ name: "name", pk: false, sortable: false, sortReason: "no index" }),
   ],
   rows: [
     [1, "orders"],
@@ -36,14 +52,13 @@ const MODEL: DataConsoleTableModel = {
 };
 
 describe("ZeropsDataTable", () => {
-  it("renders rows with formatted cells", () => {
+  it("renders one cell per visible column, in row order", () => {
     const tree = ZeropsDataTable({
       model: MODEL,
       onLoadMore: vi.fn(),
       onSort: vi.fn(),
     });
-    expect(visitElements(tree, (el) => el.props.children === "orders")).not.toBeNull();
-    expect(visitElements(tree, (el) => el.props.children === "customers")).not.toBeNull();
+    expect(cellValues(tree)).toEqual([1, "orders", 2, "customers"]);
   });
 
   it("shows Load more only when nextCursor is set, and calls onLoadMore", () => {
@@ -112,7 +127,7 @@ describe("ZeropsDataTable", () => {
     expect(header.props.children).toEqual(["id", " ↓"]);
   });
 
-  it("a non-sortable column is not clickable and carries no native tooltip", () => {
+  it("a non-sortable column is not clickable and explains itself with sortReason", () => {
     const tree = ZeropsDataTable({
       model: MODEL,
       onLoadMore: vi.fn(),
@@ -120,7 +135,7 @@ describe("ZeropsDataTable", () => {
     });
     const header = findByAttribute(tree, "data-zerops-data-table-column")!;
     expect(header.props.onClick).toBeUndefined();
-    expect(header.props.title).toBeUndefined();
+    expect(header.props.title).toBe("no index");
   });
 
   it("row count is on-demand: the count button calls onRequestCount, never automatically", () => {
@@ -157,5 +172,213 @@ describe("ZeropsDataTable", () => {
     expect(findByAttribute(tree, "data-zerops-data-table-request-count")).toBeNull();
     const countLabel = findByAttribute(tree, "data-zerops-data-table-count")!;
     expect(countLabel.props.children).toBe("12,345 rows");
+  });
+
+  it("hides a hidden column but never a primary key", () => {
+    const tree = ZeropsDataTable({
+      hiddenColumns: new Set(["id", "name"]),
+      model: MODEL,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+    });
+    expect(cellValues(tree)).toEqual([1, 2]);
+  });
+
+  it("the column picker checks a pk column and disables its checkbox", () => {
+    const onToggleColumn = vi.fn();
+    const tree = ZeropsDataTable({
+      columnsOpen: true,
+      hiddenColumns: new Set(["name"]),
+      model: MODEL,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+      onToggleColumn,
+      onToggleColumnsOpen: vi.fn(),
+    });
+    const pk = findByAttributeValue(tree, "data-zerops-data-table-column-toggle", "id")!;
+    expect(pk.props.checked).toBe(true);
+    expect(pk.props.disabled).toBe(true);
+
+    const name = findByAttributeValue(tree, "data-zerops-data-table-column-toggle", "name")!;
+    expect(name.props.checked).toBe(false);
+    (name.props.onChange as () => void)();
+    expect(onToggleColumn).toHaveBeenCalledWith("name");
+  });
+
+  it("keeps the column picker closed until its own toggle asks for it", () => {
+    const onToggleColumnsOpen = vi.fn();
+    const tree = ZeropsDataTable({
+      model: MODEL,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+      onToggleColumn: vi.fn(),
+      onToggleColumnsOpen,
+    });
+    expect(findByAttribute(tree, "data-zerops-data-table-column-picker")).toBeNull();
+    (findByAttribute(tree, "data-zerops-data-table-columns")!.props.onClick as () => void)();
+    expect(onToggleColumnsOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("a row click opens that row", () => {
+    const onOpenRow = vi.fn();
+    const tree = ZeropsDataTable({
+      model: MODEL,
+      onLoadMore: vi.fn(),
+      onOpenRow,
+      onSort: vi.fn(),
+    });
+    const row = findByAttributeValue(tree, "data-zerops-data-table-row", "1")!;
+    (row.props.onClick as () => void)();
+    expect(onOpenRow).toHaveBeenCalledWith(1);
+  });
+
+  it("a cell expander asks for that row and column", () => {
+    const onExpandCell = vi.fn();
+    const tree = ZeropsDataTable({
+      model: MODEL,
+      onExpandCell,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+    });
+    const cells = visitElements(tree, (element) => element.type === ZeropsDataCell)!;
+    (cells.props.onExpand as () => void)();
+    expect(onExpandCell).toHaveBeenCalledWith(0, "id");
+  });
+
+  it("marks the focused row selected", () => {
+    const tree = ZeropsDataTable({
+      focusedRowIndex: 1,
+      model: MODEL,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+    });
+    const row = findByAttributeValue(tree, "data-zerops-data-table-row", "1")!;
+    expect(row.props["aria-selected"]).toBe(true);
+  });
+
+  it("shows a header row and a No rows line for an empty model", () => {
+    const tree = ZeropsDataTable({
+      model: { ...MODEL, rows: [] },
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+    });
+    expect(findByAttribute(tree, "data-zerops-data-table-sort")).not.toBeNull();
+    expect(findByAttribute(tree, "data-zerops-data-table-empty")!.props.children).toBe("No rows");
+  });
+
+  it("labels the grid filtered only while a filter is applied", () => {
+    expect(
+      findByAttribute(
+        ZeropsDataTable({ model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() }),
+        "data-zerops-data-table-filtered",
+      ),
+    ).toBeNull();
+    expect(
+      findByAttribute(
+        ZeropsDataTable({ filtered: true, model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() }),
+        "data-zerops-data-table-filtered",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("offers the table hand-offs only when the caller wired them", () => {
+    const onAskAboutTable = vi.fn();
+    const onCopyPageJson = vi.fn();
+    const bare = ZeropsDataTable({ model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() });
+    expect(findByAttribute(bare, "data-zerops-data-table-ask")).toBeNull();
+    expect(findByAttribute(bare, "data-zerops-data-table-copy")).toBeNull();
+
+    const wired = ZeropsDataTable({
+      model: MODEL,
+      onAskAboutTable,
+      onCopyPageJson,
+      onLoadMore: vi.fn(),
+      onSort: vi.fn(),
+    });
+    (findByAttribute(wired, "data-zerops-data-table-ask")!.props.onClick as () => void)();
+    (findByAttribute(wired, "data-zerops-data-table-copy")!.props.onClick as () => void)();
+    expect(onAskAboutTable).toHaveBeenCalledTimes(1);
+    expect(onCopyPageJson).toHaveBeenCalledTimes(1);
+  });
+
+  describe("grid keyboard", () => {
+    interface KeyCase {
+      readonly name: string;
+      readonly key: string;
+      readonly focusedRowIndex?: number;
+      readonly expect: (handlers: {
+        readonly onFocusRow: ReturnType<typeof vi.fn>;
+        readonly onOpenRow: ReturnType<typeof vi.fn>;
+        readonly onEscape: ReturnType<typeof vi.fn>;
+        readonly onFocusFilter: ReturnType<typeof vi.fn>;
+      }) => void;
+    }
+
+    const cases: ReadonlyArray<KeyCase> = [
+      {
+        name: "ArrowDown from nothing focuses the first row",
+        key: "ArrowDown",
+        expect: ({ onFocusRow }) => expect(onFocusRow).toHaveBeenCalledWith(0),
+      },
+      {
+        name: "ArrowDown moves down and stops at the last row",
+        key: "ArrowDown",
+        focusedRowIndex: 1,
+        expect: ({ onFocusRow }) => expect(onFocusRow).toHaveBeenCalledWith(1),
+      },
+      {
+        name: "ArrowUp moves up and stops at the first row",
+        key: "ArrowUp",
+        focusedRowIndex: 0,
+        expect: ({ onFocusRow }) => expect(onFocusRow).toHaveBeenCalledWith(0),
+      },
+      {
+        name: "Enter opens the focused row",
+        key: "Enter",
+        focusedRowIndex: 1,
+        expect: ({ onOpenRow }) => expect(onOpenRow).toHaveBeenCalledWith(1),
+      },
+      {
+        name: "Enter with nothing focused opens nothing",
+        key: "Enter",
+        expect: ({ onOpenRow }) => expect(onOpenRow).not.toHaveBeenCalled(),
+      },
+      {
+        name: "Escape closes",
+        key: "Escape",
+        expect: ({ onEscape }) => expect(onEscape).toHaveBeenCalledTimes(1),
+      },
+      {
+        name: "slash focuses the filter value",
+        key: "/",
+        expect: ({ onFocusFilter }) => expect(onFocusFilter).toHaveBeenCalledTimes(1),
+      },
+    ];
+
+    for (const testCase of cases) {
+      it(testCase.name, () => {
+        const handlers = {
+          onFocusRow: vi.fn(),
+          onOpenRow: vi.fn(),
+          onEscape: vi.fn(),
+          onFocusFilter: vi.fn(),
+        };
+        const tree = ZeropsDataTable({
+          model: MODEL,
+          onLoadMore: vi.fn(),
+          onSort: vi.fn(),
+          ...handlers,
+          ...(testCase.focusedRowIndex !== undefined
+            ? { focusedRowIndex: testCase.focusedRowIndex }
+            : {}),
+        });
+        const grid = findByAttribute(tree, "data-zerops-data-table-grid")!;
+        (grid.props.onKeyDown as (event: unknown) => void)({
+          key: testCase.key,
+          preventDefault: () => {},
+        });
+        testCase.expect(handlers);
+      });
+    }
   });
 });

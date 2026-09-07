@@ -3408,6 +3408,13 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "data");
   }, [activeThreadRef]);
+  const openDataSurface = useCallback(
+    (service: string) => {
+      if (!activeThreadRef) return;
+      useRightPanelStore.getState().openData(activeThreadRef, service);
+    },
+    [activeThreadRef],
+  );
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This is the writer half of
   // the topology split (`useProjectTopology`) — the panel mounts the same
@@ -6646,7 +6653,16 @@ function ChatViewContent(props: ChatViewProps) {
             case "data":
               return (
                 <ZeropsDataPanel
-                  key={zeropsChrome.threadRef?.environmentId}
+                  key={`${zeropsChrome.threadRef?.environmentId}:${"service" in activeRightPanelSurface ? activeRightPanelSurface.service : ""}`}
+                  maximized={rightPanelMaximized}
+                  onAddContext={addTerminalContextToDraft}
+                  onOpenService={openDataSurface}
+                  onToggleMaximized={canMaximizeRightPanel ? toggleRightPanelMaximized : undefined}
+                  service={
+                    "service" in activeRightPanelSurface
+                      ? activeRightPanelSurface.service
+                      : undefined
+                  }
                   threadRef={zeropsChrome.threadRef}
                 />
               );

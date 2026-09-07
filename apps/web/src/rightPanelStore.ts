@@ -50,7 +50,8 @@ export type RightPanelSurface =
   | { id: "zerops"; kind: "zerops" }
   | { id: "browser"; kind: "browser" }
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
-  | { id: "data"; kind: "data" };
+  | { id: "data"; kind: "data" }
+  | { id: `data:${string}`; kind: "data"; service: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -61,7 +62,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v14 removed the "preview" surface kind with the in-app browser.
 // v15 adds the "browser" surface kind (S8b — the container's own live browser view).
 // v16 adds the "data" surface kind (S-dataconsole — the project's managed data services).
-const RIGHT_PANEL_STORAGE_VERSION = 16;
+// v17 keys data surfaces by service (`data:<hostname>`), the singleton being the service picker.
+const RIGHT_PANEL_STORAGE_VERSION = 17;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -82,6 +84,8 @@ interface RightPanelStoreState {
   open: (ref: ScopedThreadRef, kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
   openUrl: (ref: ScopedThreadRef, url: string) => void;
   openService: (ref: ScopedThreadRef, service: string, url: string) => void;
+  /** One Data tab per service, opened from the service's card or the picker; the singleton `data` picker is replaced when it is the one open. */
+  openData: (ref: ScopedThreadRef, service: string) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
@@ -221,6 +225,15 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       )
                     ) {
                       return [];
+                    }
+                    if (surface.kind === "data" && surface.id !== "data") {
+                      if (
+                        !("service" in surface) ||
+                        typeof surface.service !== "string" ||
+                        surface.service === "" ||
+                        surface.id !== `data:${surface.service}`
+                      )
+                        return [];
                     }
                     if (surface.kind === "browser" && surface.id !== "browser") {
                       if (
@@ -414,6 +427,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           }),
         }));
       },
+      openData: (ref, service) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const surface: RightPanelSurface = { id: `data:${service}`, kind: "data", service };
+            if (current.surfaces.some((entry) => entry.id === surface.id)) {
+              return { ...current, isOpen: true, activeSurfaceId: surface.id };
+            }
+            // The picker (singleton `data`) hands over to the tab it opened.
+            const pickerIndex = current.surfaces.findIndex((entry) => entry.id === "data");
+            const surfaces =
+              pickerIndex === -1
+                ? [...current.surfaces, surface]
+                : current.surfaces.map((entry, index) => (index === pickerIndex ? surface : entry));
+            return { isOpen: true, activeSurfaceId: surface.id, surfaces };
+          }),
+        })),
       openFile: (ref, relativePath, line) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {

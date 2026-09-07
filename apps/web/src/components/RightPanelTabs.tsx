@@ -374,7 +374,7 @@ function surfaceTitle(
     case "browser":
       return "service" in surface ? surface.service : "Browser";
     case "data":
-      return "Data";
+      return "service" in surface ? surface.service : "Data";
   }
 }
 

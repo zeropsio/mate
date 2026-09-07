@@ -22,8 +22,8 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
  * of its bottom edge rather than standing on its own further down the panel.
  */
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
-import { ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
-import type { ReactElement, ReactNode } from "react";
+import { ArrowUpRightIcon, DatabaseIcon, ExternalLinkIcon } from "lucide-react";
+import { useContext, type ReactElement, type ReactNode } from "react";
 
 import type {
   ZeropsServiceFact,
@@ -45,6 +45,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "../../zerops/projectTopologyWatcher";
+import { ZeropsDataLinkContext } from "./dataLink";
 import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
 
@@ -140,6 +141,8 @@ function ServiceHeader({
   portLabel: string | undefined;
   aside: string | undefined;
 }) {
+  const dataLink = useContext(ZeropsDataLinkContext);
+  const openData = service.group === "data" ? dataLink : null;
   return (
     <div className="flex min-w-0 max-w-full items-center justify-between gap-3">
       <div className="min-w-0 flex-1">
@@ -158,8 +161,9 @@ function ServiceHeader({
           )}
         </div>
       </div>
-      {service.routes.length === 0 ? null : (
+      {service.routes.length === 0 && openData === null ? null : (
         <div className="flex shrink-0 items-center gap-1" data-zerops-service-routes-buttons>
+          {openData === null ? null : <DataButton hostname={service.hostname} onOpen={openData} />}
           {service.routes.map((route) => (
             <RouteButton key={route.url} route={route} />
           ))}
@@ -330,6 +334,31 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
       variant="outline"
     >
       <ExternalLinkIcon aria-hidden="true" />
+    </Button>
+  );
+}
+
+/** The way into a managed data service's Data tab, beside its route buttons. Only the data group gets one; the console decides later whether it can browse the service. */
+function DataButton({
+  hostname,
+  onOpen,
+}: {
+  hostname: string;
+  onOpen: (hostname: string) => void;
+}) {
+  return (
+    <Button
+      aria-label={`Browse data of ${hostname}`}
+      data-zerops-service-data-button
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(hostname);
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+      size="icon-sm"
+      variant="outline"
+    >
+      <DatabaseIcon aria-hidden="true" />
     </Button>
   );
 }
