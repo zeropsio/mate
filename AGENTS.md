@@ -5,6 +5,10 @@
 > contracts) keep edits minimal so future ports stay cheap. Where the two disagree about product
 > name or scope, the rules above win.
 
+Before starting work, read `CLAUDE.local.md` when present for this machine's tooling and access
+instructions. In a linked worktree, also check the main checkout listed by `git worktree list`
+for that file. It is local-only; never commit its contents or credentials.
+
 # mate — Zerops Mate
 
 Zerops Mate is a control surface for coding agents that live inside Zerops project containers. A Node
