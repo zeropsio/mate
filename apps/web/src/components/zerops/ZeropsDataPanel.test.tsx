@@ -149,9 +149,70 @@ describe("ZeropsDataPanel", () => {
 
   it("shows a starting line while idle", () => {
     feedState.session = undefined;
+    commandSpy.mockImplementation(() => new Promise(() => {}));
     const tree = render();
     const starting = findComponent<{ label: string }>(tree, StatusDot);
     expect(starting?.props.label).toBe("Starting");
+  });
+
+  it("issues the services request while idle — that first call is what starts the console", async () => {
+    feedState.session = { status: "idle" };
+    commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
+
+    render();
+    await flush();
+
+    expect(commandSpy).toHaveBeenCalledWith({
+      environmentId: THREAD_REF.environmentId,
+      input: { kind: "services" },
+    });
+  });
+
+  it("does not re-issue the services request when idle turns into ready", async () => {
+    feedState.session = { status: "idle" };
+    commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
+
+    render();
+    await flush();
+    feedState.session = { status: "ready", allowWrites: false };
+    render();
+    await flush();
+
+    const serviceCalls = commandSpy.mock.calls.filter(
+      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "services",
+    );
+    expect(serviceCalls).toHaveLength(1);
+  });
+
+  it("re-issues the services request after an unavailable session recovers to idle", async () => {
+    feedState.session = { status: "idle" };
+    commandSpy.mockImplementation(() =>
+      Promise.resolve(
+        AsyncResult.failure(
+          Cause.fail(
+            new ZeropsDataConsoleError({
+              code: "session_unavailable",
+              message: "the data console is unavailable",
+            }),
+          ),
+        ),
+      ),
+    );
+    render();
+    await flush();
+    feedState.session = { status: "unavailable", reason: "boom" };
+    render();
+    await flush();
+
+    commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
+    feedState.session = { status: "idle" };
+    render();
+    await flush();
+
+    const serviceCalls = commandSpy.mock.calls.filter(
+      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "services",
+    );
+    expect(serviceCalls).toHaveLength(2);
   });
 
   it("shows a starting line while starting", () => {

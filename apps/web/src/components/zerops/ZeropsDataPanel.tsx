@@ -20,9 +20,10 @@
  * asks for the next one, which keeps each of them testable without an RPC
  * mock of its own.
  *
- * The initial `services` listing fires as soon as the session reaches
- * `"ready"` — adjusting state during render, guarded by a ref so it only
- * fires once per environment, the same pattern `ZeropsBrowserPanel` uses for
+ * The initial `services` listing fires as soon as the session is `"idle"`
+ * or `"ready"` (the server starts the console on that first call, so
+ * waiting for `"ready"` would wait forever) — adjusting state during render,
+ * guarded by a ref so it only fires once per environment, the same pattern `ZeropsBrowserPanel` uses for
  * its take-over reset. There is no user click to hang the first fetch off
  * of, and this codebase has no `useEffect`-driven data fetch to mirror
  * instead (see that file's own comment on the pattern). `ChatView` mounts
@@ -168,7 +169,17 @@ export function ZeropsDataPanel({ threadRef }: ZeropsDataPanelProps) {
     return undefined;
   };
 
-  if (session?.status === "ready" && servicesRequestedForRef.current !== env) {
+  // Fires on `idle` as well as `ready`: the server starts the console on the
+  // FIRST call, so a panel that waited for `ready` before calling would wait
+  // forever on a fresh or idle-killed console (`ZeropsDataConsole.ts` header).
+  // After an `unavailable` verdict the ref is cleared so the next `idle`
+  // (a reconnect, a retried session) asks again instead of staying dark.
+  const status = session?.status ?? "idle";
+  const servicesRequestedFor = servicesRequestedForRef.current;
+  if (status === "unavailable" && servicesRequestedFor === env) {
+    servicesRequestedForRef.current = null;
+  }
+  if ((status === "idle" || status === "ready") && servicesRequestedFor !== env) {
     servicesRequestedForRef.current = env;
     void runRequest({ kind: "services" }).then((response) => {
       if (response?.kind === "services") {
@@ -382,7 +393,6 @@ export function ZeropsDataPanel({ threadRef }: ZeropsDataPanelProps) {
     });
   };
 
-  const status = session?.status ?? "idle";
   const selectedService =
     services?.find((service) => service.hostname === selectedServiceHostname) ?? null;
   const affordances = selectedService ? resolveServiceAffordances(selectedService) : null;
