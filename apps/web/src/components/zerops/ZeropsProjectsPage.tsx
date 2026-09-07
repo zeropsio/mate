@@ -70,7 +70,7 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { proposedEnvironmentName, validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsMoveToGroupDialog } from "./ZeropsMoveToGroupDialog";
 import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
@@ -1368,9 +1368,12 @@ function ZeropsProjectsContent() {
           }))}
           cloneSourcesLoading={cloneSources.loading}
           defaultBotName={creationRequest.botName}
-          defaultName={`${requestedGroup.group.name} - ${
-            environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role
-          }`}
+          defaultName={proposedEnvironmentName({
+            groupName: requestedGroup.group.name,
+            roleLabel:
+              environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+            taken: requestedGroup.environments.map(({ item }) => item.project.name),
+          })}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}
           key={`${creationRequest.groupId}:${creationRequest.role}`}
