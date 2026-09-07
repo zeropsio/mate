@@ -515,8 +515,9 @@ const LenientColumnSchema = Schema.Struct({
   sortReason: Schema.optional(Schema.String),
 });
 const LenientTablePageSchema = Schema.Struct({
-  columns: Schema.Array(LenientColumnSchema),
-  rows: Schema.Array(Schema.Array(Schema.Unknown)),
+  columns: Schema.NullOr(Schema.Array(LenientColumnSchema)),
+  // A Go nil slice encodes as literal null: an empty table answers `rows: null`.
+  rows: Schema.NullOr(Schema.Array(Schema.Array(Schema.Unknown))),
   nextCursor: Schema.optional(Schema.String),
   rowKeyCols: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
   bestEffort: Schema.optional(Schema.Boolean),
@@ -526,7 +527,7 @@ const decodeTablePage = Schema.decodeUnknownResult(LenientTablePageSchema);
 const normalizeTablePage = (
   page: typeof LenientTablePageSchema.Type,
 ): typeof ZeropsDataConsoleTablePageSchema.Type => ({
-  columns: page.columns.map((column) => ({
+  columns: (page.columns ?? []).map((column) => ({
     name: column.name,
     dataType: column.dataType ?? "",
     pk: column.pk ?? false,
@@ -535,7 +536,7 @@ const normalizeTablePage = (
     sortable: column.sortable ?? false,
     sortReason: column.sortReason ?? "",
   })),
-  rows: page.rows,
+  rows: page.rows ?? [],
   nextCursor: page.nextCursor ?? "",
   rowKeyCols: page.rowKeyCols ?? [],
   bestEffort: page.bestEffort ?? false,

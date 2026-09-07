@@ -617,6 +617,39 @@ describe("ZeropsDataConsole", () => {
     );
 
     it.effect(
+      "decodes an empty table read — a Go nil slice encodes rows as literal null (public.empty_table on the rig, 2026-09-07)",
+      () =>
+        Effect.gen(function* () {
+          const liveEmptyBody = {
+            columns: [
+              {
+                name: "id",
+                dataType: "integer",
+                pk: true,
+                editable: false,
+                reason: "primary key",
+                sortable: true,
+                sortReason: "",
+              },
+            ],
+            rows: null,
+            nextCursor: "",
+            rowKeyCols: ["id"],
+          };
+          const http = fakeHttpClient(() => jsonResponse(liveEmptyBody));
+          const result = yield* withService(
+            { spawn: makeAutoReadySpawner().spawn, http },
+            (service) =>
+              service.call({
+                kind: "table",
+                path: { service: "db", segments: ["public", "empty_table"] },
+              }),
+          ).pipe(Effect.orDie);
+          expect(result).toMatchObject({ kind: "table", page: { rows: [], rowKeyCols: ["id"] } });
+        }),
+    );
+
+    it.effect(
       "decodes a real console query response — omitempty dropped sortable/sortReason/nextCursor/bestEffort/numbered, rowKeyCols is literal null",
       () =>
         Effect.gen(function* () {
