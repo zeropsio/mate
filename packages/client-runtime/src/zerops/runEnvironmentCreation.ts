@@ -98,6 +98,8 @@ export interface RunEnvironmentCreationInput {
   readonly clientId: string;
   readonly steps: ReadonlyArray<EnvironmentCreationStep>;
   readonly platform: EnvironmentCreationPlatform;
+  /** Captured account lifetime; a later login must never resume this operation. */
+  readonly isCurrent?: () => boolean;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** Turns an unknown failure into the sentence the checklist shows. */
   readonly describeError?: (cause: unknown) => string;
@@ -127,6 +129,9 @@ export async function runEnvironmentCreation(
   const now = input.now ?? Date.now;
   const describeError = input.describeError ?? defaultDescribeError;
   const { sleep } = input;
+  const assertCurrent = () => {
+    if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
+  };
   const pollIntervalMs = input.pollIntervalMs ?? ENVIRONMENT_SERVICE_POLL_INTERVAL_MS;
   const serviceWaitCapMs = input.serviceWaitCapMs ?? ENVIRONMENT_SERVICE_WAIT_CAP_MS;
 
@@ -153,6 +158,7 @@ export async function runEnvironmentCreation(
     mark(index, { state: "running", startedAtMs });
 
     try {
+      assertCurrent();
       switch (step.kind) {
         case "create-project": {
           const project = await input.platform.createProject({
@@ -205,10 +211,12 @@ export async function runEnvironmentCreation(
             sleep,
             pollIntervalMs,
             capMs: serviceWaitCapMs,
+            assertCurrent,
           });
           break;
         }
       }
+      assertCurrent();
     } catch (cause) {
       const error = describeError(cause);
       mark(index, { state: "failed", error, finishedAtMs: now() });
@@ -259,10 +267,13 @@ async function awaitServices(input: {
   readonly sleep: (ms: number) => Promise<void>;
   readonly pollIntervalMs: number;
   readonly capMs: number;
+  readonly assertCurrent: () => void;
 }): Promise<ReadonlyArray<string>> {
   const startedAt = input.now();
   for (;;) {
+    input.assertCurrent();
     const services = await input.platform.listServices(input.projectId);
+    input.assertCurrent();
     const pending = services.filter(
       (service) => service.status !== "ACTIVE" && service.status !== UNDEPLOYED_STATUS,
     );

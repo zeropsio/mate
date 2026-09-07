@@ -64,7 +64,7 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
 function run(
   steps: ReadonlyArray<EnvironmentCreationStep>,
   platform: EnvironmentCreationPlatform,
-  extra: { readonly clockMs?: Array<number> } = {},
+  extra: { readonly clockMs?: Array<number>; readonly isCurrent?: () => boolean } = {},
 ) {
   const reports: Array<ReadonlyArray<EnvironmentCreationStepProgress>> = [];
   const slept: Array<number> = [];
@@ -73,6 +73,7 @@ function run(
     clientId: "client-1",
     steps,
     platform,
+    ...(extra.isCurrent === undefined ? {} : { isCurrent: extra.isCurrent }),
     onProgress: (progress) => reports.push(progress),
     now: () => extra.clockMs?.[tick++] ?? tick * 1000,
     sleep: (ms) => {
@@ -85,6 +86,50 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it("stops before any platform call when the account lifetime has ended", async () => {
+    const { platform, calls } = fakePlatform();
+    const { outcome } = await run(plan("dev"), platform, { isCurrent: () => false });
+    expect(outcome).toMatchObject({
+      ok: false,
+      projectId: undefined,
+      error: "This account session has ended.",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("retains the created project but makes no further writes after account closure", async () => {
+    let current = true;
+    const { platform, calls } = fakePlatform({
+      createProject: async () => {
+        current = false;
+        return { id: "created-before-logout" };
+      },
+    });
+    const { outcome } = await run(plan("dev"), platform, { isCurrent: () => current });
+    expect(outcome).toMatchObject({
+      ok: false,
+      projectId: "created-before-logout",
+      error: "This account session has ended.",
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("stops service checks when the account closes during a read", async () => {
+    let current = true;
+    let reads = 0;
+    const { platform } = fakePlatform({
+      listServices: async () => {
+        reads += 1;
+        current = false;
+        return [];
+      },
+    });
+    const { outcome, slept } = await run(plan("prod"), platform, { isCurrent: () => current });
+    expect(outcome).toMatchObject({ ok: false, error: "This account session has ended." });
+    expect(reads).toBe(1);
+    expect(slept).toEqual([]);
+  });
+
   it("runs the platform calls in the plan's order, feeding each the project it made", async () => {
     const { platform, calls } = fakePlatform();
     const { outcome } = await run(plan("dev"), platform);

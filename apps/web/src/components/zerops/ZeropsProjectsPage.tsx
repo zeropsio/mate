@@ -1,3 +1,4 @@
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
@@ -470,6 +471,7 @@ function ZeropsProjectsContent() {
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
       if (!activeOrganization || settingUpKey !== null) return;
+      const isCurrent = captureAccountLifetime();
       setSettingUpKey(candidate.key);
       setConnectError(null);
       try {
@@ -481,21 +483,22 @@ function ZeropsProjectsContent() {
         const group = groupTree.groups.find((candidate) =>
           candidate.environments.some(({ item }) => item.project.id === projectId),
         );
-        await client.importDevelopmentContainer({
-          projectId,
-          agents: group === undefined ? [] : await readGroupAgents(group.environments),
-        });
+        const agents = group === undefined ? [] : await readGroupAgents(group.environments);
+        if (!isCurrent()) return;
+        await client.importDevelopmentContainer({ projectId, agents });
+        if (!isCurrent()) return;
         await client.nameProjectAgent(
           projectId,
           generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
         );
+        if (!isCurrent()) return;
         resetConnectingTarget();
         setCreatingIn(activeOrganization.id);
         provisioning.startForProject({ projectId });
       } catch (cause) {
-        setConnectError(zeropsErrorMessage(cause));
+        if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
-        setSettingUpKey(null);
+        if (isCurrent()) setSettingUpKey(null);
       }
     },
     [
@@ -827,6 +830,7 @@ function ZeropsProjectsContent() {
   const createEnvironment = useCallback(
     async (groupId: string, role: ZeropsEnvironmentRole, choice: EnvironmentCreationChoice) => {
       if (!activeOrganization || creationRunning) return;
+      const isCurrent = captureAccountLifetime();
       const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
       if (entry === undefined) return;
       const { group } = entry;
@@ -845,6 +849,7 @@ function ZeropsProjectsContent() {
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
       });
+      if (!isCurrent()) return;
       if (!plan.ok) {
         setToolError(plan.reason);
         return;
@@ -856,6 +861,7 @@ function ZeropsProjectsContent() {
       const outcome = await runEnvironmentCreation({
         clientId: activeOrganization.id,
         steps: plan.steps,
+        isCurrent,
         platform: {
           createProject: (input) => client.createProject(input),
           importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
@@ -869,10 +875,12 @@ function ZeropsProjectsContent() {
             setTimeout(resolve, ms);
           }),
         onProgress: (progress) => {
+          if (!isCurrent()) return;
           setCreation((current) => (current === null ? current : { ...current, progress }));
         },
       });
 
+      if (!isCurrent()) return;
       if (!outcome.ok) {
         setCreation((current) =>
           current === null
