@@ -48,7 +48,9 @@ import {
   planEnvironmentCreation,
   readZeropsGroupTags,
   runEnvironmentCreation,
+  unionAgents,
   type EnvironmentCreationStepProgress,
+  type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupTags,
@@ -435,6 +437,36 @@ function ZeropsProjectsContent() {
    * the row it earns in the left menu is somebody — then hands the wait to
    * the provisioning machinery from the project's known id.
    */
+  /**
+   * The agents a group's existing environments are signed in with, so a Mate
+   * born into that group offers the same ones instead of the platform's whole
+   * menu (`agentSelection.ts`).
+   *
+   * Read per environment and unioned. A read that fails is not a reason to
+   * refuse a creation: the empty answer omits `ZCP_AGENTS` from the import,
+   * and the container falls back to offering every agent — which is exactly
+   * what it did before this existed.
+   */
+  const readGroupAgents = useCallback(
+    async (
+      environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>,
+    ): Promise<ReadonlyArray<ZeropsAgentType>> =>
+      unionAgents(
+        await Promise.all(
+          environments.flatMap(({ item }) =>
+            item.service === undefined
+              ? []
+              : [
+                  client
+                    .readAuthorizedAgents(item.service.id)
+                    .catch((): ReadonlyArray<ZeropsAgentType> => []),
+                ],
+          ),
+        ),
+      ),
+    [client],
+  );
+
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
       if (!activeOrganization || settingUpKey !== null) return;
@@ -446,7 +478,13 @@ function ZeropsProjectsContent() {
           const bot = readZeropsGroupTags(entry.project.tagList).bot;
           return bot === undefined ? [] : [bot];
         });
-        await client.importDevelopmentContainer({ projectId });
+        const group = groupTree.groups.find((candidate) =>
+          candidate.environments.some(({ item }) => item.project.id === projectId),
+        );
+        await client.importDevelopmentContainer({
+          projectId,
+          agents: group === undefined ? [] : await readGroupAgents(group.environments),
+        });
         await client.nameProjectAgent(
           projectId,
           generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
@@ -464,7 +502,9 @@ function ZeropsProjectsContent() {
       activeOrganization,
       candidates,
       client,
+      groupTree.groups,
       provisioning,
+      readGroupAgents,
       resetConnectingTarget,
       setConnectError,
       setCreatingIn,
@@ -800,6 +840,7 @@ function ZeropsProjectsContent() {
         role,
         name,
         record: await client.readRecipeGroup(groupId),
+        agents: await readGroupAgents(entry.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
@@ -872,6 +913,7 @@ function ZeropsProjectsContent() {
       creationRunning,
       groupTree.groups,
       provisioning,
+      readGroupAgents,
       refresh,
       resetConnectingTarget,
       setConnectError,

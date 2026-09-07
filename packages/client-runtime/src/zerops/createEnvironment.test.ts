@@ -99,6 +99,27 @@ describe("planEnvironmentCreation", () => {
     ]);
   });
 
+  it("gives the new container the agents the group is signed in with", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      role: "dev",
+      name: "dev",
+      agents: ["claude-code"],
+    });
+    if (!plan.ok) throw new Error("expected a plan");
+    const container = plan.steps.find((step) => step.kind === "import-container");
+    expect(container).toEqual({ kind: "import-container", agents: ["claude-code"] });
+  });
+
+  it("asks for no agent in particular when the group has authorized none", () => {
+    // Empty is not the same as a choice: `buildZcpServiceImportYaml` omits
+    // ZCP_AGENTS entirely, and an absent key offers every agent (MC-11).
+    const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
+    if (!plan.ok) throw new Error("expected a plan");
+    const container = plan.steps.find((step) => step.kind === "import-container");
+    expect(container).toEqual({ kind: "import-container", agents: [] });
+  });
+
   it("lets a caller ask for an agent in production explicitly", () => {
     const plan = planEnvironmentCreation({ ...BASE, withAgent: true });
     if (!plan.ok) throw new Error("expected a plan");

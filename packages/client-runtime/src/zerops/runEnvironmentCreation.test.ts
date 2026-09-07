@@ -17,6 +17,7 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     name: `Go Hello World - ${role}`,
     record: GO_HELLO_WORLD_GROUP,
     role,
+    agents: ["claude-code"],
     ...(role === "prod" ? {} : { botName: "Ada" }),
   });
   if (!result.ok) throw new Error(result.reason);
@@ -33,7 +34,7 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       return Promise.resolve({ id: "proj-1" });
     },
     importDevelopmentContainer: (input) => {
-      calls.push(`container:${input.projectId}`);
+      calls.push(`container:${input.projectId}:${input.agents.join("|")}`);
       return Promise.resolve({ serviceName: "zcp" });
     },
     importServices: (projectId, yaml) => {
@@ -97,7 +98,8 @@ describe("runEnvironmentCreation", () => {
     });
     expect(calls).toEqual([
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
-      "container:proj-1",
+      // The group's agents reach the container import, not just the plan.
+      "container:proj-1:claude-code",
       `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
     ]);
   });

@@ -26,6 +26,7 @@
  * @module createEnvironment
  */
 
+import type { ZeropsAgentType } from "./newProject.ts";
 import {
   withZeropsBotTag,
   withZeropsGroupTags,
@@ -88,6 +89,12 @@ export interface EnvironmentCreationInput {
    * name — legible, but not somebody you can address.
    */
   readonly botName?: string;
+  /**
+   * The coding agents the new container offers, normally the ones this
+   * group's existing environments are signed in with (`agentSelection.ts`).
+   * Omitted or empty leaves the container offering every agent.
+   */
+  readonly agents?: ReadonlyArray<ZeropsAgentType>;
 }
 
 export type EnvironmentCreationStep =
@@ -98,8 +105,17 @@ export type EnvironmentCreationStep =
       readonly tagList: ReadonlyArray<string>;
       readonly location: string | undefined;
     }
-  /** `PUT /project/{id}/first-class-recipe/development-container` — the zcp that carries the agent. */
-  | { readonly kind: "import-container" }
+  /**
+   * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
+   * that carries the agent.
+   *
+   * `agents` is the group's own selection, so a Mate added to a group comes up
+   * offering what that group signed in with rather than the platform's whole
+   * menu. Empty means the group has authorized nothing yet, and the import
+   * document then omits `ZCP_AGENTS` entirely — absent offers every agent,
+   * empty offers none (MC-11).
+   */
+  | { readonly kind: "import-container"; readonly agents: ReadonlyArray<ZeropsAgentType> }
   /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
   | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
   /**
@@ -197,7 +213,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ]
     : [{ kind: "create-project", name, tagList, location: input.location }];
 
-  if (withAgent) steps.push({ kind: "import-container" });
+  if (withAgent) steps.push({ kind: "import-container", agents: input.agents ?? [] });
   if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
 

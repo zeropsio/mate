@@ -98,6 +98,7 @@ export {
   recipeServicesYaml,
   type ZeropsGroupRecord,
 } from "./recipeStore.ts";
+export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
 export { withRecipeStoreMock, type RecipeStoreMockOptions } from "./recipeStoreMock.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export { derivePublicRoutes, type ZeropsPublicRoute } from "./publicRoutes.ts";
