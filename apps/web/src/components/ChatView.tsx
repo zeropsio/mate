@@ -5833,7 +5833,11 @@ function ChatViewContent(props: ChatViewProps) {
     agentSignInRequired: zeropsChrome.agentSignInRequired,
     ready: activeThread !== null && !isWorking && !activeEnvironmentUnavailable,
     send: () => {
+      // The composer's own gate: a thread with no provider refuses the send,
+      // and the hook needs to know so it can try again rather than lose the job.
+      if (composerRef.current?.getSendContext()?.providerAvailable !== true) return false;
       void onSend();
+      return true;
     },
   });
 
