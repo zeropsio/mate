@@ -267,9 +267,11 @@ describe("readProvisioning", () => {
       probeHealth: probeNeverCalled,
     });
 
-    expect(event.kind).toBe("services");
+    expect(event).toEqual({ kind: "services", project: PROJECT, services: [container()] });
     expect(urls.some((url) => url.endsWith("/project/project-1"))).toBe(true);
-    expect(urls.some((url) => url.endsWith("/project/project-1/service-stack"))).toBe(true);
+    expect(
+      urls.some((url) => new URL(url).pathname.endsWith("/project/project-1/service-stack")),
+    ).toBe(true);
     expect(urls.every((url) => !url.includes("/search"))).toBe(true);
   });
 

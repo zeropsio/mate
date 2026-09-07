@@ -1048,12 +1048,22 @@ describe("resolveDoor", () => {
   );
 
   it.each(["/pair", "/pair/"])(
-    "redirects an authenticated %s navigation before rendering the pair view",
+    "discards a legacy credential at %s and redirects to account projects",
     async (pathname) => {
-      await expect(navigateToAuthenticatedPair(pathname)).resolves.toEqual({
-        redirectTo: "/",
-        viewRendered: false,
+      const replaceState = vi.fn();
+      vi.stubGlobal("window", {
+        location: { pathname, search: "?token=legacy", hash: "#token=legacy" },
+        history: { replaceState },
       });
+      try {
+        await expect(navigateToAuthenticatedPair(pathname)).resolves.toEqual({
+          redirectTo: "/zerops",
+          viewRendered: false,
+        });
+        expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", pathname);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     },
   );
 });
