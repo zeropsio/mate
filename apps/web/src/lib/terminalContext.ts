@@ -394,6 +394,25 @@ export function insertInlineTerminalContextPlaceholder(
   };
 }
 
+/**
+ * Swaps a typed `@mention` for its inline placeholder in a single step over a
+ * single authoritative prompt string.
+ *
+ * Doing it as two mutations — remove the text, then read the editor back and
+ * insert — races the editor: the read can still see the mention and write it
+ * back, leaving both the literal `@db` and the chip in the prompt. The
+ * literal then reaches the sent message as a file link beside its own chip.
+ */
+export function replaceMentionWithInlineContextPlaceholder(
+  prompt: string,
+  rangeStart: number,
+  rangeEnd: number,
+): { prompt: string; cursor: number; contextIndex: number } {
+  const start = Math.max(0, Math.min(prompt.length, Math.floor(rangeStart)));
+  const end = Math.max(start, Math.min(prompt.length, Math.floor(rangeEnd)));
+  return insertInlineTerminalContextPlaceholder(prompt.slice(0, start) + prompt.slice(end), start);
+}
+
 export function stripInlineTerminalContextPlaceholders(prompt: string): string {
   return prompt.replaceAll(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, "");
 }

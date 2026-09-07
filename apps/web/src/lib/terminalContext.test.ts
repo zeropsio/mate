@@ -18,6 +18,7 @@ import {
   isTerminalContextExpired,
   materializeInlineTerminalContextPrompt,
   removeInlineTerminalContextPlaceholder,
+  replaceMentionWithInlineContextPlaceholder,
   stripInlineTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "./terminalContext";
@@ -303,5 +304,24 @@ describe("terminalContext", () => {
         lineEnd: 2,
       }),
     ).toBe("@db-·-public.orders");
+  });
+  it("swaps a typed mention for its inline placeholder in one step, leaving no mention text behind", () => {
+    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+    expect(replaceMentionWithInlineContextPlaceholder("look at @db", 8, 11)).toEqual({
+      prompt: `look at ${placeholder} `,
+      cursor: 10,
+      contextIndex: 0,
+    });
+  });
+
+  it("keeps the text after the mention and counts placeholders before it", () => {
+    const placeholder = INLINE_TERMINAL_CONTEXT_PLACEHOLDER;
+    expect(
+      replaceMentionWithInlineContextPlaceholder(`${placeholder} see @db.orders now`, 6, 16),
+    ).toEqual({
+      prompt: `${placeholder} see ${placeholder} now`,
+      cursor: 8,
+      contextIndex: 1,
+    });
   });
 });

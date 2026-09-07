@@ -5,6 +5,11 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
+import {
+  appendTerminalContextsToPrompt,
+  deriveDisplayedUserMessageState,
+  INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
+} from "~/lib/terminalContext";
 
 describe("userMessageTerminalContexts", () => {
   it("builds plain inline terminal text labels", () => {
@@ -48,5 +53,28 @@ describe("userMessageTerminalContexts", () => {
     expect(
       textContainsInlineTerminalContextLabels("explain @db.public.orders please", [dataContext]),
     ).toBe(true);
+  });
+
+  it("resolves a data token that also names a workspace path as the data context, not a file mention", () => {
+    // `db` is both this project's data service and a folder in the workspace.
+    // The sent message carries `@db`; the block names it, so the chip wins and
+    // the bare mention never reaches the markdown renderer as a file link.
+    const sent = appendTerminalContextsToPrompt(INLINE_TERMINAL_CONTEXT_PLACEHOLDER, [
+      {
+        kind: "data",
+        token: "db",
+        terminalId: "data:db",
+        terminalLabel: "db",
+        lineStart: 1,
+        lineEnd: 2,
+        text: "## db (postgresql@16)\n- public.orders",
+      },
+    ]);
+    const state = deriveDisplayedUserMessageState(sent);
+
+    expect(state.visibleText).toBe("@db");
+    expect(state.contexts[0]).toMatchObject({ kind: "data", token: "db" });
+    expect(formatInlineTerminalContextLabel(state.contexts[0]!)).toBe("@db");
+    expect(textContainsInlineTerminalContextLabels(state.visibleText, state.contexts)).toBe(true);
   });
 });

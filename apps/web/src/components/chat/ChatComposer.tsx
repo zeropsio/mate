@@ -104,6 +104,7 @@ import {
   type TerminalContextSelection,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   insertInlineTerminalContextPlaceholder,
+  replaceMentionWithInlineContextPlaceholder,
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
@@ -1904,13 +1905,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   /**
-   * Resolves the schema behind a picked mention and attaches it. A table is
-   * described from one page's column list; a service from the tables the
-   * catalog already knows. A failed lookup leaves the prompt alone rather
-   * than attaching a chip that says nothing.
+   * Resolves a picked mention's schema, then swaps the typed `@db` text for
+   * its chip in ONE mutation over `promptRef` — never by reading the editor
+   * back after a separate removal, which races the editor and leaves the
+   * literal mention in the prompt beside its own chip.
+   *
+   * The schema is resolved first so a failed lookup leaves what the user
+   * typed exactly as it is.
    */
   const attachDataMentionContext = useCallback(
-    async (entry: DataMentionEntry) => {
+    async (entry: DataMentionEntry, rangeStart: number, rangeEnd: number, typedText: string) => {
+      if (!activeThread || isChoiceOnlyPendingQuestion) return;
       const described = await (async () => {
         if (entry.kind === "service") {
           return describeServiceContext(entry, dataCatalogEntries);
@@ -1931,17 +1936,53 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
       })();
       if (described === undefined) return;
-      attachContextAtCursor({
-        kind: "data",
-        token: entry.token,
-        terminalId: `data:${described.label}`,
-        terminalLabel: described.label,
-        lineStart: 1,
-        lineEnd: described.text.split("\n").length,
-        text: described.text,
+      // The user may have kept typing while the schema was in flight; only
+      // replace the range if it still holds exactly what they picked from.
+      if (promptRef.current.slice(rangeStart, rangeEnd) !== typedText) return;
+      const insertion = replaceMentionWithInlineContextPlaceholder(
+        promptRef.current,
+        rangeStart,
+        rangeEnd,
+      );
+      const inserted = insertComposerDraftTerminalContext(
+        composerDraftTarget,
+        insertion.prompt,
+        {
+          id: randomUUID(),
+          threadId: activeThread.id,
+          createdAt: new Date().toISOString(),
+          kind: "data",
+          token: entry.token,
+          terminalId: `data:${described.label}`,
+          terminalLabel: described.label,
+          lineStart: 1,
+          lineEnd: described.text.split("\n").length,
+          text: described.text,
+        },
+        insertion.contextIndex,
+      );
+      if (!inserted) return;
+      promptRef.current = insertion.prompt;
+      const nextCollapsedCursor = collapseExpandedComposerCursor(
+        insertion.prompt,
+        insertion.cursor,
+      );
+      setComposerCursor(nextCollapsedCursor);
+      setComposerTrigger(null);
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCollapsedCursor);
       });
     },
-    [attachContextAtCursor, callDataConsole, dataCatalogEntries, environmentId],
+    [
+      activeThread,
+      callDataConsole,
+      composerDraftTarget,
+      dataCatalogEntries,
+      environmentId,
+      insertComposerDraftTerminalContext,
+      isChoiceOnlyPendingQuestion,
+      promptRef,
+    ],
   );
 
   const resolveActiveComposerTrigger = useCallback((): {
@@ -1983,12 +2024,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "data") {
-        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-        });
-        if (!applied) return;
         setComposerHighlightedItemId(null);
-        void attachDataMentionContext(item.entry);
+        void attachDataMentionContext(
+          item.entry,
+          trigger.rangeStart,
+          trigger.rangeEnd,
+          snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        );
         return;
       }
       if (item.type === "slash-command") {
