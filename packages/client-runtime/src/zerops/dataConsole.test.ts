@@ -12,12 +12,14 @@ import {
   applyTablePage,
   applyTreePage,
   breadcrumbsFor,
+  buildDataMentionEntries,
   buildFilteredTableStatement,
   buildSortPage,
   collapseTreePath,
   describeCell,
   describeDataConsoleError,
   describeRowContext,
+  describeServiceContext,
   describeTableContext,
   emptyTable,
   emptyTree,
@@ -33,6 +35,7 @@ import {
   resolveSqlDialect,
   rowAsJson,
   rowRecord,
+  searchDataMentions,
   toggleHiddenColumn,
   treePathKey,
   visibleColumns,
@@ -1004,5 +1007,138 @@ describe("breadcrumbsFor", () => {
       { label: "public", path: { service: "db", segments: ["public"] } },
       { label: "orders", path: { service: "db", segments: ["public", "orders"] } },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mention catalog
+// ---------------------------------------------------------------------------
+
+const browsableService = (hostname: string): ZeropsDataConsoleService => ({
+  hostname,
+  type: "postgresql@16",
+  family: "sql",
+  support: "full",
+  actions: [{ id: "readTable", enabled: true, readOnly: true, reason: "" }],
+  status: "running",
+});
+
+const tabularNode = (
+  serviceName: string,
+  segments: ReadonlyArray<string>,
+): ZeropsDataConsoleNode => ({
+  name: segments[segments.length - 1] ?? serviceName,
+  kind: "tabular",
+  path: { service: serviceName, segments },
+  hasChildren: false,
+});
+
+describe("buildDataMentionEntries", () => {
+  it("emits one entry per browsable service plus one per tabular node, with a short alias", () => {
+    expect(
+      buildDataMentionEntries([browsableService("db")], [tabularNode("db", ["public", "orders"])]),
+    ).toEqual([
+      {
+        kind: "service",
+        service: "db",
+        serviceType: "postgresql@16",
+        segments: [],
+        token: "db",
+        aliases: [],
+        label: "db",
+      },
+      {
+        kind: "table",
+        service: "db",
+        serviceType: "postgresql@16",
+        segments: ["public", "orders"],
+        token: "db.public.orders",
+        aliases: ["db.orders"],
+        label: "db · public.orders",
+      },
+    ]);
+  });
+
+  it("drops services without a browse affordance and nodes belonging to them", () => {
+    const gated: ZeropsDataConsoleService = { ...browsableService("cache"), actions: [] };
+    expect(buildDataMentionEntries([gated], [tabularNode("cache", ["keys"])])).toEqual([]);
+  });
+
+  it("gives a single-segment table no alias", () => {
+    const entries = buildDataMentionEntries(
+      [browsableService("db")],
+      [tabularNode("db", ["orders"])],
+    );
+    expect(entries[1]).toMatchObject({ token: "db.orders", aliases: [], label: "db · orders" });
+  });
+});
+
+describe("searchDataMentions", () => {
+  const entries = buildDataMentionEntries(
+    [browsableService("db"), browsableService("analytics")],
+    [
+      tabularNode("db", ["public", "orders"]),
+      tabularNode("db", ["public", "orders_archive"]),
+      tabularNode("analytics", ["public", "events"]),
+    ],
+  );
+
+  it("ranks an exact alias above a prefix match", () => {
+    expect(searchDataMentions(entries, "db.orders").map((entry) => entry.token)).toEqual([
+      "db.public.orders",
+      "db.public.orders_archive",
+    ]);
+  });
+
+  it("ranks an exact service token above its tables' prefix matches", () => {
+    expect(searchDataMentions(entries, "db").map((entry) => entry.token)).toEqual([
+      "db",
+      "db.public.orders",
+      "db.public.orders_archive",
+    ]);
+  });
+
+  it("matches a schema-qualified fragment inside the token", () => {
+    expect(searchDataMentions(entries, "public.orders").map((entry) => entry.token)).toEqual([
+      "db.public.orders",
+      "db.public.orders_archive",
+    ]);
+  });
+
+  it("falls back to a substring match on the token", () => {
+    expect(searchDataMentions(entries, "events").map((entry) => entry.token)).toEqual([
+      "analytics.public.events",
+    ]);
+  });
+
+  it("lists services first for an empty query and caps the result count", () => {
+    expect(searchDataMentions(entries, "", 2).map((entry) => entry.token)).toEqual([
+      "db",
+      "analytics",
+    ]);
+  });
+
+  it("returns nothing when no token, alias or label matches", () => {
+    expect(searchDataMentions(entries, "zzz")).toEqual([]);
+  });
+});
+
+describe("describeServiceContext", () => {
+  it("lists the service's tables under a heading naming the service and its type", () => {
+    const entries = buildDataMentionEntries(
+      [browsableService("db")],
+      [tabularNode("db", ["public", "orders"]), tabularNode("db", ["public", "users"])],
+    );
+    expect(describeServiceContext(entries[0]!, entries.slice(1))).toEqual({
+      label: "db",
+      text: ["## db (postgresql@16)", "- public.orders", "- public.users"].join("\n"),
+    });
+  });
+
+  it("says so when the service exposes no tables", () => {
+    const entries = buildDataMentionEntries([browsableService("db")], []);
+    expect(describeServiceContext(entries[0]!, []).text).toBe(
+      ["## db (postgresql@16)", "No tables."].join("\n"),
+    );
   });
 });

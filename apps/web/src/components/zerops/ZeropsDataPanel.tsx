@@ -85,6 +85,7 @@ import {
   buildSortPage,
   collapseTreePath,
   describeDataConsoleError,
+  dataMentionToken,
   describeRowContext,
   describeTableContext,
   emptyTable,
@@ -219,8 +220,10 @@ export function ZeropsDataPanel({
   const [queryLoadMorePending, setQueryLoadMorePending] = useState(false);
   const [errorText, setErrorText] = useState<string | undefined>(undefined);
   const [measuredWidth, setMeasuredWidth] = useState<number | undefined>(undefined);
+  const [missingServiceRefreshed, setMissingServiceRefreshed] = useState<string | null>(null);
   const servicesRequestedForRef = useRef<EnvironmentId | null>(null);
   const openedServiceRef = useRef<string | null>(null);
+  const missingServiceRefreshRef = useRef<string | null>(null);
   const treeTokenRef = useRef<Map<string, number>>(new Map());
   const selectionTokenRef = useRef(0);
   const filterTokenRef = useRef(0);
@@ -269,8 +272,12 @@ export function ZeropsDataPanel({
     return undefined;
   };
 
+  // Always `refresh`, never `services`: discovery runs when the console
+  // starts, so a plain listing answers with whatever existed then and a
+  // service created since would never appear. `refresh` re-runs discovery and
+  // answers in the same shape.
   const requestServices = () => {
-    void runRequest({ kind: "services" }).then((response) => {
+    void runRequest({ kind: "refresh" }).then((response) => {
       if (response?.kind === "services") {
         setServices(response.services);
       }
@@ -335,6 +342,29 @@ export function ZeropsDataPanel({
     selectionTokenRef.current += 1;
     filterTokenRef.current += 1;
   };
+
+  // A tab named after a service the listing does not carry is the one case a
+  // re-discovery can still fix — the service may have been created after the
+  // console started. Exactly one refresh per service, then the tab settles on
+  // whatever that answer says.
+  const missingServiceKey = service === undefined ? null : `${env}:${service}`;
+  const serviceIsMissing =
+    service !== undefined &&
+    services !== undefined &&
+    !services.some((entry) => entry.hostname === service);
+  if (
+    serviceIsMissing &&
+    missingServiceKey !== null &&
+    missingServiceRefreshRef.current !== missingServiceKey
+  ) {
+    missingServiceRefreshRef.current = missingServiceKey;
+    void runRequest({ kind: "refresh" }).then((response) => {
+      if (response?.kind === "services") {
+        setServices(response.services);
+      }
+      setMissingServiceRefreshed(missingServiceKey);
+    });
+  }
 
   const openServiceRoot = (hostname: string) => {
     resetSelection();
@@ -617,10 +647,15 @@ export function ZeropsDataPanel({
   const gridModel = filtered?.model ?? tableModel;
   const gridSort = filtered !== undefined ? filteredSort : tableSort;
 
-  const addContext = (context: { readonly label: string; readonly text: string }) => {
+  const addContext = (
+    context: { readonly label: string; readonly text: string },
+    path: ZeropsDataConsolePath,
+  ) => {
     if (service === undefined) return;
     onAddContext({
-      terminalId: `data:${service}`,
+      kind: "data",
+      token: dataMentionToken(path),
+      terminalId: `data:${context.label}`,
       terminalLabel: context.label,
       lineStart: 1,
       lineEnd: context.text.split("\n").length,
@@ -661,7 +696,12 @@ export function ZeropsDataPanel({
   if (service === undefined) {
     return (
       <FlatCard className="space-y-3 p-3" data-zerops-data-panel="picker">
-        <MicroLabel>Data</MicroLabel>
+        <div className="flex items-center justify-between gap-2">
+          <MicroLabel>Data</MicroLabel>
+          <Button data-zerops-data-refresh onClick={requestServices} size="micro" variant="ghost">
+            Refresh
+          </Button>
+        </div>
         {sessionLine ?? (
           <div className="space-y-1" data-zerops-data-services>
             {(services ?? []).map((entry) => {
@@ -701,6 +741,8 @@ export function ZeropsDataPanel({
 
   const currentPath: ZeropsDataConsolePath = selectedNode?.path ?? { service, segments: [] };
   const browsable = affordances?.canBrowse === true;
+  const awaitingMissingServiceRefresh =
+    serviceIsMissing && missingServiceRefreshed !== missingServiceKey;
 
   const treeView = (
     <ZeropsDataTree
@@ -764,6 +806,7 @@ export function ZeropsDataPanel({
                     columns: gridModel.columns,
                     ...(tableCount !== undefined ? { approxRowCount: tableCount } : {}),
                   }),
+                  selectedNode.path,
                 )
         }
         onCopyPageJson={() =>
@@ -814,6 +857,7 @@ export function ZeropsDataPanel({
               columns: gridModel.columns,
               row: drawerRow,
             }),
+            currentPath,
           )
         }
         row={drawerRow}
@@ -862,7 +906,7 @@ export function ZeropsDataPanel({
       </div>
 
       {sessionLine ??
-        (services !== undefined && !browsable ? (
+        (services !== undefined && !browsable && !awaitingMissingServiceRefresh ? (
           <p className="text-muted-foreground text-xs" data-zerops-data-not-browsable>
             This service can't be browsed yet.
           </p>

@@ -636,7 +636,7 @@ function firstPrimaryKey(
  * (`project`, never `environment`).
  */
 export function describeTableContext(input: {
-  readonly service: ZeropsDataConsoleService;
+  readonly service: Pick<ZeropsDataConsoleService, "hostname" | "type">;
   readonly path: ZeropsDataConsolePath;
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
   readonly approxRowCount?: number;
@@ -710,4 +710,142 @@ export function breadcrumbsFor(
     });
   }
   return crumbs;
+}
+
+// ---------------------------------------------------------------------------
+// Mention catalog
+// ---------------------------------------------------------------------------
+
+/**
+ * One `@` mention offered by the composer for a project's data: either a
+ * whole service (`db`) or one table inside it (`db.public.orders`). `aliases`
+ * carries the short form a user is likelier to type (`db.orders`) so a
+ * schema-qualified table is reachable without spelling the schema out.
+ */
+export interface DataMentionEntry {
+  readonly kind: "service" | "table";
+  readonly service: string;
+  readonly serviceType: string;
+  readonly segments: ReadonlyArray<string>;
+  readonly token: string;
+  readonly aliases: ReadonlyArray<string>;
+  readonly label: string;
+}
+
+/** The mention token addressing a path: the service name and its segments joined by dots. */
+export function dataMentionToken(path: ZeropsDataConsolePath): string {
+  return [path.service, ...path.segments].join(".");
+}
+
+/**
+ * Builds the composer's mention catalog from a discovery response plus the
+ * tabular nodes already walked out of each service's tree. Services without a
+ * browse affordance (`resolveServiceAffordances`) contribute nothing, and
+ * neither do nodes addressed to them.
+ */
+export function buildDataMentionEntries(
+  services: ReadonlyArray<ZeropsDataConsoleService>,
+  tabularNodes: ReadonlyArray<ZeropsDataConsoleNode>,
+): ReadonlyArray<DataMentionEntry> {
+  const browsable = new Map<string, ZeropsDataConsoleService>();
+  for (const service of services) {
+    if (resolveServiceAffordances(service).canBrowse) {
+      browsable.set(service.hostname, service);
+    }
+  }
+  const entries: DataMentionEntry[] = [];
+  for (const service of browsable.values()) {
+    entries.push({
+      kind: "service",
+      service: service.hostname,
+      serviceType: service.type,
+      segments: [],
+      token: service.hostname,
+      aliases: [],
+      label: service.hostname,
+    });
+  }
+  for (const node of tabularNodes) {
+    const service = browsable.get(node.path.service);
+    if (service === undefined || node.kind !== "tabular") continue;
+    const segments = [...node.path.segments];
+    const token = dataMentionToken(node.path);
+    const shortToken = `${service.hostname}.${segments[segments.length - 1] ?? ""}`;
+    entries.push({
+      kind: "table",
+      service: service.hostname,
+      serviceType: service.type,
+      segments,
+      token,
+      aliases: shortToken !== token ? [shortToken] : [],
+      label: `${service.hostname} · ${segments.join(".")}`,
+    });
+  }
+  return entries;
+}
+
+const MENTION_RANK_EXACT = 0;
+const MENTION_RANK_PREFIX = 1;
+const MENTION_RANK_SUBSTRING = 2;
+
+function rankDataMention(entry: DataMentionEntry, query: string): number | undefined {
+  let best: number | undefined;
+  for (const candidate of [entry.token, ...entry.aliases]) {
+    const lowered = candidate.toLowerCase();
+    const rank =
+      lowered === query
+        ? MENTION_RANK_EXACT
+        : lowered.startsWith(query)
+          ? MENTION_RANK_PREFIX
+          : lowered.includes(query)
+            ? MENTION_RANK_SUBSTRING
+            : undefined;
+    if (rank !== undefined && (best === undefined || rank < best)) best = rank;
+  }
+  return best;
+}
+
+/**
+ * Matches a typed `@` query against the catalog: exact token or alias first,
+ * then prefix, then substring, services ahead of tables at equal rank. An
+ * empty query lists the services. Never returns more than `limit` entries.
+ */
+export function searchDataMentions(
+  entries: ReadonlyArray<DataMentionEntry>,
+  query: string,
+  limit = 8,
+): ReadonlyArray<DataMentionEntry> {
+  const normalized = query.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return [...entries]
+      .sort((left, right) => (left.kind === right.kind ? 0 : left.kind === "service" ? -1 : 1))
+      .slice(0, limit);
+  }
+  const ranked: Array<{ entry: DataMentionEntry; rank: number; index: number }> = [];
+  entries.forEach((entry, index) => {
+    const rank = rankDataMention(entry, normalized);
+    if (rank !== undefined) ranked.push({ entry, rank, index });
+  });
+  ranked.sort((left, right) => {
+    if (left.rank !== right.rank) return left.rank - right.rank;
+    if (left.entry.kind !== right.entry.kind) return left.entry.kind === "service" ? -1 : 1;
+    return left.index - right.index;
+  });
+  return ranked.slice(0, limit).map(({ entry }) => entry);
+}
+
+/**
+ * Builds the hand-off block for a whole service mention: a heading naming the
+ * service and its type, then one line per table the catalog knows about.
+ */
+export function describeServiceContext(
+  service: DataMentionEntry,
+  tables: ReadonlyArray<DataMentionEntry>,
+): { readonly label: string; readonly text: string } {
+  const own = tables.filter((entry) => entry.kind === "table" && entry.service === service.service);
+  const lines = [
+    `## ${service.service} (${service.serviceType})`,
+    ...(own.length > 0 ? own.map((entry) => `- ${entry.segments.join(".")}`) : ["No tables."]),
+  ];
+  return { label: service.label, text: lines.join("\n") };
 }

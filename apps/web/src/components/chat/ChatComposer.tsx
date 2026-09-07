@@ -107,6 +107,14 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
+import {
+  type DataMentionEntry,
+  describeServiceContext,
+  describeTableContext,
+} from "@t3tools/client-runtime/zerops/dataConsole";
+import { useZeropsDataCatalogStore } from "../../zerops/dataCatalog";
+import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
+import { zeropsCommands } from "../../state/zeropsCommands";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import {
   shouldUseCompactComposerPrimaryActions,
@@ -290,6 +298,9 @@ import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
+
+/** Stable empty read of the data mention catalog, so a project without one never re-renders on identity. */
+const EMPTY_DATA_MENTIONS: ReadonlyArray<DataMentionEntry> = [];
 
 const runtimeModeConfig: Record<
   RuntimeMode,
@@ -1131,6 +1142,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
+  const dataMentions = useZeropsDataMentions(
+    environmentId,
+    isPathTrigger ? pathTriggerQuery : null,
+  );
+  const dataCatalogEntries =
+    useZeropsDataCatalogStore((store) => store.byEnvironment[environmentId]?.entries) ??
+    EMPTY_DATA_MENTIONS;
+  const callDataConsole = useAtomCommand(zeropsCommands.dataConsoleCall, {
+    label: "zerops data mention context",
+    reportFailure: false,
+    reportDefect: false,
+  });
   const compactSlashCommandAvailable =
     composerTrigger?.kind === "slash-command" &&
     prompt.slice(0, composerTrigger.rangeStart).trim() === "" &&
@@ -1144,14 +1167,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
-      return workspaceEntries.entries.map((entry) => ({
+      const fileItems = workspaceEntries.entries.map((entry) => ({
         id: `path:${entry.kind}:${entry.path}`,
-        type: "path",
+        type: "path" as const,
         path: entry.path,
         pathKind: entry.kind,
         label: basenameOfPath(entry.path),
         description: entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/"))),
       }));
+      const query = composerTrigger.query.trim().toLowerCase();
+      const dataItems = dataMentions.map((entry) => ({
+        id: `data:${entry.token}`,
+        type: "data" as const,
+        entry,
+        label: entry.token,
+        description:
+          entry.kind === "service"
+            ? `Data service · ${entry.serviceType}`
+            : `Table in ${entry.service}`,
+      }));
+      // A data mention only outranks the file results when the user is
+      // plainly typing its name; otherwise files stay first, as before.
+      const named = (item: (typeof dataItems)[number]) =>
+        query.length > 0 &&
+        [item.entry.token, ...item.entry.aliases].some((candidate) =>
+          candidate.toLowerCase().startsWith(query),
+        );
+      return [
+        ...dataItems.filter((item) => named(item)),
+        ...fileItems,
+        ...dataItems.filter((item) => !named(item)),
+      ];
     }
     if (composerTrigger.kind === "slash-command") {
       const builtInSlashCommandItems = [
@@ -1234,6 +1280,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     compactSlashCommandAvailable,
     composerTrigger,
+    dataMentions,
     planModeUiEnabled,
     selectedProvider,
     selectedProviderSkills,
@@ -1804,6 +1851,99 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [composerCursor, composerTerminalContexts, promptRef]);
 
+  /**
+   * Attaches a context at the caret: the same inline-placeholder insertion the
+   * Data panel and the terminal selection both go through, so the chip lands
+   * where the user is typing and materializes into its mention on send.
+   */
+  const attachContextAtCursor = useCallback(
+    (selection: TerminalContextSelection) => {
+      if (!activeThread || isChoiceOnlyPendingQuestion) return;
+      const snapshot = composerEditorRef.current?.readSnapshot() ?? {
+        value: promptRef.current,
+        cursor: composerCursor,
+        expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
+        terminalContextIds: composerTerminalContexts.map((context) => context.id),
+      };
+      const insertion = insertInlineTerminalContextPlaceholder(
+        snapshot.value,
+        snapshot.expandedCursor,
+      );
+      const nextCollapsedCursor = collapseExpandedComposerCursor(
+        insertion.prompt,
+        insertion.cursor,
+      );
+      const inserted = insertComposerDraftTerminalContext(
+        composerDraftTarget,
+        insertion.prompt,
+        {
+          id: randomUUID(),
+          threadId: activeThread.id,
+          createdAt: new Date().toISOString(),
+          ...selection,
+        },
+        insertion.contextIndex,
+      );
+      if (!inserted) return;
+      promptRef.current = insertion.prompt;
+      setComposerCursor(nextCollapsedCursor);
+      setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
+      window.requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAt(nextCollapsedCursor);
+      });
+    },
+    [
+      activeThread,
+      composerCursor,
+      composerDraftTarget,
+      composerTerminalContexts,
+      insertComposerDraftTerminalContext,
+      isChoiceOnlyPendingQuestion,
+      promptRef,
+    ],
+  );
+
+  /**
+   * Resolves the schema behind a picked mention and attaches it. A table is
+   * described from one page's column list; a service from the tables the
+   * catalog already knows. A failed lookup leaves the prompt alone rather
+   * than attaching a chip that says nothing.
+   */
+  const attachDataMentionContext = useCallback(
+    async (entry: DataMentionEntry) => {
+      const described = await (async () => {
+        if (entry.kind === "service") {
+          return describeServiceContext(entry, dataCatalogEntries);
+        }
+        const result = await callDataConsole({
+          environmentId,
+          input: {
+            kind: "table",
+            path: { service: entry.service, segments: entry.segments },
+            page: { limit: 1 },
+          },
+        });
+        if (result._tag !== "Success" || result.value.kind !== "table") return undefined;
+        return describeTableContext({
+          service: { hostname: entry.service, type: entry.serviceType },
+          path: { service: entry.service, segments: entry.segments },
+          columns: result.value.page.columns,
+        });
+      })();
+      if (described === undefined) return;
+      attachContextAtCursor({
+        kind: "data",
+        token: entry.token,
+        terminalId: `data:${described.label}`,
+        terminalLabel: described.label,
+        lineStart: 1,
+        lineEnd: described.text.split("\n").length,
+        text: described.text,
+      });
+    },
+    [attachContextAtCursor, callDataConsole, dataCatalogEntries, environmentId],
+  );
+
   const resolveActiveComposerTrigger = useCallback((): {
     snapshot: { value: string; cursor: number; expandedCursor: number };
     trigger: ComposerTrigger | null;
@@ -1840,6 +1980,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (applied) {
           setComposerHighlightedItemId(null);
         }
+        return;
+      }
+      if (item.type === "data") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+        });
+        if (!applied) return;
+        setComposerHighlightedItemId(null);
+        void attachDataMentionContext(item.entry);
         return;
       }
       if (item.type === "slash-command") {
@@ -1903,6 +2052,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       applyPromptReplacement,
+      attachDataMentionContext,
       handleInteractionModeChange,
       planModeUiEnabled,
       resolveActiveComposerTrigger,
@@ -2876,41 +3026,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             : null,
         );
       },
-      addTerminalContext: (selection: TerminalContextSelection) => {
-        if (!activeThread || isChoiceOnlyPendingQuestion) return;
-        const snapshot = composerEditorRef.current?.readSnapshot() ?? {
-          value: promptRef.current,
-          cursor: composerCursor,
-          expandedCursor: expandCollapsedComposerCursor(promptRef.current, composerCursor),
-          terminalContextIds: composerTerminalContexts.map((context) => context.id),
-        };
-        const insertion = insertInlineTerminalContextPlaceholder(
-          snapshot.value,
-          snapshot.expandedCursor,
-        );
-        const nextCollapsedCursor = collapseExpandedComposerCursor(
-          insertion.prompt,
-          insertion.cursor,
-        );
-        const inserted = insertComposerDraftTerminalContext(
-          composerDraftTarget,
-          insertion.prompt,
-          {
-            id: randomUUID(),
-            threadId: activeThread.id,
-            createdAt: new Date().toISOString(),
-            ...selection,
-          },
-          insertion.contextIndex,
-        );
-        if (!inserted) return;
-        promptRef.current = insertion.prompt;
-        setComposerCursor(nextCollapsedCursor);
-        setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
-        window.requestAnimationFrame(() => {
-          composerEditorRef.current?.focusAt(nextCollapsedCursor);
-        });
-      },
+      addTerminalContext: attachContextAtCursor,
       getSendContext: () => ({
         prompt: promptRef.current,
         images: composerImagesRef.current,

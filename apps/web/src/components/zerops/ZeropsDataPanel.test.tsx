@@ -227,7 +227,7 @@ describe("ZeropsDataPanel", () => {
     expect(starting?.props.label).toBe("Starting");
   });
 
-  it("issues the services request while idle — that first call is what starts the console", async () => {
+  it("issues the listing as a refresh while idle — that first call is what starts the console, and refresh sees services created since it started", async () => {
     feedState.session = { status: "idle" };
     commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
 
@@ -236,7 +236,7 @@ describe("ZeropsDataPanel", () => {
 
     expect(commandSpy).toHaveBeenCalledWith({
       environmentId: THREAD_REF.environmentId,
-      input: { kind: "services" },
+      input: { kind: "refresh" },
     });
   });
 
@@ -251,7 +251,7 @@ describe("ZeropsDataPanel", () => {
     await flush();
 
     const serviceCalls = commandSpy.mock.calls.filter(
-      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "services",
+      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "refresh",
     );
     expect(serviceCalls).toHaveLength(1);
   });
@@ -282,12 +282,12 @@ describe("ZeropsDataPanel", () => {
     await flush();
 
     const serviceCalls = commandSpy.mock.calls.filter(
-      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "services",
+      ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "refresh",
     );
     expect(serviceCalls).toHaveLength(2);
   });
 
-  it("Try again on an unavailable session re-issues the services request", async () => {
+  it("Try again on an unavailable session re-issues the listing", async () => {
     feedState.session = { status: "unavailable", reason: "boom" };
     commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
 
@@ -297,7 +297,22 @@ describe("ZeropsDataPanel", () => {
 
     expect(commandSpy).toHaveBeenCalledWith({
       environmentId: THREAD_REF.environmentId,
-      input: { kind: "services" },
+      input: { kind: "refresh" },
+    });
+  });
+
+  it("Refresh on the picker re-issues the listing", async () => {
+    feedState.session = { status: "ready", allowWrites: false };
+    commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
+
+    const tree = render();
+    await flush();
+    commandSpy.mockClear();
+    (findByAttribute(tree, "data-zerops-data-refresh")!.props.onClick as () => void)();
+
+    expect(commandSpy).toHaveBeenCalledWith({
+      environmentId: THREAD_REF.environmentId,
+      input: { kind: "refresh" },
     });
   });
 
@@ -397,7 +412,7 @@ describe("ZeropsDataPanel", () => {
         undefined,
     ) {
       commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
-        if (args.input.kind === "services") {
+        if (args.input.kind === "services" || args.input.kind === "refresh") {
           return Promise.resolve(AsyncResult.success(servicesResponse(services)));
         }
         const response = handler(args.input);
@@ -439,6 +454,55 @@ describe("ZeropsDataPanel", () => {
         environmentId: THREAD_REF.environmentId,
         input: { kind: "tree", path: CONTAINER.path },
       });
+    });
+
+    it("re-lists once for a service the listing does not name, and browses it when the refresh finds it", async () => {
+      let listed: readonly ZeropsDataConsoleService[] = [];
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+        if (args.input.kind === "services") {
+          return Promise.resolve(AsyncResult.success(servicesResponse(listed)));
+        }
+        if (args.input.kind === "refresh") {
+          listed = [SERVICE_SUPPORTED];
+          return Promise.resolve(AsyncResult.success(servicesResponse(listed)));
+        }
+        return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+      });
+      feedState.session = { status: "ready", allowWrites: false };
+
+      render({ service: "db1", widthForTest: 1200 });
+      await flush();
+      await flush();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+
+      expect(findByAttribute(tree, "data-zerops-data-not-browsable")).toBeNull();
+      expect(findComponent(tree, ZeropsDataTree)).not.toBeNull();
+    });
+
+    it("re-lists only once for a service the console never names", async () => {
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+        if (args.input.kind === "services" || args.input.kind === "refresh") {
+          return Promise.resolve(AsyncResult.success(servicesResponse([])));
+        }
+        return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+      });
+      feedState.session = { status: "ready", allowWrites: false };
+
+      render({ service: "db1", widthForTest: 1200 });
+      await flush();
+      await flush();
+      render({ service: "db1", widthForTest: 1200 });
+      await flush();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+
+      expect(
+        commandSpy.mock.calls.filter(
+          ([args]) => (args.input as ZeropsDataConsoleRequest).kind === "refresh",
+        ),
+      ).toHaveLength(2);
+      expect(findByAttribute(tree, "data-zerops-data-not-browsable")!.props.children).toBe(
+        "This service can't be browsed yet.",
+      );
     });
 
     it("says so quietly when the console does not classify this service", async () => {
@@ -876,7 +940,9 @@ describe("ZeropsDataPanel", () => {
 
       drawer.props.onExplain();
       const selection = onAddContext.mock.calls[0]![0] as TerminalContextSelection;
-      expect(selection.terminalId).toBe("data:db1");
+      expect(selection.kind).toBe("data");
+      expect(selection.token).toBe("db1.public.orders");
+      expect(selection.terminalId).toBe("data:db1 · public.orders · id=7");
       expect(selection.terminalLabel).toBe("db1 · public.orders · id=7");
       expect(selection.lineStart).toBe(1);
       expect(selection.lineEnd).toBe(selection.text.split("\n").length);
@@ -930,6 +996,9 @@ describe("ZeropsDataPanel", () => {
         ZeropsDataTable,
       )!.props.onAskAboutTable();
       const selection = onAddContext.mock.calls[0]![0] as TerminalContextSelection;
+      expect(selection.kind).toBe("data");
+      expect(selection.token).toBe("db1.public.orders");
+      expect(selection.terminalId).toBe("data:db1 · public.orders");
       expect(selection.terminalLabel).toBe("db1 · public.orders");
       expect(selection.text).toContain("- id: integer (pk)");
       expect(selection.text).toContain("~9 rows");

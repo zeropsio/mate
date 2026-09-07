@@ -425,6 +425,55 @@ describe("composerDraftStore terminal contexts", () => {
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
   });
 
+  it("deduplicates a data context by its identity, not its snapshot line count", () => {
+    const first: TerminalContextDraft = {
+      ...makeTerminalContext({ id: "ctx-data-1" }),
+      kind: "data",
+      token: "db.public.orders",
+      terminalId: "data:db · public.orders",
+      terminalLabel: "db · public.orders",
+      lineStart: 1,
+      lineEnd: 4,
+      text: "## db · public.orders\n- id\n- email\n- name",
+    };
+    const reAdded: TerminalContextDraft = {
+      ...first,
+      id: "ctx-data-2",
+      lineEnd: 3,
+      text: "## db · public.orders\n- id\n- email",
+    };
+
+    useComposerDraftStore.getState().addTerminalContexts(threadRef, [first, reAdded]);
+
+    expect(
+      draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts.map((context) => context.id),
+    ).toEqual(["ctx-data-1"]);
+  });
+
+  it("persists a data context's kind and mention token", () => {
+    useComposerDraftStore.getState().addTerminalContext(threadRef, {
+      ...makeTerminalContext({ id: "ctx-data-persist" }),
+      kind: "data",
+      token: "db.public.orders",
+      terminalId: "data:db · public.orders",
+      terminalLabel: "db · public.orders",
+    });
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+      };
+    };
+    const persistedState = persistApi.getOptions().partialize(useComposerDraftStore.getState()) as {
+      draftsByThreadKey?: Record<string, { terminalContexts?: Array<Record<string, unknown>> }>;
+    };
+
+    expect(
+      persistedState.draftsByThreadKey?.[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
+        ?.terminalContexts?.[0],
+    ).toMatchObject({ kind: "data", token: "db.public.orders" });
+  });
+
   it("clears terminal contexts when clearing composer content", () => {
     useComposerDraftStore
       .getState()

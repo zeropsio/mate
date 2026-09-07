@@ -36,6 +36,20 @@ function makeContext(overrides?: Partial<TerminalContextDraft>): TerminalContext
   };
 }
 
+function makeDataContext(overrides?: Partial<TerminalContextDraft>): TerminalContextDraft {
+  return makeContext({
+    id: "context-data-1",
+    kind: "data",
+    token: "db.public.orders",
+    terminalId: "data:db · public.orders",
+    terminalLabel: "db · public.orders",
+    lineStart: 1,
+    lineEnd: 2,
+    text: "## db (postgresql@16) · public.orders\n- id: integer (pk)",
+    ...overrides,
+  });
+}
+
 describe("terminalContext", () => {
   it("formats terminal labels with line ranges", () => {
     expect(formatTerminalContextLabel(makeContext())).toBe("Terminal 1 lines 12-13");
@@ -104,6 +118,7 @@ describe("terminalContext", () => {
         {
           header: "Terminal 1 lines 12-13",
           body: "12 | git status\n13 | On branch main",
+          kind: "terminal",
         },
       ],
     });
@@ -120,6 +135,7 @@ describe("terminalContext", () => {
         {
           header: "Terminal 1 lines 12-13",
           body: "12 | git status\n13 | On branch main",
+          kind: "terminal",
         },
       ],
     });
@@ -206,5 +222,86 @@ describe("terminalContext", () => {
         [makeContext()],
       ),
     ).toBe("Investigate @terminal-1:12-13 carefully");
+  });
+  it("labels a data context by name alone, with no line range anywhere", () => {
+    const dataContext = makeDataContext();
+    expect(formatTerminalContextLabel(dataContext)).toBe("db · public.orders");
+    expect(formatInlineTerminalContextLabel(dataContext)).toBe("@db.public.orders");
+  });
+
+  it("builds an unnumbered data context block after the terminal block", () => {
+    expect(buildTerminalContextBlock([makeDataContext(), makeContext()])).toBe(
+      [
+        "<terminal_context>",
+        "- Terminal 1 lines 12-13:",
+        "  12 | git status",
+        "  13 | On branch main",
+        "</terminal_context>",
+        "",
+        "<data_context>",
+        "- db · public.orders (@db.public.orders):",
+        "  ## db (postgresql@16) · public.orders",
+        "  - id: integer (pk)",
+        "</data_context>",
+      ].join("\n"),
+    );
+  });
+
+  it("strips both trailing blocks and lists terminal contexts before data ones", () => {
+    const prompt = appendTerminalContextsToPrompt("Investigate this", [
+      makeDataContext(),
+      makeContext(),
+    ]);
+    expect(deriveDisplayedUserMessageState(prompt)).toEqual({
+      visibleText: "Investigate this",
+      copyText: prompt,
+      contextCount: 2,
+      previewTitle: [
+        "Terminal 1 lines 12-13\n12 | git status\n13 | On branch main",
+        "db · public.orders\n## db (postgresql@16) · public.orders\n- id: integer (pk)",
+      ].join("\n\n"),
+      contexts: [
+        {
+          header: "Terminal 1 lines 12-13",
+          body: "12 | git status\n13 | On branch main",
+          kind: "terminal",
+        },
+        {
+          header: "db · public.orders",
+          body: "## db (postgresql@16) · public.orders\n- id: integer (pk)",
+          kind: "data",
+          token: "db.public.orders",
+        },
+      ],
+    });
+  });
+
+  it("materializes a data placeholder as its mention token", () => {
+    expect(
+      appendTerminalContextsToPrompt(`Explain ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} please`, [
+        makeDataContext(),
+      ]),
+    ).toBe(
+      [
+        "Explain @db.public.orders please",
+        "",
+        "<data_context>",
+        "- db · public.orders (@db.public.orders):",
+        "  ## db (postgresql@16) · public.orders",
+        "  - id: integer (pk)",
+        "</data_context>",
+      ].join("\n"),
+    );
+  });
+
+  it("falls back to the slugged label when a data context carries no token", () => {
+    expect(
+      formatInlineTerminalContextLabel({
+        kind: "data",
+        terminalLabel: "db · public.orders",
+        lineStart: 1,
+        lineEnd: 2,
+      }),
+    ).toBe("@db-·-public.orders");
   });
 });
