@@ -93,13 +93,12 @@ export {
 } from "./groups.ts";
 export {
   canCreateEnvironment,
-  groupNamesFromRecords,
-  makeMockZeropsRecipeStore,
+  RECIPE_GROUP_PATH,
   recipeProjectImportYaml,
   recipeServicesYaml,
   type ZeropsGroupRecord,
-  type ZeropsRecipeStore,
 } from "./recipeStore.ts";
+export { withRecipeStoreMock, type RecipeStoreMockOptions } from "./recipeStoreMock.ts";
 export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export { derivePublicRoutes, type ZeropsPublicRoute } from "./publicRoutes.ts";
 export {

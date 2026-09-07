@@ -20,6 +20,7 @@ import {
   withZeropsMateTag,
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
+import { RECIPE_GROUP_PATH, type ZeropsGroupRecord } from "./recipeStore.ts";
 import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
 import {
   buildCreateProjectBody,
@@ -448,7 +449,7 @@ export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrg
   return organizations;
 }
 
-type FetchImplementation = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchImplementation = (input: string, init?: RequestInit) => Promise<Response>;
 
 function findString(value: unknown, keys: ReadonlyArray<string>): string | null {
   if (!value || typeof value !== "object") return null;
@@ -878,6 +879,27 @@ export class ZeropsApiClient {
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`);
+  }
+
+  /**
+   * `GET /recipe-group/{groupId}` — the group's published recipe, or
+   * `undefined` when nobody has published one.
+   *
+   * A group without a recipe is the normal state of an app zcp has not
+   * adopted yet, so a 404 is an answer and not a failure; every other status
+   * still throws. There is no write counterpart on purpose (`recipeStore.ts`).
+   *
+   * The endpoint does not exist yet — `recipeStoreMock.ts` answers it in the
+   * client's own `fetch` until it does, which is why this method needs no
+   * flag and no branch.
+   */
+  async readRecipeGroup(groupId: string): Promise<ZeropsGroupRecord | undefined> {
+    try {
+      return await this.#request<ZeropsGroupRecord>(`${RECIPE_GROUP_PATH}/${groupId}`);
+    } catch (cause) {
+      if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
+      throw cause;
+    }
   }
 
   async listProjectServices(projectId: string): Promise<ReadonlyArray<ZeropsService>> {

@@ -1,6 +1,7 @@
 /**
- * A seed for {@link makeMockZeropsRecipeStore}: one group whose recipes are the
- * real `zeropsio/recipes` `go-hello-world` tiers, fetched 2026-09-05 from
+ * What the mocked recipe-store endpoint serves (`recipeStoreMock.ts`): one
+ * group whose recipes are the real `zeropsio/recipes` `go-hello-world` tiers,
+ * fetched 2026-09-05 from
  * https://github.com/zeropsio/recipes/tree/main/go-hello-world.
  *
  * The tier directories map onto environment roles one-to-one, which is the

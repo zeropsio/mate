@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  canCreateEnvironment,
-  groupNamesFromRecords,
-  makeMockZeropsRecipeStore,
-  recipeServicesYaml,
-  type ZeropsGroupRecord,
-} from "./recipeStore.ts";
-import { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
+import { canCreateEnvironment, recipeServicesYaml } from "./recipeStore.ts";
+import { GO_HELLO_WORLD_GROUP } from "./recipeStoreSeed.ts";
 
 const RECIPE_WITH_PROJECT = `# a leading comment
 project:
@@ -68,40 +62,6 @@ describe("the go-hello-world seed", () => {
   it("scales the production tier differently from dev — the recipes are not copies", () => {
     expect(GO_HELLO_WORLD_GROUP.recipes.prod).toContain("minContainers: 2");
     expect(GO_HELLO_WORLD_GROUP.recipes.dev).not.toContain("minContainers: 2");
-  });
-});
-
-describe("makeMockZeropsRecipeStore", () => {
-  it("reads back a seeded group and reports nothing for an unknown one", async () => {
-    const store = makeMockZeropsRecipeStore([GO_HELLO_WORLD_GROUP]);
-
-    expect((await store.readGroup(GO_HELLO_WORLD_GROUP_ID))?.name).toBe("Go Hello World");
-    expect(await store.readGroup("nope")).toBeUndefined();
-  });
-
-  it("replaces a whole record on write, the way a CRUD endpoint would", async () => {
-    const store = makeMockZeropsRecipeStore([GO_HELLO_WORLD_GROUP]);
-    await store.writeGroup({ groupId: GO_HELLO_WORLD_GROUP_ID, name: "Renamed", recipes: {} });
-
-    const record = await store.readGroup(GO_HELLO_WORLD_GROUP_ID);
-    expect(record?.name).toBe("Renamed");
-    expect(record?.recipes).toEqual({});
-  });
-
-  it("deletes", async () => {
-    const store = makeMockZeropsRecipeStore([GO_HELLO_WORLD_GROUP]);
-    await store.deleteGroup(GO_HELLO_WORLD_GROUP_ID);
-    expect(await store.listGroups()).toEqual([]);
-  });
-});
-
-describe("groupNamesFromRecords", () => {
-  it("projects records onto the name lookup deriveZeropsGroups takes", () => {
-    const records: ReadonlyArray<ZeropsGroupRecord> = [
-      { groupId: "aaa", name: "Beviro CRM", recipes: {} },
-      { groupId: "bbb", name: "Shop", recipes: {} },
-    ];
-    expect(groupNamesFromRecords(records)).toEqual({ aaa: "Beviro CRM", bbb: "Shop" });
   });
 });
 

@@ -20,15 +20,29 @@
  * this" question is the platform's, not ours: a caller sees exactly the groups
  * whose projects it can already see.
  *
- * {@link ZeropsRecipeStore} is the seam. {@link makeMockZeropsRecipeStore} is
- * the stand-in used until the real endpoints exist — it is seeded from
- * `zeropsio/recipes` and behaves like the real thing, including being empty
- * for a group nobody has published a recipe for.
+ * There is no store object here, and no client-side write path, because
+ * neither would be honest: the store is one more endpoint on the Zerops API,
+ * reached with the user's own token like every other one. {@link
+ * RECIPE_GROUP_PATH} is that endpoint, `ZeropsApiClient.readRecipeGroup` is
+ * the call, and `recipeStoreMock.ts` answers it until the endpoint is built.
+ * The seam is `fetch` — the protocol boundary — so the code that reads a
+ * recipe is the same code before and after the endpoint exists.
  *
  * @module recipeStore
  */
 
 import type { ZeropsEnvironmentRole } from "./groups.ts";
+
+/**
+ * The store's endpoint, under the API's public prefix: `GET
+ * {RECIPE_GROUP_PATH}/{groupId}` answers one group's record, 404 when nobody
+ * has published a recipe for it.
+ *
+ * Read-only by construction. zcp publishes recipes from inside the project it
+ * understands; a client that could write one could publish a recipe for a
+ * group whose services it has never seen.
+ */
+export const RECIPE_GROUP_PATH = "/recipe-group";
 
 /** A group's durable record: everything about a group that is not its membership. */
 export interface ZeropsGroupRecord {
@@ -41,22 +55,6 @@ export interface ZeropsGroupRecord {
    * block (the platform rejects one with `projectImportProjectIncluded`).
    */
   readonly recipes: Readonly<Partial<Record<ZeropsEnvironmentRole, string>>>;
-}
-
-export interface ZeropsRecipeStore {
-  readonly listGroups: () => Promise<ReadonlyArray<ZeropsGroupRecord>>;
-  readonly readGroup: (groupId: string) => Promise<ZeropsGroupRecord | undefined>;
-  readonly writeGroup: (record: ZeropsGroupRecord) => Promise<void>;
-  readonly deleteGroup: (groupId: string) => Promise<void>;
-}
-
-/** Group id → display name, the shape `deriveZeropsGroups` takes. */
-export function groupNamesFromRecords(
-  records: ReadonlyArray<ZeropsGroupRecord>,
-): Readonly<Record<string, string>> {
-  const names: Record<string, string> = {};
-  for (const record of records) names[record.groupId] = record.name;
-  return names;
 }
 
 /**
@@ -212,30 +210,4 @@ function findProjectBlock(
 
 function isBlockKey(line: string, key: string): boolean {
   return new RegExp(`^\\s{1,2}${key}:`).test(line);
-}
-
-/**
- * An in-memory {@link ZeropsRecipeStore}. Seeded records are deep-frozen by
- * being plain data the caller never mutates; writes replace whole records, the
- * way a CRUD endpoint would.
- */
-export function makeMockZeropsRecipeStore(
-  seed: ReadonlyArray<ZeropsGroupRecord> = [],
-): ZeropsRecipeStore {
-  const records = new Map<string, ZeropsGroupRecord>(
-    seed.map((record) => [record.groupId, record]),
-  );
-
-  return {
-    listGroups: () => Promise.resolve([...records.values()]),
-    readGroup: (groupId) => Promise.resolve(records.get(groupId)),
-    writeGroup: (record) => {
-      records.set(record.groupId, record);
-      return Promise.resolve();
-    },
-    deleteGroup: (groupId) => {
-      records.delete(groupId);
-      return Promise.resolve();
-    },
-  };
 }

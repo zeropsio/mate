@@ -11,6 +11,7 @@
 
 import {
   ZEROPS_SELECTION_STORAGE_KEY,
+  withRecipeStoreMock,
   ZeropsApiClient,
   clearZeropsSession,
   loadZeropsSelection,
@@ -99,6 +100,11 @@ export function ZeropsSessionProvider({
   const client = useMemo(
     () =>
       new ZeropsApiClient({
+        // `GET /recipe-group/{id}` is not built yet. Until it is, the mock
+        // answers exactly that route and passes every other request to the
+        // network — so `readRecipeGroup` is real client code, not a branch.
+        // Delete this line and the endpoint takes over (`recipeStoreMock.ts`).
+        fetch: withRecipeStoreMock(globalThis.fetch.bind(globalThis)),
         onSessionChange: (session: ZeropsSession | null) => {
           if (session === null) {
             // The client clears itself when a refresh fails mid-flight, so a

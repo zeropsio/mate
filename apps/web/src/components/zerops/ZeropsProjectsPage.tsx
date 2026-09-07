@@ -57,7 +57,6 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
-import { zeropsRecipeStore } from "~/zerops/recipeStore";
 
 import { Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -750,13 +749,13 @@ function ZeropsProjectsContent() {
     if (creationRequest === null) return;
     let cancelled = false;
     const { groupId, role } = creationRequest;
-    void zeropsRecipeStore.readGroup(groupId).then((record) => {
+    void client.readRecipeGroup(groupId).then((record) => {
       if (!cancelled) setStoreRecipeAvailable(canCreateEnvironment(record, role).allowed);
     });
     return () => {
       cancelled = true;
     };
-  }, [creationRequest]);
+  }, [client, creationRequest]);
 
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
@@ -786,7 +785,7 @@ function ZeropsProjectsContent() {
         ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
-        record: await zeropsRecipeStore.readGroup(groupId),
+        record: await client.readRecipeGroup(groupId),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
         ...(choice.botName === undefined ? {} : { botName: choice.botName }),
