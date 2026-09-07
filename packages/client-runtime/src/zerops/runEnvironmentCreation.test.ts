@@ -40,6 +40,10 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`import:${projectId}:${yaml.length}`);
       return Promise.resolve({});
     },
+    importProject: (input) => {
+      calls.push(`importProject:${input.yaml.length}`);
+      return Promise.resolve({ projectId: "proj-1" });
+    },
     listServices: (projectId) => {
       serviceReads += 1;
       calls.push(`services:${projectId}:${serviceReads}`);

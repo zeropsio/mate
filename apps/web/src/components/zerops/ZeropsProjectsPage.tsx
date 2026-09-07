@@ -806,6 +806,7 @@ function ZeropsProjectsContent() {
           createProject: (input) => client.createProject(input),
           importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
           importServices: (projectId, yaml) => client.importServicesIntoProject(projectId, yaml),
+          importProject: (input) => client.importProject(input.clientId, input.yaml),
           listServices: (projectId) => client.listProjectServices(projectId),
         },
         describeError: zeropsErrorMessage,

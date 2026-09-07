@@ -29,7 +29,7 @@
 
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 
-/** The four platform calls a creation makes, in the shape `api.ts` offers them. */
+/** The platform calls a creation makes, in the shape `api.ts` offers them. */
 export interface EnvironmentCreationPlatform {
   readonly createProject: (input: {
     readonly clientId: string;
@@ -41,6 +41,14 @@ export interface EnvironmentCreationPlatform {
     readonly projectId: string;
   }) => Promise<{ readonly serviceName: string }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
+  /**
+   * `POST /client/{id}/project/import` — a project and its services from one
+   * whole-project document (`createEnvironment.ts`, `import-project`).
+   */
+  readonly importProject: (input: {
+    readonly clientId: string;
+    readonly yaml: string;
+  }) => Promise<{ readonly projectId: string }>;
   readonly listServices: (
     projectId: string,
   ) => Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>;
@@ -152,6 +160,16 @@ export async function runEnvironmentCreation(
             ...(step.location === undefined ? {} : { location: step.location }),
           });
           projectId = project.id;
+          break;
+        }
+        case "import-project": {
+          // One call for the project and its services, so an environment is
+          // never briefly a project with nothing in it.
+          const imported = await input.platform.importProject({
+            clientId: input.clientId,
+            yaml: step.yaml,
+          });
+          projectId = imported.projectId;
           break;
         }
         case "import-container": {

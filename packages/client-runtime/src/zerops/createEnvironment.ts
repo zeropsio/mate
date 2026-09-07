@@ -32,7 +32,12 @@ import {
   withZeropsMateTag,
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
-import { canCreateEnvironment, type ZeropsGroupRecord } from "./recipeStore.ts";
+import {
+  canCreateEnvironment,
+  hasProjectBlock,
+  recipeProjectImportYaml,
+  type ZeropsGroupRecord,
+} from "./recipeStore.ts";
 
 /**
  * Whether a new environment gets a `zcp` container — and so an agent, and a
@@ -97,6 +102,23 @@ export type EnvironmentCreationStep =
   | { readonly kind: "import-container" }
   /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
   | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
+  /**
+   * `POST /client/{clientId}/project/import` — the project *and* its services
+   * from one document, taken when the recipe carries a `project:` block.
+   *
+   * Preferred over create-then-import because stripping that block drops its
+   * `envVariables`, and a published tier puts real things there (`APP_KEY` in
+   * every Laravel recipe). They cannot be written back afterwards either: the
+   * values are preprocessor directives the platform evaluates on the way in.
+   * `recipeProjectImportYaml` has already put this environment's name and tags
+   * into the document, so it is tagged at birth like the other path.
+   */
+  | {
+      readonly kind: "import-project";
+      readonly name: string;
+      readonly tagList: ReadonlyArray<string>;
+      readonly yaml: string;
+    }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
   | { readonly kind: "await-ready"; readonly withAgent: boolean };
 
@@ -154,19 +176,29 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     };
   }
 
-  const steps: Array<EnvironmentCreationStep> = [
-    {
-      kind: "create-project",
-      name,
-      // Membership first, then the name: naming is not a membership write, and
-      // routing it through one clears the group (`groups.ts`).
-      tagList: taggedAtBirth(input, withAgent),
-      location: input.location,
-    },
-  ];
+  // Membership first, then the name: naming is not a membership write, and
+  // routing it through one clears the group (`groups.ts`).
+  const tagList = taggedAtBirth(input, withAgent);
+
+  // A recipe that describes a whole project creates one in a single call. Not
+  // taken when the caller placed the environment in a region: the project
+  // block has no location, and silently ignoring one would put the
+  // environment somewhere the user did not ask for.
+  const wholeProject = yaml !== null && input.location === undefined && hasProjectBlock(yaml);
+
+  const steps: Array<EnvironmentCreationStep> = wholeProject
+    ? [
+        {
+          kind: "import-project",
+          name,
+          tagList,
+          yaml: recipeProjectImportYaml(yaml ?? "", { name, tagList }),
+        },
+      ]
+    : [{ kind: "create-project", name, tagList, location: input.location }];
 
   if (withAgent) steps.push({ kind: "import-container" });
-  if (yaml !== null) steps.push({ kind: "import-recipe", role: input.role, yaml });
+  if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
 
   return { ok: true, steps };
@@ -179,6 +211,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 export function environmentCreationStepLabel(step: EnvironmentCreationStep): string {
   switch (step.kind) {
     case "create-project":
+    case "import-project":
       return "Creating the environment";
     case "import-container":
       return "Adding the agent container";

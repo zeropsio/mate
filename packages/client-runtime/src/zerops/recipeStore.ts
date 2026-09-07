@@ -189,6 +189,11 @@ function withoutKeys(
   return kept;
 }
 
+/** Whether this document describes a whole project, not just services. */
+export function hasProjectBlock(yaml: string): boolean {
+  return findProjectBlock(yaml.split("\n")) !== null;
+}
+
 /** The `project:` block's bounds, or `null` when the document has none. */
 function findProjectBlock(
   lines: ReadonlyArray<string>,

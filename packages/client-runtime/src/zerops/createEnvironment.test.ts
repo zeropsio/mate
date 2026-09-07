@@ -237,3 +237,72 @@ describe("the recipe choice", () => {
     expect(plan.ok).toBe(false);
   });
 });
+
+describe("planEnvironmentCreation — whole-project recipes", () => {
+  const WHOLE = `#zeropsPreprocessor=on
+project:
+  name: published-name
+  envVariables:
+    APP_KEY: <@generateRandomString(<32>)>
+services:
+  - hostname: app
+`;
+  const SERVICES_ONLY = "services:\n  - hostname: app\n";
+
+  function plan(recipe: string, extra: Record<string, unknown> = {}) {
+    const result = planEnvironmentCreation({
+      clientId: "c1",
+      groupId: "g1",
+      role: "prod",
+      name: "Aurora - production",
+      record: undefined,
+      recipe: { kind: "services", yaml: recipe, source: "test" },
+      withAgent: false,
+      ...extra,
+    });
+    if (!result.ok) throw new Error(result.reason);
+    return result.steps;
+  }
+
+  it("creates the project and its services in one call", () => {
+    const steps = plan(WHOLE);
+    expect(steps.map((step) => step.kind)).toEqual(["import-project", "await-ready"]);
+  });
+
+  it("carries the tier's project-level env through", () => {
+    // The reason this path exists at all: create-then-strip drops it.
+    const [step] = plan(WHOLE);
+    expect(step).toMatchObject({ kind: "import-project" });
+    if (step?.kind !== "import-project") throw new Error("expected import-project");
+    expect(step.yaml).toContain("APP_KEY: <@generateRandomString(<32>)>");
+    expect(step.yaml).toContain("name: Aurora - production");
+    expect(step.yaml).not.toContain("published-name");
+    expect(step.yaml).toContain("- mate:g:g1");
+  });
+
+  it("still adds the agent's container after it", () => {
+    expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
+      "import-project",
+      "import-container",
+      "await-ready",
+    ]);
+  });
+
+  it("keeps create-then-import for a services-only recipe", () => {
+    expect(plan(SERVICES_ONLY).map((step) => step.kind)).toEqual([
+      "create-project",
+      "import-recipe",
+      "await-ready",
+    ]);
+  });
+
+  it("keeps create-then-import when the caller chose a region", () => {
+    // The project block has no location; ignoring one would put the
+    // environment somewhere the user did not ask for.
+    expect(plan(WHOLE, { location: "eu-central" }).map((step) => step.kind)).toEqual([
+      "create-project",
+      "import-recipe",
+      "await-ready",
+    ]);
+  });
+});
