@@ -45,7 +45,7 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`importProject:${input.yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
     },
-    listServices: (projectId) => {
+    readObservedServices: (projectId) => {
       serviceReads += 1;
       calls.push(`services:${projectId}:${serviceReads}`);
       // The services appear on the second read and come up on the third.
@@ -118,7 +118,7 @@ describe("runEnvironmentCreation", () => {
     let current = true;
     let reads = 0;
     const { platform } = fakePlatform({
-      listServices: async () => {
+      readObservedServices: async () => {
         reads += 1;
         current = false;
         return [];
@@ -181,7 +181,7 @@ describe("runEnvironmentCreation", () => {
     // A cloned buildFromGit service whose build failed sits at
     // READY_TO_DEPLOY for good; waiting on it would only time out.
     const { platform } = fakePlatform({
-      listServices: () =>
+      readObservedServices: () =>
         Promise.resolve([
           { name: "app", status: "READY_TO_DEPLOY" },
           { name: "db", status: "ACTIVE" },
@@ -200,7 +200,7 @@ describe("runEnvironmentCreation", () => {
   it("does not call zero services ready", async () => {
     // An import's services appear a beat after it is accepted; an empty read
     // is "not yet", never "done".
-    const { platform } = fakePlatform({ listServices: () => Promise.resolve([]) });
+    const { platform } = fakePlatform({ readObservedServices: () => Promise.resolve([]) });
     const { outcome } = await run(plan("prod"), platform, {
       clockMs: [0, 0, 0, 0, 0, 0, 0, 200_000, 200_000, 200_000],
     });
@@ -210,7 +210,7 @@ describe("runEnvironmentCreation", () => {
 
   it("gives up on a service wait past its cap, naming what is still pending", async () => {
     const { platform } = fakePlatform({
-      listServices: () => Promise.resolve([{ name: "app", status: "CREATING" }]),
+      readObservedServices: () => Promise.resolve([{ name: "app", status: "CREATING" }]),
     });
     const { outcome } = await run(plan("prod"), platform, {
       clockMs: [0, 0, 0, 0, 0, 0, 0, 200_000, 200_000, 200_000],

@@ -7,15 +7,22 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { deriveZeropsCandidates, normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import { environmentCatalog } from "../connection/catalog";
 import { RegistryContext } from "@effect/atom-react";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { useEnvironments } from "../state/environments";
 import { captureAccountLifetime } from "./accountLifetime";
-import { isCurrentEnvironmentTarget, readRememberedEnvironments } from "./rememberedEnvironments";
+import {
+  isCurrentEnvironmentTarget,
+  readRememberedEnvironments,
+  hasPendingEnvironmentIdentityExchange,
+  useEnvironmentIdentityVersion,
+} from "./rememberedEnvironments";
 import { useZeropsIdentityExchange } from "./useZeropsIdentityExchange";
+import { inventoryCandidates } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { useZeropsCandidatesVersion } from "./candidatesRefresh";
 
 const RestoreContext = createContext(false);
 const AvailableContext = createContext<ReadonlySet<string>>(new Set());
@@ -30,17 +37,12 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   const exchange = useZeropsIdentityExchange();
   const registry = useContext(RegistryContext);
   const [restoring, setRestoring] = useState(true);
-  const connectedTargets = useRef(new Map<string, string>());
+  const restoreAttempts = useRef(new Map<string, string>());
+  const pendingRestores = useRef(0);
+  const refreshVersion = useZeropsCandidatesVersion();
+  const identityVersion = useEnvironmentIdentityVersion();
   const candidates = useMemo(
-    () =>
-      inventory.projects.flatMap((project) => {
-        const outcome = inventory.services.get(project.id);
-        return deriveZeropsCandidates(
-          project,
-          outcome?.status === "resolved" ? outcome.services : null,
-          new Map(),
-        );
-      }),
+    () => inventoryCandidates(inventory),
     [inventory.projects, inventory.services],
   );
 
@@ -69,7 +71,7 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
           )
           .map((environment) => String(environment.environmentId)),
       ),
-    [allowed, candidates, environments],
+    [allowed, candidates, environments, identityVersion],
   );
 
   useEffect(() => {
@@ -85,25 +87,46 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
           candidate.group === "provisioning"
         )
           continue;
-        if (connectedTargets.current.get(candidate.key) === candidate.containerOrigin) continue;
-        const result = await exchange(candidate.containerOrigin);
-        if (result._tag === "Success" && alive())
-          connectedTargets.current.set(candidate.key, candidate.containerOrigin);
+        // Registration may already belong to auto-connect or an explicit Connect.
+        if (availableEnvironmentIds.has(remembered.environmentId)) continue;
+        const attempt = `${refreshVersion}:${candidate.containerOrigin}`;
+        if (restoreAttempts.current.get(candidate.key) === attempt) continue;
+        // Claim before awaiting: inventory updates and StrictMode can restart
+        // this effect while the exchange is pending, or after it has failed.
+        restoreAttempts.current.set(candidate.key, attempt);
+        pendingRestores.current += 1;
+        setRestoring(true);
+        try {
+          await exchange(candidate.containerOrigin);
+        } finally {
+          pendingRestores.current -= 1;
+          if (alive()) setRestoring(pendingRestores.current > 0);
+        }
       }
-      if (!cancelled && alive()) setRestoring(false);
+      if (!cancelled && alive()) setRestoring(pendingRestores.current > 0);
     })();
     return () => {
       cancelled = true;
     };
-  }, [candidates, exchange]);
+  }, [availableEnvironmentIds, candidates, exchange, refreshVersion]);
 
   useEffect(() => {
     if (inventory.isLoading) return;
-    for (const [key, origin] of connectedTargets.current) {
-      if (!allowed.has(normalizeOrigin(origin))) connectedTargets.current.delete(key);
+    for (const key of restoreAttempts.current.keys()) {
+      if (!candidates.some((candidate) => candidate.key === key))
+        restoreAttempts.current.delete(key);
     }
     for (const environment of environments) {
       if (availableEnvironmentIds.has(String(environment.environmentId))) continue;
+      // The catalog publishes registration before the exchange caller can
+      // remember its identity. Keep that new target while its origin is still
+      // allowed; it is not exposed to routes until the identity is remembered.
+      if (
+        environment.displayUrl &&
+        allowed.has(normalizeOrigin(environment.displayUrl)) &&
+        hasPendingEnvironmentIdentityExchange(environment.displayUrl)
+      )
+        continue;
       // Local disposal must run even when an unrelated scope has blocked writes.
       void runAtomCommand(registry, environmentCatalog.remove, environment.environmentId, {
         reportFailure: false,
@@ -112,9 +135,11 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   }, [
     allowed,
     availableEnvironmentIds,
+    candidates,
     environments,
     inventory.error,
     inventory.isLoading,
+    identityVersion,
     registry,
   ]);
 

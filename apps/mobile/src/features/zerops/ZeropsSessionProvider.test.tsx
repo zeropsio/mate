@@ -47,6 +47,16 @@ vi.mock("@t3tools/client-runtime/zerops", async (importOriginal) => {
 
 vi.mock("./storage", () => ({ mobileZeropsStorage: {} }));
 
+// ZeropsSessionProvider renders ZeropsDataProvider, which imports react-native
+// for AppState-based visibility; the real package ships Flow syntax the test
+// transform cannot parse.
+vi.mock("react-native", () => ({
+  AppState: {
+    currentState: "active",
+    addEventListener: () => ({ remove: () => undefined }),
+  },
+}));
+
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 
 import { ZeropsSessionProvider, type ZeropsSessionValue } from "./ZeropsSessionProvider";
@@ -54,13 +64,20 @@ import { ZeropsSessionProvider, type ZeropsSessionValue } from "./ZeropsSessionP
 const SESSION = { accessToken: "access-1", refreshToken: "refresh-1" };
 const USER = { id: "user-1", email: "person@example.com", clientUserList: [] };
 
-function renderProvider(): ZeropsSessionValue {
+function renderProviderElement(): ReactElement<{
+  readonly value: ZeropsSessionValue;
+  readonly children: ReactElement<{ readonly account: { readonly userId: string } | null }>;
+}> {
   hooks.beginRender();
   effects.length = 0;
-  const element = ZeropsSessionProvider({ children: null }) as ReactElement<{
+  return ZeropsSessionProvider({ children: null }) as ReactElement<{
     readonly value: ZeropsSessionValue;
+    readonly children: ReactElement<{ readonly account: { readonly userId: string } | null }>;
   }>;
-  return element.props.value;
+}
+
+function renderProvider(): ZeropsSessionValue {
+  return renderProviderElement().props.value;
 }
 
 async function runRestoreEffect(): Promise<void> {
@@ -182,5 +199,16 @@ describe("ZeropsSessionProvider recovery token", () => {
 
     value.clearNewRecoveryToken();
     expect(renderProvider().newRecoveryToken).toBeNull();
+  });
+
+  it("only gives the shared data provider a signed-in account", async () => {
+    renderProvider();
+    await runRestoreEffect();
+    expect(renderProviderElement().props.children.props.account).toBeNull();
+
+    runtime.client.login.mockResolvedValueOnce({ auth: { accessToken: "access-3" }, user: USER });
+    await renderProvider().signIn("person@example.com", "secret");
+
+    expect(renderProviderElement().props.children.props.account?.userId).toBe(USER.id);
   });
 });

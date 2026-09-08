@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ZeropsApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
-import { canOperateProject, loadOperableProjects } from "./projectAccess";
+import { canOperateProject, verifyOperableProjects } from "./projectAccess";
 const membership = {
   id: "org",
   membershipId: "membership",
@@ -30,7 +30,7 @@ describe("AL-08 / AL-10 authoritative project access", () => {
   it.each(["forbidden", "not-found"] as const)(
     "removes a project that becomes %s between list and detail",
     async (kind) => {
-      const result = await loadOperableProjects(
+      const result = await verifyOperableProjects(
         {
           listAccessibleClientProjects: async () => [project],
           fetchProject: async () => {
@@ -44,7 +44,7 @@ describe("AL-08 / AL-10 authoritative project access", () => {
   );
   it("fails an unavailable read instead of manufacturing a deletion", async () => {
     await expect(
-      loadOperableProjects(
+      verifyOperableProjects(
         {
           listAccessibleClientProjects: async () => [project],
           fetchProject: async () => {
@@ -54,6 +54,35 @@ describe("AL-08 / AL-10 authoritative project access", () => {
         membership,
       ),
     ).rejects.toMatchObject({ kind: "network" });
+  });
+  it("directly verifies a previously known project omitted by indexed search", async () => {
+    const requested: string[] = [];
+    const result = await verifyOperableProjects(
+      {
+        listAccessibleClientProjects: async () => [],
+        fetchProject: async (projectId) => {
+          requested.push(projectId);
+          return project;
+        },
+      },
+      membership,
+    );
+    expect(result).toEqual([]);
+    expect(requested).toEqual([]);
+
+    const verified = await verifyOperableProjects(
+      {
+        listAccessibleClientProjects: async () => [],
+        fetchProject: async (projectId) => {
+          requested.push(projectId);
+          return project;
+        },
+      },
+      membership,
+      [project],
+    );
+    expect(verified.map((entry) => entry.project.id)).toEqual([project.id]);
+    expect(requested).toEqual([project.id]);
   });
   it("does not accept an unrelated organization or a lowering override without a membership ID", () => {
     expect(canOperateProject(project, { ...membership, id: "different" })).toBe(false);

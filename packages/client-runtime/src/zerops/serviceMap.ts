@@ -17,6 +17,7 @@
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
+import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
   ZeropsServiceScaling,
@@ -101,6 +102,8 @@ export interface ZeropsServiceTrends {
 }
 
 export interface ZeropsServiceRow {
+  /** Infrastructure also contains platform services that do not host a Mate. */
+  readonly isControlPlane: boolean;
   readonly service: ZeropsTopologyService;
   readonly tone: ZeropsServiceTone;
   /** The platform's status token as a word: `READY_TO_DEPLOY` reads as `Ready to deploy`. */
@@ -459,12 +462,13 @@ export function buildZeropsServiceMap(
         const portLabel = zeropsPortLabel(entry);
         // The control plane is named by its glossary word; its hostname and
         // port move down a line so the name reads as one thing.
-        const isControlPlane = group === "infrastructure";
+        const isControlPlane = isZcpServiceType(entry.type);
         const title = isControlPlane ? CONTROL_PLANE_TITLE : entry.hostname;
         const hostnameFact: ReadonlyArray<ZeropsServiceFact> = isControlPlane
           ? [{ id: "hostname", label: `${entry.hostname}${portLabel ?? ""}` }]
           : [];
         return {
+          isControlPlane,
           service: entry,
           tone: serviceStatusTone(entry),
           statusLabel: zeropsStatusWord(entry.status),

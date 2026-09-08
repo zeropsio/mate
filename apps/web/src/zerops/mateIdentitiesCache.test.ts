@@ -22,6 +22,41 @@ function mate(identity: Omit<ZeropsMateIdentity, "projectUrl" | "connected">): Z
   };
 }
 
+it("retains a known service ID and accepts old cache entries without one", () => {
+  writeCachedZeropsMates(
+    new Map([
+      [
+        FEN,
+        {
+          name: "Fen",
+          tint: "coral",
+          project: undefined,
+          projectUrl: "https://app.zerops.io/project/acme-docs-dev",
+          connected: true,
+          serviceId: "svc-zcp",
+        },
+      ],
+    ]),
+  );
+  expect(readCachedZeropsMates()?.get(FEN)?.serviceId).toBe("svc-zcp");
+  writeCachedZeropsMates(
+    new Map([
+      [
+        FEN,
+        {
+          name: "Fen",
+          tint: "coral",
+          project: undefined,
+          projectUrl: "https://app.zerops.io/project/acme-docs-dev",
+          connected: true,
+        },
+      ],
+    ]),
+  );
+  expect(readCachedZeropsMates()?.get(FEN)?.name).toBe("Fen");
+  expect(readCachedZeropsMates()?.get(FEN)?.serviceId).toBeUndefined();
+});
+
 describe("mateIdentitiesCache", () => {
   beforeEach(() => {
     removeLocalStorageItem(ZEROPS_MATES_STORAGE_KEY);

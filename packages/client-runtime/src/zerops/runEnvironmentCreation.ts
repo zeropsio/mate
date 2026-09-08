@@ -51,7 +51,8 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
-  readonly listServices: (
+  /** Reads the latest shared-model projection; this callback performs no platform request. */
+  readonly readObservedServices: (
     projectId: string,
   ) => Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>;
 }
@@ -272,7 +273,7 @@ async function awaitServices(input: {
   const startedAt = input.now();
   for (;;) {
     input.assertCurrent();
-    const services = await input.platform.listServices(input.projectId);
+    const services = await input.platform.readObservedServices(input.projectId);
     input.assertCurrent();
     const pending = services.filter(
       (service) => service.status !== "ACTIVE" && service.status !== UNDEPLOYED_STATUS,

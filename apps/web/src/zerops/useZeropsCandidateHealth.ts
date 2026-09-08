@@ -13,8 +13,40 @@ import { useEffect, useMemo, useState } from "react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { onAccountLifetimeClose } from "./accountLifetime";
 
 const PROBE_CONCURRENCY = 4;
+
+async function readCandidateHealth(origin: string) {
+  let serverVersion: string | undefined;
+  const health = await probeZeropsContainerHealth(origin, undefined, (version) => {
+    serverVersion = version;
+  });
+  return { health, ...(serverVersion === undefined ? {} : { serverVersion }) };
+}
+
+// The sidebar and project picker inspect the same containers. Keep both pending
+// and completed probes for this account's explicit inventory refresh cycle.
+const probes = new Map<string, ReturnType<typeof readCandidateHealth>>();
+let probeVersion: number | undefined;
+onAccountLifetimeClose(() => {
+  probes.clear();
+  probeVersion = undefined;
+});
+
+export function probeCandidateHealth(origin: string, refreshVersion: number, targetKey = origin) {
+  if (probeVersion !== refreshVersion) {
+    probes.clear();
+    probeVersion = refreshVersion;
+  }
+  const normalizedOrigin = origin.replace(/\/+$/, "");
+  const key = JSON.stringify([targetKey.replace(/\/+$/, ""), normalizedOrigin]);
+  const existing = probes.get(key);
+  if (existing !== undefined) return existing;
+  const result = readCandidateHealth(normalizedOrigin);
+  probes.set(key, result);
+  return result;
+}
 
 export function useZeropsCandidateHealth(candidates: ReadonlyArray<ZeropsCandidate>): {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
@@ -49,10 +81,11 @@ export function useZeropsCandidateHealth(candidates: ReadonlyArray<ZeropsCandida
         const target = targets[cursor];
         cursor += 1;
         if (!target) return;
-        let serverVersion: string | undefined;
-        const verdict = await probeZeropsContainerHealth(target.origin, undefined, (version) => {
-          serverVersion = version;
-        });
+        const { health: verdict, serverVersion } = await probeCandidateHealth(
+          target.origin,
+          refreshVersion,
+          target.key,
+        );
         if (cancelled) return;
         setSnapshot((current) => ({
           health: new Map(current.health).set(target.key, verdict),

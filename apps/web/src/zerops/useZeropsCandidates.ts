@@ -1,10 +1,7 @@
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
-/**
- * Web wiring around the shared `loadZeropsCandidates` fetch shell: reads the
- * active clientUser scope, feeds it in as the single organization to load
- * across, and re-renders as each project's services arrive.
- */
+/** Web projection over the active organization's shared project/service records. */
 
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
   EnvironmentConnectionPhase,
@@ -22,18 +19,29 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
+import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { projectZeropsCandidates } from "@t3tools/client-runtime/zerops/candidateLoading";
 import {
-  deriveZeropsCandidates,
-  normalizeOrigin,
-  type ZeropsCandidate,
-} from "@t3tools/client-runtime/zerops/candidates";
+  projectKeyOf,
+  type CollectionRead,
+  type ProjectRecord,
+  type ServiceRecord,
+} from "@t3tools/client-runtime/zerops/data";
+import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import { zeropsMateIdentities } from "./mateIdentities";
+import { inventoryProjectRefKey } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import {
+  stabilizeZeropsAtom,
+  useZeropsAtomSelections,
+  useZeropsData,
+  zeropsKnowledgeArraysEqual,
+} from "./zeropsDataContext";
 
 export interface ZeropsCandidatePresentation extends ZeropsCandidate {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -104,6 +112,9 @@ function zeropsConnectionsByOrigin(
 
 /** A project that is not up holds nothing anyone deployed. */
 const NO_SERVICES: ZeropsEnvironmentServices = { hostnames: [], deployedAt: undefined };
+const EMPTY_PROJECTS_READ_ATOM = Atom.make<CollectionRead<ProjectRecord> | null>(null).pipe(
+  Atom.withLabel("zerops:candidates-projects-empty"),
+);
 
 export function useZeropsCandidates(): {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
@@ -112,15 +123,53 @@ export function useZeropsCandidates(): {
   readonly refresh: () => void;
 } {
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
+  const { runtime, organizationRef } = useZeropsData();
   const { environments } = useEnvironments();
   const inventory = useZeropsInventory();
-  const projects = useMemo(
-    () => inventory.projects.filter((project) => project.clientId === activeOrganization?.id),
-    [inventory.projects, activeOrganization?.id],
-  );
   const { services, error } = inventory;
   const canLoad = status === "signed-in" && organizationStatus === "selected";
   const isLoading = inventory.isLoading || !canLoad;
+  const activeOrganizationRef = useMemo(
+    () => (activeOrganization === null ? null : organizationRef(activeOrganization.id)),
+    [activeOrganization, organizationRef],
+  );
+  const projectsReadAtom = useMemo(
+    () =>
+      activeOrganizationRef === null
+        ? EMPTY_PROJECTS_READ_ATOM
+        : stabilizeZeropsAtom(
+            runtime.reads.projectsOf(activeOrganizationRef),
+            (left, right) =>
+              left.query === right.query &&
+              zeropsKnowledgeArraysEqual(left.value, right.value) &&
+              left.observation.access === right.observation.access,
+          ),
+    [activeOrganizationRef, runtime],
+  );
+  const rawProjects = useAtomValue(projectsReadAtom);
+  const serviceReadEntries = useMemo(
+    () =>
+      activeOrganizationRef === null
+        ? []
+        : [...inventory.projectRefs.values()].flatMap((ref) =>
+            ref.organization.organizationId === activeOrganizationRef.organizationId
+              ? ([
+                  [
+                    projectKeyOf(ref),
+                    stabilizeZeropsAtom(
+                      runtime.reads.servicesOf(ref),
+                      (left, right) =>
+                        left.query === right.query &&
+                        zeropsKnowledgeArraysEqual(left.value, right.value) &&
+                        left.observation.access === right.observation.access,
+                    ),
+                  ],
+                ] as const)
+              : [],
+          ),
+    [activeOrganizationRef, inventory.projectRefs, runtime],
+  );
+  const serviceReads = useZeropsAtomSelections<CollectionRead<ServiceRecord>>(serviceReadEntries);
 
   const connectedOrigins = useMemo(() => authenticatedZeropsOrigins(environments), [environments]);
   const connectionsByOrigin = useMemo(
@@ -130,43 +179,56 @@ export function useZeropsCandidates(): {
   const registeredOrigins = useMemo(() => registeredZeropsOrigins(environments), [environments]);
 
   const candidates = useMemo(() => {
-    const derived: ZeropsCandidatePresentation[] = [];
-    for (const project of projects) {
-      if (project.status !== "ACTIVE") {
-        // The derivation short-circuits on the project's own status; a
-        // non-active project's services are never fetched or read, and a
-        // project that is not up has no route yet.
-        derived.push(
-          ...deriveZeropsCandidates(project, null, connectedOrigins).map((candidate) => ({
-            ...candidate,
-            routes: [],
-            services: NO_SERVICES,
-          })),
+    if (activeOrganization === null || rawProjects === null) return [];
+    const allowedProjects: CollectionRead<ProjectRecord> = {
+      ...rawProjects,
+      value: rawProjects.value.filter((knowledge) => {
+        const ref = knowledge.knowledge === "observed" ? knowledge.record.ref : knowledge.ref;
+        const allowed = inventory.projectRefs.get(inventoryProjectRefKey(ref));
+        return (
+          allowed !== undefined &&
+          projectKeyOf(allowed) === projectKeyOf(ref) &&
+          serviceReads.has(projectKeyOf(ref))
         );
-        continue;
-      }
-      const outcome = services.get(project.id);
-      // Still resolving: omitted while `isLoading` is true, so the list grows
-      // rather than showing a per-row spinner.
-      if (!outcome) continue;
-      const resolved = outcome.status === "resolved" ? outcome.services : null;
-      const routes = resolved === null ? undefined : derivePublicRoutes(project, resolved);
+      }),
+    };
+    const projection = projectZeropsCandidates(
+      allowedProjects,
+      (project) => serviceReads.get(projectKeyOf(project.ref))!,
+      connectedOrigins,
+    );
+    return projection.candidates.map((candidate): ZeropsCandidatePresentation => {
+      const project = inventory.projects.find((entry) => entry.id === candidate.project.id);
+      const outcome = services.get(candidate.project.id);
+      const resolved = outcome?.status === "resolved" ? outcome.services : null;
+      const routes =
+        project === undefined || resolved === null
+          ? undefined
+          : derivePublicRoutes(project, resolved);
       const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
       const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
-      derived.push(
-        ...deriveZeropsCandidates(project, resolved, connectedOrigins).map((candidate) =>
-          routes === undefined || held === undefined
-            ? candidate
-            : { ...candidate, routes, routeOffers: routeOffers ?? [], services: held },
-        ),
-      );
-    }
-    return derived.map((candidate): ZeropsCandidatePresentation => {
       const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;
       const connection = origin === null ? undefined : connectionsByOrigin.get(origin);
-      return connection === undefined ? candidate : { ...candidate, connection };
+      return {
+        ...candidate,
+        ...(candidate.project.status === "ACTIVE"
+          ? routes === undefined || held === undefined
+            ? {}
+            : { routes, routeOffers: routeOffers ?? [], services: held }
+          : { routes: [], services: NO_SERVICES }),
+        ...(connection === undefined ? {} : { connection }),
+      };
     });
-  }, [projects, services, connectedOrigins, connectionsByOrigin]);
+  }, [
+    activeOrganization,
+    connectedOrigins,
+    connectionsByOrigin,
+    inventory.projectRefs,
+    inventory.projects,
+    rawProjects,
+    serviceReads,
+    services,
+  ]);
 
   // Publish the environments' names, and who lives in each, for readers that
   // never load candidates (`useZeropsEnvironmentNames`, `useZeropsMates`). A

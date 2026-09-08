@@ -38,6 +38,18 @@ describe("zeropsMateIdentities", () => {
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
   });
 
+  it("keeps each environment's service identity when a project has two containers", () => {
+    const second = {
+      ...FEN_DEV,
+      key: "acme-docs-dev:probe",
+      environmentId: JUNO,
+      service: { id: "probe", name: "probe", status: "ACTIVE" },
+    };
+    const mates = zeropsMateIdentities([FEN_DEV, second]);
+    expect(mates.get(FEN)?.serviceId).toBe("zcp");
+    expect(mates.get(JUNO)?.serviceId).toBe("probe");
+  });
+
   it("knows nobody in an environment without a Mate, or in no registered environment", () => {
     const mates = zeropsMateIdentities([ACME_STAGE, candidate("dev", ["mate"])]);
     expect(mates.size).toBe(0);

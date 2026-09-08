@@ -1,4 +1,4 @@
-/** One invalidation signal for the shared, account-owned inventory. */
+/** Requests a fresh runtime lease/baseline cycle for the account inventory. */
 
 import { useSyncExternalStore } from "react";
 

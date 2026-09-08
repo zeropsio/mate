@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   candidateAfterHealthProbe,
-  loadOrganizationProjects,
   probeCandidateHealth,
+  probeCandidateHealthBatch,
 } from "./candidate-loading";
 
 const CONTAINER_ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
@@ -58,19 +58,29 @@ describe("probeCandidateHealth", () => {
       vi.useRealTimers();
     }
   });
-});
 
-describe("loadOrganizationProjects", () => {
-  it("keeps projects from healthy organizations when another organization fails", async () => {
-    const load = vi.fn(async (organizationId: string) => {
-      if (organizationId === "org-b") throw new Error("forbidden");
-      return [{ id: "project-a", name: "A", status: "ACTIVE" }];
-    });
+  it("bounds candidate-origin probes without recreating inventory loading", async () => {
+    let active = 0;
+    let maximum = 0;
+    const batch = probeCandidateHealthBatch(
+      Array.from({ length: 7 }, (_, index) => ({
+        ...READY_CANDIDATE,
+        key: `project-1:service-${index}`,
+        containerOrigin: `https://zcp-${index}.example.test`,
+      })),
+      {
+        concurrency: 4,
+        probe: async () => {
+          active += 1;
+          maximum = Math.max(maximum, active);
+          await Promise.resolve();
+          active -= 1;
+          return "ready";
+        },
+      },
+    );
 
-    const result = await loadOrganizationProjects(["org-a", "org-b"], load);
-
-    expect(result.projects.map((project) => project.id)).toEqual(["project-a"]);
-    expect(result.failures).toHaveLength(1);
-    expect(load).toHaveBeenCalledTimes(2);
+    await expect(batch).resolves.toHaveLength(7);
+    expect(maximum).toBe(4);
   });
 });

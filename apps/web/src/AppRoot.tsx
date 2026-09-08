@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ZeropsEnvironmentLifetime } from "./zerops/ZeropsEnvironmentLifetime";
+import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
@@ -21,6 +22,15 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
   return <QuitHoldOverlay />;
 }
 
+/** The verified account's platform-data owner precedes every inventory consumer. */
+export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
+  return (
+    <ZeropsDataProvider>
+      <ZeropsInventoryProvider>{children}</ZeropsInventoryProvider>
+    </ZeropsDataProvider>
+  );
+}
+
 function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
   const { status, user } = useZeropsSession();
   useEffect(() => {
@@ -37,12 +47,12 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
       {callback ? (
         <RouterProvider router={router} />
       ) : (
-        <ZeropsInventoryProvider>
+        <ZeropsAccountDataBoundary>
           <ZeropsEnvironmentLifetime>
             <RouterProvider router={router} />
             <ZeropsProductHosts status={status} />
           </ZeropsEnvironmentLifetime>
-        </ZeropsInventoryProvider>
+        </ZeropsAccountDataBoundary>
       )}
     </AppAtomRegistryProvider>
   );

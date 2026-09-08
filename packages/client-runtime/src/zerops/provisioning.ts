@@ -17,7 +17,7 @@
  *    cap that runs out leaves a retryable state rather than an error.
  */
 
-import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "./api.ts";
+import type { ZeropsProject, ZeropsService } from "./api.ts";
 
 import { deriveZeropsCandidates } from "./candidates.ts";
 
@@ -294,25 +294,25 @@ export function advanceProvisioning(
  * poll unconditionally.
  */
 export async function readProvisioning(input: {
-  readonly client: ZeropsApiClient;
-  readonly clientId: string;
   readonly state: ProvisioningState;
+  readonly projects: ReadonlyArray<ZeropsProject>;
+  readonly project: ZeropsProject | undefined;
+  readonly services: ReadonlyArray<ZeropsService> | undefined;
   readonly probeHealth: (origin: string) => Promise<ZeropsContainerHealth>;
 }): Promise<ProvisioningEvent> {
-  const { client, clientId, state, probeHealth } = input;
+  const { state, probeHealth } = input;
 
   if (state.phase === "awaiting-project") {
-    return { kind: "projects", projects: await client.listAccessibleClientProjects(clientId) };
+    return { kind: "projects", projects: input.projects };
   }
 
-  if (state.phase === "awaiting-container" && state.projectId) {
-    // The project is re-read too: its own status and subdomain host decide
-    // whether a container origin can be built at all.
-    const [project, services] = await Promise.all([
-      client.fetchProject(state.projectId),
-      client.listProjectServices(state.projectId),
-    ]);
-    return { kind: "services", project, services };
+  if (
+    state.phase === "awaiting-container" &&
+    state.projectId &&
+    input.project?.id === state.projectId &&
+    input.services !== undefined
+  ) {
+    return { kind: "services", project: input.project, services: input.services };
   }
 
   if (state.phase === "awaiting-health" && state.containerOrigin) {

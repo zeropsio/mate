@@ -21,6 +21,7 @@ const CachedZeropsMates = Schema.Record(
     tint: Schema.Literals(MATE_TINT_IDS),
     project: Schema.optional(Schema.String),
     projectUrl: Schema.String,
+    serviceId: Schema.optional(Schema.String),
   }),
 );
 
@@ -39,6 +40,7 @@ export function readCachedZeropsMates(): ReadonlyMap<EnvironmentId, ZeropsMateId
       tint: mate.tint,
       project: mate.project,
       projectUrl: mate.projectUrl,
+      serviceId: mate.serviceId,
       // A remembered Mate is remembered from another session: its container is
       // not connected until this one's socket registers, and a face drawn from
       // the cache says so by sleeping.
@@ -58,6 +60,7 @@ export function writeCachedZeropsMates(
       tint: mate.tint,
       projectUrl: mate.projectUrl,
       ...(mate.project === undefined ? {} : { project: mate.project }),
+      ...(mate.serviceId === undefined ? {} : { serviceId: mate.serviceId }),
     };
   }
   try {

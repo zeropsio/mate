@@ -26,6 +26,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 
 export interface ZeropsMateIdentity {
+  /** The exact container behind this environment; older cached identities may not know it. */
+  readonly serviceId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
   /** The project the Mate belongs to, as its label tag reads; absent for one in no project. */
@@ -55,6 +57,7 @@ export function zeropsMateIdentities(
     if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
     const tags = readZeropsGroupTags(candidate.project.tagList);
     mates.set(environmentId, {
+      serviceId: candidate.service?.id,
       name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
       tint: tints.get(candidate.project.id) ?? "slate",
       project: tags.label,

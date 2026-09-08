@@ -1,4 +1,4 @@
-import { ZeropsApiClient, type ZeropsProject, type ZeropsService } from "./api.ts";
+import type { ZeropsProject, ZeropsService } from "./api.ts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -218,65 +218,35 @@ describe("provisioning state machine", () => {
 });
 
 describe("readProvisioning", () => {
-  function spyClient(handler: (url: string) => unknown) {
-    const urls: string[] = [];
-    const client = new ZeropsApiClient({
-      fetch: (input) => {
-        urls.push(input);
-        return Promise.resolve(
-          new Response(JSON.stringify(handler(input)), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-        );
-      },
-    });
-    client.restoreSession({ accessToken: "access-1" });
-    return { client, urls };
-  }
-
   const probeNeverCalled = () => {
     throw new Error("the health probe must not run before a container origin exists");
   };
 
-  it("reads projects through the direct read, never the search index", async () => {
-    const { client, urls } = spyClient(() => ({ list: [PROJECT], totalCount: 1 }));
-
+  it("uses the shared project observation supplied by the account runtime", async () => {
     const event = await readProvisioning({
-      client,
-      clientId: CLIENT_ID,
       state: startProvisioning({ zcpClaimed: true, nowMs: 0 }),
+      projects: [PROJECT],
+      project: undefined,
+      services: undefined,
       probeHealth: probeNeverCalled,
     });
 
     expect(event).toEqual({ kind: "projects", projects: [PROJECT] });
-    expect(urls).toHaveLength(1);
-    expect(urls[0]).toContain(`/client/${CLIENT_ID}/project`);
-    expect(urls.every((url) => !url.includes("/search"))).toBe(true);
   });
 
-  it("re-reads the project itself alongside its services, so a CREATING project is seen turning ACTIVE", async () => {
-    const { client, urls } = spyClient((url) =>
-      url.includes("/service-stack") ? { list: [container()], totalCount: 1 } : PROJECT,
-    );
-
+  it("uses the shared project and service observations while awaiting a container", async () => {
     const event = await readProvisioning({
-      client,
-      clientId: CLIENT_ID,
       state: reachAwaitingContainer(),
+      projects: [PROJECT],
+      project: PROJECT,
+      services: [container()],
       probeHealth: probeNeverCalled,
     });
 
     expect(event).toEqual({ kind: "services", project: PROJECT, services: [container()] });
-    expect(urls.some((url) => url.endsWith("/project/project-1"))).toBe(true);
-    expect(
-      urls.some((url) => new URL(url).pathname.endsWith("/project/project-1/service-stack")),
-    ).toBe(true);
-    expect(urls.every((url) => !url.includes("/search"))).toBe(true);
   });
 
   it("probes the container origin once one is known, and calls no API for it", async () => {
-    const { client, urls } = spyClient(() => ({}));
     const probed: string[] = [];
 
     const awaitingHealth = advanceProvisioning(
@@ -286,9 +256,10 @@ describe("readProvisioning", () => {
     );
 
     const event = await readProvisioning({
-      client,
-      clientId: CLIENT_ID,
       state: awaitingHealth,
+      projects: [PROJECT],
+      project: PROJECT,
+      services: [container()],
       probeHealth: (origin) => {
         probed.push(origin);
         return Promise.resolve("initializing" as const);
@@ -297,21 +268,18 @@ describe("readProvisioning", () => {
 
     expect(event).toEqual({ kind: "health", health: "initializing" });
     expect(probed).toEqual(["https://zcp-24cb-8080.prg1.zerops.app"]);
-    expect(urls).toHaveLength(0);
   });
 
   it("issues no read at all in a settled state", async () => {
-    const { client, urls } = spyClient(() => ({}));
-
     const event = await readProvisioning({
-      client,
-      clientId: CLIENT_ID,
       state: startProvisioning({ zcpClaimed: false, nowMs: 0 }),
+      projects: [],
+      project: undefined,
+      services: undefined,
       probeHealth: probeNeverCalled,
     });
 
     expect(event).toEqual({ kind: "tick" });
-    expect(urls).toHaveLength(0);
   });
 });
 

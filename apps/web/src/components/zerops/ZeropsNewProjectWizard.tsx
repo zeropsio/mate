@@ -1,4 +1,4 @@
-import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
+import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zerops";
 /**
  * `/zerops/new` — creates a Zerops project with a Zerops Mate container in
  * it, in the shape of the platform's own "add project" flow: scope (skipped
@@ -10,7 +10,8 @@ import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import type { OrganizationLocationsResourceRequest } from "@t3tools/client-runtime/zerops/data";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   canCreateProjectsInOrganization,
@@ -18,13 +19,13 @@ import {
   generateZeropsGroupId,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
-  type ZeropsLocation,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
+import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -51,6 +52,8 @@ import {
 
 type ZeropsNewProjectStep = "project" | "agents";
 
+const EMPTY_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
+
 /**
  * A single membership auto-resolves to `organizationStatus: "selected"`
  * (`resolveActiveZeropsOrganization`), so this is false as soon as it can be
@@ -61,6 +64,18 @@ export function zeropsNewProjectScopeStepVisible(input: {
   readonly activeOrganization: ZeropsOrganization | null;
 }): boolean {
   return input.organizationStatus !== "selected" || !input.activeOrganization;
+}
+
+function isUncertainCreateFailure(cause: unknown): boolean {
+  if (cause instanceof ZeropsApiError) return cause.kind === "uncertain";
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "_tag" in cause &&
+    cause._tag === "ZeropsDataAdapterError" &&
+    "kind" in cause &&
+    cause.kind === "uncertain"
+  );
 }
 
 /**
@@ -113,7 +128,7 @@ export async function submitZeropsNewProject(input: {
     input.onCreated?.(created.project.id);
     input.onStartWaiting(input.clientId);
   } catch (cause) {
-    if (cause instanceof ZeropsApiError && cause.kind === "uncertain") input.onUncertain?.();
+    if (isUncertainCreateFailure(cause)) input.onUncertain?.();
     input.onError(zeropsErrorMessage(cause));
   }
 }
@@ -137,14 +152,9 @@ export function exitZeropsNewProjectWait(input: {
 }
 
 function ZeropsNewProjectContent() {
-  const {
-    activeOrganization,
-    client,
-    organizationStatus,
-    organizations,
-    selectOrganization,
-    status,
-  } = useZeropsSession();
+  const { activeOrganization, organizationStatus, organizations, selectOrganization, status } =
+    useZeropsSession();
+  const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
   const {
     provisioning,
@@ -158,10 +168,10 @@ function ZeropsNewProjectContent() {
 
   const [step, setStep] = useState<ZeropsNewProjectStep>("project");
   const [name, setName] = useState("zerops-mate");
-  const [locations, setLocations] = useState<ReadonlyArray<ZeropsLocation>>([]);
-  const [locationId, setLocationId] = useState<string | null>(null);
-  const [locationStatus, setLocationStatus] = useState<"loading" | "ready" | "failed">("loading");
-  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationChoice, setLocationChoice] = useState<{
+    readonly key: string;
+    readonly id: string;
+  } | null>(null);
   const [selectedAgents, setSelectedAgents] = useState<ReadonlyArray<ZeropsAgentType>>(
     ZEROPS_NEW_PROJECT_AGENTS_DEFAULT_SELECTION,
   );
@@ -172,62 +182,67 @@ function ZeropsNewProjectContent() {
   const canCreate = activeOrganization
     ? canCreateProjectsInOrganization(activeOrganization)
     : false;
+  const locationRequest = useMemo<OrganizationLocationsResourceRequest | null>(
+    () =>
+      activeOrganization && canCreate
+        ? {
+            kind: "organization-locations",
+            account: runtime.scope,
+            organization: organizationRef(activeOrganization.id),
+          }
+        : null,
+    [activeOrganization, canCreate, organizationRef, runtime.scope],
+  );
+  const locationResource = useZeropsResource(locationRequest);
+  const locations =
+    locationResource.status === "success" ? locationResource.value : EMPTY_LOCATIONS;
+  const locationKey = activeOrganization?.id ?? "";
+  const locationId =
+    locationChoice?.key === locationKey &&
+    locations.some((location) => location.id === locationChoice.id)
+      ? locationChoice.id
+      : (locations[0]?.id ?? null);
+  const locationStatus =
+    !activeOrganization || !canCreate
+      ? "ready"
+      : locationResource.status === "success"
+        ? "ready"
+        : locationResource.status === "failure"
+          ? "failed"
+          : "loading";
+  const locationError =
+    locationResource.status === "failure" ? "Try again from the projects page." : null;
 
   useEffect(() => {
-    if (!activeOrganization || !canCreate) {
-      setLocations([]);
-      setLocationId(null);
-      setLocationError(null);
-      setLocationStatus("ready");
-      return;
-    }
+    if (locations.length <= 1) return;
     let cancelled = false;
-    setLocations([]);
-    setLocationId(null);
-    setLocationError(null);
-    setLocationStatus("loading");
-    void client
-      .listClientLocations(activeOrganization.id)
-      .then((available) => {
-        if (cancelled) return;
-        setLocations(available);
-        setLocationId(available[0]?.id ?? null);
-        setLocationStatus("ready");
-
-        if (available.length <= 1) return;
-        // Match the Zerops GUI's default: measure all locations in parallel
-        // and preselect the lowest observed latency. The choice remains
-        // explicit and editable; failed probes keep the first API location.
-        void Promise.all(
-          available.map(async (location) => {
-            const startedAt = performance.now();
-            try {
-              const response = await fetch(location.pingUrl, { cache: "no-store" });
-              if (!response.ok) return null;
-              return { id: location.id, latency: performance.now() - startedAt };
-            } catch {
-              return null;
-            }
-          }),
-        ).then((results) => {
-          if (cancelled) return;
-          const fastest = results
-            .filter((result): result is { readonly id: string; readonly latency: number } =>
-              Boolean(result),
-            )
-            .sort((left, right) => left.latency - right.latency)[0];
-          if (fastest) setLocationId(fastest.id);
-        });
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return;
-        setLocationStatus("failed");
-        setLocationError(zeropsErrorMessage(cause));
-      });
+    // Match the Zerops GUI's default: measure all locations in parallel
+    // and preselect the lowest observed latency. This is a bounded health
+    // probe, independent of the platform configuration read.
+    void Promise.all(
+      locations.map(async (location) => {
+        const startedAt = performance.now();
+        try {
+          const response = await fetch(location.pingUrl, { cache: "no-store" });
+          if (!response.ok) return null;
+          return { id: location.id, latency: performance.now() - startedAt };
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const fastest = results
+        .filter((result): result is { readonly id: string; readonly latency: number } =>
+          Boolean(result),
+        )
+        .sort((left, right) => left.latency - right.latency)[0];
+      if (fastest) setLocationChoice({ key: locationKey, id: fastest.id });
+    });
     return () => {
       cancelled = true;
     };
-  }, [activeOrganization, canCreate, client]);
+  }, [locationKey, locations]);
 
   if (status === "loading") {
     return (
@@ -314,7 +329,13 @@ function ZeropsNewProjectContent() {
     setCreating(true);
     setCreateError(null);
     void submitZeropsNewProject({
-      createProject: (args) => client.createProjectWithZeropsMate(args),
+      createProject: ({ clientId: _clientId, ...args }) =>
+        runZeropsCommand(
+          runtime.commands.createProjectWithMate({
+            organization: organizationRef(activeOrganization.id),
+            ...args,
+          }),
+        ),
       clientId: activeOrganization.id,
       name,
       locationId,
@@ -363,7 +384,7 @@ function ZeropsNewProjectContent() {
               <Select
                 value={locationId}
                 onValueChange={(value) => {
-                  setLocationId(value);
+                  if (value !== null) setLocationChoice({ key: locationKey, id: value });
                 }}
               >
                 <SelectTrigger id="zerops-new-project-location" aria-label="Project location">

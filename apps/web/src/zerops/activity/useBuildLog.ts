@@ -1,40 +1,19 @@
-/**
- * The build log tail for a live deploy card — `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md`
- * §5. Resolves log access once per project (cached in module scope, keyed by
- * project id AND client instance — a re-login hands out a new
- * `ZeropsApiClient`, mirroring `useProjectActivity.ts`'s `pollerFor`), then
- * backfills over HTTP before appending live lines over a WebSocket while
- * `live` is on.
- */
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
+import {
+  buildLogSessionKeyOf,
+  type BuildLogLease,
+  type BuildLogRegistry,
+  type BuildLogSnapshot,
+  type BuildLogStatus,
+  type ProjectRef,
+} from "@t3tools/client-runtime/zerops/data";
 
-import { BuildLogSession, type BuildLogSnapshot, type BuildLogStatus } from "./buildLogSession.ts";
-
-interface LogAccessCacheEntry {
-  readonly client: ZeropsApiClient;
-  readonly promise: Promise<{ readonly url: string }>;
-}
-
-const logAccessByProject = new Map<string, LogAccessCacheEntry>();
-
-function resolveLogAccess(
-  projectId: string,
-  client: ZeropsApiClient,
-): Promise<{ readonly url: string }> {
-  const cached = logAccessByProject.get(projectId);
-  if (cached !== undefined && cached.client === client) {
-    return cached.promise;
-  }
-  const promise = client.fetchProjectLogAccess(projectId);
-  logAccessByProject.set(projectId, { client, promise });
-  return promise;
-}
+import { findInventoryProjectRef, useZeropsInventory } from "../inventoryContext";
+import { useZeropsData } from "../zeropsDataContext";
 
 export interface UseBuildLogInput {
-  readonly client: ZeropsApiClient | null;
   readonly projectId: string | null;
   readonly query: BuildLogQuery | null;
   readonly live: boolean;
@@ -45,55 +24,133 @@ export interface UseBuildLogResult {
   readonly status: BuildLogStatus;
 }
 
-const IDLE_SNAPSHOT: BuildLogSnapshot = { lines: [], status: "idle" };
+const IDLE_SNAPSHOT: BuildLogSnapshot = {
+  lines: [],
+  bytes: 0,
+  status: "idle",
+  loadingOlder: false,
+  cursor: { oldestLineId: null, newestLineId: null },
+  gaps: { older: false, newer: false },
+  truncation: { lines: 0, bytes: 0 },
+  error: null,
+};
 
-function keyFor(projectId: string, query: BuildLogQuery): string {
-  return `${projectId}|${query.buildServiceStackId}|${query.appVersionId}|${query.fromIso ?? ""}`;
+const ERROR_SNAPSHOT: BuildLogSnapshot = { ...IDLE_SNAPSHOT, status: "error", error: "account" };
+
+interface ActiveLog {
+  readonly key: string;
+  readonly project: ProjectRef;
+  readonly query: BuildLogQuery;
 }
 
-export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
-  const active =
-    input.client !== null && input.projectId !== null && input.query !== null
-      ? { client: input.client, projectId: input.projectId, query: input.query }
-      : null;
-  const key = active === null ? null : keyFor(active.projectId, active.query);
+interface BoundLog {
+  readonly owner: object;
+  readonly key: string;
+  readonly lease: BuildLogLease | null;
+  unsubscribe: () => void;
+}
 
-  // The session's lifecycle lives entirely in this effect, keyed on `key` —
-  // creating it in the render body (as this used to) makes it a side effect
-  // of rendering, which React.StrictMode's dev-mode double-render then runs
-  // twice, and which its double-invoke of effects (setup → cleanup → setup)
-  // tears down with nothing in a cleanup-only effect to recreate. Routing
-  // creation through `setSession` means the *second* setup call — the one
-  // StrictMode's simulated remount actually leaves standing — is what
-  // `useSyncExternalStore` below ends up subscribed to.
-  const [session, setSession] = useState<BuildLogSession | null>(null);
+/** Hook-local bridge from effect-owned leases to React's external-store contract. */
+class BuildLogBindingStore {
+  readonly #listeners = new Set<() => void>();
+  #bound: BoundLog | null = null;
+  #snapshot: BuildLogSnapshot = IDLE_SNAPSHOT;
 
-  useEffect(() => {
-    if (active === null) {
-      setSession(null);
-      return;
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  };
+
+  getSnapshot(owner: object, key: string | null): BuildLogSnapshot {
+    return key !== null && this.#bound?.owner === owner && this.#bound.key === key
+      ? this.#snapshot
+      : IDLE_SNAPSHOT;
+  }
+
+  bind(owner: object, logs: BuildLogRegistry, active: ActiveLog): () => void {
+    let lease: BuildLogLease;
+    try {
+      lease = logs.acquire(active.project, active.query, { follow: false });
+    } catch {
+      const failed: BoundLog = {
+        owner,
+        key: active.key,
+        lease: null,
+        unsubscribe: () => undefined,
+      };
+      this.#bound = failed;
+      this.#snapshot = ERROR_SNAPSHOT;
+      this.#notify();
+      return () => this.#clear(failed);
     }
-    const { client, projectId, query } = active;
-    const created = new BuildLogSession({
-      resolveAccess: () => resolveLogAccess(projectId, client),
-      query,
+
+    const bound: BoundLog = { owner, key: active.key, lease, unsubscribe: () => undefined };
+    this.#bound = bound;
+    bound.unsubscribe = lease.session.subscribe(() => {
+      if (this.#bound !== bound) return;
+      this.#snapshot = lease.session.getSnapshot();
+      this.#notify();
     });
-    created.start(input.live);
-    setSession(created);
-    return () => {
-      created.dispose();
+    this.#snapshot = lease.session.getSnapshot();
+    this.#notify();
+    return () => this.#clear(bound);
+  }
+
+  setFollow(owner: object, key: string, follow: boolean): void {
+    if (this.#bound?.owner === owner && this.#bound.key === key) {
+      this.#bound.lease?.setFollow(follow);
+    }
+  }
+
+  #clear(bound: BoundLog): void {
+    if (this.#bound !== bound) return;
+    bound.unsubscribe();
+    bound.lease?.release();
+    this.#bound = null;
+    this.#snapshot = IDLE_SNAPSHOT;
+    this.#notify();
+  }
+
+  #notify(): void {
+    for (const listener of this.#listeners) listener();
+  }
+}
+
+/** Demand-scoped projection over the account runtime's shared build-log registry. */
+export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
+  const { runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
+  const project =
+    input.projectId === null ? null : findInventoryProjectRef(inventory, input.projectId);
+  const buildServiceStackId = input.query?.buildServiceStackId;
+  const appVersionId = input.query?.appVersionId;
+  const fromIso = input.query?.fromIso;
+  const active = useMemo<ActiveLog | null>(() => {
+    if (project === null || buildServiceStackId === undefined || appVersionId === undefined) {
+      return null;
+    }
+    const query: BuildLogQuery = {
+      buildServiceStackId,
+      appVersionId,
+      ...(fromIso === undefined ? {} : { fromIso }),
     };
-    // `input.live` deliberately excluded — the effect below applies live
-    // changes to whichever session is current without recreating it.
-  }, [key, active?.client, active?.projectId]);
+    return { key: buildLogSessionKeyOf(project, query), project, query };
+  }, [appVersionId, buildServiceStackId, fromIso, project]);
+  const store = useMemo(() => new BuildLogBindingStore(), []);
 
   useEffect(() => {
-    session?.setLive(input.live);
-  }, [session, input.live]);
+    if (active === null) return;
+    return store.bind(runtime, runtime.logs, active);
+  }, [active, runtime, store]);
 
-  return useSyncExternalStore(
-    (listener) => (session === null ? () => undefined : session.subscribe(listener)),
-    () => session?.getSnapshot() ?? IDLE_SNAPSHOT,
+  useEffect(() => {
+    if (active !== null) store.setFollow(runtime, active.key, input.live);
+  }, [active, input.live, runtime, store]);
+
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    () => store.getSnapshot(runtime, active?.key ?? null),
     () => IDLE_SNAPSHOT,
   );
+  return { lines: snapshot.lines, status: snapshot.status };
 }

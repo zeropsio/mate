@@ -11,6 +11,7 @@
  */
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import * as Effect from "effect/Effect";
 
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
@@ -97,6 +98,31 @@ vi.mock("./ZeropsSessionProvider", () => ({
 vi.mock("./useZeropsFeeds", () => ({
   useZeropsTopology: () => mockTopology,
 }));
+vi.mock("./zeropsDataContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./zeropsDataContext")>();
+  return {
+    ...actual,
+    useZeropsData: () => ({
+      runtime: {
+        commands: {
+          restartService: (service: { readonly serviceId: string }) =>
+            Effect.tryPromise({
+              try: () => mockSession!.client.restartService(service.serviceId),
+              catch: (cause: unknown) => ({
+                _tag: "TestRestartError" as const,
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+            }).pipe(Effect.map((value) => ({ attempt: {} as never, value }))),
+        },
+      },
+      projectRef: (organizationId: string, projectId: string) => ({
+        kind: "project" as const,
+        organization: { kind: "organization" as const, organizationId, account: {} as never },
+        projectId,
+      }),
+    }),
+  };
+});
 vi.mock("@t3tools/client-runtime/zerops/environmentProjectRef", () => ({
   lookupEnvironmentProjectRef: async () => mockRef,
 }));

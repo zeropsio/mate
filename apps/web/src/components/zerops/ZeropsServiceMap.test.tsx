@@ -62,15 +62,17 @@ const render = (
   view: ZeropsTopologyView | undefined,
   options?: {
     readonly lifecycle?: ZeropsLifecycle;
-    readonly liveness?: "live" | "polling";
+    readonly liveness?: "live" | "recovering";
     readonly error?: string;
     readonly runningTool?: string;
     readonly mate?: ZeropsMateOnMap;
     readonly agents?: ReactNode;
+    readonly currentServiceId?: string;
   },
 ): string =>
   renderToStaticMarkup(
     <ZeropsServiceMap
+      currentServiceId={options?.currentServiceId}
       agents={options?.agents}
       error={options?.error}
       liveness={options?.liveness}
@@ -331,7 +333,10 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
   const fen: ZeropsMateOnMap = { name: "Fen", tint: "coral", face: "working" };
 
   it("says who lives in the control plane, the face wearing the conversation's state", () => {
-    const html = render(topology([service({ hostname: "app" }), zcp]), { mate: fen });
+    const html = render(topology([service({ hostname: "app" }), zcp]), {
+      mate: fen,
+      currentServiceId: zcp.serviceId,
+    });
 
     const home = html.slice(html.indexOf('data-zerops-service-row="control-plane"'));
     expect(home).toContain("data-zerops-mate-home");
@@ -345,6 +350,45 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     );
   });
 
+  it.each(["svc-zcp", "svc-probe", "missing", undefined])(
+    "attaches the current environment only to its service ID: %s",
+    (currentServiceId) => {
+      const probe = service({ hostname: "probe", type: "ubuntu/zcp@1", group: "infrastructure" });
+      const html = render(topology([zcp, probe]), {
+        mate: fen,
+        agents: <div data-test-agents="true">agents</div>,
+        ...(currentServiceId === undefined ? {} : { currentServiceId }),
+      });
+      expect(html.match(/data-zerops-service-row="control-plane"/gu)).toHaveLength(2);
+      expect(html).toContain(">zcp<");
+      expect(html).toContain(">probe<");
+      const matched = currentServiceId === zcp.serviceId || currentServiceId === probe.serviceId;
+      expect(html.match(/data-zerops-mate-home/gu) ?? []).toHaveLength(matched ? 1 : 0);
+      expect(html.match(/data-test-agents/gu) ?? []).toHaveLength(matched ? 1 : 0);
+      if (matched) {
+        const ownerStart = html.indexOf(`data-zerops-service-id="${currentServiceId}"`);
+        const owner = html.slice(ownerStart, html.indexOf("</li>", ownerStart));
+        expect(owner).toContain("data-zerops-mate-home");
+        expect(owner).toContain("data-test-agents");
+      }
+    },
+  );
+
+  it("does not label the project's core infrastructure as another control plane", () => {
+    const core = service({ hostname: "core", type: "core@1", group: "infrastructure" });
+    const html = render(topology([zcp, core]), {
+      mate: fen,
+      currentServiceId: zcp.serviceId,
+      agents: <div data-test-agents="true">agents</div>,
+    });
+    expect(html.match(/Zerops Control Plane/gu)).toHaveLength(1);
+    expect(html.match(/data-zerops-service-row="control-plane"/gu)).toHaveLength(1);
+    expect(html.match(/data-zerops-service-row="service"/gu)).toHaveLength(1);
+    expect(html.match(/data-zerops-mate-home/gu)).toHaveLength(1);
+    expect(html.match(/data-test-agents/gu)).toHaveLength(1);
+    expect(html).toContain(">core<");
+  });
+
   it("says nothing about a Mate when nobody is known to live here", () => {
     const html = render(topology([zcp]));
 
@@ -355,6 +399,7 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
   it("hangs the agents card from the control-plane card, outside its hover pop", () => {
     const html = render(topology([service({ hostname: "app" }), zcp]), {
       mate: fen,
+      currentServiceId: zcp.serviceId,
       agents: <div data-test-agents="true">agents</div>,
     });
 
@@ -372,7 +417,7 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
   });
 
   it("hangs nothing when there is no agents card", () => {
-    const html = render(topology([zcp]), { mate: fen });
+    const html = render(topology([zcp]), { mate: fen, currentServiceId: zcp.serviceId });
 
     expect(html).not.toContain("data-zerops-agent-auth-tray");
   });
@@ -519,11 +564,12 @@ describe("ZeropsServiceMap — liveness", () => {
     expect(html).toContain('data-zerops-liveness="live"');
   });
 
-  it("mentions polling quietly when the platform websocket is down", () => {
-    const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "polling" });
+  it("shows connection recovery when the platform websocket is down", () => {
+    const html = render(topology([service({ hostname: "kanbandev" })]), { liveness: "recovering" });
 
-    expect(html).toContain('data-zerops-map-liveness="polling"');
-    expect(html).toContain("reconnecting");
+    expect(html).toContain('data-zerops-map-liveness="recovering"');
+    expect(html).toContain("Connecting live updates");
+    expect(html).not.toContain("polling");
     // Quiet, not alarming: this is not the last-read-failed banner.
     expect(html).not.toContain("data-zerops-map-degraded");
   });

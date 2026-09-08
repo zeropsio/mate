@@ -44,7 +44,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import type { ProjectTopologyLiveness } from "../../zerops/projectTopologyWatcher";
+import type { ProjectTopologyLiveness } from "../../zerops/useProjectTopology";
 import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
 import { sparklineGeometry } from "./sparkline";
 
@@ -556,7 +556,7 @@ function ServiceCardBody({ row, usageRead }: { row: ZeropsServiceRow; usageRead:
   return (
     <>
       <ServiceHeader
-        aside={row.typeShort}
+        aside={row.isControlPlane ? row.service.hostname : row.typeShort}
         portLabel={row.portLabel}
         service={row.service}
         statusLabel={row.statusLabel}
@@ -635,7 +635,7 @@ function ControlPlaneRow({
 }) {
   const hangs = agents !== undefined && agents !== null;
   return (
-    <li data-zerops-service-row="control-plane">
+    <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
       <MintPanel className={hangs ? "pb-3" : undefined}>
         <ServiceCard render={<div className="px-3.5 py-2.5" />} row={row} usageRead={usageRead}>
           {mate === undefined ? null : <MateHome mate={mate} />}
@@ -667,11 +667,13 @@ function ServiceGroup({
   usageRead,
   mate,
   agents,
+  currentServiceId,
 }: {
   group: ZeropsServiceMapGroup;
   usageRead: boolean;
   mate: ZeropsMateOnMap | undefined;
   agents: ReactNode;
+  currentServiceId: string | undefined;
 }) {
   return (
     <section className="space-y-1.5" data-zerops-service-group={group.group}>
@@ -683,13 +685,11 @@ function ServiceGroup({
       </h3>
       <ul className="space-y-1.5">
         {group.rows.map((row) =>
-          // The infrastructure group is, by the client projection's own
-          // grouping rule, the zcp container and nothing else.
-          row.service.group === "infrastructure" ? (
+          row.isControlPlane ? (
             <ControlPlaneRow
-              agents={agents}
-              key={row.service.hostname}
-              mate={mate}
+              agents={row.service.serviceId === currentServiceId ? agents : undefined}
+              key={row.service.serviceId}
+              mate={row.service.serviceId === currentServiceId ? mate : undefined}
               row={row}
               usageRead={usageRead}
             />
@@ -708,16 +708,19 @@ export function ZeropsServiceMap({
   error,
   mate,
   agents,
+  currentServiceId,
 }: {
   readonly view: ZeropsServiceMapView | undefined;
   /** The platform-websocket connection's own state — `useProjectTopology`'s signal, not the view's. */
   readonly liveness?: ProjectTopologyLiveness | undefined;
-  /** The most recent `listProjectServices` read's failure, if the last one failed. */
+  /** The most recent shared service collection read's failure, if the last one failed. */
   readonly error?: string | undefined;
   /** Who lives in the control plane, when the caller knows — it is written on the control plane's card. */
   readonly mate?: ZeropsMateOnMap | undefined;
   /** The coding agents' card, which grows out of the control plane's card. Nothing when there is none to show. */
   readonly agents?: ReactNode;
+  /** Exact service of the current environment; absence never implies the first row. */
+  readonly currentServiceId?: string | undefined;
 }) {
   // No view yet — no session, no resolved project, or the first read still pending.
   if (view === undefined) {
@@ -734,11 +737,11 @@ export function ZeropsServiceMap({
           label="Live · updated just now"
           state="live"
         />
-      ) : liveness === "polling" ? (
+      ) : liveness === "recovering" ? (
         <LivenessLine
-          data-zerops-map-liveness="polling"
-          label="Live updates reconnecting · polling"
-          state="polling"
+          data-zerops-map-liveness="recovering"
+          label="Connecting live updates"
+          state="recovering"
         />
       ) : (
         <LivenessLine state="absent" />
@@ -758,6 +761,7 @@ export function ZeropsServiceMap({
         view.groups.map((group) => (
           <ServiceGroup
             agents={agents}
+            currentServiceId={currentServiceId}
             group={group}
             key={group.group}
             mate={mate}

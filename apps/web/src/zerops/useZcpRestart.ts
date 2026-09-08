@@ -1,8 +1,8 @@
 /**
  * "Restart to install" for the server-version notice: on a Zerops
  * environment, restarts the project's `zcp` service through the platform
- * with the user's own token (`ZeropsApiClient.restartService`, the same
- * `PUT /service-stack/{id}/restart` the projects page already uses). A
+ * through the account runtime's typed command facade. The adapter issues the
+ * same `PUT /service-stack/{id}/restart` the projects page uses. A
  * restart re-runs `zcp init` at boot, which installs the release zcp pins
  * (spec-mate §2, MD-15).
  *
@@ -21,10 +21,12 @@ import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/envi
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { zcpServiceIdFor } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 
 import { browserZeropsStorage } from "./storage.ts";
 import { useZeropsTopology } from "./useZeropsFeeds.ts";
-import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
+import { runZeropsCommand, useZeropsData } from "./zeropsDataContext.ts";
 
 export type ZcpRestartState = "idle" | "confirm" | "restarting" | "failed";
 
@@ -41,9 +43,9 @@ export interface ZcpRestart {
 }
 
 export function useZcpRestart(environmentId: EnvironmentId | null): ZcpRestart {
-  const session = useZeropsSessionOptional();
+  const { runtime, projectRef } = useZeropsData();
   const topology = useZeropsTopology(environmentId);
-  const [hasProjectRef, setHasProjectRef] = useState(false);
+  const [environmentProject, setEnvironmentProject] = useState<EnvironmentProjectRef | null>(null);
   const [state, setState] = useState<ZcpRestartState>("idle");
   const [error, setError] = useState<string | undefined>(undefined);
   const generationRef = useRef(0);
@@ -51,18 +53,18 @@ export function useZcpRestart(environmentId: EnvironmentId | null): ZcpRestart {
   useEffect(() => {
     generationRef.current += 1;
     const generation = generationRef.current;
-    setHasProjectRef(false);
+    setEnvironmentProject(null);
     setState("idle");
     setError(undefined);
     if (environmentId === null) return;
     void lookupEnvironmentProjectRef(browserZeropsStorage, environmentId).then((ref) => {
       if (generationRef.current !== generation) return;
-      setHasProjectRef(ref !== undefined);
+      setEnvironmentProject(ref ?? null);
     });
   }, [environmentId]);
 
   const zcpServiceId = topology === undefined ? undefined : zcpServiceIdFor(topology);
-  const available = hasProjectRef && zcpServiceId !== undefined;
+  const available = environmentProject !== null && zcpServiceId !== undefined;
 
   const request = useCallback(() => {
     setState((current) => (current === "idle" || current === "failed" ? "confirm" : current));
@@ -73,14 +75,21 @@ export function useZcpRestart(environmentId: EnvironmentId | null): ZcpRestart {
   }, []);
 
   const confirm = useCallback(() => {
-    if (zcpServiceId === undefined || session === null) return;
+    if (zcpServiceId === undefined || environmentProject === null) return;
+    const project = projectRef(environmentProject.orgId, environmentProject.projectId);
     setError(undefined);
     setState("restarting");
-    void session.client.restartService(zcpServiceId).catch((cause: unknown) => {
+    void runZeropsCommand(
+      runtime.commands.restartService({
+        kind: "service",
+        project,
+        serviceId: ZeropsServiceId.make(zcpServiceId),
+      }),
+    ).catch((cause: unknown) => {
       setState("failed");
       setError(zeropsErrorMessage(cause));
     });
-  }, [session, zcpServiceId]);
+  }, [environmentProject, projectRef, runtime.commands, zcpServiceId]);
 
   return { available, state, error, request, confirm, cancel };
 }

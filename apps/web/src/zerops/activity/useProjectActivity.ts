@@ -1,84 +1,103 @@
-/**
- * The React-facing read of one project's platform activity — a thin
- * `useSyncExternalStore` wrapper over a per-project singleton
- * {@link ProjectActivityPoller}, so every pending card in a thread shares one
- * poll instead of racing its own (§6 "one request per project per tick").
- */
-import { useCallback, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import {
+  processRecordToActivityProcess,
+  type ProjectActivityRead,
+  type RuntimeInterestDescriptor,
+} from "@t3tools/client-runtime/zerops/data";
+import { Atom } from "effect/unstable/reactivity";
+import { useMemo } from "react";
 
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import { findInventoryProjectRef, useZeropsInventory } from "../inventoryContext";
+import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
 
-import { ProjectActivityPoller, type ProjectActivitySnapshot } from "./projectActivityPoller.ts";
-
-interface PollerEntry {
-  readonly client: ZeropsApiClient;
-  readonly poller: ProjectActivityPoller;
+export interface ProjectActivitySnapshot {
+  readonly processes: ReadonlyArray<ActivityProcess> | undefined;
+  readonly atMs: number | undefined;
+  readonly unavailableReason?: string | undefined;
 }
 
-const pollersByProject = new Map<string, PollerEntry>();
+export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
+  processes: undefined,
+  atMs: undefined,
+};
 
-/**
- * Keyed on `projectId` AND the `client` instance: a re-login (or a
- * `ZeropsSessionProvider` remount) can hand out a NEW `ZeropsApiClient` for
- * the same project id, and a poller built against the old client would keep
- * polling with its stale session forever. When the client for a project
- * changes, the stale poller is disposed (stops its timer, drops its
- * listeners) before a fresh one takes its place.
- */
-export function pollerFor(projectId: string, client: ZeropsApiClient): ProjectActivityPoller {
-  const existing = pollersByProject.get(projectId);
-  if (existing !== undefined && existing.client === client) {
-    return existing.poller;
-  }
-  existing?.poller.dispose();
-  const poller = new ProjectActivityPoller({ client, projectId });
-  pollersByProject.set(projectId, { client, poller });
-  return poller;
-}
+const EMPTY_PROJECT_ACTIVITY_READ_ATOM = Atom.make<ProjectActivityRead | null>(null).pipe(
+  Atom.withLabel("zerops:project-activity-read-empty"),
+);
 
-const EMPTY_SNAPSHOT: ProjectActivitySnapshot = { processes: undefined, atMs: undefined };
-
-/**
- * Subscribes to `projectId`'s platform-activity poll. Returns the last good
- * snapshot (undefined `processes` until the first successful read) and starts
- * polling on mount, stopping when the last subscriber for that project unmounts.
- *
- * `projectId === null` or `client === null` renders nothing and subscribes to
- * nothing — the caller uses this when there is no Zerops session or no
- * resolvable project yet.
- */
-export function useProjectActivity(
-  projectId: string | null,
-  client: ZeropsApiClient | null,
+export function projectActivitySnapshotFromRead(
+  read: ProjectActivityRead,
 ): ProjectActivitySnapshot {
-  // Memoized on the identities that actually matter (`projectId`, `client`)
-  // rather than a fresh closure every render: `ProjectActivityPoller.subscribe`
-  // resets the backoff and fires an immediate poll on a 0→1 listener
-  // transition, so an unmemoized subscribe function — which `useSyncExternalStore`
-  // re-subscribes to whenever its identity changes — would unsubscribe and
-  // resubscribe (and therefore restart the poll) on every single render of
-  // every caller, however unrelated to this feed. Under a fast, dependency-free
-  // fake client this compounds into a tight render→poll→publish→render loop.
-  const subscribe = useCallback(
-    (listener: () => void) =>
-      projectId === null || client === null
-        ? () => undefined
-        : pollerFor(projectId, client).subscribe(listener),
-    [projectId, client],
+  const failed = read.observation.required.find((interest) => interest.status === "failed");
+  const access = read.observation.access;
+  const unavailableReason =
+    access.status === "expired"
+      ? "expired-session"
+      : access.status === "denied"
+        ? access.scope.kind === "project"
+          ? "forbidden"
+          : "expired-session"
+        : failed?.reason;
+  const knowledge = [...read.running.value, ...read.retainedHistory];
+  const processes = knowledge.flatMap((entry) => {
+    if (entry.knowledge !== "observed") return [];
+    const process = processRecordToActivityProcess(entry.record);
+    return process === null ? [] : [process];
+  });
+  const deduped = [...new Map(processes.map((process) => [process.id, process])).values()];
+  const observedAt = knowledge.flatMap((entry) => {
+    if (entry.knowledge !== "observed") return [];
+    const stamps = [];
+    if (entry.record.identity.knowledge === "observed")
+      stamps.push(entry.record.identity.stamp.observedAtMs);
+    if (entry.record.lifecycle.knowledge === "observed")
+      stamps.push(entry.record.lifecycle.stamp.observedAtMs);
+    if (entry.record.pipeline.knowledge === "observed")
+      stamps.push(entry.record.pipeline.stamp.observedAtMs);
+    return stamps;
+  });
+  if (read.running.query.status === "observed")
+    observedAt.push(read.running.query.stamp.observedAtMs);
+  const atMs = observedAt.length === 0 ? undefined : Math.max(...observedAt);
+  if (read.running.query.status !== "observed" && deduped.length === 0) {
+    return {
+      ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+      ...(unavailableReason ? { unavailableReason } : {}),
+    };
+  }
+  return {
+    processes: deduped,
+    atMs,
+    ...(unavailableReason ? { unavailableReason } : {}),
+  };
+}
+
+/** Demand-scoped activity/history projection. */
+export function useProjectActivity(projectId: string | null): ProjectActivitySnapshot {
+  const { runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
+  const project = projectId === null ? null : findInventoryProjectRef(inventory, projectId);
+  const activityDescriptor = useMemo<RuntimeInterestDescriptor | null>(
+    () => (project === null ? null : { kind: "project-activity", project }),
+    [project],
   );
-  const getSnapshot = useCallback(
+  const historyDescriptor = useMemo<RuntimeInterestDescriptor | null>(
     () =>
-      projectId === null || client === null
-        ? EMPTY_SNAPSHOT
-        : pollerFor(projectId, client).getSnapshot(),
-    [projectId, client],
+      project === null
+        ? null
+        : { kind: "project-process-history", project, before: null, limit: 100 },
+    [project],
   );
-  return useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    // Server-rendered (e.g. `renderToStaticMarkup` in tests): there is no poll
-    // yet, so the overlay starts as "no observation", identical to the client's
-    // first render before any poll has landed.
-    () => EMPTY_SNAPSHOT,
+  useZeropsDataInterest(activityDescriptor);
+  useZeropsDataInterest(historyDescriptor);
+  const activityAtom = useMemo(
+    () => (project === null ? EMPTY_PROJECT_ACTIVITY_READ_ATOM : runtime.reads.activity(project)),
+    [project, runtime],
+  );
+  const read = useAtomValue(activityAtom);
+  return useMemo(
+    () => (read === null ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT : projectActivitySnapshotFromRead(read)),
+    [read],
   );
 }

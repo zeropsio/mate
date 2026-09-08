@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsOrganization, ZeropsProject } from "@t3tools/client-runtime/zerops";
+import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 
 import {
   exitZeropsNewProjectWait,
@@ -17,6 +18,17 @@ const ORGANIZATION: ZeropsOrganization = {
 };
 
 describe("zeropsNewProjectScopeStepVisible", () => {
+  it("creates through the typed runtime command", () => {
+    expect(wizardSource).toContain("runtime.commands.createProjectWithMate(");
+    expect(wizardSource).not.toContain("client.createProjectWithZeropsMate(");
+  });
+
+  it("loads organization locations through the demand-scoped resource hook", () => {
+    expect(wizardSource).toContain("useZeropsResource(locationRequest)");
+    expect(wizardSource).toContain('kind: "organization-locations"');
+    expect(wizardSource).not.toContain(".listClientLocations(");
+  });
+
   it("is hidden once a single-membership account auto-resolves its organization", () => {
     expect(
       zeropsNewProjectScopeStepVisible({
@@ -114,6 +126,29 @@ describe("submitZeropsNewProject", () => {
     });
 
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("keeps an uncertain runtime command from being submitted again", async () => {
+    const onUncertain = vi.fn();
+
+    await submitZeropsNewProject({
+      createProject: vi.fn().mockRejectedValue({
+        _tag: "ZeropsDataAdapterError",
+        kind: "uncertain",
+        message: "The project may already exist.",
+      }),
+      clientId: "client-1",
+      name: "zerops-mate",
+      locationId: null,
+      groupId: "7k2m9qx4vb1c",
+      botName: "Nia",
+      agents: [],
+      onUncertain,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(onUncertain).toHaveBeenCalledTimes(1);
   });
 
   it("carries the chosen location through to the create call", async () => {

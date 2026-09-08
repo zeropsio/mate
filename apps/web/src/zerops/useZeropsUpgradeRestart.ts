@@ -1,19 +1,19 @@
 import { mateServerCompatibility } from "@t3tools/client-runtime/zerops/serverCompatibility";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { useEffect, useRef, useState } from "react";
-import {
-  deriveZeropsCandidates,
-  normalizeOrigin,
-  zeropsMateBaseUrl,
-} from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   accountActionsAllowed,
   captureAccountLifetime,
   onAccountLifetimeClose,
 } from "./accountLifetime";
-import { useZeropsInventory } from "./inventoryContext";
-import { useZeropsSession } from "./sessionContext";
-import { refreshZeropsCandidates } from "./candidatesRefresh";
+import {
+  findInventoryProjectRef,
+  inventoryCandidates,
+  useZeropsInventory,
+} from "./inventoryContext";
+import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { restartAndVerifyMate } from "./upgradeRestart";
 
 export interface UpgradeRecovery {
@@ -30,7 +30,7 @@ export function useZeropsUpgradeRestart(
   origin: string | null,
   reconnect: () => void,
 ): UpgradeRecovery | null {
-  const { client } = useZeropsSession();
+  const { runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const [state, setState] = useState<UpgradeRecovery["state"]>("idle");
   const [serverVersion, setServerVersion] = useState<string | undefined>();
@@ -56,20 +56,11 @@ export function useZeropsUpgradeRestart(
   const candidate =
     origin === null
       ? undefined
-      : inventory.projects
-          .flatMap((project) => {
-            const services = inventory.services.get(project.id);
-            return deriveZeropsCandidates(
-              project,
-              services?.status === "resolved" ? services.services : null,
-              new Map(),
-            );
-          })
-          .find(
-            (entry) =>
-              entry.containerOrigin &&
-              normalizeOrigin(entry.containerOrigin) === normalizeOrigin(origin),
-          );
+      : inventoryCandidates(inventory).find(
+          (entry) =>
+            entry.containerOrigin &&
+            normalizeOrigin(entry.containerOrigin) === normalizeOrigin(origin),
+        );
   if (!origin) return null;
   return {
     state,
@@ -92,10 +83,21 @@ export function useZeropsUpgradeRestart(
       active.current = controller;
       const alive = captureAccountLifetime();
       const isCurrent = () => alive() && !controller.signal.aborted;
+      const project = findInventoryProjectRef(inventory, candidate.project.id);
+      if (project === null) {
+        setError("Project access could not be verified. Refresh your projects before restarting.");
+        setState("failed");
+        return;
+      }
+      const service = {
+        kind: "service" as const,
+        project,
+        serviceId: ZeropsServiceId.make(candidate.service.id),
+      };
       setState("waiting");
       setError(null);
       void restartAndVerifyMate({
-        restart: () => client.restartService(candidate.service!.id),
+        restart: () => runZeropsCommand(runtime.commands.restartService(service)),
         isCurrent,
         wait: () =>
           new Promise<void>((resolve) => {
@@ -138,7 +140,6 @@ export function useZeropsUpgradeRestart(
       })
         .then((result) => {
           if (!isCurrent()) return;
-          refreshZeropsCandidates();
           if (result === "compatible") {
             reconnectRef.current();
             return;

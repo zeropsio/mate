@@ -3,16 +3,26 @@
 let accountId: string | null = null;
 let generation = 0;
 let actionsAllowed = false;
-export function setAccountActionsAllowed(allowed: boolean): void {
+let actionsDeadlineMs = 0;
+export function setAccountActionsAllowed(
+  allowed: boolean,
+  deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
+): void {
   actionsAllowed = allowed;
+  actionsDeadlineMs = deadlineMs;
 }
 export function accountActionsAllowed(): boolean {
-  return accountId !== null && actionsAllowed;
+  return accountId !== null && actionsAllowed && Date.now() < actionsDeadlineMs;
 }
 const onClose = new Set<() => void>();
 
 export function currentAccountId(): string | null {
   return accountId;
+}
+
+/** Monotonic renderer-local fence for account-scoped async work. */
+export function currentAccountEpoch(): number {
+  return generation;
 }
 
 export function accountStorageKey(key: string): string | null {
@@ -23,13 +33,15 @@ export function openAccountLifetime(userId: string): void {
   if (accountId === userId) return;
   closeAccountLifetime();
   accountId = userId;
-  actionsAllowed = true;
+  actionsAllowed = false;
+  actionsDeadlineMs = 0;
   for (const open of onOpen) open();
 }
 
 export function closeAccountLifetime(): void {
   generation += 1;
   actionsAllowed = false;
+  actionsDeadlineMs = 0;
   // Writers flush while their original account still owns the keys. Every
   // cleanup must run even if a storage policy rejects one writer.
   for (const close of [...onClose].toReversed()) {

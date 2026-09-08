@@ -7,12 +7,12 @@
  * for a panel that does not apply here.
  *
  * `useZeropsTopology` is a PURE atom read, deliberately: it must never import
- * `useProjectTopology`, the watcher, candidate loading, or `api.ts` — the
+ * `useProjectTopology`, platform data transport, candidate loading, or `api.ts` — the
  * design-system rule a protected root's whole module graph must satisfy
  * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
  * and every file in this one is reachable from `ZeropsServiceMap.tsx`,
  * `ZeropsLifecycleStrip.tsx`, `ZeropsOperationCard.tsx`,
- * `ZeropsQuickActions.tsx`). `useProjectTopology` is the WRITER for the atom
+ * `ZeropsQuickActions.tsx`). `useProjectTopology` projects the shared account read into the atom
  * this reads (`../state/zerops.ts`'s `projectTopologyViewAtom`); it runs only
  * in non-protected hosts (`ChatView.tsx`, `ZeropsPanel.tsx`), which is also
  * where a caller that needs liveness or the last-read error reads it

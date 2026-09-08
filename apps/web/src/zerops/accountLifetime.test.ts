@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  accountActionsAllowed,
   accountStorageKey,
   captureAccountLifetime,
   closeAccountLifetime,
   currentAccountId,
   onAccountLifetimeClose,
   openAccountLifetime,
+  setAccountActionsAllowed,
 } from "./accountLifetime";
 
 afterEach(() => closeAccountLifetime());
@@ -46,6 +48,21 @@ describe("verified account lifetime", () => {
       removeWriter();
       removeBroken();
       log.mockRestore();
+    }
+  });
+
+  it("closes write admission at the independent verification deadline", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(100);
+      openAccountLifetime("user-a");
+      expect(accountActionsAllowed()).toBe(false);
+      setAccountActionsAllowed(true, 200);
+      expect(accountActionsAllowed()).toBe(true);
+      vi.setSystemTime(200);
+      expect(accountActionsAllowed()).toBe(false);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

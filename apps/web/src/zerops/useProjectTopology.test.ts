@@ -1,85 +1,111 @@
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "@effect/vitest";
+import { processRecordToActivityProcess } from "@t3tools/client-runtime/zerops/data";
+import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import type {
+  ManagedZeropsDataRuntime,
+  ProjectTopologyRead,
+  UsageRead,
+  ProcessRecord,
+  HistoryReadView,
+} from "@t3tools/client-runtime/zerops/data";
+import { describe, expect, it } from "vite-plus/test";
 
-import { watcherFor } from "./useProjectTopology.ts";
+import { makeHistoryStore, makeUsageStore } from "./useProjectTopology";
 
-function fakeClient(): ZeropsApiClient & { readonly listProjectServicesCalls: number } {
-  let calls = 0;
-  return {
-    get listProjectServicesCalls() {
-      return calls;
+describe("central topology binding", () => {
+  it("preserves process status, service attribution and pipeline fields", () => {
+    const record = {
+      ref: { processId: "process-1", project: { projectId: "project-1" } },
+      identity: {
+        knowledge: "observed",
+        fields: {
+          actionName: "stack.deploy",
+          createdAt: "2026-09-07T10:00:00.000Z",
+          serviceIds: ["service-1"],
+        },
+      },
+      lifecycle: {
+        knowledge: "observed",
+        fields: { status: "RUNNING", startedAt: "2026-09-07T10:00:01.000Z" },
+      },
+      pipeline: {
+        knowledge: "observed",
+        fields: {
+          appVersion: {
+            id: "version-1",
+            status: "BUILDING",
+            build: {
+              serviceStackId: "builder-1",
+              pipelineStart: "2026-09-07T10:00:02.000Z",
+            },
+          },
+        },
+      },
+    } as unknown as ProcessRecord;
+
+    expect(processRecordToActivityProcess(record)).toMatchObject({
+      id: "process-1",
+      projectId: "project-1",
+      serviceStackIds: ["service-1"],
+      status: "RUNNING",
+      appVersion: {
+        id: "version-1",
+        status: "BUILDING",
+        build: {
+          serviceStackId: "builder-1",
+          pipelineStart: "2026-09-07T10:00:02.000Z",
+        },
+      },
+    });
+  });
+});
+
+it("reconciles metric changes between topology render and subscription", () => {
+  const registry = AtomRegistry.make();
+  const metric = Atom.make({ value: null } as UsageRead);
+  const initial = registry.get(metric);
+  const runtime = { reads: { usage: () => metric } } as unknown as ManagedZeropsDataRuntime;
+  const topology = {
+    services: { value: [{ knowledge: "observed", record: { ref: { serviceId: "a" } } }] },
+  } as unknown as ProjectTopologyRead;
+  const store = makeUsageStore(registry, runtime, topology);
+  const newer = {
+    ...initial,
+    value: {
+      containers: 1,
+      cpu: { used: 2, limit: 4 },
+      memoryGb: { used: 1, limit: 2 },
+      diskGb: { used: 1, limit: 10 },
     },
-    fetchProject: async (projectId: string) => ({
-      id: projectId,
-      name: projectId,
-      status: "ACTIVE",
-    }),
-    listProjectServices: async () => {
-      calls += 1;
-      return [];
-    },
-    fetchProjectProcesses: async () => ({ list: [] }),
-    exchangeWebSocketToken: async () => ({ webSocketToken: "ws-token" }),
-    subscribeProjectSearch: async () => ({ items: [] }),
-    fetchOrganizations: async () => [],
-    listAccessibleClientProjects: async () => [],
-  } as unknown as ZeropsApiClient & { readonly listProjectServicesCalls: number };
-}
+  };
+  registry.set(metric, newer);
+  let notices = 0;
+  const release = store.subscribe(() => notices++);
+  expect(store.getSnapshot().get("a")).toBe(newer);
+  expect(notices).toBe(1);
+  release();
+  registry.dispose();
+});
 
-const ENV_A = "env-watcher-a" as EnvironmentId;
-const ENV_B = "env-watcher-b" as EnvironmentId;
-
-describe("watcherFor — one watcher per (environment, client) pair", () => {
-  it("two subscribers share one watcher and one reader", () => {
-    const client = fakeClient();
-    const first = watcherFor(ENV_A, client, null);
-    const second = watcherFor(ENV_A, client, null);
-
-    expect(second).toBe(first);
+it("subscribes to history arriving after topology and releases the listener", () => {
+  const registry = AtomRegistry.make();
+  const series = Atom.make({ series: { status: "unresolved" } } as HistoryReadView);
+  const runtime = { reads: { history: () => series } } as unknown as ManagedZeropsDataRuntime;
+  const topology = {
+    services: { value: [{ knowledge: "observed", record: { ref: { serviceId: "app" } } }] },
+  } as unknown as ProjectTopologyRead;
+  const store = makeHistoryStore(registry, runtime, topology, {
+    timeGroupBy: "1h",
+    limit: 24,
+    timeZone: "UTC",
   });
-
-  it("keeps watchers for different environments independent", () => {
-    const client = fakeClient();
-    const a = watcherFor(ENV_B, client, null);
-    const b = watcherFor("env-watcher-c" as EnvironmentId, client, null);
-
-    expect(a).not.toBe(b);
-  });
-
-  /**
-   * A re-login (or a `ZeropsSessionProvider` remount) hands out a NEW
-   * `ZeropsApiClient` for the same environment id. Keying only on
-   * `environmentId` would keep reading with the OLD (possibly now-signed-out)
-   * client's session forever — mirrors `activity/useProjectActivity.ts`'s
-   * `pollerFor`.
-   */
-  it("builds a fresh watcher when the client for an environment changes", () => {
-    const a = fakeClient();
-    const b = fakeClient();
-    const first = watcherFor("env-watcher-relogin" as EnvironmentId, a, null);
-    const second = watcherFor("env-watcher-relogin" as EnvironmentId, b, null);
-
-    expect(second).not.toBe(first);
-  });
-
-  it("disposing the stale watcher when its client is swapped out does not throw", async () => {
-    vi.useFakeTimers();
-    try {
-      const a = fakeClient();
-      const b = fakeClient();
-      const environmentId = "env-watcher-dispose" as EnvironmentId;
-
-      const stale = watcherFor(environmentId, a, null);
-      const unsubscribe = stale.subscribe(() => undefined);
-      await vi.advanceTimersByTimeAsync(0);
-
-      // Swapping the client for this environment disposes `stale`; a caller
-      // that has not yet unsubscribed from it must not crash on the next tick.
-      expect(() => watcherFor(environmentId, b, null)).not.toThrow();
-      unsubscribe();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+  const newer = { series: { status: "observed" } } as HistoryReadView;
+  registry.set(series, newer);
+  let notices = 0;
+  const release = store.subscribe(() => notices++);
+  expect(store.getSnapshot().get("app")).toBe(newer);
+  expect(notices).toBe(1);
+  release();
+  registry.set(series, { ...newer });
+  expect(notices).toBe(1);
+  registry.dispose();
 });

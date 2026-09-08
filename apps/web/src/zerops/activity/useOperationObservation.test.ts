@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { Observation } from "@t3tools/client-runtime/zerops/activity/observe";
 
-import type { ProjectActivitySnapshot } from "./projectActivityPoller.ts";
+import type { ProjectActivitySnapshot } from "./useProjectActivity.ts";
 import {
   OPERATION_OBSERVATION_CEILING_MS,
   deriveOperationObservation,

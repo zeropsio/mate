@@ -31,7 +31,7 @@ export interface ZeropsTopologyProject {
 
 /**
  * What a service holds right now, summed over its containers — the platform's
- * current-stats read (`searchCurrentStats`). `limit` is the allocation the
+ * current-stats read (`POST /current-stats/group-by-search`). `limit` is the allocation the
  * autoscaler has granted, `used` what the containers are actually consuming;
  * both in the unit the field says.
  */
@@ -161,6 +161,11 @@ const withoutOsPrefix = (type: string): string => {
 /** Categories the Zerops API reports for a managed data service (POC finding). */
 const MANAGED_DATA_CATEGORIES: ReadonlySet<string> = new Set(["STANDARD", "OBJECT_STORAGE"]);
 
+/** A control plane is identified by its service type, never its editable hostname. */
+export function isZcpServiceType(type: string): boolean {
+  return withoutOsPrefix(type.toLowerCase()).startsWith(ZCP_TYPE_PREFIX);
+}
+
 /**
  * Which panel of the service map a service belongs in.
  *
@@ -169,7 +174,7 @@ const MANAGED_DATA_CATEGORIES: ReadonlySet<string> = new Set(["STANDARD", "OBJEC
  */
 function zeropsTopologyServiceGroup(service: ZeropsService): ZeropsTopologyGroup {
   const typeVersion = service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "";
-  if (withoutOsPrefix(typeVersion.toLowerCase()).startsWith(ZCP_TYPE_PREFIX)) {
+  if (isZcpServiceType(typeVersion)) {
     return "infrastructure";
   }
   const category = service.serviceStackTypeInfo?.serviceStackTypeCategory;
@@ -181,9 +186,8 @@ function zeropsTopologyServiceGroup(service: ZeropsService): ZeropsTopologyGroup
 
 /**
  * Platform service statuses that are settled. Everything else is treated as
- * transient — a status the platform adds later costs one extra poll, whereas
- * the inverse default would leave a service frozen mid-transition with
- * nothing to un-freeze it.
+ * transient. This keeps a status added by the platform from appearing settled
+ * until its semantics are added here.
  */
 const SETTLED_STATUSES: ReadonlySet<string> = new Set([
   "ACTIVE",
@@ -408,8 +412,6 @@ export function projectTopology(
  */
 export function zcpServiceIdFor(view: ZeropsTopologyView): string | undefined {
   return view.services.find(
-    (service) =>
-      service.group === "infrastructure" &&
-      withoutOsPrefix(service.type.toLowerCase()).startsWith(ZCP_TYPE_PREFIX),
+    (service) => service.group === "infrastructure" && isZcpServiceType(service.type),
   )?.serviceId;
 }

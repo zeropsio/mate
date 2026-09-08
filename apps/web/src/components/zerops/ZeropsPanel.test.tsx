@@ -63,7 +63,13 @@ vi.mock("../../zerops/useAgentLoginCancel", () => ({
 const mateState = vi.hoisted(() => ({
   mates: new Map<
     string,
-    { name: string; tint: string; project: string | undefined; connected: boolean }
+    {
+      name: string;
+      tint: string;
+      project: string | undefined;
+      connected: boolean;
+      serviceId?: string;
+    }
   >(),
   faces: new Map<string, { face: string }>(),
 }));
@@ -327,8 +333,48 @@ describe("ZeropsPanel agent authorization ownership", () => {
 });
 
 describe("ZeropsPanel — the Mate's home", () => {
+  it.each(["svc-zcp", "svc-probe", "missing", undefined])(
+    "keeps authorization on the current service, or outside the map when unresolved: %s",
+    (serviceId) => {
+      const first = VIEW_WITH_ZCP.services[0]!;
+      feedState.topology = resolved({
+        ...VIEW,
+        services: [first, { ...first, serviceId: "svc-probe", hostname: "probe" }],
+      });
+      mateState.mates.set(THREAD_REF.environmentId, {
+        name: "Fen",
+        tint: "coral",
+        project: "Acme",
+        connected: true,
+        ...(serviceId === undefined ? {} : { serviceId }),
+      });
+      const html = renderToStaticMarkup(
+        <ZeropsPanel agentAuthCard={LOGIN_IN_PROGRESS} threadRef={THREAD_REF} />,
+      );
+      expect(html.match(/data-zerops-agent-auth-card/gu)).toHaveLength(1);
+      const matched = serviceId === "svc-zcp" || serviceId === "svc-probe";
+      expect(html.match(/data-zerops-mate-home/gu) ?? []).toHaveLength(matched ? 1 : 0);
+      expect(html.includes("Coding agents")).toBe(!matched);
+      for (const id of ["svc-zcp", "svc-probe"]) {
+        const start = html.indexOf(`data-zerops-service-id="${id}"`);
+        const row = html.slice(start, html.indexOf("</li>", start));
+        expect(row.includes("data-zerops-agent-auth-card")).toBe(id === serviceId);
+        expect(row.includes("data-zerops-mate-home")).toBe(id === serviceId);
+      }
+      buttonState.handlers.get("Cancel")?.();
+      expect(actions.cancel).toHaveBeenCalledExactlyOnceWith("codex");
+    },
+  );
+
   it("hangs the agents card from the control-plane card when the project has one", () => {
     feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+      serviceId: "svc-zcp",
+    });
     const html = renderToStaticMarkup(
       <ZeropsPanel agentAuthCard={AGENT_AUTH} threadRef={THREAD_REF} />,
     );
@@ -361,6 +407,7 @@ describe("ZeropsPanel — the Mate's home", () => {
       tint: "coral",
       project: "Acme",
       connected: true,
+      serviceId: "svc-zcp",
     });
     mateState.faces.set(THREAD_REF.environmentId, { face: "needs" });
     const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
@@ -378,6 +425,7 @@ describe("ZeropsPanel — the Mate's home", () => {
       tint: "sky",
       project: undefined,
       connected: true,
+      serviceId: "svc-zcp",
     });
     const idle = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
     expect(idle).toContain('data-mate-face-state="idle"');
@@ -398,6 +446,7 @@ describe("ZeropsPanel — the Mate's home", () => {
       tint: "coral",
       project: "Acme",
       connected: false,
+      serviceId: "svc-zcp",
     });
     mateState.faces.set(THREAD_REF.environmentId, { face: "working" });
     const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);

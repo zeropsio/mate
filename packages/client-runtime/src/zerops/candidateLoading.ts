@@ -1,158 +1,78 @@
-/**
- * The fetching shell behind the Zerops project picker, shared by every
- * client: list projects across one or more organizations (partial failures
- * tolerated, never dropping what did load), resolve each active project's
- * services with bounded concurrency, then derive candidates.
- *
- * Which organizations to look across — one active scope, or every
- * organization the account belongs to — is the caller's call, carried in
- * `organizationIds`; this module has no notion of either policy. Likewise
- * `connectedOrigins` arrives pre-resolved — how a client tracks a
- * registered, authenticated environment is its own concern (`useEnvironments`
- * on web, `connectedZeropsOrigins` on mobile).
- *
- * Pure over an injected client, so the network never has to run to prove the
- * concurrency cap or the partial-failure bookkeeping.
- */
+/** Pure candidate projection over the central platform-data read model. */
 
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import type { ZeropsProject, ZeropsService } from "./api.ts";
+import type { ZeropsService } from "./api.ts";
+import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "./data/dto.ts";
 import { deriveZeropsCandidates, type ZeropsCandidate } from "./candidates.ts";
+import type {
+  CollectionRead,
+  EntityKnowledge,
+  ProjectRecord,
+  ServiceRecord,
+} from "./data/types.ts";
 
-/** The two client reads this shell needs; the real `ZeropsApiClient` satisfies it. */
-export interface ZeropsCandidateClient {
-  listAccessibleClientProjects(organizationId: string): Promise<ReadonlyArray<ZeropsProject>>;
-  listProjectServices(projectId: string): Promise<ReadonlyArray<ZeropsService>>;
-}
-
-export interface ZeropsCandidateLoadFailure {
-  readonly organizationId: string;
-  readonly cause: unknown;
-}
-
-export type ZeropsCandidateServiceOutcome =
-  | { readonly status: "resolved"; readonly services: ReadonlyArray<ZeropsService> }
-  | { readonly status: "failed" };
-
-export interface LoadZeropsCandidatesResult {
-  readonly projects: ReadonlyArray<ZeropsProject>;
+export interface ZeropsCandidateProjection {
+  /** Preserve collection readiness, coverage and access; an empty value alone is ambiguous. */
+  readonly projects: CollectionRead<ProjectRecord>;
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly failures: ReadonlyArray<ZeropsCandidateLoadFailure>;
-}
-
-export interface LoadZeropsCandidatesOptions {
-  readonly organizationIds: ReadonlyArray<string>;
-  readonly connectedOrigins: ReadonlyMap<string, EnvironmentId>;
-  /** In-flight `listProjectServices` calls at once. */
-  readonly concurrency?: number;
-  readonly isCancelled?: () => boolean;
-  /** Fires once, as soon as every organization's projects have settled. */
-  readonly onProjectsLoaded?: (projects: ReadonlyArray<ZeropsProject>) => void;
-  /** Fires per active project, as its services settle, for progressive rendering. */
-  readonly onServiceOutcome?: (
-    project: ZeropsProject,
-    outcome: ZeropsCandidateServiceOutcome,
-  ) => void;
+  /** Projects whose required identity or lifecycle facets are not observed yet. */
+  readonly unresolvedProjects: ReadonlyArray<EntityKnowledge<ProjectRecord>>;
+  /** Active projects whose service membership or required service facets are incomplete. */
+  readonly unresolvedServiceProjects: ReadonlyArray<ProjectRecord>;
 }
 
 /**
- * Loads every organization's projects in parallel, keeping the projects from
- * the organizations that answered even when another organization's read
- * rejects.
+ * Pure candidate projection over central runtime reads. It performs no platform
+ * I/O: unresolved membership or facets remain explicit so clients can render
+ * progress without starting a second inventory owner.
  */
-export async function loadOrganizationProjects(
-  organizationIds: ReadonlyArray<string>,
-  load: (organizationId: string) => Promise<ReadonlyArray<ZeropsProject>>,
-): Promise<{
-  readonly projects: ReadonlyArray<ZeropsProject>;
-  readonly failures: ReadonlyArray<ZeropsCandidateLoadFailure>;
-}> {
-  const outcomes = await Promise.allSettled(
-    organizationIds.map(async (organizationId) => ({
-      organizationId,
-      projects: await load(organizationId),
-    })),
-  );
-  const projects: ZeropsProject[] = [];
-  const failures: ZeropsCandidateLoadFailure[] = [];
-  outcomes.forEach((outcome, index) => {
-    if (outcome.status === "fulfilled") {
-      projects.push(...outcome.value.projects);
-      return;
-    }
-    failures.push({ organizationId: organizationIds[index] ?? "unknown", cause: outcome.reason });
-  });
-  return { projects, failures };
-}
-
-/** Runs `run` over `items`, never more than `limit` calls in flight at once. */
-export async function resolveWithConcurrency<T>(
-  items: ReadonlyArray<T>,
-  limit: number,
-  isCancelled: () => boolean,
-  run: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      if (isCancelled()) return;
-      const index = cursor;
-      cursor += 1;
-      const item = items[index];
-      if (item === undefined) return;
-      await run(item);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-}
-
-export async function loadZeropsCandidates(
-  client: ZeropsCandidateClient,
-  options: LoadZeropsCandidatesOptions,
-): Promise<LoadZeropsCandidatesResult> {
-  const concurrency = options.concurrency ?? 4;
-  const isCancelled = options.isCancelled ?? (() => false);
-
-  const { projects, failures } = await loadOrganizationProjects(
-    options.organizationIds,
-    (organizationId) => client.listAccessibleClientProjects(organizationId),
-  );
-  if (isCancelled()) return { projects, candidates: [], failures };
-  options.onProjectsLoaded?.(projects);
-
-  const services = new Map<string, ZeropsCandidateServiceOutcome>();
-  await resolveWithConcurrency(
-    projects.filter((project) => project.status === "ACTIVE"),
-    concurrency,
-    isCancelled,
-    async (project) => {
-      const outcome: ZeropsCandidateServiceOutcome = await client
-        .listProjectServices(project.id)
-        .then((resolved) => ({ status: "resolved" as const, services: resolved }))
-        .catch(() => ({ status: "failed" as const }));
-      if (isCancelled()) return;
-      services.set(project.id, outcome);
-      options.onServiceOutcome?.(project, outcome);
-    },
-  );
-  if (isCancelled()) return { projects, candidates: [], failures };
-
+export function projectZeropsCandidates(
+  projects: CollectionRead<ProjectRecord>,
+  servicesOf: (project: ProjectRecord) => CollectionRead<ServiceRecord>,
+  connectedOrigins: ReadonlyMap<string, EnvironmentId>,
+): ZeropsCandidateProjection {
   const candidates: ZeropsCandidate[] = [];
-  for (const project of projects) {
-    if (project.status !== "ACTIVE") {
-      candidates.push(...deriveZeropsCandidates(project, null, options.connectedOrigins));
+  const unresolvedProjects: Array<EntityKnowledge<ProjectRecord>> = [];
+  const unresolvedServiceProjects: ProjectRecord[] = [];
+
+  for (const projectKnowledge of projects.value) {
+    if (projectKnowledge.knowledge !== "observed") {
+      unresolvedProjects.push(projectKnowledge);
       continue;
     }
-    const outcome = services.get(project.id);
+    const project = projectRecordToZeropsProject(projectKnowledge.record);
+    if (project === null) {
+      unresolvedProjects.push(projectKnowledge);
+      continue;
+    }
+    if (project.status !== "ACTIVE") {
+      candidates.push(...deriveZeropsCandidates(project, [], connectedOrigins));
+      continue;
+    }
+
+    const services = servicesOf(projectKnowledge.record);
+    if (services.query.status !== "observed") {
+      unresolvedServiceProjects.push(projectKnowledge.record);
+      candidates.push(...deriveZeropsCandidates(project, null, connectedOrigins));
+      continue;
+    }
+    const decoded: ZeropsService[] = [];
+    let incomplete = false;
+    for (const serviceKnowledge of services.value) {
+      if (serviceKnowledge.knowledge !== "observed") {
+        incomplete = true;
+        continue;
+      }
+      const service = serviceRecordToZeropsService(serviceKnowledge.record);
+      if (service === null) incomplete = true;
+      else decoded.push(service);
+    }
+    if (incomplete) unresolvedServiceProjects.push(projectKnowledge.record);
     candidates.push(
-      ...deriveZeropsCandidates(
-        project,
-        outcome?.status === "resolved" ? outcome.services : null,
-        options.connectedOrigins,
-      ),
+      ...deriveZeropsCandidates(project, incomplete ? null : decoded, connectedOrigins),
     );
   }
 
-  return { projects, candidates, failures };
+  return { projects, candidates, unresolvedProjects, unresolvedServiceProjects };
 }

@@ -5,7 +5,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import type { ZeropsMateIdentity } from "../zerops/mateIdentities";
 import { readCachedZeropsMates } from "../zerops/mateIdentitiesCache";
-import type { ProjectTopologySnapshot } from "../zerops/projectTopologyWatcher";
+import type { ProjectTopologySnapshot } from "../zerops/useProjectTopology";
 
 export const zeropsFeeds = createZeropsFeedAtoms(connectionAtomRuntime);
 

@@ -123,6 +123,20 @@ export interface ZeropsProject {
   readonly description?: string;
 }
 
+function isCompleteCommandProject(value: unknown): value is ZeropsProject {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    value.id.trim().length > 0 &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "status" in value &&
+    typeof value.status === "string"
+  );
+}
+
 /**
  * `POST /project/{id}/service-stack/import` — the services it created, each
  * with the processes bringing it up. Shape measured against the live API
@@ -301,7 +315,7 @@ export interface ZeropsServiceEnvVar {
  * `/mate/` location. Spelled here once because it is a contract with zcp, not
  * a value this client is free to choose.
  */
-export const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
+const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
 
 /**
  * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
@@ -531,13 +545,33 @@ async function apiErrorFromResponse(response: Response): Promise<ZeropsApiError>
 export interface ZeropsApiClientOptions {
   readonly baseUrl?: string;
   readonly fetch?: FetchImplementation;
+  /** Epoch milliseconds; injectable so absolute write admission is deterministic. */
+  readonly now?: () => number;
   /** Fired whenever the held session changes — persist it, or clear on null. */
   readonly onSessionChange?: (session: ZeropsSession | null) => Promise<void> | void;
 }
 
+export interface ZeropsDataHttpRequest {
+  readonly path: string;
+  readonly method?: "GET" | "POST" | "PUT" | "DELETE";
+  readonly body?: unknown;
+  readonly operationKind: "read" | "project-write";
+  readonly signal: AbortSignal;
+  readonly beforeWrite?: () => Promise<void>;
+  /** Background data failures are scoped and never sign the account out. */
+  readonly background: boolean;
+}
+
 interface RequestOptions {
+  /**
+   * Explicit transport intent. POST is also used for Zerops reads, so method
+   * and URL shape cannot safely decide access admission or uncertainty.
+   */
+  readonly operationKind?: "read" | "account-write" | "project-write";
   readonly authenticated?: boolean;
   readonly retryAfterRefresh?: boolean;
+  /** Rechecked immediately before every project-mutating fetch, including retries. */
+  readonly beforeProjectWrite?: () => Promise<void>;
   /**
    * Whether a 401 that survives a refresh attempt (or a refresh that itself
    * fails) signs the account out via `onSessionChange(null)`. Defaults to
@@ -549,6 +583,38 @@ interface RequestOptions {
    * out from under whatever else is using it.
    */
   readonly clearSessionOnUnauthorized?: boolean;
+}
+
+function isProjectWriteAdmissionError(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "_tag" in cause &&
+    cause._tag === "ZeropsCommandAdmissionError"
+  );
+}
+
+function waitForPromiseOrAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | null | undefined,
+): Promise<T> {
+  if (signal == null) return promise;
+  if (signal.aborted)
+    return Promise.reject(new DOMException("The request was aborted.", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("The request was aborted.", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (cause: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(cause);
+      },
+    );
+  });
 }
 
 export interface ListProjectsOptions {
@@ -602,12 +668,20 @@ async function readProjectPages<T extends { readonly id: string }>(
  * so the caller never has to think about the Authorization header.
  */
 export class ZeropsApiClient {
-  #writesAllowed = true;
-  setWritesAllowed(allowed: boolean): void {
-    this.#writesAllowed = allowed;
+  #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
+  /**
+   * Installs the verified account write window. The request path checks this
+   * absolute deadline itself, so browser timer throttling cannot extend it.
+   */
+  setWritesAllowed(
+    allowed: boolean,
+    deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
+  ): void {
+    this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
   }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
+  readonly #now: () => number;
   readonly #onSessionChange: (session: ZeropsSession | null) => Promise<void> | void;
   #session: ZeropsSession | null = null;
   #generation = 0;
@@ -621,6 +695,7 @@ export class ZeropsApiClient {
     // against Window, so storing the bare function and calling it as
     // `this.#fetch(...)` throws "Illegal invocation".
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.#now = options.now ?? (() => performance.timeOrigin + performance.now());
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
   }
 
@@ -630,6 +705,23 @@ export class ZeropsApiClient {
 
   get baseUrl(): string {
     return this.#baseUrl;
+  }
+
+  /** Authenticated transport seam for the central data adapter. */
+  requestData(input: ZeropsDataHttpRequest): Promise<unknown> {
+    return this.#request(
+      input.path,
+      {
+        method: input.method ?? "GET",
+        ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+        signal: input.signal,
+      },
+      {
+        operationKind: input.operationKind,
+        ...(input.beforeWrite === undefined ? {} : { beforeProjectWrite: input.beforeWrite }),
+        clearSessionOnUnauthorized: !input.background,
+      },
+    );
   }
 
   /** Adopts a session read back from storage without re-notifying the owner. */
@@ -696,7 +788,7 @@ export class ZeropsApiClient {
     const response = await this.#request<ZeropsRegistrationResponse>(
       "/registration",
       { method: "POST", body: JSON.stringify(buildZeropsRegistrationBody(input)) },
-      { authenticated: false, retryAfterRefresh: false },
+      { authenticated: false, retryAfterRefresh: false, operationKind: "account-write" },
     );
     if (!isZeropsSession(response.auth)) {
       throw new ZeropsApiError("Zerops returned an invalid sign-up session.", "unexpected");
@@ -709,7 +801,7 @@ export class ZeropsApiClient {
     const response = await this.#request<ZeropsLoginResponse>(
       "/auth/login",
       { method: "POST", body: JSON.stringify({ email: email.trim(), password }) },
-      { authenticated: false, retryAfterRefresh: false },
+      { authenticated: false, retryAfterRefresh: false, operationKind: "account-write" },
     );
     if (!isZeropsSession(response.auth)) {
       throw new ZeropsApiError("Zerops returned an invalid sign-in session.", "unexpected");
@@ -733,7 +825,7 @@ export class ZeropsApiClient {
     }>(
       "/2fa/totp/login",
       { method: "POST", body: JSON.stringify({ token: code.trim() }) },
-      { retryAfterRefresh: false },
+      { retryAfterRefresh: false, operationKind: "account-write" },
     );
     const session = response.newRecoveryToken
       ? { ...response.auth, newRecoveryToken: response.newRecoveryToken }
@@ -772,10 +864,6 @@ export class ZeropsApiClient {
 
   fetchUser(): Promise<ZeropsUser> {
     return this.#request<ZeropsUser>("/user/info");
-  }
-
-  async fetchOrganizations(): Promise<ReadonlyArray<ZeropsOrganization>> {
-    return zeropsClientsFromUser(await this.fetchUser());
   }
 
   /**
@@ -824,14 +912,18 @@ export class ZeropsApiClient {
       const response = await this.#request<{
         readonly items?: ReadonlyArray<ZeropsProject>;
         readonly totalHits?: number;
-      }>("/project/search", {
-        method: "POST",
-        body: JSON.stringify({
-          limit,
-          ...(offset ? { offset } : {}),
-          search: [{ name: "clientId", operator: "eq", value: clientId }],
-        }),
-      });
+      }>(
+        "/project/search",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            limit,
+            ...(offset ? { offset } : {}),
+            search: [{ name: "clientId", operator: "eq", value: clientId }],
+          }),
+        },
+        { operationKind: "read" },
+      );
       return { items: response.items, total: response.totalHits };
     });
     if (!options.statuses?.length) return projects;
@@ -858,19 +950,29 @@ export class ZeropsApiClient {
       /** The group's display name, mirrored into `mate:name:` (`groups.ts`). */
       readonly label?: string;
     },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId);
+    const project = await this.fetchProject(projectId, signal);
     this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(`/project/${projectId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        name: project.name,
-        description: project.description ?? "",
-        tagList: withZeropsGroupTags(project.tagList, next),
-      }),
-    });
+    return this.#request<ZeropsProject>(
+      `/project/${projectId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description ?? "",
+          tagList: withZeropsGroupTags(project.tagList, next),
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -879,8 +981,10 @@ export class ZeropsApiClient {
    * 2026-09-05). Never a recipe as returned: `recipeFromProjectExport` is the
    * only thing that may read it, and it strips the secrets first.
    */
-  async exportProject(projectId: string): Promise<string> {
-    const body = await this.#request<{ readonly yaml?: string }>(`/project/${projectId}/export`);
+  async exportProject(projectId: string, signal?: AbortSignal): Promise<string> {
+    const body = await this.#request<{ readonly yaml?: string }>(`/project/${projectId}/export`, {
+      signal: signal ?? null,
+    });
     return body.yaml ?? "";
   }
 
@@ -893,20 +997,33 @@ export class ZeropsApiClient {
    * also writes the `mate` marker, so "Set up Mate" is one write and a
    * rename heals a project the marker never reached.
    */
-  async nameProjectAgent(projectId: string, name: string): Promise<ZeropsProject> {
+  async nameProjectAgent(
+    projectId: string,
+    name: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId);
+    const project = await this.fetchProject(projectId, signal);
     const named = withZeropsBotTag(project.tagList, name);
     this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(`/project/${projectId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        name: project.name,
-        description: project.description ?? "",
-        tagList: name.trim().length === 0 ? named : withZeropsMateTag(named),
-      }),
-    });
+    return this.#request<ZeropsProject>(
+      `/project/${projectId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description ?? "",
+          tagList: name.trim().length === 0 ? named : withZeropsMateTag(named),
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -925,11 +1042,21 @@ export class ZeropsApiClient {
   importServicesIntoProject(
     projectId: string,
     servicesYaml: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsServiceImportResult> {
-    return this.#request<ZeropsServiceImportResult>(`/project/${projectId}/service-stack/import`, {
-      method: "POST",
-      body: JSON.stringify({ yaml: servicesYaml }),
-    });
+    return this.#request<ZeropsServiceImportResult>(
+      `/project/${projectId}/service-stack/import`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({ yaml: servicesYaml }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -944,50 +1071,78 @@ export class ZeropsApiClient {
    *
    * No `zcp` container: a tool is not an environment and has no agent.
    */
-  async createToolProject(input: {
-    readonly clientId: string;
-    readonly kind: ZeropsToolKind;
-    readonly name: string;
-    readonly location?: string;
-  }): Promise<{ readonly project: ZeropsProject }> {
+  async createToolProject(
+    input: {
+      readonly clientId: string;
+      readonly kind: ZeropsToolKind;
+      readonly name: string;
+      readonly location?: string;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly project: ZeropsProject }> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
-      method: "POST",
-      body: JSON.stringify(
-        buildCreateProjectBody({
-          clientId: input.clientId,
-          name: input.name,
-          ...(input.location ? { location: input.location } : {}),
-          tagList: [formatToolTag(input.kind)],
-        }),
-      ),
-    });
-
-    const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
-    if (region === null) {
+    const projectResponse = await this.#request<unknown>(
+      `/client/${input.clientId}/project`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify(
+          buildCreateProjectBody({
+            clientId: input.clientId,
+            name: input.name,
+            ...(input.location ? { location: input.location } : {}),
+            tagList: [formatToolTag(input.kind)],
+          }),
+        ),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    if (!isCompleteCommandProject(projectResponse)) {
       throw new ZeropsApiError(
-        "Zerops did not say which region the project was created in.",
-        "unexpected",
+        "Zerops may have created the tool project, but its response was incomplete. Check your projects before trying again.",
+        "uncertain",
       );
     }
+    const project = projectResponse;
 
-    this.#assertGeneration(generation);
-    await this.importServicesIntoProject(project.id, buildGiteaImportYaml(region));
+    try {
+      const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
+      if (region === null) throw new Error("The created project had no usable region.");
+      this.#assertGeneration(generation);
+      await this.importServicesIntoProject(
+        project.id,
+        buildGiteaImportYaml(region),
+        signal,
+        beforeWrite,
+      );
+    } catch {
+      throw new ZeropsApiError(
+        `Project "${project.name}" was created, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
+        "uncertain",
+      );
+    }
     return { project };
   }
 
   /** Locations the selected organization may place a new project in. */
-  async listClientLocations(clientId: string): Promise<ReadonlyArray<ZeropsLocation>> {
+  async listClientLocations(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsLocation>> {
     const response = await this.#request<{
       readonly locationList?: ReadonlyArray<ZeropsLocation>;
-    }>(`/client/${clientId}/settings`);
+    }>(`/client/${clientId}/settings`, { signal: signal ?? null });
     return response.locationList ?? [];
   }
 
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
-  fetchProject(projectId: string): Promise<ZeropsProject> {
-    return this.#request<ZeropsProject>(`/project/${projectId}`);
+  fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
+    return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
   }
 
   /**
@@ -1002,106 +1157,18 @@ export class ZeropsApiClient {
    * client's own `fetch` until it does, which is why this method needs no
    * flag and no branch.
    */
-  async readRecipeGroup(groupId: string): Promise<ZeropsGroupRecord | undefined> {
+  async readRecipeGroup(
+    groupId: string,
+    signal?: AbortSignal,
+  ): Promise<ZeropsGroupRecord | undefined> {
     try {
-      return await this.#request<ZeropsGroupRecord>(`${RECIPE_GROUP_PATH}/${groupId}`);
+      return await this.#request<ZeropsGroupRecord>(`${RECIPE_GROUP_PATH}/${groupId}`, {
+        signal: signal ?? null,
+      });
     } catch (cause) {
       if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
       throw cause;
     }
-  }
-
-  async listProjectServices(projectId: string): Promise<ReadonlyArray<ZeropsService>> {
-    return readProjectPages(500, async (offset) => {
-      const response = await this.#request<{
-        readonly list?: ReadonlyArray<ZeropsService>;
-        readonly totalCount?: number;
-      }>(
-        `/project/${projectId}/service-stack${offset ? `?limit=500&offset=${offset}` : "?limit=500"}`,
-      );
-      return { items: response.list, total: response.totalCount };
-    });
-  }
-
-  /**
-   * `POST /current-stats/group-by-search` — every container's live
-   * allocation in a project, the read behind the Zerops dashboard's own
-   * "1 container · Cores · RAM · Disk" strip. The `clientId` filter is
-   * required (a search without it answers `400 clientId: not defined`);
-   * grouping by container is what lets a caller count containers per stack.
-   * Measured 2026-09-06 (`verified.md`).
-   */
-  async searchCurrentStats(
-    clientId: string,
-    projectId: string,
-  ): Promise<ReadonlyArray<ZeropsCurrentStat>> {
-    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsCurrentStat> }>(
-      "/current-stats/group-by-search",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          search: [
-            { name: "clientId", operator: "eq", value: clientId },
-            { name: "projectId", operator: "eq", value: projectId },
-          ],
-          groupBy: "containerId",
-        }),
-      },
-    );
-    return response.items ?? [];
-  }
-
-  /**
-   * `POST /stats-history/group-by-search` — the allocation and use of every
-   * stack in a project over a window of buckets, the read behind the
-   * dashboard card's graph. Same `clientId` rule as the current read.
-   * Measured 2026-09-06 (`verified.md`).
-   */
-  async searchStatsHistory(
-    clientId: string,
-    projectId: string,
-    window: ZeropsStatHistoryWindow,
-  ): Promise<ReadonlyArray<ZeropsStatHistoryItem>> {
-    const response = await this.#request<{
-      readonly items?: ReadonlyArray<ZeropsStatHistoryItem>;
-    }>("/stats-history/group-by-search", {
-      method: "POST",
-      body: JSON.stringify({
-        search: [
-          { name: "clientId", operator: "eq", value: clientId },
-          { name: "projectId", operator: "eq", value: projectId },
-        ],
-        groupBy: "serviceStackId",
-        timeGroupBy: window.timeGroupBy,
-        limit: window.limit,
-        timeZone: window.timeZone,
-      }),
-    });
-    return response.items ?? [];
-  }
-
-  fetchService(serviceId: string): Promise<ZeropsService> {
-    return this.#request<ZeropsService>(`/service-stack/${serviceId}`);
-  }
-
-  /**
-   * `GET /project/{id}/process` — the direct, lag-free process read the
-   * platform-activity overlay polls (zcp's `GetProjectProcessesDirect`). The
-   * raw document is returned as-is; the caller decodes it with
-   * `zerops/activity/dto` `readProjectProcesses`, which degrades field-by-field
-   * rather than throwing on a shape this client does not expect.
-   *
-   * `clearSessionOnUnauthorized: false` — this is a background poll behind an
-   * advisory overlay, not a user-initiated action: its own 401 says nothing
-   * about whether the account's session is still good elsewhere, so it must
-   * never sign the whole UI out from under someone reading something else. A
-   * 401 that survives the refresh attempt still rejects; the caller (the
-   * activity poller) maps that to "unavailable for this project".
-   */
-  async fetchProjectProcesses(projectId: string): Promise<unknown> {
-    return this.#request<unknown>(`/project/${projectId}/process`, undefined, {
-      clearSessionOnUnauthorized: false,
-    });
   }
 
   /**
@@ -1111,15 +1178,18 @@ export class ZeropsApiClient {
    * method-prefixed form); the prefix is stripped here so no caller has to
    * know about it. Never logged: it is a bearer credential in URL form.
    *
-   * `clearSessionOnUnauthorized: false` — mirrors `fetchProjectProcesses`:
-   * this backs a build-log read behind an advisory overlay, not a
-   * user-initiated action, so its own 401 must never sign the whole UI out.
+   * `clearSessionOnUnauthorized: false` — this backs a build-log read behind
+   * an advisory overlay, not a user-initiated action, so its own 401 must
+   * never sign the whole UI out.
    */
-  async fetchProjectLogAccess(projectId: string): Promise<{ readonly url: string }> {
+  async fetchProjectLogAccess(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<{ readonly url: string }> {
     const response = await this.#request<{ readonly url: string }>(
       `/project/${projectId}/log`,
-      undefined,
-      { clearSessionOnUnauthorized: false },
+      { signal: signal ?? null },
+      { clearSessionOnUnauthorized: false, operationKind: "read" },
     );
     return { url: response.url.replace(/^GET\s+/, "") };
   }
@@ -1136,12 +1206,12 @@ export class ZeropsApiClient {
    * that retry re-sends the exact `init.body` string it was given, so it
    * would resend the STALE token in the body under the FRESH one in the
    * `Authorization` header. Building the body fresh per attempt is the fix.
-   * `clearSessionOnUnauthorized: false` on every attempt, matching
-   * `fetchProjectProcesses`: this backs a background reconnect
-   * (`platformWatch.ts`), not a user-initiated action, so its own 401 must
-   * never sign the whole UI out from under something else using the session.
+   * `clearSessionOnUnauthorized: false` on every attempt: this backs a
+   * background reconnect (`platformWatch.ts`), not a user-initiated action,
+   * so its own 401 must never sign the whole UI out from under something
+   * else using the session.
    */
-  async exchangeWebSocketToken(): Promise<{ readonly webSocketToken: string }> {
+  async exchangeWebSocketToken(signal?: AbortSignal): Promise<{ readonly webSocketToken: string }> {
     const attempt = (): Promise<{ readonly webSocketToken: string }> => {
       const session = this.#session;
       if (!session) {
@@ -1153,8 +1223,16 @@ export class ZeropsApiClient {
       }
       return this.#request<{ readonly webSocketToken: string }>(
         "/web-socket/login",
-        { method: "POST", body: JSON.stringify({ token: session.accessToken }) },
-        { retryAfterRefresh: false, clearSessionOnUnauthorized: false },
+        {
+          method: "POST",
+          body: JSON.stringify({ token: session.accessToken }),
+          ...(signal === undefined ? {} : { signal }),
+        },
+        {
+          retryAfterRefresh: false,
+          clearSessionOnUnauthorized: false,
+          operationKind: "read",
+        },
       );
     };
 
@@ -1168,81 +1246,9 @@ export class ZeropsApiClient {
       ) {
         throw cause;
       }
-      await this.#refreshSession(false);
+      await waitForPromiseOrAbort(this.#refreshSession(false), signal);
       return attempt();
     }
-  }
-
-  /**
-   * `POST /{entity}/search` with the fields that turn a plain search into a
-   * push subscription routed to an already-open platform-websocket receiver:
-   * `receiverId` names that socket, `subscriptionName` and `wsOutputType`
-   * choose membership pushes (`"list"`, current `items` returned) or
-   * status-change pushes (`"update"`, `disableOutput: true`, no items
-   * returned). Verified protocol: `docs/internals/zerops/verified.md`.
-   *
-   * A `process` subscription additionally excludes the L7 load-balancer's own
-   * housekeeping processes — `frontend-legacy` `process-base.effect.ts`'s
-   * `listSubscribe`/`updateSubscribe` calls, ported verbatim. Their
-   * `clientId`-only search is this client's account scope; passing
-   * `projectId` narrows it to one project, which is what a single
-   * environment's service map wants. Only the LIST subscription narrows
-   * further to `status in
-   * [RUNNING, PENDING]` (also ported verbatim): the UPDATE subscription must
-   * see every status transition, FINISHED/FAILED/CANCELED included, or a
-   * process settling would never push a signal. A `service-stack`
-   * subscription carries no such extra terms — `service-stack-base.effect.ts`
-   * passes none either.
-   *
-   * `clearSessionOnUnauthorized: false`, matching `exchangeWebSocketToken`:
-   * a background reconnect's own 401 must never sign the whole UI out.
-   */
-  async subscribeProjectSearch(
-    entity: "service-stack" | "process",
-    options: {
-      readonly orgId: string;
-      /**
-       * Narrows the subscription to one project. Omit it for account scope —
-       * the shape `frontend-legacy` itself uses — so one socket carries every
-       * project the account can see.
-       */
-      readonly projectId?: string;
-      readonly receiverId: string;
-      readonly mode: "list" | "update";
-    },
-  ): Promise<unknown> {
-    const subscriptionEntity = entity === "service-stack" ? "ServiceStack" : "Process";
-    const search: Array<{
-      readonly name: string;
-      readonly operator: string;
-      readonly value: unknown;
-    }> = [{ name: "clientId", operator: "eq", value: options.orgId }];
-    // Absent means "every project", so the term is dropped rather than sent
-    // with an empty value, which the platform would read as a real filter.
-    if (options.projectId !== undefined) {
-      search.push({ name: "projectId", operator: "eq", value: options.projectId });
-    }
-    if (entity === "process") {
-      if (options.mode === "list") {
-        search.push({ name: "status", operator: "in", value: ["RUNNING", "PENDING"] });
-      }
-      search.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
-    }
-    return this.#request(
-      `/${entity}/search`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          search,
-          sort: [],
-          subscriptionName: `${subscriptionEntity}__${options.mode}-subscription`,
-          receiverId: options.receiverId,
-          wsOutputType: options.mode === "list" ? "listStream" : "updateStream",
-          ...(options.mode === "update" ? { disableOutput: true } : {}),
-        }),
-      },
-      { clearSessionOnUnauthorized: false },
-    );
   }
 
   /**
@@ -1263,23 +1269,35 @@ export class ZeropsApiClient {
    * (`createEnvironment.ts`), and because the caller owns the tags: the group
    * name mirror is one of them, and this client must not decide it.
    */
-  async createProject(input: {
-    readonly clientId: string;
-    readonly name: string;
-    readonly tagList: ReadonlyArray<string>;
-    readonly location?: string;
-  }): Promise<ZeropsProject> {
-    return this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
-      method: "POST",
-      body: JSON.stringify(
-        buildCreateProjectBody({
-          clientId: input.clientId,
-          name: input.name,
-          tagList: input.tagList,
-          ...(input.location ? { location: input.location } : {}),
-        }),
-      ),
-    });
+  async createProject(
+    input: {
+      readonly clientId: string;
+      readonly name: string;
+      readonly tagList: ReadonlyArray<string>;
+      readonly location?: string;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    return this.#request<ZeropsProject>(
+      `/client/${input.clientId}/project`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify(
+          buildCreateProjectBody({
+            clientId: input.clientId,
+            name: input.name,
+            tagList: input.tagList,
+            ...(input.location ? { location: input.location } : {}),
+          }),
+        ),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -1288,68 +1306,22 @@ export class ZeropsApiClient {
    *
    * Returns the service name it chose, which is what the caller polls for.
    */
-  async importDevelopmentContainer(input: {
-    readonly projectId: string;
-    readonly existingServiceNames?: ReadonlyArray<string>;
-    readonly zcpVersion?: string;
-    readonly agents?: ReadonlyArray<ZeropsAgentType>;
-  }): Promise<{ readonly serviceName: string }> {
+  async importDevelopmentContainer(
+    input: {
+      readonly projectId: string;
+      readonly existingServiceNames?: ReadonlyArray<string>;
+      readonly zcpVersion?: string;
+      readonly agents?: ReadonlyArray<ZeropsAgentType>;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly serviceName: string }> {
     const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
-    await this.#request(`/project/${input.projectId}/first-class-recipe/development-container`, {
-      method: "PUT",
-      body: JSON.stringify(
-        buildDevelopmentContainerImportBody({
-          serviceImportYaml: buildZcpServiceImportYaml({
-            serviceName,
-            vscodePassword: generateVscodePassword(),
-            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-            ...(input.agents ? { agents: input.agents } : {}),
-          }),
-        }),
-      ),
-    });
-    return { serviceName };
-  }
-
-  async createProjectWithZeropsMate(input: {
-    readonly clientId: string;
-    readonly name: string;
-    readonly existingServiceNames?: ReadonlyArray<string>;
-    readonly location?: string;
-    readonly zcpVersion?: string;
-    readonly agents?: ReadonlyArray<ZeropsAgentType>;
-    /** The group this environment joins, and what it is for (`groups.ts`). */
-    readonly group?: {
-      readonly groupId: string;
-      readonly role?: ZeropsEnvironmentRole;
-      /** The group's display name, mirrored into `mate:name:`. */
-      readonly label?: string;
-    };
-    /** The agent's name, written at birth so its menu row is somebody. */
-    readonly botName?: string;
-  }): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.#request<ZeropsProject>(`/client/${input.clientId}/project`, {
-      method: "POST",
-      body: JSON.stringify(
-        buildCreateProjectBody({
-          clientId: input.clientId,
-          name: input.name,
-          ...(input.location ? { location: input.location } : {}),
-          // Born a Mate, in its project, with its name: the whole identity
-          // goes on before the container does, so a creation that fails
-          // halfway still leaves a project that says what it was meant to be.
-          tagList: taggedProjectAtBirth(input),
-        }),
-      ),
-    });
-
-    const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
-    this.#assertGeneration(generation);
-    try {
-      await this.#request(`/project/${project.id}/first-class-recipe/development-container`, {
+    await this.#request(
+      `/project/${input.projectId}/first-class-recipe/development-container`,
+      {
         method: "PUT",
+        signal: signal ?? null,
         body: JSON.stringify(
           buildDevelopmentContainerImportBody({
             serviceImportYaml: buildZcpServiceImportYaml({
@@ -1360,9 +1332,93 @@ export class ZeropsApiClient {
             }),
           }),
         ),
-      });
-    } catch (cause) {
-      if (generation !== this.#generation) throw cause;
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    return { serviceName };
+  }
+
+  async createProjectWithZeropsMate(
+    input: {
+      readonly clientId: string;
+      readonly name: string;
+      readonly existingServiceNames?: ReadonlyArray<string>;
+      readonly location?: string;
+      readonly zcpVersion?: string;
+      readonly agents?: ReadonlyArray<ZeropsAgentType>;
+      /** The group this environment joins, and what it is for (`groups.ts`). */
+      readonly group?: {
+        readonly groupId: string;
+        readonly role?: ZeropsEnvironmentRole;
+        /** The group's display name, mirrored into `mate:name:`. */
+        readonly label?: string;
+      };
+      /** The agent's name, written at birth so its menu row is somebody. */
+      readonly botName?: string;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const projectResponse = await this.#request<unknown>(
+      `/client/${input.clientId}/project`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify(
+          buildCreateProjectBody({
+            clientId: input.clientId,
+            name: input.name,
+            ...(input.location ? { location: input.location } : {}),
+            // Born a Mate, in its project, with its name: the whole identity
+            // goes on before the container does, so a creation that fails
+            // halfway still leaves a project that says what it was meant to be.
+            tagList: taggedProjectAtBirth(input),
+          }),
+        ),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    if (!isCompleteCommandProject(projectResponse)) {
+      throw new ZeropsApiError(
+        "Zerops may have created the project, but its response was incomplete. Check your projects before trying again.",
+        "uncertain",
+      );
+    }
+    const project = projectResponse;
+
+    const serviceName = nextZcpServiceName(input.existingServiceNames ?? []);
+    try {
+      this.#assertGeneration(generation);
+      await this.#request(
+        `/project/${project.id}/first-class-recipe/development-container`,
+        {
+          method: "PUT",
+          signal: signal ?? null,
+          body: JSON.stringify(
+            buildDevelopmentContainerImportBody({
+              serviceImportYaml: buildZcpServiceImportYaml({
+                serviceName,
+                vscodePassword: generateVscodePassword(),
+                ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+                ...(input.agents ? { agents: input.agents } : {}),
+              }),
+            }),
+          ),
+        },
+        {
+          operationKind: "project-write",
+          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        },
+      );
+    } catch {
       throw new ZeropsApiError(
         `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`,
         "uncertain",
@@ -1386,11 +1442,20 @@ export class ZeropsApiClient {
    *
    * `recipeProjectImportYaml` composes the document.
    */
-  async importProject(clientId: string, yaml: string): Promise<{ readonly projectId: string }> {
-    return this.#request<{ readonly projectId: string }>(`/client/${clientId}/project/import`, {
-      method: "POST",
-      body: JSON.stringify({ yaml }),
-    });
+  async importProject(
+    clientId: string,
+    yaml: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{ readonly projectId: string }> {
+    return this.#request<{ readonly projectId: string }>(
+      `/client/${clientId}/project/import`,
+      { method: "POST", body: JSON.stringify({ yaml }), signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -1401,9 +1466,13 @@ export class ZeropsApiClient {
    * `/list` (measured 2026-09-06). `groupReach.ts` picks a Mate's own token
    * out of this.
    */
-  async listIntegrationTokens(clientId: string): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
+  async listIntegrationTokens(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
     const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsIntegrationToken> }>(
       `/client/${clientId}/integration-token/list?limit=100`,
+      { signal: signal ?? null },
     );
     return body.list ?? [];
   }
@@ -1421,23 +1490,35 @@ export class ZeropsApiClient {
    * The whole body is sent because the platform replaces the record: omitting
    * a field is not "leave it alone", it is "set it to nothing".
    */
-  async setIntegrationTokenProjects(input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly name: string;
-    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-  }): Promise<void> {
-    await this.#request(`/client/${input.clientId}/integration-token/${input.tokenId}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        name: input.name,
-        roleCode: "NO_ACCESS",
-        canCreateProjects: false,
-        canViewFinances: false,
-        canEditFinances: false,
-        projects: input.projects,
-      }),
-    });
+  async setIntegrationTokenProjects(
+    input: {
+      readonly clientId: string;
+      readonly tokenId: string;
+      readonly name: string;
+      readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/client/${input.clientId}/integration-token/${input.tokenId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: input.name,
+          roleCode: "NO_ACCESS",
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          projects: input.projects,
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -1445,14 +1526,29 @@ export class ZeropsApiClient {
    * container a restart re-runs the platform recipe's install step, which
    * picks up the current zcp release.
    */
-  async restartService(serviceId: string): Promise<void> {
-    await this.#request(`/service-stack/${serviceId}/restart`, { method: "PUT" });
+  async restartService(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/service-stack/${serviceId}/restart`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /** `GET /service-stack/{id}/env` — the service's own env records. */
-  async #serviceEnv(serviceId: string): Promise<ReadonlyArray<ZeropsServiceEnvVar>> {
+  async #serviceEnv(
+    serviceId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsServiceEnvVar>> {
     const body = await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
       `/service-stack/${serviceId}/env`,
+      { signal: signal ?? null },
     );
     return body.items ?? [];
   }
@@ -1465,8 +1561,11 @@ export class ZeropsApiClient {
    * although the platform redacts their values there is no reason for the
    * shape to travel. Only the derived agent list leaves.
    */
-  async readAuthorizedAgents(serviceId: string): Promise<ReadonlyArray<ZeropsAgentType>> {
-    return agentsFromOAuthFlags(await this.#serviceEnv(serviceId));
+  async readAuthorizedAgents(
+    serviceId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsAgentType>> {
+    return agentsFromOAuthFlags(await this.#serviceEnv(serviceId, signal));
   }
 
   /**
@@ -1478,18 +1577,41 @@ export class ZeropsApiClient {
    * cloned from dev comes up unpublished whatever its recipe said, and answers
    * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
    */
-  async enableSubdomainAccess(serviceId: string): Promise<void> {
-    await this.#request(`/service-stack/${serviceId}/enable-subdomain-access`, { method: "PUT" });
+  async enableSubdomainAccess(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/service-stack/${serviceId}/enable-subdomain-access`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
-  async #createMateFlag(serviceId: string): Promise<void> {
-    await this.#request(`/service-stack/${serviceId}/user-data`, {
-      method: "POST",
-      // `sensitive` is required on every service userData write — the
-      // platform rejects a body without it as "field is required".
-      body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
-    });
+  async #createMateFlag(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/service-stack/${serviceId}/user-data`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        // `sensitive` is required on every service userData write — the
+        // platform rejects a body without it as "field is required".
+        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**
@@ -1519,31 +1641,42 @@ export class ZeropsApiClient {
    * one read-back; a miss there gets exactly one more create attempt, never
    * an unbounded retry loop, before the container restarts either way.
    */
-  async enableZeropsMate(serviceId: string): Promise<void> {
+  async enableZeropsMate(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
     const generation = this.#generation;
-    const current = (await this.#serviceEnv(serviceId)).find(
+    const current = (await this.#serviceEnv(serviceId, signal)).find(
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
 
     if (!current || !readsAsEnabled(current.content)) {
       if (current) {
         this.#assertGeneration(generation);
-        await this.#request(`/user-data/${current.id}`, { method: "DELETE" });
+        await this.#request(
+          `/user-data/${current.id}`,
+          { method: "DELETE", signal: signal ?? null },
+          {
+            operationKind: "project-write",
+            ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+          },
+        );
       }
       this.#assertGeneration(generation);
-      await this.#createMateFlag(serviceId);
+      await this.#createMateFlag(serviceId, signal, beforeWrite);
 
-      const after = (await this.#serviceEnv(serviceId)).find(
+      const after = (await this.#serviceEnv(serviceId, signal)).find(
         (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
       );
       if (!after || !readsAsEnabled(after.content)) {
         this.#assertGeneration(generation);
-        await this.#createMateFlag(serviceId);
+        await this.#createMateFlag(serviceId, signal, beforeWrite);
       }
     }
 
     this.#assertGeneration(generation);
-    await this.restartService(serviceId);
+    await this.restartService(serviceId, signal, beforeWrite);
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {
@@ -1629,28 +1762,21 @@ export class ZeropsApiClient {
     options: RequestOptions = {},
   ): Promise<T> {
     const method = init.method ?? "GET";
-    const mutatesProject =
-      method !== "GET" &&
-      !path.endsWith("/search") &&
-      !path.endsWith("/websocket-token") &&
-      !path.startsWith("/auth/");
-    if (
-      !this.#writesAllowed &&
-      method !== "GET" &&
-      !path.endsWith("/search") &&
-      !path.endsWith("/websocket-token")
-    ) {
-      throw new ZeropsApiError(
-        "Project access could not be verified. Refresh your projects before making changes.",
-        "unexpected",
-      );
-    }
+    const operationKind = options.operationKind ?? (method === "GET" ? "read" : "project-write");
+    const mutatesProject = operationKind === "project-write";
     const generation = this.#generation;
     const authenticated = options.authenticated ?? true;
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
     const clearSessionOnUnauthorized = options.clearSessionOnUnauthorized ?? true;
 
-    const run = () => {
+    const run = async () => {
+      if (mutatesProject) await options.beforeProjectWrite?.();
+      if (mutatesProject && this.#now() >= this.#writesAllowedUntilMs) {
+        throw new ZeropsApiError(
+          "Project access could not be verified. Refresh your projects before making changes.",
+          "unexpected",
+        );
+      }
       const session = this.#session;
       return this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}${path}`, {
         ...init,
@@ -1671,7 +1797,10 @@ export class ZeropsApiClient {
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
         if (session?.refreshToken) {
-          await this.#refreshSession(clearSessionOnUnauthorized);
+          await waitForPromiseOrAbort(
+            this.#refreshSession(clearSessionOnUnauthorized),
+            init.signal,
+          );
           response = await run();
           this.#assertGeneration(generation);
         }
@@ -1679,6 +1808,7 @@ export class ZeropsApiClient {
       }
     } catch (cause) {
       if (cause instanceof ZeropsApiError) throw cause;
+      if (isProjectWriteAdmissionError(cause)) throw cause;
       if (mutatesProject)
         throw new ZeropsApiError(
           "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",

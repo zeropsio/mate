@@ -8,12 +8,26 @@ const readSource = (relativePath: string) =>
   NodeFS.readFileSync(new URL(relativePath, mobileRoot), "utf8");
 
 describe("mobile Zerops integration", () => {
-  it("directs users to hosted Mate without mounting the dormant native runtime", () => {
+  it("directs users to hosted Mate with an inactive data boundary", () => {
     const app = readSource("src/App.tsx");
     expect(app).toContain('Linking.openURL("https://mate.zerops.io")');
+    expect(app).toContain("<ZeropsDataProvider account={null}>");
+    expect(app.match(/<ZeropsDataProvider/g)).toHaveLength(1);
     expect(app).not.toContain("ZeropsSessionProvider");
     expect(app).not.toContain("CloudAuthProvider");
     expect(app).not.toContain('from "./Stack"');
+  });
+
+  it("uses the central runtime projection without retaining a mobile inventory fetch owner", () => {
+    const candidates = readSource("src/features/zerops/useZeropsCandidates.ts");
+
+    expect(candidates).toContain("projectZeropsCandidates");
+    expect(candidates).toContain("organization-inventory");
+    expect(candidates).toContain("reads.projectsOf");
+    expect(candidates).toContain("reads.servicesOf");
+    expect(candidates).not.toContain("runtime.stateAtom");
+    expect(candidates).not.toContain("loadZeropsCandidates");
+    expect(candidates).not.toContain("resolveWithConcurrency");
   });
 
   it("retains the dormant native connection source for a future account lifecycle implementation", () => {

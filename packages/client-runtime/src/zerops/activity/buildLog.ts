@@ -24,7 +24,7 @@
  * share ids, so ordering by `at` then `id` after merge (`mergeBuildLogLines`)
  * is correct for both. zcp's own field-name reading confirms `message`,
  * not only `content` (`internal/platform/logfetcher.go` `logAPIItem`) —
- * `readBuildLogItems` reads either, for both the HTTP body and a stream
+ * `decodeBuildLogItems` reads either, for both the HTTP body and a stream
  * frame (identical top-level `{items:[…]}` shape).
  */
 
@@ -96,6 +96,23 @@ export function withStreamFrom(wsUrl: string, lineId: string): string {
   return url.toString();
 }
 
+/**
+ * Builds the bounded page immediately before an already retained line. The
+ * backend accepts line ids as cursors; `till` may overlap the retained edge,
+ * so callers must still deduplicate by id.
+ */
+export function buildOlderLogUrl(
+  access: { readonly url: string },
+  query: BuildLogQuery,
+  beforeLineId: string,
+  limit: number = DEFAULT_LIMIT,
+): string {
+  const { http } = buildLogUrls(access, query, limit);
+  const url = new URL(http);
+  url.searchParams.set("till", beforeLineId);
+  return url.toString();
+}
+
 export interface BuildLogLine {
   readonly id: string;
   readonly at: string;
@@ -137,15 +154,30 @@ function readLine(entry: unknown): BuildLogLine | undefined {
   return { id, at, text, severity: readSeverity(entry.severity) };
 }
 
-/** Reads `{items:[{id,timestamp,content|message,severity,…}]}` — total, degrades per item. */
-export function readBuildLogItems(body: unknown): ReadonlyArray<BuildLogLine> {
+export interface BuildLogDecodeResult {
+  readonly lines: ReadonlyArray<BuildLogLine>;
+  /** Rows rejected because their required id or timestamp was absent. */
+  readonly rejectedItems: number;
+  /** The response was not the documented `{ items: [...] }` envelope. */
+  readonly malformedEnvelope: boolean;
+}
+
+/** Decodes a page/frame while retaining enough evidence to expose a gap. */
+export function decodeBuildLogItems(body: unknown): BuildLogDecodeResult {
   if (!isRecord(body) || !Array.isArray(body.items)) {
-    return [];
+    return { lines: [], rejectedItems: 0, malformedEnvelope: true };
   }
-  return body.items.flatMap((entry) => {
+  const lines: BuildLogLine[] = [];
+  let rejectedItems = 0;
+  for (const entry of body.items) {
     const line = readLine(entry);
-    return line === undefined ? [] : [line];
-  });
+    if (line === undefined) {
+      rejectedItems += 1;
+    } else {
+      lines.push(line);
+    }
+  }
+  return { lines, rejectedItems, malformedEnvelope: false };
 }
 
 const DEFAULT_CAP = 2_000;
@@ -173,4 +205,85 @@ export function mergeBuildLogLines(
   }
   const merged = [...byId.values()].sort(compareLines);
   return merged.length > cap ? merged.slice(merged.length - cap) : merged;
+}
+
+export interface BuildLogRetentionBounds {
+  readonly maxLines: number;
+  readonly maxBytes: number;
+}
+
+export interface BuildLogWindow {
+  readonly lines: ReadonlyArray<BuildLogLine>;
+  readonly bytes: number;
+  readonly droppedLines: number;
+  readonly droppedBytes: number;
+  readonly droppedOlder: boolean;
+  readonly droppedNewer: boolean;
+}
+
+/** Approximate retained payload bytes using the exact UTF-8 size of public fields. */
+export function buildLogLineBytes(line: BuildLogLine): number {
+  return new TextEncoder().encode(`${line.id}\0${line.at}\0${line.text}`).byteLength + 8;
+}
+
+/**
+ * Deduplicates and applies both line and byte bounds. Tail/follow ingestion
+ * retains newest lines; loading an older page retains the oldest available
+ * side. Any discarded payload is returned so the session can expose the gap.
+ */
+export function mergeBoundedBuildLogLines(
+  existing: ReadonlyArray<BuildLogLine>,
+  incoming: ReadonlyArray<BuildLogLine>,
+  bounds: BuildLogRetentionBounds,
+  retain: "newest" | "oldest",
+): BuildLogWindow {
+  const merged = mergeBuildLogLines(existing, incoming, Number.MAX_SAFE_INTEGER);
+  const retained: BuildLogLine[] = [];
+  let retainedBytes = 0;
+  let droppedLines = 0;
+  let droppedBytes = 0;
+  const ordered = retain === "newest" ? merged.toReversed() : merged;
+
+  for (const line of ordered) {
+    const bytes = buildLogLineBytes(line);
+    if (retained.length >= bounds.maxLines || retainedBytes + bytes > bounds.maxBytes) {
+      droppedLines += 1;
+      droppedBytes += bytes;
+      continue;
+    }
+    retained.push(line);
+    retainedBytes += bytes;
+  }
+
+  const resultLines = retain === "newest" ? retained.toReversed() : retained;
+  const retainedIds = new Set(resultLines.map(({ id }) => id));
+  const retainedIndexes = merged.flatMap((line, index) =>
+    retainedIds.has(line.id) ? [index] : [],
+  );
+  const firstRetained = retainedIndexes.at(0);
+  const lastRetained = retainedIndexes.at(-1);
+  let droppedOlder = false;
+  let droppedNewer = false;
+  if (droppedLines > 0 && (firstRetained === undefined || lastRetained === undefined)) {
+    droppedOlder = true;
+    droppedNewer = true;
+  } else {
+    for (let index = 0; index < merged.length; index += 1) {
+      if (retainedIds.has(merged[index]!.id)) continue;
+      if (index < firstRetained!) droppedOlder = true;
+      else if (index > lastRetained!) droppedNewer = true;
+      else {
+        droppedOlder = true;
+        droppedNewer = true;
+      }
+    }
+  }
+  return {
+    lines: resultLines,
+    bytes: retainedBytes,
+    droppedLines,
+    droppedBytes,
+    droppedOlder,
+    droppedNewer,
+  };
 }

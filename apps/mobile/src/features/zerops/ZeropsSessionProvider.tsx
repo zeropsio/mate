@@ -13,6 +13,7 @@ import {
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { mobileZeropsStorage } from "./storage";
+import { ZeropsDataProvider } from "./ZeropsDataProvider";
 export { zeropsErrorMessage } from "./errors";
 
 export type ZeropsSessionStatus = "loading" | "signed-out" | "totp-required" | "signed-in";
@@ -144,7 +145,15 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
     [client, newRecoveryToken, restoreError, status, user],
   );
 
-  return <ZeropsSessionContext value={value}>{children}</ZeropsSessionContext>;
+  return (
+    <ZeropsSessionContext value={value}>
+      <ZeropsDataProvider
+        account={status === "signed-in" && user !== null ? { client, userId: user.id } : null}
+      >
+        {children}
+      </ZeropsDataProvider>
+    </ZeropsSessionContext>
+  );
 }
 
 export function useZeropsSession(): ZeropsSessionValue {

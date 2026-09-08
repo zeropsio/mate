@@ -1,25 +1,23 @@
-/**
- * `useBuildLog` under `React.StrictMode` — `main.tsx` wraps the whole app in
- * it. Session creation used to happen inline in the render body (a side
- * effect during render, which StrictMode's dev-mode double-render then runs
- * twice) with only a cleanup-only mount effect (no setup logic to recreate
- * what StrictMode's simulated unmount tears down). The observable failure
- * mode is not always "stuck forever" — `useSyncExternalStore`'s own
- * snapshot-mismatch recovery can paper over a dropped subscription by
- * forcing a fresh render — but it does reliably show up as duplicate,
- * uncoordinated work: two backfill fetches and, in some interleavings, two
- * sockets for what is a single mount from the caller's perspective.
- *
- * No `@testing-library/react` in this repo — mirrors
- * `components/preview/PreviewView.test.tsx`'s own minimal DOM stub +
- * `react-dom/client` + `act` harness (the default test environment is
- * `node`, not `jsdom`).
- */
-import { act } from "react";
+import { act, StrictMode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
-import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
+import type { BuildLogLine, BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
+import {
+  AccountEpoch,
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+  ZeropsProjectId,
+  type BuildLogLease,
+  type BuildLogRegistry,
+  type BuildLogSnapshot,
+  type ManagedZeropsDataRuntime,
+  type ProjectRef,
+  type SharedBuildLogSession,
+} from "@t3tools/client-runtime/zerops/data";
+
+import { InventoryContext, type Inventory } from "../inventoryContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "../zeropsDataContext";
 
 class TestNode {
   parentNode: TestNode | null = null;
@@ -67,7 +65,7 @@ class TestNode {
   setAttribute() {}
 }
 
-function installTestDom(): TestNode {
+function installTestDom(): void {
   const document = new TestNode("#document", null, 9);
   const window = {
     document,
@@ -83,190 +81,344 @@ function installTestDom(): TestNode {
   vi.stubGlobal("window", window);
   vi.stubGlobal("HTMLIFrameElement", window.HTMLIFrameElement);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  return document;
 }
 
-class FakeWebSocket {
-  static instances: FakeWebSocket[] = [];
-  readonly url: string;
-  #onMessage: ((event: { readonly data: unknown }) => void) | undefined;
+const account = {
+  apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+  accountId: ZeropsAccountId.make("account-1"),
+};
+const organization = {
+  kind: "organization" as const,
+  account,
+  organizationId: ZeropsOrganizationId.make("org-1"),
+};
+const PROJECT: ProjectRef = {
+  kind: "project",
+  organization,
+  projectId: ZeropsProjectId.make("project-1"),
+};
+const QUERY: BuildLogQuery = { buildServiceStackId: "build-1", appVersionId: "version-1" };
 
-  constructor(url: string) {
-    this.url = url;
-    FakeWebSocket.instances.push(this);
+const snapshot = (
+  status: BuildLogSnapshot["status"],
+  lines: ReadonlyArray<BuildLogLine> = [],
+): BuildLogSnapshot => ({
+  lines,
+  bytes: 0,
+  status,
+  loadingOlder: false,
+  cursor: {
+    oldestLineId: lines.at(0)?.id ?? null,
+    newestLineId: lines.at(-1)?.id ?? null,
+  },
+  gaps: { older: false, newer: false },
+  truncation: { lines: 0, bytes: 0 },
+  error: null,
+});
+
+class FakeSession implements SharedBuildLogSession {
+  #snapshot: BuildLogSnapshot;
+  readonly #listeners = new Set<() => void>();
+
+  constructor(follow: boolean) {
+    this.#snapshot = snapshot(follow ? "live" : "ended");
   }
 
-  addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
-  addEventListener(type: "error" | "close", listener: () => void): void;
-  addEventListener(
-    type: "message" | "error" | "close",
-    listener: ((event: { readonly data: unknown }) => void) | (() => void),
-  ): void {
-    if (type === "message") {
-      this.#onMessage = listener as (event: { readonly data: unknown }) => void;
-    }
+  getSnapshot(): BuildLogSnapshot {
+    return this.#snapshot;
   }
 
-  emit(items: ReadonlyArray<unknown>): void {
-    this.#onMessage?.({ data: JSON.stringify({ items }) });
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
-  close() {}
+  loadOlder(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  retry(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  drain(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  setFollow(follow: boolean): void {
+    this.#publish(snapshot(follow ? "live" : "ended", this.#snapshot.lines));
+  }
+
+  emit(lines: ReadonlyArray<BuildLogLine>): void {
+    this.#publish(snapshot(this.#snapshot.status, lines));
+  }
+
+  #publish(next: BuildLogSnapshot): void {
+    this.#snapshot = next;
+    for (const listener of this.#listeners) listener();
+  }
 }
 
-function fakeClient(): { readonly client: ZeropsApiClient; readonly logAccessCalls: number[] } {
-  const logAccessCalls: number[] = [];
-  const client = {
-    fetchProjectLogAccess: async () => {
-      logAccessCalls.push(logAccessCalls.length);
-      return { url: "https://log.example.com/api/rest/log?sig=1" };
-    },
-  } as unknown as ZeropsApiClient;
-  return { client, logAccessCalls };
+interface FakeLeaseRecord {
+  readonly project: ProjectRef;
+  readonly query: BuildLogQuery;
+  readonly session: FakeSession;
+  readonly followChanges: boolean[];
+  released: boolean;
 }
 
-const QUERY: BuildLogQuery = { buildServiceStackId: "build-svc-1", appVersionId: "av-1" };
+class FakeLogs implements BuildLogRegistry {
+  reconcileAccess() {}
+  readonly records: FakeLeaseRecord[] = [];
+  failAcquire = false;
+  closed = false;
 
-async function flushMicrotasks(): Promise<void> {
+  acquire(
+    project: ProjectRef,
+    query: BuildLogQuery,
+    options: { readonly follow?: boolean } = {},
+  ): BuildLogLease {
+    if (this.failAcquire) throw new Error("signed=https://secret.invalid");
+    const session = new FakeSession(options.follow ?? false);
+    const record: FakeLeaseRecord = {
+      project,
+      query,
+      session,
+      followChanges: [options.follow ?? false],
+      released: false,
+    };
+    this.records.push(record);
+    return {
+      session,
+      setFollow: (follow) => {
+        if (record.released) return;
+        record.followChanges.push(follow);
+        session.setFollow(follow);
+      },
+      loadOlder: () => session.loadOlder(),
+      retry: () => session.retry(),
+      release: () => {
+        if (record.released) return;
+        record.released = true;
+      },
+    };
+  }
+
+  drain(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  diagnostics() {
+    return {
+      activeSessions: this.records.filter(({ released }) => !released).length,
+      leases: this.records.filter(({ released }) => !released).length,
+      closed: this.closed,
+    };
+  }
+
+  shutdown(): void {
+    this.closed = true;
+    for (const record of this.records) record.released = true;
+  }
+
+  active(): FakeLeaseRecord {
+    return this.records.findLast(({ released }) => !released)!;
+  }
+}
+
+function inventory(project: ProjectRef | null = PROJECT): Inventory {
+  return {
+    projects: [],
+    services: new Map(),
+    isLoading: false,
+    error: null,
+    projectRefs: project === null ? new Map() : new Map([[project.projectId, project]]),
+  };
+}
+
+function runtime(logs: FakeLogs, epoch = 1): ManagedZeropsDataRuntime {
+  return {
+    logs,
+    scope: { account, epoch: AccountEpoch.make(epoch) },
+  } as unknown as ManagedZeropsDataRuntime;
+}
+
+function context(value: ManagedZeropsDataRuntime): ZeropsDataContextValue {
+  return {
+    runtime: value,
+    organizationRef: () => organization,
+    projectRef: () => PROJECT,
+  };
+}
+
+async function flushEffects(): Promise<void> {
   await act(async () => {
-    for (let i = 0; i < 5; i += 1) {
-      await Promise.resolve();
-    }
+    await Promise.resolve();
   });
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  FakeWebSocket.instances = [];
 });
 
-describe("useBuildLog — session lifecycle under React.StrictMode", () => {
-  /**
-   * `BuildLogSession.#backfill` already guards on `#disposed` after every
-   * await, so a stray extra session from StrictMode's inherent double-invoke
-   * of any resource-creating effect (expected, dev-only — React itself does
-   * this to every well-written effect) does not raise the *raw* log fetch
-   * count as a reliable signal. What is a real, avoidable defect is calling
-   * `fetchProjectLogAccess` more than once per mount: `resolveLogAccess`'s
-   * module-scope cache exists precisely so a second session for the same
-   * (project, client) reuses the first's in-flight/resolved access rather
-   * than issuing its own request.
-   */
-  it("resolves log access exactly once per mount, even across StrictMode's double-invoke", async () => {
+describe("useBuildLog runtime lease binding", () => {
+  it("releases the StrictMode probe lease and retains one active lease", async () => {
     installTestDom();
-    vi.stubGlobal("fetch", async () => ({
-      ok: true,
-      json: async () => ({
-        items: [{ id: "l1", timestamp: "2026-09-02T10:00:00.000Z", content: "hi", severity: 6 }],
-      }),
-    }));
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-
-    const React = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
-
-    const { client, logAccessCalls } = fakeClient();
-    const statuses: string[] = [];
+    const logs = new FakeLogs();
+    const managed = runtime(logs);
+    const onResult = vi.fn();
 
     function Probe() {
-      const result = useBuildLog({ client, projectId: "proj-1", query: QUERY, live: false });
-      statuses.push(result.status);
+      const result = useBuildLog({ projectId: "project-1", query: QUERY, live: false });
+      useEffect(() => onResult(result), [result]);
       return null;
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       await act(() => {
-        root.render(React.createElement(React.StrictMode, null, React.createElement(Probe)));
+        root.render(
+          <StrictMode>
+            <ZeropsDataContext value={context(managed)}>
+              <InventoryContext value={inventory()}>
+                <Probe />
+              </InventoryContext>
+            </ZeropsDataContext>
+          </StrictMode>,
+        );
       });
-      await flushMicrotasks();
+      await flushEffects();
 
-      expect(logAccessCalls).toHaveLength(1);
-      // A session that got stuck disposed (never recreated) after
-      // StrictMode's double-invoke would sit at "idle" forever — this must
-      // reach the backfill's terminal status.
-      expect(statuses.at(-1)).toBe("ended");
+      expect(logs.records).toHaveLength(2);
+      expect(logs.records[0]?.released).toBe(true);
+      expect(logs.diagnostics().leases).toBe(1);
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("ended");
+    } finally {
+      await act(() => root.unmount());
+    }
+    expect(logs.diagnostics().leases).toBe(0);
+  });
+
+  it("forwards follow changes without reacquiring and receives later shared-session publication", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { useBuildLog } = await import("./useBuildLog.ts");
+    const logs = new FakeLogs();
+    const managed = runtime(logs);
+    const onResult = vi.fn();
+
+    function Probe({ live }: { readonly live: boolean }) {
+      const result = useBuildLog({ projectId: "project-1", query: QUERY, live });
+      useEffect(() => onResult(result), [result]);
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = (live: boolean) => (
+      <ZeropsDataContext value={context(managed)}>
+        <InventoryContext value={inventory()}>
+          <Probe live={live} />
+        </InventoryContext>
+      </ZeropsDataContext>
+    );
+    try {
+      await act(() => root.render(render(false)));
+      await flushEffects();
+      const acquisitions = logs.records.length;
+
+      await act(() => root.render(render(true)));
+      await flushEffects();
+      expect(logs.records).toHaveLength(acquisitions);
+      expect(logs.active().followChanges.at(-1)).toBe(true);
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("live");
+
+      const observed = [{ id: "l1", at: "2026-09-08T00:00:00.000Z", text: "built", severity: 6 }];
+      await act(() => logs.active().session.emit(observed));
+      expect(onResult.mock.calls.at(-1)?.[0].lines).toEqual(observed);
     } finally {
       await act(() => root.unmount());
     }
   });
 
-  it("opens exactly one WebSocket for a live mount under StrictMode", async () => {
+  it("releases on runtime replacement and does not expose the old account session during the change", async () => {
     installTestDom();
-    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ items: [] }) }));
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-
-    const React = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
-
-    const { client } = fakeClient();
-    const statuses: string[] = [];
+    const firstLogs = new FakeLogs();
+    const secondLogs = new FakeLogs();
+    const firstRuntime = runtime(firstLogs, 1);
+    const secondRuntime = runtime(secondLogs, 2);
+    const onResult = vi.fn();
 
     function Probe() {
-      const result = useBuildLog({ client, projectId: "proj-1", query: QUERY, live: true });
-      statuses.push(result.status);
+      const result = useBuildLog({ projectId: "project-1", query: QUERY, live: false });
+      useEffect(() => onResult(result), [result]);
       return null;
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = (managed: ManagedZeropsDataRuntime) => (
+      <ZeropsDataContext value={context(managed)}>
+        <InventoryContext value={inventory()}>
+          <Probe />
+        </InventoryContext>
+      </ZeropsDataContext>
+    );
     try {
-      await act(() => {
-        root.render(React.createElement(React.StrictMode, null, React.createElement(Probe)));
-      });
-      await flushMicrotasks();
+      await act(() => root.render(render(firstRuntime)));
+      await flushEffects();
+      await act(() => root.render(render(secondRuntime)));
+      await flushEffects();
 
-      expect(statuses.at(-1)).toBe("live");
-      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(firstLogs.diagnostics().leases).toBe(0);
+      expect(secondLogs.diagnostics().leases).toBe(1);
+      expect(onResult.mock.calls.some(([result]) => result.status === "idle")).toBe(true);
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("ended");
     } finally {
       await act(() => root.unmount());
     }
   });
 
-  it("keeps the subscription alive across the double-invoke — a later message still reaches the component", async () => {
+  it("stays idle without a unique inventory ProjectRef and sanitizes lease admission failure", async () => {
     installTestDom();
-    vi.useFakeTimers();
-    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ items: [] }) }));
-    vi.stubGlobal("WebSocket", FakeWebSocket);
-
-    const React = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
-
-    const { client } = fakeClient();
-    let latest: { lines: unknown; status: string } | undefined;
+    const logs = new FakeLogs();
+    const managed = runtime(logs);
+    const onResult = vi.fn();
 
     function Probe() {
-      latest = useBuildLog({ client, projectId: "proj-1", query: QUERY, live: true });
+      const result = useBuildLog({
+        projectId: "project-1",
+        query: QUERY,
+        live: false,
+      });
+      useEffect(() => onResult(result), [result]);
       return null;
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
+    const render = (value: Inventory) => (
+      <ZeropsDataContext value={context(managed)}>
+        <InventoryContext value={value}>
+          <Probe />
+        </InventoryContext>
+      </ZeropsDataContext>
+    );
     try {
-      await act(() => {
-        root.render(React.createElement(React.StrictMode, null, React.createElement(Probe)));
-      });
-      await act(async () => {
-        for (let i = 0; i < 10; i += 1) {
-          await Promise.resolve();
-        }
-      });
-      expect(latest?.status).toBe("live");
+      await act(() => root.render(render(inventory(null))));
+      await flushEffects();
+      expect(logs.records).toHaveLength(0);
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("idle");
 
-      FakeWebSocket.instances[0]?.emit([
-        { id: "l1", timestamp: "2026-09-02T10:00:00.000Z", content: "hi", severity: 6 },
-      ]);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(100);
-      });
-
-      expect(latest?.lines).toEqual([
-        { id: "l1", at: "2026-09-02T10:00:00.000Z", text: "hi", severity: 6 },
-      ]);
+      logs.failAcquire = true;
+      await act(() => root.render(render(inventory())));
+      await flushEffects();
+      expect(onResult.mock.calls.at(-1)?.[0].status).toBe("error");
     } finally {
       await act(() => root.unmount());
-      vi.useRealTimers();
     }
   });
 });

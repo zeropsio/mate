@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import {
   advanceProvisioning,
   isProvisioningWaiting,
@@ -20,7 +21,8 @@ import {
   type ProvisioningEvent,
   type ProvisioningState,
 } from "@t3tools/client-runtime/zerops/provisioning";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
+import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -40,14 +42,23 @@ export function useZeropsProvisioning(clientId: string | null): {
   readonly retry: () => void;
   readonly enable: () => void;
 } {
-  const { client } = useZeropsSession();
+  const { runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
   const [state, setState] = useState<ProvisioningState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The poll reads the live state without making the effect depend on every
   // field it touches, which would restart the interval on each tick.
   const stateRef = useRef<ProvisioningState | null>(null);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  // Same reason: a native inventory push must not restart or re-run the poll
+  // loop early. The tick reads whatever inventory is current through this ref.
+  const inventoryRef = useRef(inventory);
+  useEffect(() => {
+    inventoryRef.current = inventory;
+  }, [inventory]);
 
   const dispatch = useCallback((event: ProvisioningEvent) => {
     setState((current) => (current ? advanceProvisioning(current, event, Date.now()) : current));
@@ -63,11 +74,18 @@ export function useZeropsProvisioning(clientId: string | null): {
     const poll = async () => {
       const live = stateRef.current;
       if (cancelled || !live) return;
+      const liveInventory = inventoryRef.current;
+      const services =
+        live.projectId === null ? undefined : liveInventory.services.get(live.projectId);
       try {
         const event = await readProvisioning({
-          client,
-          clientId,
           state: live,
+          projects: liveInventory.projects,
+          project:
+            live.projectId === null
+              ? undefined
+              : liveInventory.projects.find((project) => project.id === live.projectId),
+          services: services?.status === "resolved" ? services.services : undefined,
           probeHealth: (origin) => probeZeropsContainerHealth(origin),
         });
         if (cancelled) return;
@@ -89,7 +107,10 @@ export function useZeropsProvisioning(clientId: string | null): {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [client, clientId, dispatch, phase]);
+    // Polls on `clientId`/`phase` transitions and the fixed interval only; a
+    // native inventory push must not trigger an extra health probe. Latest
+    // inventory is read through `inventoryRef` inside the tick.
+  }, [clientId, dispatch, phase]);
 
   return {
     state,
@@ -117,13 +138,23 @@ export function useZeropsProvisioning(clientId: string | null): {
     },
     enable: () => {
       const serviceId = stateRef.current?.containerServiceId;
-      if (!serviceId) return;
+      const projectId = stateRef.current?.projectId;
+      const project =
+        projectId === null || projectId === undefined
+          ? null
+          : findInventoryProjectRef(inventory, projectId, clientId ?? undefined);
+      if (!serviceId || project === null) return;
       setBusy(true);
       setError(null);
       // Writes ZCP_MATE_ENABLED and then restarts. The restart alone cannot
       // turn Zerops Mate on: zcp installs nothing mate-shaped without the flag.
-      void client
-        .enableZeropsMate(serviceId)
+      void runZeropsCommand(
+        runtime.commands.enableZeropsMate({
+          kind: "service",
+          project,
+          serviceId: ZeropsServiceId.make(serviceId),
+        }),
+      )
         .then(() => {
           dispatch({ kind: "enable" });
         })

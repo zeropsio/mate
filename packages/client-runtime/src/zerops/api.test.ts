@@ -489,21 +489,6 @@ describe("ZeropsApiClient project reads", () => {
     );
   });
 
-  it("reads a project's services from the project-scoped direct read", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { list: [{ id: "s1", name: "zcp" }], totalCount: 1 }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const services = await client.listProjectServices("p1");
-
-    expect(services.map((service) => service.id)).toEqual(["s1"]);
-    expect(stub.requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/p1/service-stack?limit=500`,
-    );
-  });
-
   it("restarts a service with PUT and the caller's own token", async () => {
     const stub = recordingFetch(() => jsonResponse(200, { id: "process-1" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -628,7 +613,15 @@ describe("ZeropsApiClient project reads", () => {
   });
 
   it("sends the Zerops token to the configured API base and nowhere else", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { list: [], totalCount: 0 }));
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        id: "user-1",
+        email: "a@b.c",
+        clientUserList: [],
+        list: [],
+        totalCount: 0,
+      }),
+    );
     const client = new ZeropsApiClient({
       fetch: stub.fetch,
       baseUrl: "https://api.app-fra1.zerops.io/",
@@ -636,7 +629,7 @@ describe("ZeropsApiClient project reads", () => {
     client.restoreSession(SESSION);
 
     await client.listClientProjects("org-1");
-    await client.listProjectServices("p1");
+    await client.fetchUser();
 
     expect(stub.requests).toHaveLength(2);
     for (const request of stub.requests) {
@@ -656,129 +649,6 @@ describe("ZeropsApiClient project reads", () => {
     expect(error).toBeInstanceOf(ZeropsApiError);
     expect((error as ZeropsApiError).kind).toBe("network");
     expect((error as ZeropsApiError).status).toBeNull();
-  });
-});
-
-describe("ZeropsApiClient.fetchProjectProcesses", () => {
-  it("reads the project's process list through the direct read", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { list: [{ id: "proc-1" }] }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const document = await client.fetchProjectProcesses("project-1");
-
-    expect(document).toEqual({ list: [{ id: "proc-1" }] });
-    expect(stub.requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/project-1/process`,
-    );
-    expect(stub.requests[0]?.authorization).toBe(`Bearer ${SESSION.accessToken}`);
-  });
-
-  it("surfaces a forbidden project read as a typed ZeropsApiError", async () => {
-    const stub = recordingFetch(() => jsonResponse(403, { error: { code: "forbidden" } }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    expect((error as ZeropsApiError).kind).toBe("forbidden");
-  });
-
-  /**
-   * A background activity poll's own 401 is not evidence the account's
-   * session is gone — it must reject (so the poller can mark that project
-   * unavailable) without signing the whole UI out via `onSessionChange(null)`.
-   */
-  it("rejects on a 401 with a failed refresh, but never clears the held session", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    expect((error as ZeropsApiError).kind).toBe("expired-session");
-    expect(onSessionChange).not.toHaveBeenCalled();
-    expect(client.session).toEqual(SESSION);
-  });
-
-  it("rejects on a 401 that survives a successful-looking retry, without clearing the session", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(200, { accessToken: "access-2", refreshToken: "refresh-2" })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    const error = await client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    // The refresh itself succeeded, so it is the one onSessionChange call this
-    // path is allowed: adopting the new session is never gated by the flag,
-    // only CLEARING a session on a failure is.
-    expect(onSessionChange).toHaveBeenCalledTimes(1);
-    expect(onSessionChange).not.toHaveBeenCalledWith(null);
-    expect(client.session).not.toBeNull();
-  });
-
-  /**
-   * The poller's own 401 must never sign the user out on its own — but if a
-   * user-initiated request happens to piggyback on the SAME in-flight
-   * refresh the poller started, that refresh failing is real evidence the
-   * session is dead, and the piggybacking caller's stricter preference must
-   * win: leaving the UI signed in over a session the platform has already
-   * rejected would be worse than the poller's own 401 ever was.
-   */
-  it("clears the session when a user-initiated call piggybacks on the poller's in-flight refresh and it fails", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    // Not awaited individually: both `#request` calls start before either
-    // resolves, so the second joins the first's in-flight `#refreshSession`
-    // instead of starting its own.
-    const pollerCall = client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
-    const userCall = client.fetchProject("project-1").catch((cause: unknown) => cause);
-    const [pollerResult, userResult] = await Promise.all([pollerCall, userCall]);
-
-    expect(pollerResult).toBeInstanceOf(ZeropsApiError);
-    expect(userResult).toBeInstanceOf(ZeropsApiError);
-    expect(onSessionChange).toHaveBeenCalledTimes(1);
-    expect(onSessionChange).toHaveBeenCalledWith(null);
-    expect(client.session).toBeNull();
-  });
-
-  it("leaves the session intact when every caller sharing the refresh opted out of clearing it", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.includes("/auth/refresh")
-        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
-        : jsonResponse(401, { error: { code: "unauthorized" } }),
-    );
-    const onSessionChange = vi.fn();
-    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
-    client.restoreSession(SESSION);
-
-    const first = client.fetchProjectProcesses("project-1").catch((cause: unknown) => cause);
-    const second = client.fetchProjectProcesses("project-2").catch((cause: unknown) => cause);
-    const [firstResult, secondResult] = await Promise.all([first, second]);
-
-    expect(firstResult).toBeInstanceOf(ZeropsApiError);
-    expect(secondResult).toBeInstanceOf(ZeropsApiError);
-    expect(onSessionChange).not.toHaveBeenCalled();
-    expect(client.session).toEqual(SESSION);
   });
 });
 
@@ -813,7 +683,7 @@ describe("ZeropsApiClient.fetchProjectLogAccess", () => {
 
   /**
    * A background/log read's own 401 is not evidence the account's session is
-   * gone elsewhere — mirrors `fetchProjectProcesses`.
+   * gone elsewhere.
    */
   it("rejects on a 401 with a failed refresh, but never clears the held session", async () => {
     const stub = recordingFetch((request) =>
@@ -829,6 +699,58 @@ describe("ZeropsApiClient.fetchProjectLogAccess", () => {
 
     expect(error).toBeInstanceOf(ZeropsApiError);
     expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(client.session).toEqual(SESSION);
+  });
+
+  /**
+   * The poller's own 401 must never sign the user out on its own — but if a
+   * user-initiated request happens to piggyback on the SAME in-flight
+   * refresh the poller started, that refresh failing is real evidence the
+   * session is dead, and the piggybacking caller's stricter preference must
+   * win: leaving the UI signed in over a session the platform has already
+   * rejected would be worse than the poller's own 401 ever was.
+   */
+  it("clears the session when a user-initiated call piggybacks on the poller's in-flight refresh and it fails", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    // Not awaited individually: both `#request` calls start before either
+    // resolves, so the second joins the first's in-flight `#refreshSession`
+    // instead of starting its own.
+    const pollerCall = client.fetchProjectLogAccess("project-1").catch((cause: unknown) => cause);
+    const userCall = client.fetchProject("project-1").catch((cause: unknown) => cause);
+    const [pollerResult, userResult] = await Promise.all([pollerCall, userCall]);
+
+    expect(pollerResult).toBeInstanceOf(ZeropsApiError);
+    expect(userResult).toBeInstanceOf(ZeropsApiError);
+    expect(onSessionChange).toHaveBeenCalledTimes(1);
+    expect(onSessionChange).toHaveBeenCalledWith(null);
+    expect(client.session).toBeNull();
+  });
+
+  it("leaves the session intact when every caller sharing the refresh opted out of clearing it", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.includes("/auth/refresh")
+        ? jsonResponse(401, { error: { code: "invalidRefreshToken" } })
+        : jsonResponse(401, { error: { code: "unauthorized" } }),
+    );
+    const onSessionChange = vi.fn();
+    const client = new ZeropsApiClient({ fetch: stub.fetch, onSessionChange });
+    client.restoreSession(SESSION);
+
+    const first = client.fetchProjectLogAccess("project-1").catch((cause: unknown) => cause);
+    const second = client.fetchProjectLogAccess("project-2").catch((cause: unknown) => cause);
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult).toBeInstanceOf(ZeropsApiError);
+    expect(secondResult).toBeInstanceOf(ZeropsApiError);
     expect(onSessionChange).not.toHaveBeenCalled();
     expect(client.session).toEqual(SESSION);
   });
@@ -914,159 +836,171 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(onSessionChange).not.toHaveBeenCalled();
     expect(client.session?.accessToken).toBe("access-1");
   });
-});
 
-describe("ZeropsApiClient.subscribeProjectSearch", () => {
-  it("posts a list subscription for ServiceStack", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+  it("lets a websocket deadline stop waiting on a shared refresh", async () => {
+    const refreshStarted = Promise.withResolvers<void>();
+    const refreshResponse = Promise.withResolvers<Response>();
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/web-socket/login"))
+        return jsonResponse(401, { error: { code: "unauthorized" } });
+      refreshStarted.resolve();
+      return refreshResponse.promise;
+    });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
+    const controller = new AbortController();
 
-    await client.subscribeProjectSearch("service-stack", {
-      orgId: "org-1",
-      projectId: "proj-1",
-      receiverId: "receiver-1",
-      mode: "list",
+    const exchange = client.exchangeWebSocketToken(controller.signal);
+    await refreshStarted.promise;
+    controller.abort();
+    const error = await exchange.catch((cause: unknown) => cause);
+    refreshResponse.resolve(jsonResponse(401, { error: { code: "invalidRefreshToken" } }));
+
+    expect(error).toBeInstanceOf(DOMException);
+    expect((error as DOMException).name).toBe("AbortError");
+    expect(client.session).toEqual(SESSION);
+  });
+
+  it("admits explicit POST reads while project writes are locked", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/web-socket/login"))
+        return jsonResponse(200, { webSocketToken: "ws-token" });
+      return jsonResponse(204, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(false);
+
+    await client.exchangeWebSocketToken();
+
+    await expect(
+      client.requestData({
+        path: "/service-stack/service/restart",
+        method: "PUT",
+        operationKind: "project-write",
+        signal: new AbortController().signal,
+        background: false,
+      }),
+    ).rejects.toMatchObject({ kind: "unexpected" });
+    expect(stub.requests).toHaveLength(1);
+  });
+
+  it("rejects project writes after their absolute deadline without waiting for a timer", async () => {
+    const stub = recordingFetch(() => jsonResponse(204, {}));
+    let nowMs = 1_000;
+    const client = new ZeropsApiClient({ fetch: stub.fetch, now: () => nowMs });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true, 2_000);
+
+    nowMs = 2_001;
+    await expect(client.restartService("service-1")).rejects.toMatchObject({
+      kind: "unexpected",
     });
 
-    expect(stub.requests[0]?.method).toBe("POST");
-    expect(stub.requests[0]?.url).toBe(
-      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/service-stack/search`,
+    expect(stub.requests).toHaveLength(0);
+  });
+
+  it("rechecks the absolute deadline before a write retry after token refresh", async () => {
+    let nowMs = 1_000;
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/auth/refresh")) {
+        return jsonResponse(200, { ...SESSION, accessToken: "access-2" });
+      }
+      nowMs = 2_001;
+      return jsonResponse(401, { error: { code: "unauthorized" } });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch, now: () => nowMs });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true, 2_000);
+
+    await expect(client.restartService("service-1")).rejects.toMatchObject({
+      kind: "unexpected",
+    });
+
+    expect(stub.requests.filter((request) => request.url.includes("/restart"))).toHaveLength(1);
+    expect(stub.requests.filter((request) => request.url.endsWith("/auth/refresh"))).toHaveLength(
+      1,
     );
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      search: [
-        { name: "clientId", operator: "eq", value: "org-1" },
-        { name: "projectId", operator: "eq", value: "proj-1" },
-      ],
-      sort: [],
-      subscriptionName: "ServiceStack__list-subscription",
-      receiverId: "receiver-1",
-      wsOutputType: "listStream",
-    });
   });
 
-  /**
-   * Account scope: omitting `projectId` drops the term entirely rather than
-   * sending an empty or null value, restoring the shape `frontend-legacy`
-   * itself subscribes with (`service-stack-base.effect.ts` passes `clientId`
-   * alone). One socket then carries every project the account can see, which
-   * is what lets a sidebar know which projects have Mate without a per-project
-   * fan-out.
-   */
-  it("omits the projectId term when no project is given", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+  it("rechecks runtime admission before every write in a compound command", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        id: "project-1",
+        name: "tool",
+        status: "ACTIVE",
+        publicZone: "project-1.prg1-zerops.zone",
+      }),
+    );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+    let checks = 0;
+    const denied = {
+      _tag: "ZeropsCommandAdmissionError",
+      reason: "access-expired",
+      message: "Project access expired between writes.",
+    };
 
-    await client.subscribeProjectSearch("service-stack", {
-      orgId: "org-1",
-      receiverId: "receiver-1",
-      mode: "list",
-    });
+    await expect(
+      client.createToolProject(
+        { clientId: "org-1", kind: "gitea", name: "tool" },
+        undefined,
+        async () => {
+          checks += 1;
+          if (checks === 2) throw denied;
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "uncertain" });
 
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
-      { name: "clientId", operator: "eq", value: "org-1" },
-    ]);
+    expect(checks).toBe(2);
+    expect(stub.requests).toHaveLength(1);
   });
 
-  it("keeps the process filters under account scope", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+  it("classifies a denied second write in create-with-Mate as partial-write uncertainty", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        id: "project-1",
+        name: "Mate",
+        status: "ACTIVE",
+      }),
+    );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+    const denied = {
+      _tag: "ZeropsCommandAdmissionError",
+      reason: "access-expired",
+      message: "Project access expired between writes.",
+    };
+    let checks = 0;
 
-    await client.subscribeProjectSearch("process", {
-      orgId: "org-1",
-      receiverId: "receiver-1",
-      mode: "list",
-    });
+    await expect(
+      client.createProjectWithZeropsMate(
+        { clientId: "org-1", name: "Mate" },
+        undefined,
+        async () => {
+          checks += 1;
+          if (checks === 2) throw denied;
+        },
+      ),
+    ).rejects.toMatchObject({ kind: "uncertain" });
 
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
-      { name: "clientId", operator: "eq", value: "org-1" },
-      { name: "status", operator: "in", value: ["RUNNING", "PENDING"] },
-      { name: "executorTag", operator: "ne", value: "L7_MASTER" },
-    ]);
+    expect(checks).toBe(2);
+    expect(stub.requests).toHaveLength(1);
   });
 
-  /**
-   * No `status` filter on the UPDATE subscription: FINISHED/FAILED/CANCELED
-   * must still push a signal, or a process settling would go unnoticed.
-   */
-  it("posts an update subscription for Process with disableOutput and no status filter", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, {}));
+  it("does not issue the container write after an incomplete project response", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { name: "Mate", status: "ACTIVE" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
 
-    await client.subscribeProjectSearch("process", {
-      orgId: "org-1",
-      projectId: "proj-1",
-      receiverId: "receiver-1",
-      mode: "update",
-    });
+    await expect(
+      client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
 
-    expect(stub.requests[0]?.url).toBe(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/process/search`);
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      search: [
-        { name: "clientId", operator: "eq", value: "org-1" },
-        { name: "projectId", operator: "eq", value: "proj-1" },
-        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
-      ],
-      sort: [],
-      subscriptionName: "Process__update-subscription",
-      receiverId: "receiver-1",
-      wsOutputType: "updateStream",
-      disableOutput: true,
-    });
-  });
-
-  /**
-   * Ported from `frontend-legacy` `process-base.effect.ts`'s
-   * `listSubscribe`/`updateSubscribe` calls: the list subscription's status
-   * filter is narrower than the update one's — a finished process should
-   * stop appearing as a membership add, but its status change still needs to
-   * reach the update stream.
-   */
-  it("narrows the Process list subscription's status filter and excludes the L7 load balancer", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.subscribeProjectSearch("process", {
-      orgId: "org-1",
-      projectId: "proj-1",
-      receiverId: "receiver-1",
-      mode: "list",
-    });
-
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      search: [
-        { name: "clientId", operator: "eq", value: "org-1" },
-        { name: "projectId", operator: "eq", value: "proj-1" },
-        { name: "status", operator: "in", value: ["RUNNING", "PENDING"] },
-        { name: "executorTag", operator: "ne", value: "L7_MASTER" },
-      ],
-      sort: [],
-      subscriptionName: "Process__list-subscription",
-      receiverId: "receiver-1",
-      wsOutputType: "listStream",
-    });
-  });
-
-  it("carries no extra filter terms for a ServiceStack subscription", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, {}));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.subscribeProjectSearch("service-stack", {
-      orgId: "org-1",
-      projectId: "proj-1",
-      receiverId: "receiver-1",
-      mode: "update",
-    });
-
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}").search).toEqual([
-      { name: "clientId", operator: "eq", value: "org-1" },
-      { name: "projectId", operator: "eq", value: "proj-1" },
-    ]);
+    expect(stub.requests).toHaveLength(1);
   });
 });
 

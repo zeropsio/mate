@@ -4,12 +4,12 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 import { StatusDot } from "./StatusDot";
 
-type VisibleLivenessState = "live" | "polling" | "doorbell-down" | "last-read-failed";
+type VisibleLivenessState = "live" | "recovering" | "doorbell-down" | "last-read-failed";
 type LivenessState = VisibleLivenessState | "absent";
 
 const TONE: Record<VisibleLivenessState, ServiceStatusToneId> = {
   live: "ok",
-  polling: "busy",
+  recovering: "busy",
   "doorbell-down": "off",
   "last-read-failed": "failed",
 };
@@ -42,7 +42,7 @@ function LivenessLine(props: LivenessLineProps) {
       data-zerops-liveness-tone={tone}
       data-zerops-primitive="liveness-line"
     >
-      <StatusDot label={label} pulse={state === "polling"} tone={tone} />
+      <StatusDot label={label} pulse={state === "recovering"} tone={tone} />
     </span>
   );
 }

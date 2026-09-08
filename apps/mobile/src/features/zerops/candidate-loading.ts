@@ -2,9 +2,15 @@ import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/conta
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 
-export { loadOrganizationProjects } from "@t3tools/client-runtime/zerops/candidateLoading";
-
 export const MOBILE_ZEROPS_HEALTH_TIMEOUT_MS = 8_000;
+export const MOBILE_ZEROPS_HEALTH_CONCURRENCY = 4;
+
+type ReadyCandidate = ZeropsCandidate & { readonly containerOrigin: string };
+
+export interface CandidateHealthResult {
+  readonly candidate: ReadyCandidate;
+  readonly health: ZeropsContainerHealth;
+}
 
 export function candidateAfterHealthProbe(
   candidate: ZeropsCandidate,
@@ -51,4 +57,33 @@ export async function probeCandidateHealth(
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
+}
+
+/** Bounded public-origin health work; it never owns platform inventory I/O. */
+export async function probeCandidateHealthBatch(
+  candidates: ReadonlyArray<ReadyCandidate>,
+  options: {
+    readonly probe?: (origin: string) => Promise<ZeropsContainerHealth>;
+    readonly timeoutMs?: number;
+    readonly concurrency?: number;
+  } = {},
+): Promise<ReadonlyArray<CandidateHealthResult>> {
+  const concurrency = Math.max(
+    1,
+    Math.min(options.concurrency ?? MOBILE_ZEROPS_HEALTH_CONCURRENCY, candidates.length),
+  );
+  const results: CandidateHealthResult[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < candidates.length) {
+      const candidate = candidates[next++];
+      if (candidate === undefined) return;
+      results.push({
+        candidate,
+        health: await probeCandidateHealth(candidate.containerOrigin, options),
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return results;
 }

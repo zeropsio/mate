@@ -11,6 +11,14 @@ describe("zeropsErrorMessage", () => {
         "Session expired.",
       ],
       [new Error("Network request failed"), "Network request failed"],
+      [
+        {
+          _tag: "ZeropsDataAdapterError",
+          kind: "uncertain",
+          message: "The platform accepted the request but its response was lost.",
+        },
+        "The platform accepted the request but its response was lost.",
+      ],
       ["boom", "Something went wrong talking to Zerops."],
       [undefined, "Something went wrong talking to Zerops."],
     ];

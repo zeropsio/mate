@@ -5,7 +5,7 @@ import { LivenessLine } from "./LivenessLine";
 
 const STATES = [
   ["live", "ok", "Live · updated just now", "bg-[var(--zerops-status-ok)]"],
-  ["polling", "busy", "Polling", "bg-[var(--zerops-status-busy)]"],
+  ["recovering", "busy", "Connecting live updates", "bg-[var(--zerops-status-busy)]"],
   ["doorbell-down", "off", "Live updates unavailable", "bg-[var(--zerops-status-off)]"],
   ["last-read-failed", "failed", "Last read failed · retrying", "bg-[var(--zerops-status-failed)]"],
 ] as const;

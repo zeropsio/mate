@@ -20,13 +20,18 @@
  * fine. The next read tries again.
  */
 
-import { useEffect, useRef } from "react";
+import type {
+  OrganizationIntegrationTokenGrantsResourceRequest,
+  ZeropsIntegrationTokenGrantMetadata,
+} from "@t3tools/client-runtime/zerops/data";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   planAccountGroupReach,
-  type ZeropsApiClient,
   type ZeropsGroupReachGroup,
+  type ZeropsIntegrationToken,
 } from "@t3tools/client-runtime/zerops";
+import { runZeropsCommand, useZeropsData, useZeropsResource } from "./zeropsDataContext";
 
 /** Serialises a plan input so an unchanged account is not re-read. */
 function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
@@ -39,31 +44,67 @@ function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
     .join(";");
 }
 
+/** Restores the existing planner shape from credential-free grant metadata. */
+export function integrationTokensFromGrantMetadata(
+  metadata: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>,
+): ReadonlyArray<ZeropsIntegrationToken> {
+  return metadata.map((token) => ({
+    id: token.tokenId,
+    name: token.name,
+    projects: token.grants,
+  }));
+}
+
 export function useZeropsGroupReach(input: {
-  readonly client: ZeropsApiClient;
   readonly clientId: string | undefined;
   readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
   readonly enabled: boolean;
 }): void {
-  const { client, clientId, groups, enabled } = input;
+  const { clientId, groups, enabled } = input;
+  const { organizationRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
+  const hasSharedGroup = groups.some((group) => group.projectIds.length >= 2);
+  const request = useMemo<OrganizationIntegrationTokenGrantsResourceRequest | null>(
+    () =>
+      enabled && clientId !== undefined && hasSharedGroup
+        ? {
+            kind: "organization-integration-token-grants",
+            account: runtime.scope,
+            organization: organizationRef(clientId),
+          }
+        : null,
+    [clientId, enabled, hasSharedGroup, organizationRef, runtime.scope],
+  );
+  const grantsResource = useZeropsResource(request);
+  const grantMetadata = grantsResource.status === "success" ? grantsResource.value : null;
 
   useEffect(() => {
     // A group of one has no sibling to reach, so an account of solo Mates
     // never lists the tokens at all.
-    if (!enabled || clientId === undefined || groups.every((g) => g.projectIds.length < 2)) return;
+    if (!enabled || clientId === undefined || !hasSharedGroup) return;
+    if (grantsResource.status === "failure") {
+      lastKey.current = null;
+      return;
+    }
+    if (grantMetadata === null) return;
     if (lastKey.current === `${clientId}:${key}`) return;
     lastKey.current = `${clientId}:${key}`;
 
     let cancelled = false;
     void (async () => {
       try {
-        const tokens = await client.listIntegrationTokens(clientId);
-        if (cancelled) return;
-        for (const write of planAccountGroupReach({ groups, tokens })) {
+        for (const write of planAccountGroupReach({
+          groups,
+          tokens: integrationTokensFromGrantMetadata(grantMetadata),
+        })) {
           if (cancelled) return;
-          await client.setIntegrationTokenProjects({ clientId, ...write });
+          await runZeropsCommand(
+            runtime.commands.setIntegrationTokenProjects({
+              organization: organizationRef(clientId),
+              ...write,
+            }),
+          );
         }
       } catch {
         // Background repair: try again on the next read rather than showing
@@ -75,5 +116,15 @@ export function useZeropsGroupReach(input: {
     return () => {
       cancelled = true;
     };
-  }, [client, clientId, enabled, groups, key]);
+  }, [
+    clientId,
+    enabled,
+    grantMetadata,
+    grantsResource.status,
+    groups,
+    hasSharedGroup,
+    key,
+    organizationRef,
+    runtime.commands,
+  ]);
 }

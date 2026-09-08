@@ -6,8 +6,11 @@
       "title": "Zerops session provider",
       "components": [
         "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+        "apps/web/src/zerops/ZeropsDataProvider.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx"
+        "apps/web/src/zerops/ZeropsEnvironmentLifetime.tsx",
+        "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
+        "packages/client-runtime/src/zerops/data/runtime.ts"
       ],
       "entryPoints": [
         {
@@ -52,9 +55,14 @@
       "tests": [
         "apps/web/src/AppRoot.test.tsx",
         "apps/web/src/zerops/accountLifetime.test.ts",
-        "apps/web/src/zerops/draftStorage.test.ts"
+        "apps/web/src/zerops/draftStorage.test.ts",
+        "apps/web/src/zerops/ZeropsDataProvider.test.tsx",
+        "apps/web/src/zerops/zeropsDataContext.test.tsx",
+        "apps/web/src/zerops/zeropsDataBindings.test.ts",
+        "apps/mobile/src/features/zerops/ZeropsDataProvider.test.tsx",
+        "packages/client-runtime/src/zerops/data/runtime.test.ts"
       ],
-      "untested": "Provider races are covered by lifetime/API tests and the maintainer\u2019s two-tab acceptance pass; there is no React-rendered provider race suite.",
+      "untested": "The browser-integrated pass covers startup, refresh, expiry recovery, reconnect, suspension and cross-tab logout. Completing the final Zerops app-token grant remains pending explicit approval.",
       "captures": []
     },
     {
@@ -90,7 +98,7 @@
       "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
-        "@t3tools/client-runtime/zerops/platformWatch",
+        "@t3tools/client-runtime/zerops/data",
         "subscribeZeropsLifecycle",
         "subscribeZeropsAgentAuth"
       ],
@@ -112,7 +120,7 @@
         "apps/web/src/zerops/chatChrome.test.ts",
         "apps/web/src/zerops/feeds.test.ts"
       ],
-      "untested": "ZeropsPanel.test.tsx covers placeholder states and agent-auth card ownership, including late topology; the populated panel body has no focused component assertion.",
+      "untested": "The populated panel, service detail, Browser panel and public-page side panel were exercised in a real browser. Quick-action prefill and completed agent authorization remain test-only evidence.",
       "captures": [
         "web:service-map-live",
         "web:service-map-degraded",
@@ -194,7 +202,7 @@
       "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
-        "@t3tools/client-runtime/zerops/platformWatch",
+        "@t3tools/client-runtime/zerops/data",
         "subscribeZeropsLifecycle"
       ],
       "reverseStates": [
@@ -244,7 +252,7 @@
       "connectionModes": ["zerops-door"],
       "contracts": [
         "@t3tools/client-runtime/zerops/topology",
-        "@t3tools/client-runtime/zerops/platformWatch"
+        "@t3tools/client-runtime/zerops/data"
       ],
       "reverseStates": [
         {
@@ -553,6 +561,7 @@
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
         "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",
         "apps/web/src/zerops/turnstile.tsx",
         "packages/client-runtime/src/zerops/accountScope.ts",
@@ -681,6 +690,10 @@
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts",
         "apps/web/src/zerops/upgradeRestart.test.ts",
+        "apps/web/src/zerops/ZeropsInventoryProvider.test.ts",
+        "apps/web/src/zerops/useProjectTopology.test.ts",
+        "packages/client-runtime/src/zerops/data/inventory.test.ts",
+        "packages/client-runtime/src/zerops/data/projection.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
@@ -774,6 +787,8 @@
         "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewProjectAgents.test.tsx",
         "packages/client-runtime/src/zerops/newProject.test.ts",
+        "packages/client-runtime/src/zerops/data/commands.test.ts",
+        "packages/client-runtime/src/zerops/data/runtime.test.ts",
         "apps/web/src/zerops/upgradeRestart.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
@@ -826,7 +841,7 @@
         "none": "No docs/user page documents Zerops account settings yet."
       },
       "tests": [],
-      "untested": "ZeropsSettings has no focused component test.",
+      "untested": "ZeropsSettings has no focused component test; the account, organization selector and settings-search entries were exercised in a real browser.",
       "captures": []
     },
     {

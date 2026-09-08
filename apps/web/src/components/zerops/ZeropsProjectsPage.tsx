@@ -9,6 +9,15 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
 
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+import {
+  ZeropsServiceId,
+  type RecipeGroupResourceRequest,
+  type ServiceAuthorizedAgentsResourceRequest,
+  type ZeropsResourceBroker,
+  type ZeropsResourceRequest,
+  type ZeropsResourceValue,
+} from "@t3tools/client-runtime/zerops/data";
+import * as Effect from "effect/Effect";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -34,6 +43,8 @@ import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
+import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
@@ -96,6 +107,28 @@ interface EnvironmentCreationView {
   readonly name: string;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
+}
+
+/**
+ * A one-shot action demand owns its lease until the resource settles, or
+ * until `signal` aborts — an unmount abandoning the flow releases the lease
+ * immediately instead of holding it until the read finally settles.
+ */
+export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
+  resources: ZeropsResourceBroker,
+  request: Request,
+  signal?: AbortSignal,
+): Promise<ZeropsResourceValue<Request> | undefined> {
+  return Effect.runPromise(
+    Effect.scoped(
+      resources.acquire(request).pipe(
+        Effect.flatMap((lease) => lease.awaitSettled),
+        Effect.map((snapshot) => (snapshot.status === "success" ? snapshot.value : undefined)),
+        Effect.orElseSucceed(() => undefined),
+      ),
+    ),
+    signal === undefined ? undefined : { signal },
+  ).catch(() => undefined);
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -364,6 +397,12 @@ function ZeropsProjectsContent() {
     selectOrganization,
     status,
   } = useZeropsSession();
+  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
+  const inventoryRef = useRef(inventory);
+  useEffect(() => {
+    inventoryRef.current = inventory;
+  }, [inventory]);
   const { candidates, isLoading, error, refresh } = useZeropsCandidates();
   const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
   const {
@@ -387,6 +426,11 @@ function ZeropsProjectsContent() {
   // Entering the wait on its own happens at most once per mount: a dismissed
   // wait must never be reopened behind the user's back.
   const autoEnteredRef = useRef(false);
+  // One-shot resource reads (readZeropsResourceOnce) hold their lease under
+  // this signal, so a component unmounted mid-read releases immediately.
+  const unmountRef = useRef<AbortController>(undefined);
+  if (unmountRef.current === undefined) unmountRef.current = new AbortController();
+  useEffect(() => () => unmountRef.current?.abort(), []);
 
   const startWaitFor = useCallback(
     (candidate: ZeropsCandidate) => {
@@ -455,18 +499,26 @@ function ZeropsProjectsContent() {
     ): Promise<ReadonlyArray<ZeropsAgentType>> =>
       unionAgents(
         await Promise.all(
-          environments.flatMap(({ item }) =>
-            item.service === undefined
-              ? []
-              : [
-                  client
-                    .readAuthorizedAgents(item.service.id)
-                    .catch((): ReadonlyArray<ZeropsAgentType> => []),
-                ],
-          ),
+          environments.flatMap(({ item }) => {
+            if (item.service === undefined || activeOrganization === null) return [];
+            const request: ServiceAuthorizedAgentsResourceRequest = {
+              kind: "service-authorized-agents",
+              account: runtime.scope,
+              service: {
+                kind: "service",
+                project: projectRef(activeOrganization.id, item.project.id),
+                serviceId: ZeropsServiceId.make(item.service.id),
+              },
+            };
+            return [
+              readZeropsResourceOnce(runtime.resources, request, unmountRef.current?.signal).then(
+                (agents): ReadonlyArray<ZeropsAgentType> => agents ?? [],
+              ),
+            ];
+          }),
         ),
       ),
-    [client],
+    [activeOrganization, projectRef, runtime.resources, runtime.scope],
   );
 
   const setUpMate = useCallback(
@@ -486,11 +538,14 @@ function ZeropsProjectsContent() {
         );
         const agents = group === undefined ? [] : await readGroupAgents(group.environments);
         if (!isCurrent()) return;
-        await client.importDevelopmentContainer({ projectId, agents });
+        const project = projectRef(activeOrganization.id, projectId);
+        await runZeropsCommand(runtime.commands.importDevelopmentContainer({ project, agents }));
         if (!isCurrent()) return;
-        await client.nameProjectAgent(
-          projectId,
-          generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
+        await runZeropsCommand(
+          runtime.commands.nameProjectAgent(
+            project,
+            generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
+          ),
         );
         if (!isCurrent()) return;
         resetConnectingTarget();
@@ -505,14 +560,15 @@ function ZeropsProjectsContent() {
     [
       activeOrganization,
       candidates,
-      client,
       groupTree.groups,
+      projectRef,
       provisioning,
       readGroupAgents,
       resetConnectingTarget,
       setConnectError,
       setCreatingIn,
       settingUpKey,
+      runtime.commands,
     ],
   );
 
@@ -522,35 +578,41 @@ function ZeropsProjectsContent() {
   );
 
   // The quiet actions: rename an agent, move a project, rename a group. Each
-  // is one platform write with the user's own token and a reload.
+  // runs through the account-scoped command layer; observations update the model.
   const [rowDialog, setRowDialog] = useState<
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | null
   >(null);
-  const runWrite = useCallback(
-    async (write: () => Promise<unknown>) => {
-      setToolError(null);
-      try {
-        await write();
-        refresh();
-      } catch (cause) {
-        setToolError(zeropsErrorMessage(cause));
-      }
-    },
-    [refresh],
-  );
+  const runWrite = useCallback(async (write: () => Promise<unknown>) => {
+    setToolError(null);
+    try {
+      await write();
+    } catch (cause) {
+      setToolError(zeropsErrorMessage(cause));
+    }
+  }, []);
   const renameAgent = useCallback(
     (candidate: ZeropsCandidate, name: string) =>
-      runWrite(() => client.nameProjectAgent(candidate.project.id, name)),
-    [client, runWrite],
+      runWrite(() => {
+        if (activeOrganization === null) return Promise.resolve();
+        return runZeropsCommand(
+          runtime.commands.nameProjectAgent(
+            projectRef(activeOrganization.id, candidate.project.id),
+            name,
+          ),
+        );
+      }),
+    [activeOrganization, projectRef, runWrite, runtime.commands],
   );
   const moveProject = useCallback(
     (candidate: ZeropsCandidate, membership: MoveMembership) =>
       runWrite(() => {
+        if (activeOrganization === null) return Promise.resolve();
+        const project = projectRef(activeOrganization.id, candidate.project.id);
         if (membership.kind === "none") {
-          return client.updateProjectGroupTags(candidate.project.id, {});
+          return runZeropsCommand(runtime.commands.updateProjectGroupTags(project, {}));
         }
         // Joining an existing group carries its name along, so the mirror on
         // this member agrees with the others'.
@@ -558,28 +620,36 @@ function ZeropsProjectsContent() {
           membership.label ??
           groupTree.groups.find((entry) => entry.group.groupId === membership.groupId)?.group.name;
         const known = groupTree.groups.find((entry) => entry.group.groupId === membership.groupId);
-        return client.updateProjectGroupTags(candidate.project.id, {
-          groupId: membership.groupId,
-          role: membership.role,
-          ...(label !== undefined && known?.group.nameSource !== "id" ? { label } : {}),
-          ...(membership.label !== undefined ? { label: membership.label } : {}),
-        });
+        return runZeropsCommand(
+          runtime.commands.updateProjectGroupTags(project, {
+            groupId: membership.groupId,
+            role: membership.role,
+            ...(label !== undefined && known?.group.nameSource !== "id" ? { label } : {}),
+            ...(membership.label !== undefined ? { label: membership.label } : {}),
+          }),
+        );
       }),
-    [client, groupTree.groups, runWrite],
+    [activeOrganization, groupTree.groups, projectRef, runWrite, runtime.commands],
   );
   const renameGroup = useCallback(
     (group: ZeropsGroup, name: string) =>
       runWrite(async () => {
+        if (activeOrganization === null) return;
         // The name lives on every member; a rename is one write per member.
         for (const environment of group.environments) {
-          await client.updateProjectGroupTags(environment.project.id, {
-            groupId: group.groupId,
-            ...(environment.role === undefined ? {} : { role: environment.role }),
-            label: name,
-          });
+          await runZeropsCommand(
+            runtime.commands.updateProjectGroupTags(
+              projectRef(activeOrganization.id, environment.project.id),
+              {
+                groupId: group.groupId,
+                ...(environment.role === undefined ? {} : { role: environment.role }),
+                label: name,
+              },
+            ),
+          );
         }
       }),
-    [client, runWrite],
+    [activeOrganization, projectRef, runWrite, runtime.commands],
   );
   const mintGroupId = useCallback(
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
@@ -644,7 +714,7 @@ function ZeropsProjectsContent() {
         label={`More for ${candidate.project.name}`}
         offers={candidate.routeOffers}
         onEnableRoute={(offer) => {
-          void enableRoute(offer);
+          void enableRoute(candidate, offer);
         }}
         routes={candidate.routes}
       />
@@ -736,15 +806,21 @@ function ZeropsProjectsContent() {
         return;
       case "enable": {
         const serviceId = candidate.service?.id;
-        if (!serviceId) return;
+        if (!serviceId || activeOrganization === null) return;
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
         // Write the flag, then restart: the install step re-runs on boot and
         // comes back with the current zcp, which only installs Zerops Mate
         // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
         // container to the identical state.
-        void client
-          .enableZeropsMate(serviceId)
+        const project = projectRef(activeOrganization.id, candidate.project.id);
+        void runZeropsCommand(
+          runtime.commands.enableZeropsMate({
+            kind: "service",
+            project,
+            serviceId: ZeropsServiceId.make(serviceId),
+          }),
+        )
           .then(() => {
             startWaitFor(candidate);
           })
@@ -806,19 +882,25 @@ function ZeropsProjectsContent() {
           }),
     [requestedGroup],
   );
-  const cloneSources = useZeropsCloneSources(cloneSiblings);
-  const [storeRecipeAvailable, setStoreRecipeAvailable] = useState(false);
-  useEffect(() => {
-    if (creationRequest === null) return;
-    let cancelled = false;
-    const { groupId, role } = creationRequest;
-    void client.readRecipeGroup(groupId).then((record) => {
-      if (!cancelled) setStoreRecipeAvailable(canCreateEnvironment(record, role).allowed);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, creationRequest]);
+  const cloneSources = useZeropsCloneSources(activeOrganization?.id ?? null, cloneSiblings);
+  const storeRecipeRequest = useMemo<RecipeGroupResourceRequest | null>(
+    () =>
+      creationRequest !== null && activeOrganization !== null
+        ? {
+            kind: "recipe-group",
+            account: runtime.scope,
+            organization: organizationRef(activeOrganization.id),
+            groupId: creationRequest.groupId,
+          }
+        : null,
+    [activeOrganization, creationRequest, organizationRef, runtime.scope],
+  );
+  const storeRecipeResource = useZeropsResource(storeRecipeRequest);
+  const storeRecipeRecord =
+    storeRecipeResource.status === "success" ? storeRecipeResource.value : undefined;
+  const storeRecipeAvailable =
+    creationRequest !== null &&
+    canCreateEnvironment(storeRecipeRecord, creationRequest.role).allowed;
 
   const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
@@ -830,27 +912,31 @@ function ZeropsProjectsContent() {
    * (`verified.md`, 2026-09-07).
    */
   const enableRoute = useCallback(
-    async (offer: { readonly serviceId: string }) => {
-      if (publishingServiceId !== null) return;
+    async (candidate: ZeropsCandidate, offer: { readonly serviceId: string }) => {
+      if (publishingServiceId !== null || activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
       setPublishingServiceId(offer.serviceId);
       setToolError(null);
       try {
-        await client.enableSubdomainAccess(offer.serviceId);
-        if (isCurrent()) refresh();
+        await runZeropsCommand(
+          runtime.commands.enableSubdomainAccess({
+            kind: "service",
+            project: projectRef(activeOrganization.id, candidate.project.id),
+            serviceId: ZeropsServiceId.make(offer.serviceId),
+          }),
+        );
       } catch (cause) {
         if (isCurrent()) setToolError(zeropsErrorMessage(cause));
       } finally {
         if (isCurrent()) setPublishingServiceId(null);
       }
     },
-    [client, publishingServiceId, refresh],
+    [activeOrganization, projectRef, publishingServiceId, runtime.commands],
   );
 
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (creationRunning) return;
-      setStoreRecipeAvailable(false);
       setCreationRequest({
         groupId,
         role,
@@ -876,7 +962,10 @@ function ZeropsProjectsContent() {
         ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
-        record: await client.readRecipeGroup(groupId),
+        record:
+          creationRequest?.groupId === groupId && storeRecipeResource.status === "success"
+            ? storeRecipeRecord
+            : undefined,
         agents: await readGroupAgents(entry.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
@@ -896,11 +985,37 @@ function ZeropsProjectsContent() {
         steps: plan.steps,
         isCurrent,
         platform: {
-          createProject: (input) => client.createProject(input),
-          importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
-          importServices: (projectId, yaml) => client.importServicesIntoProject(projectId, yaml),
-          importProject: (input) => client.importProject(input.clientId, input.yaml),
-          listServices: (projectId) => client.listProjectServices(projectId),
+          createProject: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.createProject({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
+          importDevelopmentContainer: ({ projectId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.importDevelopmentContainer({
+                project: projectRef(activeOrganization.id, projectId),
+                ...input,
+              }),
+            ),
+          importServices: (projectId, yaml) =>
+            runZeropsCommand(
+              runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
+            ),
+          importProject: ({ clientId: _clientId, yaml }) =>
+            runZeropsCommand(
+              runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
+            ),
+          readObservedServices: async (projectId) => {
+            const outcome = inventoryRef.current.services.get(projectId);
+            return outcome?.status === "resolved"
+              ? outcome.services.map((service) => ({
+                  name: service.name,
+                  status: service.status,
+                }))
+              : [];
+          },
         },
         describeError: zeropsErrorMessage,
         sleep: (ms) =>
@@ -927,7 +1042,6 @@ function ZeropsProjectsContent() {
                 },
               },
         );
-        refresh();
         return;
       }
 
@@ -949,7 +1063,6 @@ function ZeropsProjectsContent() {
             : { kind: choice.recipe.kind },
       });
 
-      refresh();
       if (outcome.awaitingAgent) {
         // The imports were accepted; the container wait is the provisioning
         // machinery's, which also does the connect and the hand-over to `/`.
@@ -968,15 +1081,19 @@ function ZeropsProjectsContent() {
     },
     [
       activeOrganization,
-      client,
+      creationRequest?.groupId,
       creationRunning,
       groupTree.groups,
       provisioning,
       readGroupAgents,
-      refresh,
+      organizationRef,
+      projectRef,
       resetConnectingTarget,
       setConnectError,
       setCreatingIn,
+      storeRecipeRecord,
+      storeRecipeResource.status,
+      runtime.commands,
     ],
   );
 
@@ -989,23 +1106,23 @@ function ZeropsProjectsContent() {
     if (!activeOrganization) return;
     setToolError(null);
     try {
-      await client.createToolProject({
-        clientId: activeOrganization.id,
-        kind: "gitea",
-        name: "Gitea",
-      });
-      refresh();
+      await runZeropsCommand(
+        runtime.commands.createToolProject({
+          organization: organizationRef(activeOrganization.id),
+          toolKind: "gitea",
+          name: "Gitea",
+        }),
+      );
     } catch (cause) {
       setToolError(zeropsErrorMessage(cause));
     }
-  }, [activeOrganization, client, refresh]);
+  }, [activeOrganization, organizationRef, runtime.commands]);
 
   // A Mate's group is its token: every environment in the group readable,
   // its own writable. Reconciled off the list this screen already has, on
   // every read — a grant write restarts nothing, and a group that has not
   // moved is not written (`groupReach.ts`).
   useZeropsGroupReach({
-    client,
     clientId: activeOrganization?.id,
     enabled: status === "signed-in" && !isLoading,
     groups: useMemo(
@@ -1264,7 +1381,7 @@ function ZeropsProjectsContent() {
                   label={`More for ${TOOL_LABEL[kind]}`}
                   offers={candidate.routeOffers}
                   onEnableRoute={(offer) => {
-                    void enableRoute(offer);
+                    void enableRoute(candidate, offer);
                   }}
                   routes={candidate.routes}
                 />

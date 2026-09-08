@@ -70,7 +70,7 @@ export interface ActivityProcess {
   readonly appVersion?: ActivityAppVersion;
 }
 
-function readAppVersion(value: unknown): ActivityAppVersion | undefined {
+export function readActivityAppVersion(value: unknown): ActivityAppVersion | undefined {
   const record = readRecord(value);
   if (record === undefined) {
     return undefined;
@@ -155,7 +155,7 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
   ) {
     return undefined;
   }
-  const appVersion = readAppVersion(entry.appVersion);
+  const appVersion = readActivityAppVersion(entry.appVersion);
   const started = readString(entry.started);
   const finished = readString(entry.finished);
   return {
@@ -178,6 +178,11 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
  * that is "no observation" (§7 edge 17), distinct from an empty `list`, which
  * is a valid observation that just found nothing. A process entry that is
  * missing an identifying field is dropped, not allowed to corrupt the read.
+ *
+ * No production caller remains: it now serves only as the test-only parity
+ * oracle `apps/web/src/zerops/topologyDataParity.test.ts` decodes the same
+ * raw process document against, to prove the migrated
+ * `decodeEntityDirectResponse` pipeline reproduces this reader's output.
  */
 export function readProjectProcesses(
   document: unknown,

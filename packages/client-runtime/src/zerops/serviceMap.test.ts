@@ -59,6 +59,24 @@ const realServices: ReadonlyArray<ZeropsTopologyService> = [
 const lifecycle = (overrides: Partial<ZeropsLifecycle>): ZeropsLifecycle =>
   ({ threadId: "thread-1", recentTools: [], ...overrides }) as unknown as ZeropsLifecycle;
 
+describe("control-plane identity", () => {
+  it.each([
+    ["zcp@1", "renamed", true],
+    ["ubuntu/ZCP@1", "probe", true],
+    ["core@1", "core", false],
+    ["ubuntu/nodejs@22", "zcp", false],
+  ] as const)(
+    "classifies %s by type rather than hostname or infrastructure group",
+    (type, hostname, expected) => {
+      const row = buildZeropsServiceMap(
+        topology([service({ hostname, type, group: "infrastructure" })]),
+      )?.groups[0]?.rows[0];
+      expect(row?.isControlPlane).toBe(expected);
+      expect(row?.title).toBe(expected ? "Zerops Control Plane" : hostname);
+    },
+  );
+});
+
 describe("serviceStatusTone", () => {
   it.each([
     ["FAILED", false, "error"],

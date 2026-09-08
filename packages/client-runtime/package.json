@@ -199,6 +199,10 @@
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
     },
+    "./zerops/data": {
+      "types": "./src/zerops/data/index.ts",
+      "default": "./src/zerops/data/index.ts"
+    },
     "./zerops/cards/decode": {
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
@@ -254,10 +258,6 @@
     "./zerops/registrationHandoff": {
       "types": "./src/zerops/registrationHandoff.ts",
       "default": "./src/zerops/registrationHandoff.ts"
-    },
-    "./zerops/platformWatch": {
-      "types": "./src/zerops/platformWatch.ts",
-      "default": "./src/zerops/platformWatch.ts"
     },
     "./zerops/serviceMap": {
       "types": "./src/zerops/serviceMap.ts",

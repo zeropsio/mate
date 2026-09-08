@@ -4,5 +4,12 @@ import { ZeropsApiError } from "./api.ts";
 export function zeropsErrorMessage(error: unknown): string {
   if (error instanceof ZeropsApiError) return error.message;
   if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  )
+    return error.message;
   return "Something went wrong talking to Zerops.";
 }

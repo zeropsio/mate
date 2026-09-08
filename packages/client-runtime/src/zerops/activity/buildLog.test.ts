@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildLogLineBytes,
+  buildOlderLogUrl,
   buildLogUrls,
+  decodeBuildLogItems,
+  mergeBoundedBuildLogLines,
   mergeBuildLogLines,
-  readBuildLogItems,
   withStreamFrom,
   type BuildLogLine,
 } from "./buildLog.ts";
@@ -115,51 +118,84 @@ describe("withStreamFrom", () => {
   });
 });
 
-describe("readBuildLogItems", () => {
+describe("buildOlderLogUrl", () => {
+  it("uses the oldest retained line id as `till` without losing the signed query", () => {
+    const url = new URL(
+      buildOlderLogUrl(
+        { url: "https://proxy.example.com/api/rest/log?signature=secret" },
+        { buildServiceStackId: "build-1", appVersionId: "version-1" },
+        "line-10",
+        25,
+      ),
+    );
+    expect(url.searchParams.get("signature")).toBe("secret");
+    expect(url.searchParams.get("till")).toBe("line-10");
+    expect(url.searchParams.get("limit")).toBe("25");
+    expect(url.searchParams.get("desc")).toBe("1");
+  });
+});
+
+describe("decodeBuildLogItems", () => {
   it("reads id/timestamp/content/severity into a BuildLogLine", () => {
-    const lines = readBuildLogItems({
+    const lines = decodeBuildLogItems({
       items: [
         { id: "l1", timestamp: "2026-09-02T10:00:00.000Z", content: "Building…", severity: 6 },
       ],
-    });
+    }).lines;
     expect(lines).toEqual([
       { id: "l1", at: "2026-09-02T10:00:00.000Z", text: "Building…", severity: 6 },
     ]);
   });
 
   it("reads `message` when `content` is absent (the stream item shape)", () => {
-    const lines = readBuildLogItems({
+    const lines = decodeBuildLogItems({
       items: [
         { id: "l1", timestamp: "2026-09-02T10:00:00.000Z", message: "Building…", severity: 3 },
       ],
-    });
+    }).lines;
     expect(lines[0]?.text).toBe("Building…");
   });
 
   it("defaults severity to informational (6) when missing or unreadable", () => {
-    const lines = readBuildLogItems({
+    const lines = decodeBuildLogItems({
       items: [{ id: "l1", timestamp: "t", content: "x", severity: "not-a-number" }],
-    });
+    }).lines;
     expect(lines[0]?.severity).toBe(6);
   });
 
   it("drops an item missing id or timestamp, keeping the rest — total reader", () => {
-    const lines = readBuildLogItems({
+    const lines = decodeBuildLogItems({
       items: [
         { timestamp: "t", content: "no id" },
         { id: "l2", content: "no timestamp" },
         { id: "l3", timestamp: "t", content: "ok" },
       ],
-    });
+    }).lines;
     expect(lines).toHaveLength(1);
     expect(lines[0]?.id).toBe("l3");
   });
 
   it("returns an empty array for an unreadable document", () => {
-    expect(readBuildLogItems(undefined)).toEqual([]);
-    expect(readBuildLogItems(null)).toEqual([]);
-    expect(readBuildLogItems({})).toEqual([]);
-    expect(readBuildLogItems({ items: "not-an-array" })).toEqual([]);
+    expect(decodeBuildLogItems(undefined).lines).toEqual([]);
+    expect(decodeBuildLogItems(null).lines).toEqual([]);
+    expect(decodeBuildLogItems({}).lines).toEqual([]);
+    expect(decodeBuildLogItems({ items: "not-an-array" }).lines).toEqual([]);
+  });
+
+  it("reports malformed envelopes and rejected rows separately from valid empty pages", () => {
+    expect(decodeBuildLogItems(undefined)).toEqual({
+      lines: [],
+      rejectedItems: 0,
+      malformedEnvelope: true,
+    });
+    expect(
+      decodeBuildLogItems({ items: [{ id: "valid", timestamp: "t" }, { timestamp: "bad" }] }),
+    ).toEqual({
+      lines: [{ id: "valid", at: "t", text: "", severity: 6 }],
+      rejectedItems: 1,
+      malformedEnvelope: false,
+    });
+    expect(decodeBuildLogItems({ items: [] }).malformedEnvelope).toBe(false);
   });
 });
 
@@ -187,5 +223,30 @@ describe("mergeBuildLogLines", () => {
     );
     const merged = mergeBuildLogLines([], lines, 2);
     expect(merged.map((l) => l.id)).toEqual(["l3", "l4"]);
+  });
+
+  it("applies line and UTF-8 byte bounds with explicit discarded sides", () => {
+    const one = line({ id: "l1", at: "2026-09-02T10:00:01.000Z", text: "one" });
+    const two = line({ id: "l2", at: "2026-09-02T10:00:02.000Z", text: "two" });
+    const three = line({ id: "l3", at: "2026-09-02T10:00:03.000Z", text: "three" });
+    const newest = mergeBoundedBuildLogLines(
+      [],
+      [one, two, three],
+      { maxLines: 2, maxBytes: buildLogLineBytes(two) + buildLogLineBytes(three) },
+      "newest",
+    );
+    expect(newest.lines).toEqual([two, three]);
+    expect(newest.droppedOlder).toBe(true);
+    expect(newest.droppedNewer).toBe(false);
+
+    const oldest = mergeBoundedBuildLogLines(
+      [two, three],
+      [one, two],
+      { maxLines: 2, maxBytes: Number.MAX_SAFE_INTEGER },
+      "oldest",
+    );
+    expect(oldest.lines).toEqual([one, two]);
+    expect(oldest.droppedOlder).toBe(false);
+    expect(oldest.droppedNewer).toBe(true);
   });
 });

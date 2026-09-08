@@ -10,7 +10,7 @@ import { useRightPanelStore } from "../../rightPanelStore";
  *
  * The coding agents' card is the control plane's: it is handed to the map,
  * which grows it out of the control plane's card, beside the Mate who lives
- * there. Only while the map has no control plane to hang it from — the
+ * there. Only while the map cannot identify this environment's service — the
  * project unread, or read and found without one — does the card stand on its
  * own under a heading.
  */
@@ -82,8 +82,11 @@ export function ZeropsPanel({
         snapshot={agentAuthCard}
       />
     );
-  const hasControlPlane =
-    view !== undefined && view.groups.some((group) => group.group === "infrastructure");
+  const currentServiceId = mateIdentity?.serviceId;
+  const hasCurrentControlPlane =
+    view?.groups.some((group) =>
+      group.rows.some((row) => row.isControlPlane && row.service.serviceId === currentServiceId),
+    ) ?? false;
   const body =
     view === undefined ? (
       <ZeropsPanelPlaceholder />
@@ -100,7 +103,8 @@ export function ZeropsPanel({
         }
       >
         <ZeropsServiceMap
-          agents={hasControlPlane ? agents : undefined}
+          currentServiceId={currentServiceId}
+          agents={hasCurrentControlPlane ? agents : undefined}
           error={topology.error}
           liveness={topology.liveness}
           mate={mate}
@@ -114,7 +118,7 @@ export function ZeropsPanel({
       <ScrollArea className="h-full">
         <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
           {body}
-          {agents === null || hasControlPlane ? null : (
+          {agents === null || hasCurrentControlPlane ? null : (
             <section className="space-y-2" data-zerops-agent-auth-tray>
               <MicroLabel>Coding agents</MicroLabel>
               {agents}
