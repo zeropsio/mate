@@ -33,7 +33,9 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
 const strictParseOptions = {
   errors: "all",
@@ -378,11 +380,43 @@ const browserStreamLayer = () =>
     }),
   );
 
+/**
+ * A fixture/showcase run never has a real `zcp` and must never spawn a
+ * process (determinism) — mate update is reported unavailable, matching a
+ * standalone server (spec-mate.md §2.9 MU-3: absent, never fabricated).
+ */
+const zeropsCliFixtureLayer = () =>
+  Layer.succeed(
+    ZeropsCliModule.ZeropsCli,
+    ZeropsCliModule.ZeropsCli.of({
+      markAgentOAuth: () => {
+        throw new Error("ZeropsCli fixture: markAgentOAuth is unreachable");
+      },
+      mateStatus: () => {
+        throw new Error("ZeropsCli fixture: mateStatus is unreachable");
+      },
+      mateUpdate: () => {
+        throw new Error("ZeropsCli fixture: mateUpdate is unreachable");
+      },
+    }),
+  );
+
+const zeropsMateUpdateFixtureLayer = () =>
+  Layer.succeed(
+    ZeropsMateUpdateModule.ZeropsMateUpdate,
+    ZeropsMateUpdateModule.ZeropsMateUpdate.of({
+      current: Effect.succeed(undefined),
+      refresh: Effect.void,
+    }),
+  );
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   return Layer.mergeAll(
     lifecycleLayer(scene),
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
     browserStreamLayer(),
+    zeropsCliFixtureLayer(),
+    zeropsMateUpdateFixtureLayer(),
   );
 };

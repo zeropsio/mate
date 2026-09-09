@@ -8,8 +8,9 @@
  * here when it lands.
  */
 import {
+  AuthExecOperateScope,
   WS_METHODS,
-  type EnvironmentAuthorizationError,
+  EnvironmentAuthorizationError,
   type WsRpcGroup,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -17,6 +18,8 @@ import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
 import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
+import type { ZeropsCli } from "./ZeropsCli.ts";
+import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -29,7 +32,8 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
-  | typeof WS_METHODS.zeropsBrowserInput;
+  | typeof WS_METHODS.zeropsBrowserInput
+  | typeof WS_METHODS.zeropsMateUpdate;
 
 type ZeropsRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: ZeropsRpcTag }>;
 
@@ -49,6 +53,12 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
+  readonly zeropsCli: ZeropsCli["Service"];
+  readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
+  /** Whether this server is running inside a Zerops project (spec-mate.md §2.9 MU-2). */
+  readonly isZeropsEnvironment: boolean;
+  /** This server's own version, read before `zcp mate update` runs. */
+  readonly serverVersion: string;
   /**
    * The connecting session's subject — the Zerops user id the door put on the
    * grant. Taken from the authenticated session in `ws.ts`, never from RPC
@@ -68,7 +78,53 @@ export interface RegisterZeropsRpcDeps {
   ) => Stream.Stream<A, E | EnvironmentAuthorizationError, R>;
 }
 
-/** Registers the five Zerops feed RPCs. Called once from `ws.ts`. */
+/**
+ * `zerops.mate.update`'s handler (spec-mate.md §2.9 MU-2): offered only
+ * inside a Zerops project with `zcp` on PATH, and even the CLI's own
+ * transport failures surface through {@link EnvironmentAuthorizationError} —
+ * the only error case the RPC declares. A failed `zcp mate update` (a
+ * non-zero exit with parseable JSON) is NOT one of these cases: it reaches
+ * the caller as a normal success carrying that JSON.
+ */
+export const runZeropsMateUpdate = (
+  deps: Pick<
+    RegisterZeropsRpcDeps,
+    "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion"
+  >,
+) =>
+  Effect.gen(function* () {
+    if (!deps.isZeropsEnvironment) {
+      return yield* new EnvironmentAuthorizationError({
+        message: "zerops.mate.update is only available inside a Zerops project.",
+        requiredScope: AuthExecOperateScope,
+      });
+    }
+    const serverVersion = deps.serverVersion;
+    const result = yield* deps.zeropsCli.mateUpdate().pipe(
+      Effect.catchTags({
+        ZeropsCliNotFound: () =>
+          Effect.fail(
+            new EnvironmentAuthorizationError({
+              message: "zcp is not available in this environment.",
+              requiredScope: AuthExecOperateScope,
+            }),
+          ),
+        ZeropsCliFailed: (error) =>
+          Effect.fail(
+            new EnvironmentAuthorizationError({
+              message: error.message,
+              requiredScope: AuthExecOperateScope,
+            }),
+          ),
+      }),
+    );
+    if (result.action === "updated") {
+      yield* deps.zeropsMateUpdate.refresh;
+    }
+    return { ...result, serverVersion };
+  });
+
+/** Registers the six Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
     zeropsLifecycle,
@@ -150,6 +206,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       ),
     [WS_METHODS.zeropsBrowserInput]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsMateUpdate]: (_input) =>
+      observeRpcEffect(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps), {
         "rpc.aggregate": "zerops",
       }),
   } satisfies ZeropsRpcHandlers;

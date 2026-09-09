@@ -149,7 +149,9 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
+import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
+import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -525,6 +527,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
+    | ZeropsCliModule.ZeropsCli
+    | ZeropsMateUpdateModule.ZeropsMateUpdate
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -573,6 +577,8 @@ const buildAppUnderTest = (options?: {
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
     zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
+    zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
+    zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1093,6 +1099,20 @@ const buildAppUnderTest = (options?: {
               subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
               sendInput: () => Effect.void,
               ...options?.layers?.zeropsBrowserStream,
+            }),
+            // A test machine has no `zcp` binary — mocked so the suite never
+            // spawns a doomed child process, matching MU-3: outside a Zerops
+            // environment ZeropsMateUpdate holds nothing.
+            Layer.mock(ZeropsCliModule.ZeropsCli)({
+              markAgentOAuth: () => Effect.die("ZeropsCli mock: markAgentOAuth is unreachable"),
+              mateStatus: () => Effect.die("ZeropsCli mock: mateStatus is unreachable"),
+              mateUpdate: () => Effect.die("ZeropsCli mock: mateUpdate is unreachable"),
+              ...options?.layers?.zeropsCli,
+            }),
+            Layer.mock(ZeropsMateUpdateModule.ZeropsMateUpdate)({
+              current: Effect.succeed(undefined),
+              refresh: Effect.void,
+              ...options?.layers?.zeropsMateUpdate,
             }),
           ),
       ),

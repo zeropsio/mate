@@ -164,6 +164,7 @@ import {
   ZeropsBrowserStreamEvent,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
+  ZeropsMateUpdateResult,
 } from "./zerops.ts";
 import {
   ProviderConsumeResetCreditInput,
@@ -288,6 +289,7 @@ export const WS_METHODS = {
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsBrowserInput: "zerops.browser.input",
+  zeropsMateUpdate: "zerops.mate.update",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -921,6 +923,19 @@ export const WsZeropsBrowserInputRpc = Rpc.make(WS_METHODS.zeropsBrowserInput, {
   error: EnvironmentAuthorizationError,
 });
 
+/**
+ * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2): offered only
+ * inside a Zerops project with `zcp` on PATH, gated by `exec:operate`. A
+ * failing update is still a success here — its JSON carries the failure —
+ * so {@link EnvironmentAuthorizationError} is the only error case: missing
+ * scope, or the RPC not being offered at all.
+ */
+export const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
+  payload: Schema.Struct({}),
+  success: ZeropsMateUpdateResult,
+  error: EnvironmentAuthorizationError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1005,6 +1020,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsAgentLoginCancelRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
+  WsZeropsMateUpdateRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
