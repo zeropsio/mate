@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   CheckpointRef,

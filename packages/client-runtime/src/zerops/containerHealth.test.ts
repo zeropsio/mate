@@ -53,12 +53,36 @@ function stub(routes: Record<string, () => Response>) {
 }
 
 describe("probeZeropsContainerHealth", () => {
-  it("reports the actual server version from the existing descriptor read", async () => {
+  it("reports the actual server version from the existing descriptor read, and no update field absent", async () => {
     const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
     const report = vi.fn();
     expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
-    expect(report).toHaveBeenCalledWith("0.0.35");
+    expect(report).toHaveBeenCalledWith("0.0.35", undefined);
     expect(read.calls).toHaveLength(1);
+  });
+
+  it("relays the descriptor's update field to the caller (spec-mate.md §2.9)", async () => {
+    const update = {
+      installed: "0.8.0",
+      latest: "0.8.1",
+      available: true,
+      checkedAt: "2026-09-09T00:00:00Z",
+    };
+    const read = stub({
+      [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, update }),
+    });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35", update);
+  });
+
+  it("never fabricates an update field the descriptor did not send (MU-3)", async () => {
+    const read = stub({
+      [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, update: { installed: "0.8.0" } }),
+    });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35", undefined);
   });
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -19,6 +19,7 @@ import { useZeropsCandidatesVersion } from "./candidatesRefresh";
 
 import { useEffect, useMemo, useState } from "react";
 
+import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
@@ -30,10 +31,20 @@ const STALL_BOUND_MS = 90_000;
 
 async function readCandidateHealth(origin: string) {
   let serverVersion: string | undefined;
-  const health = await probeZeropsContainerHealth(origin, undefined, (version) => {
-    serverVersion = version;
-  });
-  return { health, ...(serverVersion === undefined ? {} : { serverVersion }) };
+  let update: ExecutionEnvironmentUpdate | undefined;
+  const health = await probeZeropsContainerHealth(
+    origin,
+    undefined,
+    (version, descriptorUpdate) => {
+      serverVersion = version;
+      update = descriptorUpdate;
+    },
+  );
+  return {
+    health,
+    ...(serverVersion === undefined ? {} : { serverVersion }),
+    ...(update === undefined ? {} : { update }),
+  };
 }
 
 // The sidebar and project picker inspect the same containers. Keep both pending
@@ -103,13 +114,25 @@ function delay(
  * testable against a fake clock and a fake probe.
  */
 export async function pollCandidateHealth(input: {
-  readonly firstProbe: () => Promise<{ health: ZeropsContainerHealth; serverVersion?: string }>;
-  readonly reprobe: () => Promise<{ health: ZeropsContainerHealth; serverVersion?: string }>;
+  readonly firstProbe: () => Promise<{
+    health: ZeropsContainerHealth;
+    serverVersion?: string;
+    update?: ExecutionEnvironmentUpdate;
+  }>;
+  readonly reprobe: () => Promise<{
+    health: ZeropsContainerHealth;
+    serverVersion?: string;
+    update?: ExecutionEnvironmentUpdate;
+  }>;
   readonly isProcessRunning: () => boolean;
   readonly now: () => number;
   readonly timers?: PollTimers;
   readonly isCancelled: () => boolean;
-  readonly onVerdict: (health: ZeropsContainerHealth, serverVersion: string | undefined) => void;
+  readonly onVerdict: (
+    health: ZeropsContainerHealth,
+    serverVersion: string | undefined,
+    update: ExecutionEnvironmentUpdate | undefined,
+  ) => void;
 }): Promise<void> {
   const timers = input.timers ?? REAL_TIMERS;
   let waitingSinceMs: number | null = null;
@@ -129,7 +152,7 @@ export async function pollCandidateHealth(input: {
         }
       }
     }
-    input.onVerdict(displayed, result.serverVersion);
+    input.onVerdict(displayed, result.serverVersion, result.update);
     if (isSettled(raw)) return;
     if (!pending) {
       // A verdict this hook does not recognize as pending or settled (there
@@ -153,12 +176,14 @@ export function useZeropsCandidateHealth(
 ): {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   readonly serverVersions: ReadonlyMap<string, string>;
+  readonly updates: ReadonlyMap<string, ExecutionEnvironmentUpdate>;
 } {
   const refreshVersion = useZeropsCandidatesVersion();
   const [snapshot, setSnapshot] = useState<{
     health: ReadonlyMap<string, ZeropsContainerHealth>;
     serverVersions: ReadonlyMap<string, string>;
-  }>({ health: new Map(), serverVersions: new Map() });
+    updates: ReadonlyMap<string, ExecutionEnvironmentUpdate>;
+  }>({ health: new Map(), serverVersions: new Map(), updates: new Map() });
 
   // Only the rows that have an origin to probe, keyed so the effect re-runs
   // when the set changes rather than on every re-render.
@@ -173,18 +198,24 @@ export function useZeropsCandidateHealth(
   const isProcessRunning = options.isProcessRunning;
 
   useEffect(() => {
-    setSnapshot({ health: new Map(), serverVersions: new Map() });
+    setSnapshot({ health: new Map(), serverVersions: new Map(), updates: new Map() });
     if (targets.length === 0) return;
     let cancelled = false;
     let cursor = 0;
 
-    const setVerdict = (key: string, health: ZeropsContainerHealth, serverVersion?: string) => {
+    const setVerdict = (
+      key: string,
+      health: ZeropsContainerHealth,
+      serverVersion?: string,
+      update?: ExecutionEnvironmentUpdate,
+    ) => {
       setSnapshot((current) => ({
         health: new Map(current.health).set(key, health),
         serverVersions:
           serverVersion === undefined
             ? current.serverVersions
             : new Map(current.serverVersions).set(key, serverVersion),
+        updates: update === undefined ? current.updates : new Map(current.updates).set(key, update),
       }));
     };
 
@@ -200,8 +231,8 @@ export function useZeropsCandidateHealth(
           isProcessRunning: () => isProcessRunning?.(target.key) ?? false,
           now: () => Date.now(),
           isCancelled: () => cancelled,
-          onVerdict: (health, serverVersion) => {
-            setVerdict(target.key, health, serverVersion);
+          onVerdict: (health, serverVersion, update) => {
+            setVerdict(target.key, health, serverVersion, update);
           },
         });
       }

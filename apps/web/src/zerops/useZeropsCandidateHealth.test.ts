@@ -33,6 +33,25 @@ it("shares a probe across sidebar, picker and incremental candidate snapshots", 
   expect(await probeCandidateHealth("https://container.example", 0)).toEqual(await first);
   expect(probe).toHaveBeenCalledTimes(1);
 });
+it("carries the descriptor's update field alongside the server version", async () => {
+  openAccountLifetime("account-update");
+  const update = {
+    installed: "0.8.0",
+    latest: "0.8.1",
+    available: true,
+    checkedAt: "2026-09-09T00:00:00Z",
+  };
+  probe.mockImplementation((_origin, _fetch, onVersion) => {
+    onVersion("0.8.0", update);
+    return Promise.resolve("ready");
+  });
+  expect(await probeCandidateHealth("https://update.example", 0)).toEqual({
+    health: "ready",
+    serverVersion: "0.8.0",
+    update,
+  });
+});
+
 it("re-probes on explicit refresh and never carries a result into another account", async () => {
   openAccountLifetime("account-a");
   probe.mockResolvedValue("unreachable");

@@ -40,6 +40,8 @@
  * and a restart is the action that helps in either case.
  */
 
+import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import type { ZeropsContainerHealth } from "./provisioning.ts";
 
@@ -89,6 +91,30 @@ async function read(url: string, fetchImpl: FetchLike): Promise<Reading> {
   }
 }
 
+/**
+ * The descriptor's `update` field (spec-mate.md §2.9), decoded loosely: any
+ * shape short of all four fields is read as absent (MU-3) rather than a
+ * partial reading fabricated from what is there.
+ */
+function parseDescriptorUpdate(value: unknown): ExecutionEnvironmentUpdate | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const body = value as Record<string, unknown>;
+  if (
+    typeof body.installed === "string" &&
+    typeof body.latest === "string" &&
+    typeof body.available === "boolean" &&
+    typeof body.checkedAt === "string"
+  ) {
+    return {
+      installed: body.installed,
+      latest: body.latest,
+      available: body.available,
+      checkedAt: body.checkedAt,
+    };
+  }
+  return undefined;
+}
+
 /** Whether this document really is a mate server's, served under the right prefix. */
 function isZeropsMateDescriptor(body: Record<string, unknown>): boolean {
   if (typeof body.environmentId !== "string") return false;
@@ -101,14 +127,17 @@ function isZeropsMateDescriptor(body: Record<string, unknown>): boolean {
 export async function probeZeropsContainerHealth(
   origin: string,
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis),
-  onServerVersion?: (version: string) => void,
+  onServerVersion?: (version: string, update: ExecutionEnvironmentUpdate | undefined) => void,
 ): Promise<ZeropsContainerHealth> {
   const base = origin.replace(/\/+$/, "");
 
   const descriptor = await read(`${zeropsMateBaseUrl(base)}/.well-known/t3/environment`, fetchImpl);
   if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
     if (typeof descriptor.body.serverVersion === "string")
-      onServerVersion?.(descriptor.body.serverVersion);
+      onServerVersion?.(
+        descriptor.body.serverVersion,
+        parseDescriptorUpdate(descriptor.body.update),
+      );
     return "ready";
   }
 
