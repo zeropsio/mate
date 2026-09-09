@@ -11,6 +11,7 @@ import {
   AuthExecOperateScope,
   WS_METHODS,
   EnvironmentAuthorizationError,
+  ZeropsMateUpdateError,
   type WsRpcGroup,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -78,13 +79,19 @@ export interface RegisterZeropsRpcDeps {
   ) => Stream.Stream<A, E | EnvironmentAuthorizationError, R>;
 }
 
+/** `ProcessTimeoutError`'s message (processRunner.ts) always contains this phrase. */
+const TIMEOUT_MESSAGE_MARKER = "timed out";
+
 /**
  * `zerops.mate.update`'s handler (spec-mate.md §2.9 MU-2): offered only
- * inside a Zerops project with `zcp` on PATH, and even the CLI's own
- * transport failures surface through {@link EnvironmentAuthorizationError} —
- * the only error case the RPC declares. A failed `zcp mate update` (a
- * non-zero exit with parseable JSON) is NOT one of these cases: it reaches
- * the caller as a normal success carrying that JSON.
+ * inside a Zerops project with `zcp` on PATH — the RPC not being offered at
+ * all, or the caller lacking `exec:operate`, surfaces as
+ * {@link EnvironmentAuthorizationError}. `zcp` itself failing to run or
+ * answer — a missing binary, a spawn failure, a timeout — is a different
+ * cause and surfaces as {@link ZeropsMateUpdateError} instead, never
+ * reported as an authorization problem. A failed `zcp mate update` (a
+ * non-zero exit with parseable JSON) is neither of these: it reaches the
+ * caller as a normal success carrying that JSON.
  */
 export const runZeropsMateUpdate = (
   deps: Pick<
@@ -103,19 +110,15 @@ export const runZeropsMateUpdate = (
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
       Effect.catchTags({
         ZeropsCliNotFound: () =>
-          Effect.fail(
-            new EnvironmentAuthorizationError({
-              message: "zcp is not available in this environment.",
-              requiredScope: AuthExecOperateScope,
-            }),
-          ),
+          new ZeropsMateUpdateError({
+            reason: "zcp-not-found",
+            message: "zcp is not available in this environment.",
+          }),
         ZeropsCliFailed: (error) =>
-          Effect.fail(
-            new EnvironmentAuthorizationError({
-              message: error.message,
-              requiredScope: AuthExecOperateScope,
-            }),
-          ),
+          new ZeropsMateUpdateError({
+            reason: error.message.includes(TIMEOUT_MESSAGE_MARKER) ? "timed-out" : "zcp-failed",
+            message: error.message,
+          }),
       }),
     );
     if (result.action === "updated") {

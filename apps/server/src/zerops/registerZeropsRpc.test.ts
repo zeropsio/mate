@@ -44,7 +44,7 @@ describe("runZeropsMateUpdate", () => {
       }),
   );
 
-  it.effect("maps a missing zcp binary to EnvironmentAuthorizationError", () =>
+  it.effect("maps a missing zcp binary to ZeropsMateUpdateError, not an authorization error", () =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(
         runZeropsMateUpdate({
@@ -54,7 +54,47 @@ describe("runZeropsMateUpdate", () => {
           serverVersion: "0.8.0",
         }),
       );
-      expect(error._tag).toBe("EnvironmentAuthorizationError");
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("zcp-not-found");
+    }),
+  );
+
+  it.effect("maps a zcp spawn/parse failure to ZeropsMateUpdateError with reason zcp-failed", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateUpdate({
+          zeropsCli: stubMateUpdate(
+            Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "not json" })),
+          ),
+          zeropsMateUpdate: stubMateUpdateService(),
+          isZeropsEnvironment: true,
+          serverVersion: "0.8.0",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("zcp-failed");
+    }),
+  );
+
+  it.effect("maps a timed-out zcp run to ZeropsMateUpdateError with reason timed-out", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateUpdate({
+          zeropsCli: stubMateUpdate(
+            Effect.fail(
+              new ZeropsCliFailed({
+                command: "zcp",
+                reason: "Process zcp mate update timed out after 300000ms",
+              }),
+            ),
+          ),
+          zeropsMateUpdate: stubMateUpdateService(),
+          isZeropsEnvironment: true,
+          serverVersion: "0.8.0",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("timed-out");
     }),
   );
 

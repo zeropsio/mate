@@ -508,3 +508,25 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   serverVersion: Schema.String,
 });
 export type ZeropsMateUpdateResult = typeof ZeropsMateUpdateResult.Type;
+
+/**
+ * `zerops.mate.update`'s domain error: `zcp` itself could not be run or did
+ * not answer, as distinct from {@link EnvironmentAuthorizationError} (the RPC
+ * is not offered here, or the caller lacks `exec:operate`). A `zcp mate
+ * update` that ran and reported its own failure is neither of these — it is
+ * a normal {@link ZeropsMateUpdateResult} carrying that failure's detail.
+ */
+export const ZeropsMateUpdateErrorReason = Schema.Literals([
+  "zcp-not-found",
+  "zcp-failed",
+  "timed-out",
+]);
+export type ZeropsMateUpdateErrorReason = typeof ZeropsMateUpdateErrorReason.Type;
+
+export class ZeropsMateUpdateError extends Schema.TaggedErrorClass<ZeropsMateUpdateError>()(
+  "ZeropsMateUpdateError",
+  {
+    reason: ZeropsMateUpdateErrorReason,
+    message: Schema.String,
+  },
+) {}
