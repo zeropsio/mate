@@ -15,6 +15,7 @@ import {
   RELAY_URL_SECRET,
 } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
+import * as ZeropsMateUpdate from "../zerops/ZeropsMateUpdate.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
 
 const isServerEnvironmentIdPersistenceError = Schema.is(
@@ -183,6 +184,76 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         ),
       );
       expect(insideZerops.zerops).toEqual({ projectId: "nTV3oMB2SS634ImDJnQckg" });
+    }),
+  );
+
+  // spec-mate.md §2.9 MU-3: absent, never fabricated, when ZeropsMateUpdate
+  // has nothing to report — no layer provided at all (a standalone server),
+  // or a layer that has not run a successful check yet (zcp not on PATH).
+  it.effect("update is absent when ZeropsMateUpdate has nothing to report", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-mate-update-absent-test-",
+      });
+
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+
+      expect(descriptor.update).toBeUndefined();
+      expect(descriptor.capabilities.mateUpdate).toBe(false);
+    }),
+  );
+
+  it.effect("update carries the last good ZeropsMateUpdate answer when one is held", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-mate-update-present-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+      const zeropsConfig = {
+        ...config,
+        zerops: {
+          projectId: "nTV3oMB2SS634ImDJnQckg",
+          apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
+          allowedOrigins: [],
+          membershipTtl: Duration.seconds(900),
+          publicOrigin: undefined,
+        },
+      };
+
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(zeropsConfig)),
+          ),
+        ),
+        Effect.provideService(
+          ZeropsMateUpdate.ZeropsMateUpdate,
+          ZeropsMateUpdate.ZeropsMateUpdate.of({
+            current: Effect.succeed({
+              installed: "0.8.0",
+              latest: "0.8.1",
+              available: true,
+              checkedAt: "2026-09-09T00:00:00Z",
+            }),
+            refresh: Effect.void,
+          }),
+        ),
+      );
+
+      expect(descriptor.update).toEqual({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      });
+      expect(descriptor.capabilities.mateUpdate).toBe(true);
     }),
   );
 

@@ -81,6 +81,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       this is false — no update would ever repaint it. Absent on older
       servers, which may still publish, so only an explicit false skips. */
   agentActivityPublishing: Schema.optionalKey(Schema.Boolean),
+  /** `zerops.mate.update` is offered (spec-mate.md §2.9 MU-2): inside a
+      Zerops project with `zcp` on PATH. Absent everywhere else, so a client
+      renders the Update verb only where the RPC would actually work. */
+  mateUpdate: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
@@ -95,6 +99,20 @@ export const ExecutionEnvironmentZerops = Schema.Struct({
 });
 export type ExecutionEnvironmentZerops = typeof ExecutionEnvironmentZerops.Type;
 
+/**
+ * What `zcp mate status` last answered, relayed through the descriptor
+ * (spec-mate.md §2.9): the one reader of "is there a newer Mate" in the
+ * whole product. Absent, never fabricated, when `zcp` cannot be run (MU-3)
+ * — a standalone server or one outside a Zerops project.
+ */
+export const ExecutionEnvironmentUpdate = Schema.Struct({
+  installed: TrimmedNonEmptyString,
+  latest: TrimmedNonEmptyString,
+  available: Schema.Boolean,
+  checkedAt: TrimmedNonEmptyString,
+});
+export type ExecutionEnvironmentUpdate = typeof ExecutionEnvironmentUpdate.Type;
+
 export const ExecutionEnvironmentDescriptor = Schema.Struct({
   environmentId: EnvironmentId,
   label: TrimmedNonEmptyString,
@@ -108,6 +126,8 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   basePath: Schema.optionalKey(Schema.String),
   /** See {@link ExecutionEnvironmentZerops}. */
   zerops: Schema.optionalKey(ExecutionEnvironmentZerops),
+  /** See {@link ExecutionEnvironmentUpdate}. */
+  update: Schema.optionalKey(ExecutionEnvironmentUpdate),
 });
 export type ExecutionEnvironmentDescriptor = typeof ExecutionEnvironmentDescriptor.Type;
 

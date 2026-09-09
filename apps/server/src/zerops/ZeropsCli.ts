@@ -16,12 +16,24 @@ import * as Schema from "effect/Schema";
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { parseMarkAgentOAuthOutput, type MarkAgentOAuthResult } from "./zeropsAgentAuthParse.ts";
+import {
+  parseMateStatusOutput,
+  parseMateUpdateOutput,
+  type MateStatusResult,
+  type MateUpdateResult,
+} from "./zeropsMateUpdateParse.ts";
 
 /** The binary `zcp init` installs on every Zerops container. */
 const ZCP_COMMAND = "zcp";
 const MARK_OAUTH_TIMEOUT = Duration.seconds(15);
 /** The output is one short JSON line; the cap only guards a pathological answer. */
 const MARK_OAUTH_MAX_OUTPUT_BYTES = 64 * 1024;
+/** `mate status` only reads a cached manifest (spec-mate.md §2.1c); same budget as mark-oauth. */
+const MATE_STATUS_TIMEOUT = Duration.seconds(15);
+const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
+/** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
+const MATE_UPDATE_TIMEOUT = Duration.minutes(5);
+const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
 
 /**
  * `zcp` is not installed — this is not a Zerops environment. Distinct from
@@ -69,6 +81,19 @@ export class ZeropsCli extends Context.Service<
     readonly markAgentOAuth: (
       agentId: string,
     ) => Effect.Effect<MarkAgentOAuthResult, ZeropsCliError>;
+    /**
+     * Runs `zcp mate status --json` (spec-mate.md §2.9): the one place that
+     * compares an installed mate with the stable manifest. Never installs.
+     * Tolerates an `error` field in the answer — a degraded-but-successful
+     * result, not a failure of this call.
+     */
+    readonly mateStatus: () => Effect.Effect<MateStatusResult, ZeropsCliError>;
+    /**
+     * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2). Its JSON is
+     * returned even on a non-zero exit — a failed update is a successful
+     * call to this method, never a {@link ZeropsCliFailed}.
+     */
+    readonly mateUpdate: () => Effect.Effect<MateUpdateResult, ZeropsCliError>;
   }
 >()("t3/zerops/ZeropsCli") {}
 
@@ -139,7 +164,82 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
-    return { markAgentOAuth } satisfies ZeropsCli["Service"];
+    const mateStatus = (): Effect.Effect<MateStatusResult, ZeropsCliError> =>
+      processRunner
+        .run({
+          command,
+          args: [...baseArgs, "mate", "status", "--json"],
+          cwd,
+          timeout: MATE_STATUS_TIMEOUT,
+          maxOutputBytes: MATE_STATUS_MAX_OUTPUT_BYTES,
+          outputMode: "truncate",
+        })
+        .pipe(
+          Effect.mapError((cause): ZeropsCliError =>
+            cause._tag === "ProcessSpawnError"
+              ? spawnErrorToCliError(command, cause.cause)
+              : new ZeropsCliFailed({ command, reason: cause.message }),
+          ),
+          Effect.flatMap((result) => {
+            if (result.code !== 0) {
+              return Effect.fail(
+                new ZeropsCliFailed({
+                  command,
+                  reason: firstDiagnosticLine(result.stderr, `mate status exited ${result.code}`),
+                }),
+              );
+            }
+            const parsed = parseMateStatusOutput(result.stdout);
+            return parsed === undefined
+              ? Effect.fail(
+                  new ZeropsCliFailed({
+                    command,
+                    reason: firstDiagnosticLine(
+                      result.stderr,
+                      "mate status did not print a result document",
+                    ),
+                  }),
+                )
+              : Effect.succeed(parsed);
+          }),
+        );
+
+    // A failed `mate update` is a successful call to this method (spec-mate.md
+    // §2.9 MU-2): the exit code is read only to help pick the diagnostic when
+    // there is no parseable JSON at all, never to fail the Effect on its own.
+    const mateUpdate = (): Effect.Effect<MateUpdateResult, ZeropsCliError> =>
+      processRunner
+        .run({
+          command,
+          args: [...baseArgs, "mate", "update", "--json"],
+          cwd,
+          timeout: MATE_UPDATE_TIMEOUT,
+          maxOutputBytes: MATE_UPDATE_MAX_OUTPUT_BYTES,
+          outputMode: "truncate",
+        })
+        .pipe(
+          Effect.mapError((cause): ZeropsCliError =>
+            cause._tag === "ProcessSpawnError"
+              ? spawnErrorToCliError(command, cause.cause)
+              : new ZeropsCliFailed({ command, reason: cause.message }),
+          ),
+          Effect.flatMap((result) => {
+            const parsed = parseMateUpdateOutput(result.stdout);
+            return parsed === undefined
+              ? Effect.fail(
+                  new ZeropsCliFailed({
+                    command,
+                    reason: firstDiagnosticLine(
+                      result.stderr,
+                      `mate update did not print a result document (exited ${result.code})`,
+                    ),
+                  }),
+                )
+              : Effect.succeed(parsed);
+          }),
+        );
+
+    return { markAgentOAuth, mateStatus, mateUpdate } satisfies ZeropsCli["Service"];
   });
 
 /**

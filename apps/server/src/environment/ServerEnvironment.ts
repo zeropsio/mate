@@ -19,6 +19,8 @@ import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
+import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
 
 export class ServerEnvironmentIdPersistenceError extends Schema.TaggedErrorClass<ServerEnvironmentIdPersistenceError>()(
   "ServerEnvironmentIdPersistenceError",
@@ -76,6 +78,7 @@ function platformArch(
  */
 export const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
+  options?: { readonly mateUpdate?: boolean },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
     accountLifecycleVersion: 1,
@@ -92,6 +95,7 @@ export const makeServerEnvironmentCapabilities = (
     threadPinReorder: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
+    ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
   };
 };
 
@@ -172,18 +176,26 @@ export const make = Effect.gen(function* () {
     ...(serverConfig.zerops === undefined
       ? {}
       : { zerops: { projectId: serverConfig.zerops.projectId } }),
-    capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy),
+    capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy, {
+      mateUpdate: isZeropsEnvironment(serverConfig),
+    }),
   };
 
   return ServerEnvironment.of({
     getEnvironmentId: Effect.succeed(environmentId),
-    // The publish opt-in and relay link change at runtime (`mate connect
-    // publish`, the client settings toggle), so the capability is read per
+    // The publish opt-in and relay link, and mate's update line
+    // (spec-mate.md §2.9), change at runtime, so both are read per
     // descriptor request rather than baked in at startup.
-    getDescriptor: readAgentActivityPublishingActive(secrets).pipe(
-      Effect.map((agentActivityPublishing) => ({
+    getDescriptor: Effect.all([
+      readAgentActivityPublishingActive(secrets),
+      Effect.serviceOption(ZeropsMateUpdate).pipe(
+        Effect.flatMap((update) => (update._tag === "None" ? Effect.void : update.value.current)),
+      ),
+    ]).pipe(
+      Effect.map(([agentActivityPublishing, update]) => ({
         ...descriptor,
         capabilities: { ...descriptor.capabilities, agentActivityPublishing },
+        ...(update === undefined ? {} : { update }),
       })),
     ),
   });
