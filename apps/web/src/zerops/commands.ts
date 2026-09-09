@@ -4,6 +4,8 @@
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
+ * - `mateUpdate` — server scope `exec:operate`; offered only where the
+ *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
  *
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
@@ -31,5 +33,10 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsBrowserInput,
   });
 
-  return { agentLoginStart, agentLoginCancel, browserInput };
+  const mateUpdate = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:mate:update",
+    tag: WS_METHODS.zeropsMateUpdate,
+  });
+
+  return { agentLoginStart, agentLoginCancel, browserInput, mateUpdate };
 }

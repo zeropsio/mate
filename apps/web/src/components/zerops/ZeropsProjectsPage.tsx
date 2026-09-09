@@ -75,6 +75,7 @@ import { Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { MateUpdateLine } from "./MateUpdateLine";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
@@ -1413,7 +1414,9 @@ function ZeropsProjectsContent() {
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}
               updateLine={
-                serverVersions.get(candidate.key) === undefined ? null : (
+                connected && candidate.environmentId !== undefined ? (
+                  <ZeropsMateUpdateControl environmentId={candidate.environmentId} />
+                ) : serverVersions.get(candidate.key) === undefined ? null : (
                   <MateUpdateLine
                     line={mateUpdateLine(
                       mateUpdates.get(candidate.key),

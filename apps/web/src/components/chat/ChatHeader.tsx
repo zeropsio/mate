@@ -46,6 +46,7 @@ import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsMates } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
+import { ZeropsMateUpdateControl } from "../zerops/ZeropsMateUpdateControl";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -482,7 +483,14 @@ export const ChatHeader = memo(function ChatHeader({
             openInCwd={openInCwd}
           />
         )}
-        {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
+        {mate === undefined ? null : (
+          <>
+            <span className="hidden items-center gap-1.5 text-xs text-muted-foreground @3xl/header-actions:inline-flex">
+              <ZeropsMateUpdateControl environmentId={activeThreadEnvironmentId} />
+            </span>
+            <ZeropsProjectLink projectUrl={mate.projectUrl} />
+          </>
+        )}
         {activeProjectName && stackedActionsSupported && (
           <GitActionsControl
             gitCwd={gitCwd}
