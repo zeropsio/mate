@@ -419,6 +419,7 @@ function ZeropsProjectsContent() {
     resetConnectingTarget,
   } = useZeropsProjectConnection(activeOrganization?.id ?? null);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
+  const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const navigate = useNavigate();
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
@@ -472,7 +473,7 @@ function ZeropsProjectsContent() {
   ): ZeropsRowInput => ({
     candidate,
     health: candidateHealth.get(candidate.key),
-    can: { open: true, connect: true, enable: true, wait: true, setUpMate: true },
+    can: { open: true, connect: true, enable: true, wait: true, setUpMate: true, start: true },
     ...(role === undefined ? {} : { role }),
   });
 
@@ -573,8 +574,11 @@ function ZeropsProjectsContent() {
   );
 
   const busyKeys = useMemo(
-    () => new Set([enablingCandidateKey, settingUpKey].filter((key) => key !== null)),
-    [enablingCandidateKey, settingUpKey],
+    () =>
+      new Set(
+        [enablingCandidateKey, settingUpKey, startingCandidateKey].filter((key) => key !== null),
+      ),
+    [enablingCandidateKey, settingUpKey, startingCandidateKey],
   );
 
   // The quiet actions: rename an agent, move a project, rename a group. Each
@@ -759,12 +763,19 @@ function ZeropsProjectsContent() {
       case "enable":
       case "wait":
       case "set-up-mate":
+      case "start":
         return (
           <>
             {detail}
             <ZeropsMateVerb
               disabled={busy}
-              label={action.kind === "set-up-mate" && busy ? "Setting up…" : action.label}
+              label={
+                busy && action.kind === "set-up-mate"
+                  ? "Setting up…"
+                  : busy && action.kind === "start"
+                    ? "Starting…"
+                    : action.label
+              }
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
@@ -829,6 +840,42 @@ function ZeropsProjectsContent() {
           })
           .finally(() => {
             setEnablingCandidateKey(null);
+          });
+        return;
+      }
+      case "start": {
+        if (activeOrganization === null) return;
+        setConnectError(null);
+        setStartingCandidateKey(candidate.key);
+        const project = projectRef(activeOrganization.id, candidate.project.id);
+        // A STOPPED project starts every service in it; a STOPPED zcp
+        // service while the project is ACTIVE starts only that service.
+        const serviceId = candidate.service?.id;
+        const write =
+          candidate.project.status === "STOPPED"
+            ? runZeropsCommand(runtime.commands.startProject(project))
+            : serviceId
+              ? runZeropsCommand(
+                  runtime.commands.startService({
+                    kind: "service",
+                    project,
+                    serviceId: ZeropsServiceId.make(serviceId),
+                  }),
+                )
+              : null;
+        if (write === null) {
+          setStartingCandidateKey(null);
+          return;
+        }
+        void write
+          .then(() => {
+            refreshZeropsCandidates();
+          })
+          .catch((cause: unknown) => {
+            setConnectError(zeropsErrorMessage(cause));
+          })
+          .finally(() => {
+            setStartingCandidateKey(null);
           });
         return;
       }

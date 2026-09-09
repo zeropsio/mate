@@ -24,6 +24,7 @@ function projectOf(target: CommandTarget): ProjectRef | null {
 export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
   switch (intent.kind) {
     case "restart-service":
+    case "start-service":
     case "enable-zerops-mate":
     case "enable-subdomain-access":
       return intent.service;
@@ -31,6 +32,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "update-project-group-tags":
     case "import-development-container":
     case "import-services":
+    case "start-project":
       return intent.project;
     case "create-project":
     case "create-project-with-mate":

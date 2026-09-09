@@ -15,6 +15,8 @@ import {
   decodeNativeFrame,
   decodeRegistrationResponse,
   decodeRestartServiceResponse,
+  decodeStartProjectResponse,
+  decodeStartServiceResponse,
   decodeSearchListPage,
 } from "./platformProtocol.ts";
 import type {
@@ -962,6 +964,53 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               adapterError(
                 "uncertain",
                 `Zerops accepted the restart but its Process response was malformed: ${decoded.issues[0]!.message}`,
+                false,
+              ),
+            );
+          return Effect.succeed<PlatformCommandReceipt>({
+            processRefs: decoded.processRefs,
+            observations: decoded.observations,
+            result: { kind: command.kind, value: undefined },
+          });
+        }),
+        Effect.mapError(uncertainCommandError),
+      );
+    }
+
+    if (command.kind === "start-service" || command.kind === "start-project") {
+      const path =
+        command.kind === "start-service"
+          ? `/service-stack/${command.service.serviceId}/start`
+          : `/project/${command.project.projectId}/start`;
+      return requestEffect(
+        options.client,
+        {
+          path,
+          method: "PUT",
+          operationKind: "project-write",
+          background: false,
+          ...(context.beforeProjectWrite === undefined
+            ? {}
+            : { beforeWrite: context.beforeProjectWrite }),
+        },
+        context,
+        policy.httpDeadlineMs,
+        options.timers,
+        "uncertain",
+      ).pipe(
+        Effect.flatMap((body) => {
+          // The exact actionName was not measured for either endpoint, so a
+          // mismatch there (decoded.actionNameMismatch) is never a failure
+          // here — only an identity mismatch (decoded.issues) is.
+          const decoded =
+            command.kind === "start-service"
+              ? decodeStartServiceResponse(command, body)
+              : decodeStartProjectResponse(command, body);
+          if (decoded.issues.length > 0)
+            return Effect.fail(
+              adapterError(
+                "uncertain",
+                `Zerops accepted the start but its Process response was malformed: ${decoded.issues[0]!.message}`,
                 false,
               ),
             );

@@ -7,6 +7,8 @@ import {
   decodeProjectCommandResponse,
   decodeRegistrationResponse,
   decodeRestartServiceResponse,
+  decodeStartProjectResponse,
+  decodeStartServiceResponse,
 } from "./platformProtocol.ts";
 import {
   AccountEpoch,
@@ -76,6 +78,27 @@ const restartCommand: PlatformCommand = {
     serviceId: ZeropsServiceId.make("service"),
   },
   attemptId: ZeropsCommandAttemptId.make("restart-attempt"),
+  accountEpoch: AccountEpoch.make(1),
+  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
+  dispatchOrdinal: DispatchOrdinal.make(8),
+};
+
+const startServiceCommand: PlatformCommand = {
+  kind: "start-service",
+  service: {
+    kind: "service",
+    project,
+    serviceId: ZeropsServiceId.make("service"),
+  },
+  attemptId: ZeropsCommandAttemptId.make("start-service-attempt"),
+  accountEpoch: AccountEpoch.make(1),
+  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
+  dispatchOrdinal: DispatchOrdinal.make(8),
+};
+const startProjectCommand: PlatformCommand = {
+  kind: "start-project",
+  project,
+  attemptId: ZeropsCommandAttemptId.make("start-project-attempt"),
   accountEpoch: AccountEpoch.make(1),
   startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
   dispatchOrdinal: DispatchOrdinal.make(8),
@@ -643,6 +666,85 @@ describe("Zerops platform protocol decoding", () => {
     expect(result).toEqual({
       processRefs: [],
       observations: [],
+      issues: [expect.objectContaining({ kind: "malformed-row" })],
+    });
+  });
+
+  it("decodes a start-service Process response scoped to the command's service", () => {
+    const result = decodeStartServiceResponse(startServiceCommand, {
+      id: "start-process",
+      projectId: "project",
+      serviceStackId: "service",
+      actionName: "stack.start",
+      status: "PENDING",
+      created: "2026-09-04T12:41:00.728Z",
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.actionNameMismatch).toBe(false);
+    expect(result.processRefs).toEqual([{ kind: "process", project, processId: "start-process" }]);
+  });
+
+  it("accepts a start-service response with an unexpected actionName, flagging the mismatch instead of failing", () => {
+    const result = decodeStartServiceResponse(startServiceCommand, {
+      id: "start-process",
+      projectId: "project",
+      serviceStackId: "service",
+      actionName: "stack.something-else",
+      status: "PENDING",
+      created: "2026-09-04T12:41:00.728Z",
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.actionNameMismatch).toBe(true);
+    expect(result.processRefs).toHaveLength(1);
+  });
+
+  it("rejects a start-service response for another service", () => {
+    const result = decodeStartServiceResponse(startServiceCommand, {
+      id: "start-process",
+      projectId: "project",
+      serviceStackId: "another-service",
+      actionName: "stack.start",
+      status: "PENDING",
+      created: "2026-09-04T12:41:00.728Z",
+    });
+
+    expect(result).toEqual({
+      processRefs: [],
+      observations: [],
+      actionNameMismatch: false,
+      issues: [expect.objectContaining({ kind: "malformed-row" })],
+    });
+  });
+
+  it("decodes a start-project Process response scoped to the command's project", () => {
+    const result = decodeStartProjectResponse(startProjectCommand, {
+      id: "start-process",
+      projectId: "project",
+      actionName: "project.start",
+      status: "PENDING",
+      created: "2026-09-04T12:41:00.728Z",
+    });
+
+    expect(result.issues).toEqual([]);
+    expect(result.actionNameMismatch).toBe(false);
+    expect(result.processRefs).toEqual([{ kind: "process", project, processId: "start-process" }]);
+  });
+
+  it("rejects a start-project response for another project", () => {
+    const result = decodeStartProjectResponse(startProjectCommand, {
+      id: "start-process",
+      projectId: "another-project",
+      actionName: "project.start",
+      status: "PENDING",
+      created: "2026-09-04T12:41:00.728Z",
+    });
+
+    expect(result).toEqual({
+      processRefs: [],
+      observations: [],
+      actionNameMismatch: false,
       issues: [expect.objectContaining({ kind: "malformed-row" })],
     });
   });

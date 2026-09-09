@@ -39,6 +39,7 @@ export interface ZeropsRowInput {
     readonly enable: boolean;
     readonly wait: boolean;
     readonly setUpMate: boolean;
+    readonly start: boolean;
   };
 }
 
@@ -48,6 +49,7 @@ export type ZeropsRowAction =
   | { readonly kind: "enable"; readonly label: "Enable Zerops Mate" }
   | { readonly kind: "wait"; readonly label: "Wait for it" }
   | { readonly kind: "set-up-mate"; readonly label: "Set up Mate" }
+  | { readonly kind: "start"; readonly label: "Start" }
   /** Health "initializing": no verb, a quiet word. */
   | { readonly kind: "starting"; readonly label: "Starting…" }
   /** The probe or the socket is still busy: no verb yet. */
@@ -109,6 +111,24 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
   return role !== "stage" && role !== "prod";
 }
 
+/**
+ * Platform transition — the project or its zcp service is on its way to or
+ * from STOPPED. Neither has a verb: the platform is already doing the work,
+ * offering one would only race it.
+ */
+function transitionalStatus(candidate: ZeropsRowCandidate): "starting" | "stopping" | undefined {
+  const projectStatus = candidate.project.status;
+  const serviceStatus = candidate.service?.status;
+  if (projectStatus === "STARTING" || serviceStatus === "STARTING") return "starting";
+  if (projectStatus === "STOPPING" || serviceStatus === "STOPPING") return "stopping";
+  return undefined;
+}
+
+/** The project, or its zcp service while the project is ACTIVE, is STOPPED. */
+function isStopped(candidate: ZeropsRowCandidate): boolean {
+  return candidate.project.status === "STOPPED" || candidate.service?.status === "STOPPED";
+}
+
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health } = input;
 
@@ -132,6 +152,19 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         status: { label: "No container", tone: "off" },
         detail: "This Mate has no container yet.",
       };
+    }
+    const transitional = transitionalStatus(candidate);
+    if (transitional !== undefined) {
+      return {
+        status: {
+          label: transitional === "stopping" ? "Stopping" : "Starting",
+          pulse: true,
+          tone: "busy",
+        },
+      };
+    }
+    if (isStopped(candidate)) {
+      return { status: { label: "Stopped", tone: "off" } };
     }
     return {
       status: { label: "Not available", tone: "off" },
@@ -202,8 +235,12 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
     case "provisioning":
       return can.wait ? { kind: "wait", label: "Wait for it" } : { kind: "none" };
     case "unavailable":
-      return candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)
-        ? { kind: "set-up-mate", label: "Set up Mate" }
+      if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
+        return { kind: "set-up-mate", label: "Set up Mate" };
+      }
+      if (transitionalStatus(candidate) !== undefined) return { kind: "none" };
+      return can.start && isStopped(candidate)
+        ? { kind: "start", label: "Start" }
         : { kind: "none" };
     case "ready":
       break;

@@ -1366,6 +1366,8 @@ export type CommandTarget = OrganizationRef | ProjectRef | ServiceRef;
 
 export type PlatformCommandKind =
   | "restart-service"
+  | "start-service"
+  | "start-project"
   | "name-project-agent"
   | "update-project-group-tags"
   | "import-development-container"
@@ -1567,6 +1569,16 @@ export interface RestartServiceCommandIntent {
   readonly service: ServiceRef;
 }
 
+export interface StartServiceCommandIntent {
+  readonly kind: "start-service";
+  readonly service: ServiceRef;
+}
+
+export interface StartProjectCommandIntent {
+  readonly kind: "start-project";
+  readonly project: ProjectRef;
+}
+
 export interface NameProjectAgentCommandIntent {
   readonly kind: "name-project-agent";
   readonly project: ProjectRef;
@@ -1656,6 +1668,8 @@ export interface SetIntegrationTokenProjectsCommandIntent {
 
 export type PlatformCommandIntent =
   | RestartServiceCommandIntent
+  | StartServiceCommandIntent
+  | StartProjectCommandIntent
   | NameProjectAgentCommandIntent
   | UpdateProjectGroupTagsCommandIntent
   | ImportDevelopmentContainerCommandIntent
@@ -1699,6 +1713,8 @@ export const COMMAND_EXECUTION_ADMISSION = Object.freeze({
 
 export type PlatformCommandResult =
   | { readonly kind: "restart-service"; readonly value: void }
+  | { readonly kind: "start-service"; readonly value: void }
+  | { readonly kind: "start-project"; readonly value: void }
   | { readonly kind: "name-project-agent"; readonly value: ZeropsProject }
   | { readonly kind: "update-project-group-tags"; readonly value: ZeropsProject }
   | {
@@ -1870,6 +1886,12 @@ export interface ZeropsDataCommands {
   ) => Effect.Effect<CommandAttemptRef, CommandAdmissionError>;
   readonly restartService: (
     service: ServiceRef,
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly startService: (
+    service: ServiceRef,
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly startProject: (
+    project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
   readonly nameProjectAgent: (
     project: ProjectRef,

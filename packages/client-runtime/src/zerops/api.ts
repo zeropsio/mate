@@ -1541,6 +1541,44 @@ export class ZeropsApiClient {
     );
   }
 
+  /**
+   * `PUT /service-stack/{id}/start` with the user's own token — starts a
+   * STOPPED service (a zcp container included).
+   */
+  async startService(
+    serviceId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/service-stack/${serviceId}/start`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `PUT /project/{id}/start` with the user's own token — starts every
+   * STOPPED service in a STOPPED project.
+   */
+  async startProject(
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/project/${projectId}/start`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
   /** `GET /service-stack/{id}/env` — the service's own env records. */
   async #serviceEnv(
     serviceId: string,

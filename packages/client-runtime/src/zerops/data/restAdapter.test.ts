@@ -148,6 +148,28 @@ const restartCommand: PlatformCommand = {
   dispatchOrdinal: DispatchOrdinal.make(8),
 };
 
+const startServiceCommand: PlatformCommand = {
+  kind: "start-service",
+  service: {
+    kind: "service",
+    project,
+    serviceId: ZeropsServiceId.make("service"),
+  },
+  attemptId: ZeropsCommandAttemptId.make("start-service-attempt"),
+  accountEpoch: scope.epoch,
+  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
+  dispatchOrdinal: DispatchOrdinal.make(8),
+};
+
+const startProjectCommand: PlatformCommand = {
+  kind: "start-project",
+  project,
+  attemptId: ZeropsCommandAttemptId.make("start-project-attempt"),
+  accountEpoch: scope.epoch,
+  startedAtReceiptOrdinal: ReceiptOrdinal.make(7),
+  dispatchOrdinal: DispatchOrdinal.make(8),
+};
+
 const nameProjectCommand: PlatformCommand = {
   kind: "name-project-agent",
   project,
@@ -794,6 +816,146 @@ describe("ZeropsDataAdapter receiver", () => {
       });
       expect(requestCount).toBe(1);
     }),
+  );
+
+  it.effect(
+    "returns the accepted start-service Process ref via PUT /service-stack/{id}/start",
+    () =>
+      Effect.gen(function* () {
+        const requests: Array<{
+          readonly url: string;
+          readonly init: RequestInit | undefined;
+        }> = [];
+        const client = clientFor((url, init) => {
+          requests.push({ url, init });
+          return new Response(
+            JSON.stringify({
+              id: "start-process-id",
+              projectId: "project",
+              serviceStackId: "service",
+              actionName: "stack.start",
+              status: "PENDING",
+              created: "2026-09-04T12:41:00.728Z",
+            }),
+            { status: 200 },
+          );
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        const result = yield* adapter.execute(startServiceCommand, context());
+
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toMatchObject({
+          url: expect.stringMatching(/\/service-stack\/service\/start$/),
+          init: { method: "PUT" },
+        });
+        expect(result.processRefs).toEqual([
+          expect.objectContaining({ kind: "process", processId: "start-process-id" }),
+        ]);
+        expect(result.result).toEqual({ kind: "start-service", value: undefined });
+      }),
+  );
+
+  it.effect(
+    "accepts a start-service response with an unexpected actionName instead of failing",
+    () =>
+      Effect.gen(function* () {
+        const client = clientFor(
+          () =>
+            new Response(
+              JSON.stringify({
+                id: "start-process-id",
+                projectId: "project",
+                serviceStackId: "service",
+                actionName: "stack.something-else",
+                status: "PENDING",
+                created: "2026-09-04T12:41:00.728Z",
+              }),
+              { status: 200 },
+            ),
+        );
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        const result = yield* adapter.execute(startServiceCommand, context());
+
+        expect(result.result).toEqual({ kind: "start-service", value: undefined });
+      }),
+  );
+
+  it.effect("returns the accepted start-project Process ref via PUT /project/{id}/start", () =>
+    Effect.gen(function* () {
+      const requests: Array<{
+        readonly url: string;
+        readonly init: RequestInit | undefined;
+      }> = [];
+      const client = clientFor((url, init) => {
+        requests.push({ url, init });
+        return new Response(
+          JSON.stringify({
+            id: "start-process-id",
+            projectId: "project",
+            actionName: "project.start",
+            status: "PENDING",
+            created: "2026-09-04T12:41:00.728Z",
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+
+      const result = yield* adapter.execute(startProjectCommand, context());
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        url: expect.stringMatching(/\/project\/project\/start$/),
+        init: { method: "PUT" },
+      });
+      expect(result.processRefs).toEqual([
+        expect.objectContaining({ kind: "process", processId: "start-process-id" }),
+      ]);
+      expect(result.result).toEqual({ kind: "start-project", value: undefined });
+    }),
+  );
+
+  it.effect(
+    "reports an accepted malformed start-project response as non-retryable uncertainty",
+    () =>
+      Effect.gen(function* () {
+        let requestCount = 0;
+        const client = clientFor(() => {
+          requestCount += 1;
+          return new Response('{"success":true}', { status: 200 });
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        const result = yield* adapter.execute(startProjectCommand, context()).pipe(Effect.result);
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            kind: "uncertain",
+            retryable: false,
+            message: expect.stringContaining("accepted the start"),
+          },
+        });
+        expect(requestCount).toBe(1);
+      }),
   );
 
   it.effect("returns typed Project results and feeds their facets into shared observation", () =>

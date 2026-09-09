@@ -11,8 +11,22 @@ import {
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic";
 
-const ALL = { open: true, connect: true, enable: true, wait: true, setUpMate: true } as const;
-const NONE = { open: false, connect: false, enable: false, wait: false, setUpMate: false } as const;
+const ALL = {
+  open: true,
+  connect: true,
+  enable: true,
+  wait: true,
+  setUpMate: true,
+  start: true,
+} as const;
+const NONE = {
+  open: false,
+  connect: false,
+  enable: false,
+  wait: false,
+  setUpMate: false,
+  start: false,
+} as const;
 
 const READY: ZeropsRowCandidate = {
   key: "p:zcp",
@@ -139,6 +153,57 @@ describe("deriveZeropsRowAction", () => {
     );
   });
 
+  describe("Start", () => {
+    it("is offered for a STOPPED project", () => {
+      const stoppedProject: ZeropsRowCandidate = {
+        key: "sp",
+        project: { id: "sp", name: "sp", status: "STOPPED", tagList: [] },
+        group: "unavailable",
+        reason: "project is STOPPED",
+      };
+      expect(deriveZeropsRowAction(input(stoppedProject, undefined))).toEqual({
+        kind: "start",
+        label: "Start",
+      });
+    });
+
+    it("is offered for an ACTIVE project whose zcp service is STOPPED", () => {
+      const stoppedService: ZeropsRowCandidate = {
+        key: "ss",
+        project: { id: "ss", name: "ss", status: "ACTIVE", tagList: [] },
+        group: "unavailable",
+        reason: "container is STOPPED",
+        service: { id: "zcp", name: "zcp", status: "STOPPED" },
+      };
+      expect(deriveZeropsRowAction(input(stoppedService, undefined))).toEqual({
+        kind: "start",
+        label: "Start",
+      });
+    });
+
+    it("is not offered when the caller cannot start", () => {
+      const stoppedProject: ZeropsRowCandidate = {
+        key: "sp",
+        project: { id: "sp", name: "sp", status: "STOPPED", tagList: [] },
+        group: "unavailable",
+        reason: "project is STOPPED",
+      };
+      expect(deriveZeropsRowAction(input(stoppedProject, undefined, NONE))).toEqual({
+        kind: "none",
+      });
+    });
+
+    it.each(["STARTING", "STOPPING"] as const)("is not offered while a project is %s", (status) => {
+      const transitional: ZeropsRowCandidate = {
+        key: "t",
+        project: { id: "t", name: "t", status, tagList: [] },
+        group: "unavailable",
+        reason: `project is ${status}`,
+      };
+      expect(deriveZeropsRowAction(input(transitional, undefined))).toEqual({ kind: "none" });
+    });
+  });
+
   it("never offers a verb the caller cannot perform", () => {
     expect(deriveZeropsRowAction(input(READY, "ready", NONE))).toEqual({ kind: "none" });
     expect(deriveZeropsRowAction(input({ ...READY, group: "connected" }, "ready", NONE))).toEqual({
@@ -197,6 +262,56 @@ describe("deriveZeropsRowPresentation", () => {
     expect(presentation.status).toEqual({ label: "No container", tone: "off" });
     expect(presentation.detail).toBe("This Mate has no container yet.");
   });
+
+  it("says Stopped, settled, for a STOPPED project", () => {
+    const presentation = deriveZeropsRowPresentation(
+      input(
+        {
+          key: "sp",
+          project: { id: "sp", name: "sp", status: "STOPPED", tagList: [] },
+          group: "unavailable",
+          reason: "project is STOPPED",
+        },
+        undefined,
+      ),
+    );
+    expect(presentation.status).toEqual({ label: "Stopped", tone: "off" });
+  });
+
+  it("says Stopped for an ACTIVE project whose zcp service is STOPPED", () => {
+    const presentation = deriveZeropsRowPresentation(
+      input(
+        {
+          key: "ss",
+          project: { id: "ss", name: "ss", status: "ACTIVE", tagList: [] },
+          group: "unavailable",
+          reason: "container is STOPPED",
+          service: { id: "zcp", name: "zcp", status: "STOPPED" },
+        },
+        undefined,
+      ),
+    );
+    expect(presentation.status).toEqual({ label: "Stopped", tone: "off" });
+  });
+
+  it.each(["STARTING", "STOPPING"] as const)(
+    "shows a pulsing %s with no verb for a transitional project status",
+    (status) => {
+      const presentation = deriveZeropsRowPresentation(
+        input(
+          {
+            key: "t",
+            project: { id: "t", name: "t", status, tagList: [] },
+            group: "unavailable",
+            reason: `project is ${status}`,
+          },
+          undefined,
+        ),
+      );
+      const label = status === "STOPPING" ? "Stopping" : "Starting";
+      expect(presentation.status).toEqual({ label, pulse: true, tone: "busy" });
+    },
+  );
 
   it("carries the bucket's own reason for a project on its way in or out of reach", () => {
     expect(

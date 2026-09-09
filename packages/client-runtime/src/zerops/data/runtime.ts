@@ -2751,6 +2751,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    startService: (service) =>
+      runCommand({ kind: "start-service", service }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "start-service"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
+    startProject: (project) =>
+      runCommand({ kind: "start-project", project }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "start-project"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
     nameProjectAgent: (project, name) =>
       runCommand({ kind: "name-project-agent", project, name }).pipe(
         Effect.flatMap(({ attempt, result }) =>

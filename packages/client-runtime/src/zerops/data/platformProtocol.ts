@@ -1146,6 +1146,84 @@ export function decodeRestartServiceResponse(
   };
 }
 
+export interface StartResponseDecodeResult extends ProtocolDecodeResult {
+  readonly processRefs: ReadonlyArray<ProcessRef>;
+  /**
+   * True when the Process came back with an actionName other than the
+   * expected start action. Never a decode failure by itself — the platform's
+   * exact actionName for `stack.start` / a project start was not measured,
+   * so a mismatch here is recorded, not treated as a malformed response.
+   */
+  readonly actionNameMismatch: boolean;
+}
+
+/**
+ * Shared body for the measured PUT /service-stack/{id}/start and
+ * PUT /project/{id}/start responses — both are a direct Process body, like
+ * restart. Unlike restart, the exact actionName was not measured, so a
+ * command is accepted whenever its ids match the command scope; a wrong
+ * actionName only sets `actionNameMismatch`, it never fails the decode.
+ */
+function decodeStartResponse(
+  command: Extract<PlatformCommand, { readonly kind: "start-service" | "start-project" }>,
+  input: unknown,
+  expectedActionName: (actionName: string | undefined) => boolean,
+): StartResponseDecodeResult {
+  const { row, droppedServiceStacks } = decodeProcessRowLenient(input);
+  const project = command.kind === "start-service" ? command.service.project : command.project;
+  const scopeMatches =
+    row !== undefined &&
+    hasValidProcessIds(row) &&
+    row.created !== undefined &&
+    row.status !== undefined &&
+    row.projectId === project.projectId &&
+    (command.kind === "start-project" || row.serviceStackId === command.service.serviceId);
+
+  if (!row || !scopeMatches)
+    return {
+      processRefs: [],
+      observations: [],
+      actionNameMismatch: false,
+      issues: [
+        {
+          kind: "malformed-row",
+          message: "Start response is not the expected Process for the requested scope.",
+        },
+      ],
+    };
+  const ref: ProcessRef = {
+    kind: "process",
+    project,
+    processId: ZeropsProcessId.make(row.id),
+  };
+  return {
+    processRefs: [ref],
+    observations: processObservations(ref, row, { source: "command-response", command }),
+    actionNameMismatch: !expectedActionName(row.actionName),
+    issues: droppedServiceStacks > 0 ? [droppedServiceStacksIssue()] : [],
+  };
+}
+
+/** The measured PUT /service-stack/{id}/start response — see decodeStartResponse. */
+export function decodeStartServiceResponse(
+  command: Extract<PlatformCommand, { readonly kind: "start-service" }>,
+  input: unknown,
+): StartResponseDecodeResult {
+  return decodeStartResponse(command, input, (actionName) => actionName === "stack.start");
+}
+
+/** The measured PUT /project/{id}/start response — see decodeStartResponse. */
+export function decodeStartProjectResponse(
+  command: Extract<PlatformCommand, { readonly kind: "start-project" }>,
+  input: unknown,
+): StartResponseDecodeResult {
+  return decodeStartResponse(
+    command,
+    input,
+    (actionName) => actionName !== undefined && /start/i.test(actionName),
+  );
+}
+
 function pair(used: number | undefined, limit: number | undefined) {
   return used === undefined || limit === undefined ? null : { used, limit };
 }
