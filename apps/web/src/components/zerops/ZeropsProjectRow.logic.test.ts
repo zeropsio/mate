@@ -53,7 +53,7 @@ describe("deriveZeropsRowAction", () => {
     });
   });
 
-  it.each(["predates-mate", "unreachable"] as const)(
+  it.each(["predates-mate", "unreachable", "stalled"] as const)(
     "offers Enable Zerops Mate when the container answered %s",
     (health) => {
       expect(deriveZeropsRowAction(input(READY, health))).toEqual({
@@ -223,6 +223,33 @@ describe("deriveZeropsRowPresentation", () => {
     expect(deriveZeropsRowPresentation(input(READY, "unreachable")).status.label).toBe(
       "Not answering",
     );
+    expect(deriveZeropsRowPresentation(input(READY, "stalled")).status.label).toBe("Not answering");
+  });
+
+  it("says what an initializing row is waiting for, generically with no known process", () => {
+    const presentation = deriveZeropsRowPresentation(input(READY, "initializing"));
+    expect(presentation.status).toEqual({ label: "Starting", pulse: true, tone: "busy" });
+    expect(presentation.detail).toBe("Zerops Mate is starting.");
+  });
+
+  it.each([
+    ["restart-service", "Restarting the container"],
+    ["start-service", "Starting the container"],
+    ["start-project", "Starting the project"],
+  ] as const)("names the running process %s in an initializing row's detail", (kind, detail) => {
+    const presentation = deriveZeropsRowPresentation({
+      candidate: READY,
+      health: "initializing",
+      can: ALL,
+      runningProcessKind: kind,
+    });
+    expect(presentation.detail).toBe(detail);
+  });
+
+  it("says the container did not answer, once stalled", () => {
+    const presentation = deriveZeropsRowPresentation(input(READY, "stalled"));
+    expect(presentation.status).toEqual({ label: "Not answering", tone: "attention" });
+    expect(presentation.detail).toBe("The container is up but Zerops Mate did not answer.");
   });
 
   it("lets a socket failure override the probe, and keeps its reason", () => {

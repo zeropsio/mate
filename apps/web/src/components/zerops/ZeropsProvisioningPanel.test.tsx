@@ -135,7 +135,7 @@ describe("ZeropsProvisioningPanel", () => {
     expect(render(awaitingContainer)).toContain("up to 5 min");
 
     expect(render(awaitingHealth)).toContain("Waiting for Zerops Mate to answer");
-    expect(render(awaitingHealth)).toContain("up to 30s");
+    expect(render(awaitingHealth)).toContain("up to 2 min");
   });
 
   it("offers the restart when the container predates Zerops Mate, and says what it costs", () => {

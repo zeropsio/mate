@@ -32,6 +32,12 @@ export interface ZeropsRowInput {
   readonly health: ZeropsContainerHealth | undefined;
   /** The environment's role in its project, when it has one. */
   readonly role?: ZeropsEnvironmentRole | undefined;
+  /**
+   * The platform process, when one is known to be running against this
+   * candidate's container — what an `initializing` row's detail names,
+   * instead of a generic "Zerops Mate is starting."
+   */
+  readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
   /** Which verbs the caller can actually perform; a verb it cannot is never offered. */
   readonly can: {
     readonly open: boolean;
@@ -67,6 +73,14 @@ export interface ZeropsRowPresentation {
   /** True when the detail is a failure and should read as one. */
   readonly detailIsError?: boolean;
 }
+
+const RUNNING_PROCESS_DETAIL: Readonly<
+  Record<NonNullable<ZeropsRowInput["runningProcessKind"]>, string>
+> = {
+  "restart-service": "Restarting the container",
+  "start-service": "Starting the container",
+  "start-project": "Starting the project",
+};
 
 function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
   const phase = candidate.connection?.phase;
@@ -130,7 +144,7 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 }
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
-  const { candidate, health } = input;
+  const { candidate, health, runningProcessKind } = input;
 
   if (candidate.group === "connected") {
     return { status: { label: "Connected", tone: "ok" } };
@@ -215,8 +229,16 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       };
     case "initializing":
       return {
-        detail: "Zerops Mate is starting.",
+        detail:
+          runningProcessKind === undefined
+            ? "Zerops Mate is starting."
+            : RUNNING_PROCESS_DETAIL[runningProcessKind],
         status: { label: "Starting", pulse: true, tone: "busy" },
+      };
+    case "stalled":
+      return {
+        detail: "The container is up but Zerops Mate did not answer.",
+        status: { label: "Not answering", tone: "attention" },
       };
     case "ready":
       return { status: { label: "Ready", tone: "ok" } };
@@ -250,7 +272,9 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   // so from a browser it looks exactly like one that is away — and the
   // platform says the service is ACTIVE. A restart helps in both cases, so it
   // is offered in both, even while a socket is still trying.
-  if (health === "predates-mate" || health === "unreachable") {
+  // A wait that outlasted its bound (`stalled`) gets the same recovery: it
+  // writes the flag (a no-op if already on) and restarts.
+  if (health === "predates-mate" || health === "unreachable" || health === "stalled") {
     return can.enable ? { kind: "enable", label: "Enable Zerops Mate" } : { kind: "none" };
   }
   if (isConnectionInFlight(candidate) || health === undefined) return { kind: "pending" };

@@ -6,7 +6,7 @@
  * I/O around it.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -22,7 +22,12 @@ import {
   type ProvisioningState,
 } from "@t3tools/client-runtime/zerops/provisioning";
 import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import {
+  runZeropsCommand,
+  useZeropsAtomSelections,
+  useZeropsData,
+  useZeropsDataInterest,
+} from "./zeropsDataContext";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -65,6 +70,37 @@ export function useZeropsProvisioning(clientId: string | null): {
   }, []);
 
   const phase = state?.phase ?? null;
+  const containerServiceId = state?.containerServiceId ?? null;
+
+  // The `awaiting-health` cap must not elapse while the platform is still
+  // running the restart/start that got us here — its own process knowledge
+  // is the ground truth, not a fixed clock started at an arbitrary moment.
+  const projectRef =
+    phase === "awaiting-health" && state?.projectId
+      ? findInventoryProjectRef(inventory, state.projectId, clientId ?? undefined)
+      : null;
+  useZeropsDataInterest(projectRef ? { kind: "project-activity", project: projectRef } : null);
+  const activityEntries = useMemo(
+    () =>
+      projectRef ? ([["provisioning-activity", runtime.reads.activity(projectRef)]] as const) : [],
+    [projectRef, runtime.reads],
+  );
+  const activitySelections = useZeropsAtomSelections(activityEntries);
+  const activity = activitySelections.get("provisioning-activity");
+
+  useEffect(() => {
+    if (phase !== "awaiting-health" || !activity) return;
+    const running = activity.running.value.some((entry) => {
+      if (entry.knowledge !== "observed") return false;
+      const identity = entry.record.identity;
+      if (identity.knowledge !== "observed") return false;
+      return (
+        containerServiceId === null ||
+        (identity.fields.serviceIds ?? []).includes(ZeropsServiceId.make(containerServiceId))
+      );
+    });
+    dispatch({ kind: "process", running });
+  }, [phase, activity, containerServiceId, dispatch]);
 
   useEffect(() => {
     const current = stateRef.current;

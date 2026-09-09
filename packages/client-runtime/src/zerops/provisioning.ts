@@ -22,7 +22,13 @@ import type { ZeropsProject, ZeropsService } from "./api.ts";
 import { deriveZeropsCandidates } from "./candidates.ts";
 
 /** What a `/healthz` probe concluded about a container. */
-export type ZeropsContainerHealth = "ready" | "initializing" | "predates-mate" | "unreachable";
+export type ZeropsContainerHealth =
+  | "ready"
+  | "initializing"
+  | "predates-mate"
+  | "unreachable"
+  /** The container is up but Mate never answered. */
+  | "stalled";
 
 export type ProvisioningPhase =
   | "awaiting-project"
@@ -41,13 +47,16 @@ export type ProvisioningPhase =
 
 /**
  * How long each wait is given. The container cap matches the platform GUI's
- * own provisioning timeout; the health cap covers a restart's ~19 s to
- * `mateUp` with room to spare.
+ * own provisioning timeout. The health cap is measured from when the
+ * container's own restart/start process finishes running — not from an
+ * arbitrary moment mid-boot — and gives Mate 90 s to answer from there;
+ * while a process is still running against the container, this cap does not
+ * elapse at all (`advanceProvisioning`'s "process" event resets the clock).
  */
 export const PROVISIONING_CAPS = {
   "awaiting-project": 60_000,
   "awaiting-container": 300_000,
-  "awaiting-health": 30_000,
+  "awaiting-health": 90_000,
 } as const;
 
 type WaitingPhase = keyof typeof PROVISIONING_CAPS;
@@ -84,6 +93,12 @@ export interface ProvisioningState {
   readonly detail: string | null;
   /** True once the user has asked for the container to be restarted this wait. */
   readonly enabled: boolean;
+  /**
+   * True while a platform process (a restart or a start) is known to be
+   * running against the container. Only meaningful in `awaiting-health`: the
+   * cap does not elapse while this is true, and finishing resets its clock.
+   */
+  readonly processRunning: boolean;
 }
 
 export type ProvisioningEvent =
@@ -97,7 +112,9 @@ export type ProvisioningEvent =
   | { readonly kind: "tick" }
   | { readonly kind: "retry" }
   /** The user asked for the older container to be restarted into Zerops Mate. */
-  | { readonly kind: "enable" };
+  | { readonly kind: "enable" }
+  /** The runtime's own knowledge of a process running against the container. */
+  | { readonly kind: "process"; readonly running: boolean };
 
 function waiting(
   phase: WaitingPhase,
@@ -110,6 +127,7 @@ function waiting(
     containerOrigin: null,
     detail: null,
     enabled: false,
+    processRunning: false,
     ...carry,
     phase,
     waitingFor: WAITING_LABELS[phase],
@@ -157,6 +175,7 @@ export function startProvisioning(input: {
       expiredPhase: null,
       detail: null,
       enabled: false,
+      processRunning: false,
     };
   }
   return waiting("awaiting-project", input.nowMs);
@@ -231,8 +250,19 @@ export function advanceProvisioning(
     });
   }
 
+  if (event.kind === "process") {
+    if (state.phase !== "awaiting-health") return state;
+    if (event.running) return { ...state, processRunning: true };
+    // The window has not started until the process finishes: reset the
+    // clock so the cap is measured from here, not from an arbitrary moment
+    // mid-restart.
+    if (!state.processRunning) return state;
+    return { ...state, processRunning: false, phaseStartedAtMs: nowMs };
+  }
+
   if (event.kind === "tick") {
     if (!isWaitingPhase(state.phase)) return state;
+    if (state.phase === "awaiting-health" && state.processRunning) return state;
     if (nowMs - state.phaseStartedAtMs <= PROVISIONING_CAPS[state.phase]) return state;
     return { ...state, phase: "timed-out", expiredPhase: state.phase };
   }

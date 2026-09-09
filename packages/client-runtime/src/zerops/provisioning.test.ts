@@ -203,6 +203,60 @@ describe("provisioning state machine", () => {
     ).toBe("awaiting-container");
   });
 
+  it("does not let the awaiting-health cap elapse while a process is running", () => {
+    const awaitingHealth = advanceProvisioning(
+      reachAwaitingContainer(0),
+      { kind: "services", project: PROJECT, services: [container()] },
+      0,
+    );
+    const running = advanceProvisioning(awaitingHealth, { kind: "process", running: true }, 0);
+    expect(running.processRunning).toBe(true);
+
+    const stillRunning = advanceProvisioning(
+      running,
+      { kind: "tick" },
+      PROVISIONING_CAPS["awaiting-health"] + 1000,
+    );
+    expect(stillRunning.phase).toBe("awaiting-health");
+  });
+
+  it("resets the awaiting-health cap's clock to when the process finishes", () => {
+    const awaitingHealth = advanceProvisioning(
+      reachAwaitingContainer(0),
+      { kind: "services", project: PROJECT, services: [container()] },
+      0,
+    );
+    const running = advanceProvisioning(awaitingHealth, { kind: "process", running: true }, 0);
+    const finished = advanceProvisioning(running, { kind: "process", running: false }, 50_000);
+    expect(finished.processRunning).toBe(false);
+    expect(finished.phaseStartedAtMs).toBe(50_000);
+
+    const stillOk = advanceProvisioning(
+      finished,
+      { kind: "tick" },
+      50_000 + PROVISIONING_CAPS["awaiting-health"] - 1,
+    );
+    expect(stillOk.phase).toBe("awaiting-health");
+
+    const expired = advanceProvisioning(
+      finished,
+      { kind: "tick" },
+      50_000 + PROVISIONING_CAPS["awaiting-health"] + 1,
+    );
+    expect(expired.phase).toBe("timed-out");
+    expect(expired.expiredPhase).toBe("awaiting-health");
+  });
+
+  it("the process event only applies to awaiting-health", () => {
+    const awaitingContainer = reachAwaitingContainer(0);
+    const unaffected = advanceProvisioning(
+      awaitingContainer,
+      { kind: "process", running: true },
+      0,
+    );
+    expect(unaffected).toEqual(awaitingContainer);
+  });
+
   it("follows the newest project, which is the one a claim just handed over", () => {
     const older: ZeropsProject = { ...PROJECT, id: "old", created: "2020-01-01T00:00:00Z" };
     const newer: ZeropsProject = { ...PROJECT, id: "new", created: "2026-08-28T00:00:00Z" };
