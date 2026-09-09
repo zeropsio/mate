@@ -19,6 +19,7 @@ import {
   ServerCliCommandExitError,
   ServerCliUndeclaredRuntimeImportError,
 } from "./cliErrors.ts";
+import { bundleNodePtyIntoTarball, NODE_PTY_PACKAGE } from "./bundleNodePty.ts";
 import {
   buildReleaseManifest,
   findUndeclaredStaticImports,
@@ -252,6 +253,7 @@ const packCmd = Command.make(
   {
     out: Flag.string("out").pipe(Flag.withDefault("apps/server/dist")),
     appVersion: Flag.string("app-version").pipe(Flag.optional),
+    nodePtyPrebuild: Flag.string("node-pty-prebuild").pipe(Flag.optional),
     verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
   },
   (config) =>
@@ -273,16 +275,31 @@ const packCmd = Command.make(
         ),
       );
       const tarballsAfter = yield* readTarballFingerprints(outDir);
-      const producedTarballCount = Array.from(tarballsAfter).filter(
-        ([entry, fingerprint]) => tarballsBefore.get(entry) !== fingerprint,
-      ).length;
-      if (producedTarballCount !== 1) {
+      const produced = Array.from(tarballsAfter)
+        .filter(([entry, fingerprint]) => tarballsBefore.get(entry) !== fingerprint)
+        .map(([entry]) => entry);
+      if (produced.length !== 1) {
         return yield* new ServerCliPackOutputError({
           outputDir: outDir,
           selector: RELEASE_WORKSPACE_SELECTOR,
-          tarballCount: producedTarballCount,
+          tarballCount: produced.length,
         });
       }
+      // The container must never compile node-pty; see bundleNodePty.ts.
+      const nodePtyDir = yield* fs.realPath(
+        path.join(repoRoot, "apps/server/node_modules", NODE_PTY_PACKAGE),
+      );
+      const linuxPrebuildDir = Option.map(config.nodePtyPrebuild, (dir) => path.resolve(dir));
+      yield* Effect.sync(() =>
+        bundleNodePtyIntoTarball({
+          tarballPath: path.join(outDir, produced[0]!),
+          nodePtyDir,
+          linuxPrebuildDir: Option.getOrUndefined(linuxPrebuildDir),
+        }),
+      );
+      yield* Effect.log(
+        `[cli] Bundled ${NODE_PTY_PACKAGE} ${Option.match(linuxPrebuildDir, { onNone: () => "(sources only)", onSome: (dir) => `with the Linux x64 prebuild from ${dir}` })}`,
+      );
       yield* Effect.log(`[cli] Packed ${RELEASE_PACKAGE_NAME} into ${outDir}`);
     }),
 ).pipe(
