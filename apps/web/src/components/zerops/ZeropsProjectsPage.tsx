@@ -40,6 +40,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import { mateUpdateLine } from "~/zerops/mateUpdate";
 import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
@@ -72,6 +73,7 @@ import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 
 import { Pill, StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { MateUpdateLine } from "./MateUpdateLine";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -404,7 +406,11 @@ function ZeropsProjectsContent() {
     inventoryRef.current = inventory;
   }, [inventory]);
   const { candidates, isLoading, error, refresh } = useZeropsCandidates();
-  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
+  const {
+    health: candidateHealth,
+    serverVersions,
+    updates: mateUpdates,
+  } = useZeropsCandidateHealth(candidates);
   const {
     creatingIn,
     setCreatingIn,
@@ -1406,7 +1412,16 @@ function ZeropsProjectsContent() {
               busy={busy}
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}
-              serverVersion={serverVersions.get(candidate.key)}
+              updateLine={
+                serverVersions.get(candidate.key) === undefined ? null : (
+                  <MateUpdateLine
+                    line={mateUpdateLine(
+                      mateUpdates.get(candidate.key),
+                      serverVersions.get(candidate.key) ?? "",
+                    )}
+                  />
+                )
+              }
               menu={renderEnvironmentMenu(candidate, tags, true)}
               name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
               onSelect={select}

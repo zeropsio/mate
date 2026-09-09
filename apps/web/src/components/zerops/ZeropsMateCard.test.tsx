@@ -8,8 +8,8 @@ function card(props: Partial<React.ComponentProps<typeof ZeropsMateCard>> = {}) 
 }
 
 describe("ZeropsMateCard", () => {
-  it("shows the server-reported version without inferring one when no descriptor answered", () => {
-    expect(card({ serverVersion: "0.6.0" })).toContain("Server 0.6.0");
+  it("shows the update line the caller hands it, and nothing when there is none", () => {
+    expect(card({ updateLine: <span>Server 0.6.0</span> })).toContain("Server 0.6.0");
     expect(card()).not.toContain("Server ");
   });
   it("is the face in its colour wearing the state, the name, and the line about what the Mate is on", () => {

@@ -53,7 +53,13 @@ export interface ZeropsMateCardProps {
    * sits alone — a Mate that has not been spoken to yet has nothing to say.
    */
   readonly line?: ReactNode;
-  readonly serverVersion?: string | undefined;
+  /**
+   * The muted "Server x.y.z" / "Server x.y.z · x.y.z+1 available" line
+   * (`mateUpdateLine`), and the Update verb beside it when there is one —
+   * the descriptor's `update` field, quietly, never a banner (spec-mate.md
+   * §2.9).
+   */
+  readonly updateLine?: ReactNode;
   /**
    * What clicking the Mate does — opens its conversation, or connects to it.
    * Absent, the card is still: the line then carries whatever verb there is.
@@ -69,7 +75,7 @@ export function ZeropsMateCard({
   tint,
   face,
   line,
-  serverVersion,
+  updateLine,
   onSelect,
   menu,
   busy = false,
@@ -110,9 +116,14 @@ export function ZeropsMateCard({
             {line}
           </div>
         )}
-        {serverVersion ? (
-          <span className="text-xs text-muted-foreground">Server {serverVersion}</span>
-        ) : null}
+        {updateLine === undefined || updateLine === null ? null : (
+          <div
+            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="mate-update-line"
+          >
+            {updateLine}
+          </div>
+        )}
       </div>
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
