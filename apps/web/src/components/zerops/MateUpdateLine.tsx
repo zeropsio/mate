@@ -1,10 +1,10 @@
 /**
  * Renders `mateUpdateLine`'s result: the installed version in the muted
  * hand, and — only when the line carries an available update — the
- * "· x.y.z available" clause in the design system's attention tone
- * (spec-mate.md §2.9, glossary: teal only as the mark, the identity pill
- * tint, "the update role", and the connected/authorized dots — here the
- * attention tone the suffix earns by naming something to act on).
+ * "· x.y.z available" clause in the glossary's update role (spec-mate.md
+ * §2.9; design-system.md glossary: teal only as the mark, the identity
+ * pill tint, "the update role", and the connected/authorized dots — never
+ * the status palette's amber "attention", which names a different thing).
  *
  * The Update verb is the caller's: this component only lays the line and an
  * optional trailing verb side by side, never decides whether one is offered.
@@ -27,8 +27,8 @@ export function MateUpdateLine({
         {base}
         {suffix !== null ? (
           <span
-            className="text-[var(--zerops-status-attention-text,var(--foreground))]"
-            data-zerops-surface="mate-update-attention"
+            className="text-[var(--zerops-update-role,var(--foreground))]"
+            data-zerops-surface="mate-update-role"
           >
             {" "}
             · {suffix}

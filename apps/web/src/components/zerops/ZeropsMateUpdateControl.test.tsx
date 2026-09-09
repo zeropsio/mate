@@ -83,7 +83,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     mateUpdateState.state = { phase: "idle" };
     const html = render();
     expect(html).toContain("Server 0.8.0");
-    expect(html).toContain('data-zerops-surface="mate-update-attention"');
+    expect(html).toContain('data-zerops-surface="mate-update-role"');
     expect(html).toContain(">Update<");
   });
 

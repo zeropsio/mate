@@ -1255,6 +1255,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-mate-tint-slate: #8ea3c2;
   --zerops-mate-face-ink: #17130f;
   --zerops-mate-mark-side: #2d716b;
+  /* The glossary's "update role": teal, alongside the mark, the identity
+     pill tint and the connected/authorized dots — never the status
+     palette's amber "attention" (design-system.md, 2026-09-09). */
+  --zerops-update-role: #0f8f83;
   /* Provider authorization keeps a console-like surface in both app themes;
      naming the palette here prevents one-off dark colors in components. */
   --zerops-auth-terminal-surface: #0b0c14;
@@ -1350,6 +1354,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-mate-tint-slate: #556b8d;
     --zerops-mate-face-ink: #f4efe6;
     --zerops-mate-mark-side: #8ad4cb;
+    --zerops-update-role: #5cd6cb;
     --zerops-process-step-column: 30px;
     --zerops-process-step-glyph-size: 17px;
     --zerops-process-step-border-width: 2px;
