@@ -169,6 +169,46 @@ jobs:
           sha256sum "$tarball_name" > SHA256SUMS
           cat SHA256SUMS
 
+      - name: Write stable.json
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          release_dir="$(dirname "$TARBALL")"
+          sha256="$(cd "$release_dir" && sha256sum "$TARBALL_NAME" | cut -d ' ' -f1)"
+          size="$(stat -c%s "$TARBALL" 2>/dev/null || stat -f%z "$TARBALL")"
+          published_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          node apps/server/scripts/releaseManifestAsset.ts \
+            --version "$APP_VERSION" \
+            --asset "$TARBALL_NAME" \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "v$APP_VERSION" \
+            --sha256 "$sha256" \
+            --size "$size" \
+            --published-at "$published_at" \
+            --out "$release_dir/stable.json"
+          cat "$release_dir/stable.json"
+
+      - name: Verify serve --help advertises contract 1
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
+        run: |
+          install_prefix="$(mktemp -d "${RUNNER_TEMP}/mate-contract-check.XXXXXX")"
+          cp "$TARBALL" "$install_prefix/$TARBALL_NAME"
+          cd "$install_prefix"
+          npm init -y
+          npm install "./$TARBALL_NAME"
+          help_output="$(./node_modules/.bin/mate serve --help)"
+          for flag in --mode --host --port --base-path --base-dir --no-browser --auto-bootstrap-project-from-cwd; do
+            if ! grep -q -- "$flag" <<<"$help_output"; then
+              echo "serve --help does not advertise contract-1 flag '$flag'." >&2
+              exit 1
+            fi
+          done
+          echo "serve --help advertises every contract-1 flag."
+
       - name: Stage verified release assets
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
@@ -177,6 +217,7 @@ jobs:
           path: |
             ${{ steps.pack.outputs.tarball }}
             ${{ runner.temp }}/release-assets/SHA256SUMS
+            ${{ runner.temp }}/release-assets/stable.json
           if-no-files-found: error
           retention-days: 1
 
