@@ -49,7 +49,6 @@ describe("central Zerops data bindings", () => {
     const files = [
       "../components/zerops/ZeropsNewProjectWizard.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
-      "./useZcpRestart.ts",
       "./useZeropsGroupReach.ts",
       "./useZeropsProvisioning.ts",
       "./useZeropsUpgradeRestart.ts",

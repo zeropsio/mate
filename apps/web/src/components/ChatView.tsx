@@ -158,7 +158,6 @@ import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
 import { useProjectTopology } from "../zerops/useProjectTopology";
-import { useZcpRestart } from "../zerops/useZcpRestart";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -379,13 +378,6 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import {
-  buildVersionMismatchDismissalKey,
-  dismissVersionMismatch,
-  isVersionMismatchDismissed,
-  resolveServerConfigVersionMismatch,
-  serverUpdateGuidance,
-} from "../versionSkew";
 import { useAssetUrls } from "../assets/assetUrls";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
@@ -2043,25 +2035,6 @@ function ChatViewContent(props: ChatViewProps) {
   const attachmentUploadsCapabilityKnown = attachmentEnvironmentConfig !== null;
   const supportsAttachmentUploads =
     attachmentEnvironmentConfig?.environment.capabilities.attachmentUploads === true;
-  const versionMismatch = resolveServerConfigVersionMismatch(serverConfig);
-  const versionMismatchDismissKey =
-    versionMismatch && activeThread
-      ? buildVersionMismatchDismissalKey(activeThread.environmentId, versionMismatch)
-      : null;
-  const [dismissedVersionMismatchKey, setDismissedVersionMismatchKey] = useState<string | null>(
-    null,
-  );
-  const versionMismatchDismissed =
-    versionMismatchDismissKey === dismissedVersionMismatchKey ||
-    isVersionMismatchDismissed(versionMismatchDismissKey);
-  const showVersionMismatchBanner =
-    versionMismatch !== null && versionMismatchDismissKey !== null && !versionMismatchDismissed;
-  const hasMultipleRegisteredEnvironments = environments.length > 1;
-  const versionMismatchServerLabel =
-    hasMultipleRegisteredEnvironments && activeThread
-      ? `${environmentById.get(activeThread.environmentId)?.label ?? serverConfig?.environment.label ?? activeThread.environmentId} server`
-      : "server";
-  const zcpRestart = useZcpRestart(activeThread?.environmentId ?? null);
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2103,86 +2076,12 @@ function ChatViewContent(props: ChatViewProps) {
         ),
       });
     }
-    if (activeThread && showVersionMismatchBanner && versionMismatch && versionMismatchDismissKey) {
-      const restartActions = !zcpRestart.available ? undefined : zcpRestart.state === "confirm" ? (
-        <>
-          <Button size="xs" onClick={zcpRestart.confirm}>
-            Restart
-          </Button>
-          <Button size="xs" variant="outline" onClick={zcpRestart.cancel}>
-            Keep running
-          </Button>
-        </>
-      ) : zcpRestart.state === "restarting" ? (
-        <Button size="xs" disabled>
-          Restarting the container…
-        </Button>
-      ) : (
-        <Button size="xs" onClick={zcpRestart.request}>
-          Restart to install
-        </Button>
-      );
-      const restartDescription = !zcpRestart.available
-        ? serverUpdateGuidance(versionMismatchServerLabel)
-        : zcpRestart.state === "confirm"
-          ? "Running threads stop. Restart now?"
-          : zcpRestart.state === "restarting"
-            ? "It comes back with the release zcp pins; reconnect in about a minute."
-            : zcpRestart.state === "failed"
-              ? (zcpRestart.error ?? serverUpdateGuidance(versionMismatchServerLabel))
-              : serverUpdateGuidance(versionMismatchServerLabel);
-      items.push({
-        id: `server-version:${activeThread.environmentId}`,
-        variant: "default",
-        urgent: false,
-        icon: (
-          <span
-            className="size-1.5 rounded-full border border-muted-foreground/40"
-            aria-hidden="true"
-          />
-        ),
-        title: (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button type="button" className="cursor-help rounded-sm text-left">
-                  Server versions differ
-                </button>
-              }
-            />
-            <TooltipPopup side="top">
-              {versionMismatchServerLabel} {versionMismatch.serverVersion}{" "}
-              <span aria-hidden="true">→</span> {versionMismatch.clientVersion}
-            </TooltipPopup>
-          </Tooltip>
-        ),
-        description: restartDescription,
-        ...(restartActions ? { actions: restartActions } : {}),
-        dismissLabel: "Dismiss version notice",
-        onDismiss: () => {
-          dismissVersionMismatch(versionMismatchDismissKey);
-          setDismissedVersionMismatchKey(versionMismatchDismissKey);
-        },
-      });
-    }
     return items;
   }, [
     activeEnvironmentUnavailableState,
     reconnectWarningGraceElapsed,
     handleReconnectActiveEnvironment,
     navigate,
-    setDismissedVersionMismatchKey,
-    showVersionMismatchBanner,
-    versionMismatch,
-    versionMismatchDismissKey,
-    versionMismatchServerLabel,
-    activeThread,
-    zcpRestart.available,
-    zcpRestart.state,
-    zcpRestart.error,
-    zcpRestart.request,
-    zcpRestart.confirm,
-    zcpRestart.cancel,
   ]);
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
   const providerInstanceEntries = useMemo(

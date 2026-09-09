@@ -10,6 +10,7 @@ import {
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import * as NodeFS from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Thread, ThreadShell, TurnDiffSummary } from "../types";
@@ -1286,5 +1287,16 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         latestTurnStartFailureId: "turn-start-failure-new",
       }),
     ).toBe(true);
+  });
+});
+
+describe("the version-skew banner (spec-mate.md §2.9 MU-1)", () => {
+  it("never renders a server-versions-differ banner: versionSkew.ts is gone and dismissal", () => {
+    const source = NodeFS.readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
+    expect(source).not.toContain("Server versions differ");
+    expect(source).not.toContain("versionSkew");
+    expect(source).not.toContain("useZcpRestart");
+    expect(NodeFS.existsSync(new URL("../versionSkew.ts", import.meta.url))).toBe(false);
+    expect(NodeFS.existsSync(new URL("../zerops/useZcpRestart.ts", import.meta.url))).toBe(false);
   });
 });
