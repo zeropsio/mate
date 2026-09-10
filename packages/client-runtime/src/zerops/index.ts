@@ -188,12 +188,14 @@ export {
 } from "./runEnvironmentCreation.ts";
 export {
   buildZeropsGroupTree,
+  type BuildZeropsGroupTreeOptions,
   type ZeropsGroupTreeEnvironment,
   type ZeropsGroupTreeGroup,
   type ZeropsGroupTreeTool,
   type ZeropsGroupTreeView,
   type ZeropsProjectCarrier,
 } from "./groupTree.ts";
+export { compareZeropsHostnames, rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
   hasMate,
   hasMateContainer,
