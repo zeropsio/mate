@@ -55,9 +55,21 @@ export interface ZeropsGroupTreeView<T> {
   readonly empty: boolean;
 }
 
+export interface BuildZeropsGroupTreeOptions<T> extends DeriveZeropsGroupsOptions {
+  /**
+   * A primary sort key applied to the ungrouped list ahead of the name —
+   * lower ranks first. Groups are untouched: a group's own membership
+   * already orders by role, and reshuffling groups by an item's rank would
+   * fight that. See `listingOrder.ts`'s `rankZeropsCandidateForListing` for
+   * the project picker's tiers and why they only move on the user's own
+   * action.
+   */
+  readonly rank?: (item: T) => number;
+}
+
 export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
   items: ReadonlyArray<T>,
-  options: DeriveZeropsGroupsOptions = {},
+  options: BuildZeropsGroupTreeOptions<T> = {},
 ): ZeropsGroupTreeView<T> {
   // Last carrier wins for a duplicated project id: two candidates for one
   // project means the newer read, not two rows for the same environment.
@@ -79,10 +91,16 @@ export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
     }),
   }));
 
-  const ungrouped = tree.ungrouped.flatMap((project) => {
+  const ungroupedItems = tree.ungrouped.flatMap((project) => {
     const item = byProjectId.get(project.id);
     return item === undefined ? [] : [item];
   });
+  // `tree.ungrouped` already arrives name-sorted; a `rank` only inserts a
+  // primary key ahead of that name order, via a stable sort so ties keep it.
+  const ungrouped =
+    options.rank === undefined
+      ? ungroupedItems
+      : [...ungroupedItems].sort((left, right) => options.rank!(left) - options.rank!(right));
 
   const toolItems = tools.flatMap((tool) => {
     const item = byProjectId.get(tool.project.id);

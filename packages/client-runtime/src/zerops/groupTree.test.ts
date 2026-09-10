@@ -84,4 +84,28 @@ describe("buildZeropsGroupTree", () => {
     expect(view.groups[0]?.environments).toHaveLength(1);
     expect(view.groups[0]?.environments[0]?.item.connected).toBe(true);
   });
+
+  it("ranks the ungrouped list by `options.rank` ahead of name, leaving groups untouched", () => {
+    const zebra = candidate("zebra", []);
+    const apple = candidate("apple", []);
+    const rank = (item: Candidate) => (item.project.name === "zebra" ? 0 : 1);
+
+    const view = buildZeropsGroupTree([CRM_DEV, CRM_PROD, zebra, apple], { rank });
+
+    expect(view.ungrouped.map((item) => item.project.name)).toEqual(["zebra", "apple"]);
+    expect(view.groups[0]?.environments.map((entry) => entry.item.project.name)).toEqual([
+      "crm-dev",
+      "crm-prod",
+    ]);
+  });
+
+  it("keeps name order as the tiebreak within a rank tier", () => {
+    const rank = () => 0;
+    const view = buildZeropsGroupTree(
+      [candidate("zebra", []), candidate("apple", []), candidate("mango", [])],
+      { rank },
+    );
+
+    expect(view.ungrouped.map((item) => item.project.name)).toEqual(["apple", "mango", "zebra"]);
+  });
 });
