@@ -20,11 +20,21 @@ export function ComposerPendingTerminalContextChip({
 }: ComposerPendingTerminalContextChipProps) {
   const label = formatTerminalContextLabel(context);
   const expired = isTerminalContextExpired(context);
+  const kind = context.kind ?? "terminal";
   const tooltipText = expired
-    ? `Terminal context expired. Remove and re-add ${label} to include it in your message.`
+    ? kind === "data"
+      ? `Data context expired. Remove and re-add ${label} to include it in your message.`
+      : `Terminal context expired. Remove and re-add ${label} to include it in your message.`
     : context.text;
 
-  return <TerminalContextInlineChip label={label} tooltipText={tooltipText} expired={expired} />;
+  return (
+    <TerminalContextInlineChip
+      label={label}
+      tooltipText={tooltipText}
+      expired={expired}
+      kind={kind}
+    />
+  );
 }
 
 export function ComposerPendingTerminalContexts(props: ComposerPendingTerminalContextsProps) {

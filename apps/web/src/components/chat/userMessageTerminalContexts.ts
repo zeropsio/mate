@@ -1,24 +1,35 @@
-import { formatInlineTerminalContextLabel as formatInlineTerminalContextSelectionLabel } from "~/lib/terminalContext";
+import {
+  formatInlineTerminalContextLabel as formatInlineTerminalContextSelectionLabel,
+  type ParsedTerminalContextEntry,
+} from "~/lib/terminalContext";
+
+/** The parts of a parsed context entry an inline label is built from. */
+type InlineLabelSource = Pick<ParsedTerminalContextEntry, "header"> &
+  Partial<Pick<ParsedTerminalContextEntry, "kind" | "token">>;
 
 const TERMINAL_CONTEXT_HEADER_PATTERN = /^(.*?)\s+line(?:s)?\s+(\d+)(?:-(\d+))?$/i;
 
-export function buildInlineTerminalContextText(
-  contexts: ReadonlyArray<{
-    header: string;
-  }>,
-): string {
+export function buildInlineTerminalContextText(contexts: ReadonlyArray<InlineLabelSource>): string {
   const labels: Array<string> = [];
   for (const context of contexts) {
-    const header = context.header.trim();
-    if (header.length > 0) {
-      labels.push(formatInlineTerminalContextLabel(header));
+    if (context.header.trim().length > 0) {
+      labels.push(formatInlineTerminalContextLabel(context));
     }
   }
   return labels.join(" ");
 }
 
-export function formatInlineTerminalContextLabel(header: string): string {
-  const trimmedHeader = header.trim();
+export function formatInlineTerminalContextLabel(context: InlineLabelSource): string {
+  const trimmedHeader = context.header.trim();
+  if (context.kind === "data") {
+    return formatInlineTerminalContextSelectionLabel({
+      kind: "data",
+      terminalLabel: trimmedHeader,
+      lineStart: 1,
+      lineEnd: 1,
+      ...(context.token !== undefined ? { token: context.token } : {}),
+    });
+  }
   const match = TERMINAL_CONTEXT_HEADER_PATTERN.exec(trimmedHeader);
   if (!match) {
     return `@${trimmedHeader.toLowerCase().replace(/\s+/g, "-")}`;
@@ -39,14 +50,12 @@ export function formatInlineTerminalContextLabel(header: string): string {
 
 export function textContainsInlineTerminalContextLabels(
   text: string,
-  contexts: ReadonlyArray<{
-    header: string;
-  }>,
+  contexts: ReadonlyArray<InlineLabelSource>,
 ): boolean {
   let searchStartIndex = 0;
 
   for (const context of contexts) {
-    const label = formatInlineTerminalContextLabel(context.header);
+    const label = formatInlineTerminalContextLabel(context);
     const matchIndex = text.indexOf(label, searchStartIndex);
     if (matchIndex === -1) {
       return false;

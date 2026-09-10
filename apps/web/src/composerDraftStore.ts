@@ -99,6 +99,8 @@ const PersistedTerminalContextDraft = Schema.Struct({
   terminalLabel: Schema.String,
   lineStart: Schema.Number,
   lineEnd: Schema.Number,
+  kind: Schema.optionalKey(Schema.Literals(["terminal", "data"])),
+  token: Schema.optionalKey(Schema.String),
 });
 type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
 
@@ -596,7 +598,15 @@ function composerImageDedupKey(image: ComposerImageAttachment): string {
   return `${image.mimeType}\u0000${image.sizeBytes}\u0000${image.name}`;
 }
 
+/**
+ * A data context is identified by where it came from, never by how many lines
+ * its snapshot happens to have: re-picking the same table after its schema
+ * changed must still be the same chip, not a second one.
+ */
 function terminalContextDedupKey(context: TerminalContextDraft): string {
+  if (context.kind === "data") {
+    return `data\u0000${context.terminalId}`;
+  }
   return `${context.terminalId}\u0000${context.lineStart}\u0000${context.lineEnd}`;
 }
 
@@ -611,6 +621,7 @@ function normalizeTerminalContextForThread(
   }
   const lineStart = Math.max(1, Math.floor(context.lineStart));
   const lineEnd = Math.max(lineStart, Math.floor(context.lineEnd));
+  const token = context.token?.trim() ?? "";
   return {
     ...context,
     threadId,
@@ -619,6 +630,7 @@ function normalizeTerminalContextForThread(
     lineStart,
     lineEnd,
     text: normalizeTerminalContextText(context.text),
+    ...(token.length > 0 ? { token } : {}),
   };
 }
 
@@ -1094,6 +1106,9 @@ function normalizePersistedTerminalContextDraft(
   }
   const normalizedLineStart = Math.max(1, Math.floor(lineStart));
   const normalizedLineEnd = Math.max(normalizedLineStart, Math.floor(lineEnd));
+  const kind =
+    candidate.kind === "data" ? "data" : candidate.kind === "terminal" ? "terminal" : undefined;
+  const token = typeof candidate.token === "string" ? candidate.token.trim() : "";
   return {
     id,
     threadId: threadId as ThreadId,
@@ -1102,6 +1117,8 @@ function normalizePersistedTerminalContextDraft(
     terminalLabel,
     lineStart: normalizedLineStart,
     lineEnd: normalizedLineEnd,
+    ...(kind !== undefined ? { kind } : {}),
+    ...(token.length > 0 ? { token } : {}),
   };
 }
 
@@ -1812,6 +1829,8 @@ function partializeComposerDraftStoreState(
               terminalLabel: context.terminalLabel,
               lineStart: context.lineStart,
               lineEnd: context.lineEnd,
+              ...(context.kind !== undefined ? { kind: context.kind } : {}),
+              ...(context.token !== undefined ? { token: context.token } : {}),
             })),
           }
         : {}),

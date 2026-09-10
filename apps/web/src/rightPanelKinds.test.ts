@@ -24,7 +24,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the six launcher rows in their established order", () => {
+  it("keeps the seven launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -78,6 +78,13 @@ describe("right panel kinds", () => {
         shortcut: "B",
         unavailableHint: "Available in a Zerops project.",
       },
+      {
+        kind: "data",
+        label: "Data",
+        description: "Browse the project's managed data services.",
+        shortcut: "V",
+        unavailableHint: "Available in a Zerops project.",
+      },
     ]);
   });
 
@@ -99,6 +106,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        data: "available",
       },
     },
     {
@@ -118,6 +126,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unavailable",
         browser: "unavailable",
+        data: "unavailable",
       },
     },
     {
@@ -131,6 +140,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unknown",
         browser: "unknown",
+        data: "unknown",
       },
     },
     {
@@ -144,6 +154,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        data: "available",
       },
     },
   ] as const;

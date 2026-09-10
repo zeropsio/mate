@@ -35,6 +35,7 @@ const ALL_AVAILABLE = {
   agents: "available",
   zerops: "available",
   browser: "available",
+  data: "available",
 } as const;
 
 function renderLauncher(
@@ -65,9 +66,9 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZB"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBV"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="TFDAB"',
+      'data-surface-launcher-keys="TFDABV"',
     );
   });
 
@@ -80,11 +81,12 @@ describe("RightPanelTabs launcher", () => {
       agents: "unavailable",
       zerops: "unavailable",
       browser: "unavailable",
+      data: "unavailable",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");
     expect(html).toContain("Available from a thread.");
-    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(2);
+    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(3);
   });
 });
 

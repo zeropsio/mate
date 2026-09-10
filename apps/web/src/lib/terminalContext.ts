@@ -1,11 +1,26 @@
 import { type ThreadId } from "@t3tools/contracts";
 
+/**
+ * `kind` absent means a terminal selection — the original shape, where the
+ * label and the wire block both carry a line range. A `"data"` context comes
+ * from the Data panel or an `@` mention in a Zerops project thread: it has no
+ * meaningful line range anywhere the user can see, and `token` is the mention
+ * (`db.public.orders`) its inline chip materializes into.
+ */
 export interface TerminalContextSelection {
   terminalId: string;
   terminalLabel: string;
   lineStart: number;
   lineEnd: number;
   text: string;
+  kind?: TerminalContextKind;
+  token?: string;
+}
+
+export type TerminalContextKind = "terminal" | "data";
+
+function isDataContext(selection: { kind?: TerminalContextKind }): boolean {
+  return selection.kind === "data";
 }
 
 export interface TerminalContextDraft extends TerminalContextSelection {
@@ -32,12 +47,15 @@ export interface DisplayedUserMessageState {
 export interface ParsedTerminalContextEntry {
   header: string;
   body: string;
+  kind: TerminalContextKind;
+  /** A data context's mention (`db.public.orders`), read back off its block header. */
+  token?: string;
 }
 
 export const INLINE_TERMINAL_CONTEXT_PLACEHOLDER = "\uFFFC";
 
-const TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN =
-  /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_context>\s*$/;
+const TRAILING_CONTEXT_BLOCK_PATTERN =
+  /\n*<(terminal|data)_context>\n([\s\S]*?)\n<\/\1_context>\s*$/;
 
 export function normalizeTerminalContextText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
@@ -82,12 +100,15 @@ export function normalizeTerminalContextSelection(
   }
   const lineStart = Math.max(1, Math.floor(selection.lineStart));
   const lineEnd = Math.max(lineStart, Math.floor(selection.lineEnd));
+  const token = selection.token?.trim() ?? "";
   return {
     terminalId,
     terminalLabel,
     lineStart,
     lineEnd,
     text,
+    ...(selection.kind !== undefined ? { kind: selection.kind } : {}),
+    ...(token.length > 0 ? { token } : {}),
   };
 }
 
@@ -104,7 +125,11 @@ export function formatTerminalContextLabel(selection: {
   terminalLabel: string;
   lineStart: number;
   lineEnd: number;
+  kind?: TerminalContextKind;
 }): string {
+  if (isDataContext(selection)) {
+    return selection.terminalLabel;
+  }
   return `${selection.terminalLabel} ${formatTerminalContextRange(selection)}`;
 }
 
@@ -112,8 +137,14 @@ export function formatInlineTerminalContextLabel(selection: {
   terminalLabel: string;
   lineStart: number;
   lineEnd: number;
+  kind?: TerminalContextKind;
+  token?: string;
 }): string {
   const terminalLabel = selection.terminalLabel.trim().toLowerCase().replace(/\s+/g, "-");
+  if (isDataContext(selection)) {
+    const token = selection.token?.trim() ?? "";
+    return `@${token.length > 0 ? token : terminalLabel}`;
+  }
   const range =
     selection.lineStart === selection.lineEnd
       ? `${selection.lineStart}`
@@ -143,9 +174,11 @@ export function buildTerminalContextPreviewTitle(
 }
 
 function buildTerminalContextBodyLines(selection: TerminalContextSelection): string[] {
-  return normalizeTerminalContextText(selection.text)
-    .split("\n")
-    .map((line, index) => `  ${selection.lineStart + index} | ${line}`);
+  const lines = normalizeTerminalContextText(selection.text).split("\n");
+  if (isDataContext(selection)) {
+    return lines.map((line) => `  ${line}`);
+  }
+  return lines.map((line, index) => `  ${selection.lineStart + index} | ${line}`);
 }
 
 export function buildTerminalContextBlock(
@@ -161,16 +194,27 @@ export function buildTerminalContextBlock(
   if (normalizedContexts.length === 0) {
     return "";
   }
-  const lines: string[] = [];
-  for (let index = 0; index < normalizedContexts.length; index += 1) {
-    const context = normalizedContexts[index]!;
-    lines.push(`- ${formatTerminalContextLabel(context)}:`);
-    lines.push(...buildTerminalContextBodyLines(context));
-    if (index < normalizedContexts.length - 1) {
-      lines.push("");
+  const blocks: string[] = [];
+  for (const [tag, contexts] of [
+    ["terminal", normalizedContexts.filter((context) => !isDataContext(context))],
+    ["data", normalizedContexts.filter((context) => isDataContext(context))],
+  ] as const) {
+    if (contexts.length === 0) continue;
+    const lines: string[] = [];
+    for (let index = 0; index < contexts.length; index += 1) {
+      const context = contexts[index]!;
+      const token = isDataContext(context) ? (context.token ?? "") : "";
+      lines.push(
+        `- ${formatTerminalContextLabel(context)}${token.length > 0 ? ` (@${token})` : ""}:`,
+      );
+      lines.push(...buildTerminalContextBodyLines(context));
+      if (index < contexts.length - 1) {
+        lines.push("");
+      }
     }
+    blocks.push([`<${tag}_context>`, ...lines, `</${tag}_context>`].join("\n"));
   }
-  return ["<terminal_context>", ...lines, "</terminal_context>"].join("\n");
+  return blocks.join("\n\n");
 }
 
 export function materializeInlineTerminalContextPrompt(
@@ -179,6 +223,8 @@ export function materializeInlineTerminalContextPrompt(
     terminalLabel: string;
     lineStart: number;
     lineEnd: number;
+    kind?: TerminalContextKind;
+    token?: string;
   }>,
 ): string {
   let nextContextIndex = 0;
@@ -213,8 +259,17 @@ export function appendTerminalContextsToPrompt(
 }
 
 export function extractTrailingTerminalContexts(prompt: string): ExtractedTerminalContexts {
-  const match = TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN.exec(prompt);
-  if (!match) {
+  let remainder = prompt;
+  const groups: ParsedTerminalContextEntry[][] = [];
+  for (;;) {
+    const match = TRAILING_CONTEXT_BLOCK_PATTERN.exec(remainder);
+    if (!match) break;
+    groups.unshift(
+      parseTerminalContextEntries(match[2] ?? "", match[1] === "data" ? "data" : "terminal"),
+    );
+    remainder = remainder.slice(0, match.index);
+  }
+  if (groups.length === 0) {
     return {
       promptText: prompt,
       contextCount: 0,
@@ -222,8 +277,8 @@ export function extractTrailingTerminalContexts(prompt: string): ExtractedTermin
       contexts: [],
     };
   }
-  const promptText = prompt.slice(0, match.index).replace(/\n+$/, "");
-  const parsedContexts = parseTerminalContextEntries(match[1] ?? "");
+  const promptText = remainder.replace(/\n+$/, "");
+  const parsedContexts = groups.flat();
   return {
     promptText,
     contextCount: parsedContexts.length,
@@ -248,9 +303,14 @@ export function deriveDisplayedUserMessageState(prompt: string): DisplayedUserMe
   };
 }
 
-function parseTerminalContextEntries(block: string): ParsedTerminalContextEntry[] {
+const DATA_CONTEXT_HEADER_TOKEN_PATTERN = /^(.*?)\s+\(@([^\s()]+)\)$/;
+
+function parseTerminalContextEntries(
+  block: string,
+  kind: TerminalContextKind,
+): ParsedTerminalContextEntry[] {
   const entries: ParsedTerminalContextEntry[] = [];
-  let current: { header: string; bodyLines: string[] } | null = null;
+  let current: { header: string; token?: string; bodyLines: string[] } | null = null;
 
   const commitCurrent = () => {
     if (!current) {
@@ -259,6 +319,8 @@ function parseTerminalContextEntries(block: string): ParsedTerminalContextEntry[
     entries.push({
       header: current.header,
       body: current.bodyLines.join("\n").trimEnd(),
+      kind,
+      ...(current.token !== undefined ? { token: current.token } : {}),
     });
     current = null;
   };
@@ -267,9 +329,12 @@ function parseTerminalContextEntries(block: string): ParsedTerminalContextEntry[
     const headerMatch = /^- (.+):$/.exec(rawLine);
     if (headerMatch) {
       commitCurrent();
+      const rawHeader = headerMatch[1]!;
+      const tokenMatch = kind === "data" ? DATA_CONTEXT_HEADER_TOKEN_PATTERN.exec(rawHeader) : null;
       current = {
-        header: headerMatch[1]!,
+        header: tokenMatch ? (tokenMatch[1] ?? rawHeader) : rawHeader,
         bodyLines: [],
+        ...(tokenMatch ? { token: tokenMatch[2]! } : {}),
       };
       continue;
     }
@@ -327,6 +392,25 @@ export function insertInlineTerminalContextPlaceholder(
     cursor: cursor + replacement.length,
     contextIndex: countInlineTerminalContextPlaceholders(prompt.slice(0, cursor)),
   };
+}
+
+/**
+ * Swaps a typed `@mention` for its inline placeholder in a single step over a
+ * single authoritative prompt string.
+ *
+ * Doing it as two mutations — remove the text, then read the editor back and
+ * insert — races the editor: the read can still see the mention and write it
+ * back, leaving both the literal `@db` and the chip in the prompt. The
+ * literal then reaches the sent message as a file link beside its own chip.
+ */
+export function replaceMentionWithInlineContextPlaceholder(
+  prompt: string,
+  rangeStart: number,
+  rangeEnd: number,
+): { prompt: string; cursor: number; contextIndex: number } {
+  const start = Math.max(0, Math.min(prompt.length, Math.floor(rangeStart)));
+  const end = Math.max(start, Math.min(prompt.length, Math.floor(rangeEnd)));
+  return insertInlineTerminalContextPlaceholder(prompt.slice(0, start) + prompt.slice(end), start);
 }
 
 export function stripInlineTerminalContextPlaceholders(prompt: string): string {

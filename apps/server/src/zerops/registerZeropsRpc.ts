@@ -24,6 +24,7 @@ import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 
 type ZeropsRpcTag =
@@ -34,7 +35,9 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.zeropsBrowserInput
-  | typeof WS_METHODS.zeropsMateUpdate;
+  | typeof WS_METHODS.zeropsMateUpdate
+  | typeof WS_METHODS.zeropsDataConsoleCall
+  | typeof WS_METHODS.subscribeZeropsDataConsole;
 
 type ZeropsRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: ZeropsRpcTag }>;
 
@@ -60,6 +63,7 @@ export interface RegisterZeropsRpcDeps {
   readonly isZeropsEnvironment: boolean;
   /** This server's own version, read before `zcp mate update` runs. */
   readonly serverVersion: string;
+  readonly zeropsDataConsole: ZeropsDataConsoleModule.ZeropsDataConsole["Service"];
   /**
    * The connecting session's subject — the Zerops user id the door put on the
    * grant. Taken from the authenticated session in `ws.ts`, never from RPC
@@ -134,6 +138,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsAgentAuth,
     zeropsAgentLogin,
     zeropsBrowserStream,
+    zeropsDataConsole,
     subject,
     observeRpcEffect,
     observeRpcStream,
@@ -215,5 +220,17 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       observeRpcEffect(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps), {
         "rpc.aggregate": "zerops",
       }),
+    [WS_METHODS.zeropsDataConsoleCall]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsDataConsoleCall, zeropsDataConsole.call(input), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.subscribeZeropsDataConsole]: (_input) =>
+      observeRpcStream(
+        WS_METHODS.subscribeZeropsDataConsole,
+        Stream.unwrap(zeropsDataConsole.subscribe),
+        {
+          "rpc.aggregate": "zerops",
+        },
+      ),
   } satisfies ZeropsRpcHandlers;
 };

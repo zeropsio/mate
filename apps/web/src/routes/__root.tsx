@@ -62,6 +62,7 @@ import {
 } from "../components/KeybindingsUpdateToast.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 import { resolveZeropsAccountGate } from "./-accountGate";
+import { environmentIdFromPathname } from "./-environmentRoute";
 import { ZeropsIdentityRepair } from "~/zerops/ZeropsIdentityRepair";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -116,14 +117,12 @@ function SignedInRootRouteView() {
     );
   }
 
-  const targetEnvironmentId = /^\/([^/]+)\/[^/]+\/?$/.exec(pathname)?.[1];
-  const routeTargetsEnvironment =
-    targetEnvironmentId !== undefined && !["settings", "zerops"].includes(targetEnvironmentId);
+  const targetEnvironmentId = environmentIdFromPathname(pathname);
 
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        {routeTargetsEnvironment && !availableEnvironmentIds.has(targetEnvironmentId) ? (
+        {targetEnvironmentId !== null && !availableEnvironmentIds.has(targetEnvironmentId) ? (
           <div className="flex flex-col items-start gap-3 p-8">
             <p className="text-sm text-muted-foreground">
               {restoring

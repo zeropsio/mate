@@ -31,6 +31,10 @@ import {
   INITIAL_BROWSER_STREAM_STATE,
   type ZeropsBrowserStreamState,
 } from "@t3tools/client-runtime/zerops/browserStream";
+import {
+  INITIAL_DATA_CONSOLE_STATE,
+  type ZeropsDataConsoleSessionState,
+} from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import { projectTopologyViewAtom, zeropsFeeds } from "../state/zerops";
 
@@ -88,4 +92,26 @@ export function useZeropsBrowserStream(
     return "unavailable";
   }
   return AsyncResult.getOrElse(result, () => INITIAL_BROWSER_STREAM_STATE);
+}
+
+/**
+ * `undefined` — no environment, nothing to show. Unlike
+ * `useZeropsBrowserStream`, a failed subscription collapses to the same
+ * `idle` snapshot as "not yet connected" rather than a distinct
+ * `"unavailable"` sentinel: `subscribeZeropsDataConsole` ships together with
+ * this panel (there is no pre-existing server build that lacks the method
+ * the way 0.2.5 lacks the browser stream), and the session status enum
+ * already carries its own `"unavailable"`/`"unsupported"` states for the
+ * broker-level failures the panel needs to distinguish.
+ */
+export function useZeropsDataConsole(
+  environmentId: EnvironmentId | null,
+): ZeropsDataConsoleSessionState | undefined {
+  const result = useAtomValue(
+    environmentId === null ? EMPTY_ATOM : zeropsFeeds.dataConsole({ environmentId, input: {} }),
+  );
+  if (environmentId === null || result === undefined) {
+    return undefined;
+  }
+  return AsyncResult.getOrElse(result, () => INITIAL_DATA_CONSOLE_STATE);
 }

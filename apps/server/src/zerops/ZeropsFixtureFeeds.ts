@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
@@ -34,6 +35,7 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
+import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
@@ -410,6 +412,37 @@ const zeropsMateUpdateFixtureLayer = () =>
     }),
   );
 
+/**
+ * A fixture/showcase run never has a real `zcp` binary to spawn — this
+ * reports `unsupported` immediately on the first `call`/`subscribe`, the
+ * same permanent state a client sees against an older zcp build. The fake
+ * child "exits" on its own microtask, stderr shaped exactly like zcp's own
+ * `unknown studio subcommand` message, so {@link ZeropsDataConsoleModule.classifyStartupFailure}
+ * classifies it the same way the live degrade path does.
+ */
+const dataConsoleLayer = () =>
+  Layer.effect(
+    ZeropsDataConsoleModule.ZeropsDataConsole,
+    ZeropsDataConsoleModule.make({
+      spawnDataConsole: () => {
+        let exitListener: ((code: number | null) => void) | undefined;
+        queueMicrotask(() => exitListener?.(1));
+        return {
+          onStdout: () => {},
+          onStderr: (listener) => {
+            listener("unknown studio subcommand: console\n");
+          },
+          onExit: (listener) => {
+            exitListener = listener;
+          },
+          onError: () => {},
+          endStdin: () => {},
+          kill: () => {},
+        };
+      },
+    }),
+  ).pipe(Layer.provide(FetchHttpClient.layer));
+
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   return Layer.mergeAll(
@@ -418,5 +451,6 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
+    dataConsoleLayer(),
   );
 };

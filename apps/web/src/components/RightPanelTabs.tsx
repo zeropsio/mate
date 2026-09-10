@@ -3,6 +3,7 @@ import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
   Cloud,
+  Database,
   FileDiff,
   Files,
   Globe,
@@ -75,6 +76,7 @@ const SURFACE_DISABLED_REASONS = {
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
   browser: "The Browser view is only available from a Zerops project thread.",
+  data: "Data is only available from a Zerops project thread.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -176,6 +178,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Cloud;
     case "browser":
       return Globe;
+    case "data":
+      return Database;
   }
 }
 
@@ -369,6 +373,8 @@ function surfaceTitle(
       return "Zerops";
     case "browser":
       return "service" in surface ? surface.service : "Browser";
+    case "data":
+      return "service" in surface ? surface.service : "Data";
   }
 }
 
@@ -395,6 +401,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Cloud className="size-3 shrink-0" />;
     case "browser":
       return <Globe className="size-3 shrink-0" />;
+    case "data":
+      return <Database className="size-3 shrink-0" />;
   }
 }
 

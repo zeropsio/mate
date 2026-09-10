@@ -1,5 +1,6 @@
 import { serviceForPreview } from "../../zerops/serviceBrowserPolicy";
 import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
+import { ZeropsDataLinkContext } from "./dataLink";
 import { useRightPanelStore } from "../../rightPanelStore";
 /**
  * The Zerops right-panel surface: the service map for the project this thread
@@ -102,14 +103,22 @@ export function ZeropsPanel({
             : null
         }
       >
-        <ZeropsServiceMap
-          currentServiceId={currentServiceId}
-          agents={hasCurrentControlPlane ? agents : undefined}
-          error={topology.error}
-          liveness={topology.liveness}
-          mate={mate}
-          view={view}
-        />
+        <ZeropsDataLinkContext
+          value={
+            threadRef
+              ? (hostname) => useRightPanelStore.getState().openData(threadRef, hostname)
+              : null
+          }
+        >
+          <ZeropsServiceMap
+            currentServiceId={currentServiceId}
+            agents={hasCurrentControlPlane ? agents : undefined}
+            error={topology.error}
+            liveness={topology.liveness}
+            mate={mate}
+            view={view}
+          />
+        </ZeropsDataLinkContext>
       </ServiceBrowserLinkContext>
     );
 

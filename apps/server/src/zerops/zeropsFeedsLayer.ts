@@ -17,6 +17,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
+import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
@@ -26,6 +27,7 @@ const liveLayer = Layer.mergeAll(
   ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuth.layer)),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
+  ZeropsDataConsoleModule.layer,
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>
