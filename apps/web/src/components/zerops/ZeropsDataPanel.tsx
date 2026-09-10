@@ -259,12 +259,14 @@ export function ZeropsDataPanel({
   const [measuredWidth, setMeasuredWidth] = useState<number | undefined>(undefined);
   const [missingServiceRefreshed, setMissingServiceRefreshed] = useState<string | null>(null);
   // A document index's search box: the text box's own draft, and the last
-  // submitted search's result (`undefined` = showing the plain index
-  // listing instead) — separate state so a query mid-edit never disturbs
-  // what's on screen until Enter is pressed.
+  // *submitted* search's own query alongside its result (`undefined` =
+  // showing the plain index listing instead) — separate from the draft so a
+  // query mid-edit never disturbs what's on screen until Enter is pressed,
+  // and so "Load more" always pages with the query that produced the result
+  // on screen, never whatever the box holds by the time that click lands.
   const [documentSearchQuery, setDocumentSearchQuery] = useState("");
   const [documentSearchResult, setDocumentSearchResult] = useState<
-    DataConsoleNodeListing | undefined
+    { readonly query: string; readonly listing: DataConsoleNodeListing } | undefined
   >(undefined);
   const [documentSearchLoadMorePending, setDocumentSearchLoadMorePending] = useState(false);
   const servicesRequestedForRef = useRef<EnvironmentId | null>(null);
@@ -624,14 +626,17 @@ export function ZeropsDataPanel({
       setDocumentSearchResult(undefined);
       return;
     }
+    const myToken = selectionTokenRef.current;
     void runRequest({ kind: "search", path: currentPath, q }).then((response) => {
+      if (selectionTokenRef.current !== myToken) return; // the user has moved on to a different node/service
       if (response?.kind === "search") {
-        setDocumentSearchResult(
-          documentListingModel(
+        setDocumentSearchResult({
+          query: q,
+          listing: documentListingModel(
             response.nodes,
             response.nextCursor === "" ? undefined : response.nextCursor,
           ),
-        );
+        });
       }
     });
   };
@@ -642,23 +647,35 @@ export function ZeropsDataPanel({
   };
 
   const handleDocumentSearchLoadMore = (cursor: string) => {
-    if (selectedService === null || documentSearchLoadMorePending) return;
-    const q = documentSearchQuery.trim();
-    if (q === "") return;
+    if (
+      selectedService === null ||
+      documentSearchResult === undefined ||
+      documentSearchLoadMorePending
+    )
+      return;
+    const q = documentSearchResult.query;
     setDocumentSearchLoadMorePending(true);
+    const myToken = selectionTokenRef.current;
     void runRequest({ kind: "search", path: currentPath, q, page: { cursor } }).then((response) => {
       setDocumentSearchLoadMorePending(false);
+      if (selectionTokenRef.current !== myToken) return; // the user has moved on to a different node/service
       if (response?.kind !== "search") return;
       const page = documentListingModel(
         response.nodes,
         response.nextCursor === "" ? undefined : response.nextCursor,
       );
       setDocumentSearchResult((current) =>
-        current === undefined
-          ? page
+        current === undefined || current.query !== q
+          ? { query: q, listing: page }
           : {
-              nodes: [...current.nodes, ...page.nodes],
-              model: { ...page.model, rows: [...current.model.rows, ...page.model.rows] },
+              query: q,
+              listing: {
+                nodes: [...current.listing.nodes, ...page.nodes],
+                model: {
+                  ...page.model,
+                  rows: [...current.listing.model.rows, ...page.model.rows],
+                },
+              },
             },
       );
     });
@@ -1017,7 +1034,7 @@ export function ZeropsDataPanel({
       : listingKind === "keys"
         ? kvListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
         : listingKind === "documents"
-          ? (documentSearchResult ??
+          ? (documentSearchResult?.listing ??
             documentListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor))
           : null;
   const searching = listingKind === "documents" && documentSearchResult !== undefined;

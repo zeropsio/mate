@@ -1507,7 +1507,7 @@ describe("ZeropsDataPanel", () => {
         if (args.input.kind === "services" || args.input.kind === "refresh") {
           return Promise.resolve(AsyncResult.success(servicesResponse(services)));
         }
-        if (args.input.kind === "tree") {
+        if (args.input.kind === "tree" || args.input.kind === "blob") {
           const response = byPathKey[treePathKey(args.input.path)];
           return Promise.resolve(
             AsyncResult.success(response ?? (EMPTY_TREE_RESPONSE as ZeropsDataConsoleResponse)),
@@ -1785,6 +1785,181 @@ describe("ZeropsDataPanel", () => {
           readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
         }>(tree, ZeropsDataTable)!;
         expect(table.props.model.rows).toEqual([["order-1"]]);
+      });
+
+      it("drops a search reply that lands after the user has already selected a different node", async () => {
+        const INDEX_B: ZeropsDataConsoleNode = {
+          name: "index-b",
+          kind: "container",
+          path: { service: "db1", segments: ["index-b"] },
+          hasChildren: true,
+          meta: {},
+        };
+        const INDEX_B_KEY = treePathKey(INDEX_B.path);
+        let resolveSearch:
+          | ((value: AsyncResult.AsyncResult<ZeropsDataConsoleResponse>) => void)
+          | undefined;
+        commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+          if (args.input.kind === "services" || args.input.kind === "refresh") {
+            return Promise.resolve(
+              AsyncResult.success(servicesResponse([SERVICE_DOCUMENT_SEARCHABLE])),
+            );
+          }
+          if (args.input.kind === "tree") {
+            const key = treePathKey(args.input.path);
+            if (key === ROOT_KEY) {
+              return Promise.resolve(
+                AsyncResult.success({ kind: "tree", nodes: [DOC_A, INDEX_B], nextCursor: "" }),
+              );
+            }
+            if (key === INDEX_B_KEY) {
+              return Promise.resolve(
+                AsyncResult.success({ kind: "tree", nodes: [], nextCursor: "" }),
+              );
+            }
+            return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+          }
+          if (args.input.kind === "search") {
+            return new Promise((resolve) => {
+              resolveSearch = resolve;
+            });
+          }
+          return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+        });
+
+        await serviceTab();
+        let tree = render({ service: "db1", widthForTest: 1200 });
+
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onChange as (event: {
+            target: { value: string };
+          }) => void
+        )({ target: { value: "foo" } });
+        tree = render({ service: "db1", widthForTest: 1200 });
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onKeyDown as (event: {
+            key: string;
+          }) => void
+        )({ key: "Enter" });
+        await flush(); // the search request is now in flight, unresolved
+
+        // The user doesn't wait — they open a different index before the reply lands.
+        const table = findComponent<{ readonly onOpenRow: (rowIndex: number) => void }>(
+          tree,
+          ZeropsDataTable,
+        )!;
+        table.props.onOpenRow(0); // sorted: "index-b" < "order-1"
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        // Now the stale search reply lands.
+        expect(resolveSearch).toBeDefined();
+        resolveSearch!(
+          AsyncResult.success({
+            kind: "search",
+            nodes: [
+              {
+                name: "stale-doc",
+                kind: "blob",
+                path: { service: "db1", segments: ["stale-doc"] },
+                hasChildren: false,
+                meta: {},
+              },
+            ],
+            nextCursor: "",
+          }),
+        );
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        // Still on index-b's own (empty) listing — the stale reply never applied.
+        expect(findByAttribute(tree, "data-zerops-data-document-search-status")).toBeNull();
+        const afterTable = findComponent<{
+          readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+        }>(tree, ZeropsDataTable)!;
+        expect(afterTable.props.model.rows).toEqual([]);
+      });
+
+      it("Load more pages with the submitted query, not a later edit to the box", async () => {
+        respondTree(
+          [SERVICE_DOCUMENT_SEARCHABLE],
+          { [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" } },
+          (request) => {
+            expect(request.q).toBe("foo");
+            if (request.page === undefined) {
+              return {
+                kind: "search",
+                nodes: [
+                  {
+                    name: "hit-1",
+                    kind: "blob",
+                    path: { service: "db1", segments: ["hit-1"] },
+                    hasChildren: false,
+                    meta: {},
+                  },
+                ],
+                nextCursor: "c1",
+              };
+            }
+            expect(request.page.cursor).toBe("c1");
+            return {
+              kind: "search",
+              nodes: [
+                {
+                  name: "hit-2",
+                  kind: "blob",
+                  path: { service: "db1", segments: ["hit-2"] },
+                  hasChildren: false,
+                  meta: {},
+                },
+              ],
+              nextCursor: "",
+            };
+          },
+        );
+        await serviceTab();
+        let tree = render({ service: "db1", widthForTest: 1200 });
+
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onChange as (event: {
+            target: { value: string };
+          }) => void
+        )({ target: { value: "foo" } });
+        tree = render({ service: "db1", widthForTest: 1200 });
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onKeyDown as (event: {
+            key: string;
+          }) => void
+        )({ key: "Enter" });
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        // Edit the box after submitting, without pressing Enter again.
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onChange as (event: {
+            target: { value: string };
+          }) => void
+        )({ target: { value: "fo" } });
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        const table = findComponent<{ readonly onLoadMore: () => void }>(tree, ZeropsDataTable)!;
+        table.props.onLoadMore();
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        expect(commandSpy).toHaveBeenCalledWith({
+          environmentId: THREAD_REF.environmentId,
+          input: {
+            kind: "search",
+            path: { service: "db1", segments: [] },
+            q: "foo",
+            page: { cursor: "c1" },
+          },
+        });
+        const finalTable = findComponent<{
+          readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+        }>(tree, ZeropsDataTable)!;
+        expect(finalTable.props.model.rows).toEqual([["hit-1"], ["hit-2"]]);
       });
     });
 
