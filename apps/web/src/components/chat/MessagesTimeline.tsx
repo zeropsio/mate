@@ -1672,7 +1672,7 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
 }) {
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
-  if (checkpointFiles.length === 0 && !turnSummary.history) return null;
+  if (checkpointFiles.length === 0) return null;
 
   return (
     <AssistantChangedFilesSectionInner

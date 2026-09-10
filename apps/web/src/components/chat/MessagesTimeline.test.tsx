@@ -404,6 +404,77 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("1 changed file");
   });
 
+  it("hides the changed-files card when a turn recorded no files", () => {
+    const assistantMessageId = MessageId.make("message-assistant-no-files");
+    const turnId = TurnId.make("turn-no-files");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{
+          turnId,
+          state: "completed",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: MESSAGE_CREATED_AT,
+        }}
+        timelineEntries={[
+          {
+            id: "entry-assistant-no-files",
+            kind: "message",
+            createdAt: MESSAGE_CREATED_AT,
+            message: {
+              id: assistantMessageId,
+              role: "assistant",
+              text: "Restyled the page.",
+              turnId,
+              createdAt: MESSAGE_CREATED_AT,
+              updatedAt: MESSAGE_CREATED_AT,
+              streaming: false,
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              assistantMessageId,
+              {
+                turnId,
+                checkpointTurnCount: 1,
+                checkpointRef: CheckpointRef.make("checkpoint-no-files"),
+                status: "ready",
+                files: [],
+                history: {
+                  runId: "run-1",
+                  coverage: "partial",
+                  semantics: "observed-workspace",
+                  representation: "git-normalized",
+                  policyVersion: "git-v1",
+                  roots: [
+                    {
+                      root: {
+                        rootId: "weatherapp",
+                        label: "weatherapp",
+                        remotePath: "/var/www/weatherapp",
+                        pathPrefix: "weatherapp/",
+                      },
+                      before: { status: "captured" },
+                      after: { status: "unavailable", reason: "Snapshot refused." },
+                    },
+                  ],
+                },
+                assistantMessageId,
+                completedAt: MESSAGE_CREATED_AT,
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(markup).not.toContain("recorded files");
+    expect(markup).not.toContain("History is incomplete");
+    expect(markup).not.toContain('aria-label="Open diff"');
+  });
+
   it("treats only the strict list end as the live edge", async () => {
     const {
       resolveTimelineIsAtEnd,
