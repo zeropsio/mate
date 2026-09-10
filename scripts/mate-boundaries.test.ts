@@ -1,6 +1,7 @@
-// Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for
-// exactly two things, `agent mark-oauth` (ZeropsCli.ts) and
-// `studio console serve` (ZeropsDataConsole.ts, the Data Console engine host).
+// Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for a
+// closed list of verbs — `agent mark-oauth` and `mate status`/`mate update`
+// (ZeropsCli.ts, the latter two for spec §2.9 MU-2) and `studio console serve`
+// (ZeropsDataConsole.ts, the Data Console engine host).
 // Everything else the product needs from the platform is read by the client
 // with the user's own token (rule 1), and zcp never grows a layer for mate
 // (rule 3). This is a source scan, not an AST: every `zcp` argv in the zone
@@ -15,7 +16,7 @@ import type { PlatformError } from "effect/PlatformError";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const ZONE = "apps/server/src/zerops";
-const ALLOWED_ARGV = ["agent mark-oauth", "studio console serve"];
+const ALLOWED_ARGV = ["agent mark-oauth", "mate status", "mate update", "studio console serve"];
 
 // The leading string literals of the argv; a trailing identifier (`agentId`) is not a verb.
 const ZCP_ARGV_PATTERN = /\[\s*\.\.\.baseArgs\s*,\s*((?:"[^"\n]*"\s*,\s*)*"[^"\n]*")/g;
