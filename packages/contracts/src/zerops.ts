@@ -668,7 +668,8 @@ export type ZeropsDataConsoleBlob = typeof ZeropsDataConsoleBlob.Type;
 
 /**
  * `zeropsDataConsoleCall`'s payload — one typed request per allowlisted
- * console route (read-only slice 1, `dataconsole-api.md` §3). `refresh`
+ * console route (read-only slice 1, `dataconsole-api.md` §3):
+ * services/refresh/tree/stat/blob/table/tableCount/query/search. `refresh`
  * re-runs discovery and answers with the same shape as `services`.
  */
 export const ZeropsDataConsoleRequest = Schema.Union([
@@ -693,10 +694,22 @@ export const ZeropsDataConsoleRequest = Schema.Union([
     stmt: Schema.String,
     page: Schema.optional(ZeropsDataConsolePage),
   }),
+  Schema.Struct({
+    kind: Schema.Literal("search"),
+    path: ZeropsDataConsolePath,
+    q: Schema.String,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
 ]);
 export type ZeropsDataConsoleRequest = typeof ZeropsDataConsoleRequest.Type;
 
-/** `zeropsDataConsoleCall`'s success payload, one variant per request `kind` (`refresh` answers as `services`). */
+/**
+ * `zeropsDataConsoleCall`'s success payload, one variant per request `kind`
+ * (`refresh` answers as `services`). `search` gets its own tag rather than
+ * reusing `tree`'s — every other kind here answers under its own tag even
+ * when the shape is shared (e.g. `count`), so `search` follows the same rule:
+ * `nodes`/`nextCursor`, identical to the `tree` variant's fields.
+ */
 export const ZeropsDataConsoleResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("services"),
@@ -713,6 +726,11 @@ export const ZeropsDataConsoleResponse = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("blob"), ...ZeropsDataConsoleBlob.fields }),
   Schema.Struct({ kind: Schema.Literal("table"), page: ZeropsDataConsoleTablePage }),
   Schema.Struct({ kind: Schema.Literal("count"), count: Schema.Number }),
+  Schema.Struct({
+    kind: Schema.Literal("search"),
+    nodes: Schema.Array(ZeropsDataConsoleNode),
+    nextCursor: Schema.String,
+  }),
 ]);
 export type ZeropsDataConsoleResponse = typeof ZeropsDataConsoleResponse.Type;
 
