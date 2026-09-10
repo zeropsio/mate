@@ -101,6 +101,24 @@ export function supplementalAccessFor(input: {
     : undefined;
 }
 
+/**
+ * A project's service list can go transiently unread mid-re-projection (its
+ * read entry not yet in `serviceReads`, or briefly unobserved) even though
+ * nothing about the project actually changed. Falling straight to "failed"
+ * there would blank the row's summary line and bring it back a moment
+ * later. Carry the previous resolved outcome forward instead; a freshly
+ * resolved outcome still replaces it immediately.
+ */
+export function carryForwardServiceOutcome(
+  previous: ReadonlyMap<string, InventoryServiceOutcome>,
+  projectId: string,
+  computed: InventoryServiceOutcome,
+): InventoryServiceOutcome {
+  if (computed.status === "resolved") return computed;
+  const prior = previous.get(projectId);
+  return prior?.status === "resolved" ? prior : computed;
+}
+
 function InterestDemand({
   descriptor,
   refreshKey,
@@ -370,11 +388,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     [projectDescriptors, runtime],
   );
   const serviceReads = useZeropsAtomSelections(serviceReadEntries);
+  const prevServiceOutcomesRef = useRef<ReadonlyMap<string, InventoryServiceOutcome>>(new Map());
 
   const projected = useMemo(() => {
     const projects: ZeropsProject[] = [];
     const services = new Map<string, InventoryServiceOutcome>();
     const projectRefs = new Map<string, ProjectRef>();
+    const previousOutcomes = prevServiceOutcomesRef.current;
+    const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
+      carryForwardServiceOutcome(previousOutcomes, projectId, computed);
     let complete = verification.status === "verified";
     for (const ref of knownProjectRefs) {
       const key = inventoryProjectRefKey(ref);
@@ -401,12 +423,12 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       const serviceRead = serviceReads.get(key);
       if (serviceRead === undefined) {
         complete = false;
-        services.set(dto.id, { status: "failed" });
+        services.set(dto.id, resolvedOrCarried(dto.id, { status: "failed" }));
         continue;
       }
       if (serviceRead.query.status !== "observed") {
         complete = false;
-        services.set(dto.id, { status: "failed" });
+        services.set(dto.id, resolvedOrCarried(dto.id, { status: "failed" }));
         continue;
       }
       const decoded: ZeropsService[] = [];
@@ -425,9 +447,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       }
       services.set(
         dto.id,
-        serviceComplete ? { status: "resolved", services: decoded } : { status: "failed" },
+        resolvedOrCarried(
+          dto.id,
+          serviceComplete ? { status: "resolved", services: decoded } : { status: "failed" },
+        ),
       );
     }
+    prevServiceOutcomesRef.current = services;
     const demanded = [
       ...organizationDescriptors.map((descriptor) =>
         demandedInterest(organizationReads.get(interestKeyOf(descriptor))?.observation, descriptor),

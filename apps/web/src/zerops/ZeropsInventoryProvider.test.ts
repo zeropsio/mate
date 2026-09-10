@@ -11,7 +11,9 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { InventoryServiceOutcome } from "./inventoryContext";
 import {
+  carryForwardServiceOutcome,
   inventoryProjectRefs,
   isInterestBlocked,
   supplementalAccessFor,
@@ -211,5 +213,48 @@ describe("supplementalAccessFor", () => {
     expect(
       supplementalAccessFor({ verificationStatus: "verified", access: undefined, epoch }),
     ).toBeUndefined();
+  });
+});
+
+describe("carryForwardServiceOutcome", () => {
+  const resolved: InventoryServiceOutcome = { status: "resolved", services: [] };
+  const failed: InventoryServiceOutcome = { status: "failed" };
+  const freshlyResolved: InventoryServiceOutcome = {
+    status: "resolved",
+    services: [{ id: "svc-2" } as never],
+  };
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly previous: ReadonlyMap<string, InventoryServiceOutcome>;
+    readonly projectId: string;
+    readonly computed: InventoryServiceOutcome;
+    readonly expected: InventoryServiceOutcome;
+  }> = [
+    {
+      name: "carries the previous resolved outcome forward when the new read transiently fails",
+      previous: new Map([["project-a", resolved]]),
+      projectId: "project-a",
+      computed: failed,
+      expected: resolved,
+    },
+    {
+      name: "keeps failed when there was never a resolved outcome to carry",
+      previous: new Map(),
+      projectId: "project-a",
+      computed: failed,
+      expected: failed,
+    },
+    {
+      name: "a freshly resolved outcome replaces the carried one immediately",
+      previous: new Map([["project-a", resolved]]),
+      projectId: "project-a",
+      computed: freshlyResolved,
+      expected: freshlyResolved,
+    },
+  ];
+
+  it.each(cases)("$name", ({ previous, projectId, computed, expected }) => {
+    expect(carryForwardServiceOutcome(previous, projectId, computed)).toEqual(expected);
   });
 });
