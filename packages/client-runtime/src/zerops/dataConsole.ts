@@ -346,6 +346,48 @@ export function joinServicesWithTopology(
   return rows;
 }
 
+/**
+ * The shape the grid should render for the currently selected level of one
+ * service's tree. Driven by `service.family` — the console's own taxonomy
+ * (`FamilyTabular`/`FamilyKV`/`FamilyObject`/`FamilyDocument`/`FamilyStream`,
+ * `../../../../zcp/internal/dataconsole/console/provider/family.go`) — not by
+ * `service.support`, so a view-only family (clickhouse/qdrant/kafka/nats)
+ * still gets its family's own listing shape.
+ */
+export type DataConsoleListingKind = "tree" | "objects" | "keys" | "documents" | "streams";
+
+/**
+ * `node === null` means the service's own root (nothing selected below the
+ * tree yet — a bucket's root prefix, a KV namespace root, a document index
+ * chosen at the top).
+ */
+export function listingFor(
+  service: Pick<ZeropsDataConsoleService, "family">,
+  node: ZeropsDataConsoleNode | null,
+): DataConsoleListingKind {
+  switch (service.family) {
+    case "object":
+      return "objects";
+    case "document":
+      return "documents";
+    case "stream":
+      return "streams";
+    case "kv":
+      // A string key (`kind: "blob"`) opens the existing blob preview, not a
+      // listing. A stream-typed key can't be browsed at all (still true
+      // today) — both fall back to "tree" so the panel's existing handling
+      // for those two cases is untouched.
+      if (node !== null && node.kind === "blob") return "tree";
+      if (node !== null && node.kind === "tabular" && node.meta?.entryType === "stream")
+        return "tree";
+      return "keys";
+    default:
+      // "tabular" (postgresql/mariadb/clickhouse) is unchanged; "file" and
+      // "unknown" have no affordances either way.
+      return "tree";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Error copy
 // ---------------------------------------------------------------------------

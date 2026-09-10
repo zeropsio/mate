@@ -33,6 +33,7 @@ import {
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
   joinServicesWithTopology,
+  listingFor,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -428,6 +429,58 @@ const topologyService = (
   routes: [],
   ports: [],
   ...overrides,
+});
+
+const listingNode = (
+  overrides: Partial<ZeropsDataConsoleNode> & { kind: ZeropsDataConsoleNode["kind"] },
+) =>
+  ({
+    name: "n",
+    path: { service: "svc", segments: ["n"] },
+    hasChildren: false,
+    ...overrides,
+  }) as ZeropsDataConsoleNode;
+
+describe("listingFor", () => {
+  it("is objects for an object-storage service, root or container alike", () => {
+    expect(listingFor({ family: "object" }, null)).toBe("objects");
+    expect(listingFor({ family: "object" }, listingNode({ kind: "container" }))).toBe("objects");
+    expect(listingFor({ family: "object" }, listingNode({ kind: "blob" }))).toBe("objects");
+  });
+
+  it("is documents for a document service", () => {
+    expect(listingFor({ family: "document" }, null)).toBe("documents");
+  });
+
+  it("is streams for a stream service", () => {
+    expect(listingFor({ family: "stream" }, null)).toBe("streams");
+  });
+
+  it("is keys for a kv service's namespace root or a collection key", () => {
+    expect(listingFor({ family: "kv" }, null)).toBe("keys");
+    expect(
+      listingFor({ family: "kv" }, listingNode({ kind: "tabular", meta: { entryType: "hash" } })),
+    ).toBe("keys");
+  });
+
+  it("falls back to tree for a kv string key (blob preview) and a kv stream key (unbrowsable)", () => {
+    expect(
+      listingFor({ family: "kv" }, listingNode({ kind: "blob", meta: { entryType: "string" } })),
+    ).toBe("tree");
+    expect(
+      listingFor({ family: "kv" }, listingNode({ kind: "tabular", meta: { entryType: "stream" } })),
+    ).toBe("tree");
+  });
+
+  it("is tree for a tabular service, unchanged", () => {
+    expect(listingFor({ family: "tabular" }, null)).toBe("tree");
+    expect(listingFor({ family: "tabular" }, listingNode({ kind: "tabular" }))).toBe("tree");
+  });
+
+  it("is tree for file/unknown families, which have no affordances either way", () => {
+    expect(listingFor({ family: "file" }, null)).toBe("tree");
+    expect(listingFor({ family: "unknown" }, null)).toBe("tree");
+  });
 });
 
 describe("joinServicesWithTopology", () => {
