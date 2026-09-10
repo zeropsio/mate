@@ -1231,10 +1231,7 @@ export function ZeropsDataPanel({
         {...(querySort ? { sort: querySort } : {})}
       />
     ) : listingKind ===
-      "streams" ? // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid // A stream's own view is the metadata blob preview below
-    // region never shows for this family, root or a selected stream
-    // alike, which this branch makes an explicit decision rather than an
-    // accident of `nodeListing` staying `null` the way it does for "tree".
+      "streams" ? // accident of `nodeListing` staying `null` the way it does for "tree". // alike, which this branch makes an explicit decision rather than an // region never shows for this family, root or a selected stream // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid // A stream's own view is the metadata blob preview below
     null : nodeListing !== null ? (
       <ZeropsDataTable
         loadMorePending={listingLoadMorePending}
