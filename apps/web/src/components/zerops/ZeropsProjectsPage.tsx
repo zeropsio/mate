@@ -22,7 +22,7 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { RotateCcwIcon } from "lucide-react";
+import { PlayIcon, RotateCcwIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -55,6 +55,7 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   canCreateEnvironment,
+  rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
@@ -87,7 +88,11 @@ import {
 import { proposedEnvironmentName, validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsMoveToGroupDialog } from "./ZeropsMoveToGroupDialog";
 import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
-import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
+import {
+  ZeropsProjectMenu,
+  type ZeropsMenuAction,
+  type ZeropsMenuEntry,
+} from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
@@ -95,6 +100,7 @@ import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logi
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
+  deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
@@ -204,7 +210,7 @@ export function hasNoZeropsProject(input: {
   readonly isLoading: boolean;
 }): boolean {
   if (input.isLoading && input.candidates.length === 0) return false;
-  const view = buildZeropsGroupTree(input.candidates);
+  const view = buildZeropsGroupTree(input.candidates, { rank: rankZeropsCandidateForListing });
   return view.groups.length === 0 && view.ungrouped.length === 0;
 }
 
@@ -427,6 +433,7 @@ function ZeropsProjectsContent() {
   } = useZeropsProjectConnection(activeOrganization?.id ?? null);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
+  const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
   const navigate = useNavigate();
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
@@ -470,7 +477,7 @@ function ZeropsProjectsContent() {
       clearInterval(timer);
     };
   }, [creationRunning]);
-  const groupTree = buildZeropsGroupTree(candidates);
+  const groupTree = buildZeropsGroupTree(candidates, { rank: rankZeropsCandidateForListing });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
   const pageError = connectError ?? error;
@@ -480,7 +487,15 @@ function ZeropsProjectsContent() {
   ): ZeropsRowInput => ({
     candidate,
     health: candidateHealth.get(candidate.key),
-    can: { open: true, connect: true, enable: true, wait: true, setUpMate: true, start: true },
+    can: {
+      open: true,
+      connect: true,
+      enable: true,
+      wait: true,
+      setUpMate: true,
+      start: true,
+      restart: true,
+    },
     ...(role === undefined ? {} : { role }),
   });
 
@@ -583,9 +598,11 @@ function ZeropsProjectsContent() {
   const busyKeys = useMemo(
     () =>
       new Set(
-        [enablingCandidateKey, settingUpKey, startingCandidateKey].filter((key) => key !== null),
+        [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey].filter(
+          (key) => key !== null,
+        ),
       ),
-    [enablingCandidateKey, settingUpKey, startingCandidateKey],
+    [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey],
   );
 
   // The quiet actions: rename an agent, move a project, rename a group. Each
@@ -686,11 +703,47 @@ function ZeropsProjectsContent() {
     candidate: ZeropsCandidatePresentation,
     tags: ZeropsGroupTags,
     mate: boolean,
+    action?: ZeropsRowAction,
+    updateMenuAction?: ZeropsMenuAction | null,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const restart = deriveZeropsRestartAction(rowInput(candidate));
+    const quickActions: ReadonlyArray<ZeropsMenuAction> = mate
+      ? [
+          ...(action?.kind === "start"
+            ? [
+                {
+                  id: "start",
+                  label: "Start",
+                  onSelect: () => {
+                    runRowAction(candidate, "start");
+                  },
+                },
+              ]
+            : []),
+          ...(restart.kind === "restart"
+            ? [
+                {
+                  id: "restart",
+                  label: restart.label,
+                  onSelect: () => {
+                    runRowAction(candidate, "restart");
+                  },
+                },
+              ]
+            : []),
+          ...(updateMenuAction === null || updateMenuAction === undefined
+            ? []
+            : [updateMenuAction]),
+        ]
+      : [];
     return (
       <ZeropsProjectMenu
         actions={[
+          ...quickActions,
+          ...(quickActions.length > 0
+            ? [{ id: "quick", separator: true } satisfies ZeropsMenuEntry]
+            : []),
           ...(mate
             ? [
                 {
@@ -766,23 +819,18 @@ function ZeropsProjectsContent() {
         </span>
       );
     switch (action.kind) {
+      // "start" is a trailing button on the card, not a verb on this line —
+      // the line only says the detail (e.g. "Stopped").
       case "connect":
       case "enable":
       case "wait":
       case "set-up-mate":
-      case "start":
         return (
           <>
             {detail}
             <ZeropsMateVerb
               disabled={busy}
-              label={
-                busy && action.kind === "set-up-mate"
-                  ? "Setting up…"
-                  : busy && action.kind === "start"
-                    ? "Starting…"
-                    : action.label
-              }
+              label={busy && action.kind === "set-up-mate" ? "Setting up…" : action.label}
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
@@ -883,6 +931,31 @@ function ZeropsProjectsContent() {
           })
           .finally(() => {
             setStartingCandidateKey(null);
+          });
+        return;
+      }
+      case "restart": {
+        if (activeOrganization === null) return;
+        const serviceId = candidate.service?.id;
+        if (!serviceId) return;
+        setConnectError(null);
+        setRestartingCandidateKey(candidate.key);
+        const project = projectRef(activeOrganization.id, candidate.project.id);
+        void runZeropsCommand(
+          runtime.commands.restartService({
+            kind: "service",
+            project,
+            serviceId: ZeropsServiceId.make(serviceId),
+          }),
+        )
+          .then(() => {
+            refreshZeropsCandidates();
+          })
+          .catch((cause: unknown) => {
+            setConnectError(zeropsErrorMessage(cause));
+          })
+          .finally(() => {
+            setRestartingCandidateKey(null);
           });
         return;
       }
@@ -1408,15 +1481,53 @@ function ZeropsProjectsContent() {
                     runRowAction(candidate, "connect");
                   }
                 : undefined;
+          // Not a hover-only verb on the line: a real, always-visible button
+          // at the card's trailing edge, next to where the menu sits.
+          const startAction =
+            action.kind === "start" ? (
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  runRowAction(candidate, "start");
+                }}
+                size="compact"
+                variant="outline"
+              >
+                <PlayIcon />
+                {busy ? "Starting…" : "Start"}
+              </Button>
+            ) : undefined;
+          const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+          const tint = tints.get(candidate.project.id) ?? "slate";
+
+          if (connected && candidate.environmentId !== undefined) {
+            const environmentId = candidate.environmentId;
+            return (
+              <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
+                {({ line: updateLine, menuAction }) => (
+                  <ZeropsMateCard
+                    action={startAction}
+                    busy={busy}
+                    face={mateFace(candidate)}
+                    line={renderMateLine(candidate, presentation, action, live, busy)}
+                    menu={renderEnvironmentMenu(candidate, tags, true, action, menuAction)}
+                    name={name}
+                    onSelect={select}
+                    tint={tint}
+                    updateLine={updateLine}
+                  />
+                )}
+              </ZeropsMateUpdateControl>
+            );
+          }
           return (
             <ZeropsMateCard
+              action={startAction}
               busy={busy}
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}
               updateLine={
-                connected && candidate.environmentId !== undefined ? (
-                  <ZeropsMateUpdateControl environmentId={candidate.environmentId} />
-                ) : serverVersions.get(candidate.key) === undefined ? null : (
+                serverVersions.get(candidate.key) === undefined ? null : (
                   <MateUpdateLine
                     line={mateUpdateLine(
                       mateUpdates.get(candidate.key),
@@ -1425,10 +1536,10 @@ function ZeropsProjectsContent() {
                   />
                 )
               }
-              menu={renderEnvironmentMenu(candidate, tags, true)}
-              name={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+              menu={renderEnvironmentMenu(candidate, tags, true, action, null)}
+              name={name}
               onSelect={select}
-              tint={tints.get(candidate.project.id) ?? "slate"}
+              tint={tint}
             />
           );
         }}

@@ -2,6 +2,7 @@ import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provi
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
@@ -18,6 +19,7 @@ const ALL = {
   wait: true,
   setUpMate: true,
   start: true,
+  restart: true,
 } as const;
 const NONE = {
   open: false,
@@ -26,6 +28,7 @@ const NONE = {
   wait: false,
   setUpMate: false,
   start: false,
+  restart: false,
 } as const;
 
 const READY: ZeropsRowCandidate = {
@@ -290,7 +293,7 @@ describe("deriveZeropsRowPresentation", () => {
     expect(presentation.detail).toBe("This Mate has no container yet.");
   });
 
-  it("says Stopped, settled, for a STOPPED project", () => {
+  it("says Stopped, settled, for a STOPPED project, with Stopped as its detail line too", () => {
     const presentation = deriveZeropsRowPresentation(
       input(
         {
@@ -303,9 +306,10 @@ describe("deriveZeropsRowPresentation", () => {
       ),
     );
     expect(presentation.status).toEqual({ label: "Stopped", tone: "off" });
+    expect(presentation.detail).toBe("Stopped");
   });
 
-  it("says Stopped for an ACTIVE project whose zcp service is STOPPED", () => {
+  it("says Stopped for an ACTIVE project whose zcp service is STOPPED, with Stopped as its detail line too", () => {
     const presentation = deriveZeropsRowPresentation(
       input(
         {
@@ -319,6 +323,7 @@ describe("deriveZeropsRowPresentation", () => {
       ),
     );
     expect(presentation.status).toEqual({ label: "Stopped", tone: "off" });
+    expect(presentation.detail).toBe("Stopped");
   });
 
   it.each(["STARTING", "STOPPING"] as const)(
@@ -434,5 +439,33 @@ describe("environmentSummaryLine", () => {
 
   it("says nothing while the services are unread", () => {
     expect(environmentSummaryLine(undefined, age)).toBeUndefined();
+  });
+});
+
+describe("deriveZeropsRestartAction", () => {
+  const withService = (
+    candidate: ZeropsRowCandidate,
+    status: string,
+    service: boolean,
+  ): ZeropsRowCandidate => {
+    const { service: known, ...rest } = candidate;
+    return {
+      ...rest,
+      project: { ...rest.project, status },
+      ...(service ? { service: known } : {}),
+    };
+  };
+  it.each([
+    ["an ACTIVE project with a known container", "ACTIVE", true, ALL, "restart"],
+    ["a STOPPED project", "STOPPED", true, ALL, "none"],
+    ["a project without a container", "ACTIVE", false, ALL, "none"],
+    ["a caller that may not restart", "ACTIVE", true, NONE, "none"],
+  ] as const)("%s → %s", (_name, status, service, can, kind) => {
+    const action = deriveZeropsRestartAction({
+      candidate: withService(READY, status, service),
+      health: "ready",
+      can,
+    });
+    expect(action.kind).toBe(kind);
   });
 });

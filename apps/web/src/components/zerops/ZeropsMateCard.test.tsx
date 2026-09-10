@@ -55,6 +55,17 @@ describe("ZeropsMateCard", () => {
     expect(html).toContain("z-[1]");
   });
 
+  it("shows a trailing action always, not only on hover", () => {
+    const html = card({ action: <button type="button">Start</button> });
+    expect(html).toContain('data-zerops-surface="mate-action"');
+    expect(html).toContain(">Start<");
+    const actionSpan = html.slice(
+      html.indexOf('data-zerops-surface="mate-action"') - 200,
+      html.indexOf('data-zerops-surface="mate-action"'),
+    );
+    expect(actionSpan).not.toContain("opacity-0");
+  });
+
   it("says when it is busy", () => {
     expect(card({ busy: true })).toContain('aria-busy="true"');
     expect(card()).not.toContain("aria-busy");

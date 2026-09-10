@@ -43,7 +43,18 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 
 function render() {
-  return renderToStaticMarkup(<ZeropsMateUpdateControl environmentId={ENVIRONMENT_ID} />);
+  return renderToStaticMarkup(
+    <ZeropsMateUpdateControl environmentId={ENVIRONMENT_ID}>
+      {({ line, menuAction }) => (
+        <>
+          {line}
+          {menuAction === null ? null : (
+            <span data-zerops-surface="mate-update-menu-action">{menuAction.label}</span>
+          )}
+        </>
+      )}
+    </ZeropsMateUpdateControl>,
+  );
 }
 
 describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §2.9, MU-2)", () => {
@@ -85,6 +96,8 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Server 0.8.0");
     expect(html).toContain('data-zerops-surface="mate-update-role"');
     expect(html).toContain(">Update<");
+    expect(html).toContain('data-zerops-surface="mate-update-menu-action"');
+    expect(html).toContain("Update to 0.8.1");
   });
 
   it("in confirm, offers Update and Keep running with the running-threads warning", () => {
@@ -98,6 +111,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Running threads stop. Update now?");
     expect(html).toContain(">Update<");
     expect(html).toContain("Keep running");
+    // The menu offers its own request while idle only; a confirm already
+    // under way on the line is not also offered as a fresh menu click.
+    expect(html).not.toContain('data-zerops-surface="mate-update-menu-action"');
   });
 
   it("shows the failure message inline, never a toast surface", () => {

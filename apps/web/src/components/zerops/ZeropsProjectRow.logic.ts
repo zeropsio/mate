@@ -46,6 +46,7 @@ export interface ZeropsRowInput {
     readonly wait: boolean;
     readonly setUpMate: boolean;
     readonly start: boolean;
+    readonly restart: boolean;
   };
 }
 
@@ -56,6 +57,8 @@ export type ZeropsRowAction =
   | { readonly kind: "wait"; readonly label: "Wait for it" }
   | { readonly kind: "set-up-mate"; readonly label: "Set up Mate" }
   | { readonly kind: "start"; readonly label: "Start" }
+  /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
+  | { readonly kind: "restart"; readonly label: "Restart" }
   /** Health "initializing": no verb, a quiet word. */
   | { readonly kind: "starting"; readonly label: "Starting…" }
   /** The probe or the socket is still busy: no verb yet. */
@@ -178,7 +181,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       };
     }
     if (isStopped(candidate)) {
-      return { status: { label: "Stopped", tone: "off" } };
+      return { status: { label: "Stopped", tone: "off" }, detail: "Stopped" };
     }
     return {
       status: { label: "Not available", tone: "off" },
@@ -245,6 +248,20 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     default:
       return { status: { label: "Checking", pulse: true, tone: "busy" } };
   }
+}
+
+/**
+ * The menu's Restart, offered whenever the Mate's container can be bounced:
+ * the project is up and the container is known. Not a row verb — a running
+ * Mate's primary action is to open or connect, and a restart is a quiet
+ * recovery for the menu.
+ */
+export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
+  const { candidate, can } = input;
+  if (isZeropsToolCandidate(candidate)) return { kind: "none" };
+  return can.restart && candidate.project.status === "ACTIVE" && candidate.service?.id !== undefined
+    ? { kind: "restart", label: "Restart" }
+    : { kind: "none" };
 }
 
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {

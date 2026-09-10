@@ -486,7 +486,9 @@ export const ChatHeader = memo(function ChatHeader({
         {mate === undefined ? null : (
           <>
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground @3xl/header-actions:inline-flex">
-              <ZeropsMateUpdateControl environmentId={activeThreadEnvironmentId} />
+              <ZeropsMateUpdateControl environmentId={activeThreadEnvironmentId}>
+                {({ line }) => line}
+              </ZeropsMateUpdateControl>
             </span>
             <ZeropsProjectLink projectUrl={mate.projectUrl} />
           </>

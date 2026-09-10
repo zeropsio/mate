@@ -18,6 +18,14 @@ export interface ZeropsMenuAction {
   readonly onSelect: () => void;
 }
 
+/** A line between two groups of actions — the quick ones above, the quiet ones below. */
+export interface ZeropsMenuSeparator {
+  readonly id: string;
+  readonly separator: true;
+}
+
+export type ZeropsMenuEntry = ZeropsMenuAction | ZeropsMenuSeparator;
+
 export function ZeropsProjectMenu({
   label,
   actions,
@@ -28,7 +36,7 @@ export function ZeropsProjectMenu({
 }: {
   /** What the trigger is for, read by assistive tech. */
   readonly label: string;
-  readonly actions: ReadonlyArray<ZeropsMenuAction>;
+  readonly actions: ReadonlyArray<ZeropsMenuEntry>;
   /**
    * The environment's public routes. Absent means unknown, and the group is
    * left out; an empty list is known, and the group says so.
@@ -64,11 +72,15 @@ export function ZeropsProjectMenu({
           />
         )}
         {routes !== undefined && actions.length > 0 ? <MenuSeparator /> : null}
-        {actions.map((action) => (
-          <MenuItem key={action.id} onClick={action.onSelect}>
-            {action.label}
-          </MenuItem>
-        ))}
+        {actions.map((entry) =>
+          "separator" in entry ? (
+            <MenuSeparator key={entry.id} />
+          ) : (
+            <MenuItem key={entry.id} onClick={entry.onSelect}>
+              {entry.label}
+            </MenuItem>
+          ),
+        )}
       </MenuPopup>
     </Menu>
   );

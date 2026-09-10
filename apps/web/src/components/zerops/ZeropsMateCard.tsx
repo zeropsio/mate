@@ -65,6 +65,13 @@ export interface ZeropsMateCardProps {
    * Absent, the card is still: the line then carries whatever verb there is.
    */
   readonly onSelect?: (() => void) | undefined;
+  /**
+   * A trailing action always visible at the card's edge — a real button, not
+   * a hover-only verb — for something the card wants said as more than a
+   * line ("Start" on a stopped Mate). The menu, when there is one, sits
+   * beside it.
+   */
+  readonly action?: ReactNode;
   readonly menu?: ReactNode;
   readonly busy?: boolean;
   readonly className?: string;
@@ -77,6 +84,7 @@ export function ZeropsMateCard({
   line,
   updateLine,
   onSelect,
+  action,
   menu,
   busy = false,
   className,
@@ -125,6 +133,11 @@ export function ZeropsMateCard({
           </div>
         )}
       </div>
+      {action === undefined || action === null ? null : (
+        <span className="relative z-[1] flex shrink-0" data-zerops-surface="mate-action">
+          {action}
+        </span>
+      )}
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           {menu}
