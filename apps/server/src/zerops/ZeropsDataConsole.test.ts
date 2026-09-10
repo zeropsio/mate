@@ -349,6 +349,27 @@ describe("ZeropsDataConsole", () => {
         body: { service: "db", stmt: "select 1", page: { limit: 5 } },
       });
     });
+
+    it("maps search with paging", () => {
+      expect(
+        routeRequest({
+          kind: "search",
+          path,
+          q: "invoice",
+          page: { cursor: "c1", limit: 10 },
+        }),
+      ).toEqual({
+        method: "GET",
+        path: "/api/search",
+        query: {
+          service: "db",
+          segs: '["public","orders"]',
+          q: "invoice",
+          cursor: "c1",
+          limit: "10",
+        },
+      });
+    });
   });
 
   describe("session lifecycle", () => {
@@ -563,6 +584,48 @@ describe("ZeropsDataConsole", () => {
         ).pipe(Effect.orDie);
         expect(result).toEqual({ kind: "services", ...servicesEnvelope });
         expect(calls).toEqual(["/api/refresh", "/api/services"]);
+      }),
+    );
+
+    it.effect("decodes a search response the same way as a tree response", () =>
+      Effect.gen(function* () {
+        const calls: Array<string> = [];
+        const http = fakeHttpClient((url) => {
+          calls.push(url);
+          return jsonResponse({
+            nodes: [
+              {
+                name: "invoice-42",
+                kind: "blob",
+                path: { service: "docs", segments: ["invoices", "invoice-42"] },
+              },
+            ],
+            nextCursor: "next-1",
+          });
+        });
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({
+              kind: "search",
+              path: { service: "docs", segments: ["invoices"] },
+              q: "invoice",
+            }),
+        ).pipe(Effect.orDie);
+        expect(result).toEqual({
+          kind: "search",
+          nodes: [
+            {
+              name: "invoice-42",
+              kind: "blob",
+              path: { service: "docs", segments: ["invoices", "invoice-42"] },
+              hasChildren: false,
+            },
+          ],
+          nextCursor: "next-1",
+        });
+        expect(calls[0]).toContain("/api/search?");
+        expect(calls[0]).toContain("q=invoice");
       }),
     );
 

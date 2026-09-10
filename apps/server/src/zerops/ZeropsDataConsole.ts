@@ -434,6 +434,17 @@ export const routeRequest = (
         path: "/api/query",
         body: { service: request.service, stmt: request.stmt, page: request.page ?? {} },
       };
+    case "search":
+      return {
+        method: "GET",
+        path: "/api/search",
+        query: {
+          service: request.path.service,
+          segs: encodeSegments(request.path.segments),
+          q: request.q,
+          ...pageQuery(request.page),
+        },
+      };
   }
 };
 
@@ -593,6 +604,17 @@ const decodeResponseBody = (
       return Result.isFailure(decoded)
         ? Effect.fail(RESPONSE_DECODE_ERROR)
         : Effect.succeed({ kind: "count", count: decoded.success.count });
+    }
+    case "search": {
+      // GET /api/search answers the same envelope shape as GET /api/tree.
+      const decoded = decodeTreeEnvelope(body);
+      return Result.isFailure(decoded)
+        ? Effect.fail(RESPONSE_DECODE_ERROR)
+        : Effect.succeed({
+            kind: "search",
+            nodes: decoded.success.nodes.map(normalizeNode),
+            nextCursor: decoded.success.nextCursor ?? "",
+          });
     }
   }
 };
