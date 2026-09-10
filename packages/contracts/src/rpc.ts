@@ -162,6 +162,10 @@ import {
   ZeropsAgentLoginStartResult,
   ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
+  ZeropsDataConsoleError,
+  ZeropsDataConsoleRequest,
+  ZeropsDataConsoleResponse,
+  ZeropsDataConsoleSessionEvent,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
   ZeropsMateUpdateError,
@@ -291,6 +295,7 @@ export const WS_METHODS = {
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMateUpdate: "zerops.mate.update",
+  zeropsDataConsoleCall: "zerops.dataConsole.call",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -304,6 +309,7 @@ export const WS_METHODS = {
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
+  subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -939,6 +945,27 @@ export const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
   error: Schema.Union([ZeropsMateUpdateError, EnvironmentAuthorizationError]),
 });
 
+/**
+ * One allowlisted Data Console request/response, brokered by the mate server
+ * to the container-local `zcp studio console serve` process — spawned on
+ * first use, never talked to directly by the client (spec-dataconsole.md
+ * §4.3). Read-only in this slice: every request `kind` maps to a
+ * non-mutating console route.
+ */
+export const WsZeropsDataConsoleCallRpc = Rpc.make(WS_METHODS.zeropsDataConsoleCall, {
+  payload: ZeropsDataConsoleRequest,
+  success: ZeropsDataConsoleResponse,
+  error: Schema.Union([EnvironmentAuthorizationError, ZeropsDataConsoleError]),
+});
+
+/** The console child process's own lifecycle — idle/starting/ready/unavailable/unsupported — so the panel can show a spawn/degrade state without polling. */
+export const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataConsole, {
+  payload: Schema.Struct({}),
+  success: ZeropsDataConsoleSessionEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1024,6 +1051,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
   WsZeropsMateUpdateRpc,
+  WsZeropsDataConsoleCallRpc,
+  WsSubscribeZeropsDataConsoleRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

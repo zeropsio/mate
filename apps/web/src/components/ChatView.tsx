@@ -152,6 +152,7 @@ import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
+import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -196,7 +197,7 @@ import {
 import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { useThreadActions } from "../hooks/useThreadActions";
+import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -1261,7 +1262,7 @@ function ChatViewContent(props: ChatViewProps) {
   const threadSyncPhase = routeKind === "server" ? (props.threadSyncPhase ?? null) : null;
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
-  const { settleThread, pinThread, unpinThread } = useThreadActions();
+  const { settleThread, pinThread, unpinThread, archiveThread } = useThreadActions();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -3301,6 +3302,17 @@ function ChatViewContent(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "zerops");
   }, [activeThreadRef]);
 
+  const addDataSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "data");
+  }, [activeThreadRef]);
+  const openDataSurface = useCallback(
+    (service: string) => {
+      if (!activeThreadRef) return;
+      useRightPanelStore.getState().openData(activeThreadRef, service);
+    },
+    [activeThreadRef],
+  );
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. This is the writer half of
   // the topology split (`useProjectTopology`) — the panel mounts the same
@@ -5739,6 +5751,28 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+  // Starting over in a Mate's conversation: the conversation is archived —
+  // it leaves the sidebar and stays readable under Archived — and a fresh
+  // thread in the same project takes its place as the Mate's one
+  // conversation (archived threads never rank as primary). Blocked while a
+  // turn is running, the same as archiving from the sidebar.
+  const startFreshConversation = async () => {
+    if (!activeThreadRef) return;
+    const result = await archiveThread(activeThreadRef);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      const blocked = Schema.is(ThreadArchiveBlockedError)(error);
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: blocked
+            ? "Stop the agent before starting a new session"
+            : "Couldn't start a new session",
+          description: blocked ? undefined : String(error),
+        }),
+      );
+    }
+  };
 
   // An environment that was just created has a job waiting, and a coding agent
   // to sign in before anything can run it. This says the job the moment there
@@ -6490,6 +6524,9 @@ function ChatViewContent(props: ChatViewProps) {
       case "browser":
         addBrowserSurface();
         return;
+      case "data":
+        addDataSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -6549,6 +6586,34 @@ function ChatViewContent(props: ChatViewProps) {
               return "url" in activeRightPanelSurface ? null : (
                 <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
               );
+            case "data":
+              // Every open Data tab stays mounted, the inactive ones hidden:
+              // a switch between db and db2 keeps each tab's tree, selection,
+              // sort and filters exactly where they were.
+              return rightPanelState.surfaces
+                .filter((surface) => surface.kind === "data")
+                .map((surface) => {
+                  const service = "service" in surface ? surface.service : undefined;
+                  return (
+                    <div
+                      className="contents"
+                      data-zerops-data-surface={surface.id}
+                      hidden={surface.id !== activeRightPanelSurface.id}
+                      key={`${zeropsChrome.threadRef?.environmentId}:${service ?? ""}`}
+                    >
+                      <ZeropsDataPanel
+                        maximized={rightPanelMaximized}
+                        onAddContext={addTerminalContextToDraft}
+                        onOpenService={openDataSurface}
+                        onToggleMaximized={
+                          canMaximizeRightPanel ? toggleRightPanelMaximized : undefined
+                        }
+                        service={service}
+                        threadRef={zeropsChrome.threadRef}
+                      />
+                    </div>
+                  );
+                });
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
@@ -6630,6 +6695,7 @@ function ChatViewContent(props: ChatViewProps) {
             rightPanelOpen={rightPanelOpen}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
+            onStartFresh={startFreshConversation}
             onRunProjectScript={runProjectScript}
             onAddProjectScript={saveProjectScript}
             onUpdateProjectScript={updateProjectScript}

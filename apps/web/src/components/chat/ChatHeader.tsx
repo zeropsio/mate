@@ -11,7 +11,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, SquarePenIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -75,6 +75,8 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   gitCwd: string | null;
   onNewThreadInProject: () => void;
+  /** Archives the Mate's conversation and opens a fresh one in its place. */
+  onStartFresh: () => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -155,6 +157,29 @@ function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
   );
 }
 
+/**
+ * Starting over in a Mate's conversation: the current one is archived and a
+ * fresh thread takes its place, so the Mate still has one conversation and
+ * it is empty.
+ */
+function StartFreshButton({ onStartFresh }: { readonly onStartFresh: () => void }) {
+  return (
+    <Button
+      aria-label="New session"
+      className="ps-[8.5px]"
+      data-zerops-start-fresh
+      onClick={onStartFresh}
+      size="xs"
+      variant="outline"
+    >
+      <SquarePenIcon className="size-3.5 shrink-0" />
+      <span className="hidden @3xl/header-actions:ml-0.5 @3xl/header-actions:inline">
+        New session
+      </span>
+    </Button>
+  );
+}
+
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
@@ -173,6 +198,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   gitCwd,
   onNewThreadInProject,
+  onStartFresh,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
@@ -485,6 +511,7 @@ export const ChatHeader = memo(function ChatHeader({
         )}
         {mate === undefined ? null : (
           <>
+            <StartFreshButton onStartFresh={onStartFresh} />
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground @3xl/header-actions:inline-flex">
               <ZeropsMateUpdateControl environmentId={activeThreadEnvironmentId}>
                 {({ line }) => line}

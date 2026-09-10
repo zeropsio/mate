@@ -8,6 +8,7 @@ import type {
   ZeropsTopologyService,
   ZeropsTopologyView,
 } from "@t3tools/client-runtime/zerops/topology";
+import { ZeropsDataLinkContext } from "./dataLink";
 import { ZeropsServiceDetail, ZeropsServiceMap, type ZeropsMateOnMap } from "./ZeropsServiceMap";
 
 const service = (
@@ -99,6 +100,21 @@ const classNamesForText = (html: string, text: string): ReadonlyArray<string> =>
 };
 
 describe("ZeropsServiceMap — the card", () => {
+  it("draws a Data button on data-group cards only, and only when an opener is in context", () => {
+    const view = topology([
+      service({ hostname: "app", group: "runtimes" }),
+      service({ hostname: "db", type: "postgresql:single@18", group: "data" }),
+    ]);
+    const withOpener = renderToStaticMarkup(
+      <ZeropsDataLinkContext value={() => undefined}>
+        <ZeropsServiceMap view={buildZeropsServiceMap(view, undefined, undefined)} />
+      </ZeropsDataLinkContext>,
+    );
+    expect(withOpener.match(/data-zerops-service-data-button/g)).toHaveLength(1);
+    expect(withOpener).toContain('aria-label="Browse data of db"');
+    expect(render(view)).not.toContain("data-zerops-service-data-button");
+  });
+
   it("renders liveness and semantic groups with shared primitives", () => {
     const html = render(
       topology([

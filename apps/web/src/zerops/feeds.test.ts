@@ -245,4 +245,19 @@ describe("createZeropsFeedAtoms", () => {
       expect(lifecycleAtom.idleTTL).toBe(5 * 60_000);
     }).pipe(Effect.scoped),
   );
+
+  /**
+   * Same rationale as the browser stream above: the console child process is
+   * spawned/kept warm server-side only while a subscriber is attached
+   * (spec-dataconsole.md §4.3's 10-minute idle kill), so this atom must not
+   * linger at the family's five-minute default either.
+   */
+  it.live("keeps the data console's idle TTL short, unlike lifecycle's default", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const dataConsoleAtom = rig.feeds.dataConsole({ environmentId: ENVIRONMENT_ID, input: {} });
+
+      expect(dataConsoleAtom.idleTTL).toBeLessThanOrEqual(10_000);
+    }).pipe(Effect.scoped),
+  );
 });

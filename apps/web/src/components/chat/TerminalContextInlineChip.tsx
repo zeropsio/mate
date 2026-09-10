@@ -1,6 +1,7 @@
-import { TerminalIcon } from "lucide-react";
+import { DatabaseIcon, TerminalIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import type { TerminalContextKind } from "~/lib/terminalContext";
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
@@ -12,10 +13,12 @@ interface TerminalContextInlineChipProps {
   label: string;
   tooltipText: string;
   expired?: boolean;
+  kind?: TerminalContextKind;
 }
 
 export function TerminalContextInlineChip(props: TerminalContextInlineChipProps) {
-  const { label, tooltipText, expired = false } = props;
+  const { label, tooltipText, expired = false, kind = "terminal" } = props;
+  const Icon = kind === "data" ? DatabaseIcon : TerminalIcon;
 
   return (
     <Tooltip>
@@ -28,7 +31,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
             )}
             data-terminal-context-expired={expired ? "true" : undefined}
           >
-            <TerminalIcon
+            <Icon
               className={cn(
                 COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
                 "size-3.5",

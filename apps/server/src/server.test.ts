@@ -42,6 +42,7 @@ import {
   WsRpcGroup,
   EditorId,
   ZeropsAgentLoginError,
+  ZeropsDataConsoleError,
 } from "@t3tools/contracts";
 import {
   computeDpopAccessTokenHash,
@@ -150,6 +151,7 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
+import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
@@ -529,6 +531,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
+    | ZeropsDataConsoleModule.ZeropsDataConsole
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -579,6 +582,7 @@ const buildAppUnderTest = (options?: {
     zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
+    zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1113,6 +1117,20 @@ const buildAppUnderTest = (options?: {
               current: Effect.succeed(undefined),
               refresh: Effect.void,
               ...options?.layers?.zeropsMateUpdate,
+            }),
+            // A test machine has no `zcp` data console engine to spawn —
+            // mocked to `idle`/`session_unavailable` so the suite never
+            // spawns a real process.
+            Layer.mock(ZeropsDataConsoleModule.ZeropsDataConsole)({
+              subscribe: Effect.succeed(Stream.make({ status: "idle" })),
+              call: () =>
+                Effect.fail(
+                  new ZeropsDataConsoleError({
+                    code: "session_unavailable",
+                    message: "the data console is unavailable",
+                  }),
+                ),
+              ...options?.layers?.zeropsDataConsole,
             }),
           ),
       ),

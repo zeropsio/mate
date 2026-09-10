@@ -207,6 +207,29 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("carries a persisted data surface through the v16 migration unchanged", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "data",
+            surfaces: [{ id: "data", kind: "data" }],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "data",
+          surfaces: [{ id: "data", kind: "data" }],
+        },
+      },
+      zeropsDefaultHandledByThreadKey: { "env-1:thread-A": true },
+    });
+  });
+
   it("drops persisted preview surfaces and does not reopen an empty panel", () => {
     expect(
       migratePersistedRightPanelState({
@@ -478,6 +501,49 @@ describe("rightPanelStore", () => {
       isOpen: true,
       activeSurfaceId: "files",
       surfaces: [{ id: "files", kind: "files" }],
+    });
+  });
+
+  it("opens one data surface per service and lets the picker hand over to it", () => {
+    useRightPanelStore.getState().open(refA, "data");
+    useRightPanelStore.getState().openData(refA, "db");
+    useRightPanelStore.getState().openData(refA, "db");
+    useRightPanelStore.getState().openData(refA, "cache");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "data:cache",
+      surfaces: [
+        { id: "data:db", kind: "data", service: "db" },
+        { id: "data:cache", kind: "data", service: "cache" },
+      ],
+    });
+  });
+
+  it("drops a persisted per-service data surface whose id and service disagree", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "data:db",
+            surfaces: [
+              { id: "data:db", kind: "data", service: "db" },
+              { id: "data:x", kind: "data", service: "db" },
+              { id: "data:y", kind: "data" },
+            ],
+          },
+        },
+      }).byThreadKey["env-1:thread-A"]?.surfaces,
+    ).toEqual([{ id: "data:db", kind: "data", service: "db" }]);
+  });
+
+  it("keeps data as a singleton surface", () => {
+    useRightPanelStore.getState().open(refA, "data");
+    useRightPanelStore.getState().open(refA, "data");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "data",
+      surfaces: [{ id: "data", kind: "data" }],
     });
   });
 

@@ -1741,7 +1741,13 @@ const UserMessageTerminalContextInlineLabel = memo(
         ? `${props.context.header}\n${props.context.body}`
         : props.context.header;
 
-    return <TerminalContextInlineChip label={props.context.header} tooltipText={tooltipText} />;
+    return (
+      <TerminalContextInlineChip
+        label={props.context.header}
+        tooltipText={tooltipText}
+        kind={props.context.kind}
+      />
+    );
   },
 );
 
@@ -1903,7 +1909,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       let cursor = 0;
 
       for (const context of props.terminalContexts) {
-        const label = formatInlineTerminalContextLabel(context.header);
+        const label = formatInlineTerminalContextLabel(context);
         const matchIndex = props.text.indexOf(label, cursor);
         if (matchIndex === -1) {
           inlineNodes.length = 0;

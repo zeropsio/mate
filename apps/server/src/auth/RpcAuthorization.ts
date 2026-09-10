@@ -98,6 +98,11 @@ export const RPC_REQUIRED_SCOPES = {
   // Runs a real update on the container — the same authority as exec.run,
   // not a read (spec-mate.md §2.9 MU-2).
   [WS_METHODS.zeropsMateUpdate]: AuthExecOperateScope,
+  // Every Data Console request in this slice is a read (no write token ever
+  // passed to the console); slice 2 splits mutating request kinds onto
+  // AuthOrchestrationOperateScope.
+  [WS_METHODS.zeropsDataConsoleCall]: AuthOrchestrationReadScope,
+  [WS_METHODS.subscribeZeropsDataConsole]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsPull]: AuthOrchestrationOperateScope,
   [WS_METHODS.gitRunStackedAction]: AuthOrchestrationOperateScope,

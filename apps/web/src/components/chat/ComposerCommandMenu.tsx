@@ -9,8 +9,10 @@ import {
   type ServerProviderSkill,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
+import type { DataMentionEntry } from "@t3tools/client-runtime/zerops/dataConsole";
 import {
   BlocksIcon,
+  DatabaseIcon,
   FolderIcon,
   PackageIcon,
   SettingsIcon,
@@ -31,6 +33,13 @@ export type ComposerCommandItem =
       type: "path";
       path: string;
       pathKind: ProjectEntry["kind"];
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "data";
+      entry: DataMentionEntry;
       label: string;
       description: string;
     }
@@ -167,6 +176,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           kind={props.item.pathKind}
           theme={props.resolvedTheme}
         />
+      ) : null}
+      {props.item.type === "data" ? (
+        <DatabaseIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">

@@ -29,6 +29,10 @@ import {
   foldBrowserStreamEvent,
   INITIAL_BROWSER_STREAM_STATE,
 } from "@t3tools/client-runtime/zerops/browserStream";
+import {
+  foldDataConsoleSessionEvent,
+  INITIAL_DATA_CONSOLE_STATE,
+} from "@t3tools/client-runtime/zerops/dataConsole";
 import { WS_METHODS } from "@t3tools/contracts";
 import type {
   EnvironmentId,
@@ -51,6 +55,11 @@ export interface ZeropsAgentAuthTarget {
 }
 
 export interface ZeropsBrowserStreamTarget {
+  readonly environmentId: EnvironmentId;
+  readonly input: Record<string, never>;
+}
+
+export interface ZeropsDataConsoleTarget {
   readonly environmentId: EnvironmentId;
   readonly input: Record<string, never>;
 }
@@ -105,6 +114,31 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
   });
 
   /**
+   * `subscribeZeropsDataConsole` (spec-dataconsole.md §4.3): the console
+   * child process's own lifecycle, folded the same way as `browserStream`
+   * (`foldDataConsoleSessionEvent`) so a reconnect's fresh `idle`/`starting`
+   * re-seed is never special-cased by a caller. `idleTtlMs` matches
+   * `browserStream` for the same reason — the server only keeps the console
+   * process warm while a subscriber is attached, so the family default
+   * (five minutes) would hold it open long after the panel closed.
+   */
+  const dataConsole = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:zerops:dataConsole",
+    tag: WS_METHODS.subscribeZeropsDataConsole,
+    idleTtlMs: 5_000,
+    transform: (stream) =>
+      stream.pipe(
+        Stream.mapAccum(
+          () => INITIAL_DATA_CONSOLE_STATE,
+          (state, event) => {
+            const next = foldDataConsoleSessionEvent(state, event);
+            return [next, [next]] as const;
+          },
+        ),
+      ),
+  });
+
+  /**
    * Consumers below get a plain value rather than an `AsyncResult`, because
    * there is nothing they could do about a pending or failed subscription: an
    * absent feed means "no Zerops here", which a live snapshot says for itself
@@ -132,6 +166,7 @@ export function createZeropsFeedAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
     lifecycle,
     agentAuth,
     browserStream,
+    dataConsole,
     lifecycleValue: (target: ZeropsLifecycleTarget) => lifecycleValue(targetKey(target)),
     agentAuthValue: (target: ZeropsAgentAuthTarget) => agentAuthValue(targetKey(target)),
   };

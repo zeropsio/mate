@@ -73,6 +73,7 @@ import { removeLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalSto
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   insertInlineTerminalContextPlaceholder,
+  replaceMentionWithInlineContextPlaceholder,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
 import { createDebouncedStorage } from "./lib/storage";
@@ -423,6 +424,103 @@ describe("composerDraftStore terminal contexts", () => {
 
     const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
     expect(draft?.terminalContexts.map((context) => context.id)).toEqual(["ctx-1"]);
+  });
+
+  it("deduplicates a data context by its identity, not its snapshot line count", () => {
+    const first: TerminalContextDraft = {
+      ...makeTerminalContext({ id: "ctx-data-1" }),
+      kind: "data",
+      token: "db.public.orders",
+      terminalId: "data:db · public.orders",
+      terminalLabel: "db · public.orders",
+      lineStart: 1,
+      lineEnd: 4,
+      text: "## db · public.orders\n- id\n- email\n- name",
+    };
+    const reAdded: TerminalContextDraft = {
+      ...first,
+      id: "ctx-data-2",
+      lineEnd: 3,
+      text: "## db · public.orders\n- id\n- email",
+    };
+
+    useComposerDraftStore.getState().addTerminalContexts(threadRef, [first, reAdded]);
+
+    expect(
+      draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts.map((context) => context.id),
+    ).toEqual(["ctx-data-1"]);
+  });
+
+  it("persists a data context's kind and mention token", () => {
+    useComposerDraftStore.getState().addTerminalContext(threadRef, {
+      ...makeTerminalContext({ id: "ctx-data-persist" }),
+      kind: "data",
+      token: "db.public.orders",
+      terminalId: "data:db · public.orders",
+      terminalLabel: "db · public.orders",
+    });
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        partialize: (state: ReturnType<typeof useComposerDraftStore.getState>) => unknown;
+      };
+    };
+    const persistedState = persistApi.getOptions().partialize(useComposerDraftStore.getState()) as {
+      draftsByThreadKey?: Record<string, { terminalContexts?: Array<Record<string, unknown>> }>;
+    };
+
+    expect(
+      persistedState.draftsByThreadKey?.[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)]
+        ?.terminalContexts?.[0],
+    ).toMatchObject({ kind: "data", token: "db.public.orders" });
+  });
+
+  it("keeps exactly one chip and no mention text across a data context round trip", () => {
+    const insertion = replaceMentionWithInlineContextPlaceholder("look at @db", 8, 11);
+    const context: TerminalContextDraft = {
+      ...makeTerminalContext({ id: "ctx-data-round" }),
+      kind: "data",
+      token: "db",
+      terminalId: "data:db",
+      terminalLabel: "db",
+      lineStart: 1,
+      lineEnd: 1,
+      text: "## db (postgresql@16)",
+    };
+
+    expect(
+      useComposerDraftStore
+        .getState()
+        .insertTerminalContext(threadRef, insertion.prompt, context, insertion.contextIndex),
+    ).toBe(true);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.prompt).toBe(`look at ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} `);
+    expect(draft?.prompt).not.toContain("@db");
+    expect(draft?.terminalContexts).toHaveLength(1);
+
+    // The same pick again must not add a second chip.
+    useComposerDraftStore
+      .getState()
+      .addTerminalContext(threadRef, { ...context, id: "ctx-data-round-2" });
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts).toHaveLength(1);
+  });
+
+  it("leaves the composer empty after a send clears its content", () => {
+    useComposerDraftStore.getState().addTerminalContext(threadRef, {
+      ...makeTerminalContext({ id: "ctx-data-clear" }),
+      kind: "data",
+      token: "db",
+      terminalId: "data:db",
+      terminalLabel: "db",
+    });
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.terminalContexts).toHaveLength(1);
+
+    useComposerDraftStore.getState().clearComposerContent(threadRef);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.terminalContexts ?? []).toEqual([]);
+    expect(draft?.prompt ?? "").toBe("");
   });
 
   it("clears terminal contexts when clearing composer content", () => {
