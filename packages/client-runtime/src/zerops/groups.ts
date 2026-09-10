@@ -45,6 +45,7 @@
  */
 
 import type { ZeropsProject } from "./api.ts";
+import { compareZeropsHostnames } from "./listingOrder.ts";
 import type { RandomBytes } from "./newProject.ts";
 
 /** Namespace every tag this product writes shares, so nothing collides with a user's own tags. */
@@ -326,9 +327,8 @@ function roleRank(role: ZeropsEnvironmentRole | undefined): number {
   return role === undefined ? ROLE_ORDER.length : ROLE_ORDER.indexOf(role);
 }
 
-function byName(left: string, right: string): number {
-  return left.localeCompare(right, "en", { sensitivity: "base" });
-}
+/** The shared listing order (`listingOrder.ts`): locale-aware, case- and numeric-aware. */
+const byName = compareZeropsHostnames;
 
 /**
  * The label most of a group's members agree on.
@@ -385,7 +385,9 @@ export function deriveZeropsGroups(
   const groups = [...members.entries()].map(([groupId, environments]) => {
     const sorted = [...environments].sort(
       (left, right) =>
-        roleRank(left.role) - roleRank(right.role) || byName(left.project.name, right.project.name),
+        roleRank(left.role) - roleRank(right.role) ||
+        byName(left.project.name, right.project.name) ||
+        byName(left.project.id, right.project.id),
     );
     const production = sorted.filter((environment) => environment.role === "prod");
     const stored = options.names?.[groupId];

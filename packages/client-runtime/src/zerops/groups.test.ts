@@ -351,6 +351,29 @@ describe("deriveZeropsGroups", () => {
     expect(none?.production).toBeUndefined();
   });
 
+  it("orders group names numerically, not lexically: env2 < env10", () => {
+    const result = deriveZeropsGroups([
+      project("env10", ["mate:g:aaa", "mate:name:env10"]),
+      project("env2", ["mate:g:bbb", "mate:name:env2"]),
+    ]);
+
+    expect(result.groups.map((group) => group.name)).toEqual(["env2", "env10"]);
+  });
+
+  it("breaks an environment name tie by project id, deterministically", () => {
+    const forward = deriveZeropsGroups([
+      project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
+      project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
+    ]);
+    const backward = deriveZeropsGroups([
+      project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
+      project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
+    ]);
+
+    expect(forward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
+    expect(backward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
+  });
+
   it("is stable regardless of the order projects arrive in", () => {
     const projects = [
       project("crm-prod", ["mate:g:aaa", "mate:role:prod"]),
