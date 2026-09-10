@@ -16,6 +16,11 @@
  * `expandedColumn` — set when the drawer was opened from a cell expander
  * rather than a row click — scrolls that column's full value to the top of
  * the list, which is what the click asked for.
+ *
+ * `addressable` — `false` for a row from a key-less page (a view-only
+ * family: ClickHouse, Qdrant): the drawer still shows every column's value,
+ * but says plainly that this row has no key to address rather than leaving
+ * the reader to notice the omission on their own.
  */
 import { describeCell, rowRecord } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsDataConsoleColumn } from "@t3tools/contracts";
@@ -32,6 +37,7 @@ export interface ZeropsDataRowDrawerProps {
   readonly onCopyJson: () => void;
   readonly onExplain: () => void;
   readonly expandedColumn?: string | undefined;
+  readonly addressable?: boolean;
 }
 
 export function ZeropsDataRowDrawer({
@@ -42,6 +48,7 @@ export function ZeropsDataRowDrawer({
   onCopyJson,
   onExplain,
   expandedColumn,
+  addressable = true,
 }: ZeropsDataRowDrawerProps) {
   const record = rowRecord(columns, row);
   const names = Object.keys(record);
@@ -78,6 +85,12 @@ export function ZeropsDataRowDrawer({
           <ChevronLeftIcon />
         </Button>
       </div>
+
+      {addressable ? null : (
+        <p className="text-muted-foreground text-xs" data-zerops-data-row-unaddressable>
+          This row can&rsquo;t be addressed.
+        </p>
+      )}
 
       <dl className="space-y-2" data-zerops-data-row-fields>
         {ordered.map((name) => {

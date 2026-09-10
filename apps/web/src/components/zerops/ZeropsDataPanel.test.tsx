@@ -513,6 +513,26 @@ describe("ZeropsDataPanel", () => {
       expect(treeRail.props.className).toContain("overflow-y-auto");
     });
 
+    it("shows a View only chip next to the breadcrumb for a non-supported service (ClickHouse/Qdrant/streams)", async () => {
+      const SERVICE_VIEW_ONLY_TABULAR: ZeropsDataConsoleService = {
+        hostname: "db1",
+        type: "clickhouse",
+        family: "tabular",
+        support: "view-only",
+        actions: [{ id: "readTable", enabled: true, readOnly: true, reason: "" }],
+        status: "running",
+      };
+      respond([SERVICE_VIEW_ONLY_TABULAR]);
+      const tree = await serviceTab();
+      expect(findByAttribute(tree, "data-zerops-data-view-only")).not.toBeNull();
+    });
+
+    it("shows no View only chip for a fully supported service", async () => {
+      respond([SERVICE_SUPPORTED]);
+      const tree = await serviceTab();
+      expect(findByAttribute(tree, "data-zerops-data-view-only")).toBeNull();
+    });
+
     it("expanding an unloaded container issues a tree request for its own path", async () => {
       const CONTAINER: ZeropsDataConsoleNode = {
         name: "public",

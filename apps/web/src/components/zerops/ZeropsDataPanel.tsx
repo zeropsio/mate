@@ -1221,6 +1221,7 @@ export function ZeropsDataPanel({
     openRow !== undefined &&
     selectedService !== null ? (
       <ZeropsDataRowDrawer
+        addressable={gridModel.rowKeyCols.length > 0}
         columns={gridModel.columns}
         layout={layout}
         onClose={() => setOpenRow(undefined)}
@@ -1276,11 +1277,16 @@ export function ZeropsDataPanel({
       ref={measureRef.current}
     >
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
-        <ZeropsDataBreadcrumbs
-          collapsedPrefix={treeCollapsedPrefix}
-          onNavigate={handleNavigatePath}
-          path={currentPath}
-        />
+        <div className="flex min-w-0 items-center gap-2">
+          <ZeropsDataBreadcrumbs
+            collapsedPrefix={treeCollapsedPrefix}
+            onNavigate={handleNavigatePath}
+            path={currentPath}
+          />
+          {selectedService !== null && selectedService.support !== "supported" ? (
+            <Chip data-zerops-data-view-only label="View only" tone="off" />
+          ) : null}
+        </div>
         <div className="flex items-center gap-1">
           {showBrowse && layout === "wide" ? (
             <Button
