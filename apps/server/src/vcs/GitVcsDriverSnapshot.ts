@@ -15,6 +15,13 @@ export const SNAPSHOT_POLICY = {
   maxTotalBytes: 67_108_864,
 } as const;
 
+// Dependency and generated directories are skipped, never refused. On Zerops the
+// repository is a running application's disk: zcp creates `.git` without a
+// `.gitignore` and nobody else writes one, so `node_modules` is an untracked (or
+// even tracked) candidate on most trees. Refusing it meant no history for the
+// whole turn. Skipping is a stopgap until the git workflow is rebuilt; the
+// snapshot then carries no record of what was left out.
+//
 // The alias executes on the repository's machine. All temporary files, validation,
 // content reads and cleanup share that boundary, including when Git runs over SSH.
 // Paths stay NUL-delimited; only the validated file list reaches hash-object.
@@ -52,6 +59,7 @@ if [ -n "$existing" ]; then
 fi
 if [ "$mode" = resolve ]; then printf 'absent\n'; return; fi
 if git show-ref --verify --quiet "$ref"; then fail 'existing checkpoint ref is not a commit'; fi
+dependency_pattern='(^|/)(node_modules|\.venv|venv|__pycache__|\.next|\.nuxt|\.svelte-kit|\.turbo|\.cache)/'
 bounded_list() {
   (set +e; "$@"; printf '%s\n' "$?" > "$scratch/status") | head -c "$((max_names + 1))" > "$scratch/part"
   [ "$(wc -c < "$scratch/part")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
@@ -63,7 +71,8 @@ if git rev-parse --verify --quiet HEAD >/dev/null; then
   bounded_list git ls-tree -r -z --name-only HEAD
   cat "$scratch/part" >> "$scratch/all"
 fi
-sort -zu "$scratch/all" > "$scratch/paths"
+sort -zu "$scratch/all" > "$scratch/paths.all"
+grep -zvE "$dependency_pattern" "$scratch/paths.all" > "$scratch/paths" || [ $? -eq 1 ] || fail 'candidate filtering failed'
 [ "$(wc -c < "$scratch/paths")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
 [ "$(tr -cd '\000' < "$scratch/paths" | wc -c)" -le "$max_paths" ] || fail 'candidate file limit exceeded'
 if [ -n "$baseline" ]; then
@@ -84,8 +93,6 @@ set -eu
 scratch=$1; max_file=$2; shift 2
 for p do
   case "$p" in ''|/*|../*|*/../*|*/..|./*|*/./*|.git|.git/*) printf 'Snapshot refused: unsupported path\n' >&2; exit 1;; esac
-  case "/$p/" in */node_modules/*|*/.venv/*|*/venv/*|*/__pycache__/*|*/.next/*|*/.nuxt/*|*/.svelte-kit/*|*/.turbo/*|*/.cache/*)
-    printf 'Snapshot refused: dependency or generated content: %s\n' "$p" >&2; exit 1;; esac
   parent=./$p
   while :; do
     [ ! -L "$parent" ] || { printf 'Snapshot refused: unsupported symlink: %s\n' "$p" >&2; exit 1; }

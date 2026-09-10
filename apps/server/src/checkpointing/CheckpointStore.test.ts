@@ -428,7 +428,7 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
 
     for (const tracked of [false, true]) {
       it.effect(
-        `refuses ${tracked ? "tracked" : "untracked"} dependencies before snapshot writes`,
+        `skips ${tracked ? "tracked" : "untracked"} dependencies and snapshots the rest`,
         () =>
           Effect.gen(function* () {
             const tmp = yield* makeTmpDir();
@@ -436,19 +436,16 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
             const fs = yield* FileSystem.FileSystem;
             yield* fs.makeDirectory(NodePath.join(tmp, "node_modules"));
             yield* writeTextFile(NodePath.join(tmp, "node_modules", "dep.js"), "dependency");
+            yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
             if (tracked) yield* git(tmp, ["add", "node_modules"]);
             const store = yield* CheckpointStore.CheckpointStore;
-            const result = yield* Effect.result(
-              store.captureSnapshot({
-                cwd: tmp,
-                checkpointRef: CheckpointRef.make(
-                  "refs/t3/checkpoints/test/runs/dependency/before",
-                ),
-              }),
-            );
-            expect(result).toMatchObject({ _tag: "Failure" });
-            expect(String(result)).toContain("dependency");
-            expect(yield* git(tmp, ["for-each-ref", "refs/t3/checkpoints"])).toBe("");
+            const snapshot = yield* store.captureSnapshot({
+              cwd: tmp,
+              checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/dependency/before"),
+            });
+            const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
+            expect(listed.split("\n")).toContain("app.js");
+            expect(listed).not.toContain("node_modules");
           }),
       );
     }
