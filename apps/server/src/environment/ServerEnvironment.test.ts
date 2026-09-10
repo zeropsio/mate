@@ -203,6 +203,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
       expect(descriptor.update).toBeUndefined();
       expect(descriptor.capabilities.mateUpdate).toBe(false);
+      expect(descriptor.capabilities.dataConsole).toBe(false);
     }),
   );
 
@@ -254,6 +255,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         checkedAt: "2026-09-09T00:00:00Z",
       });
       expect(descriptor.capabilities.mateUpdate).toBe(true);
+      expect(descriptor.capabilities.dataConsole).toBe(true);
     }),
   );
 

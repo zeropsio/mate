@@ -85,6 +85,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       Zerops project with `zcp` on PATH. Absent everywhere else, so a client
       renders the Update verb only where the RPC would actually work. */
   mateUpdate: Schema.optionalKey(Schema.Boolean),
+  /** Server hosts the Zerops data console and understands
+      `zerops.dataConsole.call`. Absent on older servers, so clients never
+      send the call and offer the Data surface as unsupported under version
+      skew. */
+  dataConsole: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
