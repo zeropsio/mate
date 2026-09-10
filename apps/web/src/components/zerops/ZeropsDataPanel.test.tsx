@@ -1589,6 +1589,38 @@ describe("ZeropsDataPanel", () => {
       expect(table.props.model.rows).toEqual([["cache", "", "", ""]]);
     });
 
+    it("a document index root lists its own documents as a grid, id only", async () => {
+      const SERVICE_DOCUMENT: ZeropsDataConsoleService = {
+        hostname: "db1",
+        type: "elasticsearch",
+        family: "document",
+        support: "supported",
+        actions: [{ id: "readBlob", enabled: true, readOnly: true, reason: "" }],
+        status: "running",
+      };
+      const DOCUMENT_NODE: ZeropsDataConsoleNode = {
+        name: "order-42",
+        kind: "blob",
+        path: { service: "db1", segments: ["order-42"] },
+        hasChildren: false,
+        meta: {},
+      };
+      respondTree([SERVICE_DOCUMENT], {
+        [ROOT_KEY]: { kind: "tree", nodes: [DOCUMENT_NODE], nextCursor: "" },
+      });
+      await serviceTab();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+
+      const table = findComponent<{
+        readonly model: {
+          readonly columns: ReadonlyArray<{ readonly name: string }>;
+          readonly rows: ReadonlyArray<ReadonlyArray<unknown>>;
+        };
+      }>(tree, ZeropsDataTable)!;
+      expect(table.props.model.columns.map((c) => c.name)).toEqual(["id"]);
+      expect(table.props.model.rows).toEqual([["order-42"]]);
+    });
+
     it("leaves the tree unfiltered and the tabular/blob path untouched for a plain tabular service", async () => {
       respondTree([SERVICE_SUPPORTED], {
         [ROOT_KEY]: { kind: "tree", nodes: [], nextCursor: "" },

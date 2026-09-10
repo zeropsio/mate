@@ -32,6 +32,7 @@ import {
   filtersDirty,
   hasActiveFilters,
   INITIAL_DATA_CONSOLE_STATE,
+  documentListingModel,
   isNodeUnloaded,
   joinServicesWithTopology,
   kvListingModel,
@@ -546,6 +547,18 @@ describe("kvListingModel", () => {
       meta: {},
     });
     expect(kvListingModel([namespace], undefined).model.rows).toEqual([["cache", "", "", ""]]);
+  });
+});
+
+describe("documentListingModel", () => {
+  it("lists a document per row, id only — no per-row JSON preview", () => {
+    const doc = listingNode({ name: "order-42", kind: "blob", meta: {} });
+    const listing = documentListingModel([doc], "c1");
+    expect(listing.nodes).toEqual([doc]);
+    expect(listing.model.columns.map((c) => c.name)).toEqual(["id"]);
+    expect(listing.model.rows).toEqual([["order-42"]]);
+    expect(listing.model.rowKeyCols).toEqual(["id"]);
+    expect(listing.model.nextCursor).toBe("c1");
   });
 });
 

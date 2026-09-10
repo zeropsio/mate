@@ -93,6 +93,7 @@ import {
   expandTreePath,
   filtersDirty,
   hasActiveFilters,
+  documentListingModel,
   isNodeUnloaded,
   joinServicesWithTopology,
   kvListingModel,
@@ -900,11 +901,15 @@ export function ZeropsDataPanel({
       ? objectListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
       : listingKind === "keys"
         ? kvListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
-        : null;
+        : listingKind === "documents"
+          ? documentListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
+          : null;
   const listingLoadMorePending = pendingTreeKeys.has(treePathKey(currentPath));
   const containerSelectable =
     selectedService !== null &&
-    (selectedService.family === "object" || selectedService.family === "kv");
+    (selectedService.family === "object" ||
+      selectedService.family === "kv" ||
+      selectedService.family === "document");
 
   const browsable = affordances?.canBrowse === true;
   const awaitingMissingServiceRefresh =

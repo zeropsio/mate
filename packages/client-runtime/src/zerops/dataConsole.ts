@@ -510,6 +510,32 @@ export function kvListingModel(
   };
 }
 
+const DOCUMENT_LISTING_COLUMNS: ReadonlyArray<ZeropsDataConsoleColumn> = [listingColumn("id")];
+
+/**
+ * A document index's grid: its own documents, id only — a per-row JSON
+ * preview would mean one `blob` request per visible row, which is too
+ * chatty for a listing that pages by the screenful; the full document is
+ * the existing blob preview, opened the same way clicking any other blob
+ * already opens one.
+ */
+export function documentListingModel(
+  nodes: ReadonlyArray<ZeropsDataConsoleNode>,
+  nextCursor: string | undefined,
+): DataConsoleNodeListing {
+  return {
+    nodes,
+    model: {
+      columns: DOCUMENT_LISTING_COLUMNS,
+      rows: nodes.map((node) => [node.name]),
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+      rowKeyCols: ["id"],
+      bestEffort: false,
+      numbered: false,
+    },
+  };
+}
+
 /**
  * The document listing's status row, `"N loaded"` / `"N loaded · more
  * available"` for the plain index, `"Search result · N loaded[ · more
