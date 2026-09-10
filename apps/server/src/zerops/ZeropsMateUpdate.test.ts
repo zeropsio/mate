@@ -21,7 +21,9 @@ const STATUS_RESULT: MateStatusResult = {
 };
 
 const stubCli = (
-  mateStatus: () => Effect.Effect<MateStatusResult, ZeropsCliNotFound | ZeropsCliFailed>,
+  mateStatus: (options?: {
+    readonly refresh?: boolean;
+  }) => Effect.Effect<MateStatusResult, ZeropsCliNotFound | ZeropsCliFailed>,
 ) => ({
   markAgentOAuth: () => Effect.die("not used"),
   mateStatus,
@@ -131,5 +133,57 @@ describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {
         yield* service.refresh;
         expect((yield* service.current)?.available).toBe(false);
       }),
+  );
+
+  it.effect("check re-reads the manifest with --refresh, updates and returns the new value", () =>
+    Effect.gen(function* () {
+      let installed = "0.8.0";
+      let sawRefresh = false;
+      const service = yield* Effect.scoped(
+        make({
+          cli: stubCli((options) => {
+            sawRefresh = options?.refresh === true;
+            return Effect.succeed({
+              ...STATUS_RESULT,
+              installed,
+              updateAvailable: installed !== "0.8.1",
+            });
+          }),
+          isZeropsEnvironment: true,
+          refreshInterval: Duration.hours(1),
+        }),
+      );
+      installed = "0.8.1";
+      const result = yield* service.check;
+      expect(sawRefresh).toBe(true);
+      expect(result?.available).toBe(false);
+      expect((yield* service.current)?.available).toBe(false);
+    }),
+  );
+
+  it.effect("check keeps the previous value when zcp fails", () =>
+    Effect.gen(function* () {
+      let call = 0;
+      const service = yield* Effect.scoped(
+        make({
+          cli: stubCli(() => {
+            call += 1;
+            return call === 1
+              ? Effect.succeed(STATUS_RESULT)
+              : Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "timed out" }));
+          }),
+          isZeropsEnvironment: true,
+          refreshInterval: Duration.hours(1),
+        }),
+      );
+      const result = yield* service.check;
+      expect(result).toEqual({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      });
+      expect(yield* service.current).toEqual(result);
+    }),
   );
 });

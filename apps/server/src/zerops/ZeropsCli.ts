@@ -87,7 +87,15 @@ export class ZeropsCli extends Context.Service<
      * Tolerates an `error` field in the answer — a degraded-but-successful
      * result, not a failure of this call.
      */
-    readonly mateStatus: () => Effect.Effect<MateStatusResult, ZeropsCliError>;
+    readonly mateStatus: (options?: {
+      /**
+       * Appends `--refresh` to re-read the release manifest now instead of
+       * serving the hourly cache (spec-mate.md §2.9 step 2, "on demand").
+       * `zcp mate status` ignores unknown flags (`slices.Contains`), so no
+       * capability probe is needed before sending it.
+       */
+      readonly refresh?: boolean;
+    }) => Effect.Effect<MateStatusResult, ZeropsCliError>;
     /**
      * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2). Its JSON is
      * returned even on a non-zero exit — a failed update is a successful
@@ -164,11 +172,19 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
-    const mateStatus = (): Effect.Effect<MateStatusResult, ZeropsCliError> =>
+    const mateStatus = (options?: {
+      readonly refresh?: boolean;
+    }): Effect.Effect<MateStatusResult, ZeropsCliError> =>
       processRunner
         .run({
           command,
-          args: [...baseArgs, "mate", "status", "--json"],
+          args: [
+            ...baseArgs,
+            "mate",
+            "status",
+            "--json",
+            ...(options?.refresh ? ["--refresh"] : []),
+          ],
           cwd,
           timeout: MATE_STATUS_TIMEOUT,
           maxOutputBytes: MATE_STATUS_MAX_OUTPUT_BYTES,
@@ -239,7 +255,11 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
-    return { markAgentOAuth, mateStatus, mateUpdate } satisfies ZeropsCli["Service"];
+    return {
+      markAgentOAuth,
+      mateStatus,
+      mateUpdate,
+    } satisfies ZeropsCli["Service"];
   });
 
 /**

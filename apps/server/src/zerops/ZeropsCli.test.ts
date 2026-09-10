@@ -127,6 +127,26 @@ describe("ZeropsCli.mateStatus", () => {
       expect(error._tag).toBe("ZeropsCliFailed");
     }),
   );
+
+  it.effect("omits --refresh by default", () =>
+    Effect.gen(function* () {
+      const error = yield* run(
+        stub(`process.stderr.write(process.argv.slice(1).join(" ")); process.exit(1)`),
+        (cli) => Effect.flip(cli.mateStatus()),
+      );
+      expect(String((error as { reason?: string }).reason)).not.toContain("--refresh");
+    }),
+  );
+
+  it.effect("appends --refresh when requested", () =>
+    Effect.gen(function* () {
+      const error = yield* run(
+        stub(`process.stderr.write(process.argv.slice(1).join(" ")); process.exit(1)`),
+        (cli) => Effect.flip(cli.mateStatus({ refresh: true })),
+      );
+      expect(String((error as { reason?: string }).reason)).toContain("--refresh");
+    }),
+  );
 });
 
 describe("ZeropsCli.mateUpdate", () => {

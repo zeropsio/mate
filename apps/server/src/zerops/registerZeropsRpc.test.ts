@@ -7,7 +7,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
 import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
-import { runZeropsMateUpdate } from "./registerZeropsRpc.ts";
+import { runZeropsMateCheckUpdate, runZeropsMateUpdate } from "./registerZeropsRpc.ts";
 
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
   markAgentOAuth: () => Effect.die("not used"),
@@ -15,9 +15,13 @@ const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCli
   mateUpdate: () => result,
 });
 
-const stubMateUpdateService = (refresh: Effect.Effect<void> = Effect.void) => ({
+const stubMateUpdateService = (
+  refresh: Effect.Effect<void> = Effect.void,
+  check: Effect.Effect<any> = Effect.die("not used"),
+) => ({
   current: Effect.succeed(undefined),
   refresh,
+  check,
 });
 
 describe("runZeropsMateUpdate", () => {
@@ -151,6 +155,53 @@ describe("runZeropsMateUpdate", () => {
         serverVersion: "0.8.0",
       });
       expect(refreshCount).toBe(1);
+    }),
+  );
+});
+
+describe("runZeropsMateCheckUpdate", () => {
+  it.effect("fails with EnvironmentAuthorizationError outside a Zerops project", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateCheckUpdate({
+          zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.die("not used")),
+          isZeropsEnvironment: false,
+        }),
+      );
+      expect(error._tag).toBe("EnvironmentAuthorizationError");
+    }),
+  );
+
+  it.effect("returns the checked value inside a Zerops project", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateCheckUpdate({
+        zeropsMateUpdate: stubMateUpdateService(
+          Effect.void,
+          Effect.succeed({
+            installed: "0.8.0",
+            latest: "0.8.1",
+            available: true,
+            checkedAt: "2026-09-09T00:00:00Z",
+          }),
+        ),
+        isZeropsEnvironment: true,
+      });
+      expect(result).toEqual({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      });
+    }),
+  );
+
+  it.effect("maps an undefined check result to null", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateCheckUpdate({
+        zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.succeed(undefined)),
+        isZeropsEnvironment: true,
+      });
+      expect(result).toBeNull();
     }),
   );
 });

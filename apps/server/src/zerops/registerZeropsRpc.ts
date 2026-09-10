@@ -36,6 +36,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.zeropsBrowserInput
   | typeof WS_METHODS.zeropsMateUpdate
+  | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
   | typeof WS_METHODS.subscribeZeropsDataConsole;
 
@@ -131,6 +132,28 @@ export const runZeropsMateUpdate = (
     return { ...result, serverVersion };
   });
 
+/**
+ * `zerops.mate.checkUpdate`'s handler (spec-mate.md §2.9, "on demand"): the
+ * same offered-only-inside-a-Zerops-project gate as
+ * {@link runZeropsMateUpdate}, but a read — it re-reads the manifest via
+ * {@link ZeropsMateUpdate}'s `check` and never runs `zcp mate update`
+ * itself. `undefined` (MU-3, nothing to report) maps to `null`, never
+ * fabricated.
+ */
+export const runZeropsMateCheckUpdate = (
+  deps: Pick<RegisterZeropsRpcDeps, "zeropsMateUpdate" | "isZeropsEnvironment">,
+) =>
+  Effect.gen(function* () {
+    if (!deps.isZeropsEnvironment) {
+      return yield* new EnvironmentAuthorizationError({
+        message: "zerops.mate.checkUpdate is only available inside a Zerops project.",
+        requiredScope: AuthExecOperateScope,
+      });
+    }
+    const result = yield* deps.zeropsMateUpdate.check;
+    return result ?? null;
+  });
+
 /** Registers the six Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
@@ -218,6 +241,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       }),
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
       observeRpcEffect(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsMateCheckUpdate]: (_input) =>
+      observeRpcEffect(WS_METHODS.zeropsMateCheckUpdate, runZeropsMateCheckUpdate(deps), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsDataConsoleCall]: (input) =>

@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ExecutionEnvironmentUpdate } from "./environment.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
@@ -295,6 +296,7 @@ export const WS_METHODS = {
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMateUpdate: "zerops.mate.update",
+  zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
 
   // Streaming subscriptions
@@ -946,6 +948,19 @@ export const WsZeropsMateUpdateRpc = Rpc.make(WS_METHODS.zeropsMateUpdate, {
 });
 
 /**
+ * Re-reads the release manifest now (spec-mate.md §2.9 step 2, "on demand")
+ * instead of waiting for the server's hourly `zcp mate status` cycle. The
+ * descriptor's `update` field, delivered on request — MU-1 still holds: the
+ * client never compares versions, it only reads what this returns. `null`
+ * means the check ran and found nothing to report (MU-3), never fabricated.
+ */
+export const WsZeropsMateCheckUpdateRpc = Rpc.make(WS_METHODS.zeropsMateCheckUpdate, {
+  payload: Schema.Struct({}),
+  success: Schema.NullOr(ExecutionEnvironmentUpdate),
+  error: Schema.Union([ZeropsMateUpdateError, EnvironmentAuthorizationError]),
+});
+
+/**
  * One allowlisted Data Console request/response, brokered by the mate server
  * to the container-local `zcp studio console serve` process — spawned on
  * first use, never talked to directly by the client (spec-dataconsole.md
@@ -1051,6 +1066,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
   WsZeropsMateUpdateRpc,
+  WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,
   WsSubscribeZeropsDataConsoleRpc,
   WsOrchestrationDispatchCommandRpc,

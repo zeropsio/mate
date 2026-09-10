@@ -5,8 +5,10 @@
  * that answer through {@link ZeropsCli}, holds the last good result, and
  * exposes it as the descriptor's `update` field.
  *
- * Runs the check once at start, then hourly, and again on demand (a client
- * probe, or after a successful `zerops.mate.update`) — never fabricating a
+ * Runs the check once at start, then hourly (both cache-served through
+ * `zcp mate status`), and re-reads the manifest on demand via
+ * `zerops.mate.checkUpdate` (spec-mate.md §2.9 step 2 "on demand"), passing
+ * `--refresh` so `zcp` bypasses its own cache — never fabricating a
  * value: outside a Zerops project, or when `zcp` is not on PATH (MU-3), the
  * held value is always absent. A transient `mate status` failure elsewhere
  * (network, a malformed answer) is logged and the previous good value kept,
@@ -36,6 +38,14 @@ export class ZeropsMateUpdate extends Context.Service<
     readonly current: Effect.Effect<ExecutionEnvironmentUpdate | undefined>;
     /** Runs `zcp mate status` now and updates {@link current}. Never fails. */
     readonly refresh: Effect.Effect<void>;
+    /**
+     * `zerops.mate.checkUpdate`'s implementation: runs `zcp mate status
+     * --refresh` now, updates {@link current}, and returns the new value —
+     * the descriptor's `update` field re-read on demand (MU-1: never a
+     * version comparison done here or by the client). A failed check keeps
+     * the previous held value and returns it unchanged.
+     */
+    readonly check: Effect.Effect<ExecutionEnvironmentUpdate | undefined>;
   }
 >()("t3/zerops/ZeropsMateUpdate") {}
 
@@ -69,6 +79,22 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         )
       : Ref.set(state, undefined);
 
+    const check: Effect.Effect<ExecutionEnvironmentUpdate | undefined> = options.isZeropsEnvironment
+      ? Effect.suspend(() => options.cli.mateStatus({ refresh: true })).pipe(
+          Effect.flatMap((status) => {
+            const mapped = toDescriptorUpdate(status);
+            return Ref.set(state, mapped).pipe(Effect.as(mapped));
+          }),
+          Effect.catchTags({
+            ZeropsCliNotFound: () => Ref.set(state, undefined).pipe(Effect.as(undefined)),
+            ZeropsCliFailed: (error) =>
+              Effect.logWarning("zerops mate update: on-demand check failed", {
+                detail: error.message,
+              }).pipe(Effect.andThen(Ref.get(state))),
+          }),
+        )
+      : Ref.get(state);
+
     // The first check runs synchronously ("at start") so a descriptor read
     // right after boot already sees a real answer; only the hourly repeats
     // run in the background.
@@ -83,6 +109,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
     return {
       current: Ref.get(state),
       refresh,
+      check,
     } satisfies ZeropsMateUpdate["Service"];
   });
 

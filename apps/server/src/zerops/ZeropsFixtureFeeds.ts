@@ -409,6 +409,7 @@ const zeropsMateUpdateFixtureLayer = () =>
     ZeropsMateUpdateModule.ZeropsMateUpdate.of({
       current: Effect.succeed(undefined),
       refresh: Effect.void,
+      check: Effect.succeed(undefined),
     }),
   );
 

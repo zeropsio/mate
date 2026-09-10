@@ -244,6 +244,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
               checkedAt: "2026-09-09T00:00:00Z",
             }),
             refresh: Effect.void,
+            check: Effect.die("not used"),
           }),
         ),
       );
