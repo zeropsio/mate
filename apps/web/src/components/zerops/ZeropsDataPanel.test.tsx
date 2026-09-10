@@ -1499,6 +1499,9 @@ describe("ZeropsDataPanel", () => {
     function respondTree(
       services: readonly ZeropsDataConsoleService[],
       byPathKey: Record<string, ZeropsDataConsoleResponse>,
+      onSearch?: (
+        request: Extract<ZeropsDataConsoleRequest, { readonly kind: "search" }>,
+      ) => ZeropsDataConsoleResponse,
     ) {
       commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
         if (args.input.kind === "services" || args.input.kind === "refresh") {
@@ -1509,6 +1512,9 @@ describe("ZeropsDataPanel", () => {
           return Promise.resolve(
             AsyncResult.success(response ?? (EMPTY_TREE_RESPONSE as ZeropsDataConsoleResponse)),
           );
+        }
+        if (args.input.kind === "search" && onSearch !== undefined) {
+          return Promise.resolve(AsyncResult.success(onSearch(args.input)));
         }
         return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
       });
@@ -1647,6 +1653,139 @@ describe("ZeropsDataPanel", () => {
       }>(tree, ZeropsDataTable)!;
       expect(table.props.model.columns.map((c) => c.name)).toEqual(["id"]);
       expect(table.props.model.rows).toEqual([["order-42"]]);
+    });
+
+    describe("document search", () => {
+      const SERVICE_DOCUMENT_SEARCHABLE: ZeropsDataConsoleService = {
+        hostname: "db1",
+        type: "elasticsearch",
+        family: "document",
+        support: "supported",
+        actions: [
+          { id: "readBlob", enabled: true, readOnly: true, reason: "" },
+          { id: "searchDocs", enabled: true, readOnly: true, reason: "" },
+        ],
+        status: "running",
+      };
+      const DOC_A: ZeropsDataConsoleNode = {
+        name: "order-1",
+        kind: "blob",
+        path: { service: "db1", segments: ["order-1"] },
+        hasChildren: false,
+        meta: {},
+      };
+
+      it("shows the search box only when the service's searchDocs action is enabled", async () => {
+        respondTree([SERVICE_DOCUMENT_SEARCHABLE], {
+          [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" },
+        });
+        await serviceTab();
+        const tree = render({ service: "db1", widthForTest: 1200 });
+        expect(findByAttribute(tree, "data-zerops-data-document-search")).not.toBeNull();
+      });
+
+      it("hides the search box for a document service without searchDocs enabled", async () => {
+        const SERVICE_DOCUMENT_NO_SEARCH: ZeropsDataConsoleService = {
+          ...SERVICE_DOCUMENT_SEARCHABLE,
+          actions: [{ id: "readBlob", enabled: true, readOnly: true, reason: "" }],
+        };
+        respondTree([SERVICE_DOCUMENT_NO_SEARCH], {
+          [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" },
+        });
+        await serviceTab();
+        const tree = render({ service: "db1", widthForTest: 1200 });
+        expect(findByAttribute(tree, "data-zerops-data-document-search")).toBeNull();
+      });
+
+      it("Enter runs the search and replaces the document list with the result, status row and a Back to index button", async () => {
+        respondTree(
+          [SERVICE_DOCUMENT_SEARCHABLE],
+          { [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" } },
+          (request) => {
+            expect(request.q).toBe("annual report");
+            expect(request.path).toEqual({ service: "db1", segments: [] });
+            return {
+              kind: "search",
+              nodes: [
+                {
+                  name: "order-99",
+                  kind: "blob",
+                  path: { service: "db1", segments: ["order-99"] },
+                  hasChildren: false,
+                  meta: {},
+                },
+              ],
+              nextCursor: "",
+            };
+          },
+        );
+        await serviceTab();
+        let tree = render({ service: "db1", widthForTest: 1200 });
+
+        const input = findByAttribute(tree, "data-zerops-data-document-search")!;
+        (input.props.onChange as (event: { target: { value: string } }) => void)({
+          target: { value: "annual report" },
+        });
+        tree = render({ service: "db1", widthForTest: 1200 });
+        const input2 = findByAttribute(tree, "data-zerops-data-document-search")!;
+        (input2.props.onKeyDown as (event: { key: string }) => void)({ key: "Enter" });
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        const table = findComponent<{
+          readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+        }>(tree, ZeropsDataTable)!;
+        expect(table.props.model.rows).toEqual([["order-99"]]);
+        const status = findByAttribute(tree, "data-zerops-data-document-search-status");
+        expect(status).not.toBeNull();
+        expect(findByAttribute(tree, "data-zerops-data-document-search-back")).not.toBeNull();
+      });
+
+      it("Back to index restores the plain listing", async () => {
+        respondTree(
+          [SERVICE_DOCUMENT_SEARCHABLE],
+          { [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" } },
+          () => ({
+            kind: "search",
+            nodes: [
+              {
+                name: "order-99",
+                kind: "blob",
+                path: { service: "db1", segments: ["order-99"] },
+                hasChildren: false,
+                meta: {},
+              },
+            ],
+            nextCursor: "",
+          }),
+        );
+        await serviceTab();
+        let tree = render({ service: "db1", widthForTest: 1200 });
+        const input = findByAttribute(tree, "data-zerops-data-document-search")!;
+        (input.props.onChange as (event: { target: { value: string } }) => void)({
+          target: { value: "x" },
+        });
+        tree = render({ service: "db1", widthForTest: 1200 });
+        (
+          findByAttribute(tree, "data-zerops-data-document-search")!.props.onKeyDown as (event: {
+            key: string;
+          }) => void
+        )({ key: "Enter" });
+        await flush();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        (
+          findByAttribute(tree, "data-zerops-data-document-search-back")!.props
+            .onClick as () => void
+        )();
+        tree = render({ service: "db1", widthForTest: 1200 });
+
+        expect(findByAttribute(tree, "data-zerops-data-document-search-status")).toBeNull();
+        const table = findComponent<{
+          readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+        }>(tree, ZeropsDataTable)!;
+        expect(table.props.model.rows).toEqual([["order-1"]]);
+      });
     });
 
     it("leaves the tree unfiltered and the tabular/blob path untouched for a plain tabular service", async () => {

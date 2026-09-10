@@ -87,13 +87,14 @@ import {
   describeDataConsoleError,
   collapsedPrefix,
   describeRowContext,
+  describeDocumentListingStatus,
   describeTableContext,
+  documentListingModel,
   emptyTable,
   emptyTree,
   expandTreePath,
   filtersDirty,
   hasActiveFilters,
-  documentListingModel,
   isNodeUnloaded,
   joinServicesWithTopology,
   kvListingModel,
@@ -257,6 +258,15 @@ export function ZeropsDataPanel({
   const [gridNotice, setGridNotice] = useState<GridNotice | undefined>(undefined);
   const [measuredWidth, setMeasuredWidth] = useState<number | undefined>(undefined);
   const [missingServiceRefreshed, setMissingServiceRefreshed] = useState<string | null>(null);
+  // A document index's search box: the text box's own draft, and the last
+  // submitted search's result (`undefined` = showing the plain index
+  // listing instead) — separate state so a query mid-edit never disturbs
+  // what's on screen until Enter is pressed.
+  const [documentSearchQuery, setDocumentSearchQuery] = useState("");
+  const [documentSearchResult, setDocumentSearchResult] = useState<
+    DataConsoleNodeListing | undefined
+  >(undefined);
+  const [documentSearchLoadMorePending, setDocumentSearchLoadMorePending] = useState(false);
   const servicesRequestedForRef = useRef<EnvironmentId | null>(null);
   const openedServiceRef = useRef<string | null>(null);
   const missingServiceRefreshRef = useRef<string | null>(null);
@@ -427,6 +437,9 @@ export function ZeropsDataPanel({
     setFilteredLoadMorePending(false);
     setBlob(undefined);
     setGridNotice(undefined);
+    setDocumentSearchQuery("");
+    setDocumentSearchResult(undefined);
+    setDocumentSearchLoadMorePending(false);
     selectionTokenRef.current += 1;
     filterTokenRef.current += 1;
   };
@@ -598,6 +611,57 @@ export function ZeropsDataPanel({
     } else {
       handleSelectNode(node);
     }
+  };
+
+  // An empty query (Enter on a blank box, or the query cleared some other
+  // way) restores the plain index listing rather than issuing a search for
+  // nothing — the console's `searchDocs` route is bounded, not built to
+  // answer "everything".
+  const handleDocumentSearchSubmit = () => {
+    if (selectedService === null) return;
+    const q = documentSearchQuery.trim();
+    if (q === "") {
+      setDocumentSearchResult(undefined);
+      return;
+    }
+    void runRequest({ kind: "search", path: currentPath, q }).then((response) => {
+      if (response?.kind === "search") {
+        setDocumentSearchResult(
+          documentListingModel(
+            response.nodes,
+            response.nextCursor === "" ? undefined : response.nextCursor,
+          ),
+        );
+      }
+    });
+  };
+
+  const handleDocumentSearchClear = () => {
+    setDocumentSearchQuery("");
+    setDocumentSearchResult(undefined);
+  };
+
+  const handleDocumentSearchLoadMore = (cursor: string) => {
+    if (selectedService === null || documentSearchLoadMorePending) return;
+    const q = documentSearchQuery.trim();
+    if (q === "") return;
+    setDocumentSearchLoadMorePending(true);
+    void runRequest({ kind: "search", path: currentPath, q, page: { cursor } }).then((response) => {
+      setDocumentSearchLoadMorePending(false);
+      if (response?.kind !== "search") return;
+      const page = documentListingModel(
+        response.nodes,
+        response.nextCursor === "" ? undefined : response.nextCursor,
+      );
+      setDocumentSearchResult((current) =>
+        current === undefined
+          ? page
+          : {
+              nodes: [...current.nodes, ...page.nodes],
+              model: { ...page.model, rows: [...current.model.rows, ...page.model.rows] },
+            },
+      );
+    });
   };
 
   // A breadcrumb other than the last one is a step back up the path: it drops
@@ -953,9 +1017,17 @@ export function ZeropsDataPanel({
       : listingKind === "keys"
         ? kvListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
         : listingKind === "documents"
-          ? documentListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
+          ? (documentSearchResult ??
+            documentListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor))
           : null;
-  const listingLoadMorePending = pendingTreeKeys.has(treePathKey(currentPath));
+  const searching = listingKind === "documents" && documentSearchResult !== undefined;
+  const listingLoadMorePending = searching
+    ? documentSearchLoadMorePending
+    : pendingTreeKeys.has(treePathKey(currentPath));
+  const canSearchDocs =
+    listingKind === "documents" &&
+    selectedService !== null &&
+    resolveServiceAffordances(selectedService).canSearchDocs;
   const containerSelectable =
     selectedService !== null &&
     (selectedService.family === "object" ||
@@ -1142,7 +1214,10 @@ export function ZeropsDataPanel({
         loadMorePending={listingLoadMorePending}
         model={nodeListing.model}
         onLoadMore={() => {
-          if (nodeListing.model.nextCursor !== undefined) {
+          if (nodeListing.model.nextCursor === undefined) return;
+          if (searching) {
+            handleDocumentSearchLoadMore(nodeListing.model.nextCursor);
+          } else {
             handleLoadMoreTree(currentPath, nodeListing.model.nextCursor);
           }
         }}
@@ -1152,6 +1227,49 @@ export function ZeropsDataPanel({
         }}
         onSort={() => {}}
         scrollRegionRef={gridScrollRef}
+        {...(canSearchDocs
+          ? {
+              toolbarLeading: (
+                <input
+                  className="h-7 rounded-[var(--zerops-card-radius)] border border-border bg-transparent px-2 text-xs"
+                  data-zerops-data-document-search
+                  onChange={(event) => setDocumentSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleDocumentSearchSubmit();
+                  }}
+                  placeholder="Search documents…"
+                  type="text"
+                  value={documentSearchQuery}
+                />
+              ),
+            }
+          : {})}
+        {...(searching
+          ? {
+              belowToolbar: (
+                <div
+                  className="flex shrink-0 items-center justify-between gap-2 py-1 text-muted-foreground text-xs"
+                  data-zerops-data-document-search-status
+                >
+                  <span>
+                    {describeDocumentListingStatus(
+                      nodeListing.model.rows.length,
+                      nodeListing.model.nextCursor !== undefined,
+                      true,
+                    )}
+                  </span>
+                  <Button
+                    data-zerops-data-document-search-back
+                    onClick={handleDocumentSearchClear}
+                    size="xs"
+                    variant="ghost"
+                  >
+                    Back to index
+                  </Button>
+                </div>
+              ),
+            }
+          : {})}
       />
     ) : selectedNode?.kind === "tabular" ? (
       <ZeropsDataTable
