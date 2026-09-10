@@ -9,7 +9,10 @@ const environmentState = vi.hoisted(() => ({
     | undefined
     | {
         readonly serverVersion: string;
-        readonly capabilities: { readonly mateUpdate?: boolean };
+        readonly capabilities: {
+          readonly mateUpdate?: boolean;
+          readonly mateUpdateCheck?: boolean;
+        };
         readonly update?: {
           readonly installed: string;
           readonly latest: string;
@@ -94,7 +97,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
   it("shows the line with no verb, but still offers Check for updates, when nothing is available", () => {
     environmentState.environment = {
       serverVersion: "0.8.1",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.1", latest: "0.8.1", available: false, checkedAt: "now" },
     };
     const html = render();
@@ -103,10 +106,22 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Check for updates");
   });
 
+  it("offers Update but never Check for updates on a server without the check capability", () => {
+    environmentState.environment = {
+      serverVersion: "0.9.0",
+      capabilities: { mateUpdate: true },
+      update: { installed: "0.9.0", latest: "0.10.0", available: true, checkedAt: "now" },
+    };
+    mateUpdateState.state = { phase: "idle" };
+    const html = render();
+    expect(html).toContain(">Update<");
+    expect(html).not.toContain("Check for updates");
+  });
+
   it("offers Update only when capable and an update is available", () => {
     environmentState.environment = {
       serverVersion: "0.8.0",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
     };
     mateUpdateState.state = { phase: "idle" };
@@ -123,7 +138,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
   it("in confirm, offers Update and Keep running with the running-threads warning", () => {
     environmentState.environment = {
       serverVersion: "0.8.0",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
     };
     mateUpdateState.state = { phase: "confirm" };
@@ -141,7 +156,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
   it("shows the failure message inline, never a toast surface", () => {
     environmentState.environment = {
       serverVersion: "0.8.0",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
     };
     mateUpdateState.state = { phase: "failed", message: "zcp mate update exited 1" };
@@ -153,7 +168,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
   it("shows 'Checking…', disabled, while a check is running", () => {
     environmentState.environment = {
       serverVersion: "0.8.1",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.1", latest: "0.8.1", available: false, checkedAt: "now" },
     };
     mateUpdateState.state = { phase: "checking" };
@@ -165,7 +180,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
   it("an available checked result overrides the descriptor's own update field (MU-1)", () => {
     environmentState.environment = {
       serverVersion: "0.8.1",
-      capabilities: { mateUpdate: true },
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
       update: { installed: "0.8.1", latest: "0.8.1", available: false, checkedAt: "now" },
     };
     mateUpdateState.checked = {

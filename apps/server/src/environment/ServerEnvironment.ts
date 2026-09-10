@@ -78,7 +78,11 @@ function platformArch(
  */
 export const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
-  options?: { readonly mateUpdate?: boolean; readonly dataConsole?: boolean },
+  options?: {
+    readonly mateUpdate?: boolean;
+    readonly mateUpdateCheck?: boolean;
+    readonly dataConsole?: boolean;
+  },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
     accountLifecycleVersion: 1,
@@ -96,6 +100,7 @@ export const makeServerEnvironmentCapabilities = (
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
+    ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),
   };
 };
@@ -179,6 +184,7 @@ export const make = Effect.gen(function* () {
       : { zerops: { projectId: serverConfig.zerops.projectId } }),
     capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy, {
       mateUpdate: isZeropsEnvironment(serverConfig),
+      mateUpdateCheck: isZeropsEnvironment(serverConfig),
       dataConsole: isZeropsEnvironment(serverConfig),
     }),
   };

@@ -49,12 +49,20 @@ export function ZeropsMateUpdateControl({
   const capable = environment.capabilities.mateUpdate === true;
   const checkingNow = mateUpdate.state.phase === "checking";
 
-  const checkAction: ZeropsMenuAction = {
-    id: "check-for-updates",
-    label: checkingNow ? "Checking…" : "Check for updates",
-    onSelect: mateUpdate.check,
-    disabled: checkingNow,
-  };
+  // The check has its own capability: a server that offers `mateUpdate` but
+  // predates `zerops.mate.checkUpdate` would answer the check with an
+  // unknown-request defect — exactly the skew this control is here to name.
+  const checkActions: ReadonlyArray<ZeropsMenuAction> =
+    environment.capabilities.mateUpdateCheck === true
+      ? [
+          {
+            id: "check-for-updates",
+            label: checkingNow ? "Checking…" : "Check for updates",
+            onSelect: mateUpdate.check,
+            disabled: checkingNow,
+          },
+        ]
+      : [];
 
   if (!capable) {
     return children({ line: <MateUpdateLine line={line} />, menuActions: [] });
@@ -65,7 +73,7 @@ export function ZeropsMateUpdateControl({
   if (!offerVerb) {
     return children({
       line: <MateUpdateLine line={line} />,
-      menuActions: [checkAction],
+      menuActions: checkActions,
     });
   }
 
@@ -121,6 +129,6 @@ export function ZeropsMateUpdateControl({
         ) : null}
       </>
     ),
-    menuActions: updateAction === null ? [checkAction] : [checkAction, updateAction],
+    menuActions: updateAction === null ? checkActions : [...checkActions, updateAction],
   });
 }

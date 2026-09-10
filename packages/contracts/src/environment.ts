@@ -85,6 +85,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       Zerops project with `zcp` on PATH. Absent everywhere else, so a client
       renders the Update verb only where the RPC would actually work. */
   mateUpdate: Schema.optionalKey(Schema.Boolean),
+  /** `zerops.mate.checkUpdate` is offered (spec-mate.md §2.9 step 5). Absent
+      on servers from before the on-demand check existed, which still offer
+      `mateUpdate`; a client never sends the check without this flag. */
+  mateUpdateCheck: Schema.optionalKey(Schema.Boolean),
   /** Server hosts the Zerops data console and understands
       `zerops.dataConsole.call`. Absent on older servers, so clients never
       send the call and offer the Data surface as unsupported under version
