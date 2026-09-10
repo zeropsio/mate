@@ -286,6 +286,8 @@ export interface DataConsoleServiceAffordances {
   readonly canBrowse: boolean;
   readonly canQuery: boolean;
   readonly canReadTable: boolean;
+  /** Whether the toolbar's search box should show for this service — the `searchDocs` action (`provider.ActionSearchDocs`), document services only. */
+  readonly canSearchDocs: boolean;
   readonly vpnGateReason?: string;
 }
 
@@ -298,11 +300,13 @@ export function resolveServiceAffordances(
     byId.get("readTable")?.enabled === true || byId.get("readBlob")?.enabled === true;
   const canQuery = byId.get("querySQL")?.enabled === true;
   const canReadTable = byId.get("readTable")?.enabled === true;
+  const canSearchDocs = byId.get("searchDocs")?.enabled === true;
   const vpnGateReason = byId.get("showVPNGate")?.reason;
   return {
     canBrowse,
     canQuery,
     canReadTable,
+    canSearchDocs,
     ...(vpnGateReason ? { vpnGateReason } : {}),
   };
 }
@@ -386,6 +390,23 @@ export function listingFor(
       // "unknown" have no affordances either way.
       return "tree";
   }
+}
+
+/**
+ * The document listing's status row, `"N loaded"` / `"N loaded · more
+ * available"` for the plain index, `"Search result · N loaded[ · more
+ * available]"` while a search's results are showing in its place. Mirrors
+ * the row-count phrasing already used elsewhere in this panel, so a search
+ * result reads as the same kind of listing with one word telling you it's
+ * filtered.
+ */
+export function describeDocumentListingStatus(
+  count: number,
+  hasMore: boolean,
+  searching: boolean,
+): string {
+  const base = hasMore ? `${count} loaded · more available` : `${count} loaded`;
+  return searching ? `Search result · ${base}` : base;
 }
 
 // ---------------------------------------------------------------------------

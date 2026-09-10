@@ -20,6 +20,7 @@ import {
   collapseTreePath,
   describeCell,
   describeDataConsoleError,
+  describeDocumentListingStatus,
   describeRowContext,
   describeServiceContext,
   describeTableContext,
@@ -483,6 +484,23 @@ describe("listingFor", () => {
   });
 });
 
+describe("describeDocumentListingStatus", () => {
+  it("reads as a plain row count with no more pages", () => {
+    expect(describeDocumentListingStatus(12, false, false)).toBe("12 loaded");
+  });
+
+  it("adds the more-available phrase when another page is behind the cursor", () => {
+    expect(describeDocumentListingStatus(12, true, false)).toBe("12 loaded · more available");
+  });
+
+  it("prefixes 'Search result ·' while a search's results are showing", () => {
+    expect(describeDocumentListingStatus(3, false, true)).toBe("Search result · 3 loaded");
+    expect(describeDocumentListingStatus(3, true, true)).toBe(
+      "Search result · 3 loaded · more available",
+    );
+  });
+});
+
 describe("joinServicesWithTopology", () => {
   it("orders console services by the topology's order when a topology view is present", () => {
     const rows = joinServicesWithTopology(
@@ -518,7 +536,12 @@ describe("resolveServiceAffordances", () => {
         { id: "readTable", enabled: true, readOnly: true, reason: "" },
       ]),
     );
-    expect(affordances).toEqual({ canBrowse: true, canQuery: true, canReadTable: true });
+    expect(affordances).toEqual({
+      canBrowse: true,
+      canQuery: true,
+      canReadTable: true,
+      canSearchDocs: false,
+    });
   });
 
   it("is all-false for a service with no matching actions", () => {
@@ -526,7 +549,21 @@ describe("resolveServiceAffordances", () => {
       canBrowse: false,
       canQuery: false,
       canReadTable: false,
+      canSearchDocs: false,
     });
+  });
+
+  it("derives canSearchDocs from the enabled searchDocs action", () => {
+    expect(
+      resolveServiceAffordances(
+        service([{ id: "searchDocs", enabled: true, readOnly: true, reason: "" }]),
+      ).canSearchDocs,
+    ).toBe(true);
+    expect(
+      resolveServiceAffordances(
+        service([{ id: "searchDocs", enabled: false, readOnly: true, reason: "not supported" }]),
+      ).canSearchDocs,
+    ).toBe(false);
   });
 
   it("derives canBrowse from readBlob alone (object storage has no readTable)", () => {
