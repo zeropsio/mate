@@ -1975,5 +1975,48 @@ describe("ZeropsDataPanel", () => {
       }>(tree, ZeropsDataTree)!;
       expect(treeComponent.props.nodeFilter).toBeUndefined();
     });
+
+    it("never shows a grid for a stream service — root or a selected stream alike, only the metadata blob preview", async () => {
+      const SERVICE_STREAM: ZeropsDataConsoleService = {
+        hostname: "db1",
+        type: "nats",
+        family: "stream",
+        support: "view-only",
+        actions: [{ id: "readBlob", enabled: true, readOnly: true, reason: "" }],
+        status: "running",
+      };
+      const STREAM_NODE: ZeropsDataConsoleNode = {
+        name: "orders-stream",
+        kind: "blob",
+        path: { service: "db1", segments: ["orders-stream"] },
+        hasChildren: false,
+        meta: {},
+      };
+      respondTree([SERVICE_STREAM], {
+        [ROOT_KEY]: { kind: "tree", nodes: [STREAM_NODE], nextCursor: "" },
+        [treePathKey(STREAM_NODE.path)]: {
+          kind: "blob",
+          data: "e30=",
+          contentType: "application/json",
+          truncated: false,
+          size: 3,
+          vector: false,
+          streamMetadata: true,
+        },
+      });
+      await serviceTab();
+      let tree = render({ service: "db1", widthForTest: 1200 });
+      expect(findComponent(tree, ZeropsDataTable)).toBeNull();
+
+      const treeComponent = findComponent<{
+        readonly onSelectNode: (node: ZeropsDataConsoleNode) => void;
+      }>(tree, ZeropsDataTree)!;
+      treeComponent.props.onSelectNode(STREAM_NODE);
+      await flush();
+      tree = render({ service: "db1", widthForTest: 1200 });
+
+      expect(findComponent(tree, ZeropsDataTable)).toBeNull();
+      expect(findComponent(tree, ZeropsDataBlob)).not.toBeNull();
+    });
   });
 });

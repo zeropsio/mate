@@ -1028,6 +1028,10 @@ export function ZeropsDataPanel({
   // own, "Load more" pages the tree the same way expanding it would.
   const listingKind = selectedService === null ? "tree" : listingFor(selectedService, selectedNode);
   const listingEntry = tree.entries[treePathKey(currentPath)];
+  // "streams" never lists — a stream's only view is its metadata blob
+  // preview, unconditionally (`gridView` below reads `listingKind` again to
+  // make that explicit rather than let it fall out of this returning
+  // `null` the same way "tree" does).
   const nodeListing: DataConsoleNodeListing | null =
     listingKind === "objects"
       ? objectListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
@@ -1226,7 +1230,12 @@ export function ZeropsDataPanel({
         {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(querySort ? { sort: querySort } : {})}
       />
-    ) : nodeListing !== null ? (
+    ) : listingKind === "streams" ? // A stream's own view is the metadata blob preview below
+    // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid
+    // region never shows for this family, root or a selected stream
+    // alike, which this branch makes an explicit decision rather than an
+    // accident of `nodeListing` staying `null` the way it does for "tree".
+    null : nodeListing !== null ? (
       <ZeropsDataTable
         loadMorePending={listingLoadMorePending}
         model={nodeListing.model}
