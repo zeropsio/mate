@@ -5,6 +5,9 @@ import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
+import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
+import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -1399,18 +1402,40 @@ describe("MessagesTimeline", () => {
       attempts: 1,
       hasResult: true,
     };
+    // The operation card reads the account data runtime and the inventory; a
+    // static render never acquires an interest, so empty stand-ins suffice.
+    const inventory: Inventory = {
+      projects: [],
+      services: new Map(),
+      isLoading: false,
+      error: null,
+      projectRefs: new Map(),
+    };
+    const zeropsData: ZeropsDataContextValue = {
+      runtime: {} as ManagedZeropsDataRuntime,
+      organizationRef: () => {
+        throw new Error("not used");
+      },
+      projectRef: () => {
+        throw new Error("not used");
+      },
+    };
     const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        timelineEntries={[
-          {
-            id: "zerops:call:deploy-operation",
-            kind: "operation",
-            createdAt: MESSAGE_CREATED_AT,
-            operation,
-          },
-        ]}
-      />,
+      <ZeropsDataContext value={zeropsData}>
+        <InventoryContext value={inventory}>
+          <MessagesTimeline
+            {...buildProps()}
+            timelineEntries={[
+              {
+                id: "zerops:call:deploy-operation",
+                kind: "operation",
+                createdAt: MESSAGE_CREATED_AT,
+                operation,
+              },
+            ]}
+          />
+        </InventoryContext>
+      </ZeropsDataContext>,
     );
 
     expect(markup).toContain("data-zerops-card");
