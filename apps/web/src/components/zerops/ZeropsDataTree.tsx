@@ -39,6 +39,20 @@ export interface ZeropsDataTreeProps {
   /** Present for a family whose container level has its own grid listing (object storage's prefixes, a KV namespace's keys) — a container's name becomes a second click target, selecting it (for the listing) without expanding/collapsing the tree the way the toggle arrow does. */
   readonly onSelectContainer?: (node: ZeropsDataConsoleNode) => void;
   readonly selectedContainerKey?: string;
+  /**
+   * Present when the caller has a real scroll ancestor to root an
+   * `IntersectionObserver` on (`ZeropsDataPanel` owns that ref — this
+   * component stays hookless, per its own design, so the observer itself
+   * lives with the caller; this is only asked for a ref callback per
+   * sentinel). Returns `undefined` (jsdom, or the caller has none) to skip
+   * the sentinel and leave the "Load more" button as the only way to page —
+   * same fallback `ZeropsDataTable`'s own sentinel uses.
+   */
+  readonly sentinelRefFor?: (
+    key: string,
+    path: ZeropsDataConsolePath,
+    cursor: string,
+  ) => ((node: HTMLDivElement | null) => void) | undefined;
 }
 
 const NO_LOADING_KEYS: ReadonlySet<string> = new Set();
@@ -55,6 +69,7 @@ interface NodeListArgs {
   readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
   readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
   readonly selectedContainerKey: string | undefined;
+  readonly sentinelRefFor: ZeropsDataTreeProps["sentinelRefFor"];
 }
 
 function renderNodeList({
@@ -69,6 +84,7 @@ function renderNodeList({
   nodeFilter,
   onSelectContainer,
   selectedContainerKey,
+  sentinelRefFor,
 }: NodeListArgs): ReactElement {
   const key = treePathKey(path);
   const entry = tree.entries[key];
@@ -94,6 +110,7 @@ function renderNodeList({
       path: onlyNode.path,
       selectedContainerKey,
       selectedNodeKey,
+      sentinelRefFor,
       tree,
     });
   }
@@ -133,6 +150,7 @@ function renderNodeList({
                 onToggleNode,
                 selectedContainerKey,
                 selectedNodeKey,
+                sentinelRefFor,
                 tree,
               })
             : renderLeafNode({ node, onSelectNode, selectedNodeKey })}
@@ -149,6 +167,17 @@ function renderNodeList({
           >
             Load more
           </button>
+          {/* The sentinel is additive, never a replacement for the button
+              above — jsdom (this repo's tests) has no IntersectionObserver,
+              and a caller with no real scroll ancestor gets `undefined` back
+              from `sentinelRefFor`, so the button stays the only way to page
+              in both cases. */}
+          {sentinelRefFor === undefined ? null : (
+            <div
+              data-zerops-data-tree-sentinel={key}
+              ref={sentinelRefFor(key, path, entry.nextCursor)}
+            />
+          )}
         </li>
       ) : null}
     </ul>
@@ -167,6 +196,7 @@ interface ContainerNodeArgs {
   readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
   readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
   readonly selectedContainerKey: string | undefined;
+  readonly sentinelRefFor: ZeropsDataTreeProps["sentinelRefFor"];
 }
 
 function renderContainerNode({
@@ -181,6 +211,7 @@ function renderContainerNode({
   nodeFilter,
   onSelectContainer,
   selectedContainerKey,
+  sentinelRefFor,
 }: ContainerNodeArgs): ReactElement {
   const key = treePathKey(node.path);
   const entry = tree.entries[key];
@@ -225,6 +256,7 @@ function renderContainerNode({
             path: node.path,
             selectedContainerKey,
             selectedNodeKey,
+            sentinelRefFor,
             tree,
           })
         : null}
@@ -269,6 +301,7 @@ export function ZeropsDataTree({
   nodeFilter,
   onSelectContainer,
   selectedContainerKey,
+  sentinelRefFor,
 }: ZeropsDataTreeProps) {
   return (
     <FlatCard className="space-y-1 p-2" data-zerops-data-tree>
@@ -283,6 +316,7 @@ export function ZeropsDataTree({
         path: rootPath,
         selectedContainerKey,
         selectedNodeKey,
+        sentinelRefFor,
         tree,
       })}
     </FlatCard>

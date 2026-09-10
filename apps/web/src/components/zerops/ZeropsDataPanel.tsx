@@ -267,6 +267,22 @@ export function ZeropsDataPanel({
   const queryTokenRef = useRef(0);
   const filterValueInputRef = useRef<HTMLInputElement | null>(null);
   const gridScrollRef = useRef<HTMLDivElement | null>(null);
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
+  // A tree can page several levels at once (a container's own children, and
+  // one of its own expanded children, both mid-cursor) — one
+  // IntersectionObserver per level's sentinel, keyed by its path, rather
+  // than the grid's single observer. `treeSentinelStateRef` holds each key's
+  // latest `{path, cursor}` so a stable-identity callback (never rebuilt
+  // while the same level keeps paging) always fires `handleLoadMoreTree`
+  // with the current page's own cursor, the same "latest ref" trick
+  // `ZeropsDataTable`'s own sentinel uses.
+  const treeSentinelStateRef = useRef<Map<string, { path: ZeropsDataConsolePath; cursor: string }>>(
+    new Map(),
+  );
+  const treeSentinelCallbacksRef = useRef<Map<string, (node: HTMLDivElement | null) => void>>(
+    new Map(),
+  );
+  const treeSentinelObserversRef = useRef<Map<string, IntersectionObserver>>(new Map());
   const observerRef = useRef<ResizeObserver | null>(null);
   const measureRef = useRef<((node: HTMLDivElement | null) => void) | null>(null);
   if (measureRef.current === null) {
@@ -496,6 +512,41 @@ export function ZeropsDataPanel({
 
   const handleLoadMoreTree = (path: ZeropsDataConsolePath, cursor: string) => {
     loadTreePage(path, cursor);
+  };
+
+  // Handed to `ZeropsDataTree` (which stays hookless by design) as
+  // `sentinelRefFor`: a stable-identity ref callback per paged level, so
+  // React doesn't tear the observer down and rebuild it on every render —
+  // only the state map updates each call, the callback keeps reading it
+  // live. `undefined` in a test (jsdom has no `IntersectionObserver`) or
+  // before the scroll rail has mounted leaves the tree's own "Load more"
+  // button as the only way to page, same fallback the grid's sentinel uses.
+  const attachTreeSentinel = (
+    key: string,
+    path: ZeropsDataConsolePath,
+    cursor: string,
+  ): ((node: HTMLDivElement | null) => void) | undefined => {
+    if (typeof IntersectionObserver === "undefined") return undefined;
+    treeSentinelStateRef.current.set(key, { path, cursor });
+    const existing = treeSentinelCallbacksRef.current.get(key);
+    if (existing !== undefined) return existing;
+    const callback = (node: HTMLDivElement | null) => {
+      treeSentinelObserversRef.current.get(key)?.disconnect();
+      treeSentinelObserversRef.current.delete(key);
+      if (node === null) return;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          const state = treeSentinelStateRef.current.get(key);
+          if (state !== undefined) handleLoadMoreTree(state.path, state.cursor);
+        },
+        { root: treeScrollRef.current, rootMargin: "200px" },
+      );
+      observer.observe(node);
+      treeSentinelObserversRef.current.set(key, observer);
+    };
+    treeSentinelCallbacksRef.current.set(key, callback);
+    return callback;
   };
 
   const handleSelectNode = (node: ZeropsDataConsoleNode) => {
@@ -963,6 +1014,7 @@ export function ZeropsDataPanel({
                 : {}),
             }
           : {})}
+        sentinelRefFor={attachTreeSentinel}
       />
     </div>
   );
@@ -1259,7 +1311,11 @@ export function ZeropsDataPanel({
       ) : layout === "wide" ? (
         <div className="flex min-h-0 flex-1 gap-3 px-3" data-zerops-data-browse>
           {treeCollapsed ? null : (
-            <div className="w-60 shrink-0 overflow-y-auto" data-zerops-data-tree-rail>
+            <div
+              className="w-60 shrink-0 overflow-y-auto"
+              data-zerops-data-tree-rail
+              ref={treeScrollRef}
+            >
               {treeView}
             </div>
           )}
@@ -1271,7 +1327,9 @@ export function ZeropsDataPanel({
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col px-3" data-zerops-data-browse>
           {selectedNode === null && queryState === undefined && nodeListing === null ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">{treeView}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto" ref={treeScrollRef}>
+              {treeView}
+            </div>
           ) : (
             contentPane
           )}

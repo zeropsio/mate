@@ -328,4 +328,42 @@ describe("ZeropsDataTree", () => {
     });
     expect(findByAttribute(tree, "data-zerops-data-tree-container")).toBeNull();
   });
+
+  it("renders a paging sentinel alongside the Load more button when sentinelRefFor is given, asking it for that level's own path and cursor", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE],
+      nextCursor: "c1",
+    });
+    const sentinelRefFor = vi.fn(() => vi.fn());
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      sentinelRefFor,
+      tree: loaded,
+    });
+
+    expect(findByAttribute(tree, "data-zerops-data-tree-load-more")).not.toBeNull();
+    const key = treePathKey(ROOT_PATH);
+    expect(findByAttribute(tree, "data-zerops-data-tree-sentinel")).not.toBeNull();
+    expect(sentinelRefFor).toHaveBeenCalledWith(key, ROOT_PATH, "c1");
+  });
+
+  it("renders only the Load more button, no sentinel, when sentinelRefFor is absent (jsdom's own fallback)", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE],
+      nextCursor: "c1",
+    });
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: loaded,
+    });
+
+    expect(findByAttribute(tree, "data-zerops-data-tree-load-more")).not.toBeNull();
+    expect(findByAttribute(tree, "data-zerops-data-tree-sentinel")).toBeNull();
+  });
 });

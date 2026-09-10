@@ -505,6 +505,14 @@ describe("ZeropsDataPanel", () => {
       expect(findComponent(tree, ZeropsDataTree)).not.toBeNull();
     });
 
+    it("gives the tree rail its own overflow-y-auto scroll container (wide layout) — the grid's own overflow-auto region is ZeropsDataTable's own responsibility, proven in its own test", async () => {
+      respond([SERVICE_SUPPORTED]);
+      const tree = await serviceTab();
+
+      const treeRail = findByAttribute(tree, "data-zerops-data-tree-rail")!;
+      expect(treeRail.props.className).toContain("overflow-y-auto");
+    });
+
     it("expanding an unloaded container issues a tree request for its own path", async () => {
       const CONTAINER: ZeropsDataConsoleNode = {
         name: "public",

@@ -71,6 +71,13 @@ describe("ZeropsDataTable", () => {
     hooks.reset();
   });
 
+  it("owns its own overflow-auto scroll container for the rows, independent of any pane around it", () => {
+    hooks.beginRender();
+    const tree = ZeropsDataTable({ model: MODEL, onLoadMore: vi.fn(), onSort: vi.fn() });
+    const grid = findByAttribute(tree, "data-zerops-data-table-grid")!;
+    expect(grid.props.className).toContain("overflow-auto");
+  });
+
   it("renders one cell per visible column, in row order", () => {
     const tree = ZeropsDataTable({
       model: MODEL,
