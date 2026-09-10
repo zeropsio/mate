@@ -113,6 +113,40 @@ describe("buildZeropsServiceMap", () => {
     ]);
   });
 
+  it("orders rows inside a section by hostname regardless of backend order", () => {
+    const shuffled = realServices.toReversed();
+    const view = buildZeropsServiceMap(topology(shuffled));
+
+    expect(view?.groups.map((group) => group.rows.map((row) => row.service.hostname))).toEqual([
+      ["s6fix1", "s6fix2"],
+      ["s6db"],
+      ["zcp"],
+    ]);
+  });
+
+  it("orders hostnames numerically, not lexically: db < db2 < db10", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "db10" }),
+        service({ hostname: "db" }),
+        service({ hostname: "db2" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows.map((row) => row.service.hostname)).toEqual(["db", "db2", "db10"]);
+  });
+
+  it("puts the control plane first in Infrastructure, ahead of other services", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "aardvark", type: "core@1", group: "infrastructure" }),
+        service({ hostname: "zcp", type: "zcp@1", group: "infrastructure" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows.map((row) => row.service.hostname)).toEqual(["zcp", "aardvark"]);
+  });
+
   it("omits a group with no services rather than showing it empty", () => {
     const view = buildZeropsServiceMap(topology([realServices[3]!]));
 

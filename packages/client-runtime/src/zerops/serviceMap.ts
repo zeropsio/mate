@@ -13,10 +13,27 @@
  * `doorbellConnected` — those were `zcp studio topology`-only facts; liveness
  * is now `useProjectTopology`'s own signal, composed by the caller rather than
  * by this function.
+ *
+ * ## Row order
+ *
+ * Sections come first (`GROUP_ORDER`: Runtimes, Data, Infrastructure), each
+ * one fixed and never derived. Rows inside a section are a total order, so
+ * two reads of the same topology — whatever order the backend happened to
+ * return services in — always render identically:
+ *
+ * 1. In Infrastructure, the control plane (`isZcpServiceType`) leads —
+ *    it is not a service the user created.
+ * 2. Then hostname, via `compareZeropsHostnames` (locale-aware,
+ *    case-insensitive, numeric-aware: `db` < `db2` < `db10`).
+ * 3. Tiebreak on `serviceId`, so two rows can never compare equal.
+ *
+ * A folded stage row carries no position of its own — it is nested under
+ * its dev partner and follows it automatically.
  */
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
+import { compareZeropsHostnames } from "./listingOrder.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
@@ -454,6 +471,18 @@ export function buildZeropsServiceMap(
     title,
     rows: topology.services
       .filter((entry) => entry.group === group && !folded.has(entry.hostname))
+      // Total order within a section: the control plane leads Infrastructure
+      // (it is not a service the user created), then hostname,
+      // locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames`
+      // — `db` < `db2` < `db10`), tiebroken by `serviceId` so two services
+      // can never tie. A folded stage row carries no order of its own — it
+      // rides along nested under its dev partner.
+      .toSorted(
+        (left, right) =>
+          Number(isZcpServiceType(right.type)) - Number(isZcpServiceType(left.type)) ||
+          compareZeropsHostnames(left.hostname, right.hostname) ||
+          left.serviceId.localeCompare(right.serviceId),
+      )
       .map((entry): ZeropsServiceRow => {
         const stage = topology.services.find(
           (candidate) =>
