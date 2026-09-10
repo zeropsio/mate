@@ -34,7 +34,9 @@ import {
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
   joinServicesWithTopology,
+  kvListingModel,
   listingFor,
+  objectListingModel,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -443,14 +445,18 @@ const listingNode = (
   }) as ZeropsDataConsoleNode;
 
 describe("listingFor", () => {
-  it("is objects for an object-storage service, root or container alike", () => {
+  it("is objects for an object-storage service's root or a prefix, but not for a blob (opens the preview)", () => {
     expect(listingFor({ family: "object" }, null)).toBe("objects");
     expect(listingFor({ family: "object" }, listingNode({ kind: "container" }))).toBe("objects");
-    expect(listingFor({ family: "object" }, listingNode({ kind: "blob" }))).toBe("objects");
+    expect(listingFor({ family: "object" }, listingNode({ kind: "blob" }))).toBe("tree");
   });
 
-  it("is documents for a document service", () => {
+  it("is documents for a document service's root or an index, but not for a document blob (opens the preview)", () => {
     expect(listingFor({ family: "document" }, null)).toBe("documents");
+    expect(listingFor({ family: "document" }, listingNode({ kind: "container" }))).toBe(
+      "documents",
+    );
+    expect(listingFor({ family: "document" }, listingNode({ kind: "blob" }))).toBe("tree");
   });
 
   it("is streams for a stream service", () => {
@@ -481,6 +487,64 @@ describe("listingFor", () => {
   it("is tree for file/unknown families, which have no affordances either way", () => {
     expect(listingFor({ family: "file" }, null)).toBe("tree");
     expect(listingFor({ family: "unknown" }, null)).toBe("tree");
+  });
+});
+
+describe("objectListingModel", () => {
+  const blob = listingNode({
+    name: "photo.png",
+    kind: "blob",
+    meta: { size: 2_621_440, modified: "2026-01-01T00:00:00Z", contentType: "image/png" },
+  });
+  const prefix = listingNode({ name: "uploads", kind: "container", hasChildren: true, meta: {} });
+
+  it("builds one row per node, blobs and prefixes together, in the given order", () => {
+    const listing = objectListingModel([prefix, blob], undefined);
+    expect(listing.nodes).toEqual([prefix, blob]);
+    expect(listing.model.rows).toEqual([
+      ["uploads/", "", "", ""],
+      ["photo.png", "2.5 MB", "2026-01-01T00:00:00Z", "image/png"],
+    ]);
+    expect(listing.model.columns.map((c) => c.name)).toEqual([
+      "name",
+      "size",
+      "modified",
+      "contentType",
+    ]);
+    expect(listing.model.rowKeyCols).toEqual(["name"]);
+    expect(listing.model.nextCursor).toBeUndefined();
+  });
+
+  it("keeps a container's name distinguishable from a blob's by a trailing slash", () => {
+    const listing = objectListingModel([prefix], undefined);
+    expect(listing.model.rows[0]![0]).toBe("uploads/");
+  });
+
+  it("carries the tree level's own nextCursor through, unmodified", () => {
+    expect(objectListingModel([], "c1").model.nextCursor).toBe("c1");
+  });
+});
+
+describe("kvListingModel", () => {
+  it("builds one row per key with its type glyph, humanized TTL and count", () => {
+    const key = listingNode({
+      name: "session:42",
+      kind: "tabular",
+      meta: { entryType: "hash", ttlSeconds: 120, count: 6 },
+    });
+    const listing = kvListingModel([key], undefined);
+    expect(listing.model.rows).toEqual([["session:42", "hash", "2 min", "6"]]);
+    expect(listing.model.rowKeyCols).toEqual(["key"]);
+  });
+
+  it("leaves type/ttl/count blank for a key (or namespace) the console reports none of", () => {
+    const namespace = listingNode({
+      name: "cache",
+      kind: "container",
+      hasChildren: true,
+      meta: {},
+    });
+    expect(kvListingModel([namespace], undefined).model.rows).toEqual([["cache", "", "", ""]]);
   });
 });
 

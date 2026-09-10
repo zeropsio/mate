@@ -21,6 +21,7 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 
+import { humanizeTtl } from "./dataBlob.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
 // ---------------------------------------------------------------------------
@@ -371,9 +372,13 @@ export function listingFor(
 ): DataConsoleListingKind {
   switch (service.family) {
     case "object":
-      return "objects";
+      // A blob (an actual object) opens the existing preview, not a
+      // listing — only the root and a prefix (`container`) list.
+      return node !== null && node.kind === "blob" ? "tree" : "objects";
     case "document":
-      return "documents";
+      // A document (a blob, JSON by id) opens the existing preview the same
+      // way — only an index (`container`, or the root) lists.
+      return node !== null && node.kind === "blob" ? "tree" : "documents";
     case "stream":
       return "streams";
     case "kv":
@@ -390,6 +395,118 @@ export function listingFor(
       // "unknown" have no affordances either way.
       return "tree";
   }
+}
+
+/**
+ * A synthetic `DataConsoleTableModel` built from one tree level's own
+ * nodes, reusing `ZeropsDataTable` for a family whose grid isn't a fetched
+ * table page — object storage's prefix listing, a KV namespace's key
+ * listing. `nodes` is kept alongside the model, 1:1 with its rows in the
+ * same order, so a row click maps straight back to the node it came from
+ * (which decides whether it descends into a prefix/namespace or opens a
+ * preview) without parsing a formatted cell back into a path segment.
+ */
+export interface DataConsoleNodeListing {
+  readonly model: DataConsoleTableModel;
+  readonly nodes: ReadonlyArray<ZeropsDataConsoleNode>;
+}
+
+const listingColumn = (name: string): ZeropsDataConsoleColumn => ({
+  name,
+  dataType: "string",
+  pk: name === "name" || name === "key",
+  editable: false,
+  reason: "",
+  sortable: false,
+  sortReason: "",
+});
+
+/** `512 B` / `2.5 KB` / `3 MB` / `1.2 GB` — matches the platform dashboard's own figures closely enough for a listing row; the blob preview keeps its own exact byte count. */
+function formatByteSize(bytes: number): string {
+  const units: ReadonlyArray<readonly [number, string]> = [
+    [1024 ** 3, "GB"],
+    [1024 ** 2, "MB"],
+    [1024, "KB"],
+  ];
+  for (const [threshold, unit] of units) {
+    if (bytes < threshold) continue;
+    const value = bytes / threshold;
+    return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10} ${unit}`;
+  }
+  return `${bytes} B`;
+}
+
+const OBJECT_LISTING_COLUMNS: ReadonlyArray<ZeropsDataConsoleColumn> = [
+  listingColumn("name"),
+  listingColumn("size"),
+  listingColumn("modified"),
+  listingColumn("contentType"),
+];
+
+/**
+ * Object storage's grid for a selected prefix (or the bucket root): blobs
+ * and sub-prefixes together, in the tree's own order, a sub-prefix's name
+ * kept with a trailing `/` so it reads as a folder even once it's a plain
+ * grid row rather than a tree line. Paging reuses whatever `nextCursor`
+ * the tree pane itself would page this same level with — this listing
+ * issues no request of its own.
+ */
+export function objectListingModel(
+  nodes: ReadonlyArray<ZeropsDataConsoleNode>,
+  nextCursor: string | undefined,
+): DataConsoleNodeListing {
+  return {
+    nodes,
+    model: {
+      columns: OBJECT_LISTING_COLUMNS,
+      rows: nodes.map((node) => [
+        node.kind === "container" ? `${node.name}/` : node.name,
+        node.meta?.size === undefined ? "" : formatByteSize(node.meta.size),
+        node.meta?.modified ?? "",
+        node.meta?.contentType ?? "",
+      ]),
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+      rowKeyCols: ["name"],
+      bestEffort: false,
+      numbered: false,
+    },
+  };
+}
+
+const KV_LISTING_COLUMNS: ReadonlyArray<ZeropsDataConsoleColumn> = [
+  listingColumn("key"),
+  listingColumn("type"),
+  listingColumn("ttl"),
+  listingColumn("count"),
+];
+
+/**
+ * A KV namespace's grid: its own child keys (and deeper namespaces), one
+ * row each, with a type glyph (`meta.entryType`), the TTL humanized the
+ * same way the blob preview's meta line does (`humanizeTtl`, `dataBlob.ts`)
+ * and a count when the console reports one. A namespace child carries none
+ * of those — its row is just the name, same as the tree already shows it.
+ */
+export function kvListingModel(
+  nodes: ReadonlyArray<ZeropsDataConsoleNode>,
+  nextCursor: string | undefined,
+): DataConsoleNodeListing {
+  return {
+    nodes,
+    model: {
+      columns: KV_LISTING_COLUMNS,
+      rows: nodes.map((node) => [
+        node.name,
+        node.meta?.entryType ?? "",
+        node.meta?.ttlSeconds === undefined ? "" : humanizeTtl(node.meta.ttlSeconds),
+        node.meta?.count === undefined ? "" : String(node.meta.count),
+      ]),
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+      rowKeyCols: ["key"],
+      bestEffort: false,
+      numbered: false,
+    },
+  };
 }
 
 /**
