@@ -17,7 +17,7 @@ import { useZeropsCandidatesVersion } from "./candidatesRefresh";
  * instead of polling forever.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -170,20 +170,58 @@ export async function pollCandidateHealth(input: {
   }
 }
 
-export function useZeropsCandidateHealth(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-  options: { readonly isProcessRunning?: (candidateKey: string) => boolean } = {},
-): {
+export interface HealthSnapshot {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   readonly serverVersions: ReadonlyMap<string, string>;
   readonly updates: ReadonlyMap<string, ExecutionEnvironmentUpdate>;
-} {
+}
+
+/**
+ * Reconciles the previous verdict snapshot against the new set of probe
+ * targets: a key whose target left the set is dropped, a key whose origin
+ * changed is reset (it needs a fresh probe, not a stale verdict for a
+ * different origin), and every other key survives untouched so a refresh
+ * or an incremental target-set change does not flicker a settled row back
+ * to "Checking".
+ */
+export function reconcileHealthSnapshot(
+  previous: HealthSnapshot,
+  prevOrigins: ReadonlyMap<string, string>,
+  targets: ReadonlyArray<{ readonly key: string; readonly origin: string }>,
+): HealthSnapshot {
+  const currentKeys = new Set(targets.map((target) => target.key));
+  const changedKeys = new Set(
+    targets
+      .filter((target) => {
+        const prevOrigin = prevOrigins.get(target.key);
+        return prevOrigin !== undefined && prevOrigin !== target.origin;
+      })
+      .map((target) => target.key),
+  );
+  const keep = <V>(map: ReadonlyMap<string, V>): ReadonlyMap<string, V> => {
+    const next = new Map<string, V>();
+    for (const [key, value] of map) {
+      if (currentKeys.has(key) && !changedKeys.has(key)) next.set(key, value);
+    }
+    return next;
+  };
+  return {
+    health: keep(previous.health),
+    serverVersions: keep(previous.serverVersions),
+    updates: keep(previous.updates),
+  };
+}
+
+export function useZeropsCandidateHealth(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+  options: { readonly isProcessRunning?: (candidateKey: string) => boolean } = {},
+): HealthSnapshot {
   const refreshVersion = useZeropsCandidatesVersion();
-  const [snapshot, setSnapshot] = useState<{
-    health: ReadonlyMap<string, ZeropsContainerHealth>;
-    serverVersions: ReadonlyMap<string, string>;
-    updates: ReadonlyMap<string, ExecutionEnvironmentUpdate>;
-  }>({ health: new Map(), serverVersions: new Map(), updates: new Map() });
+  const [snapshot, setSnapshot] = useState<HealthSnapshot>({
+    health: new Map(),
+    serverVersions: new Map(),
+    updates: new Map(),
+  });
 
   // Only the rows that have an origin to probe, keyed so the effect re-runs
   // when the set changes rather than on every re-render.
@@ -196,9 +234,11 @@ export function useZeropsCandidateHealth(
   );
   const targetKey = targets.map((target) => `${target.key}=${target.origin}`).join(",");
   const isProcessRunning = options.isProcessRunning;
+  const prevOriginsRef = useRef<ReadonlyMap<string, string>>(new Map());
 
   useEffect(() => {
-    setSnapshot({ health: new Map(), serverVersions: new Map(), updates: new Map() });
+    setSnapshot((current) => reconcileHealthSnapshot(current, prevOriginsRef.current, targets));
+    prevOriginsRef.current = new Map(targets.map((target) => [target.key, target.origin]));
     if (targets.length === 0) return;
     let cancelled = false;
     let cursor = 0;

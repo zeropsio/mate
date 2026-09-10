@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   pollCandidateHealth,
   probeCandidateHealth,
+  reconcileHealthSnapshot,
+  type HealthSnapshot,
   type PollTimers,
 } from "./useZeropsCandidateHealth";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -73,6 +75,73 @@ it("does not reuse the previous service's health when its address is reused", as
     { health: "initializing" },
   );
   expect(probe).toHaveBeenCalledTimes(2);
+});
+
+function snapshotOf(entries: ReadonlyArray<[string, ZeropsContainerHealth]>): HealthSnapshot {
+  return {
+    health: new Map(entries),
+    serverVersions: new Map(),
+    updates: new Map(),
+  };
+}
+
+const reconcileCases: ReadonlyArray<{
+  readonly name: string;
+  readonly previous: HealthSnapshot;
+  readonly prevOrigins: ReadonlyMap<string, string>;
+  readonly targets: ReadonlyArray<{ readonly key: string; readonly origin: string }>;
+  readonly expectedKeys: ReadonlyArray<string>;
+}> = [
+  {
+    name: "refresh keeps existing verdicts until the new probe answers",
+    previous: snapshotOf([
+      ["a", "ready"],
+      ["b", "ready"],
+    ]),
+    prevOrigins: new Map([
+      ["a", "https://a.example"],
+      ["b", "https://b.example"],
+    ]),
+    targets: [
+      { key: "a", origin: "https://a.example" },
+      { key: "b", origin: "https://b.example" },
+    ],
+    expectedKeys: ["a", "b"],
+  },
+  {
+    name: "a target that left the set is dropped",
+    previous: snapshotOf([
+      ["a", "ready"],
+      ["b", "ready"],
+    ]),
+    prevOrigins: new Map([
+      ["a", "https://a.example"],
+      ["b", "https://b.example"],
+    ]),
+    targets: [{ key: "a", origin: "https://a.example" }],
+    expectedKeys: ["a"],
+  },
+  {
+    name: "a target whose origin changed is re-probed from scratch",
+    previous: snapshotOf([
+      ["a", "ready"],
+      ["b", "ready"],
+    ]),
+    prevOrigins: new Map([
+      ["a", "https://a.example"],
+      ["b", "https://b-old.example"],
+    ]),
+    targets: [
+      { key: "a", origin: "https://a.example" },
+      { key: "b", origin: "https://b-new.example" },
+    ],
+    expectedKeys: ["a"],
+  },
+];
+
+it.each(reconcileCases)("$name", ({ previous, prevOrigins, targets, expectedKeys }) => {
+  const result = reconcileHealthSnapshot(previous, prevOrigins, targets);
+  expect(Array.from(result.health.keys()).sort()).toEqual([...expectedKeys].sort());
 });
 
 function fakeTimers(): {
