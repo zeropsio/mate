@@ -36,6 +36,14 @@ const LEAF_NODE: ZeropsDataConsoleNode = {
   meta: {},
 };
 
+const BLOB_NODE: ZeropsDataConsoleNode = {
+  name: "photo.png",
+  kind: "blob",
+  path: { service: "db", segments: ["photo.png"] },
+  hasChildren: false,
+  meta: {},
+};
+
 function findByAttribute(tree: unknown, attribute: string) {
   return visitElements(tree, (element) => attribute in element.props);
 }
@@ -66,7 +74,7 @@ describe("ZeropsDataTree", () => {
       tree: loaded,
     });
     const containerToggle = findByAttribute(tree, "data-zerops-data-tree-toggle");
-    expect(containerToggle?.props.children).toContain("public");
+    expect(containerToggle?.props.children).toBe("▸");
     const leaf = findByAttribute(tree, "data-zerops-data-tree-node");
     expect(leaf?.props.children).toBe("orders");
   });
@@ -262,5 +270,62 @@ describe("ZeropsDataTree", () => {
     });
 
     expect(findByAttribute(tree, "data-zerops-data-tree-toggle")).not.toBeNull();
+  });
+
+  it("nodeFilter hides a matching node from the level's display without touching what was loaded", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE, BLOB_NODE],
+      nextCursor: "",
+    });
+    const tree = ZeropsDataTree({
+      nodeFilter: (node) => node.kind !== "blob",
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: loaded,
+    });
+    expect(findByAttribute(tree, "data-zerops-data-tree-node")).toBeNull();
+    expect(visitElements(tree, (el) => el.props.children === "public")).not.toBeNull();
+  });
+
+  it("renders a container's name as a second, selectable click target when onSelectContainer is given", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE, OTHER_CONTAINER_NODE],
+      nextCursor: "",
+    });
+    const onSelectContainer = vi.fn();
+    const onToggleNode = vi.fn();
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectContainer,
+      onSelectNode: vi.fn(),
+      onToggleNode,
+      rootPath: ROOT_PATH,
+      selectedContainerKey: treePathKey(OTHER_CONTAINER_NODE.path),
+      tree: loaded,
+    });
+    const key = treePathKey(OTHER_CONTAINER_NODE.path);
+    const container = findByAttribute(tree, "data-zerops-data-tree-container")!;
+    expect(container.props["data-zerops-data-tree-container"]).toBe(key);
+    expect(container.props["aria-selected"]).toBe(true);
+    (container.props.onClick as () => void)();
+    expect(onSelectContainer).toHaveBeenCalledWith(OTHER_CONTAINER_NODE);
+    expect(onToggleNode).not.toHaveBeenCalled();
+  });
+
+  it("renders a container's name as plain text, not a button, when onSelectContainer is absent", () => {
+    const loaded = applyTreePage(emptyTree, ROOT_PATH, {
+      nodes: [CONTAINER_NODE, OTHER_CONTAINER_NODE],
+      nextCursor: "",
+    });
+    const tree = ZeropsDataTree({
+      onLoadMore: vi.fn(),
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: loaded,
+    });
+    expect(findByAttribute(tree, "data-zerops-data-tree-container")).toBeNull();
   });
 });

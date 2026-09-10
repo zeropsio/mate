@@ -34,6 +34,11 @@ export interface ZeropsDataTreeProps {
   readonly selectedNodeKey?: string;
   /** Path keys with a `tree` request in flight — disables that path's own "Load more" while its own append request is outstanding. "Still loading" itself reads `entry.loaded` (client-runtime), not this set: that flag is already the true "no page has landed for this path yet" signal, distinct from "loaded and genuinely empty". */
   readonly loadingKeys?: ReadonlySet<string>;
+  /** Hides a node from the tree's own display without touching the fetched entry — object storage's tree shows only prefixes, the blobs inside them show up in the grid listing instead. Never affects loading/paging, only which of the already-loaded nodes render. */
+  readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
+  /** Present for a family whose container level has its own grid listing (object storage's prefixes, a KV namespace's keys) — a container's name becomes a second click target, selecting it (for the listing) without expanding/collapsing the tree the way the toggle arrow does. */
+  readonly onSelectContainer?: (node: ZeropsDataConsoleNode) => void;
+  readonly selectedContainerKey?: string;
 }
 
 const NO_LOADING_KEYS: ReadonlySet<string> = new Set();
@@ -47,6 +52,9 @@ interface NodeListArgs {
   readonly selectedNodeKey: string | undefined;
   readonly depth: number;
   readonly loadingKeys: ReadonlySet<string>;
+  readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
+  readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
+  readonly selectedContainerKey: string | undefined;
 }
 
 function renderNodeList({
@@ -58,6 +66,9 @@ function renderNodeList({
   selectedNodeKey,
   depth,
   loadingKeys,
+  nodeFilter,
+  onSelectContainer,
+  selectedContainerKey,
 }: NodeListArgs): ReactElement {
   const key = treePathKey(path);
   const entry = tree.entries[key];
@@ -75,10 +86,13 @@ function renderNodeList({
     return renderNodeList({
       depth,
       loadingKeys,
+      nodeFilter,
       onLoadMore,
+      onSelectContainer,
       onSelectNode,
       onToggleNode,
       path: onlyNode.path,
+      selectedContainerKey,
       selectedNodeKey,
       tree,
     });
@@ -96,23 +110,28 @@ function renderNodeList({
     );
   }
 
+  const visibleNodes = nodeFilter === undefined ? entry.nodes : entry.nodes.filter(nodeFilter);
+
   return (
     <ul className="space-y-0.5" data-zerops-data-tree-list={key}>
-      {entry.nodes.length === 0 ? (
+      {visibleNodes.length === 0 ? (
         <li className="text-muted-foreground text-xs" style={{ paddingLeft: depth * 12 }}>
           No items.
         </li>
       ) : null}
-      {entry.nodes.map((node) => (
+      {visibleNodes.map((node) => (
         <li key={treePathKey(node.path)} style={{ paddingLeft: depth * 12 }}>
           {node.kind === "container"
             ? renderContainerNode({
                 depth,
                 loadingKeys,
                 node,
+                nodeFilter,
                 onLoadMore,
+                onSelectContainer,
                 onSelectNode,
                 onToggleNode,
+                selectedContainerKey,
                 selectedNodeKey,
                 tree,
               })
@@ -145,6 +164,9 @@ interface ContainerNodeArgs {
   readonly selectedNodeKey: string | undefined;
   readonly depth: number;
   readonly loadingKeys: ReadonlySet<string>;
+  readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
+  readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
+  readonly selectedContainerKey: string | undefined;
 }
 
 function renderContainerNode({
@@ -156,30 +178,52 @@ function renderContainerNode({
   selectedNodeKey,
   depth,
   loadingKeys,
+  nodeFilter,
+  onSelectContainer,
+  selectedContainerKey,
 }: ContainerNodeArgs): ReactElement {
   const key = treePathKey(node.path);
   const entry = tree.entries[key];
   const expanded = entry?.expanded ?? false;
+  const selected = key === selectedContainerKey;
 
   return (
     <div>
-      <button
-        aria-expanded={expanded}
-        className="text-xs"
-        data-zerops-data-tree-toggle={key}
-        onClick={() => onToggleNode(node)}
-        type="button"
-      >
-        {expanded ? "▾" : "▸"} {node.name}
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          aria-expanded={expanded}
+          className="text-xs"
+          data-zerops-data-tree-toggle={key}
+          onClick={() => onToggleNode(node)}
+          type="button"
+        >
+          {expanded ? "▾" : "▸"}
+        </button>
+        {onSelectContainer === undefined ? (
+          <span className="text-xs">{node.name}</span>
+        ) : (
+          <button
+            aria-selected={selected}
+            className={cn("text-xs", selected && "font-semibold text-foreground")}
+            data-zerops-data-tree-container={key}
+            onClick={() => onSelectContainer(node)}
+            type="button"
+          >
+            {node.name}
+          </button>
+        )}
+      </span>
       {expanded
         ? renderNodeList({
             depth: depth + 1,
             loadingKeys,
+            nodeFilter,
             onLoadMore,
+            onSelectContainer,
             onSelectNode,
             onToggleNode,
             path: node.path,
+            selectedContainerKey,
             selectedNodeKey,
             tree,
           })
@@ -222,16 +266,22 @@ export function ZeropsDataTree({
   onSelectNode,
   selectedNodeKey,
   loadingKeys = NO_LOADING_KEYS,
+  nodeFilter,
+  onSelectContainer,
+  selectedContainerKey,
 }: ZeropsDataTreeProps) {
   return (
     <FlatCard className="space-y-1 p-2" data-zerops-data-tree>
       {renderNodeList({
         depth: 0,
         loadingKeys,
+        nodeFilter,
         onLoadMore,
+        onSelectContainer,
         onSelectNode,
         onToggleNode,
         path: rootPath,
+        selectedContainerKey,
         selectedNodeKey,
         tree,
       })}
