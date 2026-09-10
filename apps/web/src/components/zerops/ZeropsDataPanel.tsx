@@ -94,6 +94,7 @@ import {
   filtersDirty,
   hasActiveFilters,
   isNodeUnloaded,
+  joinServicesWithTopology,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -106,6 +107,7 @@ import {
   type DataConsoleTree,
   type SortDirection,
 } from "@t3tools/client-runtime/zerops/dataConsole";
+import { serviceStatusTone, zeropsStatusWord } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -129,6 +131,7 @@ import { useRef, useState } from "react";
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
+import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Chip, FlatCard, MicroLabel, StatusDot } from "./primitives";
@@ -173,6 +176,17 @@ interface OpenRow {
 /** Row cap of a filtered statement — the console pages a plain `table` read itself, but a `query` gets whatever the statement asks for. */
 const FILTERED_LIMIT = 200;
 
+/** `ZeropsServiceTone` (the topology's tone) → `StatusDot`'s own tone id, same mapping `ZeropsServiceMap` uses. */
+const STATUS_DOT_TONE: Record<
+  ReturnType<typeof serviceStatusTone>,
+  "busy" | "failed" | "ok" | "off"
+> = {
+  error: "failed",
+  warning: "busy",
+  outline: "ok",
+  muted: "off",
+};
+
 /** Layout guess before the first measurement lands, so the panel does not flash the wrong shape. */
 const ASSUMED_WIDTH_MAXIMIZED = 1200;
 const ASSUMED_WIDTH_INLINE = 420;
@@ -199,6 +213,7 @@ export function ZeropsDataPanel({
 }: ZeropsDataPanelProps) {
   const environmentId = threadRef?.environmentId ?? null;
   const session = useZeropsDataConsole(environmentId);
+  const topology = useProjectTopology(environmentId);
   const callDataConsole = useAtomCommand(
     zeropsCommands.dataConsoleCall,
     "zerops data console call",
@@ -794,7 +809,8 @@ export function ZeropsDataPanel({
         </div>
         {sessionLine ?? (
           <div className="space-y-1" data-zerops-data-services>
-            {(services ?? []).map((entry) => {
+            {joinServicesWithTopology(services ?? [], topology.view?.services).map((row) => {
+              const entry = row.service;
               const rowAffordances = resolveServiceAffordances(entry);
               return (
                 <button
@@ -808,7 +824,16 @@ export function ZeropsDataPanel({
                   type="button"
                 >
                   <span className="flex w-full items-center justify-between gap-1">
-                    <span className="truncate">{entry.hostname}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {row.topologyService !== undefined ? (
+                        <StatusDot
+                          data-zerops-data-service-status
+                          label={zeropsStatusWord(row.topologyService.status)}
+                          tone={STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]}
+                        />
+                      ) : null}
+                      <span className="truncate">{entry.hostname}</span>
+                    </span>
                     {entry.support !== "supported" ? (
                       <Chip data-zerops-data-service-view-only label="View only" tone="off" />
                     ) : null}

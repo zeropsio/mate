@@ -8,6 +8,7 @@ import type {
 } from "@t3tools/contracts";
 
 import type { DataConsoleFilterDraft, DataConsoleTree } from "./dataConsole.ts";
+import type { ZeropsTopologyService } from "./topology.ts";
 import {
   applyTablePage,
   applyTreePage,
@@ -31,6 +32,7 @@ import {
   hasActiveFilters,
   INITIAL_DATA_CONSOLE_STATE,
   isNodeUnloaded,
+  joinServicesWithTopology,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -405,6 +407,55 @@ describe("formatCell", () => {
 const service = (
   actions: ZeropsDataConsoleService["actions"] = [],
 ): Pick<ZeropsDataConsoleService, "actions"> => ({ actions });
+
+const consoleService = (hostname: string): ZeropsDataConsoleService => ({
+  hostname,
+  type: "postgresql@17",
+  family: "tabular",
+  support: "supported",
+  actions: [],
+  status: "ACTIVE",
+});
+
+const topologyService = (
+  overrides: Partial<ZeropsTopologyService> & { hostname: string },
+): ZeropsTopologyService => ({
+  serviceId: `svc-${overrides.hostname}`,
+  type: "postgresql@17",
+  status: "ACTIVE",
+  group: "data",
+  transient: false,
+  routes: [],
+  ports: [],
+  ...overrides,
+});
+
+describe("joinServicesWithTopology", () => {
+  it("orders console services by the topology's order when a topology view is present", () => {
+    const rows = joinServicesWithTopology(
+      [consoleService("b"), consoleService("a")],
+      [topologyService({ hostname: "a" }), topologyService({ hostname: "b" })],
+    );
+    expect(rows.map((row) => row.service.hostname)).toEqual(["a", "b"]);
+    expect(rows[0]?.topologyService?.hostname).toBe("a");
+    expect(rows[1]?.topologyService?.hostname).toBe("b");
+  });
+
+  it("puts console services with no topology match last, without a topologyService", () => {
+    const rows = joinServicesWithTopology(
+      [consoleService("orphan"), consoleService("a")],
+      [topologyService({ hostname: "a" })],
+    );
+    expect(rows.map((row) => row.service.hostname)).toEqual(["a", "orphan"]);
+    expect(rows[1]?.topologyService).toBeUndefined();
+  });
+
+  it("renders console order untouched while the topology view is undefined", () => {
+    const rows = joinServicesWithTopology([consoleService("b"), consoleService("a")], undefined);
+    expect(rows.map((row) => row.service.hostname)).toEqual(["b", "a"]);
+    expect(rows.every((row) => row.topologyService === undefined)).toBe(true);
+  });
+});
 
 describe("resolveServiceAffordances", () => {
   it("derives canQuery/canReadTable/canBrowse from enabled actions, never from family/support", () => {

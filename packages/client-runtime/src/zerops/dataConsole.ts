@@ -21,6 +21,8 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 
+import type { ZeropsTopologyService } from "./topology.ts";
+
 // ---------------------------------------------------------------------------
 // Session fold
 // ---------------------------------------------------------------------------
@@ -303,6 +305,45 @@ export function resolveServiceAffordances(
     canReadTable,
     ...(vpnGateReason ? { vpnGateReason } : {}),
   };
+}
+
+/** One picker row: a console service, joined to the platform topology's matching service by hostname when there is one. */
+export interface DataConsoleServiceRow {
+  readonly service: ZeropsDataConsoleService;
+  readonly topologyService: ZeropsTopologyService | undefined;
+}
+
+/**
+ * Orders the console's service list the way the platform topology orders
+ * its own services, so the Data picker reads the same as the service map.
+ * A console service with no topology match (the topology view has not
+ * loaded yet, or the service isn't one the topology knows about) sorts
+ * after every matched row, in its original console order, and carries no
+ * `topologyService` — the picker renders it without a status chip.
+ * `topologyServices === undefined` (the topology view hasn't loaded) leaves
+ * the console's own order untouched.
+ */
+export function joinServicesWithTopology(
+  services: ReadonlyArray<ZeropsDataConsoleService>,
+  topologyServices: ReadonlyArray<ZeropsTopologyService> | undefined,
+): ReadonlyArray<DataConsoleServiceRow> {
+  if (topologyServices === undefined) {
+    return services.map((service) => ({ service, topologyService: undefined }));
+  }
+  const byHostname = new Map(services.map((service) => [service.hostname, service]));
+  const matchedHostnames = new Set<string>();
+  const rows: DataConsoleServiceRow[] = [];
+  for (const topologyService of topologyServices) {
+    const service = byHostname.get(topologyService.hostname);
+    if (service === undefined) continue;
+    matchedHostnames.add(topologyService.hostname);
+    rows.push({ service, topologyService });
+  }
+  for (const service of services) {
+    if (matchedHostnames.has(service.hostname)) continue;
+    rows.push({ service, topologyService: undefined });
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------

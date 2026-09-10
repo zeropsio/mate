@@ -18,6 +18,7 @@ import { visitElements } from "../../test/reactElementTree";
 
 const feedState = vi.hoisted(() => ({
   session: undefined as unknown,
+  topology: { view: undefined } as { view: unknown },
 }));
 
 const commandSpy = vi.hoisted(() => vi.fn());
@@ -39,6 +40,10 @@ vi.mock("react/compiler-runtime", async () => {
 
 vi.mock("../../zerops/useZeropsFeeds", () => ({
   useZeropsDataConsole: () => feedState.session,
+}));
+
+vi.mock("../../zerops/useProjectTopology", () => ({
+  useProjectTopology: () => feedState.topology,
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
@@ -227,6 +232,7 @@ describe("ZeropsDataPanel", () => {
     onAddContext.mockReset();
     onToggleMaximized.mockReset();
     feedState.session = undefined;
+    feedState.topology = { view: undefined };
   });
 
   it("renders nothing for a null thread", () => {
@@ -416,6 +422,57 @@ describe("ZeropsDataPanel", () => {
       expect(row.props.disabled).toBe(true);
       (row.props.onClick as () => void)();
       expect(onOpenService).not.toHaveBeenCalled();
+    });
+
+    it("orders rows by the platform topology and shows the topology status dot for a matched row", async () => {
+      const secondService: ZeropsDataConsoleService = { ...SERVICE_SUPPORTED, hostname: "db2" };
+      feedState.topology = {
+        view: {
+          services: [
+            { hostname: "db2", status: "ACTIVE", transient: false },
+            { hostname: "db1", status: "ACTIVE", transient: false },
+          ],
+        },
+      };
+      const tree = await picker([SERVICE_SUPPORTED, secondService]);
+      const serviceRows: string[] = [];
+      visitElements(tree, (element) => {
+        const hostname = element.props["data-zerops-data-service"] as string | undefined;
+        if (hostname !== undefined) serviceRows.push(hostname);
+        return false;
+      });
+      expect(serviceRows).toEqual(["db2", "db1"]);
+      const statusDots = allComponents(tree, StatusDot);
+      expect(statusDots).toHaveLength(2);
+      expect((statusDots[0]!.props as { label: string }).label).toBe("Active");
+    });
+
+    it("puts a console service with no topology match last, without a status dot", async () => {
+      feedState.topology = {
+        view: { services: [{ hostname: "db1", status: "ACTIVE", transient: false }] },
+      };
+      const orphan: ZeropsDataConsoleService = { ...SERVICE_SUPPORTED, hostname: "orphan" };
+      const tree = await picker([orphan, SERVICE_SUPPORTED]);
+      const serviceRows: string[] = [];
+      visitElements(tree, (element) => {
+        const hostname = element.props["data-zerops-data-service"] as string | undefined;
+        if (hostname !== undefined) serviceRows.push(hostname);
+        return false;
+      });
+      expect(serviceRows).toEqual(["db1", "orphan"]);
+      expect(allComponents(tree, StatusDot)).toHaveLength(1);
+    });
+
+    it("renders console order and no status dots while the topology view has not loaded", async () => {
+      const tree = await picker([SERVICE_VIEW_ONLY, SERVICE_SUPPORTED]);
+      const serviceRows: string[] = [];
+      visitElements(tree, (element) => {
+        const hostname = element.props["data-zerops-data-service"] as string | undefined;
+        if (hostname !== undefined) serviceRows.push(hostname);
+        return false;
+      });
+      expect(serviceRows).toEqual(["kv1", "db1"]);
+      expect(allComponents(tree, StatusDot)).toHaveLength(0);
     });
   });
 
