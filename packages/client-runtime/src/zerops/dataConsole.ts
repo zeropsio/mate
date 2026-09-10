@@ -382,14 +382,15 @@ export function listingFor(
     case "stream":
       return "streams";
     case "kv":
-      // A string key (`kind: "blob"`) opens the existing blob preview, not a
-      // listing. A stream-typed key can't be browsed at all (still true
-      // today) — both fall back to "tree" so the panel's existing handling
-      // for those two cases is untouched.
-      if (node !== null && node.kind === "blob") return "tree";
-      if (node !== null && node.kind === "tabular" && node.meta?.entryType === "stream")
-        return "tree";
-      return "keys";
+      // Only a namespace (`container`, or the root) lists — a leaf key
+      // (`blob`: a string, opens the existing blob preview; `tabular`: a
+      // hash/list/set/zset's own entries, or a stream key that can't be
+      // browsed, both already fetched by the existing generic `table`
+      // request the same way a tabular family's table is) falls back to
+      // "tree" so the panel's pre-existing handling for a selected leaf is
+      // untouched — this listing is for one level's own child keys, not a
+      // key's own entries.
+      return node === null || node.kind === "container" ? "keys" : "tree";
     default:
       // "tabular" (postgresql/mariadb/clickhouse) is unchanged; "file" and
       // "unknown" have no affordances either way.

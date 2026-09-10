@@ -1424,4 +1424,182 @@ describe("ZeropsDataPanel", () => {
       );
     });
   });
+
+  describe("family-shaped listing", () => {
+    const SERVICE_OBJECT: ZeropsDataConsoleService = {
+      hostname: "db1",
+      type: "object-storage",
+      family: "object",
+      support: "supported",
+      actions: [{ id: "readBlob", enabled: true, readOnly: true, reason: "" }],
+      status: "running",
+    };
+
+    const SERVICE_KV: ZeropsDataConsoleService = {
+      hostname: "db1",
+      type: "valkey",
+      family: "kv",
+      support: "supported",
+      actions: [{ id: "readBlob", enabled: true, readOnly: true, reason: "" }],
+      status: "running",
+    };
+
+    const PREFIX_NODE: ZeropsDataConsoleNode = {
+      name: "uploads",
+      kind: "container",
+      path: { service: "db1", segments: ["uploads"] },
+      hasChildren: true,
+      meta: {},
+    };
+
+    const BLOB_NODE: ZeropsDataConsoleNode = {
+      name: "photo.png",
+      kind: "blob",
+      path: { service: "db1", segments: ["photo.png"] },
+      hasChildren: false,
+      meta: { size: 2048, contentType: "image/png" },
+    };
+
+    const NAMESPACE_NODE: ZeropsDataConsoleNode = {
+      name: "cache",
+      kind: "container",
+      path: { service: "db1", segments: ["cache"] },
+      hasChildren: true,
+      meta: {},
+    };
+
+    function respondTree(
+      services: readonly ZeropsDataConsoleService[],
+      byPathKey: Record<string, ZeropsDataConsoleResponse>,
+    ) {
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) => {
+        if (args.input.kind === "services" || args.input.kind === "refresh") {
+          return Promise.resolve(AsyncResult.success(servicesResponse(services)));
+        }
+        if (args.input.kind === "tree") {
+          const response = byPathKey[treePathKey(args.input.path)];
+          return Promise.resolve(
+            AsyncResult.success(response ?? (EMPTY_TREE_RESPONSE as ZeropsDataConsoleResponse)),
+          );
+        }
+        return Promise.resolve(AsyncResult.success(EMPTY_TREE_RESPONSE));
+      });
+    }
+
+    const ROOT_KEY = treePathKey({ service: "db1", segments: [] });
+
+    it("an object-storage root lists its own blobs and prefixes together as a grid, name/size/modified/contentType", async () => {
+      respondTree([SERVICE_OBJECT], {
+        [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
+      });
+      await serviceTab();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+
+      const table = findComponent<{
+        readonly model: {
+          readonly columns: ReadonlyArray<{ readonly name: string }>;
+          readonly rows: ReadonlyArray<ReadonlyArray<unknown>>;
+        };
+      }>(tree, ZeropsDataTable)!;
+      expect(table.props.model.columns.map((c) => c.name)).toEqual([
+        "name",
+        "size",
+        "modified",
+        "contentType",
+      ]);
+      // Sorted (numeric-aware, by name): "photo.png" before "uploads/".
+      expect(table.props.model.rows).toEqual([
+        ["photo.png", "2 KB", "", "image/png"],
+        ["uploads/", "", "", ""],
+      ]);
+    });
+
+    it("hides blobs from the object-storage tree — only prefixes show there", async () => {
+      respondTree([SERVICE_OBJECT], {
+        [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
+      });
+      const tree = await serviceTab();
+
+      const treeComponent = findComponent<{
+        readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
+      }>(tree, ZeropsDataTree)!;
+      expect(treeComponent.props.nodeFilter).toBeDefined();
+      expect(treeComponent.props.nodeFilter!(PREFIX_NODE)).toBe(true);
+      expect(treeComponent.props.nodeFilter!(BLOB_NODE)).toBe(false);
+    });
+
+    it("clicking a prefix row in the object-storage grid descends — issues a tree request for its own path", async () => {
+      respondTree([SERVICE_OBJECT], {
+        [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
+      });
+      await serviceTab();
+      // `serviceTab`'s own render captures the root tree request while it's
+      // still in flight (the response lands during its trailing flush) — one
+      // more render picks up the settled root listing this test clicks into.
+      const tree = render({ service: "db1", widthForTest: 1200 });
+      commandSpy.mockClear();
+
+      const table = findComponent<{ readonly onOpenRow: (rowIndex: number) => void }>(
+        tree,
+        ZeropsDataTable,
+      )!;
+      // The tree model sorts a level's nodes by name (numeric-aware): "photo.png" < "uploads".
+      table.props.onOpenRow(1); // PREFIX_NODE is row 1
+
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: { kind: "tree", path: PREFIX_NODE.path },
+      });
+    });
+
+    it("clicking a blob row in the object-storage grid opens its preview", async () => {
+      respondTree([SERVICE_OBJECT], {
+        [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
+      });
+      await serviceTab();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+      commandSpy.mockClear();
+
+      const table = findComponent<{ readonly onOpenRow: (rowIndex: number) => void }>(
+        tree,
+        ZeropsDataTable,
+      )!;
+      table.props.onOpenRow(0); // BLOB_NODE ("photo.png") sorts before PREFIX_NODE ("uploads")
+
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: { kind: "blob", path: BLOB_NODE.path },
+      });
+    });
+
+    it("a KV namespace root lists its own child keys as a grid, key/type/ttl/count", async () => {
+      respondTree([SERVICE_KV], {
+        [ROOT_KEY]: { kind: "tree", nodes: [NAMESPACE_NODE], nextCursor: "" },
+      });
+      await serviceTab();
+      const tree = render({ service: "db1", widthForTest: 1200 });
+
+      const table = findComponent<{
+        readonly model: {
+          readonly columns: ReadonlyArray<{ readonly name: string }>;
+          readonly rows: ReadonlyArray<ReadonlyArray<unknown>>;
+        };
+      }>(tree, ZeropsDataTable)!;
+      expect(table.props.model.columns.map((c) => c.name)).toEqual(["key", "type", "ttl", "count"]);
+      expect(table.props.model.rows).toEqual([["cache", "", "", ""]]);
+    });
+
+    it("leaves the tree unfiltered and the tabular/blob path untouched for a plain tabular service", async () => {
+      respondTree([SERVICE_SUPPORTED], {
+        [ROOT_KEY]: { kind: "tree", nodes: [], nextCursor: "" },
+      });
+      const tree = await serviceTab();
+
+      expect(findComponent(tree, ZeropsDataTable)).toBeNull();
+      const treeComponent = findComponent<{
+        readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
+      }>(tree, ZeropsDataTree)!;
+      expect(treeComponent.props.nodeFilter).toBeUndefined();
+    });
+  });
 });

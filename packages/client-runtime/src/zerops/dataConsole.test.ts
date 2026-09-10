@@ -463,16 +463,17 @@ describe("listingFor", () => {
     expect(listingFor({ family: "stream" }, null)).toBe("streams");
   });
 
-  it("is keys for a kv service's namespace root or a collection key", () => {
+  it("is keys for a kv service's namespace root or a nested namespace", () => {
     expect(listingFor({ family: "kv" }, null)).toBe("keys");
-    expect(
-      listingFor({ family: "kv" }, listingNode({ kind: "tabular", meta: { entryType: "hash" } })),
-    ).toBe("keys");
+    expect(listingFor({ family: "kv" }, listingNode({ kind: "container" }))).toBe("keys");
   });
 
-  it("falls back to tree for a kv string key (blob preview) and a kv stream key (unbrowsable)", () => {
+  it("falls back to tree for any selected leaf key — a hash/list/set/zset's own entries, a string (blob preview) and a stream (unbrowsable) all already reach the panel's existing generic table/blob handling", () => {
     expect(
       listingFor({ family: "kv" }, listingNode({ kind: "blob", meta: { entryType: "string" } })),
+    ).toBe("tree");
+    expect(
+      listingFor({ family: "kv" }, listingNode({ kind: "tabular", meta: { entryType: "hash" } })),
     ).toBe("tree");
     expect(
       listingFor({ family: "kv" }, listingNode({ kind: "tabular", meta: { entryType: "stream" } })),

@@ -95,6 +95,9 @@ import {
   hasActiveFilters,
   isNodeUnloaded,
   joinServicesWithTopology,
+  kvListingModel,
+  listingFor,
+  objectListingModel,
   resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
@@ -103,6 +106,7 @@ import {
   treePathKey,
   visibleSegments,
   type DataConsoleFilter,
+  type DataConsoleNodeListing,
   type DataConsoleTableModel,
   type DataConsoleTree,
   type SortDirection,
@@ -517,6 +521,33 @@ export function ZeropsDataPanel({
     }
   };
 
+  // Selecting a container for its own family-shaped listing (an object
+  // storage prefix, a KV namespace) issues no request of its own — it's the
+  // same `tree` page the tree pane would ask for at this level, read back
+  // via `listingEntry` below. Expanding it too keeps the tree in sync with
+  // what the grid is now showing, so a step back down into it (the tree
+  // toggle) never re-fetches something already on screen.
+  const handleSelectContainer = (node: ZeropsDataConsoleNode) => {
+    resetSelection();
+    setSelectedNode(node);
+    setTree((current) => expandTreePath(current, node.path));
+    if (isNodeUnloaded(tree, node)) {
+      loadTreePage(node.path);
+    }
+  };
+
+  // A listing grid's row is a plain node, not a fetched table row: a
+  // container descends the same way a tree click would, a leaf reuses the
+  // existing selection handler (a blob opens its preview, a kv collection
+  // key opens its own entries through the generic tabular path).
+  const handleOpenListingRow = (node: ZeropsDataConsoleNode) => {
+    if (node.kind === "container") {
+      handleSelectContainer(node);
+    } else {
+      handleSelectNode(node);
+    }
+  };
+
   // A breadcrumb other than the last one is a step back up the path: it drops
   // the current node (in the narrow layout that is the way back to the tree)
   // and makes sure the container it names is expanded and loaded.
@@ -855,6 +886,26 @@ export function ZeropsDataPanel({
   }
 
   const currentPath: ZeropsDataConsolePath = selectedNode?.path ?? { service, segments: [] };
+
+  // The family-shaped listing (`listingFor`, client-runtime): a container
+  // (or the root, `selectedNode === null`) of an object-storage/KV service
+  // gets its own children rendered as a grid instead of the generic
+  // tabular/blob handling above. `listingEntry` is the same tree page the
+  // tree pane itself reads for this path — this issues no request of its
+  // own, "Load more" pages the tree the same way expanding it would.
+  const listingKind = selectedService === null ? "tree" : listingFor(selectedService, selectedNode);
+  const listingEntry = tree.entries[treePathKey(currentPath)];
+  const nodeListing: DataConsoleNodeListing | null =
+    listingKind === "objects"
+      ? objectListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
+      : listingKind === "keys"
+        ? kvListingModel(listingEntry?.nodes ?? [], listingEntry?.nextCursor)
+        : null;
+  const listingLoadMorePending = pendingTreeKeys.has(treePathKey(currentPath));
+  const containerSelectable =
+    selectedService !== null &&
+    (selectedService.family === "object" || selectedService.family === "kv");
+
   const browsable = affordances?.canBrowse === true;
   const awaitingMissingServiceRefresh =
     serviceIsMissing && missingServiceRefreshed !== missingServiceKey;
@@ -896,6 +947,17 @@ export function ZeropsDataPanel({
         rootPath={{ service, segments: [] }}
         tree={tree}
         {...(selectedNode ? { selectedNodeKey: treePathKey(selectedNode.path) } : {})}
+        {...(selectedService?.family === "object"
+          ? { nodeFilter: (node: ZeropsDataConsoleNode) => node.kind !== "blob" }
+          : {})}
+        {...(containerSelectable
+          ? {
+              onSelectContainer: handleSelectContainer,
+              ...(selectedNode?.kind === "container"
+                ? { selectedContainerKey: treePathKey(selectedNode.path) }
+                : {}),
+            }
+          : {})}
       />
     </div>
   );
@@ -1017,6 +1079,22 @@ export function ZeropsDataPanel({
         toolbarTrailing={sqlToggle}
         {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(querySort ? { sort: querySort } : {})}
+      />
+    ) : nodeListing !== null ? (
+      <ZeropsDataTable
+        loadMorePending={listingLoadMorePending}
+        model={nodeListing.model}
+        onLoadMore={() => {
+          if (nodeListing.model.nextCursor !== undefined) {
+            handleLoadMoreTree(currentPath, nodeListing.model.nextCursor);
+          }
+        }}
+        onOpenRow={(rowIndex) => {
+          const node = nodeListing.nodes[rowIndex];
+          if (node !== undefined) handleOpenListingRow(node);
+        }}
+        onSort={() => {}}
+        scrollRegionRef={gridScrollRef}
       />
     ) : selectedNode?.kind === "tabular" ? (
       <ZeropsDataTable
@@ -1187,7 +1265,7 @@ export function ZeropsDataPanel({
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col px-3" data-zerops-data-browse>
-          {selectedNode === null && queryState === undefined ? (
+          {selectedNode === null && queryState === undefined && nodeListing === null ? (
             <div className="min-h-0 flex-1 overflow-y-auto">{treeView}</div>
           ) : (
             contentPane
