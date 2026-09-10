@@ -32,6 +32,7 @@ import {
   buildZeropsGroupTree,
   hasMate,
   mateEnvironmentsEmptyReason,
+  rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
   type ZeropsEnvironmentRole,
@@ -130,7 +131,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
   ];
-  const view = buildZeropsGroupTree(everyEnvironment);
+  const view = buildZeropsGroupTree(everyEnvironment, { rank: rankZeropsCandidateForListing });
   const tints = assignCandidateMateTints(candidates);
 
   const toggle = (groupId: string) => {
