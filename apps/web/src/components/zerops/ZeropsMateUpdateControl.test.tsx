@@ -1,6 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { MateUpdateState } from "../../zerops/useZeropsMateUpdate";
 
@@ -18,8 +18,15 @@ const environmentState = vi.hoisted(() => ({
         };
       },
 }));
-const mateUpdateState = vi.hoisted<{ state: MateUpdateState }>(() => ({
+const mateUpdateState = vi.hoisted<{
+  state: MateUpdateState;
+  checked:
+    | { installed: string; latest: string; available: boolean; checkedAt: string }
+    | null
+    | undefined;
+}>(() => ({
   state: { phase: "idle" },
+  checked: undefined,
 }));
 
 vi.mock("../../state/environments", () => ({
@@ -35,6 +42,8 @@ vi.mock("../../zerops/useZeropsMateUpdate", () => ({
     request: () => {},
     confirm: () => {},
     cancel: () => {},
+    checked: mateUpdateState.checked,
+    check: () => {},
   }),
 }));
 
@@ -45,12 +54,14 @@ const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
 function render() {
   return renderToStaticMarkup(
     <ZeropsMateUpdateControl environmentId={ENVIRONMENT_ID}>
-      {({ line, menuAction }) => (
+      {({ line, menuActions }) => (
         <>
           {line}
-          {menuAction === null ? null : (
-            <span data-zerops-surface="mate-update-menu-action">{menuAction.label}</span>
-          )}
+          {menuActions.map((action) => (
+            <span key={action.id} data-zerops-surface={`mate-update-menu-action-${action.id}`}>
+              {action.label}
+            </span>
+          ))}
         </>
       )}
     </ZeropsMateUpdateControl>,
@@ -58,12 +69,17 @@ function render() {
 }
 
 describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §2.9, MU-2)", () => {
+  beforeEach(() => {
+    mateUpdateState.state = { phase: "idle" };
+    mateUpdateState.checked = undefined;
+  });
+
   it("renders nothing before the environment's descriptor has been read", () => {
     environmentState.environment = undefined;
     expect(render()).toBe("");
   });
 
-  it("shows the installed version alone, no verb, without mateUpdate capability", () => {
+  it("shows the installed version alone, no verb, no menu, without mateUpdate capability", () => {
     environmentState.environment = {
       serverVersion: "0.8.0",
       capabilities: {},
@@ -72,9 +88,10 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     const html = render();
     expect(html).toContain("Server 0.8.0");
     expect(html).not.toContain(">Update<");
+    expect(html).not.toContain("Check for updates");
   });
 
-  it("shows the line with no verb when nothing is available to update", () => {
+  it("shows the line with no verb, but still offers Check for updates, when nothing is available", () => {
     environmentState.environment = {
       serverVersion: "0.8.1",
       capabilities: { mateUpdate: true },
@@ -83,6 +100,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     const html = render();
     expect(html).toContain("Server 0.8.1");
     expect(html).not.toContain(">Update<");
+    expect(html).toContain("Check for updates");
   });
 
   it("offers Update only when capable and an update is available", () => {
@@ -96,8 +114,10 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Server 0.8.0");
     expect(html).toContain('data-zerops-surface="mate-update-role"');
     expect(html).toContain(">Update<");
-    expect(html).toContain('data-zerops-surface="mate-update-menu-action"');
+    expect(html).toContain('data-zerops-surface="mate-update-menu-action-update"');
     expect(html).toContain("Update to 0.8.1");
+    expect(html).toContain('data-zerops-surface="mate-update-menu-action-check-for-updates"');
+    expect(html).toContain("Check for updates");
   });
 
   it("in confirm, offers Update and Keep running with the running-threads warning", () => {
@@ -113,7 +133,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain("Keep running");
     // The menu offers its own request while idle only; a confirm already
     // under way on the line is not also offered as a fresh menu click.
-    expect(html).not.toContain('data-zerops-surface="mate-update-menu-action"');
+    expect(html).not.toContain('data-zerops-surface="mate-update-menu-action-update"');
+    // Check for updates stays offered regardless of the update flow's phase.
+    expect(html).toContain('data-zerops-surface="mate-update-menu-action-check-for-updates"');
   });
 
   it("shows the failure message inline, never a toast surface", () => {
@@ -126,5 +148,34 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     const html = render();
     expect(html).toContain('data-zerops-surface="mate-update-error"');
     expect(html).toContain("zcp mate update exited 1");
+  });
+
+  it("shows 'Checking…', disabled, while a check is running", () => {
+    environmentState.environment = {
+      serverVersion: "0.8.1",
+      capabilities: { mateUpdate: true },
+      update: { installed: "0.8.1", latest: "0.8.1", available: false, checkedAt: "now" },
+    };
+    mateUpdateState.state = { phase: "checking" };
+    const html = render();
+    expect(html).toContain("Checking…");
+    expect(html).not.toContain("Check for updates");
+  });
+
+  it("an available checked result overrides the descriptor's own update field (MU-1)", () => {
+    environmentState.environment = {
+      serverVersion: "0.8.1",
+      capabilities: { mateUpdate: true },
+      update: { installed: "0.8.1", latest: "0.8.1", available: false, checkedAt: "now" },
+    };
+    mateUpdateState.checked = {
+      installed: "0.8.1",
+      latest: "0.8.2",
+      available: true,
+      checkedAt: "later",
+    };
+    const html = render();
+    expect(html).toContain(">Update<");
+    expect(html).toContain("Update to 0.8.2");
   });
 });

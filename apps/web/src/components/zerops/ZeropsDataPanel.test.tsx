@@ -21,6 +21,15 @@ const feedState = vi.hoisted(() => ({
   topology: { view: undefined } as { view: unknown },
 }));
 
+const environmentState = vi.hoisted(() => ({
+  // undefined = descriptor not read yet, treated as supported (never flashes
+  // unsupported before the capability is known); the tests that care about
+  // an old Mate set this to a descriptor with `dataConsole` false/absent.
+  environment: undefined as
+    | undefined
+    | { readonly serverVersion: string; readonly capabilities: { dataConsole?: boolean } },
+}));
+
 const commandSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("react", async (importOriginal) => {
@@ -44,6 +53,24 @@ vi.mock("../../zerops/useZeropsFeeds", () => ({
 
 vi.mock("../../zerops/useProjectTopology", () => ({
   useProjectTopology: () => feedState.topology,
+}));
+
+vi.mock("../../state/environments", () => ({
+  useEnvironment: () =>
+    environmentState.environment === undefined
+      ? null
+      : { serverConfig: { environment: environmentState.environment } },
+}));
+
+vi.mock("./ZeropsMateUpdateControl", () => ({
+  ZeropsMateUpdateControl: ({
+    children,
+  }: {
+    readonly children: (view: {
+      readonly line: unknown;
+      readonly menuActions: readonly unknown[];
+    }) => unknown;
+  }) => children({ line: "mate-update-line", menuActions: [] }),
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
@@ -233,10 +260,55 @@ describe("ZeropsDataPanel", () => {
     onToggleMaximized.mockReset();
     feedState.session = undefined;
     feedState.topology = { view: undefined };
+    environmentState.environment = undefined;
   });
 
   it("renders nothing for a null thread", () => {
     expect(render({ threadRef: null })).toBeNull();
+  });
+
+  describe("data console capability (version skew)", () => {
+    it("shows the unsupported block, never issues a request, when the Mate lacks dataConsole", () => {
+      environmentState.environment = {
+        serverVersion: "0.8.0",
+        capabilities: { dataConsole: false },
+      };
+      const tree = render();
+      const unsupported = findByAttribute(tree, "data-zerops-surface");
+      expect(unsupported?.props["data-zerops-surface"]).toBe("data-console-unsupported");
+      expect(commandSpy).not.toHaveBeenCalled();
+    });
+
+    it("shows the unsupported block when the capability is entirely absent (older Mate)", () => {
+      environmentState.environment = { serverVersion: "0.8.0", capabilities: {} };
+      const tree = render();
+      const unsupported = findByAttribute(tree, "data-zerops-surface");
+      expect(unsupported?.props["data-zerops-surface"]).toBe("data-console-unsupported");
+      expect(commandSpy).not.toHaveBeenCalled();
+    });
+
+    it("behaves normally once the capability reads true", async () => {
+      environmentState.environment = {
+        serverVersion: "0.9.0",
+        capabilities: { dataConsole: true },
+      };
+      feedState.session = { status: "idle" };
+      commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
+      render();
+      await flush();
+      expect(commandSpy).toHaveBeenCalled();
+    });
+
+    it("behaves normally before the descriptor has been read at all", () => {
+      environmentState.environment = undefined;
+      feedState.session = undefined;
+      commandSpy.mockImplementation(() => new Promise(() => {}));
+      const tree = render();
+      const unsupported = findByAttribute(tree, "data-zerops-surface");
+      expect(unsupported).toBeNull();
+      const starting = findComponent<{ label: string }>(tree, StatusDot);
+      expect(starting?.props.label).toBe("Starting");
+    });
   });
 
   it("shows a starting line while idle", () => {

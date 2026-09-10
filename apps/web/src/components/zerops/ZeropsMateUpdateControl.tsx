@@ -25,8 +25,9 @@ import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 
 export interface ZeropsMateUpdateView {
   readonly line: ReactNode;
-  /** The menu's "Update to x.y.z" item, or null while none is offered. */
-  readonly menuAction: ZeropsMenuAction | null;
+  /** The menu's items for this control — "Check for updates" plus, when
+      available, "Update to x.y.z" — in the order they should appear. */
+  readonly menuActions: ReadonlyArray<ZeropsMenuAction>;
 }
 
 export function ZeropsMateUpdateControl({
@@ -39,13 +40,33 @@ export function ZeropsMateUpdateControl({
   const environment = useEnvironment(environmentId)?.serverConfig?.environment;
   const mateUpdate = useZeropsMateUpdate(environmentId, environment?.serverVersion);
 
-  if (environment === undefined) return children({ line: null, menuAction: null });
-  const line = mateUpdateLine(environment.update, environment.serverVersion);
-  const offerVerb =
-    environment.capabilities.mateUpdate === true && environment.update?.available === true;
+  if (environment === undefined) return children({ line: null, menuActions: [] });
+  // The RPC's on-demand answer, once one has run this mount; otherwise the
+  // descriptor's own field. Either way this is the server's answer, relayed
+  // as-is — MU-1: nothing here compares versions.
+  const effectiveUpdate = mateUpdate.checked ?? environment.update;
+  const line = mateUpdateLine(effectiveUpdate, environment.serverVersion);
+  const capable = environment.capabilities.mateUpdate === true;
+  const checkingNow = mateUpdate.state.phase === "checking";
+
+  const checkAction: ZeropsMenuAction = {
+    id: "check-for-updates",
+    label: checkingNow ? "Checking…" : "Check for updates",
+    onSelect: mateUpdate.check,
+    disabled: checkingNow,
+  };
+
+  if (!capable) {
+    return children({ line: <MateUpdateLine line={line} />, menuActions: [] });
+  }
+
+  const offerVerb = effectiveUpdate?.available === true;
 
   if (!offerVerb) {
-    return children({ line: <MateUpdateLine line={line} />, menuAction: null });
+    return children({
+      line: <MateUpdateLine line={line} />,
+      menuActions: [checkAction],
+    });
   }
 
   const state = mateUpdate.state;
@@ -69,17 +90,19 @@ export function ZeropsMateUpdateControl({
       </span>
     ) : state.phase === "updating" ? (
       <span className="text-muted-foreground">Updating…</span>
+    ) : state.phase === "checking" ? (
+      <ZeropsMateVerb label="Update" onClick={mateUpdate.request} />
     ) : state.phase === "already-current" ? (
       <span className="text-muted-foreground">Already up to date</span>
     ) : (
       <span className="text-muted-foreground">Updated to {state.to}</span>
     );
 
-  const menuAction: ZeropsMenuAction | null =
+  const updateAction: ZeropsMenuAction | null =
     state.phase === "idle" || state.phase === "failed"
       ? {
           id: "update",
-          label: `Update to ${environment.update?.latest ?? ""}`,
+          label: `Update to ${effectiveUpdate?.latest ?? ""}`,
           onSelect: mateUpdate.request,
         }
       : null;
@@ -98,6 +121,6 @@ export function ZeropsMateUpdateControl({
         ) : null}
       </>
     ),
-    menuAction,
+    menuActions: updateAction === null ? [checkAction] : [checkAction, updateAction],
   });
 }

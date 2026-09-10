@@ -6,6 +6,8 @@
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `mateUpdate` — server scope `exec:operate`; offered only where the
  *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
+ * - `mateCheckUpdate` — server scope: read; re-reads the manifest on demand
+ *   (spec-mate.md §2.9 step 2), gated by the same `capabilities.mateUpdate`.
  * - `dataConsoleCall` — server scope: `AuthOrchestrationReadScope` (read-only
  *   in this slice — `dataconsole-api.md` §3, spec-dataconsole.md §4.3).
  *
@@ -39,10 +41,21 @@ export function createZeropsCommandAtoms<R, E>(
     label: "environment-data:zerops:mate:update",
     tag: WS_METHODS.zeropsMateUpdate,
   });
+  const mateCheckUpdate = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:mate:checkUpdate",
+    tag: WS_METHODS.zeropsMateCheckUpdate,
+  });
   const dataConsoleCall = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:dataConsoleCall",
     tag: WS_METHODS.zeropsDataConsoleCall,
   });
 
-  return { agentLoginStart, agentLoginCancel, browserInput, mateUpdate, dataConsoleCall };
+  return {
+    agentLoginStart,
+    agentLoginCancel,
+    browserInput,
+    mateUpdate,
+    mateCheckUpdate,
+    dataConsoleCall,
+  };
 }

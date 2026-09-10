@@ -135,6 +135,7 @@ import { Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type { TerminalContextSelection } from "../../lib/terminalContext";
+import { useEnvironment } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
@@ -148,6 +149,7 @@ import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataRowDrawer } from "./ZeropsDataRowDrawer";
 import { ZeropsDataTable, type ZeropsDataTableSort } from "./ZeropsDataTable";
 import { ZeropsDataTree } from "./ZeropsDataTree";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 
 export interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -218,8 +220,15 @@ export function ZeropsDataPanel({
   widthForTest,
 }: ZeropsDataPanelProps) {
   const environmentId = threadRef?.environmentId ?? null;
-  const session = useZeropsDataConsole(environmentId);
-  const topology = useProjectTopology(environmentId);
+  // Absent on a Mate too old to have the data console at all (the
+  // version-skew rule: missing means unsupported) — read before the
+  // session/topology subscriptions so those never fire when this Mate can't
+  // answer `zerops.dataConsole.call` in the first place.
+  const environment = useEnvironment(environmentId)?.serverConfig?.environment;
+  const dataConsoleSupported =
+    environment === undefined || environment.capabilities.dataConsole === true;
+  const session = useZeropsDataConsole(dataConsoleSupported ? environmentId : null);
+  const topology = useProjectTopology(dataConsoleSupported ? environmentId : null);
   const callDataConsole = useAtomCommand(
     zeropsCommands.dataConsoleCall,
     "zerops data console call",
@@ -318,6 +327,24 @@ export function ZeropsDataPanel({
 
   if (environmentId === null) {
     return null;
+  }
+
+  if (!dataConsoleSupported) {
+    return (
+      <FlatCard
+        className="space-y-2 p-3"
+        data-zerops-data-panel="picker"
+        data-zerops-surface="data-console-unsupported"
+      >
+        <MicroLabel>Data</MicroLabel>
+        <p className="text-muted-foreground text-xs">
+          This Mate doesn't include the data console yet.
+        </p>
+        <ZeropsMateUpdateControl environmentId={environmentId}>
+          {({ line }) => line}
+        </ZeropsMateUpdateControl>
+      </FlatCard>
+    );
   }
   const env = environmentId;
 
@@ -1230,9 +1257,7 @@ export function ZeropsDataPanel({
         {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(querySort ? { sort: querySort } : {})}
       />
-    ) : listingKind ===
-      "streams" ? // accident of `nodeListing` staying `null` the way it does for "tree". // alike, which this branch makes an explicit decision rather than an // region never shows for this family, root or a selected stream // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid // A stream's own view is the metadata blob preview below
-    null : nodeListing !== null ? (
+    ) : listingKind === "streams" ? null : nodeListing !== null ? ( // accident of `nodeListing` staying `null` the way it does for "tree". // alike, which this branch makes an explicit decision rather than an // region never shows for this family, root or a selected stream // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid // A stream's own view is the metadata blob preview below
       <ZeropsDataTable
         loadMorePending={listingLoadMorePending}
         model={nodeListing.model}

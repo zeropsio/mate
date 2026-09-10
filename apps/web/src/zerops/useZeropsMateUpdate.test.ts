@@ -11,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { reactHookHarness } from "../test/reactHookHarness";
 
 const commandSpy = vi.hoisted(() => vi.fn());
+const checkCommandSpy = vi.hoisted(() => vi.fn());
+const MATE_UPDATE_TAG = vi.hoisted(() => Symbol("mateUpdate"));
+const MATE_CHECK_UPDATE_TAG = vi.hoisted(() => Symbol("mateCheckUpdate"));
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -24,11 +27,11 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("../state/use-atom-command", () => ({
-  useAtomCommand: () => commandSpy,
+  useAtomCommand: (tag: symbol) => (tag === MATE_CHECK_UPDATE_TAG ? checkCommandSpy : commandSpy),
 }));
 
 vi.mock("../state/zeropsCommands", () => ({
-  zeropsCommands: { mateUpdate: Symbol("mateUpdate") },
+  zeropsCommands: { mateUpdate: MATE_UPDATE_TAG, mateCheckUpdate: MATE_CHECK_UPDATE_TAG },
 }));
 
 const { useZeropsMateUpdate } = await import("./useZeropsMateUpdate");
@@ -46,6 +49,7 @@ function render(serverVersion: string | undefined) {
 beforeEach(() => {
   reactHookHarness.reset();
   commandSpy.mockReset();
+  checkCommandSpy.mockReset();
   vi.useFakeTimers();
 });
 
@@ -187,5 +191,59 @@ describe("useZeropsMateUpdate", () => {
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "failed", message: "exec:operate required" });
+  });
+
+  it("check: available update — settles to idle so the verb is offered, and holds the value", async () => {
+    checkCommandSpy.mockResolvedValue({
+      _tag: "Success",
+      value: {
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      },
+    });
+    let hook = render("0.8.0");
+    hook.check();
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "checking" });
+
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "idle" });
+    expect(hook.checked).toEqual({
+      installed: "0.8.0",
+      latest: "0.8.1",
+      available: true,
+      checkedAt: "2026-09-09T00:00:00Z",
+    });
+  });
+
+  it("check: nothing new — already-current, then idle again on its own", async () => {
+    checkCommandSpy.mockResolvedValue({ _tag: "Success", value: null });
+    let hook = render("0.8.0");
+    hook.check();
+    hook = render("0.8.0");
+    hook.check();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "already-current" });
+    expect(hook.checked).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "idle" });
+  });
+
+  it("check: a transport failure fails with the squashed cause's message", async () => {
+    checkCommandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("read scope required")),
+    });
+    let hook = render("0.8.0");
+    hook.check();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({ phase: "failed", message: "read scope required" });
   });
 });

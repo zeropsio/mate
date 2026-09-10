@@ -704,7 +704,7 @@ function ZeropsProjectsContent() {
     tags: ZeropsGroupTags,
     mate: boolean,
     action?: ZeropsRowAction,
-    updateMenuAction?: ZeropsMenuAction | null,
+    updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
     const restart = deriveZeropsRestartAction(rowInput(candidate));
@@ -732,9 +732,7 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          ...(updateMenuAction === null || updateMenuAction === undefined
-            ? []
-            : [updateMenuAction]),
+          ...(updateMenuActions ?? []),
         ]
       : [];
     return (
@@ -1504,13 +1502,13 @@ function ZeropsProjectsContent() {
             const environmentId = candidate.environmentId;
             return (
               <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
-                {({ line: updateLine, menuAction }) => (
+                {({ line: updateLine, menuActions }) => (
                   <ZeropsMateCard
                     action={startAction}
                     busy={busy}
                     face={mateFace(candidate)}
                     line={renderMateLine(candidate, presentation, action, live, busy)}
-                    menu={renderEnvironmentMenu(candidate, tags, true, action, menuAction)}
+                    menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
                     name={name}
                     onSelect={select}
                     tint={tint}
@@ -1536,7 +1534,7 @@ function ZeropsProjectsContent() {
                   />
                 )
               }
-              menu={renderEnvironmentMenu(candidate, tags, true, action, null)}
+              menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
               name={name}
               onSelect={select}
               tint={tint}

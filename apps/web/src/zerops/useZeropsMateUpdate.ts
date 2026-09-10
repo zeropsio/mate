@@ -14,7 +14,7 @@
  */
 import { useCallback, useRef, useState } from "react";
 
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { zeropsCommands } from "../state/zeropsCommands";
@@ -28,6 +28,7 @@ export type MateUpdateState =
   | { readonly phase: "idle" }
   | { readonly phase: "confirm" }
   | { readonly phase: "updating" }
+  | { readonly phase: "checking" }
   | { readonly phase: "already-current" }
   | { readonly phase: "updated"; readonly to: string }
   | { readonly phase: "failed"; readonly message: string };
@@ -37,6 +38,14 @@ export interface MateUpdate {
   readonly request: () => void;
   readonly confirm: () => void;
   readonly cancel: () => void;
+  /**
+   * The last `zerops.mate.checkUpdate` answer (spec-mate.md §2.9, "on
+   * demand" — MU-1 still holds: nothing here compares versions, it only
+   * relays what the RPC answered). `undefined` until a check has run this
+   * mount; `null` when a check ran and found nothing to report.
+   */
+  readonly checked: ExecutionEnvironmentUpdate | null | undefined;
+  readonly check: () => void;
 }
 
 function delay(ms: number): Promise<void> {
@@ -49,11 +58,16 @@ export function useZeropsMateUpdate(
   options: { readonly verifyAttempts?: number; readonly verifyIntervalMs?: number } = {},
 ): MateUpdate {
   const [state, setState] = useState<MateUpdateState>({ phase: "idle" });
+  const [checked, setChecked] = useState<ExecutionEnvironmentUpdate | null | undefined>(undefined);
   const versionRef = useRef(serverVersion);
   versionRef.current = serverVersion;
   const generationRef = useRef(0);
   const runUpdate = useAtomCommand(zeropsCommands.mateUpdate, {
     label: "zerops mate update",
+    reportFailure: false,
+  });
+  const runCheckUpdate = useAtomCommand(zeropsCommands.mateCheckUpdate, {
+    label: "zerops mate check update",
     reportFailure: false,
   });
   const attempts = options.verifyAttempts ?? VERIFY_ATTEMPTS;
@@ -123,5 +137,34 @@ export function useZeropsMateUpdate(
     })();
   }, [attempts, environmentId, intervalMs, runUpdate, settleToIdleAfter]);
 
-  return { state, request, confirm, cancel };
+  const check = useCallback(() => {
+    setState((current) =>
+      current.phase === "idle" || current.phase === "failed" || current.phase === "already-current"
+        ? { phase: "checking" }
+        : current,
+    );
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    void (async () => {
+      const result = await runCheckUpdate({ environmentId, input: {} });
+      if (generationRef.current !== generation) return;
+      if (result._tag === "Failure") {
+        const cause = squashAtomCommandFailure(result);
+        setState({
+          phase: "failed",
+          message: cause instanceof Error ? cause.message : "The check could not be started.",
+        });
+        return;
+      }
+      setChecked(result.value);
+      if (result.value?.available === true) {
+        setState({ phase: "idle" });
+        return;
+      }
+      setState({ phase: "already-current" });
+      settleToIdleAfter(generation);
+    })();
+  }, [environmentId, runCheckUpdate, settleToIdleAfter]);
+
+  return { state, request, confirm, cancel, checked, check };
 }
