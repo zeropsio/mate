@@ -77,7 +77,8 @@ export interface ZeropsDataTableSort {
 export interface ZeropsDataTableProps {
   readonly model: DataConsoleTableModel;
   readonly onLoadMore: () => void;
-  readonly onSort: (column: ZeropsDataConsoleColumn, direction: SortDirection) => void;
+  /** Absent for a grid whose columns are never sortable (a family-shaped listing's synthetic columns) — `handleSortClick` never calls it for an unsortable column anyway, so there is nothing for a caller like that to wire up. */
+  readonly onSort?: (column: ZeropsDataConsoleColumn, direction: SortDirection) => void;
   readonly onRequestCount?: () => void;
   readonly count?: number;
   readonly sort?: ZeropsDataTableSort;
@@ -213,7 +214,7 @@ export function ZeropsDataTable({
     if (!column.sortable) return;
     const direction: SortDirection =
       sort?.column === column.name && sort.direction === "asc" ? "desc" : "asc";
-    onSort(column, direction);
+    onSort?.(column, direction);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

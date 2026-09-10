@@ -563,18 +563,13 @@ describe("documentListingModel", () => {
 });
 
 describe("describeDocumentListingStatus", () => {
-  it("reads as a plain row count with no more pages", () => {
-    expect(describeDocumentListingStatus(12, false, false)).toBe("12 loaded");
+  it("reads as a plain search-result row count with no more pages", () => {
+    expect(describeDocumentListingStatus(12, false)).toBe("Search result · 12 loaded");
   });
 
   it("adds the more-available phrase when another page is behind the cursor", () => {
-    expect(describeDocumentListingStatus(12, true, false)).toBe("12 loaded · more available");
-  });
-
-  it("prefixes 'Search result ·' while a search's results are showing", () => {
-    expect(describeDocumentListingStatus(3, false, true)).toBe("Search result · 3 loaded");
-    expect(describeDocumentListingStatus(3, true, true)).toBe(
-      "Search result · 3 loaded · more available",
+    expect(describeDocumentListingStatus(12, true)).toBe(
+      "Search result · 12 loaded · more available",
     );
   });
 });

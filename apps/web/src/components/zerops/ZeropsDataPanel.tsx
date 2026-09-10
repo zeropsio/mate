@@ -1230,8 +1230,8 @@ export function ZeropsDataPanel({
         {...(gridNoticeView !== undefined ? { notice: gridNoticeView } : {})}
         {...(querySort ? { sort: querySort } : {})}
       />
-    ) : listingKind === "streams" ? // A stream's own view is the metadata blob preview below
-    // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid
+    ) : listingKind ===
+      "streams" ? // (`contentPane`'s `selectedNode?.kind === "blob"` branch) — the grid // A stream's own view is the metadata blob preview below
     // region never shows for this family, root or a selected stream
     // alike, which this branch makes an explicit decision rather than an
     // accident of `nodeListing` staying `null` the way it does for "tree".
@@ -1251,7 +1251,6 @@ export function ZeropsDataPanel({
           const node = nodeListing.nodes[rowIndex];
           if (node !== undefined) handleOpenListingRow(node);
         }}
-        onSort={() => {}}
         scrollRegionRef={gridScrollRef}
         {...(canSearchDocs
           ? {
@@ -1281,7 +1280,6 @@ export function ZeropsDataPanel({
                     {describeDocumentListingStatus(
                       nodeListing.model.rows.length,
                       nodeListing.model.nextCursor !== undefined,
-                      true,
                     )}
                   </span>
                   <Button

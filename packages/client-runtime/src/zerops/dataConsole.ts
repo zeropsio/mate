@@ -537,20 +537,14 @@ export function documentListingModel(
 }
 
 /**
- * The document listing's status row, `"N loaded"` / `"N loaded · more
- * available"` for the plain index, `"Search result · N loaded[ · more
- * available]"` while a search's results are showing in its place. Mirrors
- * the row-count phrasing already used elsewhere in this panel, so a search
- * result reads as the same kind of listing with one word telling you it's
- * filtered.
+ * A search result's status row, `"Search result · N loaded"` / `"Search
+ * result · N loaded · more available"` — the only listing that needs one
+ * of its own: the plain index listing shows `ZeropsDataTable`'s own
+ * built-in row-count bar, so this is never called for that case.
  */
-export function describeDocumentListingStatus(
-  count: number,
-  hasMore: boolean,
-  searching: boolean,
-): string {
+export function describeDocumentListingStatus(count: number, hasMore: boolean): string {
   const base = hasMore ? `${count} loaded · more available` : `${count} loaded`;
-  return searching ? `Search result · ${base}` : base;
+  return `Search result · ${base}`;
 }
 
 // ---------------------------------------------------------------------------
