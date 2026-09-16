@@ -225,3 +225,43 @@ export function resolveGroupGitea(input: {
   if (input.organizationExists === undefined) return "unknown";
   return input.organizationExists ? "ready" : "being-set-up";
 }
+
+/**
+ * Whether the registry knows about a Mate yet (guide 4.2).
+ *
+ * A member with *can create projects* may make a Mate, and may not write the
+ * registry — so their new Mate exists, runs, and has neither group reach nor a
+ * Gitea bot until an owner or admin adds it. That is a real state with a real
+ * consequence (the broker refuses `POST /mate/credential` with
+ * `not_registered`), and the row says it rather than showing a Mate that looks
+ * finished and cannot push.
+ *
+ * An owner's own creation writes the entry in the same breath, so this is
+ * `registered` before the row is ever painted.
+ */
+export type MateRegistration = "registered" | "awaiting-owner";
+
+export function resolveMateRegistration(input: {
+  readonly registry: ZeropsRegistry;
+  readonly projectId: string;
+}): MateRegistration {
+  const registered = input.registry.groups.some((group) =>
+    group.projects.some((project) => project.projectId === input.projectId),
+  );
+  return registered ? "registered" : "awaiting-owner";
+}
+
+/**
+ * The one line such a Mate carries, in place of its Gitea facts.
+ *
+ * It names the consequence, not the plumbing: "not in the registry" means
+ * nothing to the person who made it, and "cannot push yet" is what they will
+ * actually run into.
+ */
+export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidate> = []): string {
+  const names = admins
+    .map((admin) => mateMemberName(admin))
+    .filter((name): name is string => name !== undefined);
+  const who = names.length === 0 ? "an owner or admin" : names.join(" or ");
+  return `Waiting for ${who} to add it to the project — until then it cannot push.`;
+}

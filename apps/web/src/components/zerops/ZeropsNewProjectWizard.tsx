@@ -35,6 +35,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import {
   generateBotName,
   generateZeropsGroupId,
+  planGroupMembership,
   planGroupRegistration,
   resolveAddProjectVerb,
   type ZeropsAgentType,
@@ -118,6 +119,11 @@ export async function submitZeropsNewProject(input: {
     readonly groupId: string;
     readonly tagList: ReadonlyArray<string>;
   }) => Promise<void>;
+  /**
+   * Writes `mate:gm:{groupId}:{projectId}:mate` — the entry that gives the new
+   * Mate its reach and its Gitea bot (guide 4.2).
+   */
+  readonly registerMate: (tagList: ReadonlyArray<string>) => Promise<void>;
   /** The registry as it stands, already read. */
   readonly registry: ZeropsRegistry;
   readonly createProject: (args: {
@@ -182,6 +188,29 @@ export async function submitZeropsNewProject(input: {
       botName: input.botName,
     });
     input.onCreated?.(created.project.id, registration.plan.slug);
+    // The membership entry, off the registry this call just wrote — not off a
+    // re-read, which would race the platform's own write.
+    const membership = planGroupMembership({
+      registry: {
+        ...input.registry,
+        groups: [
+          ...input.registry.groups,
+          {
+            groupId: input.groupId,
+            slug: registration.plan.slug,
+            projects: [],
+            matesMayRelease: false,
+          },
+        ],
+      },
+      groupId: input.groupId,
+      projectId: created.project.id,
+      kind: "mate",
+    });
+    // A membership write that fails leaves a Mate waiting for an owner, which
+    // is a state the rows already say — never a reason to fail a creation that
+    // produced a project that exists and runs.
+    if (membership.ok) await input.registerMate(membership.tagList).catch(() => undefined);
     input.onStartWaiting(input.clientId);
   } catch (cause) {
     if (isUncertainCreateFailure(cause)) input.onUncertain?.();
@@ -427,6 +456,9 @@ function ZeropsNewProjectContent() {
     void submitZeropsNewProject({
       registry: registry ?? { groups: [], leaving: [], other: [] },
       registerGroup: async ({ tagList }) => {
+        await client.writeGroupRegistry({ giteaProjectId, tagList });
+      },
+      registerMate: async (tagList) => {
         await client.writeGroupRegistry({ giteaProjectId, tagList });
       },
       createProject: ({ clientId: _clientId, ...args }) =>

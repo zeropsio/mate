@@ -132,8 +132,27 @@ describe("creationJobToStart", () => {
     startedFor: null,
   };
 
-  it("says the job once everything it needs is there", () => {
-    expect(creationJobToStart(READY)).toEqual(CLONED);
+  it("fills the composer with a generated hand-off and leaves it there", () => {
+    expect(creationJobToStart(READY)).toEqual({
+      kind: "compose",
+      prompt: creationHandoffPrompt(CLONED),
+    });
+  });
+
+  it("sends the person's own words, and only those (D17)", () => {
+    expect(
+      creationJobToStart({
+        ...READY,
+        handoff: { ...CLONED, brief: "A CRM for our sales team." },
+      }),
+    ).toEqual({ kind: "send", prompt: "A CRM for our sales team." });
+  });
+
+  it("treats a blank answer as no answer rather than sending nothing", () => {
+    expect(creationJobToStart({ ...READY, handoff: { ...CLONED, brief: "  \n " } })).toEqual({
+      kind: "compose",
+      prompt: creationHandoffPrompt(CLONED),
+    });
   });
 
   it.each([
@@ -143,17 +162,17 @@ describe("creationJobToStart", () => {
     { name: "nothing was created here", patch: { handoff: undefined } },
     { name: "no agent is signed in", patch: { agentSignInRequired: true } },
     { name: "this caller already said it", patch: { startedFor: "env-1" } },
-  ])("says nothing while $name", ({ patch }) => {
-    expect(creationJobToStart({ ...READY, ...patch })).toBeUndefined();
+  ])("waits while $name", ({ patch }) => {
+    expect(creationJobToStart({ ...READY, ...patch })).toEqual({ kind: "wait" });
   });
 
   it("still speaks for a different environment than the one already started", () => {
-    expect(creationJobToStart({ ...READY, startedFor: "env-2" })).toEqual(CLONED);
+    expect(creationJobToStart({ ...READY, startedFor: "env-2" }).kind).toBe("compose");
   });
 
   it("waits rather than gives up: the same input answers again once it is ready", () => {
-    expect(creationJobToStart({ ...READY, ready: false })).toBeUndefined();
-    expect(creationJobToStart(READY)).toEqual(CLONED);
+    expect(creationJobToStart({ ...READY, ready: false })).toEqual({ kind: "wait" });
+    expect(creationJobToStart(READY).kind).toBe("compose");
   });
 });
 

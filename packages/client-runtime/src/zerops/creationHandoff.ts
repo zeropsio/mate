@@ -180,24 +180,38 @@ export function withoutCreationHandoff(
 }
 
 /**
- * The job to say now, or nothing.
+ * What to do with a new environment's opening message: send it, write it into
+ * the composer and leave it, or wait (D17).
  *
- * A creation's opening message is the one prompt mate sends by itself rather
- * than composing — the person asked for this environment and waited two
- * minutes for it, so the turn is not a surprise. Four things gate it:
+ * The distinction is the whole of D17, and it is about **whose sentence it
+ * is**. The person answered *What are we building?* in *Add project* and then
+ * watched an environment being built for those words; sending them is finishing
+ * what they started, not a turn they did not ask for. A sentence this app
+ * composed about services and build setups is a guess at a job, and a guess is
+ * filled in for them to read, edit and send — never spent on their behalf.
+ *
+ * `wait` is not `never`: connecting, busy, unreachable and "no agent signed in
+ * yet" all mean the caller asks again in a moment. Four things gate it:
  *
  * - a **handoff**, which only a creation writes;
- * - somewhere to say it (`hasTarget`) and a thread that can take it
- *   (`ready`) — connecting, busy or unreachable all mean "not yet", never
- *   "never", so the caller simply asks again;
- * - a **signed-in coding agent**. There is nothing on the other end until
- *   then, and a turn spent on nothing is a turn wasted. This is the gate the
- *   whole flow is built around: authorization is the one step a person still
- *   has to do themselves (`spec-mate.md` §8), and everything after it is
- *   automatic;
+ * - somewhere to say it (`hasTarget`) and a thread that can take it (`ready`);
+ * - a **signed-in coding agent**. There is nothing on the other end until then,
+ *   and a turn spent on nothing is a turn wasted. This is the gate the whole
+ *   flow is built around: authorization is the one step a person still has to
+ *   do themselves (`spec-mate.md` §8), and everything after it is automatic;
  * - and **once**: `startedFor` is the environment this caller has already
  *   spoken for, so a re-render, a reconnect or a second tab says nothing.
  */
+export type ZeropsCreationJob =
+  /** The person's own words. Written into the composer and sent. */
+  | { readonly kind: "send"; readonly prompt: string }
+  /** A generated hand-off. Written into the composer and left there. */
+  | { readonly kind: "compose"; readonly prompt: string }
+  /** Not yet, or not at all. */
+  | { readonly kind: "wait" };
+
+const WAIT: ZeropsCreationJob = { kind: "wait" };
+
 export function creationJobToStart(input: {
   readonly environmentId: string | null;
   readonly handoff: ZeropsCreationHandoff | undefined;
@@ -205,11 +219,16 @@ export function creationJobToStart(input: {
   readonly ready: boolean;
   readonly agentSignInRequired: boolean;
   readonly startedFor: string | null;
-}): ZeropsCreationHandoff | undefined {
-  if (input.environmentId === null || !input.hasTarget || !input.ready) return undefined;
-  if (input.startedFor === input.environmentId) return undefined;
-  if (input.agentSignInRequired) return undefined;
-  return input.handoff;
+}): ZeropsCreationJob {
+  if (input.environmentId === null || !input.hasTarget || !input.ready) return WAIT;
+  if (input.startedFor === input.environmentId) return WAIT;
+  if (input.agentSignInRequired) return WAIT;
+  if (input.handoff === undefined) return WAIT;
+
+  const brief = input.handoff.brief?.trim() ?? "";
+  return brief.length > 0
+    ? { kind: "send", prompt: brief }
+    : { kind: "compose", prompt: creationHandoffPrompt(input.handoff) };
 }
 
 /**
