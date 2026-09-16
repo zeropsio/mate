@@ -30,6 +30,8 @@ export function candidateAfterHealthProbe(
       };
     case "unreachable":
       return { ...candidate, group: "unavailable", reason: "container is not answering" };
+    case "stalled":
+      return { ...candidate, group: "unavailable", reason: "Zerops Mate never answered" };
     case undefined:
       return {
         ...candidate,

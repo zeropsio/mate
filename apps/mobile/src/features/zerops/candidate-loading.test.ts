@@ -23,6 +23,7 @@ describe("candidateAfterHealthProbe", () => {
     ["initializing", "provisioning", "Zerops Mate is starting"],
     ["predates-mate", "unavailable", "Zerops Mate is not enabled for this container"],
     ["unreachable", "unavailable", "container is not answering"],
+    ["stalled", "unavailable", "Zerops Mate never answered"],
   ] as const)("maps %s health to %s", (health, group, reason) => {
     const candidate = candidateAfterHealthProbe(READY_CANDIDATE, health);
     expect(candidate.group).toBe(group);
