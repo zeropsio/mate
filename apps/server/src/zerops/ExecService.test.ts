@@ -12,7 +12,6 @@ const zeropsEnvironment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: undefined,
 });
 
 const makeLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>

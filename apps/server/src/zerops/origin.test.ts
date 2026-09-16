@@ -13,7 +13,6 @@ const allowlist = (allowedOrigins: ReadonlyArray<string> = []) =>
       projectId: "nTV3oMB2SS634ImDJnQckg",
       apiHost: undefined,
       allowedOrigins,
-      membershipTtlSeconds: undefined,
     })!,
   );
 

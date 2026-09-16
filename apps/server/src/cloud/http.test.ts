@@ -651,7 +651,6 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           projectId: "nTV3oMB2SS634ImDJnQckg",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           allowedOrigins: [],
-          membershipTtl: Duration.seconds(900),
           publicOrigin: undefined,
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),

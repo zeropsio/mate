@@ -1,14 +1,15 @@
 /**
- * The client half of the Zerops identity door.
+ * The client half of the Zerops door.
  *
- * A client that is already signed in to Zerops hands its access token to the
- * environment, which proves membership of the project the container runs in
- * and hands back an ordinary pairing credential. From there the flow is the
- * upstream one - the credential goes into the token exchange in `remote.ts`,
- * unchanged - so this module is one request wide.
+ * The client hands the environment a throwaway minted for that one Mate — no
+ * rights, seconds old, deleted as soon as this answers (`zeropsThrowaway.ts`)
+ * — and the environment reads who minted it and hands back an ordinary pairing
+ * credential. From there the flow is the upstream one: the credential goes
+ * into the token exchange in `remote.ts`, unchanged, so this module is one
+ * request wide.
  *
- * The Zerops token is the subject being proven, not a bearer for this request,
- * so it travels in the body and never as this request's Authorization header.
+ * The person's own Zerops token never comes here. It reaches the Zerops API
+ * and nothing else — which is the whole of guide 3.5.
  *
  * @module authorization/zerops
  */
@@ -42,29 +43,6 @@ export const presentZeropsThrowaway = Effect.fn(
     client.zerops.throwawayIdentity({
       headers: input.dpopProof ? { dpop: input.dpopProof } : {},
       payload: { token: input.doorToken },
-    }),
-  );
-});
-
-export const mintZeropsIdentityCredential = Effect.fn(
-  "clientRuntime.authorization.mintZeropsIdentityCredential",
-)(function* (input: {
-  readonly httpBaseUrl: string;
-  readonly zeropsToken: string;
-  /**
-   * Present when the client binds its access token to a key. The environment
-   * binds the grant to the same key, so a stolen credential is unusable.
-   */
-  readonly dpopProof?: string;
-  readonly timeoutMs?: number;
-}) {
-  const client = yield* makeEnvironmentHttpApiClient(input.httpBaseUrl);
-  return yield* executeEnvironmentHttpRequest(
-    environmentEndpointUrl(input.httpBaseUrl, "/api/auth/zerops-identity"),
-    input.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS,
-    client.zerops.identity({
-      headers: input.dpopProof ? { dpop: input.dpopProof } : {},
-      payload: { token: input.zeropsToken },
     }),
   );
 });

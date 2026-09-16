@@ -26,7 +26,6 @@ const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: undefined,
   apiToken: MATE_KEY,
 })!;
 
@@ -239,7 +238,6 @@ describe("readProjectMembership", () => {
       projectId: PROJECT_ID,
       apiHost: undefined,
       allowedOrigins: [],
-      membershipTtlSeconds: undefined,
     })!;
     return readProjectMembership({ environment: keyless }).pipe(
       Effect.tap((read) =>

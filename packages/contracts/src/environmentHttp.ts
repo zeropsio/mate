@@ -577,23 +577,14 @@ export class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
-export class EnvironmentZeropsHttpApi extends HttpApiGroup.make("zerops")
-  .add(
-    HttpApiEndpoint.post("identity", "/api/auth/zerops-identity", {
-      headers: OptionalDpopProofHeaders,
-      payload: AuthZeropsIdentityRequest,
-      success: AuthPairingCredentialResult,
-      error: EnvironmentZeropsIdentityErrors,
-    }),
-  )
-  .add(
-    HttpApiEndpoint.post("throwawayIdentity", "/api/auth/zerops-throwaway", {
-      headers: OptionalDpopProofHeaders,
-      payload: AuthZeropsIdentityRequest,
-      success: AuthPairingCredentialResult,
-      error: EnvironmentZeropsIdentityErrors,
-    }),
-  ) {}
+export class EnvironmentZeropsHttpApi extends HttpApiGroup.make("zerops").add(
+  HttpApiEndpoint.post("throwawayIdentity", "/api/auth/zerops-throwaway", {
+    headers: OptionalDpopProofHeaders,
+    payload: AuthZeropsIdentityRequest,
+    success: AuthPairingCredentialResult,
+    error: EnvironmentZeropsIdentityErrors,
+  }),
+) {}
 
 export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentMetadataHttpApi)

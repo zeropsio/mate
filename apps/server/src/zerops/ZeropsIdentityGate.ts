@@ -1,18 +1,21 @@
 /**
- * ZeropsIdentityGate - the door into a mate server that runs inside a Zerops
+ * ZeropsIdentityGate — the door into a mate server that runs inside a Zerops
  * project.
  *
- * The client presents its Zerops access token; this proves the caller is a
- * member of the container's project and, on that proof alone, mints the
- * ordinary short-lived pairing grant every other bootstrap method produces.
- * The client then does the normal RFC 8693 exchange. There is no second
- * session model and no shared container secret: the only credential is the
- * user's own Zerops identity.
+ * The client presents a **throwaway**: a Zerops integration token with no
+ * rights at all, minted seconds ago as the person and named for this one Mate
+ * (`ZeropsThrowawayIdentity`). This reads who minted it, looks that person's
+ * role up with the Mate's own key, and on that proof mints the ordinary
+ * short-lived pairing grant every other bootstrap method produces. The client
+ * then does the normal RFC 8693 exchange. There is no second session model and
+ * no shared container secret.
  *
- * The token is never stored. It travels as an argument, becomes a request
- * header for two reads, and is gone. What outlives the call is a grant whose
- * `subject` is the Zerops user id - which is what makes per-user revocation
- * (`revokeBySubject`) meaningful.
+ * Nothing of the caller's is stored, and nothing of theirs is worth stealing:
+ * the token they hand over cannot mint, raise itself or read a project, and it
+ * is deleted before the page has finished loading. What outlives the call is a
+ * grant whose `subject` is the Zerops user id — which is what makes per-user
+ * revocation (`revokeBySubject`) and the role re-check
+ * (`ZeropsMembershipWatch`) meaningful.
  *
  * @module ZeropsIdentityGate
  */
@@ -23,7 +26,6 @@ import * as Effect from "effect/Effect";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { verifyProjectMembership } from "./ZeropsIdentity.ts";
 import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 /**
@@ -36,47 +38,12 @@ export const ZEROPS_PAIRING_GRANT_TTL = Duration.minutes(2);
 /**
  * What a Zerops member's client is allowed to do: the ordinary client set plus
  * command execution. Administrative scopes - managing other clients' access -
- * stay off this path; membership is the door, not a privilege level.
+ * stay off this path; the role decides whether the door opens, never how far.
  *
  * The same list the client asks for (`AuthZeropsClientScopes`), and it has to
  * be: the exchange refuses a request for a scope the grant does not carry.
  */
 export const zeropsGrantScopes: ReadonlyArray<AuthEnvironmentScope> = AuthZeropsClientScopes;
-
-/**
- * Proves membership and mints the pairing grant. Fails without issuing
- * anything when the caller is not a member, presents an invalid token, or the
- * platform cannot be reached.
- */
-export const mintZeropsPairingCredential = Effect.fn("Zerops.mintPairingCredential")(
-  function* (input: {
-    readonly environment: ZeropsEnvironment;
-    readonly token: string;
-    readonly proofKeyThumbprint?: string;
-  }) {
-    const member = yield* verifyProjectMembership({
-      environment: input.environment,
-      token: input.token,
-    });
-    const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-    const issued = yield* serverAuth.createPairingLink({
-      // Names the door, so the session it becomes is the one that can renew
-      // itself by re-proving membership.
-      method: "zerops-identity",
-      scopes: zeropsGrantScopes,
-      subject: `zerops-user:${member.userId}`,
-      ttl: ZEROPS_PAIRING_GRANT_TTL,
-      label: member.role === undefined ? "Zerops" : `Zerops ${member.role}`,
-      ...(input.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),
-    });
-    return {
-      id: issued.id,
-      credential: issued.credential,
-      ...(issued.label ? { label: issued.label } : {}),
-      expiresAt: issued.expiresAt,
-    } satisfies AuthPairingCredentialResult;
-  },
-);
 
 /**
  * Proves a throwaway, resolves its creator's role, and mints the pairing

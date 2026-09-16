@@ -3,7 +3,8 @@ import * as Duration from "effect/Duration";
 
 import {
   DEFAULT_ZEROPS_API_HOST,
-  DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS,
+  DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS,
+  DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS,
   isZeropsEnvironment,
   resolveZeropsApiBaseUrl,
   resolveZeropsEnvironment,
@@ -13,7 +14,6 @@ const input = (overrides?: Partial<Parameters<typeof resolveZeropsEnvironment>[0
   projectId: undefined,
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: undefined,
   publicOrigin: undefined,
   ...overrides,
 });
@@ -53,31 +53,46 @@ describe("resolveZeropsEnvironment — the one detection rule", () => {
     );
   });
 
-  it("defaults the membership window and honours an override", () => {
+  it("defaults the re-check interval and the session cap, and honours overrides", () => {
+    const defaults = resolveZeropsEnvironment(input({ projectId: "abc" }))!;
     assert.isTrue(
       Duration.equals(
-        resolveZeropsEnvironment(input({ projectId: "abc" }))!.membershipTtl,
-        Duration.seconds(DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS),
+        defaults.roleRecheckInterval,
+        Duration.seconds(DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
       ),
     );
     assert.isTrue(
       Duration.equals(
-        resolveZeropsEnvironment(input({ projectId: "abc", membershipTtlSeconds: 60 }))!
-          .membershipTtl,
-        Duration.seconds(60),
+        defaults.sessionMaxAge,
+        Duration.seconds(DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
       ),
     );
+
+    const overridden = resolveZeropsEnvironment(
+      input({ projectId: "abc", roleRecheckSeconds: 60, sessionMaxAgeSeconds: 3_600 }),
+    )!;
+    assert.isTrue(Duration.equals(overridden.roleRecheckInterval, Duration.seconds(60)));
+    assert.isTrue(Duration.equals(overridden.sessionMaxAge, Duration.seconds(3_600)));
   });
 
-  it("falls back to the default window for a non-positive or non-finite override", () => {
-    for (const membershipTtlSeconds of [0, -1, Number.NaN]) {
+  it("falls back to the defaults for a non-positive or non-finite override", () => {
+    for (const seconds of [0, -1, Number.NaN]) {
+      const resolved = resolveZeropsEnvironment(
+        input({ projectId: "abc", roleRecheckSeconds: seconds, sessionMaxAgeSeconds: seconds }),
+      )!;
       assert.isTrue(
         Duration.equals(
-          resolveZeropsEnvironment(input({ projectId: "abc", membershipTtlSeconds }))!
-            .membershipTtl,
-          Duration.seconds(DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS),
+          resolved.roleRecheckInterval,
+          Duration.seconds(DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
         ),
-        `membershipTtlSeconds=${String(membershipTtlSeconds)}`,
+        `roleRecheckSeconds=${String(seconds)}`,
+      );
+      assert.isTrue(
+        Duration.equals(
+          resolved.sessionMaxAge,
+          Duration.seconds(DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
+        ),
+        `sessionMaxAgeSeconds=${String(seconds)}`,
       );
     }
   });

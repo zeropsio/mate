@@ -61,13 +61,13 @@ const makeBearerRequest = (
     EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
   >[0];
 
-const MEMBERSHIP_TTL_SECONDS = 900;
+const SESSION_MAX_AGE_SECONDS = 900;
 
 const zeropsTestEnvironment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: MEMBERSHIP_TTL_SECONDS,
+  sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
 });
 
 const requestMetadata = {
@@ -147,7 +147,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const pairingCredential = yield* serverAuth.createPairingLink({
-        method: "zerops-identity",
+        method: "zerops-throwaway",
         subject: "zerops-user:test",
         scopes: ["orchestration:read"],
       });
@@ -166,7 +166,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const issued = yield* serverAuth.createPairingLink({
-        method: "zerops-identity",
+        method: "zerops-throwaway",
         subject: "zerops-user:a-zerops-user-id",
       });
       const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
@@ -177,8 +177,8 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 
       // The window IS this session's lifetime: the holder has a Zerops token
       // and re-mints with it, and that re-mint is the real membership check.
-      expect(access.expires_in).toBeLessThanOrEqual(MEMBERSHIP_TTL_SECONDS);
-      expect(access.expires_in).toBeGreaterThan(MEMBERSHIP_TTL_SECONDS - 30);
+      expect(access.expires_in).toBeLessThanOrEqual(SESSION_MAX_AGE_SECONDS);
+      expect(access.expires_in).toBeGreaterThan(SESSION_MAX_AGE_SECONDS - 30);
     }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
   );
 
@@ -186,7 +186,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const issued = yield* serverAuth.createPairingLink({
-        method: "zerops-identity",
+        method: "zerops-throwaway",
         subject: "zerops-user:a-zerops-user-id",
         proofKeyThumbprint: "a-jwk-thumbprint",
       });
@@ -198,7 +198,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       );
 
       expect(access.token_type).toBe("DPoP");
-      expect(access.expires_in).toBeLessThanOrEqual(MEMBERSHIP_TTL_SECONDS);
+      expect(access.expires_in).toBeLessThanOrEqual(SESSION_MAX_AGE_SECONDS);
     }).pipe(Effect.provide(makeEnvironmentAuthLayer({ zerops: zeropsTestEnvironment }))),
   );
 

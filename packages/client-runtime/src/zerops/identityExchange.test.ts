@@ -215,7 +215,7 @@ describe("exchangeZeropsContainerIdentity", () => {
                 reason: "unsupported",
                 detail: "Upgrade needed",
                 serverVersion: "0.2.9",
-                minimumServerVersion: "0.7.0",
+                minimumServerVersion: "0.11.0",
               }),
             ),
           ),

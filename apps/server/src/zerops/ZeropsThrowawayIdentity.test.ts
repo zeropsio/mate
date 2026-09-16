@@ -25,7 +25,6 @@ const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: undefined,
   apiToken: MATE_KEY,
 })!;
 
@@ -351,7 +350,6 @@ describe("verifyThrowawayCaller", () => {
       projectId: PROJECT_ID,
       apiHost: undefined,
       allowedOrigins: [],
-      membershipTtlSeconds: undefined,
     })!;
     return Effect.flip(verifyThrowawayCaller({ environment: keyless, token: PRESENTED })).pipe(
       Effect.tap((error) =>

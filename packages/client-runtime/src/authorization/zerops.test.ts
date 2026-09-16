@@ -4,9 +4,12 @@ import * as Schema from "effect/Schema";
 
 import { EnvironmentOperationForbiddenError } from "@t3tools/contracts";
 import { remoteHttpClientLayer } from "../rpc/http.ts";
-import { mintZeropsIdentityCredential } from "./zerops.ts";
+import { presentZeropsThrowaway } from "./zerops.ts";
 
 const isForbidden = Schema.is(EnvironmentOperationForbiddenError);
+
+/** A throwaway minted for one Mate. The person's own token never gets here. */
+const DOOR_TOKEN = "mate-door-throwaway-value";
 
 type FetchCall = readonly [input: RequestInfo | URL, init: RequestInit];
 
@@ -40,14 +43,14 @@ const credentialResponse = () =>
     { status: 200 },
   );
 
-describe("mintZeropsIdentityCredential", () => {
-  it.effect("posts the Zerops token to the identity door and returns the credential", () =>
+describe("presentZeropsThrowaway", () => {
+  it.effect("posts the throwaway to the door and returns the credential", () =>
     Effect.gen(function* () {
       const fetch = recordedFetch(credentialResponse());
 
-      const result = yield* mintZeropsIdentityCredential({
+      const result = yield* presentZeropsThrowaway({
         httpBaseUrl: "https://zcp-26a7-8080.prg1.zerops.app",
-        zeropsToken: "a-zerops-access-token",
+        doorToken: DOOR_TOKEN,
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
       expect(result.credential).toBe("a-pairing-credential");
@@ -56,10 +59,10 @@ describe("mintZeropsIdentityCredential", () => {
       const call = fetch.calls[0];
       expect(call).toBeDefined();
       expect(String(call?.[0])).toBe(
-        "https://zcp-26a7-8080.prg1.zerops.app/api/auth/zerops-identity",
+        "https://zcp-26a7-8080.prg1.zerops.app/api/auth/zerops-throwaway",
       );
       expect(call?.[1].method).toBe("POST");
-      // The Zerops token travels in the body, never as this request's own
+      // The throwaway travels in the body, never as this request's own
       // Authorization header: it is the subject being proven, not a bearer.
       expect(requestHeaders(call).authorization).toBeUndefined();
     }),
@@ -74,13 +77,13 @@ describe("mintZeropsIdentityCredential", () => {
       // this one.
       const fetch = recordedFetch(credentialResponse());
 
-      yield* mintZeropsIdentityCredential({
+      yield* presentZeropsThrowaway({
         httpBaseUrl: "https://zcp-26a7-8080.prg1.zerops.app/mate/",
-        zeropsToken: "a-zerops-access-token",
+        doorToken: DOOR_TOKEN,
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
       expect(String(fetch.calls[0]?.[0])).toBe(
-        "https://zcp-26a7-8080.prg1.zerops.app/mate/api/auth/zerops-identity",
+        "https://zcp-26a7-8080.prg1.zerops.app/mate/api/auth/zerops-throwaway",
       );
     }),
   );
@@ -89,9 +92,9 @@ describe("mintZeropsIdentityCredential", () => {
     Effect.gen(function* () {
       const fetch = recordedFetch(credentialResponse());
 
-      yield* mintZeropsIdentityCredential({
+      yield* presentZeropsThrowaway({
         httpBaseUrl: "https://remote.example.com",
-        zeropsToken: "a-zerops-access-token",
+        doorToken: DOOR_TOKEN,
         dpopProof: "a-dpop-proof",
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
@@ -114,9 +117,9 @@ describe("mintZeropsIdentityCredential", () => {
       );
 
       const error = yield* Effect.flip(
-        mintZeropsIdentityCredential({
+        presentZeropsThrowaway({
           httpBaseUrl: "https://remote.example.com",
-          zeropsToken: "a-zerops-access-token",
+          doorToken: DOOR_TOKEN,
         }).pipe(provideRemoteHttp(fetch.fetchFn)),
       );
 

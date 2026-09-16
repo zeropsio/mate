@@ -26,19 +26,6 @@ export const DEFAULT_ZEROPS_API_HOST = "api.app-prg1.zerops.io";
 export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
 
 /**
- * How long a membership decision stays good.
- *
- * The server never stores the caller's Zerops token, and the platform has no
- * endpoint that lists a project's members, so membership cannot be re-verified
- * server-side. Instead this window IS the lifetime of a session minted through
- * the Zerops door: when it lapses the next connect fails and the client
- * re-mints with the Zerops token it already holds, and that re-mint performs
- * the real membership call. Removing a member therefore ends their access
- * within one window.
- */
-export const DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS = 900;
-
-/**
  * How often the server re-reads who may still be here.
  *
  * A session minted at the throwaway door carries no credential of the caller's
@@ -68,8 +55,6 @@ export interface ZeropsEnvironment {
   readonly apiBaseUrl: string;
   /** Extra browser origins allowed to reach this server, beyond the built-ins. */
   readonly allowedOrigins: ReadonlyArray<string>;
-  /** See {@link DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS}. */
-  readonly membershipTtl: Duration.Duration;
   /**
    * An explicit override for this container's own public origin (e.g.
    * `https://zcp-26a7-8080.prg1.zerops.app`), set via `T3CODE_ZEROPS_PUBLIC_ORIGIN`.
@@ -106,7 +91,6 @@ export interface ZeropsEnvironmentInput {
   readonly projectId: string | undefined;
   readonly apiHost: string | undefined;
   readonly allowedOrigins: ReadonlyArray<string>;
-  readonly membershipTtlSeconds: number | undefined;
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
   readonly roleRecheckSeconds?: number | undefined;
@@ -142,17 +126,12 @@ export const resolveZeropsEnvironment = (
   }
   const positive = (value: number | undefined, fallback: number): number =>
     value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
-  const membershipTtlSeconds = positive(
-    input.membershipTtlSeconds,
-    DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS,
-  );
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
     allowedOrigins: input.allowedOrigins,
-    membershipTtl: Duration.seconds(membershipTtlSeconds),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
     roleRecheckInterval: Duration.seconds(

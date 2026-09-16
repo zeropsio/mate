@@ -55,7 +55,7 @@ const ZEROPS_DOOR_GATE = {
   status: "requires-auth",
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: ["zerops-identity", "one-time-token"],
+    bootstrapMethods: ["zerops-throwaway", "one-time-token"],
     sessionMethods: ["bearer-access-token", "dpop-access-token"],
     sessionCookieName: "t3_session",
   },

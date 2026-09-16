@@ -661,10 +661,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(toBootstrapExchangeError),
         Effect.flatMap((grant) =>
           Effect.gen(function* () {
-            if (
-              (grant.method !== "zerops-identity" && grant.method !== "zerops-throwaway") ||
-              !serverConfig.zerops
-            ) {
+            if (grant.method !== "zerops-throwaway" || !serverConfig.zerops) {
               return yield* new ServerAuthInvalidCredentialError({
                 diagnostic: "Sign in with Zerops to access Mate.",
               });
@@ -673,29 +670,20 @@ export const make = Effect.gen(function* () {
             if (!grantedScopes.every((scope) => grant.scopes.includes(scope))) {
               return yield* new ServerAuthScopeNotGrantedError({});
             }
-            // Two doors, two clocks. `zerops-identity` caps a session at one
-            // membership window because nothing re-checks it: the client's
-            // re-mint IS the check. `zerops-throwaway` has no re-mint at all —
-            // the server re-reads roles itself (`ZeropsMembershipWatch`) and
-            // ends the sessions whose answer changed — so its cap is only the
+            // Nothing here is ever re-presented: the server re-reads roles
+            // itself (`ZeropsMembershipWatch`) and ends the sessions whose
+            // answer changed. So this cap is not a security window — it is the
             // promise that nothing runs forever on one proof.
-            const sessionTtl =
-              grant.method === "zerops-throwaway"
-                ? serverConfig.zerops.sessionMaxAge
-                : serverConfig.zerops.membershipTtl;
+            const sessionTtl = serverConfig.zerops.sessionMaxAge;
             return yield* sessions
               .issue({
                 method: input?.proofKeyThumbprint ? "dpop-access-token" : "bearer-access-token",
                 subject: grant.subject,
                 scopes: grantedScopes,
+                ttl: sessionTtl,
                 ...(input?.proofKeyThumbprint
-                  ? {
-                      proofKeyThumbprint: input.proofKeyThumbprint,
-                      ttl: sessionTtl ?? Duration.hours(1),
-                    }
-                  : sessionTtl
-                    ? { ttl: sessionTtl }
-                    : {}),
+                  ? { proofKeyThumbprint: input.proofKeyThumbprint }
+                  : {}),
                 // Desktop restarts forget the previous bearer token. Replace
                 // its session, including stale entries left by older versions.
                 replaceActiveForSubjectAndMethod: false,

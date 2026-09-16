@@ -61,7 +61,7 @@ function zeropsHttpLayer(
           environmentId: "environment-zerops",
           label: "z3-eval",
           platform: { os: "linux", arch: "x64" },
-          serverVersion: options?.serverVersion ?? "0.7.0",
+          serverVersion: options?.serverVersion ?? "0.11.0",
           capabilities: {
             repositoryIdentity: true,
             ...(options?.lifecycleVersion === false ? {} : { accountLifecycleVersion: 1 }),
@@ -132,7 +132,7 @@ describe("Zerops identity onboarding", () => {
       expect(failure).toMatchObject({
         _tag: "ConnectionBlockedError",
         serverVersion: "0.6.0",
-        minimumServerVersion: "0.7.0",
+        minimumServerVersion: "0.11.0",
       });
       expect(calls).toHaveLength(1);
       expect(headerText(calls[0]!.init)).not.toContain(DOOR_TOKEN);

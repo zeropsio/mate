@@ -14,7 +14,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 
 import { bootstrapRemoteBearerSession } from "../authorization/remote.ts";
-import { mintZeropsIdentityCredential, presentZeropsThrowaway } from "../authorization/zerops.ts";
+import { presentZeropsThrowaway } from "../authorization/zerops.ts";
 import { deriveWsBaseUrl, normalizeHttpBaseUrl } from "../environment/endpoint.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
@@ -63,18 +63,6 @@ export interface ZeropsDoorConnectionInput {
    * never comes here.
    */
   readonly doorToken: string;
-}
-
-/**
- * The renewal path's input, which still carries the person's own token.
- *
- * The throwaway door needs no renewal — the server re-checks roles itself — so
- * this is the last caller of `zerops-identity` and goes with it (guide 3.5).
- */
-export interface ZeropsIdentityConnectionInput {
-  readonly httpBaseUrl: string;
-  /** The signed-in account's Zerops access token, held only by the client. */
-  readonly zeropsToken: string;
 }
 
 export interface BearerConnectionUpdateInput {
@@ -251,44 +239,6 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
       ...lifetime,
       origin: "zerops-identity" as const,
     }),
-  });
-});
-
-/**
- * Mints a replacement bearer at the Zerops door without touching the registry.
- *
- * The re-mint IS the membership check (`POST /api/auth/zerops-identity` proves
- * the caller against the platform with their own token), so running it ahead of
- * the window's end re-checks membership more often than letting the window
- * lapse — and the connection never has to fail first.
- */
-export const renewZeropsIdentityCredential = Effect.fn(
-  "clientRuntime.connection.onboarding.renewZeropsIdentityCredential",
-)(function* (input: ZeropsIdentityConnectionInput) {
-  const httpBaseUrl = yield* Effect.try({
-    try: () => normalizeHttpBaseUrl(input.httpBaseUrl),
-    catch: (cause) =>
-      new ConnectionBlockedError({
-        reason: "configuration",
-        detail: cause instanceof Error ? cause.message : "The container URL is invalid.",
-      }),
-  });
-  const presentation = yield* ClientCapabilities.ClientPresentation;
-  const minted = yield* mintZeropsIdentityCredential({
-    httpBaseUrl,
-    zeropsToken: input.zeropsToken,
-  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
-  const access = yield* bootstrapRemoteBearerSession({
-    httpBaseUrl,
-    credential: minted.credential,
-    scopes: presentation.scopes,
-    clientMetadata: presentation.metadata,
-  }).pipe(Effect.mapError(mapRemoteEnvironmentError));
-  const lifetime = yield* bearerCredentialLifetime(access.expires_in);
-  return new BearerConnectionCredential({
-    token: access.access_token,
-    ...lifetime,
-    origin: "zerops-identity" as const,
   });
 });
 

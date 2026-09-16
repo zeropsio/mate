@@ -51,19 +51,17 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  *   shell can pair the renderer without a login screen
  * - `one-time-token`: a short-lived pairing token, suitable for manual pairing
  *   flows such as `/pair?token=...`
- * - `zerops-identity`: the caller presents a Zerops access token and the server
- *   proves they are a member of the project this environment runs in. Offered
- *   only by an environment running inside a Zerops project container.
  * - `zerops-throwaway`: the caller presents a Zerops integration token with no
  *   rights at all, minted seconds ago and named for this one Mate, and the
  *   server reads who made it. Nothing of the caller's outlives the request, so
- *   a container never holds a credential of theirs. Offered only inside a
- *   Zerops project container.
+ *   a container never holds a credential of theirs — which is the point: a
+ *   person's own Zerops token reaches every org they belong to and never
+ *   expires, and no container is ever handed one. Offered only inside a Zerops
+ *   project container.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
   "desktop-bootstrap",
   "one-time-token",
-  "zerops-identity",
   "zerops-throwaway",
 ]);
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
@@ -197,9 +195,10 @@ export const AuthBrowserSessionRequest = Schema.Struct({
 export type AuthBrowserSessionRequest = typeof AuthBrowserSessionRequest.Type;
 
 /**
- * A Zerops access token, presented so the environment can prove the caller is
- * a member of the project it runs in. The server validates it against the
- * Zerops API and discards it; it is never stored.
+ * A throwaway Zerops integration token, presented so the environment can learn
+ * who minted it. It carries no rights, the app deletes it seconds later, and
+ * the server validates it against the Zerops API and discards it; it is never
+ * stored.
  */
 export const AuthZeropsIdentityRequest = Schema.Struct({
   token: TrimmedNonEmptyString,

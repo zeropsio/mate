@@ -1612,7 +1612,7 @@ const issueFixtureGrant = (
 ) =>
   testAuth.pipe(
     Effect.flatMap((auth) =>
-      auth.createPairingLink({ method: "zerops-identity", subject: "zerops-user:test", scopes }),
+      auth.createPairingLink({ method: "zerops-throwaway", subject: "zerops-user:test", scopes }),
     ),
   );
 
@@ -1693,7 +1693,6 @@ const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = [], publi
     projectId: "nTV3oMB2SS634ImDJnQckg",
     apiHost: undefined,
     allowedOrigins,
-    membershipTtlSeconds: undefined,
     publicOrigin,
   });
 

@@ -32,12 +32,11 @@ export const make = Effect.gen(function* () {
         ? "remote-reachable"
         : "loopback-browser";
 
-  // Both Zerops doors, while the client moves off the one that takes a
-  // person's own token (guide 3.5). An older client that only knows
-  // `zerops-identity` keeps working until then; a current one prefers the
-  // throwaway because it is the one this list says exists.
+  // One Zerops door, and it takes nothing of the caller's: a throwaway with no
+  // rights, minted for this Mate and deleted seconds later. There is no door
+  // here that accepts a person's own Zerops token any more (guide 3.5).
   const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = isZerops
-    ? ["zerops-identity", "zerops-throwaway"]
+    ? ["zerops-throwaway"]
     : [];
 
   const descriptor: ServerAuthDescriptor = {

@@ -1,6 +1,6 @@
 /**
- * The HTTP surface of the Zerops door: one route that turns a Zerops access
- * token into an ordinary pairing credential.
+ * The HTTP surface of the Zerops door: one route that turns a throwaway into
+ * an ordinary pairing credential.
  *
  * It answers the platform's own three-way verdict, so a client can tell the
  * cases apart without guessing: `401` the token is not valid, `403` the token
@@ -26,10 +26,7 @@ import {
 } from "../auth/http.ts";
 import { verifyRequestDpopProof } from "../auth/dpop.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import {
-  mintZeropsPairingCredential,
-  mintZeropsThrowawayPairingCredential,
-} from "./ZeropsIdentityGate.ts";
+import { mintZeropsThrowawayPairingCredential } from "./ZeropsIdentityGate.ts";
 
 export const zeropsHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -37,106 +34,59 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
   Effect.fnUntraced(function* (handlers) {
     const config = yield* ServerConfig.ServerConfig;
 
-    return handlers
-      .handle(
-        "identity",
-        Effect.fn("environment.zerops.identity")(
-          function* (args) {
-            yield* annotateEnvironmentRequest(args.endpoint.name);
-            const environment = config.zerops;
-            if (environment === undefined || !isZeropsEnvironment(config)) {
-              return yield* failEnvironmentNotFound("zerops_identity_unavailable");
-            }
-            const request = yield* HttpServerRequest.HttpServerRequest;
-            // A client that binds its access token to a key proves that key here,
-            // so the grant it gets back can only be redeemed by the same key.
-            const proofKeyThumbprint = args.headers.dpop
-              ? yield* verifyRequestDpopProof({ request }).pipe(
-                  Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, () =>
-                    failEnvironmentAuthInvalid("invalid_credential"),
-                  ),
-                  Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-                    failEnvironmentInternal("pairing_credential_issuance_failed", error),
-                  ),
-                )
-              : undefined;
+    return handlers.handle(
+      "throwawayIdentity",
+      Effect.fn("environment.zerops.throwawayIdentity")(
+        function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          const environment = config.zerops;
+          if (environment === undefined || !isZeropsEnvironment(config)) {
+            return yield* failEnvironmentNotFound("zerops_identity_unavailable");
+          }
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const proofKeyThumbprint = args.headers.dpop
+            ? yield* verifyRequestDpopProof({ request }).pipe(
+                Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, () =>
+                  failEnvironmentAuthInvalid("invalid_credential"),
+                ),
+                Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+                  failEnvironmentInternal("pairing_credential_issuance_failed", error),
+                ),
+              )
+            : undefined;
 
-            return yield* mintZeropsPairingCredential({
-              environment,
-              token: args.payload.token,
-              ...(proofKeyThumbprint ? { proofKeyThumbprint } : {}),
-            });
-          },
-          Effect.catchTag("ZeropsInvalidTokenError", () =>
-            failEnvironmentAuthInvalid("invalid_credential"),
-          ),
-          Effect.catchTag("ZeropsNotAMemberError", () =>
-            failEnvironmentOperationForbidden("zerops_project_membership_required"),
-          ),
-          Effect.catchTag("ZeropsProjectNotFoundError", () =>
-            failEnvironmentNotFound("zerops_project_not_found"),
-          ),
-          Effect.catchTag("ZeropsApiUnavailableError", (error) =>
-            failEnvironmentInternal("zerops_membership_check_failed", error),
-          ),
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-            failEnvironmentInternal("pairing_credential_issuance_failed", error),
-          ),
+          return yield* mintZeropsThrowawayPairingCredential({
+            environment,
+            token: args.payload.token,
+            ...(proofKeyThumbprint ? { proofKeyThumbprint } : {}),
+          });
+        },
+        Effect.catchTag("ZeropsInvalidTokenError", () =>
+          failEnvironmentAuthInvalid("invalid_credential"),
         ),
-      )
-      .handle(
-        "throwawayIdentity",
-        Effect.fn("environment.zerops.throwawayIdentity")(
-          function* (args) {
-            yield* annotateEnvironmentRequest(args.endpoint.name);
-            const environment = config.zerops;
-            if (environment === undefined || !isZeropsEnvironment(config)) {
-              return yield* failEnvironmentNotFound("zerops_identity_unavailable");
-            }
-            const request = yield* HttpServerRequest.HttpServerRequest;
-            const proofKeyThumbprint = args.headers.dpop
-              ? yield* verifyRequestDpopProof({ request }).pipe(
-                  Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, () =>
-                    failEnvironmentAuthInvalid("invalid_credential"),
-                  ),
-                  Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-                    failEnvironmentInternal("pairing_credential_issuance_failed", error),
-                  ),
-                )
-              : undefined;
-
-            return yield* mintZeropsThrowawayPairingCredential({
-              environment,
-              token: args.payload.token,
-              ...(proofKeyThumbprint ? { proofKeyThumbprint } : {}),
-            });
-          },
-          Effect.catchTag("ZeropsInvalidTokenError", () =>
-            failEnvironmentAuthInvalid("invalid_credential"),
-          ),
-          // One reason for all six shape rules: which rule failed is a hint
-          // towards a token that would pass, and the caller never needs it —
-          // the app's answer to every one of them is to mint a fresh
-          // throwaway.
-          Effect.catchTag("ZeropsThrowawayRefusedError", () =>
-            failEnvironmentOperationForbidden("zerops_throwaway_required"),
-          ),
-          Effect.catchTag("ZeropsReadOnlyError", () =>
-            failEnvironmentOperationForbidden("zerops_read_only"),
-          ),
-          Effect.catchTag("ZeropsNotAMemberError", () =>
-            failEnvironmentOperationForbidden("zerops_project_membership_required"),
-          ),
-          Effect.catchTag("ZeropsProjectNotFoundError", () =>
-            failEnvironmentNotFound("zerops_project_not_found"),
-          ),
-          Effect.catchTag("ZeropsApiUnavailableError", (error) =>
-            failEnvironmentInternal("zerops_membership_check_failed", error),
-          ),
-          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
-            failEnvironmentInternal("pairing_credential_issuance_failed", error),
-          ),
+        // One reason for all six shape rules: which rule failed is a hint
+        // towards a token that would pass, and the caller never needs it —
+        // the app's answer to every one of them is to mint a fresh
+        // throwaway.
+        Effect.catchTag("ZeropsThrowawayRefusedError", () =>
+          failEnvironmentOperationForbidden("zerops_throwaway_required"),
         ),
-      );
+        Effect.catchTag("ZeropsReadOnlyError", () =>
+          failEnvironmentOperationForbidden("zerops_read_only"),
+        ),
+        Effect.catchTag("ZeropsNotAMemberError", () =>
+          failEnvironmentOperationForbidden("zerops_project_membership_required"),
+        ),
+        Effect.catchTag("ZeropsProjectNotFoundError", () =>
+          failEnvironmentNotFound("zerops_project_not_found"),
+        ),
+        Effect.catchTag("ZeropsApiUnavailableError", (error) =>
+          failEnvironmentInternal("zerops_membership_check_failed", error),
+        ),
+        Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
+          failEnvironmentInternal("pairing_credential_issuance_failed", error),
+        ),
+      ),
+    );
   }),
 );
