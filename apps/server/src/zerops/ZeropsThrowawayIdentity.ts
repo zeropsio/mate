@@ -171,11 +171,16 @@ const decodeUserInfo = Schema.decodeUnknownEffect(UserInfoResponse);
  * member list would refuse everyone, which reads as a lockout rather than as
  * the outage it is.
  */
+/**
+ * The member list's rows. `GET /client/{id}/user/list` answers
+ * `{ clientUserList: [...] }` — not the `items` the search endpoints use, and
+ * not a bare array (measured 2026-09-16 on a real Mate: the door refused every
+ * caller with "not in the expected shape" until this read the right key).
+ */
 export function readMemberEntries(body: unknown): ReadonlyArray<unknown> | null {
-  if (Array.isArray(body)) return body;
   if (typeof body !== "object" || body === null) return null;
-  const items = (body as Record<string, unknown>)["items"];
-  return Array.isArray(items) ? items : null;
+  const rows = (body as Record<string, unknown>)["clientUserList"];
+  return Array.isArray(rows) ? rows : null;
 }
 
 /** Flags a throwaway must not carry. Any truthy one refuses the token. */

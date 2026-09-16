@@ -80,7 +80,7 @@ const TOKEN_RECORD = {
 };
 
 const MEMBERS = {
-  items: [
+  clientUserList: [
     {
       id: "cu-other",
       userId: "another-person",
@@ -216,12 +216,12 @@ describe("verifyThrowawayCaller", () => {
       { tokenRecord: { ...TOKEN_RECORD, created: "the other day" } },
       "stale",
     ],
-    ["a creator the member list does not know", { members: { items: [] } }, "not_member"],
+    ["a creator the member list does not know", { members: { clientUserList: [] } }, "not_member"],
     [
       "a creator who is invited but not active",
       {
         members: {
-          items: [
+          clientUserList: [
             {
               id: CLIENT_USER_ID,
               userId: USER_ID,
@@ -274,7 +274,7 @@ describe("verifyThrowawayCaller", () => {
             override === undefined ? [] : [{ clientUserId: CLIENT_USER_ID, roleCode: override }],
         },
         members: {
-          items: [
+          clientUserList: [
             {
               id: CLIENT_USER_ID,
               userId: USER_ID,
@@ -305,7 +305,7 @@ describe("verifyThrowawayCaller", () => {
     // Data Console, `/var/www` reads and the browser stream.
     const { layer } = scene({
       members: {
-        items: [
+        clientUserList: [
           {
             id: CLIENT_USER_ID,
             userId: USER_ID,
@@ -382,10 +382,18 @@ describe("verifyThrowawayCaller", () => {
     );
   });
 
-  it.effect("reads a member list the platform answers as a bare array", () => {
-    const { layer } = scene({ members: MEMBERS.items });
+  it.effect("refuses to guess at a member list under any other key", () => {
+    // The platform answers `clientUserList`; `items` (the search endpoints'
+    // key) and a bare array are shapes this door once accepted and the real
+    // API never sends. Neither is an admission.
+    const { layer } = scene({ members: { items: MEMBERS.clientUserList } });
     return verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
-      Effect.tap((caller) => Effect.sync(() => assert.strictEqual(caller.userId, USER_ID))),
+      Effect.flip,
+      Effect.tap((error) =>
+        Effect.sync(() => {
+          assert.strictEqual(error._tag, "ZeropsApiUnavailableError");
+        }),
+      ),
       Effect.provide(layer),
     );
   });
