@@ -20,6 +20,7 @@ list the peers.
 **Blocks** S4's "brand-new account reaches a thread" acceptance; confirms `zcpClaimed`, the timing until the claimed `zcp` is `ACTIVE`, and what `POST /registration` returns for a pool-aware signup.
 **What is known** The exact request and the fallback calls are in `verified.md` S0.7. Registration cannot be driven from a foreign origin (Q-10, answered: the Turnstile key is hostname-bound), so the live run goes through the real GUI (`app.zerops.io/registration?zcp=true`, puppeteer) and measures the claim from the API afterwards — running 2026-08-28.
 **How to answer** Owner supplies throwaway e-mail addresses; run the sequence; record `zcpClaimed`, the project id, and the time to `ACTIVE` with direct reads. Waiting on the owner as of 2026-08-28.
+**Also record (2026-09-15)** the claimed project's `zcp-*` token as the new owner sees it: whether it appears in `GET /client/{id}/integration-token/list`, its name, `createdByUser` and grants, whether it carries a delegation, and whether the owner can lower it to `BASIC_USER` and delete that delegation. The Mate hardening in the backbone plan reaches pool-claimed Mates only through that owner's session.
 
 ---
 
@@ -70,32 +71,16 @@ declare a flat `utilization` and no `unifiedWindows`, so a newer CLI may emit th
 tab before/after against `claude --version`; if it does not move, decide between porting a
 `unifiedWindows` reader into the normaliser (a ported-zone divergence) and waiting for the CLI.
 
-## Q-?? — How does a Mate get its git credential without a human? — 2026-09-07
+### Q-16 · What does removing a member with `force` delete, and what happens to their Mates?
 
-Raised while building the investor demo, where step 5 of the Gitea runbook —
-giving the Mate a Gitea token — turned out to have **no interface at all** and
-no way for the agent to ask for one either. Three API calls and a container
-restart, done by hand with an integration token. It cannot ship that way.
-
-What is measured, and what it rules out:
-
-| Fact                                                                                                                                                                               | Consequence                                                                                                                                    |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| The Mate's container is imported with `createIntegrationToken: true` — "the project needs its own token so the container can operate itself" (`newProject.ts`).                    | The container already holds a Zerops credential. Whatever provisions the git token should be the container, not the browser.                   |
-| The account's Zerops access token is handed to the container at identity connect and **never stored** — "a parameter and a request header and nothing else" (`ZeropsIdentity.ts`). | zcp cannot act as the account later. Any design that assumes it can is closed by policy, not by a missing feature.                             |
-| `GET /service-stack/{id}/env` answers `REDACTED` for every sensitive value to a user access token; only an integration token reads them (`verified.md`, 2026-09-07).               | The browser can never read Gitea's admin credential, and giving a web page an account-scoped integration token to fix that is the wrong trade. |
-| Minting a Gitea token requires **basic auth**: a token cannot mint a token (runbook §5).                                                                                           | Whoever mints holds Gitea's admin username and password, so the fewer holders the better.                                                      |
-
-Two candidate shapes, and the open question is which:
-
-1. **zcp mints for itself at bootstrap** — find the account's Gitea by its
-   `mate:tool:gitea` tag, read the admin credential, mint `mate/<bot>` scoped
-   `write:repository`, configure git's credential helper locally. No platform
-   write, no restart, no UI. **Open:** whether a per-project integration token
-   can read another project's env. If it cannot, this shape is dead.
-2. **Gitea mints on request** — `recipe-gitea` already mints its own admin at
-   boot; add an endpoint that issues a repo-scoped token to a zcp that proves
-   it is in the same account. No Mate ever holds Gitea admin, and a compromised
-   Mate costs one repo token.
-
-(2) is the better posture whichever way (1)'s scoping question lands.
+**Blocks** the leave flow: every `zcp-*` token — a Mate's platform identity and operator key — is
+owned by the person who created that Mate.
+**What is known** (2026-09-15, `verified.md`, _A member's rights and the tokens they made_) Lowering
+a person leaves their tokens' grants untouched; regenerating a token hands it to whoever regenerates
+it, killing the old value; removing a member who holds tokens is refused (`409
+deleteExistingApplicationTokens`). The OpenAPI says `force=true` deletes those tokens. Not measured:
+whether `force` deletes every integration token the member created (their Mates' `zcp-*` keys
+included) and their personal tokens, and what a running Mate does when its key disappears.
+**How to answer** With an account that can be re-invited (its owner clicks the e-mail): have it
+create a Mate-shaped project and token, remove it with `force`, read the org's token list and the
+project's `userRoles`, and call the API with the token; then re-invite it.
