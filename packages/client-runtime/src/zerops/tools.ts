@@ -92,6 +92,8 @@ export const GITEA_HTTP_PORT = 3000;
 /** The service hostnames the import creates (`giteaRecipe.ts`). */
 export const GITEA_WEB_SERVICE = "web";
 export const GITEA_BROKER_SERVICE = "broker";
+/** The port the broker's recipe publishes (`giteaRecipe.ts`, `LISTEN_ADDR`). */
+export const GITEA_BROKER_PORT = 8080;
 
 /**
  * The broker's Zerops token, by name. One per account, and the name is the
@@ -147,6 +149,16 @@ export interface ZeropsGiteaState {
   /** Whether the broker service exists — the half of the import that is not Gitea. */
   readonly brokerImported: boolean;
   /**
+   * `https://broker-<subdomain>-8080.<region>.zerops.app`, once the platform
+   * has assigned one — where the app asks for a Mate's Gitea access and where
+   * Gitea's sign-in is completed (guide 1.5, 3.6).
+   *
+   * Derived exactly as the Gitea URL is, from the project and the service's
+   * own port, so an account on a devel region or behind a custom domain is
+   * read rather than guessed.
+   */
+  readonly brokerUrl: string | undefined;
+  /**
    * Whether the recipe's `GITEA_ADMIN_TOKEN` is on the `web` service — i.e.
    * whether mate can act as Gitea's admin without asking anyone for anything.
    * False on an instance whose admin was made by hand: it has an admin, but
@@ -197,14 +209,18 @@ function findService(
   return userServices(services).find((service) => service.name === name);
 }
 
-function giteaUrl(project: ZeropsProject, web: ZeropsService | undefined): string | undefined {
-  if (web === undefined) return undefined;
-  const port = web.ports?.find((candidate) => candidate.port === GITEA_HTTP_PORT) ?? {
-    port: GITEA_HTTP_PORT,
+function servicePublicOrigin(
+  project: ZeropsProject,
+  service: ZeropsService | undefined,
+  portNumber: number,
+): string | undefined {
+  if (service === undefined) return undefined;
+  const port = service.ports?.find((candidate) => candidate.port === portNumber) ?? {
+    port: portNumber,
     httpSupport: true,
     scheme: "http",
   };
-  return servicePortOrigin(project, web, port);
+  return servicePortOrigin(project, service, port);
 }
 
 /**
@@ -237,7 +253,8 @@ export function deriveGiteaState(
         : "provisioning";
 
   const running = phase === "running";
-  const url = giteaUrl(project, web);
+  const url = servicePublicOrigin(project, web, GITEA_HTTP_PORT);
+  const brokerUrl = servicePublicOrigin(project, broker, GITEA_BROKER_PORT);
 
   // A published token outranks the user count: it is proof the recipe finished
   // its own bootstrap, it needs no probe, and it is the thing every later step
@@ -288,6 +305,7 @@ export function deriveGiteaState(
     url,
     webStatus,
     brokerImported: broker !== undefined,
+    brokerUrl,
     adminCredentialPublished,
     steps,
   };

@@ -52,6 +52,10 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`importProject:${input.yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
     },
+    fetchGiteaCredential: (input) => {
+      calls.push(`gitea:${input.projectId}`);
+      return Promise.resolve({ kind: "written" as const });
+    },
     listIntegrationTokenGrants: ({ clientId }) => {
       calls.push(`tokens:${clientId}`);
       return Promise.resolve([MINTED_TOKEN]);
@@ -203,6 +207,9 @@ describe("runEnvironmentCreation", () => {
       "done",
       "done",
       "running",
+      // The Gitea step is the caller's to run once the container is up: the
+      // provisioning wait it hands off to is where "ready" is decided.
+      "queued",
     ]);
   });
 
@@ -290,6 +297,7 @@ describe("runEnvironmentCreation", () => {
       "done",
       "failed",
       "queued",
+      "queued",
     ]);
     expect(last[5]?.error).toBe("projectImportProjectIncluded");
   });
@@ -307,6 +315,7 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
+      "queued",
       "queued",
       "queued",
       "queued",
@@ -436,5 +445,58 @@ describe("runEnvironmentCreation — dropping the container's delegation", () =>
 
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.failedStep.kind).toBe("drop-container-delegation");
+  });
+});
+
+describe("the Mate's Gitea access", () => {
+  /**
+   * A plan that reaches the step. A Mate's own plan hands off at
+   * `await-ready`, so its Gitea step is the caller's to run once the container
+   * is up; this is the executor being handed a plan that does reach it.
+   */
+  const giteaPlan = (): ReadonlyArray<EnvironmentCreationStep> => [
+    { kind: "create-project", name: "stage", tagList: [], location: undefined },
+    { kind: "fetch-gitea-credential" },
+  ];
+
+  it("asks for the Mate's Gitea access and says it was written", async () => {
+    const { platform, calls } = fakePlatform();
+    const { outcome, reports } = await run(giteaPlan(), platform);
+
+    expect(calls).toContain("gitea:proj-1");
+    expect(outcome.ok && outcome.giteaCredential).toEqual({ kind: "written" });
+    expect(reports.at(-1)!.at(-1)?.state).toBe("done");
+  });
+
+  // Tolerant on purpose: a Mate that exists and runs is not a failed creation
+  // because its account's Gitea is not up yet. The projects-screen reconcile
+  // asks again on the next read.
+  for (const [name, answer, note] of [
+    ["the account has no Gitea yet", { kind: "waiting-for-gitea" as const }, "Waiting for Gitea"],
+    [
+      "the broker refused",
+      { kind: "unavailable" as const, reason: "not_registered" },
+      "not_registered",
+    ],
+  ] as const) {
+    it(`finishes the creation when ${name}`, async () => {
+      const { platform } = fakePlatform({
+        fetchGiteaCredential: () => Promise.resolve(answer),
+      });
+      const { outcome, reports } = await run(giteaPlan(), platform);
+
+      expect(outcome.ok).toBe(true);
+      const last = reports.at(-1)!.at(-1);
+      expect(last?.state).toBe("done");
+      expect(last?.note).toBe(note);
+    });
+  }
+
+  // A Mate's creation hands off at `await-ready`: the provisioning wait it
+  // hands to is where "ready" is decided, and the credential is fetched there.
+  it("says nothing about Gitea when the creation handed off before the step", async () => {
+    const { platform } = fakePlatform();
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome.ok && outcome.giteaCredential).toBeUndefined();
   });
 });

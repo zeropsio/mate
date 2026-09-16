@@ -101,6 +101,9 @@ describe("planEnvironmentCreation", () => {
       "isolate-project-env",
       "import-recipe",
       "await-ready",
+      // Last and tolerant: the Mate's Gitea access, which needs a container
+      // that is up and an account whose Gitea is (guide 1.5).
+      "fetch-gitea-credential",
     ]);
   });
 
@@ -176,6 +179,7 @@ describe("environmentCreationStepLabel", () => {
       "Closing the project's shared variables",
       "Importing the application",
       "Waiting for the agent",
+      "Giving the Mate its Gitea access",
     ]);
   });
 
@@ -274,6 +278,7 @@ describe("the recipe choice", () => {
       "drop-container-delegation",
       "isolate-project-env",
       "await-ready",
+      "fetch-gitea-credential",
     ]);
   });
 
@@ -333,6 +338,7 @@ services:
       "drop-container-delegation",
       "isolate-project-env",
       "await-ready",
+      "fetch-gitea-credential",
     ]);
   });
 

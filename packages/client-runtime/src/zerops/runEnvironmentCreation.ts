@@ -91,11 +91,35 @@ export interface EnvironmentCreationPlatform {
    * and the entry ids the writes need never leave the caller that read them.
    */
   readonly isolateProjectEnvironment: (input: { readonly projectId: string }) => Promise<void>;
+  /**
+   * Asks the org's broker for this Mate's Gitea access and writes it onto the
+   * Mate (guide 1.5). Answers what happened rather than throwing: an account
+   * whose Gitea is not up yet is not a failed creation.
+   */
+  readonly fetchGiteaCredential: (input: {
+    readonly projectId: string;
+  }) => Promise<GiteaCredentialOutcome>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
   ) => Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>;
 }
+
+/**
+ * What came of asking for a Mate's Gitea access.
+ *
+ * None of them is a failure of the creation: the Mate exists and runs either
+ * way, and the projects-screen reconcile asks again on every read.
+ */
+export type GiteaCredentialOutcome =
+  /** Written and the container restarted into it. */
+  | { readonly kind: "written" }
+  /** The Mate already holds this Gitea's token; nothing to do. */
+  | { readonly kind: "up-to-date" }
+  /** The account has no Gitea yet, or it is still coming up. */
+  | { readonly kind: "waiting-for-gitea" }
+  /** The broker refused or could not be reached. Said, not thrown. */
+  | { readonly kind: "unavailable"; readonly reason: string };
 
 export type EnvironmentCreationStepState = "queued" | "running" | "done" | "failed";
 
@@ -104,6 +128,11 @@ export interface EnvironmentCreationStepProgress {
   readonly state: EnvironmentCreationStepState;
   /** Set on `failed`: what the platform said. */
   readonly error?: string;
+  /**
+   * A step that finished without doing its work, and why — the tolerant
+   * steps' answer. `fetch-gitea-credential` is the only one today.
+   */
+  readonly note?: string;
   readonly startedAtMs?: number;
   readonly finishedAtMs?: number;
 }
@@ -126,6 +155,12 @@ export type EnvironmentCreationOutcome =
        * through. The environment is up; these are what it still needs.
        */
       readonly undeployed: ReadonlyArray<string>;
+      /**
+       * What came of the Gitea step, when the plan reached it. Absent when the
+       * creation handed off at `await-ready` — a Mate's credential is then the
+       * caller's to fetch once its container is up, through the same call.
+       */
+      readonly giteaCredential?: GiteaCredentialOutcome;
     }
   | {
       readonly ok: false;
@@ -191,6 +226,7 @@ export async function runEnvironmentCreation(
   let projectId: string | undefined;
   let serviceName: string | undefined;
   let undeployed: ReadonlyArray<string> = [];
+  let giteaCredential: GiteaCredentialOutcome | undefined;
   // Read once and shared by the two steps that need it: the account's token
   // list does not change under a creation, and one read is one round trip
   // fewer between the container coming up and its ADMIN going away.
@@ -299,6 +335,20 @@ export async function runEnvironmentCreation(
           await input.platform.importServices(requireProject(projectId), step.yaml);
           break;
         }
+        case "fetch-gitea-credential": {
+          // Tolerant on purpose: whatever the broker says, the environment is
+          // built. The reconcile on the projects screen asks again.
+          const outcome = await input.platform.fetchGiteaCredential({
+            projectId: requireProject(projectId),
+          });
+          giteaCredential = outcome;
+          if (outcome.kind === "waiting-for-gitea") {
+            mark(index, { note: "Waiting for Gitea" });
+          } else if (outcome.kind === "unavailable") {
+            mark(index, { note: outcome.reason });
+          }
+          break;
+        }
         case "await-ready": {
           if (step.withAgent) {
             // Handed off, not finished: the caller's provisioning wait takes
@@ -339,6 +389,7 @@ export async function runEnvironmentCreation(
     serviceName,
     awaitingAgent: false,
     undeployed,
+    ...(giteaCredential === undefined ? {} : { giteaCredential }),
   };
 }
 

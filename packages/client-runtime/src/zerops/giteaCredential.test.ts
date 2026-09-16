@@ -6,6 +6,7 @@ import {
   GITEA_URL_ENV_KEY,
   MATE_BROKER_URL_ENV_KEY,
   planGiteaCredential,
+  planGiteaCredentialReconcile,
   planGiteaCredentialRequest,
 } from "./giteaCredential.ts";
 
@@ -148,5 +149,84 @@ describe("planGiteaCredential", () => {
       const plan = planGiteaCredential({ brokerOrigin: BROKER, credential: MINTED, current });
       expect(plan.restart).toBe(plan.write.length > 0);
     }
+  });
+});
+
+describe("planGiteaCredentialReconcile", () => {
+  const ENDPOINTS = {
+    giteaOrigin: "https://web-1234-3000.prg1.zerops.app",
+    brokerOrigin: "https://broker-1234-8080.prg1.zerops.app",
+  };
+  const mate = (projectId: string, current: Record<string, string>) => ({
+    projectId,
+    serviceId: `zcp-${projectId}`,
+    current,
+  });
+
+  // An account whose Gitea is still building is not a failure and not a thing
+  // to report: the same reconcile runs on the next read.
+  for (const [name, endpoints] of [
+    ["the account has no Gitea yet", undefined],
+    ["its broker has no public origin yet", { ...ENDPOINTS, brokerOrigin: "" }],
+    ["Gitea has no public origin yet", { ...ENDPOINTS, giteaOrigin: "   " }],
+  ] as const) {
+    it(`waits when ${name}`, () => {
+      expect(planGiteaCredentialReconcile({ endpoints, mates: [mate("p1", {})] })).toEqual({
+        kind: "wait-for-gitea",
+      });
+    });
+  }
+
+  it("asks for a Mate that has no token", () => {
+    expect(planGiteaCredentialReconcile({ endpoints: ENDPOINTS, mates: [mate("p1", {})] })).toEqual(
+      {
+        kind: "fetch",
+        endpoints: ENDPOINTS,
+        mates: [{ projectId: "p1", serviceId: "zcp-p1", mode: "ensure" }],
+      },
+    );
+  });
+
+  it("asks for nothing when every Mate already holds this Gitea's token", () => {
+    expect(
+      planGiteaCredentialReconcile({
+        endpoints: ENDPOINTS,
+        mates: [
+          mate("p1", { GITEA_URL: ENDPOINTS.giteaOrigin, GITEA_TOKEN: "REDACTED" }),
+          mate("p2", { GITEA_URL: ENDPOINTS.giteaOrigin, GITEA_TOKEN: "REDACTED" }),
+        ],
+      }),
+    ).toEqual({ kind: "up-to-date" });
+  });
+
+  // `ensure` would answer `minted: false` for a bot whose token is live, and
+  // the app would then write a URL whose token it does not hold.
+  it("rotates a Mate pointed at another Gitea", () => {
+    const plan = planGiteaCredentialReconcile({
+      endpoints: ENDPOINTS,
+      mates: [mate("p1", { GITEA_URL: "https://old.example", GITEA_TOKEN: "REDACTED" })],
+    });
+    expect(plan.kind === "fetch" && plan.mates[0]?.mode).toBe("rotate");
+  });
+
+  it("asks only for the Mates that need it", () => {
+    const plan = planGiteaCredentialReconcile({
+      endpoints: ENDPOINTS,
+      mates: [
+        mate("p1", { GITEA_URL: ENDPOINTS.giteaOrigin, GITEA_TOKEN: "REDACTED" }),
+        mate("p2", {}),
+      ],
+    });
+    expect(plan.kind === "fetch" && plan.mates.map((entry) => entry.projectId)).toEqual(["p2"]);
+  });
+
+  // Nothing to write it onto.
+  it("skips a Mate with no zcp service rather than reporting it", () => {
+    expect(
+      planGiteaCredentialReconcile({
+        endpoints: ENDPOINTS,
+        mates: [{ projectId: "p1", serviceId: undefined, current: {} }],
+      }),
+    ).toEqual({ kind: "up-to-date" });
   });
 });

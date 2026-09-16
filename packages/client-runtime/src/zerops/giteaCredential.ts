@@ -167,3 +167,84 @@ export function planGiteaCredential(input: ZeropsGiteaCredentialInput): ZeropsGi
   if (write.length === 0) return UP_TO_DATE;
   return { upToDate: false, write, sensitive, values, restart: true };
 }
+
+/** As much of a Mate as the reconcile needs to decide about it. */
+export interface MateGiteaAccess {
+  readonly projectId: string;
+  /** Its `zcp` service, when the Mate has one. */
+  readonly serviceId: string | undefined;
+  /**
+   * The Mate's current `zcp` environment. Sensitive values arrive as
+   * `"REDACTED"`; presence is the whole signal for the token.
+   */
+  readonly current: Readonly<Record<string, string>>;
+}
+
+/** Where the account's Gitea and its broker answer, once both are up. */
+export interface GiteaEndpoints {
+  readonly giteaOrigin: string;
+  readonly brokerOrigin: string;
+}
+
+export type GiteaCredentialReconcilePlan =
+  /**
+   * The account has no Gitea yet, or its broker is not up. Not a failure and
+   * not a thing to report: the same reconcile runs on the next read, and a
+   * Mate without a Gitea token is a Mate that cannot push yet.
+   */
+  | { readonly kind: "wait-for-gitea" }
+  /** Nothing to ask for: every Mate already holds this Gitea's token. */
+  | { readonly kind: "up-to-date" }
+  | {
+      readonly kind: "fetch";
+      readonly endpoints: GiteaEndpoints;
+      readonly mates: ReadonlyArray<{
+        readonly projectId: string;
+        readonly serviceId: string;
+        readonly mode: MateCredentialMode;
+      }>;
+    };
+
+/**
+ * Which Mates still need their Gitea access, and in which mode.
+ *
+ * Runs on every read of the projects screen, like the group-reach repair
+ * beside it, and plans nothing for an account that is already right — which is
+ * what makes it safe to run that often. A Mate created before the account had
+ * a Gitea, one added from the pool, one whose credential write was interrupted
+ * between the mint and the service-env write: all of them are picked up here,
+ * because the decision is a read of what each Mate holds rather than a memory
+ * of what was done.
+ *
+ * A Mate with no `zcp` service is skipped rather than reported: there is
+ * nothing to write the credential onto.
+ */
+export function planGiteaCredentialReconcile(input: {
+  readonly endpoints: GiteaEndpoints | undefined;
+  readonly mates: ReadonlyArray<MateGiteaAccess>;
+}): GiteaCredentialReconcilePlan {
+  const endpoints = input.endpoints;
+  if (
+    endpoints === undefined ||
+    origin(endpoints.giteaOrigin).length === 0 ||
+    origin(endpoints.brokerOrigin).length === 0
+  ) {
+    return { kind: "wait-for-gitea" };
+  }
+
+  const mates: Array<{
+    readonly projectId: string;
+    readonly serviceId: string;
+    readonly mode: MateCredentialMode;
+  }> = [];
+  for (const mate of input.mates) {
+    if (mate.serviceId === undefined) continue;
+    const mode = planGiteaCredentialRequest({
+      giteaOrigin: endpoints.giteaOrigin,
+      current: mate.current,
+    });
+    if (mode === undefined) continue;
+    mates.push({ projectId: mate.projectId, serviceId: mate.serviceId, mode });
+  }
+  return mates.length === 0 ? { kind: "up-to-date" } : { kind: "fetch", endpoints, mates };
+}

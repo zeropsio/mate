@@ -41,6 +41,7 @@ import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registra
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
+import { randomUUID } from "~/lib/utils";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import {
   useZeropsCandidates,
@@ -53,6 +54,10 @@ import {
   useZeropsGroupReach,
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
+import {
+  fetchMateGiteaCredential,
+  useZeropsGiteaCredential,
+} from "~/zerops/useZeropsGiteaCredential";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
@@ -72,9 +77,12 @@ import {
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
+  deriveGiteaState,
   hasMate,
+  isZcpService,
   planEnvironmentCreation,
   readZeropsGroupTags,
+  readZeropsToolKind,
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
@@ -1252,6 +1260,26 @@ function ZeropsProjectsContent() {
             runZeropsCommand(
               runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
             ),
+          // Tolerant by design: a Mate that exists and runs is not a failed
+          // creation because its account's Gitea is not up yet. Whatever this
+          // answers, the reconcile above asks again on the next read.
+          fetchGiteaCredential: async ({ projectId }) => {
+            const outcome = inventoryRef.current.services.get(projectId);
+            const serviceId =
+              outcome?.status === "resolved"
+                ? outcome.services.find((service) => isZcpService(service))?.id
+                : undefined;
+            if (serviceId === undefined) return { kind: "waiting-for-gitea" as const };
+            const current = await client.readMateGiteaEnv(serviceId).catch(() => undefined);
+            if (current === undefined) return { kind: "waiting-for-gitea" as const };
+            return fetchMateGiteaCredential({
+              client,
+              clientId: activeOrganization.id,
+              endpoints: giteaEndpoints,
+              mate: { projectId, serviceId, current },
+              nonce: randomUUID(),
+            });
+          },
           readObservedServices: async (projectId) => {
             const outcome = inventoryRef.current.services.get(projectId);
             return outcome?.status === "resolved"
@@ -1392,6 +1420,39 @@ function ZeropsProjectsContent() {
   useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
     enabled: status === "signed-in",
+  });
+
+  // And every Mate's Gitea access (guide 1.5). Both endpoints come from the
+  // account's own Gitea project, read exactly as its URL is — an account on a
+  // devel region or behind a custom domain is read, never guessed. No Gitea,
+  // no broker, no call.
+  const giteaEndpoints = useMemo(() => {
+    const tool = inventory.projects.find(
+      (project) => readZeropsToolKind(project.tagList) === "gitea",
+    );
+    if (tool === undefined) return undefined;
+    const outcome = inventory.services.get(tool.id);
+    if (outcome?.status !== "resolved") return undefined;
+    const state = deriveGiteaState(tool, outcome.services);
+    return state.url === undefined || state.brokerUrl === undefined
+      ? undefined
+      : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
+  }, [inventory.projects, inventory.services]);
+  const giteaMates = useMemo(
+    () =>
+      candidates
+        .filter((candidate) => hasMate(candidate) && !isZeropsToolCandidate(candidate))
+        .map((candidate) => ({
+          projectId: candidate.project.id,
+          serviceId: candidate.service?.id,
+        })),
+    [candidates],
+  );
+  useZeropsGiteaCredential({
+    clientId: activeOrganization?.id,
+    endpoints: giteaEndpoints,
+    mates: giteaMates,
+    enabled: status === "signed-in" && !isLoading,
   });
 
   useEffect(() => {

@@ -3,6 +3,7 @@ export {
   ZeropsApiClient,
   ZeropsApiError,
   buildZeropsContainerUrl,
+  isZcpService,
   zeropsClientsFromUser,
   zeropsRegionFromPublicZone,
   type ListProjectsOptions,
@@ -194,6 +195,7 @@ export {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
   type EnvironmentCreationStepState,
+  type GiteaCredentialOutcome,
   type RunEnvironmentCreationInput,
 } from "./runEnvironmentCreation.ts";
 export {
@@ -219,7 +221,11 @@ export {
   GITEA_URL_ENV_KEY,
   MATE_BROKER_URL_ENV_KEY,
   planGiteaCredential,
+  planGiteaCredentialReconcile,
   planGiteaCredentialRequest,
+  type GiteaCredentialReconcilePlan,
+  type GiteaEndpoints,
+  type MateGiteaAccess,
   type ZeropsGiteaCredentialInput,
   type ZeropsGiteaCredentialPlan,
   type ZeropsGiteaCredentialRequestInput,
