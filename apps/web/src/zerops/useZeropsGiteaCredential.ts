@@ -24,6 +24,10 @@
  * repair of something the person did not ask for, and a Mate without a Gitea
  * token is a working Mate that cannot push yet. The next read tries again.
  *
+ * Each Mate's outcome leaves a receipt (`giteaCredentialReceipts.ts`): the Git
+ * tab has to say whether a Mate is provisioned and may not decide that from a
+ * `GITEA_TOKEN` key being present, so it reads what this reconcile established.
+ *
  * **The token exists as an argument and nothing else.** It goes from the
  * broker's answer into `writeMateGiteaCredential` and is never returned,
  * stored, logged or put on a plan a UI renders.
@@ -43,6 +47,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useRef } from "react";
 
 import { randomUUID } from "~/lib/utils";
+import { mateGiteaReceiptFrom, recordMateGiteaReceipt } from "./giteaCredentialReceipts";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate on the account, before anything of its environment has been read. */
@@ -159,6 +164,11 @@ export function useZeropsGiteaCredential(input: {
           nonce: randomUUID(),
           signal: controller.signal,
         });
+        // What this reconcile established about the Mate, for the screens that
+        // ask later — a Git tab does not inspect a Mate's environment itself
+        // (`giteaCredentialReceipts.ts`).
+        const receipt = mateGiteaReceiptFrom(outcome);
+        if (receipt !== undefined) recordMateGiteaReceipt(mate.projectId, receipt);
         // A refusal or an outage is not a screen's business; the next read
         // asks again.
         if (outcome.kind === "unavailable") lastKey.current = null;

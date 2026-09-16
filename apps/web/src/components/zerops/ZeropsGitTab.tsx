@@ -16,6 +16,10 @@
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
  * they are the Mate's owner's alone (D11); Gitea-side verbs are Gitea's to
  * police and are offered to whoever can open this Mate.
+ *
+ * Whether each remote answers is the third read here, and the only one that is
+ * neither live nor on a clock: `zerops.git.probeRemote` on open and after each
+ * verb (`useZeropsGitRemoteProbe`).
  */
 import {
   gitActionAllowed,
@@ -28,20 +32,13 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useMemo, useState } from "react";
 
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGitForge } from "../../zerops/useZeropsGitForge";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
 import { ZeropsGitPanel, type ZeropsGitPanelModel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
-
-/** Where zcp mounts every sibling service on the container. */
-export const ZEROPS_WORKSPACE_ROOT = "/var/www";
-
-/** One runtime service's checkout path. */
-export function checkoutPathFor(hostname: string): string {
-  return `${ZEROPS_WORKSPACE_ROOT}/${hostname}`;
-}
 
 /**
  * Subscribes to one mount's VCS status and reports it up. Renders nothing:
@@ -93,8 +90,6 @@ export interface ZeropsGitTabProps {
   readonly isOwner: boolean;
   /** The credential reconcile's receipt — not `GITEA_TOKEN`'s presence. */
   readonly provisioned: boolean | undefined;
-  /** A live `git ls-remote`, per repository. */
-  readonly remoteReachable: ReadonlyMap<string, boolean>;
   /** The group half of the panel, which the caller assembles. */
   readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn">;
   readonly signedIn: boolean;
@@ -146,6 +141,13 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     [checkouts, repositories],
   );
 
+  /**
+   * Whether each remote answers, asked here rather than passed in: the probe
+   * needs the repositories, and they come from this Mate's own topology. One
+   * round on open, one more after each verb (`generation`), never on a clock.
+   */
+  const remotes = useZeropsGitRemoteProbes({ environmentId, repositories, generation });
+
   const forges = useZeropsGitForge({
     giteaOrigin: props.giteaOrigin,
     owner: props.owner,
@@ -176,11 +178,12 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           declarations: props.declarations,
           evidence: {
             provisioned: props.provisioned,
-            remoteReachable: props.remoteReachable.get(repository),
+            remoteReachable: remotes.get(repository)?.reachable,
+            remoteDetail: remotes.get(repository)?.detail,
           },
         }),
       ),
-    [checkouts, forges, props.declarations, props.provisioned, props.remoteReachable, repositories],
+    [checkouts, forges, props.declarations, props.provisioned, remotes, repositories],
   );
 
   const renderBlockAction = (block: GitBlock) => {

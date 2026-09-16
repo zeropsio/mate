@@ -826,10 +826,19 @@ export const ZeropsGitRemoteProbeInput = Schema.Struct({
 export type ZeropsGitRemoteProbeInput = typeof ZeropsGitRemoteProbeInput.Type;
 
 /**
+ * How much of git's diagnostic leaves the container.
+ *
+ * A block's trouble line is one line in a panel, and `ls-remote`'s stderr can
+ * run to a paragraph; the server cuts it here and the tab shows what arrives.
+ */
+export const ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS = 200;
+
+/**
  * What the probe found. `reachable: false` carries the first line of git's own
- * diagnostic, sanitized to one line — never a URL with credentials in it,
- * because the remote this runs against carries none (the token is an askpass
- * helper's, not part of the URL).
+ * diagnostic, sanitized to one line and capped at
+ * {@link ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS} — never a URL with credentials in
+ * it, because the remote this runs against carries none (the token is an
+ * askpass helper's, not part of the URL).
  */
 export const ZeropsGitRemoteProbeResult = Schema.Struct({
   reachable: Schema.Boolean,

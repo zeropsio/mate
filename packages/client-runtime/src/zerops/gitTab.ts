@@ -33,12 +33,16 @@
  * person loses work, so the order the verbs are offered in is the order the
  * work actually happens in.
  *
- * Checks are a tone and one word, never a sentence (design system R5).
+ * Checks are a tone and one word, never a sentence (design system R5). A block
+ * whose setup has been *proved* broken says what was proved — git's own line
+ * for a remote that refused — and offers no verb that would run against it.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module gitTab
  */
+
+import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -77,6 +81,12 @@ export interface GitBlockEvidence {
   readonly provisioned: boolean | undefined;
   /** A live `git ls-remote` answered (`zerops.git.probeRemote`). */
   readonly remoteReachable: boolean | undefined;
+  /**
+   * What git said when it refused — its own `remote:` line, as the probe
+   * capped it. A person fixes a permission or a URL from that sentence and
+   * from nothing the app could have written instead.
+   */
+  readonly remoteDetail?: string | undefined;
 }
 
 /** What the person is looking at, in one word the block is built around. */
@@ -194,8 +204,27 @@ export function gitHeadLine(checkout: GitCheckoutState): string {
  */
 export function gitTrouble(evidence: GitBlockEvidence): string {
   if (evidence.provisioned === false) return "This Mate has no Gitea access yet.";
-  if (evidence.remoteReachable === false) return "Its remote did not answer.";
+  if (evidence.remoteReachable === false) {
+    const detail = evidence.remoteDetail?.trim() ?? "";
+    return detail.length === 0
+      ? "Its remote did not answer."
+      : detail.slice(0, ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
+  }
   return "";
+}
+
+/**
+ * Whether a verb runs in the Mate's container, against the remote.
+ *
+ * The same verbs the owner-only gate covers, and for the same reason — they
+ * run as the agent's user, over the container's own credential. A setup proved
+ * broken is exactly the setup those verbs need, so they are not offered:
+ * pressing one would spend a round trip to arrive at the sentence the block is
+ * already showing. Gitea-side verbs are unaffected — they run as the person,
+ * from the browser, and the container's remote is not in their path.
+ */
+function runsInTheContainer(action: GitBlockAction): boolean {
+  return action.kind === "push" || action.kind === "update-from-main";
 }
 
 function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockState {
@@ -260,6 +289,8 @@ export function gitBlock(input: {
       : state === "in-review"
         ? `${environment} picks it up on merge`
         : `${environment} runs this branch`;
+  const trouble = gitTrouble(input.evidence);
+  const action = actionOf(checkout, forge, state);
   return {
     repository: checkout.repository,
     branch: checkout.headRef ?? FALLBACK_DEFAULT_BRANCH,
@@ -270,8 +301,9 @@ export function gitBlock(input: {
     pullRequestNumber: forge.pullRequest?.number,
     pullRequestUrl: forge.pullRequest?.html_url,
     destination: picksUp,
-    action: actionOf(checkout, forge, state),
-    trouble: gitTrouble(input.evidence),
+    action:
+      action !== undefined && trouble.length > 0 && runsInTheContainer(action) ? undefined : action,
+    trouble,
   };
 }
 

@@ -1,3 +1,4 @@
+import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,6 +8,7 @@ import {
   gitBlock,
   gitHeadLine,
   gitTrouble,
+  type GitBlockEvidence,
   type GitCheckoutState,
   type GitForgeState,
 } from "./gitTab.ts";
@@ -72,7 +74,7 @@ const EVIDENCE = { provisioned: true, remoteReachable: true } as const;
 const block = (
   checkoutState: GitCheckoutState,
   forgeState: GitForgeState = forge(),
-  evidence = EVIDENCE,
+  evidence: GitBlockEvidence = EVIDENCE,
 ) => gitBlock({ checkout: checkoutState, forge: forgeState, declarations: DECLARATIONS, evidence });
 
 describe("which environment picks a branch up", () => {
@@ -272,6 +274,102 @@ describe("the facts that have to be proved", () => {
     },
   ])("says, for $name", ({ evidence, expected }) => {
     expect(gitTrouble(evidence)).toBe(expected);
+  });
+
+  it("says what git said, when git said anything", () => {
+    expect(
+      gitTrouble({
+        provisioned: true,
+        remoteReachable: false,
+        remoteDetail: "remote: Gitea: user does not have permission",
+      }),
+    ).toBe("remote: Gitea: user does not have permission");
+  });
+
+  it("caps git's line where the probe caps it", () => {
+    expect(
+      gitTrouble({
+        provisioned: true,
+        remoteReachable: false,
+        remoteDetail: `remote: ${"x".repeat(500)}`,
+      }),
+    ).toHaveLength(ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
+  });
+});
+
+describe("a setup proved broken offers no verb that would fail", () => {
+  const evidence = (overrides: Partial<GitBlockEvidence> = {}): GitBlockEvidence => ({
+    provisioned: true,
+    remoteReachable: true,
+    ...overrides,
+  });
+
+  it.each([
+    {
+      name: "a branch nobody has pushed",
+      state: checkout({ headRef: "feature/invoices", hasUpstream: false }),
+      forgeState: forge(),
+      offered: "push",
+    },
+    {
+      name: "a branch behind main",
+      state: checkout({ behindCount: 2 }),
+      forgeState: forge(),
+      offered: "update-from-main",
+    },
+    {
+      name: "a pushed branch with no pull request",
+      state: checkout({ headRef: "feature/invoices" }),
+      forgeState: forge(),
+      offered: "open-pull-request",
+    },
+    {
+      name: "a pull request Gitea says is mergeable",
+      state: checkout({ headRef: "feature/invoices" }),
+      forgeState: forge({ pullRequest: pull({ mergeable: true }) }),
+      offered: "merge",
+    },
+  ] as const)(
+    "$name keeps its verb while nothing is proved wrong",
+    ({ state, forgeState, offered }) => {
+      expect(block(state, forgeState, evidence()).action?.kind).toBe(offered);
+    },
+  );
+
+  it.each([
+    {
+      name: "no Gitea access",
+      broken: evidence({ provisioned: false }),
+    },
+    {
+      name: "a remote that did not answer",
+      broken: evidence({ remoteReachable: false }),
+    },
+  ])("with $name, a container verb is not offered", ({ broken }) => {
+    expect(block(checkout({ hasUpstream: false }), forge(), broken).action).toBeUndefined();
+    expect(block(checkout({ behindCount: 2 }), forge(), broken).action).toBeUndefined();
+  });
+
+  it.each([
+    {
+      name: "no Gitea access",
+      broken: evidence({ provisioned: false }),
+    },
+    {
+      name: "a remote that did not answer",
+      broken: evidence({ remoteReachable: false }),
+    },
+  ])("with $name, a verb Gitea runs is still offered", ({ broken }) => {
+    expect(block(checkout({ headRef: "feature/invoices" }), forge(), broken).action?.kind).toBe(
+      "open-pull-request",
+    );
+    expect(
+      block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }) }),
+        broken,
+      ).action?.kind,
+    ).toBe("merge");
   });
 });
 

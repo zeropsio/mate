@@ -28,7 +28,11 @@
  *
  * @module ZeropsGitRemoteProbe
  */
-import { ZeropsGitRemoteProbeError, type ZeropsGitRemoteProbeResult } from "@t3tools/contracts";
+import {
+  ZeropsGitRemoteProbeError,
+  ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
+  type ZeropsGitRemoteProbeResult,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -78,7 +82,7 @@ export function probeDiagnostic(stderr: string): string {
     .filter((line) => line.length > 0);
   const remote = lines.find((line) => line.startsWith("remote:"));
   const first = remote ?? lines[0] ?? "the remote refused";
-  return first.slice(0, 200);
+  return first.slice(0, ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
 }
 
 /** How many refs `ls-remote` advertised — one per non-empty line. */
