@@ -24,6 +24,13 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
   return result.steps;
 }
 
+/** The token the platform mints with the container, as it mints it. */
+const MINTED_TOKEN = {
+  id: "tok-mate",
+  name: "zcp-Go Hello World - dev",
+  projects: [{ projectId: "proj-1", roleCode: "ADMIN" }],
+} as const;
+
 /** A platform that records what it was asked and answers as the live one does. */
 function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
   const calls: Array<string> = [];
@@ -44,6 +51,16 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
     importProject: (input) => {
       calls.push(`importProject:${input.yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
+    },
+    listIntegrationTokenGrants: ({ clientId }) => {
+      calls.push(`tokens:${clientId}`);
+      return Promise.resolve([MINTED_TOKEN]);
+    },
+    setIntegrationTokenProjects: (input) => {
+      calls.push(
+        `token:${input.tokenId}:${input.projects.map((grant) => `${grant.projectId}=${grant.roleCode}`).join(",")}`,
+      );
+      return Promise.resolve();
     },
     readObservedServices: (projectId) => {
       serviceReads += 1;
@@ -145,6 +162,8 @@ describe("runEnvironmentCreation", () => {
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
+      "tokens:client-1",
+      "token:tok-mate:proj-1=BASIC_USER",
       `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
     ]);
   });
@@ -158,7 +177,7 @@ describe("runEnvironmentCreation", () => {
     expect(outcome.ok && outcome.awaitingAgent).toBe(true);
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "running"]);
+    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "done", "running"]);
   });
 
   it("waits for every service of an environment without an agent", async () => {
@@ -237,8 +256,8 @@ describe("runEnvironmentCreation", () => {
     // Nothing after the failure runs.
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "failed", "queued"]);
-    expect(last[2]?.error).toBe("projectImportProjectIncluded");
+    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "failed", "queued"]);
+    expect(last[3]?.error).toBe("projectImportProjectIncluded");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -258,6 +277,7 @@ describe("runEnvironmentCreation", () => {
       "queued",
       "queued",
       "queued",
+      "queued",
     ]);
   });
 
@@ -267,5 +287,67 @@ describe("runEnvironmentCreation", () => {
     const [first] = reports.at(-1)!;
     expect(first?.startedAtMs).toBeDefined();
     expect(first?.finishedAtMs).toBeGreaterThanOrEqual(first?.startedAtMs ?? Infinity);
+  });
+});
+
+describe("runEnvironmentCreation — securing the container's token", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly tokens: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly projects?: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>;
+    }>;
+    readonly write: string | null;
+    readonly ok: boolean;
+  }> = [
+    {
+      name: "lowers the token the container import just minted",
+      tokens: [MINTED_TOKEN],
+      write: "token:tok-mate:proj-1=BASIC_USER",
+      ok: true,
+    },
+    {
+      name: "writes nothing when the platform already minted it lowered",
+      tokens: [{ ...MINTED_TOKEN, projects: [{ projectId: "proj-1", roleCode: "BASIC_USER" }] }],
+      write: null,
+      ok: true,
+    },
+    {
+      name: "lowers this project's token, not another Mate's",
+      tokens: [
+        {
+          id: "tok-elsewhere",
+          name: "zcp-Aurora",
+          projects: [{ projectId: "p-9", roleCode: "ADMIN" }],
+        },
+        MINTED_TOKEN,
+      ],
+      write: "token:tok-mate:proj-1=BASIC_USER",
+      ok: true,
+    },
+    {
+      name: "fails rather than report a Mate secured whose token it never found",
+      tokens: [{ id: "tok-owner", name: "personal" }],
+      write: null,
+      ok: false,
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { platform, calls } = fakePlatform({
+      listIntegrationTokenGrants: () => Promise.resolve(row.tokens as never),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(row.ok);
+    expect(calls.filter((call) => call.startsWith("token:"))).toEqual(
+      row.write === null ? [] : [row.write],
+    );
+    if (!outcome.ok) {
+      expect(outcome.failedStep.kind).toBe("secure-container-token");
+      // The half that exists is still named, so the user is not left guessing.
+      expect(outcome.projectId).toBe("proj-1");
+    }
   });
 });

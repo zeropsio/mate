@@ -127,6 +127,16 @@ export type EnvironmentCreationStep =
    * empty offers none (MC-11).
    */
   | { readonly kind: "import-container"; readonly agents: ReadonlyArray<ZeropsAgentType> }
+  /**
+   * `PUT /client/{clientId}/integration-token/{tokenId}` — the container's own
+   * token, lowered to what zcp actually needs (`groupReach.ts`).
+   *
+   * The platform mints it with `ADMIN` on the project, which is also what a
+   * shell in that container and the agent running there hold. Lowering it is
+   * the one step that has to happen while nobody has talked to the Mate yet,
+   * so it sits directly after the container import rather than at the end.
+   */
+  | { readonly kind: "secure-container-token" }
   /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
   | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
   /**
@@ -224,7 +234,12 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ]
     : [{ kind: "create-project", name, tagList, location: input.location }];
 
-  if (withAgent) steps.push({ kind: "import-container", agents: input.agents ?? [] });
+  if (withAgent) {
+    steps.push({ kind: "import-container", agents: input.agents ?? [] });
+    // Only a container has a token to lower: an environment created without
+    // one is a deployment target, and the platform mints it nothing.
+    steps.push({ kind: "secure-container-token" });
+  }
   if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
 
@@ -242,6 +257,8 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Creating the environment";
     case "import-container":
       return "Adding the agent container";
+    case "secure-container-token":
+      return "Locking the container's access";
     case "import-recipe":
       return "Importing the application";
     case "await-ready":

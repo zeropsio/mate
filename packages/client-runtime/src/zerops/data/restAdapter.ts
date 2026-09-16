@@ -1223,6 +1223,25 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
           Effect.mapError(uncertainCommandError),
         );
+      case "list-integration-token-grants":
+        return executeApi(context, (signal) =>
+          options.client.listIntegrationTokens(command.organization.organizationId, signal),
+        ).pipe(
+          Effect.map((tokens): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: {
+              kind: command.kind,
+              // Metadata only: a token's value never leaves the API client.
+              value: tokens.map((token) => ({
+                tokenId: token.id,
+                name: token.name,
+                grants: token.projects ?? [],
+              })),
+            },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
       case "set-integration-token-projects":
         return executeApi(context, (signal) =>
           options.client.setIntegrationTokenProjects(

@@ -89,14 +89,24 @@ describe("planEnvironmentCreation", () => {
 
   it("gives a dev environment its agent, before the application", () => {
     // The agent is what narrates the rest, and what fixes a failed import.
+    // Its token is lowered the moment it exists, before anything is imported
+    // beside it and before anyone can talk to it (guide 0.2).
     const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
+      "secure-container-token",
       "import-recipe",
       "await-ready",
     ]);
+  });
+
+  it("plans no token lowering for an environment with no container", () => {
+    // Nothing was minted, so there is nothing to lower.
+    const plan = planEnvironmentCreation(BASE);
+    if (!plan.ok) throw new Error("expected a plan");
+    expect(stepKinds(plan.steps)).not.toContain("secure-container-token");
   });
 
   it("gives the new container the agents the group is signed in with", () => {
@@ -157,6 +167,7 @@ describe("environmentCreationStepLabel", () => {
     expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
       "Creating the environment",
       "Adding the agent container",
+      "Locking the container's access",
       "Importing the application",
       "Waiting for the agent",
     ]);
@@ -250,7 +261,12 @@ describe("the recipe choice", () => {
       recipe: { kind: "none" },
     });
     if (!plan.ok) throw new Error(plan.reason);
-    expect(stepKinds(plan.steps)).toEqual(["create-project", "import-container", "await-ready"]);
+    expect(stepKinds(plan.steps)).toEqual([
+      "create-project",
+      "import-container",
+      "secure-container-token",
+      "await-ready",
+    ]);
   });
 
   it("refuses an environment with neither an agent nor an application", () => {
@@ -305,6 +321,7 @@ services:
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
       "import-project",
       "import-container",
+      "secure-container-token",
       "await-ready",
     ]);
   });

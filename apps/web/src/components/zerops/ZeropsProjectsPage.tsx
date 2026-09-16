@@ -41,7 +41,10 @@ import {
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { mateUpdateLine } from "~/zerops/mateUpdate";
-import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
+import {
+  integrationTokensFromGrantMetadata,
+  useZeropsGroupReach,
+} from "~/zerops/useZeropsGroupReach";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -1127,6 +1130,19 @@ function ZeropsProjectsContent() {
           importServices: (projectId, yaml) =>
             runZeropsCommand(
               runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
+            ),
+          listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
+            integrationTokensFromGrantMetadata(
+              await runZeropsCommand(
+                runtime.commands.listIntegrationTokenGrants(organizationRef(activeOrganization.id)),
+              ),
+            ),
+          setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.setIntegrationTokenProjects({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
             ),
           importProject: ({ clientId: _clientId, yaml }) =>
             runZeropsCommand(

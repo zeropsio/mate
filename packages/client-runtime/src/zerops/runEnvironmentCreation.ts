@@ -28,6 +28,12 @@
  */
 
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
+import {
+  findMateIntegrationToken,
+  planGroupReach,
+  type ZeropsIntegrationToken,
+  type ZeropsProjectGrant,
+} from "./groupReach.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 
 /** The platform calls a creation makes, in the shape `api.ts` offers them. */
@@ -51,6 +57,21 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
+  /**
+   * `GET /client/{id}/integration-token/list`, as grant metadata — names and
+   * project grants, never a token value. The step needs the id of the token
+   * the container import just minted, and nothing else about it.
+   */
+  readonly listIntegrationTokenGrants: (input: {
+    readonly clientId: string;
+  }) => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
+  /** `PUT /client/{id}/integration-token/{tokenId}` — the whole record, replaced. */
+  readonly setIntegrationTokenProjects: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  }) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
@@ -189,6 +210,15 @@ export async function runEnvironmentCreation(
           serviceName = imported.serviceName;
           break;
         }
+        case "secure-container-token": {
+          await secureContainerToken({
+            clientId: input.clientId,
+            projectId: requireProject(projectId),
+            platform: input.platform,
+            assertCurrent,
+          });
+          break;
+        }
         case "import-recipe": {
           await input.platform.importServices(requireProject(projectId), step.yaml);
           break;
@@ -234,6 +264,51 @@ export async function runEnvironmentCreation(
     awaitingAgent: false,
     undeployed,
   };
+}
+
+/**
+ * Lowers the token the container import just minted to what zcp needs
+ * (`groupReach.ts`): `NO_ACCESS` at the org, `BASIC_USER` on this one project.
+ *
+ * The new environment is planned as a group of one. Its siblings, if it has
+ * any, are the projects-screen reconcile's business — that one runs on every
+ * read and can see the whole account, while this runs once and can see only
+ * what it just made.
+ *
+ * A token that cannot be found **fails the step**. The alternative is a
+ * creation that reports success over a container whose shell holds project
+ * `ADMIN`, which is the exact thing this step exists to prevent; the project
+ * still exists and the reconcile lowers it on the next projects read, so a
+ * failure here costs a sentence, not the environment.
+ */
+async function secureContainerToken(input: {
+  readonly clientId: string;
+  readonly projectId: string;
+  readonly platform: EnvironmentCreationPlatform;
+  readonly assertCurrent: () => void;
+}): Promise<void> {
+  const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
+  input.assertCurrent();
+  const token = findMateIntegrationToken(tokens, input.projectId);
+  if (token === undefined) {
+    throw new Error(
+      "The container's own access token could not be found, so it still holds more of this project than it needs.",
+    );
+  }
+  const write = planGroupReach({
+    token,
+    selfProjectId: input.projectId,
+    groupProjectIds: [input.projectId],
+  });
+  // Already exactly right — a platform that starts minting the lowered shape
+  // makes this step a read.
+  if (write === undefined) return;
+  await input.platform.setIntegrationTokenProjects({
+    clientId: input.clientId,
+    tokenId: write.tokenId,
+    name: token.name,
+    projects: write.projects,
+  });
 }
 
 function requireProject(projectId: string | undefined): string {

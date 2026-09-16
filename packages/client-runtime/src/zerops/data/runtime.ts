@@ -2847,6 +2847,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    listIntegrationTokenGrants: (organization) =>
+      runCommand({ kind: "list-integration-token-grants", organization }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "list-integration-token-grants"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
     setIntegrationTokenProjects: (input) =>
       runCommand({ kind: "set-integration-token-projects", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>

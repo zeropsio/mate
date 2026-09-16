@@ -92,8 +92,9 @@ const organization = {
   organizationId: ZeropsOrganizationId.make("org-1"),
 };
 
-// A Mate token that reaches only its own project — a group of two calls for
-// one write (ADMIN on itself, READ_ONLY on the sibling).
+// A Mate token as the platform minted it: ADMIN on its own project and
+// nothing else — a group of two calls for one write that both lowers it to
+// BASIC_USER (guide 0.2) and gives it READ_ONLY on the sibling.
 const NARROW_GRANTS: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
   {
     tokenId: "token-a",
@@ -181,7 +182,7 @@ describe("useZeropsGroupReach", () => {
           tokenId: "token-a",
           name: "zcp-a",
           projects: [
-            { projectId: "project-a", roleCode: "ADMIN" },
+            { projectId: "project-a", roleCode: "BASIC_USER" },
             { projectId: "project-b", roleCode: "READ_ONLY" },
           ],
         },
@@ -202,6 +203,51 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
+  it("lowers a solo Mate, which has no sibling to reach but a token to secure", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const writes: unknown[] = [];
+    const context = contextFor(broker, (input) => writes.push(input));
+    const solo: ZeropsGroupReachGroup = {
+      projectIds: ["project-a"],
+      mateProjectIds: ["project-a"],
+    };
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [solo], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
+      });
+      await flushEffects();
+
+      expect(writes).toEqual([
+        {
+          organization,
+          tokenId: "token-a",
+          name: "zcp-a",
+          projects: [{ projectId: "project-a", roleCode: "BASIC_USER" }],
+        },
+      ]);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
   it("does not write when the token already reaches exactly its group", async () => {
     installTestDom();
     const { createRoot } = await import("react-dom/client");
@@ -213,7 +259,7 @@ describe("useZeropsGroupReach", () => {
         tokenId: "token-a",
         name: "zcp-a",
         grants: [
-          { projectId: "project-a", roleCode: "ADMIN" },
+          { projectId: "project-a", roleCode: "BASIC_USER" },
           { projectId: "project-b", roleCode: "READ_ONLY" },
         ],
       },

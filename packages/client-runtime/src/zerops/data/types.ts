@@ -10,6 +10,7 @@ import type { ZeropsProjectGrant } from "../groupReach.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
 
 /**
  * Stable platform identities. Adapters decode untrusted values with these
@@ -1378,6 +1379,7 @@ export type PlatformCommandKind =
   | "import-project"
   | "import-services"
   | "create-tool-project"
+  | "list-integration-token-grants"
   | "set-integration-token-projects";
 
 interface CommandAttemptBase {
@@ -1657,6 +1659,20 @@ export interface CreateToolProjectCommandIntent {
   readonly location?: string;
 }
 
+/**
+ * `GET /client/{id}/integration-token/list`, as grant metadata.
+ *
+ * A read shaped as a command because its caller is a write sequence, not a
+ * screen: `secure-container-token` has to look up the token the container
+ * import just minted, in the middle of a creation, and a resource lease is the
+ * wrong instrument for one answer used once. Grant metadata carries no token
+ * value, exactly as the resource of the same name does.
+ */
+export interface ListIntegrationTokenGrantsCommandIntent {
+  readonly kind: "list-integration-token-grants";
+  readonly organization: OrganizationRef;
+}
+
 export interface SetIntegrationTokenProjectsCommandIntent {
   readonly kind: "set-integration-token-projects";
   readonly organization: OrganizationRef;
@@ -1680,6 +1696,7 @@ export type PlatformCommandIntent =
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
   | CreateToolProjectCommandIntent
+  | ListIntegrationTokenGrantsCommandIntent
   | SetIntegrationTokenProjectsCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
@@ -1733,6 +1750,10 @@ export type PlatformCommandResult =
   | {
       readonly kind: "create-tool-project";
       readonly value: { readonly project: ZeropsProject };
+    }
+  | {
+      readonly kind: "list-integration-token-grants";
+      readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
     }
   | { readonly kind: "set-integration-token-projects"; readonly value: void };
 
@@ -1945,6 +1966,12 @@ export interface ZeropsDataCommands {
     },
   ) => Effect.Effect<
     CommandExecution<{ readonly project: ZeropsProject }>,
+    CommandAdmissionError | AdapterError
+  >;
+  readonly listIntegrationTokenGrants: (
+    organization: OrganizationRef,
+  ) => Effect.Effect<
+    CommandExecution<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>>,
     CommandAdmissionError | AdapterError
   >;
   readonly setIntegrationTokenProjects: (

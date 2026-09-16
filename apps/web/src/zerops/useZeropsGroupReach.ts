@@ -14,6 +14,13 @@
  * removed from anywhere — this client, another device, the Zerops GUI — is
  * reconciled the next time somebody looks at their projects.
  *
+ * Every Mate is read, solo ones included. Reach is not the only thing the plan
+ * decides any more: it also lowers the token the platform minted with `ADMIN`
+ * to `BASIC_USER` (guide 0.2), and that is how a Mate this client never
+ * created — the pool's from sign-up, an older account's — is secured at all. A
+ * group of one used to be skipped because it had no sibling to reach; it has a
+ * token to lower.
+ *
  * Failures are swallowed on purpose. This is a background repair of something
  * the user did not ask for; a token the account is not allowed to rewrite, or
  * a network that dropped, must not put an error on a screen that is otherwise
@@ -64,25 +71,24 @@ export function useZeropsGroupReach(input: {
   const { organizationRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
-  const hasSharedGroup = groups.some((group) => group.projectIds.length >= 2);
+  const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
   const request = useMemo<OrganizationIntegrationTokenGrantsResourceRequest | null>(
     () =>
-      enabled && clientId !== undefined && hasSharedGroup
+      enabled && clientId !== undefined && hasMate
         ? {
             kind: "organization-integration-token-grants",
             account: runtime.scope,
             organization: organizationRef(clientId),
           }
         : null,
-    [clientId, enabled, hasSharedGroup, organizationRef, runtime.scope],
+    [clientId, enabled, hasMate, organizationRef, runtime.scope],
   );
   const grantsResource = useZeropsResource(request);
   const grantMetadata = grantsResource.status === "success" ? grantsResource.value : null;
 
   useEffect(() => {
-    // A group of one has no sibling to reach, so an account of solo Mates
-    // never lists the tokens at all.
-    if (!enabled || clientId === undefined || !hasSharedGroup) return;
+    // An account with no Mate has no token of ours to touch.
+    if (!enabled || clientId === undefined || !hasMate) return;
     if (grantsResource.status === "failure") {
       lastKey.current = null;
       return;
@@ -122,7 +128,7 @@ export function useZeropsGroupReach(input: {
     grantMetadata,
     grantsResource.status,
     groups,
-    hasSharedGroup,
+    hasMate,
     key,
     organizationRef,
     runtime.commands,
