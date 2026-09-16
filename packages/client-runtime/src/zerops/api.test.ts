@@ -1461,3 +1461,103 @@ describe("ZeropsApiClient Gitea credential", () => {
     ).rejects.toThrow(/GITEA_TOKEN/);
   });
 });
+
+describe("ZeropsApiClient.readProjectCreation", () => {
+  it("searches the project's processes and answers its newest project.create", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, {
+        items: [
+          {
+            id: "j2cJQm8VSTSyMQEZvm4e9g",
+            actionName: "project.create",
+            status: "FAILED",
+            created: "2026-09-16T20:21:18.151Z",
+            projectId: "txRlx5AcRbexBQEkAUIDLg",
+            clientId: "org-1",
+            error: { code: "internalServerError", message: "unexpected internal server error" },
+          },
+          {
+            id: "l5mjyAAIRfiGsiHlLX1t9A",
+            actionName: "stack.build",
+            status: "FAILED",
+            created: "2026-09-16T20:21:19.000Z",
+            projectId: "txRlx5AcRbexBQEkAUIDLg",
+            clientId: "org-1",
+            error: { code: "pipelineFailed", message: "pipeline failed" },
+          },
+        ],
+      }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(
+      client.readProjectCreation({ clientId: "org-1", projectId: "txRlx5AcRbexBQEkAUIDLg" }),
+    ).resolves.toEqual({
+      processId: "j2cJQm8VSTSyMQEZvm4e9g",
+      status: "FAILED",
+      error: { code: "internalServerError", message: "unexpected internal server error" },
+    });
+    expect(stub.requests).toHaveLength(1);
+    expect(stub.requests[0]).toMatchObject({
+      method: "POST",
+      url: expect.stringMatching(/\/process\/search$/),
+      authorization: "Bearer access-1",
+    });
+    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
+      search: [
+        { name: "clientId", operator: "eq", value: "org-1" },
+        { name: "projectId", operator: "eq", value: "txRlx5AcRbexBQEkAUIDLg" },
+      ],
+      sort: [{ name: "created", ascending: false }],
+      limit: 20,
+    });
+  });
+
+  it("answers nothing while the process has not appeared", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(
+      client.readProjectCreation({ clientId: "org-1", projectId: "proj-1" }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("ZeropsApiClient.deleteProject", () => {
+  it("deletes the project as a project write", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { id: "proc-delete", actionName: "project.delete", status: "PENDING" }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    const checks: Array<string> = [];
+
+    await expect(
+      client.deleteProject("proj-1", undefined, async () => {
+        checks.push("before-write");
+      }),
+    ).resolves.toBeUndefined();
+    expect(checks).toEqual(["before-write"]);
+    expect(stub.requests).toEqual([
+      {
+        method: "DELETE",
+        url: expect.stringMatching(/\/project\/proj-1$/),
+        authorization: "Bearer access-1",
+        body: null,
+      },
+    ]);
+  });
+
+  it("surfaces the platform's refusal", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(400, { code: "projectHasRunningProcess", message: "A process is running." }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(client.deleteProject("proj-1")).rejects.toMatchObject({
+      message: "A process is running.",
+      code: "projectHasRunningProcess",
+    });
+  });
+});

@@ -22,6 +22,11 @@ import { mateSignerTagIsCurrent, withMateProjectRole, withMateSignerTag } from "
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
 import { parseZeropsRegistry, projectTagWriteBody, type ZeropsRegistry } from "./groupRegistry.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
+import {
+  pickProjectCreation,
+  projectProcessSearchBody,
+  type ZeropsProjectCreation,
+} from "./projectCreation.ts";
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
@@ -1705,6 +1710,55 @@ export class ZeropsApiClient {
           }),
         ),
       },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * `POST /process/search` — the platform's verdict on a project's creation:
+   * its newest `project.create` process, or nothing while none has appeared
+   * (`projectCreation.ts`).
+   *
+   * The creation call above answers 200 before the platform has built
+   * anything; this is what says whether it did (measured 2026-09-16: the
+   * process settles within about a second of the POST, FINISHED or FAILED).
+   */
+  async readProjectCreation(
+    input: { readonly clientId: string; readonly projectId: string },
+    signal?: AbortSignal,
+  ): Promise<ZeropsProjectCreation | undefined> {
+    const response = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+      "/process/search",
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify(projectProcessSearchBody(input)),
+      },
+      { operationKind: "read" },
+    );
+    return pickProjectCreation(
+      Array.isArray(response.items) ? response.items : [],
+      input.projectId,
+    );
+  }
+
+  /**
+   * `DELETE /project/{id}` — takes a project off the account. The platform
+   * answers with the deleting process and the project is gone shortly after
+   * (measured 2026-09-16). What the product deletes through this is a project
+   * whose creation the platform itself failed: the half that was built.
+   */
+  async deleteProject(
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/project/${projectId}`,
+      { method: "DELETE", signal: signal ?? null },
       {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),

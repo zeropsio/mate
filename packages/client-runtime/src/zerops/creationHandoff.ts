@@ -190,6 +190,19 @@ export function withoutCreationHandoff(
 }
 
 /**
+ * Forgets a creation that never became an environment — the project the
+ * platform failed to make, removed from the account. Nothing will connect to
+ * it, so nothing must keep waiting for it.
+ */
+export function withoutPendingCreationHandoff(
+  handoffs: ZeropsCreationHandoffs,
+  projectId: string,
+): ZeropsCreationHandoffs {
+  const { [keyOf({ projectId })]: _gone, ...rest } = handoffs;
+  return rest;
+}
+
+/**
  * What to do with a new environment's opening message: send it, write it into
  * the composer and leave it, or wait (D17).
  *

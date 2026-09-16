@@ -929,6 +929,45 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect("deletes a project the platform failed to create via DELETE /project/{id}", () =>
+    Effect.gen(function* () {
+      const requests: Array<{
+        readonly url: string;
+        readonly init: RequestInit | undefined;
+      }> = [];
+      const client = clientFor((url, init) => {
+        requests.push({ url, init });
+        return new Response(
+          JSON.stringify({
+            id: "delete-process-id",
+            projectId: "project",
+            actionName: "project.delete",
+            status: "PENDING",
+            created: "2026-09-16T20:30:00.000Z",
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+
+      const result = yield* adapter.execute(
+        { kind: "delete-project", organization, projectId: "project", ...commandBase },
+        context(),
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        url: expect.stringMatching(/\/project\/project$/),
+        init: { method: "DELETE" },
+      });
+      expect(result.result).toEqual({ kind: "delete-project", value: undefined });
+    }),
+  );
+
   it.effect(
     "reports an accepted malformed start-project response as non-retryable uncertainty",
     () =>

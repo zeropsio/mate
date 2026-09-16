@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
+  removeFailedZeropsProject,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
@@ -64,10 +65,12 @@ describe("same-origin Zerops identity bootstrap", () => {
       "importProject",
       "importServicesIntoProject",
       "createToolProject",
+      "deleteProject",
     ]) {
       expect(projectsPageSource).not.toContain(`client.${method}(`);
     }
     expect(projectsPageSource).toContain("runtime.commands.createProject(");
+    expect(projectsPageSource).toContain("runtime.commands.deleteProject(");
     expect(projectsPageSource).toContain("runtime.commands.importServices(");
     expect(projectsPageSource).toContain("readObservedServices:");
     expect(projectsPageSource).not.toContain("listProjectServices(");
@@ -325,6 +328,44 @@ describe("same-origin Zerops identity bootstrap", () => {
     });
 
     expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+});
+
+describe("removeFailedZeropsProject", () => {
+  it("deletes, then forgets the creation and re-reads the list, in that order", async () => {
+    const calls: Array<string> = [];
+    const outcome = await removeFailedZeropsProject({
+      projectId: "proj-1",
+      deleteProject: async (projectId) => {
+        calls.push(`delete:${projectId}`);
+      },
+      forgetCreation: (projectId) => {
+        calls.push(`forget:${projectId}`);
+      },
+      refresh: () => {
+        calls.push("refresh");
+      },
+    });
+
+    expect(outcome).toEqual({ ok: true });
+    expect(calls).toEqual(["delete:proj-1", "forget:proj-1", "refresh"]);
+  });
+
+  it("keeps the handoff and the list when the platform refuses the delete", async () => {
+    const calls: Array<string> = [];
+    const outcome = await removeFailedZeropsProject({
+      projectId: "proj-1",
+      deleteProject: () => Promise.reject(new Error("A process is running.")),
+      forgetCreation: (projectId) => {
+        calls.push(`forget:${projectId}`);
+      },
+      refresh: () => {
+        calls.push("refresh");
+      },
+    });
+
+    expect(outcome).toEqual({ ok: false, error: "A process is running." });
+    expect(calls).toEqual([]);
   });
 });
 

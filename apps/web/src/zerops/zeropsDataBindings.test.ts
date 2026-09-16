@@ -66,6 +66,7 @@ describe("central Zerops data bindings", () => {
       "importServicesIntoProject",
       "createToolProject",
       "setIntegrationTokenProjects",
+      "deleteProject",
     ];
 
     for (const file of files) {

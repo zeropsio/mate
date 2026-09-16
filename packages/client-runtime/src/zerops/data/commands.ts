@@ -44,6 +44,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "set-integration-token-projects":
     case "list-token-delegations":
     case "delete-token-delegation":
+    case "delete-project":
       return intent.organization;
   }
 }

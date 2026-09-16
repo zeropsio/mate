@@ -10,6 +10,7 @@ import {
   withCreationHandoff,
   withCreationHandoffPromoted,
   withoutCreationHandoff,
+  withoutPendingCreationHandoff,
   type ZeropsCreationHandoff,
 } from "./creationHandoff.ts";
 
@@ -139,6 +140,18 @@ describe("creation handoff storage", () => {
       expect(pendingCreationProjectIds(stored)).toEqual(expected);
     },
   );
+
+  it("forgets a creation whose project was removed, and only that one", () => {
+    const stored = withCreationHandoff(
+      withCreationHandoff({}, { projectId: "proj-1" }, FROM_TIER),
+      { projectId: "proj-2" },
+      FROM_TIER,
+    );
+    const next = withoutPendingCreationHandoff(stored, "proj-1");
+    expect(pendingCreationProjectIds(next)).toEqual(["proj-2"]);
+    // Forgetting what is not there changes nothing.
+    expect(withoutPendingCreationHandoff(next, "proj-9")).toEqual(next);
+  });
 
   it("reads anything unexpected as nothing stored", () => {
     for (const raw of [null, "", "[]", "{oops", '{"env:1":{"role":"nope"}}']) {
