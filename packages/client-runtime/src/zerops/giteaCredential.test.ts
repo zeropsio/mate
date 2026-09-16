@@ -1,135 +1,152 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { MateCredentialAnswer } from "../authorization/giteaBroker.ts";
 import {
-  GITEA_REPO_ENV_KEY,
   GITEA_TOKEN_ENV_KEY,
   GITEA_URL_ENV_KEY,
-  giteaTokenName,
+  MATE_BROKER_URL_ENV_KEY,
   planGiteaCredential,
+  planGiteaCredentialRequest,
 } from "./giteaCredential.ts";
 
-const ORIGIN = "https://web-2fe9-3000.prg1.zerops.app";
+const GITEA = "https://web-926-3000.prg1.zerops.app";
+const OTHER_GITEA = "https://web-41-3000.prg1.zerops.app";
+const BROKER = "https://broker-926-8080.prg1.zerops.app";
 
-/** What a service read gives back: a sensitive value is never the value. */
-const SETTLED = {
-  [GITEA_URL_ENV_KEY]: ORIGIN,
-  [GITEA_TOKEN_ENV_KEY]: "REDACTED",
-  [GITEA_REPO_ENV_KEY]: "mate/aurora",
+const MINTED: MateCredentialAnswer = {
+  url: GITEA,
+  org: "acme",
+  bot: "mate-proj-1",
+  generation: 2,
+  minted: true,
+  token: "THE-BOT-TOKEN",
+};
+const NOT_MINTED: MateCredentialAnswer = {
+  url: GITEA,
+  org: "acme",
+  bot: "mate-proj-1",
+  generation: 1,
+  minted: false,
 };
 
-describe("giteaTokenName", () => {
-  it.each([
-    ["Iris", "mate/Iris"],
-    ["  Fen  ", "mate/Fen"],
-  ] as const)("names %s's token %s", (bot, expected) => {
-    expect(giteaTokenName(bot)).toBe(expected);
+const SETTLED = {
+  [GITEA_URL_ENV_KEY]: GITEA,
+  [MATE_BROKER_URL_ENV_KEY]: BROKER,
+  [GITEA_TOKEN_ENV_KEY]: "REDACTED",
+};
+
+describe("planGiteaCredentialRequest", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly current: Readonly<Record<string, string>>;
+    readonly rotate?: boolean;
+    readonly expected: string | undefined;
+  }> = [
+    { name: "nothing yet", current: {}, expected: "ensure" },
+    {
+      name: "the url only — the write landed, the token never did",
+      current: { [GITEA_URL_ENV_KEY]: GITEA },
+      expected: "ensure",
+    },
+    { name: "a token for this Gitea already", current: SETTLED, expected: undefined },
+    {
+      name: "a token for another Gitea — the old one is dead by definition",
+      current: { ...SETTLED, [GITEA_URL_ENV_KEY]: OTHER_GITEA },
+      expected: "rotate",
+    },
+    {
+      name: "another Gitea and no token at all",
+      current: { [GITEA_URL_ENV_KEY]: OTHER_GITEA },
+      expected: "ensure",
+    },
+    { name: "a person asked for a rotation", current: SETTLED, rotate: true, expected: "rotate" },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    expect(
+      planGiteaCredentialRequest({
+        giteaOrigin: `${GITEA}/`,
+        current: row.current,
+        ...(row.rotate === undefined ? {} : { rotate: row.rotate }),
+      }),
+    ).toBe(row.expected);
   });
 
-  it.each([["", "   "]] as const)("has no name for a Mate called %o", (bot) => {
-    expect(giteaTokenName(bot)).toBeUndefined();
+  it("never rotates on its own", () => {
+    // Ensure is the default everywhere; rotation costs a live token and is a
+    // person's decision.
+    expect(planGiteaCredentialRequest({ giteaOrigin: GITEA, current: {} })).toBe("ensure");
   });
 });
 
 describe("planGiteaCredential", () => {
-  it("refuses to plan for a Mate with no name", () => {
-    // A token nobody can attribute is worse than no token.
-    expect(planGiteaCredential({ giteaOrigin: ORIGIN, botName: " ", current: {} })).toBeUndefined();
-  });
-
-  it("mints and writes everything for a Mate that has nothing", () => {
-    const plan = planGiteaCredential({
-      giteaOrigin: ORIGIN,
-      botName: "Iris",
-      repository: "mate/aurora",
-      current: {},
-    });
-
-    expect(plan).toEqual({
+  it("writes everything for a Mate that has nothing", () => {
+    expect(
+      planGiteaCredential({ brokerOrigin: `${BROKER}/`, credential: MINTED, current: {} }),
+    ).toEqual({
       upToDate: false,
-      mintTokenNamed: "mate/Iris",
-      write: [GITEA_URL_ENV_KEY, GITEA_TOKEN_ENV_KEY, GITEA_REPO_ENV_KEY],
-      values: { [GITEA_URL_ENV_KEY]: ORIGIN, [GITEA_REPO_ENV_KEY]: "mate/aurora" },
+      write: [GITEA_URL_ENV_KEY, MATE_BROKER_URL_ENV_KEY, GITEA_TOKEN_ENV_KEY],
+      sensitive: [GITEA_TOKEN_ENV_KEY],
+      values: { [GITEA_URL_ENV_KEY]: GITEA, [MATE_BROKER_URL_ENV_KEY]: BROKER },
       restart: true,
     });
   });
 
-  it("carries no value for the token: the caller mints it", () => {
-    const plan = planGiteaCredential({ giteaOrigin: ORIGIN, botName: "Iris", current: {} });
-    expect(plan?.write).toContain(GITEA_TOKEN_ENV_KEY);
-    expect(plan?.values).not.toHaveProperty(GITEA_TOKEN_ENV_KEY);
-  });
-
-  it("does nothing for a Mate already holding this instance's credential", () => {
-    // The token reads REDACTED and is never compared — its presence is the signal.
+  it("writes only the token when the addresses are already right", () => {
     expect(
       planGiteaCredential({
-        giteaOrigin: ORIGIN,
-        botName: "Iris",
-        repository: "mate/aurora",
-        current: SETTLED,
-      }),
-    ).toEqual({ upToDate: true, write: [], values: {}, restart: false });
+        brokerOrigin: BROKER,
+        credential: MINTED,
+        current: { [GITEA_URL_ENV_KEY]: GITEA, [MATE_BROKER_URL_ENV_KEY]: BROKER },
+      }).write,
+    ).toEqual([GITEA_TOKEN_ENV_KEY]);
   });
 
-  it("ignores a trailing slash on the instance's origin", () => {
+  it("plans nothing when the broker minted nothing and the addresses match", () => {
+    // An ensure that found a live token: there is nothing to write, and
+    // writing the key without a value would replace a working credential.
     expect(
-      planGiteaCredential({
-        giteaOrigin: `${ORIGIN}/`,
-        botName: "Iris",
-        repository: "mate/aurora",
-        current: SETTLED,
-      })?.upToDate,
-    ).toBe(true);
+      planGiteaCredential({ brokerOrigin: BROKER, credential: NOT_MINTED, current: SETTLED }),
+    ).toEqual({ upToDate: true, write: [], sensitive: [], values: {}, restart: false });
   });
 
-  it("leaves the repository alone when the caller does not know it", () => {
-    const plan = planGiteaCredential({ giteaOrigin: ORIGIN, botName: "Iris", current: SETTLED });
-    expect(plan?.upToDate).toBe(true);
-  });
-
-  it("moves a Mate to another repository without minting a token", () => {
+  it("repoints a Mate at another Gitea and gives it that instance's token", () => {
     const plan = planGiteaCredential({
-      giteaOrigin: ORIGIN,
-      botName: "Iris",
-      repository: "mate/borealis",
+      brokerOrigin: BROKER,
+      credential: MINTED,
+      current: { ...SETTLED, [GITEA_URL_ENV_KEY]: OTHER_GITEA },
+    });
+    expect(plan.write).toEqual([GITEA_URL_ENV_KEY, GITEA_TOKEN_ENV_KEY]);
+    expect(plan.values[GITEA_URL_ENV_KEY]).toBe(GITEA);
+  });
+
+  it("writes a moved broker without touching a live token", () => {
+    const plan = planGiteaCredential({
+      brokerOrigin: "https://broker.example",
+      credential: NOT_MINTED,
       current: SETTLED,
     });
-
-    expect(plan).toEqual({
-      upToDate: false,
-      write: [GITEA_REPO_ENV_KEY],
-      values: { [GITEA_REPO_ENV_KEY]: "mate/borealis" },
-      restart: true,
-    });
+    expect(plan.write).toEqual([MATE_BROKER_URL_ENV_KEY]);
+    expect(plan.restart).toBe(true);
   });
 
-  it("mints again when the instance changed, whatever the old token was", () => {
-    // A token belongs to the Gitea that issued it, so a different origin makes
-    // the one in place worthless without reading it.
-    const plan = planGiteaCredential({
-      giteaOrigin: "https://web-9999-3000.prg1.zerops.app",
-      botName: "Iris",
-      repository: "mate/aurora",
-      current: SETTLED,
-    });
-
-    expect(plan?.mintTokenNamed).toBe("mate/Iris");
-    expect(plan?.write).toEqual([GITEA_URL_ENV_KEY, GITEA_TOKEN_ENV_KEY]);
+  it("never carries the bot's token", () => {
+    // A plan is progress a UI renders; the value goes straight from the
+    // broker's answer into the write.
+    const plan = planGiteaCredential({ brokerOrigin: BROKER, credential: MINTED, current: {} });
+    expect(plan.values).not.toHaveProperty(GITEA_TOKEN_ENV_KEY);
+    expect(JSON.stringify(plan)).not.toContain("THE-BOT-TOKEN");
   });
 
-  it("mints for a Mate that has the instance but no token", () => {
-    const plan = planGiteaCredential({
-      giteaOrigin: ORIGIN,
-      botName: "Iris",
-      current: { [GITEA_URL_ENV_KEY]: ORIGIN },
-    });
-
-    expect(plan?.mintTokenNamed).toBe("mate/Iris");
-    expect(plan?.write).toEqual([GITEA_TOKEN_ENV_KEY]);
+  it("marks the token sensitive and the two addresses plain", () => {
+    const plan = planGiteaCredential({ brokerOrigin: BROKER, credential: MINTED, current: {} });
+    expect(plan.sensitive).toEqual([GITEA_TOKEN_ENV_KEY]);
   });
 
-  it("always restarts when it writes: an env write reaches new processes only", () => {
-    const plan = planGiteaCredential({ giteaOrigin: ORIGIN, botName: "Iris", current: {} });
-    expect(plan?.restart).toBe(true);
+  it("restarts whenever it writes, because a write reaches new processes only", () => {
+    for (const current of [{}, SETTLED, { [GITEA_URL_ENV_KEY]: OTHER_GITEA }]) {
+      const plan = planGiteaCredential({ brokerOrigin: BROKER, credential: MINTED, current });
+      expect(plan.restart).toBe(plan.write.length > 0);
+    }
   });
 });

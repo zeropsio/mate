@@ -1246,20 +1246,22 @@ export class ZeropsApiClient {
                   signal,
                   beforeWrite,
                 )
-              : await this.mintIntegrationToken(
-                  {
-                    clientId: input.clientId,
-                    name: GITEA_BROKER_TOKEN_NAME,
-                    // The broker reads the whole org and writes only where it
-                    // is granted; stage and production grants are added to
-                    // this same token as those projects are created, so no new
-                    // secret ever travels to it.
-                    roleCode: "READ_ONLY",
-                    projects: [{ projectId: target.id, roleCode: "BASIC_USER" }],
-                  },
-                  signal,
-                  beforeWrite,
-                );
+              : (
+                  await this.mintIntegrationToken(
+                    {
+                      clientId: input.clientId,
+                      name: GITEA_BROKER_TOKEN_NAME,
+                      // The broker reads the whole org and writes only where it
+                      // is granted; stage and production grants are added to
+                      // this same token as those projects are created, so no new
+                      // secret ever travels to it.
+                      roleCode: "READ_ONLY",
+                      projects: [{ projectId: target.id, roleCode: "BASIC_USER" }],
+                    },
+                    signal,
+                    beforeWrite,
+                  )
+                ).token;
           break;
         }
         case "import-services": {
@@ -1309,8 +1311,8 @@ export class ZeropsApiClient {
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<string> {
-    const response = await this.#request<{ readonly token?: string }>(
+  ): Promise<{ readonly id: string; readonly token: string }> {
+    const response = await this.#request<{ readonly id?: string; readonly token?: string }>(
       `/client/${input.clientId}/integration-token`,
       {
         method: "POST",
@@ -1329,13 +1331,35 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-    if (!response.token) {
+    if (!response.token || !response.id) {
       throw new ZeropsApiError(
-        "Zerops accepted the token but did not return its value, so it cannot be used. Delete it and try again.",
+        "Zerops accepted the token but did not return it in full, so it can neither be used nor taken back.",
         "uncertain",
       );
     }
-    return response.token;
+    return { id: response.id, token: response.token };
+  }
+
+  /**
+   * `DELETE /client/{id}/integration-token/{tokenId}` — takes a token back.
+   *
+   * The other half of every throwaway: one is minted for a single call and
+   * deleted seconds later, and a deletion is immediate at the platform (the
+   * value answers `401` within about 0.6 s, measured 2026-09-15).
+   */
+  async deleteIntegrationToken(
+    input: { readonly clientId: string; readonly tokenId: string },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#request(
+      `/client/${input.clientId}/integration-token/${input.tokenId}`,
+      { method: "DELETE", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
   }
 
   /**

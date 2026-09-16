@@ -214,13 +214,14 @@ export {
 export { botDisplayName, generateBotName, hasBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
 export {
   GITEA_MATE_TOKEN_SCOPES,
-  GITEA_REPO_ENV_KEY,
   GITEA_TOKEN_ENV_KEY,
   GITEA_URL_ENV_KEY,
-  giteaTokenName,
+  MATE_BROKER_URL_ENV_KEY,
   planGiteaCredential,
+  planGiteaCredentialRequest,
   type ZeropsGiteaCredentialInput,
   type ZeropsGiteaCredentialPlan,
+  type ZeropsGiteaCredentialRequestInput,
 } from "./giteaCredential.ts";
 export {
   deriveGroupSlug,
