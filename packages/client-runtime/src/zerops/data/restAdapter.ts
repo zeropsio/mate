@@ -1262,6 +1262,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           })),
           Effect.mapError(uncertainCommandError),
         );
+      case "delete-project":
+        return executeApi(context, (signal) =>
+          options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
       case "isolate-project-env":
         return executeApi(context, (signal) =>
           options.client.isolateProjectEnvironment(

@@ -1384,7 +1384,8 @@ export type PlatformCommandKind =
   | "set-integration-token-projects"
   | "list-token-delegations"
   | "delete-token-delegation"
-  | "isolate-project-env";
+  | "isolate-project-env"
+  | "delete-project";
 
 interface CommandAttemptBase {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1737,6 +1738,18 @@ export interface IsolateProjectEnvCommandIntent {
   readonly project: ProjectRef;
 }
 
+/**
+ * `DELETE /project/{id}` — a project the platform failed to create, taken
+ * off the account. Admitted on the organization the way its creation was:
+ * a project left NEW by a failed `project.create` has no role record of its
+ * own to admit against.
+ */
+export interface DeleteProjectCommandIntent {
+  readonly kind: "delete-project";
+  readonly organization: OrganizationRef;
+  readonly projectId: string;
+}
+
 export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
@@ -1756,7 +1769,8 @@ export type PlatformCommandIntent =
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
   | DeleteTokenDelegationCommandIntent
-  | IsolateProjectEnvCommandIntent;
+  | IsolateProjectEnvCommandIntent
+  | DeleteProjectCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1821,7 +1835,8 @@ export type PlatformCommandResult =
       readonly value: ReadonlyArray<ZeropsTokenDelegation>;
     }
   | { readonly kind: "delete-token-delegation"; readonly value: void }
-  | { readonly kind: "isolate-project-env"; readonly value: void };
+  | { readonly kind: "isolate-project-env"; readonly value: void }
+  | { readonly kind: "delete-project"; readonly value: void };
 
 export interface PlatformCommandReceipt {
   readonly processRefs: ReadonlyArray<ProcessRef>;
@@ -2068,6 +2083,11 @@ export interface ZeropsDataCommands {
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
   readonly isolateProjectEnv: (
     project: ProjectRef,
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly deleteProject: (
+    input: Omit<DeleteProjectCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
 }
 

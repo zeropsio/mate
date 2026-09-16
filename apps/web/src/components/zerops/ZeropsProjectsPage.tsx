@@ -22,7 +22,11 @@ import { PlayIcon, RotateCcwIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  applyProjectCreationVerdict,
+  normalizeOrigin,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import {
   resolveMateOwnerName,
   resolveMateVerbs,
@@ -34,7 +38,11 @@ import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/en
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
-import { pendingCreationProjects, rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
+import {
+  forgetPendingCreation,
+  pendingCreationProjects,
+  rememberCreationHandoff,
+} from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
 import { randomUUID } from "~/lib/utils";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
@@ -57,6 +65,7 @@ import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -191,6 +200,29 @@ export function autoConnectServedZeropsEnvironment(input: {
 
   input.attempted.current = true;
   input.connect(appOrigin);
+}
+
+/**
+ * Takes a project the platform failed to create off the account. The delete
+ * comes first; only once the platform has accepted it is the creation's
+ * handoff forgotten (nothing will ever connect to this project) and the
+ * list re-read. A refused delete leaves both as they were, so the row keeps
+ * offering the verb and says why it did not work.
+ */
+export async function removeFailedZeropsProject(input: {
+  readonly projectId: string;
+  readonly deleteProject: (projectId: string) => Promise<unknown>;
+  readonly forgetCreation: (projectId: string) => void;
+  readonly refresh: () => void;
+}): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
+  try {
+    await input.deleteProject(input.projectId);
+  } catch (cause) {
+    return { ok: false, error: zeropsErrorMessage(cause) };
+  }
+  input.forgetCreation(input.projectId);
+  input.refresh();
+  return { ok: true };
 }
 
 export function retryZeropsProjectConnection(input: {
@@ -428,7 +460,18 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const { candidates, isLoading, error } = useZeropsCandidates();
+  const { candidates: observedCandidates, isLoading, error } = useZeropsCandidates();
+  // A project on its way up is read against the platform's verdict on its
+  // creation: one whose `project.create` failed is not coming up, however
+  // long the page waits, and its row says so instead.
+  const creationVerdicts = useZeropsCreationVerdicts(observedCandidates);
+  const candidates = useMemo(
+    () =>
+      observedCandidates.map((candidate) =>
+        applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
+      ),
+    [creationVerdicts, observedCandidates],
+  );
   const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
   const {
     creatingIn,
@@ -445,6 +488,7 @@ function ZeropsProjectsContent() {
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
+  const [removingCandidateKey, setRemovingCandidateKey] = useState<string | null>(null);
   const navigate = useNavigate();
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
@@ -580,6 +624,7 @@ function ZeropsProjectsContent() {
         setUpMate: openable,
         start: openable,
         restart: openable,
+        remove: openable,
       },
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
@@ -686,11 +731,21 @@ function ZeropsProjectsContent() {
   const busyKeys = useMemo(
     () =>
       new Set(
-        [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey].filter(
-          (key) => key !== null,
-        ),
+        [
+          enablingCandidateKey,
+          settingUpKey,
+          startingCandidateKey,
+          restartingCandidateKey,
+          removingCandidateKey,
+        ].filter((key) => key !== null),
       ),
-    [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey],
+    [
+      enablingCandidateKey,
+      settingUpKey,
+      startingCandidateKey,
+      restartingCandidateKey,
+      removingCandidateKey,
+    ],
   );
 
   // The quiet actions: rename an agent, move a project, rename a group. Each
@@ -1239,6 +1294,30 @@ function ZeropsProjectsContent() {
           });
         return;
       }
+      case "remove": {
+        if (activeOrganization === null) return;
+        setConnectError(null);
+        setRemovingCandidateKey(candidate.key);
+        void removeFailedZeropsProject({
+          projectId: candidate.project.id,
+          deleteProject: (projectId) =>
+            runZeropsCommand(
+              runtime.commands.deleteProject({
+                organization: organizationRef(activeOrganization.id),
+                projectId,
+              }),
+            ),
+          forgetCreation: forgetPendingCreation,
+          refresh: refreshZeropsCandidates,
+        })
+          .then((outcome) => {
+            if (!outcome.ok) setConnectError(outcome.error);
+          })
+          .finally(() => {
+            setRemovingCandidateKey(null);
+          });
+        return;
+      }
       case "pending":
       case "none":
         return;
@@ -1464,6 +1543,10 @@ function ZeropsProjectsContent() {
                 ...input,
               }),
             ),
+          // A read, not a write: the platform's verdict on the project the
+          // command above made, waited on by the executor.
+          readProjectCreation: (input) =>
+            client.readProjectCreation(input, unmountRef.current?.signal),
           importDevelopmentContainer: ({ projectId, ...input }) =>
             runZeropsCommand(
               runtime.commands.importDevelopmentContainer({
@@ -1759,6 +1842,21 @@ function ZeropsProjectsContent() {
     startWaitFor(candidate);
   }, [candidateHealth, candidates, connectingOrigin, provisioning.state, startWaitFor]);
 
+  // A wait on a project the platform failed to create can never end: the
+  // container it waits for will not be made. The moment the verdict is in,
+  // the wait stops and the row's own line takes over.
+  useEffect(() => {
+    const waitedProjectId = provisioning.state?.projectId ?? null;
+    if (waitedProjectId === null) return;
+    const failed = candidates.some(
+      (candidate) =>
+        candidate.project.id === waitedProjectId && candidate.creationFailed !== undefined,
+    );
+    if (!failed) return;
+    provisioning.cancel();
+    setCreatingIn(null);
+  }, [candidates, provisioning, setCreatingIn]);
+
   // The registration flow's one dead end: no ready-made project to wait on,
   // so the only way forward is to create one.
   useEffect(() => {
@@ -1894,6 +1992,14 @@ function ZeropsProjectsContent() {
                       runRowAction(candidate, action.kind);
                     }}
                   />
+                ) : action.kind === "remove" ? (
+                  <ZeropsMateVerb
+                    disabled={busy}
+                    label={busy ? "Removing…" : action.label}
+                    onClick={() => {
+                      runRowAction(candidate, action.kind);
+                    }}
+                  />
                 ) : undefined
               }
               busy={busy}
@@ -1912,7 +2018,15 @@ function ZeropsProjectsContent() {
                   <StatusDot label={deployLabel} tone={deployTone} />
                 ) : undefined
               }
-              summary={declared === undefined ? summaryOf(candidate) : declared.line}
+              // A project the platform failed to create holds nothing; its
+              // line is what happened, not "No services yet".
+              summary={
+                candidate.creationFailed !== undefined
+                  ? presentation.detail
+                  : declared === undefined
+                    ? summaryOf(candidate)
+                    : declared.line
+              }
               tag={environmentRoleTag(role)}
             />
           );
@@ -1989,6 +2103,21 @@ function ZeropsProjectsContent() {
                 {busy ? "Starting…" : "Start"}
               </Button>
             ) : undefined;
+          // The platform failed to make this project and nothing will ever
+          // run in it: the one verb takes it away, at the same edge Start sits.
+          const removeAction =
+            action.kind === "remove" ? (
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  runRowAction(candidate, "remove");
+                }}
+                size="compact"
+                variant="outline"
+              >
+                {busy ? "Removing…" : "Remove"}
+              </Button>
+            ) : undefined;
           const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
           const tint = tints.get(candidate.project.id) ?? "slate";
 
@@ -2001,7 +2130,7 @@ function ZeropsProjectsContent() {
               <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
                 {({ menuActions }) => (
                   <ZeropsMateCard
-                    action={startAction}
+                    action={startAction ?? removeAction}
                     busy={busy}
                     face={mateFace(candidate)}
                     line={renderMateLine(candidate, presentation, action, live, busy)}
@@ -2020,7 +2149,7 @@ function ZeropsProjectsContent() {
           }
           return (
             <ZeropsMateCard
-              action={startAction}
+              action={startAction ?? removeAction}
               busy={busy}
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}

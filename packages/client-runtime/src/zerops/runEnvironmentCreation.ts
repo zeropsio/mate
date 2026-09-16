@@ -36,6 +36,11 @@ import {
   type ZeropsTokenDelegation,
 } from "./groupReach.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
+import {
+  projectCreationFailureSentence,
+  projectCreationOutcome,
+  type ZeropsProjectCreation,
+} from "./projectCreation.ts";
 
 /** The platform calls a creation makes, in the shape `api.ts` offers them. */
 export interface EnvironmentCreationPlatform {
@@ -45,6 +50,15 @@ export interface EnvironmentCreationPlatform {
     readonly tagList: ReadonlyArray<string>;
     readonly location?: string;
   }) => Promise<{ readonly id: string }>;
+  /**
+   * `POST /process/search` — the project's newest `project.create` process,
+   * or nothing while none has appeared (`projectCreation.ts`). One read; the
+   * waiting is this module's.
+   */
+  readonly readProjectCreation: (input: {
+    readonly clientId: string;
+    readonly projectId: string;
+  }) => Promise<ZeropsProjectCreation | undefined>;
   readonly importDevelopmentContainer: (input: {
     readonly projectId: string;
     readonly agents: ReadonlyArray<ZeropsAgentType>;
@@ -189,11 +203,22 @@ export interface RunEnvironmentCreationInput {
   readonly pollIntervalMs?: number;
   /** How long a service wait is given before it is called a failure. */
   readonly serviceWaitCapMs?: number;
+  /** Between `project.create` reads after the project POST. */
+  readonly projectCreatePollIntervalMs?: number;
+  /** How long the platform is given to confirm the project before the step fails. */
+  readonly projectCreateWaitCapMs?: number;
 }
 
 /** Measured at ~2 minutes for a two-service recipe; a build can take longer. */
 export const ENVIRONMENT_SERVICE_WAIT_CAP_MS = 600_000;
 export const ENVIRONMENT_SERVICE_POLL_INTERVAL_MS = 5_000;
+/**
+ * `project.create` settles within about a second of the POST, finished or
+ * failed (measured 2026-09-16); a minute is the bound past which the platform
+ * has said nothing and the step stops pretending it will.
+ */
+export const PROJECT_CREATE_WAIT_CAP_MS = 60_000;
+export const PROJECT_CREATE_POLL_INTERVAL_MS = 2_000;
 
 function defaultDescribeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -210,6 +235,9 @@ export async function runEnvironmentCreation(
   };
   const pollIntervalMs = input.pollIntervalMs ?? ENVIRONMENT_SERVICE_POLL_INTERVAL_MS;
   const serviceWaitCapMs = input.serviceWaitCapMs ?? ENVIRONMENT_SERVICE_WAIT_CAP_MS;
+  const projectCreatePollIntervalMs =
+    input.projectCreatePollIntervalMs ?? PROJECT_CREATE_POLL_INTERVAL_MS;
+  const projectCreateWaitCapMs = input.projectCreateWaitCapMs ?? PROJECT_CREATE_WAIT_CAP_MS;
 
   const progress: Array<EnvironmentCreationStepProgress> = input.steps.map((step) => ({
     step,
@@ -261,7 +289,20 @@ export async function runEnvironmentCreation(
             tagList: step.tagList,
             ...(step.location === undefined ? {} : { location: step.location }),
           });
+          // Named before the wait: a creation the platform then fails has
+          // still made a project, and the outcome must say which one.
           projectId = project.id;
+          await awaitProjectCreated({
+            clientId: input.clientId,
+            projectId: project.id,
+            platform: input.platform,
+            startedAtMs,
+            now,
+            sleep,
+            pollIntervalMs: projectCreatePollIntervalMs,
+            capMs: projectCreateWaitCapMs,
+            assertCurrent,
+          });
           break;
         }
         case "import-project": {
@@ -400,6 +441,45 @@ function requireProject(projectId: string | undefined): string {
     throw new Error("The environment's project has not been created yet.");
   }
   return projectId;
+}
+
+/**
+ * The project POST answered; this waits for the platform to have actually
+ * made the project. `project.create` is read until it is terminal: finished
+ * returns, failed or canceled throws the platform's own sentence, and past
+ * the cap with nothing terminal the step stops and says so. No process yet
+ * is "not yet", never "fine" — the search can answer before the platform has
+ * written the process it is about to run.
+ *
+ * The step's own start is the wait's start, so a verdict that is already in
+ * on the first read costs the clock nothing.
+ */
+async function awaitProjectCreated(input: {
+  readonly clientId: string;
+  readonly projectId: string;
+  readonly platform: EnvironmentCreationPlatform;
+  readonly startedAtMs: number;
+  readonly now: () => number;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly pollIntervalMs: number;
+  readonly capMs: number;
+  readonly assertCurrent: () => void;
+}): Promise<void> {
+  for (;;) {
+    input.assertCurrent();
+    const creation = await input.platform.readProjectCreation({
+      clientId: input.clientId,
+      projectId: input.projectId,
+    });
+    input.assertCurrent();
+    const outcome = projectCreationOutcome(creation);
+    if (outcome.kind === "finished") return;
+    if (outcome.kind === "failed") throw new Error(projectCreationFailureSentence(outcome));
+    if (input.now() - input.startedAtMs > input.capMs) {
+      throw new Error("Zerops did not confirm the project was created.");
+    }
+    await input.sleep(input.pollIntervalMs);
+  }
 }
 
 /**

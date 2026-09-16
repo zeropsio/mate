@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   connectFailureLine,
+  creationFailedLine,
   giteaToolLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
@@ -21,6 +22,7 @@ const ALL = {
   setUpMate: true,
   start: true,
   restart: true,
+  remove: true,
 } as const;
 const NONE = {
   open: false,
@@ -28,6 +30,7 @@ const NONE = {
   setUpMate: false,
   start: false,
   restart: false,
+  remove: false,
 } as const;
 
 const READY: ZeropsRowCandidate = {
@@ -45,6 +48,76 @@ function input(
 ): ZeropsRowInput {
   return { candidate, health, can };
 }
+
+describe("a project the platform failed to create", () => {
+  const FAILED_CREATION: ZeropsRowCandidate = {
+    key: "p-new",
+    project: { id: "p-new", name: "crm-dev", status: "NEW", tagList: ["mate"] },
+    group: "unavailable",
+    reason: "creation failed",
+    creationFailed: { message: "unexpected internal server error" },
+  };
+
+  it("reads as not created, in the failed tone, never as coming up", () => {
+    expect(deriveZeropsRowPresentation(input(FAILED_CREATION, undefined))).toEqual({
+      status: { label: "Not created", tone: "failed" },
+      detail: "Could not be created.",
+      detailIsError: true,
+    });
+    // The same project with no verdict yet is still a boot.
+    const { creationFailed: _verdict, ...booting } = FAILED_CREATION;
+    expect(
+      deriveZeropsRowPresentation(input({ ...booting, group: "provisioning" }, undefined)),
+    ).toMatchObject({ status: { label: "Preparing" }, detail: "Coming up. A few minutes." });
+  });
+
+  it.each([
+    ["nothing", undefined, "Could not be created."],
+    [
+      "the platform's empty internal error",
+      "unexpected internal server error",
+      "Could not be created.",
+    ],
+    [
+      "a reason worth repeating",
+      "project limit reached",
+      "Could not be created. Project limit reached.",
+    ],
+    ["a reason already a sentence", "Name is taken.", "Could not be created. Name is taken."],
+  ] as const)("says %s as the line", (_name, message, line) => {
+    expect(creationFailedLine(message)).toBe(line);
+    expect(
+      deriveZeropsRowPresentation(
+        input({ ...FAILED_CREATION, creationFailed: { message } }, undefined),
+      ).detail,
+    ).toBe(line);
+  });
+
+  it("offers Remove, and only to someone who may remove", () => {
+    expect(deriveZeropsRowAction(input(FAILED_CREATION, undefined))).toEqual({
+      kind: "remove",
+      label: "Remove",
+    });
+    expect(deriveZeropsRowAction(input(FAILED_CREATION, undefined, NONE))).toEqual({
+      kind: "none",
+    });
+    expect(
+      deriveZeropsRowAction(input(FAILED_CREATION, undefined, { ...NONE, remove: true })),
+    ).toEqual({ kind: "remove", label: "Remove" });
+  });
+
+  it("outranks a stopped or transitional reading of the same project", () => {
+    const stopped = {
+      ...FAILED_CREATION,
+      project: { ...FAILED_CREATION.project, status: "STOPPED" },
+    };
+    expect(deriveZeropsRowAction(input(stopped, undefined))).toEqual({
+      kind: "remove",
+      label: "Remove",
+    });
+    expect(deriveZeropsRowPresentation(input(stopped, undefined)).status.label).toBe("Not created");
+  });
+});
 
 describe("deriveZeropsRowAction", () => {
   // Clicking a Mate opens it: the connect is a step on the way, not a verb

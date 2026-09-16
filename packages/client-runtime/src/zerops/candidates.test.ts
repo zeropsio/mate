@@ -2,7 +2,13 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { deriveZeropsCandidates, groupZeropsCandidates, zeropsMateBaseUrl } from "./candidates.ts";
+import {
+  applyProjectCreationVerdict,
+  deriveZeropsCandidates,
+  groupZeropsCandidates,
+  zeropsMateBaseUrl,
+} from "./candidates.ts";
+import type { ZeropsProjectCreation } from "./projectCreation.ts";
 
 const PROJECT: ZeropsProject = {
   id: "project-1",
@@ -25,6 +31,98 @@ function service(overrides: Partial<ZeropsService> & { readonly id: string }): Z
 }
 
 const NO_CONNECTIONS = new Map<string, EnvironmentId>();
+
+describe("a project's creation verdict", () => {
+  const NEW_PROJECT: ZeropsProject = { ...PROJECT, id: "project-new", status: "NEW" };
+  const FAILED: ZeropsProjectCreation = {
+    processId: "proc-1",
+    status: "FAILED",
+    error: { code: "internalServerError", message: "unexpected internal server error" },
+  };
+
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly status: string;
+    readonly creation: ZeropsProjectCreation | undefined;
+    readonly group: "provisioning" | "unavailable";
+    readonly creationFailed?: { readonly message: string | undefined };
+  }> = [
+    {
+      name: "NEW with no verdict is a boot",
+      status: "NEW",
+      creation: undefined,
+      group: "provisioning",
+    },
+    {
+      name: "CREATING with a running process is a boot",
+      status: "CREATING",
+      creation: { processId: "proc-1", status: "RUNNING", error: null },
+      group: "provisioning",
+    },
+    {
+      name: "NEW with a finished process is still a boot (the services are next)",
+      status: "NEW",
+      creation: { processId: "proc-1", status: "FINISHED", error: null },
+      group: "provisioning",
+    },
+    {
+      name: "NEW with a FAILED process is a failed creation, carrying the platform's words",
+      status: "NEW",
+      creation: FAILED,
+      group: "unavailable",
+      creationFailed: { message: "unexpected internal server error" },
+    },
+    {
+      name: "CREATING with a CANCELED process that said nothing is a failed creation",
+      status: "CREATING",
+      creation: { processId: "proc-1", status: "CANCELED", error: null },
+      group: "unavailable",
+      creationFailed: { message: undefined },
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    const [candidate] = deriveZeropsCandidates(
+      { ...NEW_PROJECT, status: row.status },
+      null,
+      NO_CONNECTIONS,
+      row.creation,
+    );
+    expect(candidate?.group).toBe(row.group);
+    if (row.creationFailed === undefined) {
+      expect(candidate?.creationFailed).toBeUndefined();
+      expect(candidate?.reason).toBe("project is being created");
+    } else {
+      expect(candidate?.creationFailed).toEqual(row.creationFailed);
+      expect(candidate?.reason).toBe("creation failed");
+    }
+  });
+
+  it("re-reads an already derived candidate the same way, keeping what else it carries", () => {
+    const [candidate] = deriveZeropsCandidates(NEW_PROJECT, null, NO_CONNECTIONS);
+    const presented = { ...candidate!, routes: [] as ReadonlyArray<never> };
+    expect(applyProjectCreationVerdict(presented, undefined)).toBe(presented);
+    expect(applyProjectCreationVerdict(presented, FAILED)).toEqual({
+      key: "project-new",
+      project: NEW_PROJECT,
+      group: "unavailable",
+      reason: "creation failed",
+      creationFailed: { message: "unexpected internal server error" },
+      routes: [],
+    });
+  });
+
+  it("never touches a project that is not on its way up", () => {
+    const [active] = deriveZeropsCandidates(PROJECT, [], NO_CONNECTIONS);
+    expect(applyProjectCreationVerdict(active!, FAILED)).toBe(active);
+    const [stopped] = deriveZeropsCandidates(
+      { ...PROJECT, status: "STOPPED" },
+      null,
+      NO_CONNECTIONS,
+    );
+    expect(applyProjectCreationVerdict(stopped!, FAILED)).toBe(stopped);
+  });
+});
 
 describe("zeropsMateBaseUrl", () => {
   it("defers to the served prefix only for the container that serves this bundle", () => {

@@ -17,6 +17,7 @@ import {
   type ZeropsProject,
   type ZeropsService,
 } from "./api.ts";
+import { projectCreationOutcome, type ZeropsProjectCreation } from "./projectCreation.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { normalizeBasePath } from "@t3tools/shared/basePath";
 
@@ -40,6 +41,14 @@ export interface ZeropsCandidate {
    * action — Set up Mate — and a caller must not parse prose to find it.
    */
   readonly missingContainer?: true;
+  /**
+   * The platform failed to make this project: its `project.create` process
+   * is FAILED or CANCELED and the project sits in NEW for good
+   * (`projectCreation.ts`). Structural for the same reason as
+   * `missingContainer` — this is the unavailable case whose verb is Remove,
+   * and whose line carries the platform's own words when it gave any.
+   */
+  readonly creationFailed?: { readonly message: string | undefined };
   readonly service?: ZeropsCandidateService;
   readonly containerOrigin?: string;
   readonly environmentId?: EnvironmentId;
@@ -140,19 +149,57 @@ const SERVICE_PROVISIONING_STATUSES = new Set([
 ]);
 
 /**
+ * A project on its way up, read against the platform's verdict on its
+ * creation when the caller has one. NEW is a boot until `project.create`
+ * says otherwise; once that process has FAILED or been CANCELED the project
+ * will never leave NEW, and a row calling it "coming up" would say so
+ * forever (measured 2026-09-16). No verdict, or one still running, changes
+ * nothing.
+ */
+export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
+  candidate: Candidate,
+  creation: ZeropsProjectCreation | undefined,
+): Candidate {
+  if (candidate.group !== "provisioning") return candidate;
+  if (!PROJECT_PROVISIONING_STATUSES.has(candidate.project.status)) return candidate;
+  const outcome = projectCreationOutcome(creation);
+  if (outcome.kind !== "failed") return candidate;
+  const {
+    service: _service,
+    containerOrigin: _origin,
+    environmentId: _environment,
+    ...rest
+  } = candidate;
+  return {
+    ...rest,
+    group: "unavailable",
+    reason: "creation failed",
+    creationFailed: { message: outcome.message },
+  } as Candidate;
+}
+
+/**
  * Every candidate one project contributes — one per zcp container, so a project
  * holding two of them offers both rather than collapsing into "ambiguous".
  * `services` is null when the project's service list could not be read; that is
  * a different statement from "this project has no container".
+ * `creation` is the platform's verdict on the project's creation when the
+ * caller has read one (`applyProjectCreationVerdict`).
  */
 export function deriveZeropsCandidates(
   project: ZeropsProject,
   services: ReadonlyArray<ZeropsService> | null,
   connectedOrigins: ReadonlyMap<string, EnvironmentId>,
+  creation?: ZeropsProjectCreation | undefined,
 ): ReadonlyArray<ZeropsCandidate> {
   if (project.status !== "ACTIVE") {
     if (PROJECT_PROVISIONING_STATUSES.has(project.status)) {
-      return [provisioningProject(project, "project is being created")];
+      return [
+        applyProjectCreationVerdict(
+          provisioningProject(project, "project is being created"),
+          creation,
+        ),
+      ];
     }
     return [unavailable(project, `project is ${project.status}`)];
   }

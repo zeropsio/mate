@@ -2894,6 +2894,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    deleteProject: (input) =>
+      runCommand({ kind: "delete-project", ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "delete-project"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
   };
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>

@@ -14,6 +14,7 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
+  isGenericPlatformError,
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -67,6 +68,8 @@ export interface ZeropsRowInput {
     readonly setUpMate: boolean;
     readonly start: boolean;
     readonly restart: boolean;
+    /** Deleting a project the platform failed to create. */
+    readonly remove: boolean;
   };
 }
 
@@ -76,6 +79,8 @@ export type ZeropsRowAction =
   | { readonly kind: "enable"; readonly label: "Enable Zerops Mate" }
   | { readonly kind: "set-up-mate"; readonly label: "Set up Mate" }
   | { readonly kind: "start"; readonly label: "Start" }
+  /** A project the platform failed to create is taken off the account. */
+  | { readonly kind: "remove"; readonly label: "Remove" }
   /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
   | { readonly kind: "restart"; readonly label: "Restart" }
   /** The container is on its way, the probe or the socket still busy: no verb yet. */
@@ -109,6 +114,18 @@ const RUNNING_PROCESS_DETAIL: Readonly<
  */
 const COMING_UP_LINE = "Coming up. A few minutes.";
 const ALMOST_THERE_LINE = "Almost there.";
+
+/**
+ * The line under a project the platform failed to create, with the
+ * platform's own words when it gave any worth repeating. Its empty internal
+ * error says nothing a person can act on, so the line stays at the fact.
+ */
+export function creationFailedLine(message: string | undefined): string {
+  const said = message?.trim();
+  if (!said || isGenericPlatformError(said)) return "Could not be created.";
+  const sentence = said.charAt(0).toUpperCase() + said.slice(1);
+  return `Could not be created. ${/[.!?]$/u.test(sentence) ? sentence : `${sentence}.`}`;
+}
 
 /**
  * The sentence `connection/errors.ts` gives a 500 from the door — an
@@ -228,6 +245,15 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
   }
   if (candidate.group === "unavailable") {
+    // The platform failed to make the project: it will sit in NEW for good,
+    // so the row says so in the failed tone rather than "coming up" forever.
+    if (candidate.creationFailed !== undefined) {
+      return {
+        status: { label: "Not created", tone: "failed" },
+        detail: creationFailedLine(candidate.creationFailed.message),
+        detailIsError: true,
+      };
+    }
     // A project that merely has no container is not unavailable. Read on a
     // Mate's card this is a Mate whose body is gone — the tag declares it,
     // nothing runs it — and the verb beside it sets it up again; an
@@ -355,6 +381,10 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
     case "provisioning":
       return { kind: "none" };
     case "unavailable":
+      // Nothing will ever run here; the one thing to do is take it away.
+      if (candidate.creationFailed !== undefined) {
+        return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
+      }
       if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }

@@ -47,6 +47,10 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`create:${input.name}:${input.tagList.join(",")}`);
       return Promise.resolve({ id: "proj-1" });
     },
+    readProjectCreation: ({ projectId }) => {
+      calls.push(`creation:${projectId}`);
+      return Promise.resolve({ processId: "proc-create", status: "FINISHED", error: null });
+    },
     importDevelopmentContainer: (input) => {
       calls.push(`container:${input.projectId}:${input.agents.join("|")}`);
       return Promise.resolve({ serviceName: "zcp" });
@@ -122,6 +126,7 @@ function run(
     },
     pollIntervalMs: 7,
     serviceWaitCapMs: 100_000,
+    projectCreatePollIntervalMs: 2,
   }).then((outcome) => ({ outcome, reports, slept }));
 }
 
@@ -183,6 +188,9 @@ describe("runEnvironmentCreation", () => {
     });
     expect(calls).toEqual([
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
+      // The 200 is an acceptance; the platform's `project.create` process is
+      // the creation, and the step is not done until it has finished.
+      "creation:proj-1",
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
       "tokens:client-1",
@@ -339,6 +347,92 @@ describe("runEnvironmentCreation", () => {
     const [first] = reports.at(-1)!;
     expect(first?.startedAtMs).toBeDefined();
     expect(first?.finishedAtMs).toBeGreaterThanOrEqual(first?.startedAtMs ?? Infinity);
+  });
+});
+
+describe("runEnvironmentCreation — the platform's verdict on the project", () => {
+  // `POST /client/{id}/project` answers 200 before anything is built; the
+  // `project.create` process that follows is the creation, and it can fail
+  // (measured 2026-09-16). The step waits for it.
+  it("waits until project.create has finished, a missing process counting as running", async () => {
+    const answers = [
+      undefined,
+      { processId: "proc-create", status: "RUNNING", error: null },
+      { processId: "proc-create", status: "FINISHED", error: null },
+    ];
+    let reads = 0;
+    const { platform, calls } = fakePlatform({
+      readProjectCreation: () => Promise.resolve(answers[reads++]),
+    });
+    const { outcome, slept } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(true);
+    expect(reads).toBe(3);
+    expect(slept.slice(0, 2)).toEqual([2, 2]);
+    expect(calls).toContain("container:proj-1:claude-code");
+  });
+
+  const failures: ReadonlyArray<{
+    readonly name: string;
+    readonly creation: {
+      readonly status: string;
+      readonly error: { code: string; message: string } | null;
+    };
+    readonly error: string;
+  }> = [
+    {
+      name: "fails the step with the platform's message when project.create FAILED",
+      creation: {
+        status: "FAILED",
+        error: { code: "internalServerError", message: "unexpected internal server error" },
+      },
+      error: "unexpected internal server error",
+    },
+    {
+      name: "fails the step with the status when a CANCELED project.create said nothing",
+      creation: { status: "CANCELED", error: null },
+      error: "Zerops reported the project's creation as CANCELED.",
+    },
+  ];
+
+  it.each(failures.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { platform, calls } = fakePlatform({
+      readProjectCreation: () => Promise.resolve({ processId: "proc-create", ...row.creation }),
+    });
+    const { outcome, reports } = await run(plan("dev"), platform);
+
+    expect(outcome).toEqual({
+      ok: false,
+      // The half that was made: a project the platform left NEW.
+      projectId: "proj-1",
+      failedStep: expect.objectContaining({ kind: "create-project" }),
+      error: row.error,
+    });
+    // Nothing after it runs: no container, no token, no import. (The verdict
+    // read is this test's own and records nothing.)
+    expect(calls).toEqual([
+      "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
+    ]);
+    const last = reports.at(-1)!;
+    expect(last[0]).toMatchObject({ state: "failed", error: row.error });
+    expect(last.slice(1).every((entry) => entry.state === "queued")).toBe(true);
+  });
+
+  it("gives up when the platform never confirms the project, keeping its id", async () => {
+    const { platform } = fakePlatform({
+      readProjectCreation: () =>
+        Promise.resolve({ processId: "proc-create", status: "RUNNING", error: null }),
+    });
+    // The step's start, one in-bound check, then one past the minute.
+    const { outcome, slept } = await run(plan("dev"), platform, { clockMs: [0, 0, 200_000] });
+
+    expect(outcome).toEqual({
+      ok: false,
+      projectId: "proj-1",
+      failedStep: expect.objectContaining({ kind: "create-project" }),
+      error: "Zerops did not confirm the project was created.",
+    });
+    expect(slept).toEqual([2]);
   });
 });
 

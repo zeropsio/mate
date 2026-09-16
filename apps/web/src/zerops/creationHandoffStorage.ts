@@ -18,6 +18,7 @@ import {
   withCreationHandoff,
   withCreationHandoffPromoted,
   withoutCreationHandoff,
+  withoutPendingCreationHandoff,
   type ZeropsCreationHandoff,
   type ZeropsCreationHandoffs,
 } from "@t3tools/client-runtime/zerops";
@@ -62,4 +63,9 @@ export function creationHandoffFor(environmentId: string): ZeropsCreationHandoff
 
 export function forgetCreationHandoff(environmentId: string): void {
   write(withoutCreationHandoff(read(), environmentId));
+}
+
+/** The project was removed before anything connected to it; stop waiting for it. */
+export function forgetPendingCreation(projectId: string): void {
+  write(withoutPendingCreationHandoff(read(), projectId));
 }

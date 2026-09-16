@@ -116,10 +116,17 @@ export {
   withCreationHandoff,
   withCreationHandoffPromoted,
   withoutCreationHandoff,
+  withoutPendingCreationHandoff,
   type ZeropsCreationHandoff,
   type ZeropsCreationHandoffs,
   type ZeropsCreationSource,
 } from "./creationHandoff.ts";
+export {
+  isGenericPlatformError,
+  projectCreationOutcome,
+  type ZeropsProjectCreation,
+  type ZeropsProjectCreationOutcome,
+} from "./projectCreation.ts";
 export {
   derivePublicRouteOffers,
   derivePublicRoutes,
@@ -192,6 +199,8 @@ export {
 export {
   ENVIRONMENT_SERVICE_POLL_INTERVAL_MS,
   ENVIRONMENT_SERVICE_WAIT_CAP_MS,
+  PROJECT_CREATE_POLL_INTERVAL_MS,
+  PROJECT_CREATE_WAIT_CAP_MS,
   runEnvironmentCreation,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationPlatform,
