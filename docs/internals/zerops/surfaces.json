@@ -629,6 +629,7 @@
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
         "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+        "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",

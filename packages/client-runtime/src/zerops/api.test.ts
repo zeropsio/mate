@@ -1257,3 +1257,103 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
     expect(stub.requests).toHaveLength(2);
   });
 });
+
+describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
+  const project = {
+    id: "p1",
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: "org-1",
+    description: "the Mate",
+    tagList: ["mate", "mate:g:acme"],
+    userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
+  };
+
+  it("sends the whole record with one person's role changed", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.setProjectMemberRole({
+      projectId: "p1",
+      clientUserId: "cu-eva",
+      roleCode: "OWNER",
+    });
+
+    // Read, then write: `PUT /project/{id}` replaces whatever it is sent.
+    expect(stub.requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      name: "Fen",
+      description: "the Mate",
+      // The tags survive the write — this is a role change, not a re-tag.
+      tagList: ["mate", "mate:g:acme"],
+      userRoles: [
+        { clientUserId: "cu-jan", roleCode: "OWNER" },
+        { clientUserId: "cu-eva", roleCode: "OWNER" },
+      ],
+    });
+  });
+
+  // Overrides are measured in both directions: the same call, lowered, takes
+  // a Mate away.
+  it("takes a Mate away when it lowers its owner", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.setProjectMemberRole({
+      projectId: "p1",
+      clientUserId: "cu-jan",
+      roleCode: "READ_ONLY",
+    });
+
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}").userRoles).toEqual([
+      { clientUserId: "cu-jan", roleCode: "READ_ONLY" },
+    ]);
+  });
+});
+
+describe("ZeropsApiClient.recordProjectAgentSigner — who signed an agent in (D6)", () => {
+  const project = {
+    id: "p1",
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: "org-1",
+    tagList: ["mate", "mate:signer:claude-code:old-user"],
+  };
+
+  it("replaces this agent's signer and keeps every other tag", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.recordProjectAgentSigner({
+      projectId: "p1",
+      agentId: "claude-code",
+      userId: "jan",
+    });
+
+    const body = JSON.parse(stub.requests[1]?.body ?? "{}");
+    expect(body.tagList).toEqual(["mate", "mate:signer:claude-code:jan"]);
+    // A tag write must never carry `userRoles`: the platform replaces what it
+    // is sent, and a stale list would silently rewrite who may open the Mate.
+    expect(body.userRoles).toBeUndefined();
+  });
+
+  // Signing in again with the same account costs a read and nothing more.
+  it("writes nothing when the record already says the same thing", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { ...project, tagList: ["mate", "mate:signer:claude-code:jan"] }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.recordProjectAgentSigner({
+      projectId: "p1",
+      agentId: "claude-code",
+      userId: "jan",
+    });
+
+    expect(stub.requests.map((request) => request.method)).toEqual(["GET"]);
+  });
+});

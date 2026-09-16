@@ -30,7 +30,9 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   resolveMateOwnerName,
+  resolveMateVerbs,
   resolveMateVisibility,
+  type MateVerbs,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
@@ -52,6 +54,7 @@ import {
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
+import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -505,13 +508,22 @@ function ZeropsProjectsContent() {
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-  // The member list is read only when a row would use a name, and never
-  // otherwise: a person who can open everything they can see never asks.
+  // Guide 0.8: a verb this person cannot finish is not offered. Every one of
+  // them is a platform write the platform would refuse from the wrong role.
+  const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
+    viewer === null
+      ? { open: true, rename: true, tag: true, move: true, assign: false }
+      : resolveMateVerbs({ project: candidate.project, viewer });
+  // The member list is read when a row would use a name — a Mate this person
+  // may see and not open — and when they may hand a Mate over and so need
+  // somebody to hand it to. Never otherwise.
   const anyListed = candidates.some((candidate) => visibilityOf(candidate) === "listed");
-  const members = useZeropsOrganizationMembers({
+  const anyAssignable = candidates.some((candidate) => verbsOf(candidate).assign);
+  const assignableMembers = useZeropsOrganizationMembers({
     clientId: activeOrganization?.id,
-    enabled: anyListed,
+    enabled: anyListed || anyAssignable,
   });
+  const members = assignableMembers;
 
   const rowInput = (
     candidate: ZeropsCandidate,
@@ -652,6 +664,7 @@ function ZeropsProjectsContent() {
   const [rowDialog, setRowDialog] = useState<
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
+    | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | null
   >(null);
@@ -671,6 +684,23 @@ function ZeropsProjectsContent() {
           runtime.commands.nameProjectAgent(
             projectRef(activeOrganization.id, candidate.project.id),
             name,
+          ),
+        );
+      }),
+    [activeOrganization, projectRef, runWrite, runtime.commands],
+  );
+  /**
+   * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
+   * for the person picked. The one write in the app that carries `userRoles`.
+   */
+  const assignMate = useCallback(
+    (candidate: ZeropsCandidate, clientUserId: string) =>
+      runWrite(() => {
+        if (activeOrganization === null) return Promise.resolve();
+        return runZeropsCommand(
+          runtime.commands.setProjectMemberRole(
+            projectRef(activeOrganization.id, candidate.project.id),
+            { clientUserId, roleCode: "OWNER" },
           ),
         );
       }),
@@ -749,6 +779,7 @@ function ZeropsProjectsContent() {
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const verbs = verbsOf(candidate);
     const restart = deriveZeropsRestartAction(rowInput(candidate));
     const quickActions: ReadonlyArray<ZeropsMenuAction> = mate
       ? [
@@ -784,7 +815,7 @@ function ZeropsProjectsContent() {
           ...(quickActions.length > 0
             ? [{ id: "quick", separator: true } satisfies ZeropsMenuEntry]
             : []),
-          ...(mate
+          ...(mate && verbs.rename
             ? [
                 {
                   id: "rename-agent",
@@ -795,14 +826,30 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          {
-            id: "move",
-            label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
-            onSelect: () => {
-              setRowDialog({ kind: "move", candidate });
-            },
-          },
-          ...(tags.groupId === undefined
+          ...(verbs.assign
+            ? [
+                {
+                  id: "assign",
+                  label: "Hand this Mate over",
+                  onSelect: () => {
+                    setRowDialog({ kind: "assign", candidate });
+                  },
+                },
+              ]
+            : []),
+          ...(verbs.move
+            ? [
+                {
+                  id: "move",
+                  label:
+                    tags.groupId === undefined ? "Move to a project" : "Change project or role",
+                  onSelect: () => {
+                    setRowDialog({ kind: "move", candidate });
+                  },
+                },
+              ]
+            : []),
+          ...(tags.groupId === undefined || !verbs.move
             ? []
             : [
                 {
@@ -1729,6 +1776,28 @@ function ZeropsProjectsContent() {
             void moveProject(candidate, membership);
           }}
           open
+          projectName={rowDialog.candidate.project.name}
+        />
+      ) : null}
+      {rowDialog?.kind === "assign" ? (
+        <ZeropsAssignMateDialog
+          currentOwnerId={
+            rowDialog.candidate.project.userRoles?.find((entry) => entry.roleCode === "OWNER")
+              ?.clientUserId
+          }
+          key={`assign:${rowDialog.candidate.key}`}
+          members={assignableMembers}
+          onCancel={() => {
+            setRowDialog(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRowDialog(null);
+          }}
+          onSubmit={(clientUserId) => {
+            const { candidate } = rowDialog;
+            setRowDialog(null);
+            void assignMate(candidate, clientUserId);
+          }}
           projectName={rowDialog.candidate.project.name}
         />
       ) : null}

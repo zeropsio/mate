@@ -1371,6 +1371,7 @@ export type PlatformCommandKind =
   | "start-project"
   | "name-project-agent"
   | "update-project-group-tags"
+  | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
   | "enable-subdomain-access"
@@ -1600,6 +1601,21 @@ export interface UpdateProjectGroupTagsCommandIntent {
   };
 }
 
+/** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
+export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
+
+/**
+ * Handing a Mate to a person — a per-project role override (guide 0.8, D11).
+ * Lowered, the same command takes a Mate away.
+ */
+export interface SetProjectMemberRoleCommandIntent {
+  readonly kind: "set-project-member-role";
+  readonly project: ProjectRef;
+  /** The `clientUser` id — what a project's `userRoles` names. */
+  readonly clientUserId: string;
+  readonly roleCode: MateProjectRoleCode;
+}
+
 export interface ImportDevelopmentContainerCommandIntent {
   readonly kind: "import-development-container";
   readonly project: ProjectRef;
@@ -1727,6 +1743,7 @@ export type PlatformCommandIntent =
   | StartProjectCommandIntent
   | NameProjectAgentCommandIntent
   | UpdateProjectGroupTagsCommandIntent
+  | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
   | EnableSubdomainAccessCommandIntent
@@ -1776,6 +1793,7 @@ export type PlatformCommandResult =
   | { readonly kind: "start-project"; readonly value: void }
   | { readonly kind: "name-project-agent"; readonly value: ZeropsProject }
   | { readonly kind: "update-project-group-tags"; readonly value: ZeropsProject }
+  | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
       readonly value: { readonly serviceName: string };
@@ -1969,6 +1987,14 @@ export interface ZeropsDataCommands {
   readonly updateProjectGroupTags: (
     project: ProjectRef,
     next: UpdateProjectGroupTagsCommandIntent["next"],
+  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
+  /**
+   * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
+   * command that writes a project's `userRoles`.
+   */
+  readonly setProjectMemberRole: (
+    project: ProjectRef,
+    input: Omit<SetProjectMemberRoleCommandIntent, "kind" | "project">,
   ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
   readonly importDevelopmentContainer: (
     input: Omit<ImportDevelopmentContainerCommandIntent, "kind" | "project"> & {

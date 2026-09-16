@@ -1,4 +1,5 @@
 import {
+  canCreateProjectsInOrganization,
   zeropsClientsFromUser,
   type ZeropsProject,
   type ZeropsService,
@@ -519,12 +520,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           mutationsAllowed: true,
           organizations: organizations.map((organization) => ({
             organization: organizationRef(organization.id),
-            mutationsAllowed: organization.canCreateProjects === true,
+            // One creation rule for the whole app (guide 0.8): the shared
+            // role function, not a bare flag read that told an org admin
+            // without it one thing on the projects screen and another here.
+            mutationsAllowed: canCreateProjectsInOrganization(organization),
           })),
-          projects: verification.projects.map(({ ref, role }) => ({
+          projects: verification.projects.map(({ ref, role, visibility }) => ({
             project: ref,
             role,
-            mutationsAllowed: true,
+            // A Mate this person may see and never open takes no writes (D5).
+            mutationsAllowed: visibility === "open",
           })),
         },
       }),

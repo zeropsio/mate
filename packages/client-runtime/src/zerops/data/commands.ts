@@ -30,6 +30,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
       return intent.service;
     case "name-project-agent":
     case "update-project-group-tags":
+    case "set-project-member-role":
     case "import-development-container":
     case "import-services":
     case "start-project":

@@ -111,6 +111,97 @@ export function resolveMateVisibility(input: {
 }
 
 /**
+ * This viewer's effective role on this project: their override there when the
+ * project names one, their org role otherwise.
+ */
+export function resolveMateProjectRole(input: {
+  readonly project: MateAccessProject;
+  readonly viewer: MateAccessViewer;
+}): ZeropsOrgRole {
+  if (input.project.clientId !== input.viewer.id) return "NO_ACCESS";
+  const override = input.project.userRoles?.find(
+    (entry) => entry.clientUserId === input.viewer.membershipId,
+  )?.roleCode;
+  return override === undefined ? asOrgRole(input.viewer.roleCode) : asOrgRole(override);
+}
+
+/**
+ * What this person may do with a Mate besides open it.
+ *
+ * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
+ * is not offered**. Every one of these is a platform write that the platform
+ * will refuse from the wrong role, and offering it anyway turns a permission
+ * into an error message after the fact.
+ *
+ * - `create` — the app's *Add Mate* gate: `zeropsRoleAnswer(...).canCreate`,
+ *   which is org `ADMIN`/`OWNER` or the *can create projects* flag. One rule,
+ *   not the two the screen used to carry.
+ * - `rename`, `tag`, `move` — writes to the project's own record, which need
+ *   effective `OWNER` or `ADMIN` **there** (measured 2026-09-15: a project's
+ *   env and tags are the owner's and the admins'; a `BASIC_USER` gets `403`).
+ *   The creator of a Mate is its `OWNER`, so their own Mate is theirs to
+ *   rename and to move.
+ * - `assign` — handing a Mate to somebody else, which writes a per-project
+ *   role override and is therefore an org `OWNER`/`ADMIN` verb only (D11).
+ *   The Mate's own owner cannot give it away; being able to would let anyone
+ *   hand their Mate — and whatever is in its conversation — to anyone.
+ */
+export interface MateVerbs {
+  readonly open: boolean;
+  readonly rename: boolean;
+  readonly tag: boolean;
+  readonly move: boolean;
+  readonly assign: boolean;
+}
+
+const RANK: Readonly<Record<ZeropsOrgRole, number>> = {
+  NO_ACCESS: 0,
+  READ_ONLY: 1,
+  BASIC_USER: 2,
+  ADMIN: 3,
+  OWNER: 4,
+};
+
+export function resolveMateVerbs(input: {
+  readonly project: MateAccessProject;
+  readonly viewer: MateAccessViewer;
+}): MateVerbs {
+  const visibility = resolveMateVisibility(input);
+  const projectRole = resolveMateProjectRole(input);
+  const writesHere = RANK[projectRole] >= RANK.ADMIN;
+  const orgAdmin = RANK[asOrgRole(input.viewer.roleCode)] >= RANK.ADMIN;
+  return {
+    open: visibility === "open",
+    rename: writesHere,
+    tag: writesHere,
+    move: writesHere,
+    assign: orgAdmin && input.project.clientId === input.viewer.id,
+  };
+}
+
+/**
+ * Whether this person may make a Mate at all — the app's one *Add Mate* gate
+ * (guide 0.8), and the same answer the role function gives every other
+ * consumer.
+ */
+export function canCreateMates(viewer: {
+  readonly roleCode?: string | undefined;
+  readonly canCreateProjects?: boolean | undefined;
+  readonly status?: string | undefined;
+}): boolean {
+  return zeropsRoleAnswer({
+    person: {
+      id: "",
+      orgRole: asOrgRole(viewer.roleCode),
+      status: viewer.status ?? "ACTIVE",
+      canCreateProjects: viewer.canCreateProjects === true,
+    },
+    overrides: {},
+    registry: { groups: [] },
+  }).canCreate;
+}
+
+/**
  * The one line a row the person cannot open carries, in place of the verb.
  *
  * Names the owner when the account can be read for one. Without a name it says
@@ -227,4 +318,24 @@ export function mateSignerTagIsCurrent(
     tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
   );
   return current.length === 1 && current[0] === mateSignerTag(agentId, userId);
+}
+
+/**
+ * Handing a Mate over: the project's `userRoles` with one person raised (or
+ * lowered) and everybody else's override untouched (guide 0.8, D11).
+ *
+ * `PUT /project/{id}` replaces the list wholesale, so the caller sends the
+ * whole thing; a blind write would drop every other person's role on the
+ * project. Overrides are measured in both directions — the same call, lowered,
+ * takes a Mate away.
+ */
+export function withMateProjectRole(
+  userRoles:
+    | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
+    | undefined,
+  clientUserId: string,
+  roleCode: ZeropsOrgRole,
+): ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }> {
+  const others = (userRoles ?? []).filter((entry) => entry.clientUserId !== clientUserId);
+  return [...others, { clientUserId, roleCode }];
 }

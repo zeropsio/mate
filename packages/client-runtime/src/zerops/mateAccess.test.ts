@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canCreateMates,
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateSignerTag,
   mateSignerTagIsCurrent,
   resolveMateOwnerName,
+  resolveMateVerbs,
   resolveMateVisibility,
+  withMateProjectRole,
   withMateSignerTag,
 } from "./mateAccess.ts";
 
@@ -176,4 +179,103 @@ describe("the signer tag (D6)", () => {
       expect(mateSignerTagIsCurrent(tagList, "codex", "jan")).toBe(false);
     });
   }
+});
+
+describe("the verbs a Mate offers (guide 0.8)", () => {
+  const verbs = (orgRole: string | undefined, override?: string) =>
+    resolveMateVerbs({ project: project(override), viewer: viewer(orgRole) });
+
+  // A verb a person cannot finish is not offered. Rename, tag and move are
+  // writes to the project's own record, which need effective OWNER or ADMIN
+  // there; handing a Mate over writes a per-project role, which is an org
+  // owner's or admin's verb only.
+  for (const [orgRole, override, expected] of [
+    ["OWNER", undefined, { open: true, rename: true, tag: true, move: true, assign: true }],
+    ["ADMIN", undefined, { open: true, rename: true, tag: true, move: true, assign: true }],
+    // A plain member with a Mate of their own: theirs to rename and to move,
+    // never theirs to give away.
+    ["READ_ONLY", "OWNER", { open: true, rename: true, tag: true, move: true, assign: false }],
+    ["NO_ACCESS", "OWNER", { open: true, rename: true, tag: true, move: true, assign: false }],
+    // A member of the org with no standing on this project: they see it.
+    [
+      "BASIC_USER",
+      undefined,
+      { open: true, rename: false, tag: false, move: false, assign: false },
+    ],
+    [
+      "READ_ONLY",
+      undefined,
+      { open: false, rename: false, tag: false, move: false, assign: false },
+    ],
+    [
+      "NO_ACCESS",
+      undefined,
+      { open: false, rename: false, tag: false, move: false, assign: false },
+    ],
+    // An override lowers an org owner here, but their org role still lets them
+    // hand the Mate to somebody — that is what makes a leaver's Mate
+    // recoverable at all.
+    ["OWNER", "READ_ONLY", { open: false, rename: false, tag: false, move: false, assign: true }],
+  ] as const) {
+    it(`${String(orgRole)} with project override ${String(override)}`, () => {
+      expect(verbs(orgRole, override)).toEqual(expected);
+    });
+  }
+
+  it("offers nothing on a project in another organization", () => {
+    expect(
+      resolveMateVerbs({
+        project: { id: PROJECT, clientId: "another-org" },
+        viewer: viewer("OWNER"),
+      }),
+    ).toEqual({ open: false, rename: false, tag: false, move: false, assign: false });
+  });
+});
+
+describe("canCreateMates — the one Add Mate gate", () => {
+  for (const [name, input, allowed] of [
+    ["an org owner", { roleCode: "OWNER" }, true],
+    ["an org admin without the flag", { roleCode: "ADMIN" }, true],
+    ["a member with the flag", { roleCode: "NO_ACCESS", canCreateProjects: true }, true],
+    ["a read-only member with the flag", { roleCode: "READ_ONLY", canCreateProjects: true }, true],
+    ["a member without it", { roleCode: "BASIC_USER" }, false],
+    ["a read-only member without it", { roleCode: "READ_ONLY" }, false],
+    ["somebody who is not active", { roleCode: "OWNER", status: "INVITED" }, false],
+  ] as const) {
+    it(`${allowed ? "offers" : "withholds"} Add Mate from ${name}`, () => {
+      expect(canCreateMates(input)).toBe(allowed);
+    });
+  }
+});
+
+describe("withMateProjectRole — handing a Mate over", () => {
+  it("raises one person and leaves everybody else's override alone", () => {
+    expect(
+      withMateProjectRole(
+        [
+          { clientUserId: "cu-jan", roleCode: "OWNER" },
+          { clientUserId: "cu-eva", roleCode: "BASIC_USER" },
+        ],
+        "cu-eva",
+        "OWNER",
+      ),
+    ).toEqual([
+      { clientUserId: "cu-jan", roleCode: "OWNER" },
+      { clientUserId: "cu-eva", roleCode: "OWNER" },
+    ]);
+  });
+
+  it("adds an override to a project that had none", () => {
+    expect(withMateProjectRole(undefined, "cu-eva", "OWNER")).toEqual([
+      { clientUserId: "cu-eva", roleCode: "OWNER" },
+    ]);
+  });
+
+  // The same call, lowered, takes a Mate away — overrides are measured in
+  // both directions.
+  it("takes a Mate away when it lowers somebody", () => {
+    expect(
+      withMateProjectRole([{ clientUserId: "cu-jan", roleCode: "OWNER" }], "cu-jan", "READ_ONLY"),
+    ).toEqual([{ clientUserId: "cu-jan", roleCode: "READ_ONLY" }]);
+  });
 });

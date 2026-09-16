@@ -12,7 +12,7 @@
  * persisted server-side.
  */
 
-import { mateSignerTagIsCurrent, withMateSignerTag } from "./mateAccess.ts";
+import { mateSignerTagIsCurrent, withMateProjectRole, withMateSignerTag } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import type {
@@ -1068,6 +1068,55 @@ export class ZeropsApiClient {
           name: project.name,
           description: project.description ?? "",
           tagList: withMateSignerTag(project.tagList, input.agentId, input.userId),
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * Hands a Mate to a person — or takes it away (guide 0.8, D11).
+   *
+   * A per-project role override, written by an org owner or admin. It is the
+   * verb the hand-over cases need: a Mate created for a colleague, a leaver's,
+   * a reassignment. Without one the colleague is whatever the org says they
+   * are, which for a plain member is `READ_ONLY` — they see the Mate and never
+   * open it.
+   *
+   * **The one write in this client that carries `userRoles`.** Every other
+   * project write sends `name`, `description` and `tagList` and must not name
+   * roles at all; `PUT /project/{id}` replaces whatever it is sent, so a tag
+   * write that carried a stale `userRoles` would silently rewrite who may open
+   * the Mate. This one sends the whole list with one entry changed, for the
+   * same reason in reverse.
+   */
+  async setProjectMemberRole(
+    input: {
+      readonly projectId: string;
+      /** The `clientUser` id — what a project's `userRoles` names. */
+      readonly clientUserId: string;
+      readonly roleCode: ZeropsProjectRole;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const project = await this.fetchProject(input.projectId, signal);
+    this.#assertGeneration(generation);
+    return this.#request<ZeropsProject>(
+      `/project/${input.projectId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description ?? "",
+          tagList: project.tagList ?? [],
+          userRoles: withMateProjectRole(project.userRoles, input.clientUserId, input.roleCode),
         }),
       },
       {

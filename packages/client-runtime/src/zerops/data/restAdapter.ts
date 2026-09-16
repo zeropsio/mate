@@ -914,6 +914,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         readonly kind:
           | "name-project-agent"
           | "update-project-group-tags"
+          | "set-project-member-role"
           | "create-project"
           | "create-project-with-mate"
           | "create-tool-project";
@@ -1030,6 +1031,23 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           options.client.nameProjectAgent(
             command.project.projectId,
             command.name,
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.flatMap((value) =>
+            projectCommandReceipt(command, value, { kind: command.kind, value }),
+          ),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "set-project-member-role":
+        return executeApi(context, (signal) =>
+          options.client.setProjectMemberRole(
+            {
+              projectId: command.project.projectId,
+              clientUserId: command.clientUserId,
+              roleCode: command.roleCode,
+            },
             signal,
             context.beforeProjectWrite,
           ),
