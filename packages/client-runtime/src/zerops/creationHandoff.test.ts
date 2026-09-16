@@ -141,6 +141,20 @@ describe("creation handoff storage", () => {
     },
   );
 
+  it.each([
+    ["written just now", { createdAtMs: 1_000_000 }, true],
+    ["fourteen minutes old", { createdAtMs: 1_000_000 - 14 * 60_000 }, true],
+    ["sixteen minutes old", { createdAtMs: 1_000_000 - 16 * 60_000 }, false],
+    ["from before the field existed", {}, false],
+  ] as const)("with a bound, a handoff %s is pending: %s", (_case, stamp, expected) => {
+    // A pending handoff makes the page treat an unlisted project as real; a
+    // project deleted elsewhere must not hide the empty account forever.
+    const stored = withCreationHandoff({}, { projectId: "proj-1" }, { ...FROM_TIER, ...stamp });
+    expect(pendingCreationProjectIds(stored, { nowMs: 1_000_000, maxAgeMs: 15 * 60_000 })).toEqual(
+      expected ? ["proj-1"] : [],
+    );
+  });
+
   it("forgets a creation whose project was removed, and only that one", () => {
     const stored = withCreationHandoff(
       withCreationHandoff({}, { projectId: "proj-1" }, FROM_TIER),

@@ -43,8 +43,15 @@ function write(next: ZeropsCreationHandoffs): void {
 
 /** Written by the creation, which has a Zerops project and no environment yet. */
 export function rememberCreationHandoff(projectId: string, handoff: ZeropsCreationHandoff): void {
-  write(withCreationHandoff(read(), { projectId }, handoff));
+  write(withCreationHandoff(read(), { projectId }, { ...handoff, createdAtMs: Date.now() }));
 }
+
+/**
+ * How long a creation may count as pending. A container boots in about three
+ * minutes and the page's own wait gives up well inside this; past it, the
+ * project was removed some other way or the tab never came back.
+ */
+const PENDING_CREATION_MAX_AGE_MS = 15 * 60_000;
 
 /** The connect is the one place both ids are in hand. */
 export function promoteCreationHandoff(projectId: string, environmentId: string): void {
@@ -54,7 +61,10 @@ export function promoteCreationHandoff(projectId: string, environmentId: string)
 
 /** The projects this browser created and has not connected to yet. */
 export function pendingCreationProjects(): ReadonlyArray<string> {
-  return pendingCreationProjectIds(read());
+  return pendingCreationProjectIds(read(), {
+    nowMs: Date.now(),
+    maxAgeMs: PENDING_CREATION_MAX_AGE_MS,
+  });
 }
 
 export function creationHandoffFor(environmentId: string): ZeropsCreationHandoff | undefined {

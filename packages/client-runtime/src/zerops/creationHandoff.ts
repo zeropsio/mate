@@ -39,6 +39,14 @@ export interface ZeropsCreationHandoff {
    * carried verbatim from *Add project* (D17). Absent when they wrote nothing.
    */
   readonly brief?: string | undefined;
+  /**
+   * When the creation wrote this, epoch ms. A pending handoff is what makes
+   * the projects page treat a project the inventory does not list yet as
+   * real; one that outlived any boot (a project removed elsewhere, a tab
+   * that never came back) must not hold that power, so a pending read is
+   * age-bounded. Absent on records from before this field: never pending.
+   */
+  readonly createdAtMs?: number | undefined;
 }
 
 /** The role as it reads mid-sentence: "the stage environment of Aurora". */
@@ -112,11 +120,13 @@ function isHandoff(value: unknown): value is ZeropsCreationHandoff {
   if (typeof source !== "object" || source === null) return false;
   const kind = (source as Record<string, unknown>)["kind"];
   const brief = record["brief"];
+  const createdAtMs = record["createdAtMs"];
   return (
     typeof record["environmentName"] === "string" &&
     typeof record["groupName"] === "string" &&
     ROLES.has(record["role"] as ZeropsEnvironmentRole) &&
     (brief === undefined || typeof brief === "string") &&
+    (createdAtMs === undefined || typeof createdAtMs === "number") &&
     (kind === "tier" || kind === "none")
   );
 }
@@ -174,11 +184,26 @@ export function withCreationHandoffPromoted(
  * a reload mid-wait leaves it here, and the projects page reads this to pick
  * the wait up again rather than asking for a click the creation never needed.
  */
-export function pendingCreationProjectIds(handoffs: ZeropsCreationHandoffs): ReadonlyArray<string> {
+/**
+ * The projects a creation made and never connected to. With a bound, only
+ * those young enough to still be booting: a handoff older than that is a
+ * project removed some other way or a tab that never came back, and it must
+ * not keep the page from saying the account is empty.
+ */
+export function pendingCreationProjectIds(
+  handoffs: ZeropsCreationHandoffs,
+  bound?: { readonly nowMs: number; readonly maxAgeMs: number },
+): ReadonlyArray<string> {
   const prefix = keyOf({ projectId: "" });
-  return Object.keys(handoffs)
-    .filter((key) => key.startsWith(prefix))
-    .map((key) => key.slice(prefix.length));
+  return Object.entries(handoffs)
+    .filter(
+      ([key, handoff]) =>
+        key.startsWith(prefix) &&
+        (bound === undefined ||
+          (handoff.createdAtMs !== undefined &&
+            bound.nowMs - handoff.createdAtMs <= bound.maxAgeMs)),
+    )
+    .map(([key]) => key.slice(prefix.length));
 }
 
 export function withoutCreationHandoff(
