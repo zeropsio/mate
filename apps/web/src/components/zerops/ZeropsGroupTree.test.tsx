@@ -1,4 +1,8 @@
-import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  type ZeropsGroup,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -36,7 +40,7 @@ function render(items: ReadonlyArray<Item>, props: Record<string, unknown> = {})
         </li>
       )}
       renderMate={(entry: Item) => <div data-test-mate={entry.project.id} />}
-      renderTool={(entry: Item, kind) => <li data-test-tool={kind}>{entry.project.name}</li>}
+      renderTool={(entry: Item, kind) => <div data-test-tool={kind}>{entry.project.name}</div>}
       view={buildZeropsGroupTree(items)}
       {...props}
     />,
@@ -153,6 +157,13 @@ describe("ZeropsGroupTree", () => {
     expect(html).toContain('data-zerops-tools="true"');
     expect(html).toContain('data-zerops-surface="tool-rows"');
     expect(html).toContain('data-test-tool="gitea"');
+    // The same grid the Mates stand in, so a tool's card is a Mate card's width.
+    const rows = html.slice(
+      html.indexOf('data-zerops-surface="tool-rows"') - 120,
+      html.indexOf('data-zerops-surface="tool-rows"'),
+    );
+    expect(rows).toContain("grid");
+    expect(rows).not.toContain("divide-y");
     const groupSection = html.slice(html.indexOf('data-zerops-group="aaa"'));
     expect(groupSection.slice(0, groupSection.indexOf('data-zerops-tools="true"'))).not.toContain(
       "mate-gitea",
@@ -176,8 +187,36 @@ describe("ZeropsGroupTree", () => {
     expect(render([CRM_DEV])).not.toContain("Add production");
     const html = render([CRM_DEV], { onCreateEnvironment: () => {} });
     expect(html).toContain('data-zerops-surface="add-roles"');
+    expect(html).toContain("Add Mate");
     expect(html).toContain("Add stage");
     expect(html).toContain("Add production");
+  });
+
+  // Three add affordances for a project two minutes old, before its first
+  // Mate has booted, is the cliché. The caller says when a group is ready
+  // for more; until then the group is its Mate and nothing else.
+  it("holds every add verb back until the caller says the group is ready for more", () => {
+    const held = render([CRM_DEV], { onCreateEnvironment: () => {}, addsOffered: () => false });
+    expect(held).not.toContain('data-zerops-surface="add-roles"');
+    expect(held).not.toContain("Add Mate");
+    expect(held).not.toContain("Add stage");
+    const offered = render([CRM_DEV], { onCreateEnvironment: () => {}, addsOffered: () => true });
+    expect(offered).toContain("Add Mate");
+    expect(offered).toContain("Add stage");
+  });
+
+  it("holds the verbs back per group, not for the page", () => {
+    const html = render([CRM_DEV, item("other-dev", ["mate:g:bbb", "mate:role:dev"])], {
+      onCreateEnvironment: () => {},
+      addsOffered: (group: ZeropsGroup) => group.groupId === "aaa",
+    });
+    const section = (groupId: string) => {
+      const start = html.indexOf(`data-zerops-group="${groupId}"`);
+      const next = html.indexOf("data-zerops-group=", start + 1);
+      return html.slice(start, next === -1 ? undefined : next);
+    };
+    expect(section("aaa")).toContain("Add Mate");
+    expect(section("bbb")).not.toContain("Add Mate");
   });
 
   it("disables every create affordance while a creation runs", () => {
@@ -226,9 +265,28 @@ describe("ZeropsGroupTree", () => {
   it("says what a Mate is, and offers one, to an account with no project", () => {
     const html = render([], { onCreateProject: () => {} });
     expect(html).toContain('data-zerops-surface="first-run"');
-    expect(html).toContain("Start with a Mate");
+    expect(html).toContain("Start a project");
+    expect(html).toContain(
+      "A Mate is a coding agent with a dev environment of its own and one conversation you come back to. Name a project and it is up in a few minutes, Git hosting alongside.",
+    );
     expect(html).toContain("New project");
+    expect(html).toContain('data-zerops-primitive="pill"');
+  });
+
+  it("makes the Mate the picture on first run, and owns the page rather than sitting under a list", () => {
+    const html = render([], { onCreateProject: () => {} });
+    // Large, and the invitation, not a placeholder beside text.
+    expect(html).toContain('data-mate-face-size="lg"');
+    expect(html).toContain("size-20");
     expect(html).toContain('data-mate-face-state="idle"');
+    // Vertically comfortable: a column in the middle of the page, text left-aligned inside.
+    expect(html).toContain("min-h-[60vh]");
+    expect(html).toContain("justify-center");
+    expect(html).toContain("items-start");
+    // No card around it, no second heading, no status word.
+    expect(html).not.toContain("bg-card");
+    expect(html).not.toContain("Start with a Mate");
+    expect(html).not.toContain("Tools");
   });
 
   it.each([
@@ -292,16 +350,21 @@ describe("adding to a group that already has everything", () => {
     expect(render([CRM_DEV, CRM_STAGE, CRM_PROD], full)).not.toContain("Add production");
   });
 
-  it("puts the Mate invitation with the Mates, not in the row of pills", () => {
-    // "Add Mate" belongs beside the cards it makes; stage and production are
-    // rows in the table, so their pills sit with the table.
+  it("puts the Mate invitation in the row of quiet verbs, never as a tile among the Mates", () => {
+    // A dashed placeholder tile as big as the Mate is the cliché: "Add Mate"
+    // is a verb beside "Add stage" and "Add production", under the group.
     const html = render([CRM_DEV, CRM_STAGE], full);
     const cards = html.indexOf('data-zerops-surface="mate-cards"');
     const pills = html.indexOf('data-zerops-surface="add-roles"');
     expect(cards).toBeGreaterThanOrEqual(0);
     expect(pills).toBeGreaterThan(cards);
-    expect(html.slice(cards, pills)).toContain("Add Mate");
+    expect(html.slice(cards, pills)).not.toContain("Add Mate");
+    expect(html.slice(pills)).toContain("Add Mate");
     expect(html.slice(pills)).toContain("Add production");
+    expect(html.slice(pills).indexOf("Add Mate")).toBeLessThan(
+      html.slice(pills).indexOf("Add production"),
+    );
+    expect(html).not.toContain("border-dashed");
   });
 });
 

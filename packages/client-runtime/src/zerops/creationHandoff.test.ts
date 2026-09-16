@@ -6,6 +6,7 @@ import {
   parseCreationHandoffs,
   readCreationHandoff,
   creationJobToStart,
+  pendingCreationProjectIds,
   withCreationHandoff,
   withCreationHandoffPromoted,
   withoutCreationHandoff,
@@ -100,6 +101,44 @@ describe("creation handoff storage", () => {
       readCreationHandoff(withoutCreationHandoff(stored, "env-1"), { environmentId: "env-1" }),
     ).toBeUndefined();
   });
+
+  it.each([
+    ["nothing", {}, []],
+    [
+      "one creation nobody has connected to",
+      withCreationHandoff({}, { projectId: "proj-1" }, handoff),
+      ["proj-1"],
+    ],
+    [
+      "two, in the order they were written",
+      withCreationHandoff(
+        withCreationHandoff({}, { projectId: "proj-1" }, handoff),
+        { projectId: "proj-2" },
+        handoff,
+      ),
+      ["proj-1", "proj-2"],
+    ],
+    [
+      "only the one still waiting once the other has connected",
+      withCreationHandoffPromoted(
+        withCreationHandoff(
+          withCreationHandoff({}, { projectId: "proj-1" }, handoff),
+          { projectId: "proj-2" },
+          handoff,
+        ),
+        "proj-1",
+        "env-1",
+      ),
+      ["proj-2"],
+    ],
+  ] as const)(
+    "names the projects created and never connected to: %s",
+    (_case, stored, expected) => {
+      // The projects page resumes these: a creation whose wait a reload cut
+      // short still lands in the conversation when its container answers.
+      expect(pendingCreationProjectIds(stored)).toEqual(expected);
+    },
+  );
 
   it("reads anything unexpected as nothing stored", () => {
     for (const raw of [null, "", "[]", "{oops", '{"env:1":{"role":"nope"}}']) {

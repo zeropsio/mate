@@ -17,6 +17,7 @@ import {
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
+  type ZeropsGiteaState,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -51,12 +52,18 @@ export interface ZeropsRowInput {
    * instead of a generic "Zerops Mate is starting."
    */
   readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
+  /**
+   * This client is waiting on the container itself — the wait a creation
+   * started, resumed after a reload, or the identity exchange in flight. The
+   * row then offers no verb and says only how long is left; the wait ends in
+   * the conversation, not on a click.
+   */
+  readonly waiting?: boolean | undefined;
   /** Which verbs the caller can actually perform; a verb it cannot is never offered. */
   readonly can: {
+    /** Opening covers connecting: a ready Mate opens by connecting first. */
     readonly open: boolean;
-    readonly connect: boolean;
     readonly enable: boolean;
-    readonly wait: boolean;
     readonly setUpMate: boolean;
     readonly start: boolean;
     readonly restart: boolean;
@@ -64,17 +71,14 @@ export interface ZeropsRowInput {
 }
 
 export type ZeropsRowAction =
+  /** The card's one action: a connected Mate opens, a ready one connects and then opens. */
   | { readonly kind: "open"; readonly label: "Open" }
-  | { readonly kind: "connect"; readonly label: "Connect" }
   | { readonly kind: "enable"; readonly label: "Enable Zerops Mate" }
-  | { readonly kind: "wait"; readonly label: "Wait for it" }
   | { readonly kind: "set-up-mate"; readonly label: "Set up Mate" }
   | { readonly kind: "start"; readonly label: "Start" }
   /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
   | { readonly kind: "restart"; readonly label: "Restart" }
-  /** Health "initializing": no verb, a quiet word. */
-  | { readonly kind: "starting"; readonly label: "Starting…" }
-  /** The probe or the socket is still busy: no verb yet. */
+  /** The container is on its way, the probe or the socket still busy: no verb yet. */
   | { readonly kind: "pending" }
   | { readonly kind: "none" };
 
@@ -97,6 +101,51 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   "start-service": "Starting the container",
   "start-project": "Starting the project",
 };
+
+/**
+ * The two lines under a Mate that is on its way. Expectations, not status
+ * verbs: the face is asleep for the whole boot and these only say how long
+ * — the container being made takes minutes, Mate answering takes seconds.
+ */
+const COMING_UP_LINE = "Coming up. A few minutes.";
+const ALMOST_THERE_LINE = "Almost there.";
+
+/**
+ * The sentence `connection/errors.ts` gives a 500 from the door — an
+ * `EnvironmentInternalError` read as `remote-unavailable`. The words say
+ * "not allowed" where the server fell over, so the row says what happened.
+ */
+const DOOR_INTERNAL_ERROR_SENTENCE = "The environment could not authorize the connection.";
+const EXCHANGE_PREFIX = "Could not connect to this container. ";
+
+/**
+ * A connect failure as the Mate's own line. The exchange writes "Could not
+ * connect to this container. <reason>"; the row already names the Mate, so
+ * the sentence shortens to the reason — and a 500 gets the honest sentence
+ * instead of one that reads as a refusal.
+ */
+export function connectFailureLine(error: string): string {
+  if (!error.startsWith(EXCHANGE_PREFIX)) return error;
+  const reason = error.slice(EXCHANGE_PREFIX.length);
+  return reason === DOOR_INTERNAL_ERROR_SENTENCE
+    ? "Could not connect. The Mate's server answered an error."
+    : `Could not connect. ${reason}`;
+}
+
+/**
+ * Whether a Mate is up: connected, or its container answered ready. What
+ * the add verbs of a group wait for — a group is offered more only once its
+ * first Mate has booted.
+ */
+export function mateIsUp(input: {
+  readonly candidate: Pick<ZeropsCandidate, "group">;
+  readonly health: ZeropsContainerHealth | undefined;
+}): boolean {
+  return (
+    input.candidate.group === "connected" ||
+    (input.candidate.group === "ready" && input.health === "ready")
+  );
+}
 
 function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
   const phase = candidate.connection?.phase;
@@ -176,10 +225,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: "Connected", tone: "ok" } };
   }
   if (candidate.group === "provisioning") {
-    return {
-      status: { label: "Preparing", pulse: true, tone: "busy" },
-      ...(candidate.reason === undefined ? {} : { detail: zeropsReasonSentence(candidate.reason) }),
-    };
+    return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
   }
   if (candidate.group === "unavailable") {
     // A project that merely has no container is not unavailable. Read on a
@@ -257,7 +303,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       return {
         detail:
           runningProcessKind === undefined
-            ? "Zerops Mate is starting."
+            ? ALMOST_THERE_LINE
             : RUNNING_PROCESS_DETAIL[runningProcessKind],
         status: { label: "Starting", pulse: true, tone: "busy" },
       };
@@ -267,9 +313,15 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         status: { label: "Not answering", tone: "attention" },
       };
     case "ready":
-      return { status: { label: "Ready", tone: "ok" } };
+      return {
+        status: { label: "Ready", tone: "ok" },
+        ...(input.waiting === true ? { detail: ALMOST_THERE_LINE } : {}),
+      };
     default:
-      return { status: { label: "Checking", pulse: true, tone: "busy" } };
+      return {
+        status: { label: "Checking", pulse: true, tone: "busy" },
+        ...(input.waiting === true ? { detail: ALMOST_THERE_LINE } : {}),
+      };
   }
 }
 
@@ -298,8 +350,10 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   switch (candidate.group) {
     case "connected":
       return can.open ? { kind: "open", label: "Open" } : { kind: "none" };
+    // The container is being made; the face is asleep and the line says how
+    // long. Nothing to click: the wait is the page's, not the person's.
     case "provisioning":
-      return can.wait ? { kind: "wait", label: "Wait for it" } : { kind: "none" };
+      return { kind: "none" };
     case "unavailable":
       if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
         return { kind: "set-up-mate", label: "Set up Mate" };
@@ -321,9 +375,11 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   if (health === "predates-mate" || health === "unreachable" || health === "stalled") {
     return can.enable ? { kind: "enable", label: "Enable Zerops Mate" } : { kind: "none" };
   }
-  if (isConnectionInFlight(candidate) || health === undefined) return { kind: "pending" };
-  if (health === "initializing") return { kind: "starting", label: "Starting…" };
-  return can.connect ? { kind: "connect", label: "Connect" } : { kind: "none" };
+  if (isConnectionInFlight(candidate) || health === undefined || health === "initializing") {
+    return { kind: "pending" };
+  }
+  if (input.waiting === true) return { kind: "pending" };
+  return can.open ? { kind: "open", label: "Open" } : { kind: "none" };
 }
 
 /**
@@ -363,5 +419,52 @@ export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefin
       return "failed";
     case "neutral":
       return undefined;
+  }
+}
+
+export type ZeropsToolLine =
+  /** Its services are coming up, or the project itself still is. */
+  | { readonly kind: "setting-up" }
+  /** Up: where it is, as a link, the host as its label. */
+  | { readonly kind: "link"; readonly url: string; readonly label: string }
+  /** The project is there and its web service is not. */
+  | { readonly kind: "unavailable" }
+  /** Nothing to say yet: unread, or up without an address. */
+  | { readonly kind: "none" };
+
+/**
+ * Gitea's one line on its card, from its own state (`tools.ts`) rather than
+ * the platform's service list: "setting up" while it comes up, its address
+ * once it is there — never the hostnames "broker, db, volume, web", which
+ * say nothing about whether it is ready or where it is. The address is the
+ * derived one (`deriveGiteaState`), never a guessed host.
+ */
+export function giteaToolLine(input: {
+  readonly projectStatus: string;
+  readonly phase: ZeropsGiteaState["phase"] | undefined;
+  readonly url: string | undefined;
+}): ZeropsToolLine {
+  if (input.projectStatus !== "ACTIVE") {
+    return input.phase === "unavailable" ? { kind: "unavailable" } : { kind: "setting-up" };
+  }
+  switch (input.phase) {
+    case undefined:
+      return { kind: "none" };
+    case "provisioning":
+      return { kind: "setting-up" };
+    case "unavailable":
+      return { kind: "unavailable" };
+    case "running":
+      return input.url === undefined
+        ? { kind: "none" }
+        : { kind: "link", url: input.url, label: hostOf(input.url) };
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
 }

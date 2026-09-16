@@ -13,7 +13,6 @@ import {
   ZeropsServiceId,
   type ServiceAuthorizedAgentsResourceRequest,
 } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -35,7 +34,7 @@ import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/en
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
-import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
+import { pendingCreationProjects, rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
 import { randomUUID } from "~/lib/utils";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
@@ -44,7 +43,6 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
-import { mateUpdateLine } from "~/zerops/mateUpdate";
 import {
   integrationTokensFromGrantMetadata,
   useZeropsGroupReach,
@@ -94,10 +92,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 
-import { Pill, StatusDot } from "./primitives";
+import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
-import { MateUpdateLine } from "./MateUpdateLine";
-import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsMateCard, ZeropsMateVerb, ZeropsToolCard } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -134,16 +131,18 @@ import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logi
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
+  connectFailureLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
+  giteaToolLine,
   isZeropsToolCandidate,
+  mateIsUp,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
@@ -232,17 +231,16 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 }
 
 /**
- * The page's title row. The one creating action sits here, beside the title,
- * where a reader looks for it — not under a list it has to scroll past — and
- * the reload beside it, as a glyph. No sentence under the title: the projects
- * below say what the page is.
+ * The page's title row: the title and the reload beside it, as a glyph. No
+ * creating action here — the left menu's "New project" is the entry, and a
+ * filled pill beside the title was the loudest thing on a page whose loud
+ * thing should be the Mate. No sentence under the title either: the
+ * projects below say what the page is.
  */
 export function ZeropsProjectsHeader({
-  onCreate,
   onRefresh,
   refreshing = false,
 }: {
-  readonly onCreate?: (() => void) | undefined;
   readonly onRefresh?: (() => void) | undefined;
   readonly refreshing?: boolean;
 }) {
@@ -271,9 +269,6 @@ export function ZeropsProjectsHeader({
             </TooltipTrigger>
             <TooltipPopup>Refresh</TooltipPopup>
           </Tooltip>
-        )}
-        {onCreate === undefined ? null : (
-          <Pill className="shrink-0" label="New project" onClick={onCreate} />
         )}
       </div>
     </div>
@@ -425,19 +420,14 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const { candidates, isLoading, error, refresh } = useZeropsCandidates();
-  const {
-    health: candidateHealth,
-    serverVersions,
-    updates: mateUpdates,
-  } = useZeropsCandidateHealth(candidates);
+  const { candidates, isLoading, error } = useZeropsCandidates();
+  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
   const {
     creatingIn,
     setCreatingIn,
     provisioning,
     connectError,
     upgradeRecovery,
-    serverVersion,
     setConnectError,
     connectingOrigin,
     retryProjectConnection,
@@ -493,7 +483,6 @@ function ZeropsProjectsContent() {
   const groupTree = buildZeropsGroupTree(candidates, { rank: rankZeropsCandidateForListing });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
-  const pageError = connectError ?? error;
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
   const viewer =
@@ -524,6 +513,41 @@ function ZeropsProjectsContent() {
   });
   const members = assignableMembers;
 
+  /**
+   * The container this page is waiting on: the wait a click or a creation
+   * started (`provisioning.state`) and the identity exchange it ends in
+   * (`connectingOrigin`). One at a time, so one row at most reads as waited on.
+   */
+  const waitedOn = (candidate: ZeropsCandidate): boolean => {
+    const origin =
+      candidate.containerOrigin === undefined ? null : normalizeOrigin(candidate.containerOrigin);
+    const waited = provisioning.state;
+    if (waited !== null) {
+      if (waited.projectId !== null && waited.projectId === candidate.project.id) return true;
+      if (
+        origin !== null &&
+        waited.containerOrigin !== null &&
+        normalizeOrigin(waited.containerOrigin) === origin
+      ) {
+        return true;
+      }
+    }
+    return (
+      origin !== null && connectingOrigin !== null && normalizeOrigin(connectingOrigin) === origin
+    );
+  };
+
+  /**
+   * The projects this browser created and has not connected to yet
+   * (`creationHandoff.ts`). A reload mid-provisioning lands here with the
+   * handoff still in storage: the page reads it as its own wait — the line
+   * says how long, nothing is offered to click — and picks the wait up the
+   * moment the container answers ready (below).
+   */
+  // Read on every render rather than memoized: the store is the connect's
+  // to spend, and nothing this component holds changes when it does.
+  const pendingCreations = new Set(pendingCreationProjects());
+
   const rowInput = (
     candidate: ZeropsCandidate,
     role?: ZeropsEnvironmentRole | undefined,
@@ -534,14 +558,16 @@ function ZeropsProjectsContent() {
       visibility === "listed"
         ? resolveMateOwnerName({ project: candidate.project, members })
         : undefined;
+    const waiting =
+      candidate.group !== "connected" &&
+      (waitedOn(candidate) || pendingCreations.has(candidate.project.id));
     return {
       candidate,
       health: candidateHealth.get(candidate.key),
+      waiting,
       can: {
         open: openable,
-        connect: openable,
         enable: openable,
-        wait: openable,
         setUpMate: openable,
         start: openable,
         restart: openable,
@@ -832,6 +858,9 @@ function ZeropsProjectsContent() {
     if (isZeropsToolCandidate(candidate)) return undefined;
     const verbs = verbsOf(candidate);
     const restart = deriveZeropsRestartAction(rowInput(candidate));
+    // The server's version, off the card and into the menu: a fact worth
+    // finding, never a line under the Mate's name.
+    const serverVersion = mate ? serverVersions.get(candidate.key) : undefined;
     const quickActions: ReadonlyArray<ZeropsMenuAction> = mate
       ? [
           ...(action?.kind === "start"
@@ -922,6 +951,17 @@ function ZeropsProjectsContent() {
                   },
                 },
               ]),
+          ...(serverVersion === undefined
+            ? []
+            : [
+                { id: "version", separator: true } satisfies ZeropsMenuEntry,
+                {
+                  id: "server-version",
+                  label: `Server ${serverVersion}`,
+                  disabled: true,
+                  onSelect: () => {},
+                },
+              ]),
         ]}
         enablingServiceId={publishingServiceId}
         label={`More for ${candidate.project.name}`}
@@ -935,11 +975,101 @@ function ZeropsProjectsContent() {
   };
 
   /**
+   * The wait this page holds, as the waited-on Mate's own line: a connect
+   * that failed, in the failed tone with the one verb that retries it; an
+   * older server, with the restart that updates it; a wait that ran out.
+   * Nothing while the wait simply runs — the face is asleep and the row
+   * logic's line says how long.
+   */
+  const renderWaitLine = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
+    if (!waitedOn(candidate)) return undefined;
+    const failed = (text: string) => (
+      <span
+        className="min-w-0 truncate text-[var(--zerops-status-failed-text)]"
+        data-zerops-surface="mate-subject"
+      >
+        {text}
+      </span>
+    );
+    const quiet = (text: string) => (
+      <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
+        {text}
+      </span>
+    );
+    const busy = provisioning.busy || connectingOrigin !== null;
+    if (upgradeRecovery !== null && connectError !== null) {
+      switch (upgradeRecovery.state) {
+        case "confirm":
+          return (
+            <>
+              {quiet("Restarting interrupts work running in it.")}
+              <ZeropsMateVerb disabled={busy} label="Restart" onClick={upgradeRecovery.confirm} />
+              <ZeropsMateVerb label="Cancel" onClick={upgradeRecovery.cancel} />
+            </>
+          );
+        case "waiting":
+          return quiet("Restarting to update.");
+        case "failed":
+          return (
+            <>
+              {failed(upgradeRecovery.error ?? "Could not restart.")}
+              <ZeropsMateVerb disabled={busy} label="Try again" onClick={upgradeRecovery.request} />
+            </>
+          );
+        case "idle":
+          return (
+            <>
+              {failed("This Mate runs an older server. A restart updates it.")}
+              <ZeropsMateVerb
+                disabled={busy}
+                label="Restart to update"
+                onClick={upgradeRecovery.request}
+              />
+            </>
+          );
+      }
+    }
+    if (connectError !== null) {
+      return (
+        <>
+          {failed(connectFailureLine(connectError))}
+          <ZeropsMateVerb disabled={busy} label="Try again" onClick={retryProjectConnection} />
+        </>
+      );
+    }
+    const state = provisioning.state;
+    if (state === null) return undefined;
+    if (provisioning.error !== null) {
+      return (
+        <>
+          {failed(provisioning.error)}
+          <ZeropsMateVerb disabled={busy} label="Try again" onClick={provisioning.retry} />
+        </>
+      );
+    }
+    if (state.phase === "not-yet-available") {
+      return quiet("This container's release does not carry Mate yet.");
+    }
+    if (state.phase === "timed-out") {
+      return (
+        <>
+          {quiet("Taking longer than usual.")}
+          <ZeropsMateVerb disabled={busy} label="Keep waiting" onClick={provisioning.retry} />
+        </>
+      );
+    }
+    return undefined;
+  };
+
+  /**
    * The line under a Mate's name. Connected, it is what the Mate is on, or
    * was last on (`agentActivity`) — the state itself is the face's to show,
-   * never a word's. Otherwise it is what would change things: the one verb
-   * ("Connect", "Set up Mate"), after the sentence about the container when
-   * the row logic has one; or just that sentence.
+   * never a word's. Waited on, it is the wait's own line when the wait has
+   * something to say (a failure and its retry). Otherwise it is the row
+   * logic's one sentence — how long until the Mate is up, or what is wrong —
+   * and, after it, the one verb that is a real decision ("Set up Mate",
+   * "Enable Zerops Mate"). Never a status verb: connecting is what clicking
+   * the card does, and the boot is the face's to carry.
    */
   const renderMateLine = (
     candidate: ZeropsCandidatePresentation,
@@ -955,6 +1085,8 @@ function ZeropsProjectsContent() {
         </span>
       );
     }
+    const waitLine = renderWaitLine(candidate);
+    if (waitLine !== undefined) return waitLine;
     const detail =
       presentation.detail === undefined ? null : (
         <span
@@ -970,9 +1102,7 @@ function ZeropsProjectsContent() {
     switch (action.kind) {
       // "start" is a trailing button on the card, not a verb on this line —
       // the line only says the detail (e.g. "Stopped").
-      case "connect":
       case "enable":
-      case "wait":
       case "set-up-mate":
         return (
           <>
@@ -998,23 +1128,15 @@ function ZeropsProjectsContent() {
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
   const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
     switch (kind) {
+      // Opening a Mate that is not connected yet connects first: the wait
+      // lands in the conversation when the container answers.
       case "open":
         if (candidate.environmentId) {
           rememberZeropsEnvironment(String(candidate.environmentId));
           void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
-        }
-        return;
-      case "connect":
-        startWaitFor(candidate);
-        return;
-      case "wait":
-        if (candidate.containerOrigin) {
-          startWaitFor(candidate);
           return;
         }
-        setConnectError(null);
-        setCreatingIn(candidate.project.clientId ?? null);
-        provisioning.start({ zcpClaimed: true });
+        startWaitFor(candidate);
         return;
       case "set-up-mate":
         void setUpMate(candidate);
@@ -1108,7 +1230,6 @@ function ZeropsProjectsContent() {
           });
         return;
       }
-      case "starting":
       case "pending":
       case "none":
         return;
@@ -1604,6 +1725,40 @@ function ZeropsProjectsContent() {
     });
   }, [authGate, candidates, client.session?.accessToken, connectContainer, status]);
 
+  // Resumes a creation. The wizard hands its project over and comes here
+  // without waiting (`rememberCreationHandoff`); a reload mid-provisioning
+  // lands here too. Either way, the moment a created-and-never-connected
+  // container answers ready this starts the wait that ends in the
+  // conversation — once per project per mount, and never over a wait that
+  // is already running.
+  const resumedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (provisioning.state !== null || connectingOrigin !== null) return;
+    const pending = pendingCreationProjects();
+    if (pending.length === 0) return;
+    const candidate = candidates.find(
+      (entry) =>
+        pending.includes(entry.project.id) &&
+        !resumedRef.current.has(entry.project.id) &&
+        entry.group === "ready" &&
+        entry.connection === undefined &&
+        entry.containerOrigin !== undefined &&
+        candidateHealth.get(entry.key) === "ready",
+    );
+    if (candidate === undefined) return;
+    resumedRef.current.add(candidate.project.id);
+    startWaitFor(candidate);
+  }, [candidateHealth, candidates, connectingOrigin, provisioning.state, startWaitFor]);
+
+  // The registration flow's one dead end: no ready-made project to wait on,
+  // so the only way forward is to create one.
+  useEffect(() => {
+    if (provisioning.state?.phase !== "pool-exhausted") return;
+    provisioning.cancel();
+    setCreatingIn(null);
+    void navigate({ to: "/zerops/new" });
+  }, [navigate, provisioning, setCreatingIn]);
+
   // Enters the provisioning wait without the user clicking anything, for the
   // two-hop registration flow only. A returning account never infers a new
   // setup flow from an unrelated provisioning project in the inventory.
@@ -1651,48 +1806,11 @@ function ZeropsProjectsContent() {
     );
   }
 
-  if (provisioning.state) {
-    return (
-      <div className="space-y-4">
-        <ZeropsProvisioningPanel
-          state={provisioning.state}
-          busy={provisioning.busy || connectingOrigin !== null}
-          error={connectError ?? provisioning.error}
-          onRetry={retryProjectConnection}
-          onEnable={provisioning.enable}
-          upgradeRecovery={upgradeRecovery}
-          serverVersion={serverVersion}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            provisioning.cancel();
-            setCreatingIn(null);
-            // No ready-made project exists, so "back to projects" would only
-            // show the picker again with nothing new to pick — the create
-            // form the picker used to hold beneath it now lives at its own
-            // route, so that is where this phase's only way forward leads.
-            if (provisioning.state?.phase === "pool-exhausted") {
-              void navigate({ to: "/zerops/new" });
-              return;
-            }
-            refresh();
-          }}
-        >
-          {provisioning.state.phase === "ready" ||
-          provisioning.state.phase === "not-yet-available" ||
-          (provisioning.state.phase === "timed-out" &&
-            provisioning.state.expiredPhase === "awaiting-health" &&
-            provisioning.state.enabled)
-            ? "Back to projects"
-            : provisioning.state.phase === "pool-exhausted"
-              ? "Create a project"
-              : "Stop waiting"}
-        </Button>
-      </div>
-    );
-  }
+  // A wait is never a page of its own: the waited-on Mate's card carries it
+  // — the face asleep, the line saying how long, a failure and its retry on
+  // the same line — and the rest of the roster stays where it was.
+  const connectErrorOnRow = connectError !== null && candidates.some(waitedOn);
+  const pageError = (connectErrorOnRow ? null : connectError) ?? error;
 
   return (
     <div className="space-y-6">
@@ -1711,6 +1829,17 @@ function ZeropsProjectsContent() {
         </div>
       )}
       <ZeropsGroupTree
+        // A group is offered more once its first Mate is up — connected, or
+        // its container answering ready — and not a minute before.
+        addsOffered={(group) =>
+          (
+            groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
+            []
+          ).some(
+            ({ item }) =>
+              hasMate(item) && mateIsUp({ candidate: item, health: candidateHealth.get(item.key) }),
+          )
+        }
         creating={creationRunning}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groupLine={(group) => groupLines.get(group.groupId) ?? ""}
@@ -1826,19 +1955,15 @@ function ZeropsProjectsContent() {
             connected && candidate.environmentId !== undefined
               ? activity.get(candidate.environmentId)
               : undefined;
-          // The card does what its line says: opens a connected Mate's
-          // conversation, connects to a ready one. Anything heavier stays on
-          // the verb itself.
+          // Clicking a Mate opens it: a connected one straight away, a ready
+          // one by connecting first. Coming up, it is not clickable — nothing
+          // a click could do that the page is not already doing.
           const select =
-            connected && candidate.environmentId !== undefined
+            action.kind === "open" && !busy
               ? () => {
                   runRowAction(candidate, "open");
                 }
-              : action.kind === "connect" && !busy
-                ? () => {
-                    runRowAction(candidate, "connect");
-                  }
-                : undefined;
+              : undefined;
           // Not a hover-only verb on the line: a real, always-visible button
           // at the card's trailing edge, next to where the menu sits.
           const startAction =
@@ -1860,9 +1985,12 @@ function ZeropsProjectsContent() {
 
           if (connected && candidate.environmentId !== undefined) {
             const environmentId = candidate.environmentId;
+            // The update control's line ("Server x.y.z · x.y.z+1 available")
+            // stays off the card: the version is in the menu, and so is the
+            // update verb the control supplies.
             return (
               <ZeropsMateUpdateControl environmentId={environmentId} key={candidate.key}>
-                {({ line: updateLine, menuActions }) => (
+                {({ menuActions }) => (
                   <ZeropsMateCard
                     action={startAction}
                     busy={busy}
@@ -1876,7 +2004,6 @@ function ZeropsProjectsContent() {
                       live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)
                     }
                     tint={tint}
-                    updateLine={updateLine}
                   />
                 )}
               </ZeropsMateUpdateControl>
@@ -1888,16 +2015,6 @@ function ZeropsProjectsContent() {
               busy={busy}
               face={mateFace(candidate)}
               line={renderMateLine(candidate, presentation, action, live, busy)}
-              updateLine={
-                serverVersions.get(candidate.key) === undefined ? null : (
-                  <MateUpdateLine
-                    line={mateUpdateLine(
-                      mateUpdates.get(candidate.key),
-                      serverVersions.get(candidate.key) ?? "",
-                    )}
-                  />
-                )
-              }
               menu={renderEnvironmentMenu(candidate, tags, true, action, [])}
               name={name}
               onSelect={select}
@@ -1907,11 +2024,36 @@ function ZeropsProjectsContent() {
         }}
         renderTool={(candidate: ZeropsCandidatePresentation, kind) => {
           // A tool has no Mate and never will, so the environment classifier's
-          // verdict is meaningless here. The platform's own project status is
-          // the honest answer — and only when it is not simply there.
-          const active = candidate.project.status === "ACTIVE";
+          // verdict is meaningless here. Gitea's own state (`deriveGiteaState`,
+          // read once for the account) says whether it is up and where it is;
+          // the platform's project status covers the minutes before its
+          // services exist.
+          const gitea =
+            accountGitea?.projectId === candidate.project.id ? accountGitea.state : undefined;
+          const line = giteaToolLine({
+            projectStatus: candidate.project.status,
+            phase: gitea?.phase,
+            url: gitea?.url,
+          });
           return (
-            <ZeropsEnvironmentRow
+            <ZeropsToolCard
+              line={
+                line.kind === "link" ? (
+                  <a
+                    className="min-w-0 truncate underline-offset-2 hover:text-foreground hover:underline"
+                    data-zerops-surface="tool-link"
+                    href={line.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {line.label}
+                  </a>
+                ) : line.kind === "setting-up" ? (
+                  <span className="min-w-0 truncate">Setting up.</span>
+                ) : line.kind === "unavailable" ? (
+                  <span className="min-w-0 truncate">Not available.</span>
+                ) : undefined
+              }
               menu={
                 <ZeropsProjectMenu
                   actions={[]}
@@ -1925,17 +2067,6 @@ function ZeropsProjectsContent() {
                 />
               }
               name={TOOL_LABEL[kind]}
-              status={
-                active ? undefined : (
-                  <StatusDot
-                    label={candidate.project.status.toLowerCase().replaceAll("_", " ")}
-                    tone="attention"
-                  />
-                )
-              }
-              summary={summaryOf(candidate)}
-              // Under a heading that says Tools, a pill that says the same is one accessory too many.
-              tag={null}
             />
           );
         }}
@@ -2086,13 +2217,12 @@ export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
   const { candidates, isLoading, refresh } = useZeropsCandidates();
-  const navigate = useNavigate();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
-  // The account with nothing in it is invited to create below, at length. A
-  // second button saying the same thing, in the same blue, a hand's width
-  // away, is the one thing that screen does not need.
-  const invitedBelow = hasNoZeropsProject({ candidates, isLoading });
+  // First run owns the page: an account with nothing in it gets the
+  // invitation and no title row over it — a "Projects" heading with a reload
+  // over nothing frames emptiness as a failed list.
+  const firstRun = hasNoZeropsProject({ candidates, isLoading });
 
   return (
     <ZeropsHostedFrame
@@ -2112,18 +2242,8 @@ export function ZeropsProjectsPage() {
         </>
       }
     >
-      {scoped ? (
-        <ZeropsProjectsHeader
-          onCreate={
-            invitedBelow
-              ? undefined
-              : () => {
-                  void navigate({ to: "/zerops/new" });
-                }
-          }
-          onRefresh={refresh}
-          refreshing={isLoading}
-        />
+      {scoped && !firstRun ? (
+        <ZeropsProjectsHeader onRefresh={refresh} refreshing={isLoading} />
       ) : null}
       <ZeropsProjectsContent />
     </ZeropsHostedFrame>

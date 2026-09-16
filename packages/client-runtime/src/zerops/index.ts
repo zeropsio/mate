@@ -112,6 +112,7 @@ export {
   readCreationHandoff,
   creationJobSendable,
   creationJobToStart,
+  pendingCreationProjectIds,
   withCreationHandoff,
   withCreationHandoffPromoted,
   withoutCreationHandoff,

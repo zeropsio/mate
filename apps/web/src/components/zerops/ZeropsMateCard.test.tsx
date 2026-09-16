@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsMateCard, ZeropsMateVerb, ZeropsToolCard } from "./ZeropsMateCard";
 
 function card(props: Partial<React.ComponentProps<typeof ZeropsMateCard>> = {}) {
   return renderToStaticMarkup(<ZeropsMateCard face="idle" name="Fen" tint="coral" {...props} />);
@@ -92,6 +92,41 @@ describe("ZeropsMateCard", () => {
   it("says when it is busy", () => {
     expect(card({ busy: true })).toContain('aria-busy="true"');
     expect(card()).not.toContain("aria-busy");
+  });
+});
+
+describe("ZeropsToolCard", () => {
+  it("is the Mate card's treatment for a tool: the same surface, the name, one line and a menu", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsToolCard
+        line={<span>Setting up.</span>}
+        menu={<span data-test="menu" />}
+        name="Gitea"
+      />,
+    );
+    expect(html).toContain('data-zerops-tool-card="true"');
+    expect(html).toContain(">Gitea<");
+    expect(html).toContain("Setting up.");
+    expect(html).toContain('data-test="menu"');
+    // Same card: the radius, the surface, the padding and the reserved height.
+    for (const token of [
+      "rounded-[var(--zerops-card-radius)]",
+      "bg-card",
+      "min-h-[4.5rem]",
+      "ps-3 pe-2",
+    ]) {
+      expect(html).toContain(token);
+    }
+    // No face: a tool is nobody. No status word, no hover, not a way in.
+    expect(html).not.toContain("mate-face");
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("hover:border-border");
+  });
+
+  it("lets the name sit alone while there is nothing to say", () => {
+    const html = renderToStaticMarkup(<ZeropsToolCard name="Gitea" />);
+    expect(html).toContain(">Gitea<");
+    expect(html).not.toContain("tool-line");
   });
 });
 

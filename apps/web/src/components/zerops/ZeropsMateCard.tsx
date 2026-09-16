@@ -6,13 +6,15 @@
  * something at the card's right edge, then what it is on, then its own last
  * words: the same three facts, in the same order, as its row in the left menu,
  * because they are the same Mate. While it is not connected that second line
- * carries the one verb that would change things ("Connect", "Set up Mate") or
- * the sentence about its container instead. Nothing about the environment: which Zerops
- * project the Mate lives in and what that project is tagged are the
- * environment's facts, and a Mate is always in a dev box anyway — the card is
- * about somebody, not somewhere. The card does what its line says: the name is
- * the button and stretches over the card, opening a connected Mate's
- * conversation or connecting to a ready one; the menu sits above it.
+ * says how long until it is ("Coming up. A few minutes.") or carries the one
+ * verb that is a real decision ("Set up Mate") — never a status verb, because
+ * the face is asleep for the whole boot and that is where the state is read.
+ * Nothing about the environment: which Zerops project the Mate lives in and
+ * what that project is tagged are the environment's facts, and a Mate is
+ * always in a dev box anyway — the card is about somebody, not somewhere.
+ * Clicking the Mate opens it: the name is the button and stretches over the
+ * card, opening a connected Mate's conversation or connecting to a ready one
+ * first; the menu sits above it.
  *
  * Structural: every word on the line and every verb is the caller's (R5).
  */
@@ -22,7 +24,7 @@ import type { ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
-/** A verb on a Mate's line or at an environment's end — "Connect", "Set up Mate". Blue acts. */
+/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
 export function ZeropsMateVerb({
   label,
   onClick,
@@ -44,6 +46,15 @@ export function ZeropsMateVerb({
     </button>
   );
 }
+
+/**
+ * The card's surface, shared with a tool's card: the one white card on the
+ * page, whatever stands in it. The height fits a name, a line and a snippet
+ * whether or not the socket has answered yet: a card that grows when the
+ * conversation lands would push every card below it down the page.
+ */
+const CARD_SURFACE_CLASS =
+  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
 
 export interface ZeropsMateCardProps {
   readonly name: string;
@@ -107,10 +118,8 @@ export function ZeropsMateCard({
     <div
       aria-busy={busy || undefined}
       className={cn(
-        // The height fits a name, a line and a snippet whether or not the
-        // socket has answered yet: a card that grows when the conversation
-        // lands would push every card below it down the page.
-        "group/card relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2 transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
+        CARD_SURFACE_CLASS,
+        "group/card transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
         onSelect &&
           "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
         className,
@@ -173,6 +182,48 @@ export function ZeropsMateCard({
           {action}
         </span>
       )}
+      {menu === undefined || menu === null ? null : (
+        <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+          {menu}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export interface ZeropsToolCardProps {
+  readonly name: string;
+  /**
+   * The tool's one line: where it is, once it is up, or how long until it
+   * is. Absent, the name sits alone.
+   */
+  readonly line?: ReactNode;
+  readonly menu?: ReactNode;
+  readonly className?: string;
+}
+
+/**
+ * An account-level tool (Gitea) on the projects screen, in the Mate card's
+ * treatment: the same surface, radius and padding, so the page has one card
+ * and not a card beside a bare line. No face, because a tool is nobody, and
+ * not a way in: what it offers is on its line (its address) and in its menu.
+ */
+export function ZeropsToolCard({ name, line, menu, className }: ZeropsToolCardProps) {
+  return (
+    <div className={cn(CARD_SURFACE_CLASS, "group/card", className)} data-zerops-tool-card="true">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
+          {name}
+        </span>
+        {line === undefined || line === null ? null : (
+          <div
+            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="tool-line"
+          >
+            {line}
+          </div>
+        )}
+      </div>
       {menu === undefined || menu === null ? null : (
         <span className="relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           {menu}

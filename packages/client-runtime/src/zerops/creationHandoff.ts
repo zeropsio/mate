@@ -168,6 +168,19 @@ export function withCreationHandoffPromoted(
   return { ...rest, [keyOf({ environmentId })]: handoff };
 }
 
+/**
+ * The projects created and never connected to — every handoff still under its
+ * project key. A creation's wait ends with the connect that promotes the key;
+ * a reload mid-wait leaves it here, and the projects page reads this to pick
+ * the wait up again rather than asking for a click the creation never needed.
+ */
+export function pendingCreationProjectIds(handoffs: ZeropsCreationHandoffs): ReadonlyArray<string> {
+  const prefix = keyOf({ projectId: "" });
+  return Object.keys(handoffs)
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length));
+}
+
 export function withoutCreationHandoff(
   handoffs: ZeropsCreationHandoffs,
   environmentId: string,

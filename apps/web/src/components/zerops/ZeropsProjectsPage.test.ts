@@ -103,9 +103,7 @@ describe("same-origin Zerops identity bootstrap", () => {
   });
 
   it("exposes a compact account header and preserves selection behavior", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ZeropsProjectsHeader, { onCreate: () => {} }),
-    );
+    const markup = renderToStaticMarkup(createElement(ZeropsProjectsHeader, {}));
     const attempted = { current: false };
     const connect = vi.fn();
     const input = {
@@ -130,8 +128,13 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(markup).not.toContain("micro-label");
     expect(markup).not.toContain(">Zerops<");
     expect(markup).not.toContain("<p");
-    // The creating action sits in the title row, not under the list.
-    expect(markup).toContain("New project");
+    // No creating action in the title row: the left menu's "New project" is
+    // the entry, and the reload glyph is the row's only action.
+    expect(markup).not.toContain("New project");
+    expect(markup).not.toContain('data-zerops-primitive="pill"');
+    expect(
+      renderToStaticMarkup(createElement(ZeropsProjectsHeader, { onRefresh: () => {} })),
+    ).toContain('aria-label="Refresh"');
     expect(connect).toHaveBeenCalledTimes(1);
   });
 

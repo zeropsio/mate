@@ -10,9 +10,11 @@
  * they are two things; the cards carry colour and a face, the rows carry a
  * name, a tag and what the environment holds, and neither pretends to be the
  * other. Cards and rows share one width, so every menu on the page sits in
- * one column. Account-level tools
- * (Gitea) sit in their own list, never inside a project, because a tool the
- * whole account shares has no dev/stage/production axis.
+ * one column. Account-level tools (Gitea) sit in their own grid of cards,
+ * never inside a project, because a tool the whole account shares has no
+ * dev/stage/production axis. The add verbs — Mate, stage, production — are
+ * one quiet row under the group, offered once the caller says the group is
+ * ready for more.
  *
  * An account with no project yet gets one thing instead of the shape: what a
  * Mate is, and the action that makes one. It is the tree's own, like the
@@ -53,7 +55,7 @@ export interface ZeropsGroupTreeProps<T> {
   readonly renderMate: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /** A tool's row — a different question from an environment's. */
+  /** A tool's card — a `ZeropsToolCard`, a different question from an environment's. */
   readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
   /**
    * Rows of a group that are not one of its Zerops projects — today the open
@@ -78,6 +80,12 @@ export interface ZeropsGroupTreeProps<T> {
    * button that vanishes under the pointer reads as a bug.
    */
   readonly creating?: boolean;
+  /**
+   * Whether a group is ready for more — its add verbs are offered only when
+   * this says so. The caller knows what the tree cannot: whether the group's
+   * first Mate has booted. Absent offers them always.
+   */
+  readonly addsOffered?: ((group: ZeropsGroup) => boolean) | undefined;
   /** A group's own actions, at the end of its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
   /**
@@ -92,26 +100,26 @@ export interface ZeropsGroupTreeProps<T> {
 
 const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
+/** Cards two to a line: the Mates, and the tools in the same grid so one card is one width. */
+const CARD_GRID_CLASS = "grid gap-3 sm:grid-cols-2";
+
 const ADD_BUTTON_CLASS =
   "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
 
-/**
- * "Add Mate" sits in the Mate grid rather than the pill row below, because a
- * Mate is what the cards beside it are: the invitation belongs where the
- * things it makes already live.
- */
-const ADD_MATE_CLASS =
-  "flex min-h-[4.5rem] items-center justify-center gap-1.5 rounded-[var(--zerops-card-radius)] border border-dashed border-border/70 px-4 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
+/** How a role reads on its add verb: a dev environment is a Mate. */
+function addLabel(role: ZeropsEnvironmentRole): string {
+  return role === "dev" ? "Mate" : (environmentRoleLabel(role)?.toLowerCase() ?? role);
+}
 
 /**
- * What the page is, said once, to an account that has nothing in it yet.
+ * First run owns the page: to an account that has nothing in it yet this is
+ * the whole screen, not a card under a list header.
  *
- * A sleeping face rather than an illustration: the mark is the product's own,
- * and shut eyes are the honest state for a roster with nobody on it. It says
- * what a Mate *is* — a first-time reader has no way to know — and then offers
- * the one action that ends this screen. Not centred: the page's column is
- * where every row will be, and moving the eye there twice is a shift the
- * first project would have to undo.
+ * The Mate is the picture — its face large, awake and looking back, because
+ * a Mate is the point and the person has not met one. One line says what a
+ * Mate is and what the click starts, minutes included, and the one filled
+ * button ends the screen. A column in the middle of the page, text aligned
+ * left inside it, so it reads as an invitation rather than a stranded card.
  */
 function FirstRun({
   onCreateProject,
@@ -122,23 +130,18 @@ function FirstRun({
 }) {
   return (
     <section
-      className="flex max-w-2xl flex-col items-start gap-5 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8"
+      className="flex min-h-[60vh] max-w-xl flex-col items-start justify-center gap-6"
       data-zerops-surface="first-run"
     >
-      <MateFace className="size-14" size="lg" state="idle" tint="slate" />
-      <div className="flex min-w-0 flex-col items-start gap-4">
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            Start with a Mate
-          </h2>
-          <p className="text-sm leading-6 text-muted-foreground">
-            A Mate is a coding agent with a dev environment of its own: a terminal, somewhere to run
-            what it builds, and one conversation you come back to. A project holds as many Mates as
-            the people on it want, and your first one brings Git hosting for them along.
-          </p>
-        </div>
-        <Pill disabled={creating} label="New project" onClick={onCreateProject} />
+      <MateFace className="size-20" size="lg" state="idle" tint="slate" />
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">Start a project</h2>
+        <p className="text-sm leading-6 text-muted-foreground">
+          A Mate is a coding agent with a dev environment of its own and one conversation you come
+          back to. Name a project and it is up in a few minutes, Git hosting alongside.
+        </p>
       </div>
+      <Pill disabled={creating} label="New project" onClick={onCreateProject} />
     </section>
   );
 }
@@ -181,7 +184,6 @@ function Members<T>({
   isMate,
   renderMate,
   renderEnvironment,
-  addMate,
   extraRows,
 }: {
   readonly entries: ReadonlyArray<{
@@ -192,8 +194,6 @@ function Members<T>({
   readonly isMate: (item: T) => boolean;
   readonly renderMate: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /** The "Add Mate" tile, or null where the caller cannot create one. */
-  readonly addMate: ReactNode;
   /** The group's rows that are not environments, after them. */
   readonly extraRows?: ReactNode;
 }) {
@@ -201,12 +201,11 @@ function Members<T>({
   const others = entries.filter(({ item }) => !isMate(item));
   return (
     <>
-      {mates.length > 0 || addMate !== null ? (
-        <div className="grid gap-3 sm:grid-cols-2" data-zerops-surface="mate-cards">
+      {mates.length > 0 ? (
+        <div className={CARD_GRID_CLASS} data-zerops-surface="mate-cards">
           {mates.map(({ item, role }) => (
             <Fragment key={getKey(item)}>{renderMate(item, role)}</Fragment>
           ))}
-          {addMate}
         </div>
       ) : null}
       {others.length > 0 || (extraRows !== undefined && extraRows !== null) ? (
@@ -236,17 +235,16 @@ export function ZeropsGroupTree<T>({
   onCreateTool,
   onCreateProject,
   creating = false,
+  addsOffered,
   renderGroupMenu,
   groupLine,
   className,
 }: ZeropsGroupTreeProps<T>) {
   const members = (
     entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
-    addMate: ReactNode,
     extraRows?: ReactNode,
   ) => (
     <Members
-      addMate={addMate}
       entries={entries}
       getKey={getKey}
       isMate={isMate}
@@ -269,21 +267,10 @@ export function ZeropsGroupTree<T>({
     >
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       {view.groups.map(({ group, environments }) => {
-        const creatable = onCreateEnvironment ? creatableRoles(group) : [];
-        // Dev is a Mate, and its invitation belongs beside the Mates. The rest
-        // are rows in the table below, so their invitation goes there.
-        const missing = creatable.filter((role) => role !== "dev");
-        const addMate = creatable.includes("dev") ? (
-          <button
-            className={ADD_MATE_CLASS}
-            disabled={creating}
-            onClick={() => onCreateEnvironment?.(group.groupId, "dev")}
-            type="button"
-          >
-            <span aria-hidden="true">+</span>
-            <span>Add Mate</span>
-          </button>
-        ) : null;
+        // The add verbs wait for the first Mate: a group is offered more only
+        // once the caller says it is ready for more.
+        const missing =
+          onCreateEnvironment && (addsOffered?.(group) ?? true) ? creatableRoles(group) : [];
         return (
           <section
             className="flex flex-col gap-3"
@@ -306,7 +293,7 @@ export function ZeropsGroupTree<T>({
                 <span className="text-xs text-muted-foreground">{groupLine?.(group)}</span>
               ) : null}
             </div>
-            {members(environments, addMate, renderGroupRows?.(group))}
+            {members(environments, renderGroupRows?.(group))}
             {missing.length > 0 ? (
               <div
                 className="-ms-1.5 flex flex-wrap items-center gap-1"
@@ -321,7 +308,7 @@ export function ZeropsGroupTree<T>({
                     type="button"
                   >
                     <span aria-hidden="true">+</span>
-                    <span>Add {environmentRoleLabel(role)?.toLowerCase()}</span>
+                    <span>Add {addLabel(role)}</span>
                   </button>
                 ))}
               </div>
@@ -335,10 +322,7 @@ export function ZeropsGroupTree<T>({
         // project to be distinct from; an account of loose environments is a list.
         <section className="flex flex-col gap-3" data-zerops-ungrouped="true">
           {view.groups.length > 0 ? <Heading muted name="Ungrouped" /> : null}
-          {members(
-            view.ungrouped.map((item) => ({ item, role: undefined })),
-            null,
-          )}
+          {members(view.ungrouped.map((item) => ({ item, role: undefined })))}
         </section>
       ) : null}
 
@@ -359,11 +343,11 @@ export function ZeropsGroupTree<T>({
             ) : null}
           </div>
           {view.tools.length > 0 ? (
-            <ul className="flex flex-col divide-y divide-border/50" data-zerops-surface="tool-rows">
+            <div className={CARD_GRID_CLASS} data-zerops-surface="tool-rows">
               {view.tools.map(({ item, kind }) => (
                 <Fragment key={getKey(item)}>{renderTool(item, kind)}</Fragment>
               ))}
-            </ul>
+            </div>
           ) : null}
           {onCreateTool && started && view.tools.every((tool) => tool.kind !== "gitea") ? (
             <div className="-ms-1.5 flex items-center" data-zerops-surface="add-tools">

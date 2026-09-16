@@ -13,6 +13,7 @@
 import {
   ZEROPS_CREATION_HANDOFF_STORAGE_KEY,
   parseCreationHandoffs,
+  pendingCreationProjectIds,
   readCreationHandoff,
   withCreationHandoff,
   withCreationHandoffPromoted,
@@ -48,6 +49,11 @@ export function rememberCreationHandoff(projectId: string, handoff: ZeropsCreati
 export function promoteCreationHandoff(projectId: string, environmentId: string): void {
   const next = withCreationHandoffPromoted(read(), projectId, environmentId);
   write(next);
+}
+
+/** The projects this browser created and has not connected to yet. */
+export function pendingCreationProjects(): ReadonlyArray<string> {
+  return pendingCreationProjectIds(read());
 }
 
 export function creationHandoffFor(environmentId: string): ZeropsCreationHandoff | undefined {

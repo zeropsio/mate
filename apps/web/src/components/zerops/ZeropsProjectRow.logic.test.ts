@@ -2,10 +2,13 @@ import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provi
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  connectFailureLine,
+  giteaToolLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
+  mateIsUp,
   mateSetupOffered,
   zeropsReasonSentence,
   type ZeropsRowCandidate,
@@ -14,18 +17,14 @@ import {
 
 const ALL = {
   open: true,
-  connect: true,
   enable: true,
-  wait: true,
   setUpMate: true,
   start: true,
   restart: true,
 } as const;
 const NONE = {
   open: false,
-  connect: false,
   enable: false,
-  wait: false,
   setUpMate: false,
   start: false,
   restart: false,
@@ -48,11 +47,16 @@ function input(
 }
 
 describe("deriveZeropsRowAction", () => {
-  it("offers Connect only once the container has answered ready", () => {
+  // Clicking a Mate opens it: the connect is a step on the way, not a verb
+  // to learn. A container that has not answered ready offers nothing yet.
+  it("opens only once the container has answered ready", () => {
     expect(deriveZeropsRowAction(input(READY, undefined))).toEqual({ kind: "pending" });
-    expect(deriveZeropsRowAction(input(READY, "ready"))).toEqual({
-      kind: "connect",
-      label: "Connect",
+    expect(deriveZeropsRowAction(input(READY, "ready"))).toEqual({ kind: "open", label: "Open" });
+  });
+
+  it("offers nothing while this client is already waiting on the container", () => {
+    expect(deriveZeropsRowAction({ ...input(READY, "ready"), waiting: true })).toEqual({
+      kind: "pending",
     });
   });
 
@@ -66,11 +70,8 @@ describe("deriveZeropsRowAction", () => {
     },
   );
 
-  it("says Starting with no verb while Zerops Mate initializes", () => {
-    expect(deriveZeropsRowAction(input(READY, "initializing"))).toEqual({
-      kind: "starting",
-      label: "Starting…",
-    });
+  it("offers no verb while Zerops Mate initializes: the face carries the boot", () => {
+    expect(deriveZeropsRowAction(input(READY, "initializing"))).toEqual({ kind: "pending" });
   });
 
   it("waits while a registered socket is in flight, unless a restart would help", () => {
@@ -93,17 +94,14 @@ describe("deriveZeropsRowAction", () => {
     });
   });
 
-  it("waits for a project that is still being created", () => {
+  it("offers nothing on a project that is still being created", () => {
     const fresh: ZeropsRowCandidate = {
       key: "f",
       project: { id: "f", name: "fresh", status: "CREATING" },
       group: "provisioning",
       reason: "project is being created",
     };
-    expect(deriveZeropsRowAction(input(fresh, undefined))).toEqual({
-      kind: "wait",
-      label: "Wait for it",
-    });
+    expect(deriveZeropsRowAction(input(fresh, undefined))).toEqual({ kind: "none" });
   });
 
   describe("Set up Mate", () => {
@@ -229,10 +227,27 @@ describe("deriveZeropsRowPresentation", () => {
     expect(deriveZeropsRowPresentation(input(READY, "stalled")).status.label).toBe("Not answering");
   });
 
-  it("says what an initializing row is waiting for, generically with no known process", () => {
+  it("says an initializing row is almost there, generically with no known process", () => {
     const presentation = deriveZeropsRowPresentation(input(READY, "initializing"));
     expect(presentation.status).toEqual({ label: "Starting", pulse: true, tone: "busy" });
-    expect(presentation.detail).toBe("Zerops Mate is starting.");
+    expect(presentation.detail).toBe("Almost there.");
+  });
+
+  // The line under the name is an expectation, never a status verb: the
+  // face is asleep for all three, and the words only say how long.
+  it.each([
+    ["the probe has not answered", undefined],
+    ["the container answered ready", "ready" as const],
+    ["Zerops Mate initializes", "initializing" as const],
+  ])("says almost there while this client waits on a container and %s", (_case, health) => {
+    expect(deriveZeropsRowPresentation({ ...input(READY, health), waiting: true }).detail).toBe(
+      "Almost there.",
+    );
+  });
+
+  it("says nothing under a ready Mate nobody is waiting on", () => {
+    expect(deriveZeropsRowPresentation(input(READY, "ready")).detail).toBeUndefined();
+    expect(deriveZeropsRowPresentation(input(READY, undefined)).detail).toBeUndefined();
   });
 
   it.each([
@@ -345,7 +360,7 @@ describe("deriveZeropsRowPresentation", () => {
     },
   );
 
-  it("carries the bucket's own reason for a project on its way in or out of reach", () => {
+  it("sets the expectation for a project on its way in, never the platform's status", () => {
     expect(
       deriveZeropsRowPresentation(
         input(
@@ -360,8 +375,7 @@ describe("deriveZeropsRowPresentation", () => {
       ),
     ).toEqual({
       status: { label: "Preparing", pulse: true, tone: "busy" },
-      // The bucket's reason, phrased as a sentence for the row.
-      detail: "Project is being created.",
+      detail: "Coming up. A few minutes.",
     });
   });
 });
@@ -517,6 +531,104 @@ describe("a Mate the person may see and not open (D5)", () => {
       visibility: "open",
     };
     expect(deriveZeropsRowPresentation(open)).toEqual({ status: { label: "Ready", tone: "ok" } });
-    expect(deriveZeropsRowAction(open)).toEqual({ kind: "connect", label: "Connect" });
+    expect(deriveZeropsRowAction(open)).toEqual({ kind: "open", label: "Open" });
+  });
+});
+
+describe("mateIsUp", () => {
+  // The add verbs wait for the first Mate: a group two minutes old with a
+  // dashed tile beside a Mate that has not booted is the cliché.
+  it.each([
+    ["connected", { ...READY, group: "connected" as const }, undefined, true],
+    ["ready and answering", READY, "ready" as const, true],
+    ["ready but unprobed", READY, undefined, false],
+    ["ready but initializing", READY, "initializing" as const, false],
+    ["ready but not answering", READY, "unreachable" as const, false],
+    [
+      "still provisioning",
+      { ...READY, group: "provisioning" as const, reason: "project is being created" },
+      undefined,
+      false,
+    ],
+    [
+      "stopped",
+      { ...READY, group: "unavailable" as const, reason: "container is STOPPED" },
+      undefined,
+      false,
+    ],
+  ])("a Mate that is %s: %s", (_case, candidate, health, expected) => {
+    expect(mateIsUp({ candidate, health })).toBe(expected);
+  });
+});
+
+describe("connectFailureLine", () => {
+  it.each([
+    [
+      "a 500 from the Mate's server",
+      "Could not connect to this container. The environment could not authorize the connection.",
+      "Could not connect. The Mate's server answered an error.",
+    ],
+    [
+      "a refusal",
+      "Could not connect to this container. The environment credential does not grant the required access.",
+      "Could not connect. The environment credential does not grant the required access.",
+    ],
+    [
+      "a failure before the door",
+      "Could not connect to this container. Session token expired.",
+      "Could not connect. Session token expired.",
+    ],
+    [
+      "no account",
+      "Sign in to Zerops again to connect this container.",
+      "Sign in to Zerops again to connect this container.",
+    ],
+  ])("phrases %s for the Mate's line", (_case, error, line) => {
+    expect(connectFailureLine(error)).toBe(line);
+  });
+});
+
+describe("giteaToolLine", () => {
+  const URL = "https://web-abc-3000.prg1.zerops.app";
+  it.each([
+    [
+      "the project is still being created",
+      "CREATING",
+      undefined,
+      undefined,
+      { kind: "setting-up" },
+    ],
+    [
+      "its services are unread on an active project",
+      "ACTIVE",
+      undefined,
+      undefined,
+      { kind: "none" },
+    ],
+    ["its web service is provisioning", "ACTIVE", "provisioning", URL, { kind: "setting-up" }],
+    [
+      "it runs and has an address",
+      "ACTIVE",
+      "running",
+      URL,
+      { kind: "link", url: URL, label: "web-abc-3000.prg1.zerops.app" },
+    ],
+    ["it runs without an address yet", "ACTIVE", "running", undefined, { kind: "none" }],
+    [
+      "its web service is gone from an active project",
+      "ACTIVE",
+      "unavailable",
+      undefined,
+      { kind: "unavailable" },
+    ],
+    ["the project is stopped", "STOPPED", "unavailable", undefined, { kind: "unavailable" }],
+  ] as const)("says the right thing when %s", (_case, projectStatus, phase, url, expected) => {
+    expect(giteaToolLine({ projectStatus, phase, url })).toEqual(expected);
+  });
+
+  it("never lists the services by hostname", () => {
+    expect(
+      JSON.stringify(giteaToolLine({ projectStatus: "ACTIVE", phase: "running", url: URL })),
+    ).not.toMatch(/broker|db|volume/u);
   });
 });
