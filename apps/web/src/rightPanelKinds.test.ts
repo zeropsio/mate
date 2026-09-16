@@ -79,17 +79,17 @@ describe("right panel kinds", () => {
         unavailableHint: "Available in a Zerops project.",
       },
       {
-        kind: "git",
-        label: "Git",
-        description: "Follow this Mate's branches and where they go.",
-        shortcut: "G",
-        unavailableHint: "Available in a Zerops project.",
-      },
-      {
         kind: "data",
         label: "Data",
         description: "Browse the project's managed data services.",
         shortcut: "V",
+        unavailableHint: "Available in a Zerops project.",
+      },
+      {
+        kind: "git",
+        label: "Git",
+        description: "Follow this Mate's branches and where they go.",
+        shortcut: "G",
         unavailableHint: "Available in a Zerops project.",
       },
     ]);
