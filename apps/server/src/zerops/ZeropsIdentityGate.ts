@@ -24,6 +24,7 @@ import * as Effect from "effect/Effect";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { verifyProjectMembership } from "./ZeropsIdentity.ts";
+import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 /**
  * How long the minted grant stays redeemable. It is handed straight back over
@@ -76,3 +77,42 @@ export const mintZeropsPairingCredential = Effect.fn("Zerops.mintPairingCredenti
     } satisfies AuthPairingCredentialResult;
   },
 );
+
+/**
+ * Proves a throwaway, resolves its creator's role, and mints the pairing
+ * grant — the only door `zerops-throwaway` has.
+ *
+ * Fails without issuing anything when the credential is not a throwaway for
+ * this Mate, when its creator is `READ_ONLY` here (the Mate is theirs to see,
+ * not to open), when they are no member at all, or when the platform cannot be
+ * reached. The scopes are the same set `zerops-identity` grants: role decides
+ * *whether* the door opens, never *how far*.
+ */
+export const mintZeropsThrowawayPairingCredential = Effect.fn(
+  "Zerops.mintThrowawayPairingCredential",
+)(function* (input: {
+  readonly environment: ZeropsEnvironment;
+  readonly token: string;
+  readonly proofKeyThumbprint?: string;
+}) {
+  const caller = yield* verifyThrowawayCaller({
+    environment: input.environment,
+    token: input.token,
+  });
+  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+  const issued = yield* serverAuth.createPairingLink({
+    // Names the door, so 3.3's re-check knows which sessions it owns.
+    method: "zerops-throwaway",
+    scopes: zeropsGrantScopes,
+    subject: `zerops-user:${caller.userId}`,
+    ttl: ZEROPS_PAIRING_GRANT_TTL,
+    label: `Zerops ${caller.role}`,
+    ...(input.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),
+  });
+  return {
+    id: issued.id,
+    credential: issued.credential,
+    ...(issued.label ? { label: issued.label } : {}),
+    expiresAt: issued.expiresAt,
+  } satisfies AuthPairingCredentialResult;
+});

@@ -54,11 +54,17 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  * - `zerops-identity`: the caller presents a Zerops access token and the server
  *   proves they are a member of the project this environment runs in. Offered
  *   only by an environment running inside a Zerops project container.
+ * - `zerops-throwaway`: the caller presents a Zerops integration token with no
+ *   rights at all, minted seconds ago and named for this one Mate, and the
+ *   server reads who made it. Nothing of the caller's outlives the request, so
+ *   a container never holds a credential of theirs. Offered only inside a
+ *   Zerops project container.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
   "desktop-bootstrap",
   "one-time-token",
   "zerops-identity",
+  "zerops-throwaway",
 ]);
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
 

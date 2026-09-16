@@ -177,6 +177,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
                   allowedOrigins: [],
                   membershipTtl: Duration.seconds(900),
                   publicOrigin: undefined,
+                  apiToken: undefined,
                 },
               }),
             ),
@@ -223,6 +224,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           allowedOrigins: [],
           membershipTtl: Duration.seconds(900),
           publicOrigin: undefined,
+          apiToken: undefined,
         },
       };
 

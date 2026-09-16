@@ -661,7 +661,10 @@ export const make = Effect.gen(function* () {
         Effect.mapError(toBootstrapExchangeError),
         Effect.flatMap((grant) =>
           Effect.gen(function* () {
-            if (grant.method !== "zerops-identity" || !serverConfig.zerops) {
+            if (
+              (grant.method !== "zerops-identity" && grant.method !== "zerops-throwaway") ||
+              !serverConfig.zerops
+            ) {
               return yield* new ServerAuthInvalidCredentialError({
                 diagnostic: "Sign in with Zerops to access Mate.",
               });

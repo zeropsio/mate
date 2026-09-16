@@ -21,35 +21,17 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import {
+  readJson,
+  unavailable,
+  zeropsGet,
+  ZeropsApiUnavailableError,
+  ZeropsInvalidTokenError,
+  ZeropsNotAMemberError,
+  ZeropsProjectNotFoundError,
+} from "./zeropsApiRead.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-
-/** The caller holds a valid token but cannot operate this project. */
-export class ZeropsNotAMemberError extends Schema.TaggedErrorClass<ZeropsNotAMemberError>()(
-  "ZeropsNotAMemberError",
-  {},
-) {}
-
-/** The presented token is not a valid Zerops credential. */
-export class ZeropsInvalidTokenError extends Schema.TaggedErrorClass<ZeropsInvalidTokenError>()(
-  "ZeropsInvalidTokenError",
-  {},
-) {}
-
-/** This container is configured with a project id the platform does not know. */
-export class ZeropsProjectNotFoundError extends Schema.TaggedErrorClass<ZeropsProjectNotFoundError>()(
-  "ZeropsProjectNotFoundError",
-  {},
-) {}
-
-/** The platform could not be reached, or answered something unusable. */
-export class ZeropsApiUnavailableError extends Schema.TaggedErrorClass<ZeropsApiUnavailableError>()(
-  "ZeropsApiUnavailableError",
-  {
-    reason: Schema.String,
-  },
-) {}
 
 export type ZeropsIdentityError =
   | ZeropsNotAMemberError
@@ -90,35 +72,6 @@ const UserInfoResponse = Schema.Struct({
 
 const decodeProject = Schema.decodeUnknownEffect(ProjectResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfoResponse);
-
-const unavailable = (reason: string) => new ZeropsApiUnavailableError({ reason });
-
-/**
- * One authenticated GET against the Zerops REST API. Transport failures and
- * malformed bodies collapse into {@link ZeropsApiUnavailableError}; the status
- * code is handed to the caller so each endpoint can read it its own way.
- */
-const zeropsGet = Effect.fn("ZeropsIdentity.get")(function* (input: {
-  readonly url: string;
-  readonly token: string;
-}) {
-  const httpClient = yield* HttpClient.HttpClient;
-  return yield* httpClient
-    .get(input.url, {
-      headers: {
-        authorization: `Bearer ${input.token}`,
-        accept: "application/json",
-      },
-    })
-    .pipe(
-      Effect.catchCause(() => Effect.fail(unavailable("The Zerops API could not be reached."))),
-    );
-});
-
-const readJson = (response: HttpClientResponse.HttpClientResponse) =>
-  response.json.pipe(
-    Effect.catchCause(() => Effect.fail(unavailable("The Zerops API returned a malformed body."))),
-  );
 
 /**
  * Verifies that the presented Zerops access token belongs to a member of this

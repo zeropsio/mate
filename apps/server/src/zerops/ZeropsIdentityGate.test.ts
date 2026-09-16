@@ -11,7 +11,11 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { mintZeropsPairingCredential, zeropsGrantScopes } from "./ZeropsIdentityGate.ts";
+import {
+  mintZeropsPairingCredential,
+  mintZeropsThrowawayPairingCredential,
+  zeropsGrantScopes,
+} from "./ZeropsIdentityGate.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
@@ -19,11 +23,16 @@ const USER_ID = "8yLPr0kbTA6MZKfMLBQe0A";
 const TOKEN = "a-zerops-access-token";
 const MEMBERSHIP_TTL_SECONDS = 120;
 
+const MATE_KEY = "the-mates-own-zerops-key";
+const TOKEN_ID = "tok-throwaway";
+const API_NOW = "Tue, 16 Sep 2026 10:00:00 GMT";
+
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
   allowedOrigins: [],
   membershipTtlSeconds: MEMBERSHIP_TTL_SECONDS,
+  apiToken: MATE_KEY,
 })!;
 
 const json = (body: unknown, status = 200) =>
@@ -174,4 +183,92 @@ it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
       assert.strictEqual(error._tag, "ServerAuthInvalidCredentialError");
     }).pipe(Effect.provide(makeLayer(memberRoute))),
   );
+});
+
+/**
+ * A door that answers every read a throwaway check makes, with the caller's
+ * org role as the one variable.
+ */
+const throwawayRoute =
+  (orgRole: string) =>
+  (url: string): Response => {
+    if (url.endsWith(`/project/${PROJECT_ID}`))
+      return json({ id: PROJECT_ID, clientId: CLIENT_ID });
+    if (url.endsWith("/user/info")) return json({ id: TOKEN_ID });
+    if (url.includes("/integration-token/")) {
+      return new Response(
+        JSON.stringify({
+          id: TOKEN_ID,
+          name: `mate-door:${PROJECT_ID}:a1b2c3`,
+          created: DateTime.formatIso(DateTime.makeUnsafe(Date.parse(API_NOW) - 5_000)),
+          createdByUser: USER_ID,
+          roleCode: "NO_ACCESS",
+          projects: [],
+          canCreateProjects: false,
+        }),
+        { status: 200, headers: { "content-type": "application/json", date: API_NOW } },
+      );
+    }
+    if (url.endsWith("/user/list")) {
+      return json({
+        items: [
+          {
+            id: "cu-1",
+            userId: USER_ID,
+            roleCode: orgRole,
+            status: "ACTIVE",
+            canCreateProjects: false,
+          },
+        ],
+      });
+    }
+    return json({ message: "unexpected route" }, 500);
+  };
+
+it.layer(NodeServices.layer)("mintZeropsThrowawayPairingCredential", (it) => {
+  it.effect("names the throwaway door, the creator, and the full client scope set", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const issued = yield* mintZeropsThrowawayPairingCredential({ environment, token: TOKEN });
+
+      assert.strictEqual(issued.label, "Zerops OWNER");
+      const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
+      assert.strictEqual(links.length, 1);
+      assert.strictEqual(links[0]!.subject, `zerops-user:${USER_ID}`);
+      // Role decides whether the door opens, never how far.
+      assert.deepStrictEqual([...links[0]!.scopes], [...zeropsGrantScopes]);
+
+      const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
+        issued.credential,
+        undefined,
+        requestMetadata,
+      );
+      assert.isAbove(access.access_token.length, 0);
+    }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
+  );
+
+  for (const [orgRole, outcome] of [
+    ["OWNER", "open"],
+    ["ADMIN", "open"],
+    ["BASIC_USER", "open"],
+    ["READ_ONLY", "ZeropsReadOnlyError"],
+    ["NO_ACCESS", "ZeropsNotAMemberError"],
+  ] as const) {
+    it.effect(`a ${orgRole} caller: ${outcome}`, () =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const attempt = mintZeropsThrowawayPairingCredential({ environment, token: TOKEN });
+        if (outcome === "open") {
+          const issued = yield* attempt;
+          assert.strictEqual(issued.label, `Zerops ${orgRole}`);
+        } else {
+          const error = yield* Effect.flip(attempt);
+          assert.strictEqual(error._tag, outcome);
+          // A refusal issues nothing at all — not a narrower grant, nothing.
+          const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
+          assert.strictEqual(links.length, 0);
+        }
+      }).pipe(Effect.provide(makeLayer(throwawayRoute(orgRole)))),
+    );
+  }
 });

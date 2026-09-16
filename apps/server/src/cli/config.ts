@@ -151,6 +151,12 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  // The Mate's own Zerops key, as zcp already sets it in this container. The
+  // door never asks the caller for rights; it looks them up with this.
+  zeropsApiToken: Config.string("ZCP_API_KEY").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   zeropsFixtures: Config.string("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -423,6 +429,7 @@ export const resolveServerConfig = (
               allowedOrigins: env.zeropsAllowedOrigins,
               membershipTtlSeconds: env.zeropsMembershipTtlSeconds,
               publicOrigin: env.zeropsPublicOrigin,
+              apiToken: env.zeropsApiToken,
             })
           : undefined,
       noBrowser,

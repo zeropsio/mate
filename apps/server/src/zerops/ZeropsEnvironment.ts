@@ -56,6 +56,23 @@ export interface ZeropsEnvironment {
    * this is absent (`cloud/http.ts`'s `resolveZeropsLinkProofOrigin`).
    */
   readonly publicOrigin: string | undefined;
+  /**
+   * **The Mate's own Zerops key** (`ZCP_API_KEY`), which zcp already holds in
+   * this container and which the platform scopes to this one project at
+   * `BASIC_USER`.
+   *
+   * It is what lets the server answer questions about *other* people without
+   * holding anything of theirs: who is an `ACTIVE` member of the org, and what
+   * role this project's `userRoles` gives them. A caller proves who they are
+   * with a throwaway that has no rights at all
+   * ({@link ./ZeropsThrowawayIdentity.ts}); every right is then looked up with
+   * this key.
+   *
+   * Undefined outside a Zerops container, and on a container old enough not to
+   * pass it through. Both the door and the re-check treat that as "cannot
+   * answer" — never as "admit".
+   */
+  readonly apiToken: string | undefined;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -65,6 +82,7 @@ export interface ZeropsEnvironmentInput {
   readonly allowedOrigins: ReadonlyArray<string>;
   readonly membershipTtlSeconds: number | undefined;
   readonly publicOrigin?: string | undefined;
+  readonly apiToken?: string | undefined;
 }
 
 /**
@@ -101,12 +119,14 @@ export const resolveZeropsEnvironment = (
       ? input.membershipTtlSeconds
       : DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS;
   const publicOrigin = input.publicOrigin?.trim();
+  const apiToken = input.apiToken?.trim();
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
     allowedOrigins: input.allowedOrigins,
     membershipTtl: Duration.seconds(membershipTtlSeconds),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
+    apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
   };
 };
 
