@@ -224,6 +224,34 @@ export const ZeropsAgentId = Schema.Literals(["claude-code", "codex"]);
 export type ZeropsAgentId = typeof ZeropsAgentId.Type;
 
 /**
+ * Which agent a provider instance is, when it is one of the two Mate signs
+ * people in to.
+ *
+ * Two vocabularies meet here: a thread routes by `ProviderInstanceId`, whose
+ * default for a built-in driver is the driver kind (`claudeAgent`, `codex`),
+ * while the welcome flow and the agent-auth feed name the same agents
+ * `claude-code` and `codex`. Both spellings arrive on real threads, so both
+ * resolve.
+ *
+ * `undefined` for every other driver, and that is the answer: an agent this
+ * product never signs anybody in to has no recorded signer, so there is
+ * nothing to compare a caller against and nothing to refuse (D6).
+ */
+export const agentIdForProviderInstance = (
+  instanceId: string | undefined,
+): ZeropsAgentId | undefined => {
+  switch (instanceId) {
+    case "claudeAgent":
+    case "claude-code":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return undefined;
+  }
+};
+
+/**
  * The §3 W-STATE matrix, five values, mirrored verbatim from
  * `vscode-bootstrap-welcome.js`'s `computeAgentState` (docs/spec-welcome-mode.md
  * §3): the platform flag and the local credential artifact are two
@@ -307,9 +335,13 @@ export const ZeropsAgentAuth = Schema.Struct({
   /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
   login: Schema.optional(ZeropsAgentLoginState),
   /**
-   * Which Zerops user signed this agent in, recorded when a server-driven
-   * login succeeded. The subject is the Zerops user id — the same value the
-   * door puts on the session grant.
+   * Which Zerops user signed this agent in, from the tag
+   * `mate:signer:{agent}:{userId}` on the Mate's own project (D6). The subject
+   * is the Zerops user id — the same value the door puts on the session grant.
+   *
+   * It lives on the project because a Mate's own key cannot write tags, so
+   * neither the container nor its agent can forge whose login this is. The app
+   * writes it as the person at the moment their sign-in succeeds.
    *
    * This exists because an agent CLI's credential is a *personal* one. Under
    * Anthropic's consumer terms a subscription login is yours to use on your
@@ -325,7 +357,13 @@ export const ZeropsAgentAuth = Schema.Struct({
   authorizedBy: Schema.optional(
     Schema.Struct({
       subject: Schema.String,
-      at: Schema.DateTimeUtc,
+      /**
+       * When the sign-in happened, if anything recorded it. The project tag
+       * that carries the record (D6) records who and not when, so this is
+       * absent for everything written since — the fact the product needs is
+       * whose login it is.
+       */
+      at: Schema.optional(Schema.DateTimeUtc),
     }),
   ),
 });

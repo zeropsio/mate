@@ -195,6 +195,10 @@
       "types": "./src/zerops/candidateLoading.ts",
       "default": "./src/zerops/candidateLoading.ts"
     },
+    "./zerops/agentOwnership": {
+      "types": "./src/zerops/agentOwnership.ts",
+      "default": "./src/zerops/agentOwnership.ts"
+    },
     "./zerops/mateAccess": {
       "types": "./src/zerops/mateAccess.ts",
       "default": "./src/zerops/mateAccess.ts"

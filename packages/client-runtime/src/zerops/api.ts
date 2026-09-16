@@ -12,6 +12,7 @@
  * persisted server-side.
  */
 
+import { mateSignerTagIsCurrent, withMateSignerTag } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import type {
@@ -1021,6 +1022,52 @@ export class ZeropsApiClient {
           name: project.name,
           description: project.description ?? "",
           tagList: withZeropsGroupTags(project.tagList, next),
+        }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * Records who signed an agent in, as a tag on the Mate's own project (D6).
+   *
+   * Written **as the person**, which is the whole point: a Mate's own key is
+   * `BASIC_USER` on its project and cannot write tags, so neither the
+   * container nor its agent can forge whose login this is. The server reads it
+   * with its own key and refuses a turn started by anybody else.
+   *
+   * Read-modify-write, like every other tag write here — `PUT /project/{id}`
+   * replaces `tagList` wholesale, and a blind write would delete the group
+   * membership and whatever the person tagged the project with themselves. A
+   * list that already names this signer is left alone, so signing in again
+   * costs a read and nothing more.
+   */
+  async recordProjectAgentSigner(
+    input: {
+      readonly projectId: string;
+      readonly agentId: string;
+      readonly userId: string;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const project = await this.fetchProject(input.projectId, signal);
+    if (mateSignerTagIsCurrent(project.tagList, input.agentId, input.userId)) return project;
+    this.#assertGeneration(generation);
+    return this.#request<ZeropsProject>(
+      `/project/${input.projectId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          name: project.name,
+          description: project.description ?? "",
+          tagList: withMateSignerTag(project.tagList, input.agentId, input.userId),
         }),
       },
       {

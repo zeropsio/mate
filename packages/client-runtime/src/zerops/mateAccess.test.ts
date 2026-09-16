@@ -3,8 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
+  mateSignerTag,
+  mateSignerTagIsCurrent,
   resolveMateOwnerName,
   resolveMateVisibility,
+  withMateSignerTag,
 } from "./mateAccess.ts";
 
 const ORG = "org-1";
@@ -126,4 +129,51 @@ describe("resolveMateOwnerName", () => {
   it("prefers a full name over an e-mail it also has", () => {
     expect(mateMemberName(members[0]!)).toBe("Jan Novák");
   });
+});
+
+describe("the signer tag (D6)", () => {
+  const OTHER = "mate:g:acme";
+
+  it("keeps every other tag and replaces this agent's signer", () => {
+    expect(
+      withMateSignerTag(
+        [OTHER, mateSignerTag("claude-code", "old"), "mate:role:dev"],
+        "claude-code",
+        "jan",
+      ),
+    ).toEqual([OTHER, "mate:role:dev", mateSignerTag("claude-code", "jan")]);
+  });
+
+  it("leaves the other agent's signer alone", () => {
+    expect(withMateSignerTag([mateSignerTag("codex", "eva")], "claude-code", "jan")).toEqual([
+      mateSignerTag("codex", "eva"),
+      mateSignerTag("claude-code", "jan"),
+    ]);
+  });
+
+  it("records a signer on a project that had no tags at all", () => {
+    expect(withMateSignerTag(undefined, "codex", "jan")).toEqual([mateSignerTag("codex", "jan")]);
+  });
+
+  // Signing in again with the same account must cost a read and nothing else:
+  // the caller skips the write when the list already says the right thing.
+  it("recognises a list that already records exactly this signer", () => {
+    expect(mateSignerTagIsCurrent([OTHER, mateSignerTag("codex", "jan")], "codex", "jan")).toBe(
+      true,
+    );
+  });
+
+  for (const [name, tagList] of [
+    ["a different signer", [mateSignerTag("codex", "eva")]],
+    ["no signer at all", [OTHER]],
+    [
+      "two signers for the same agent",
+      [mateSignerTag("codex", "jan"), mateSignerTag("codex", "eva")],
+    ],
+    ["nothing", undefined],
+  ] as const) {
+    it(`rewrites over ${name}`, () => {
+      expect(mateSignerTagIsCurrent(tagList, "codex", "jan")).toBe(false);
+    });
+  }
 });

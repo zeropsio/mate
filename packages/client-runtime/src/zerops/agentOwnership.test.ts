@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  AGENT_OWNERSHIP_RECOVERY_LABEL,
+  agentOwnershipAllowsTurns,
+  agentOwnershipComposerNotice,
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
   resolveAgentOwnership,
@@ -89,13 +92,51 @@ describe("agentOwnershipNotice", () => {
     expect(agentOwnershipNotice("none")).toBeUndefined();
   });
 
-  it("warns that a turn spends the other member's subscription", () => {
-    expect(agentOwnershipNotice("someone-else")).toContain("subscription");
+  // D6: the notice states the gate rather than warning about a spend that is
+  // no longer possible — the server refuses the turn outright.
+  it("says only the signer runs somebody else's agent", () => {
+    expect(agentOwnershipNotice("someone-else")).toBe(
+      "Signed in by another project member — only they can run this agent.",
+    );
   });
 
-  it("hedges rather than accuses when nothing was recorded", () => {
-    const notice = agentOwnershipNotice("unrecorded");
-    expect(notice).toContain("may not be yours");
+  it("states the fact rather than accusing when nothing was recorded", () => {
+    expect(agentOwnershipNotice("unrecorded")).toBe(
+      "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
+    );
+  });
+});
+
+describe("the composer notice and the gate (D6)", () => {
+  it.each([
+    ["mine", true],
+    ["none", true],
+    ["someone-else", false],
+    ["unrecorded", false],
+  ] as const)("%s may start a turn: %s", (ownership, allowed) => {
+    expect(agentOwnershipAllowsTurns(ownership)).toBe(allowed);
+  });
+
+  it("names the signer in place of the composer when a name is known", () => {
+    expect(agentOwnershipComposerNotice("someone-else", "Jan")).toBe(
+      "Signed in by Jan — only they can run this agent.",
+    );
+  });
+
+  // A wrong name would be worse than none.
+  it.each([undefined, "", "  "])("says the same thing without a name (%s)", (name) => {
+    expect(agentOwnershipComposerNotice("someone-else", name)).toBe(
+      "Signed in by another project member — only they can run this agent.",
+    );
+  });
+
+  it("says nothing at all about the viewer's own agent", () => {
+    expect(agentOwnershipComposerNotice("mine", "Jan")).toBeUndefined();
+    expect(agentOwnershipComposerNotice("none")).toBeUndefined();
+  });
+
+  it("offers one recovery, and it is the person's own sign-in", () => {
+    expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Sign in with your own account");
   });
 });
 

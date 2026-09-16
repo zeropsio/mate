@@ -22,10 +22,17 @@ import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.t
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
+import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
-  ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuth.layer)),
+  // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
+  // reads who signed each agent in for its snapshot, and `ws.ts` asks the same
+  // service before it lets a turn start (D6). One reader, one cache.
+  ZeropsAgentLoginModule.layer.pipe(
+    Layer.provideMerge(ZeropsAgentAuth.layer),
+    Layer.provideMerge(ZeropsProjectSignersModule.layer),
+  ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
   ZeropsDataConsoleModule.layer,

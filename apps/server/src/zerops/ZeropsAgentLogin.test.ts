@@ -439,18 +439,19 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
   },
 );
 
-it.effect("records the authorizer from the session subject when a login succeeds", () =>
+// Who signed in is recorded as a tag on the Mate's project, written by the app
+// as the person (D6, `ZeropsProjectSigners`): this container's own key cannot
+// write tags, so the record cannot live on its disk. All this feed does on
+// success is ask the auth feed to republish, which re-reads the tags.
+it.effect("asks the auth feed to republish when a login succeeds", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fakeTerminal = yield* makeFakeTerminalManager();
       const fakeAuth = yield* makeFakeAuth();
-      const recorded = yield* Ref.make<ReadonlyArray<readonly [ZeropsAgentId, string]>>([]);
       const feed = yield* ZeropsAgentLoginModule.make({
         terminalManager: fakeTerminal.service,
         zeropsAgentAuth: fakeAuth,
         isZeropsEnvironment: true,
-        recordAuthorizer: (agentId, subject) =>
-          Ref.update(recorded, (all) => [...all, [agentId, subject] as const]),
       });
 
       yield* feed.start("claude-code", "thread-1", "zerops-user-a");
@@ -467,35 +468,7 @@ it.effect("records the authorizer from the session subject when a login succeeds
         (logins) => loginOf(logins, "claude-code")?.phase === "succeeded",
       );
 
-      assert.deepEqual(yield* Ref.get(recorded), [["claude-code", "zerops-user-a"]]);
-    }),
-  ),
-);
-
-it.effect("records nothing while a login is merely in progress", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const fakeTerminal = yield* makeFakeTerminalManager();
-      const fakeAuth = yield* makeFakeAuth();
-      const recorded = yield* Ref.make<ReadonlyArray<readonly [ZeropsAgentId, string]>>([]);
-      const feed = yield* ZeropsAgentLoginModule.make({
-        terminalManager: fakeTerminal.service,
-        zeropsAgentAuth: fakeAuth,
-        isZeropsEnvironment: true,
-        recordAuthorizer: (agentId, subject) =>
-          Ref.update(recorded, (all) => [...all, [agentId, subject] as const]),
-      });
-
-      yield* feed.start("claude-code", "thread-1", "zerops-user-a");
-      yield* fakeTerminal.emit(
-        "thread-1",
-        "agent-login-claude-code",
-        "Visit https://claude.ai/oauth/authorize?code=1 to continue\n",
-      );
-
-      // Provenance is a claim about a completed sign-in; an abandoned attempt
-      // must not leave one behind.
-      assert.deepEqual(yield* Ref.get(recorded), []);
+      assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
     }),
   ),
 );

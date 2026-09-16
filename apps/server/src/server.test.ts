@@ -149,6 +149,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
+import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -532,6 +533,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
     | ZeropsDataConsoleModule.ZeropsDataConsole
+    | ZeropsProjectSignersModule.ZeropsProjectSigners
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -1095,6 +1097,12 @@ const buildAppUnderTest = (options?: {
                   }),
                 ),
               ...options?.layers?.zeropsAgentLogin,
+            }),
+            // A test machine has no Mate project to read signer tags off, so
+            // nobody signed anything in and nothing is ever signed out.
+            Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
+              signers: Effect.succeed({}),
+              checkLeaversNow: Effect.succeed(0),
             }),
             // A test machine has no agent-browser daemon — mocked to
             // `no-browser` so the suite never opens a real socket or reads

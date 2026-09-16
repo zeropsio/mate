@@ -180,3 +180,51 @@ export function resolveMateOwnerName(input: {
   const member = input.members.find((entry) => entry.id === ownerEntry.clientUserId);
   return member === undefined ? undefined : mateMemberName(member);
 }
+
+/**
+ * D6's record of who signed an agent in: a tag on the Mate's own project,
+ * `mate:signer:{agent}:{userId}`.
+ *
+ * It lives there and not in the container because a Mate's own key is
+ * `BASIC_USER` on its project and cannot write tags (measured 2026-09-16): the
+ * app writes it **as the person**, and neither the Mate nor its agent can
+ * forge it. The server reads it with its own key and refuses a turn from
+ * anybody else.
+ */
+export const MATE_SIGNER_TAG_PREFIX = "mate:signer";
+
+export function mateSignerTag(agentId: string, userId: string): string {
+  return `${MATE_SIGNER_TAG_PREFIX}:${agentId}:${userId}`;
+}
+
+/**
+ * The project's tag list with this agent's signer replaced.
+ *
+ * Every other tag survives, this agent's previous signer does not, and a list
+ * that already says the right thing comes back **identical** — the caller
+ * skips the write, so signing in again with the same account costs a read and
+ * nothing else.
+ */
+export function withMateSignerTag(
+  tagList: ReadonlyArray<string> | undefined,
+  agentId: string,
+  userId: string,
+): ReadonlyArray<string> {
+  const wanted = mateSignerTag(agentId, userId);
+  const kept = (tagList ?? []).filter(
+    (tag) => !tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
+  );
+  return [...kept, wanted];
+}
+
+/** Whether the list already records exactly this signer for this agent. */
+export function mateSignerTagIsCurrent(
+  tagList: ReadonlyArray<string> | undefined,
+  agentId: string,
+  userId: string,
+): boolean {
+  const current = (tagList ?? []).filter((tag) =>
+    tag.startsWith(`${MATE_SIGNER_TAG_PREFIX}:${agentId}:`),
+  );
+  return current.length === 1 && current[0] === mateSignerTag(agentId, userId);
+}

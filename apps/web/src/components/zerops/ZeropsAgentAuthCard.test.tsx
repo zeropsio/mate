@@ -444,3 +444,73 @@ describe("ZeropsAgentAuthCard — cancel (S7 fix2 finding 4)", () => {
     expect(html).toContain(">Cancel<");
   });
 });
+
+describe("whose agent it is (D6)", () => {
+  const card = (input: {
+    readonly credPresent: boolean;
+    readonly authorizedBy?: { readonly subject: string };
+    readonly viewerSubject?: string;
+  }) =>
+    renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            providerAuth: "authenticated",
+            credPresent: input.credPresent,
+            ...(input.authorizedBy === undefined
+              ? {}
+              : { authorizedBy: { subject: input.authorizedBy.subject } }),
+          }),
+        ])}
+        viewerSubject={input.viewerSubject}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+
+  // One notice per ownership, and the one that is silent is the one that
+  // would otherwise be noise on every screen, forever.
+  it("says nothing about the viewer's own agent", () => {
+    const html = card({
+      credPresent: true,
+      authorizedBy: { subject: "user-a" },
+      viewerSubject: "user-a",
+    });
+    expect(html).toContain('data-agent-id="claude-code"');
+    expect(html).not.toContain("data-zerops-agent-ownership");
+  });
+
+  it("says nothing when there is no credential to own", () => {
+    expect(card({ credPresent: false, viewerSubject: "user-a" })).not.toContain(
+      "data-zerops-agent-ownership",
+    );
+  });
+
+  it("says only the signer runs an agent somebody else signed in", () => {
+    const html = card({
+      credPresent: true,
+      authorizedBy: { subject: "user-b" },
+      viewerSubject: "user-a",
+    });
+    expect(html).toContain('data-zerops-agent-ownership="someone-else"');
+    expect(html).toContain("only they can run this agent");
+    // It deserves attention rather than a quiet aside.
+    expect(html).toContain("text-warning");
+  });
+
+  it("states the fact, without accusing, when nothing was recorded", () => {
+    const html = card({ credPresent: true, viewerSubject: "user-a" });
+    expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
+    expect(html).toContain("was not recorded by Zerops Mate");
+    expect(html).not.toContain("text-warning");
+  });
+
+  // A viewer the client cannot identify is not evidence that the agent
+  // belongs to somebody else: say the honest thing rather than the wrong one.
+  it("never accuses a colleague when the viewer is unknown", () => {
+    const html = card({ credPresent: true, authorizedBy: { subject: "user-b" } });
+    expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
+  });
+});

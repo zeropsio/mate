@@ -20,7 +20,12 @@ import { MateMark } from "../MateMark";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
+import {
+  useZeropsAgentSignerRecord,
+  useZeropsEnvironmentProjectId,
+} from "../../zerops/useZeropsAgentSigner";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
+import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { FlatCard } from "./primitives";
 import { ZeropsAgentAuthRows } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
@@ -36,6 +41,14 @@ export function ZeropsMateEmptyState({
 }) {
   const agentAuth = useZeropsAgentAuth(environmentId);
   const signInRequired = agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth);
+  // D6: a successful sign-in here records its signer on the Mate's project,
+  // written as the person so this container cannot forge it.
+  const projectId = useZeropsEnvironmentProjectId(environmentId);
+  useZeropsAgentSignerRecord({
+    snapshot: agentAuth ?? null,
+    projectId,
+  });
+  const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
   const [authorizationAgentId, setAuthorizationAgentId] = useState<ZeropsAgentId | null>(null);
@@ -62,6 +75,7 @@ export function ZeropsMateEmptyState({
               onCancel={cancelAgentLogin}
               onSignIn={setAuthorizationAgentId}
               snapshot={agentAuth}
+              viewerSubject={viewerSubject}
             />
           </FlatCard>
         </section>

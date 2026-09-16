@@ -32,6 +32,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
@@ -453,5 +454,14 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
     dataConsoleLayer(),
+    // A fixture scene has no platform to read tags from: nobody signed
+    // anything in, and nothing is ever signed out.
+    Layer.succeed(
+      ZeropsProjectSigners.ZeropsProjectSigners,
+      ZeropsProjectSigners.ZeropsProjectSigners.of({
+        signers: Effect.succeed({}),
+        checkLeaversNow: Effect.succeed(0),
+      }),
+    ),
   );
 };

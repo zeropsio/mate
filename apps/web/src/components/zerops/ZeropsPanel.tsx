@@ -26,6 +26,7 @@ import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { useZeropsMates } from "../../zerops/useZeropsMates";
+import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
@@ -53,6 +54,8 @@ export function ZeropsPanel({
   >(null);
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
+  // Whose login each agent is, so a row can say so (D6). Silent for your own.
+  const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const view = buildZeropsServiceMap(topology.view, lifecycle, runningToolLabel);
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
@@ -81,6 +84,7 @@ export function ZeropsPanel({
         onCancel={cancelAgentLogin}
         onSignIn={setAuthorizationAgentId}
         snapshot={agentAuthCard}
+        viewerSubject={viewerSubject}
       />
     );
   const currentServiceId = mateIdentity?.serviceId;
