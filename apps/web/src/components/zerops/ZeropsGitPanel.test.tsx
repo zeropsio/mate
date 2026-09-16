@@ -111,9 +111,9 @@ describe("ZeropsGitPanel", () => {
     expect(html).not.toContain(">Release<");
   });
 
-  it("offers a roll-back on every release but the newest, which is what runs", () => {
+  it("offers a roll-back on every approved release but the newest, which is what runs", () => {
     const html = render({ onRollBack: () => {} });
-    expect(html.match(/Roll back to this/gu)).toHaveLength(1);
+    expect(html.match(/data-zerops-primary-action="Roll back to this"/gu)).toHaveLength(1);
     const newest = html.slice(
       html.indexOf('data-zerops-git-row="v1.3.0"'),
       html.indexOf('data-zerops-git-row="v1.2.0"'),
@@ -136,6 +136,24 @@ describe("ZeropsGitPanel", () => {
     });
     expect(html).toContain("Refused");
     expect(html).toContain("ada is not a releaser");
+  });
+
+  it("never offers a roll-back to a release the broker refused — it never deployed", () => {
+    const html = render({
+      model: model({
+        releases: [
+          { tag: "v1.3.0", verdict: "approved", detail: undefined, line: "api 3f9c1b2" },
+          {
+            tag: "v1.2.0",
+            verdict: "refused",
+            detail: "ada is not a releaser",
+            line: "api 1111111",
+          },
+        ],
+      }),
+      onRollBack: () => {},
+    });
+    expect(html).not.toContain("Roll back to this");
   });
 
   it("keeps the checkout half and offers the way in when signed out of Gitea", () => {

@@ -92,7 +92,7 @@ export function ZeropsGitBlock({
         )}
         {block.trouble.length === 0 ? null : (
           <span
-            className="min-w-0 truncate text-[var(--zerops-status-failed-text)]"
+            className="min-w-0 truncate text-[var(--zerops-status-failed)]"
             data-zerops-surface="git-trouble"
           >
             {block.trouble}

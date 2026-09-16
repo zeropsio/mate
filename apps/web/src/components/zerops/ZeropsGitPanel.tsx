@@ -34,6 +34,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { cn } from "~/lib/utils";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsGitBlock } from "./ZeropsGitBlock";
+import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { MicroLabel, Pill, StatusDot } from "./primitives";
 
 /** One release of the group, as the tab shows it. */
@@ -206,7 +207,11 @@ export function ZeropsGitPanel({
                       onRelease !== undefined &&
                       offer !== undefined &&
                       offer.gate.allowed ? (
-                        <Pill label="Release" onClick={onRelease} />
+                        // A verb and not a CTA pill: every row in this column
+                        // is the same height, and a button that made one row
+                        // taller than its neighbours is the layout shift this
+                        // panel refuses.
+                        <ZeropsMateVerb label="Release" onClick={onRelease} />
                       ) : undefined
                     }
                     key={environment.projectId}
@@ -239,17 +244,17 @@ export function ZeropsGitPanel({
                 return (
                   <Row
                     action={
-                      // The newest release is what production already runs;
-                      // rolling back to it would be a tag that changes nothing.
-                      index === 0 || onRollBack === undefined ? undefined : (
-                        <button
-                          className="rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                          data-zerops-surface="roll-back"
+                      // The newest release is what production already runs, so
+                      // rolling back to it would be a tag that changes nothing;
+                      // a release the broker refused was never deployed, so
+                      // there is nothing to go back to.
+                      index === 0 ||
+                      release.verdict !== "approved" ||
+                      onRollBack === undefined ? undefined : (
+                        <ZeropsMateVerb
+                          label="Roll back to this"
                           onClick={() => onRollBack(release)}
-                          type="button"
-                        >
-                          Roll back to this
-                        </button>
+                        />
                       )
                     }
                     key={release.tag}

@@ -197,7 +197,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     <div className="flex min-h-0 flex-1 flex-col">
       {trouble === null ? null : (
         <p
-          className="px-4 pt-3 text-xs text-[var(--zerops-status-failed-text)]"
+          className="px-4 pt-3 text-xs text-[var(--zerops-status-failed)]"
           data-zerops-surface="git-error"
         >
           {trouble}
