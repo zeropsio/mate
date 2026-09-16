@@ -342,3 +342,22 @@ export {
   type GroupEnvironmentTier,
   type GroupEnvironmentWrite,
 } from "./groupEnvironments.ts";
+export {
+  buildGroupRows,
+  deployedCommit,
+  deployStatusContext,
+  deployTone,
+  environmentRow,
+  GROUP_BEING_SET_UP_LINE,
+  mateRow,
+  pullRequestRow,
+  shortCommit,
+  type EnvironmentRow,
+  type EnvironmentServiceState,
+  type GroupRow,
+  type GroupRows,
+  type GroupRowTone,
+  type MateRow,
+  type MateRowState,
+  type PullRequestRow,
+} from "./groupRows.ts";

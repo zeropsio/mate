@@ -75,10 +75,12 @@ import {
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
+  GROUP_BEING_SET_UP_LINE,
   hasMate,
   isZcpService,
   planEnvironmentCreation,
   readZeropsGroupTags,
+  resolveGroupGitea,
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
@@ -115,6 +117,7 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { giteaClientFor } from "~/zerops/giteaSession";
+import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
@@ -1123,6 +1126,28 @@ function ZeropsProjectsContent() {
     enabled: creationRequest !== null,
   });
 
+  // The registry says which groups were asked for; `GET /orgs/{slug}` says
+  // which the broker has actually made (guide 4.5).
+  const giteaOrganizations = useZeropsGroupOrganizations({
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    slugs: registryState.registry.groups.map((group) => group.slug),
+    enabled: status === "signed-in",
+  });
+
+  /**
+   * The one line a group says about itself: that the broker has not finished
+   * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
+   * about says nothing, so the heading never grows a line and then loses it.
+   */
+  const groupLines = useMemo(() => {
+    const lines = new Map<string, string>();
+    for (const entry of registryState.registry.groups) {
+      const state = resolveGroupGitea({ organizationExists: giteaOrganizations.get(entry.slug) });
+      lines.set(entry.groupId, state === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "");
+    }
+    return lines;
+  }, [giteaOrganizations, registryState.registry.groups]);
+
   const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
    * Publish a service on its `*.zerops.app` subdomain.
@@ -1588,6 +1613,7 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         creating={creationRunning}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
+        groupLine={(group) => groupLines.get(group.groupId) ?? ""}
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={

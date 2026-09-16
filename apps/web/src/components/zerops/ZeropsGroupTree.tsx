@@ -72,6 +72,13 @@ export interface ZeropsGroupTreeProps<T> {
   readonly creating?: boolean;
   /** A group's own actions, at the end of its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
+  /**
+   * One line under a group's name, when the group has something to say about
+   * itself as a whole — today only that its repositories are still being made
+   * (`groupRows.ts`). Empty is the usual answer and renders nothing, so the
+   * heading's height does not depend on an answer that arrives late.
+   */
+  readonly groupLine?: (group: ZeropsGroup) => string;
   readonly className?: string;
 }
 
@@ -217,6 +224,7 @@ export function ZeropsGroupTree<T>({
   onCreateProject,
   creating = false,
   renderGroupMenu,
+  groupLine,
   className,
 }: ZeropsGroupTreeProps<T>) {
   const members = (
@@ -277,6 +285,10 @@ export function ZeropsGroupTree<T>({
                   project, and it disappears the moment one does. */}
               {groupNameIsPlaceholder(group) ? (
                 <span className="text-xs text-muted-foreground">This project has no name yet</span>
+              ) : null}
+              {/* The group's own one line, when it has one. */}
+              {(groupLine?.(group) ?? "").length > 0 ? (
+                <span className="text-xs text-muted-foreground">{groupLine?.(group)}</span>
               ) : null}
             </div>
             {members(environments, addMate)}
