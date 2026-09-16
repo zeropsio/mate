@@ -153,6 +153,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
+import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -3313,6 +3314,10 @@ function ChatViewContent(props: ChatViewProps) {
   const addDataSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "data");
+  }, [activeThreadRef]);
+  const addGitSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "git");
   }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
@@ -6581,6 +6586,9 @@ function ChatViewContent(props: ChatViewProps) {
       case "data":
         addDataSurface();
         return;
+      case "git":
+        addGitSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -6668,6 +6676,8 @@ function ChatViewContent(props: ChatViewProps) {
                     </div>
                   );
                 });
+            case "git":
+              return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;

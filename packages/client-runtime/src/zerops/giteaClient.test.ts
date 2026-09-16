@@ -210,6 +210,14 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.body).toEqual({ tag_name: "v1.2.0", target: "abc", message: "api abc" });
   });
 
+  it("lists a repository's tags, message and all", async () => {
+    const { client, calls } = fake([
+      { body: [{ name: "v1.2.0", message: "api abc", commit: { sha: "abc" } }] },
+    ]);
+    expect(await client.listTags("acme", "group")).toHaveLength(1);
+    expect(calls[0]?.url.slice(ORIGIN.length)).toBe("/api/v1/repos/acme/group/tags");
+  });
+
   it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
     const { client, calls } = fake([
       { body: [{ context: "mate/deploy/stage/api", state: "success" }] },

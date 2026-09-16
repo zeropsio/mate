@@ -109,6 +109,14 @@ export interface GiteaPullRequest {
   readonly updated_at?: string | undefined;
 }
 
+/** One tag of a repository — `GET /repos/{o}/{r}/tags`. */
+export interface GiteaTag {
+  readonly name: string;
+  /** An annotated tag's message; empty for a lightweight one. */
+  readonly message?: string | undefined;
+  readonly commit?: { readonly sha?: string | undefined } | undefined;
+}
+
 export interface GiteaCommitStatus {
   readonly context: string;
   readonly state: "pending" | "success" | "error" | "failure" | "warning";
@@ -222,6 +230,9 @@ export interface GiteaClient {
       readonly message?: string | undefined;
     },
   ): Promise<void>;
+
+  /** Newest first, as Gitea orders them. */
+  listTags(owner: string, repo: string): Promise<ReadonlyArray<GiteaTag>>;
 
   listCommitStatuses(
     owner: string,
@@ -426,6 +437,12 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           },
         },
         "create the tag",
+      ),
+
+    listTags: (owner, repo) =>
+      json<ReadonlyArray<GiteaTag>>(
+        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/tags` },
+        "list the tags",
       ),
 
     listCommitStatuses: (owner, repo, sha) =>

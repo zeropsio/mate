@@ -6,6 +6,7 @@ import {
   Database,
   FileDiff,
   Files,
+  GitBranch,
   Globe,
   type LucideIcon,
   Plus,
@@ -77,6 +78,7 @@ const SURFACE_DISABLED_REASONS = {
   zerops: "The Zerops project map is only available from a thread.",
   browser: "The Browser view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
+  git: "Git is only available from a Zerops project thread.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -180,6 +182,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Globe;
     case "data":
       return Database;
+    case "git":
+      return GitBranch;
   }
 }
 
@@ -375,6 +379,8 @@ function surfaceTitle(
       return "service" in surface ? surface.service : "Browser";
     case "data":
       return "service" in surface ? surface.service : "Data";
+    case "git":
+      return "Git";
   }
 }
 
@@ -403,6 +409,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Globe className="size-3 shrink-0" />;
     case "data":
       return <Database className="size-3 shrink-0" />;
+    case "git":
+      return <GitBranch className="size-3 shrink-0" />;
   }
 }
 
