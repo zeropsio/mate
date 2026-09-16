@@ -53,8 +53,6 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -67,7 +65,6 @@ import { ServerConfig } from "../config.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
-import * as ZeropsAgentAuthorizers from "./ZeropsAgentAuthorizers.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
@@ -158,12 +155,6 @@ export interface ZeropsAgentLoginOptions {
   >;
   readonly zeropsAgentAuth: Pick<ZeropsAgentAuth["Service"], "recheckNow">;
   readonly isZeropsEnvironment: boolean;
-  /**
-   * Records who signed this agent in, once the login has actually succeeded.
-   * Injected so this module stays testable without a filesystem; absent means
-   * provenance is simply not recorded.
-   */
-  readonly recordAuthorizer?: (agentId: ZeropsAgentId, subject: string) => Effect.Effect<void>;
 }
 
 interface FeedState {
@@ -189,12 +180,7 @@ const appendAndTrim = (buffer: string, chunk: string): string => {
 
 export const make = (options: ZeropsAgentLoginOptions) =>
   Effect.gen(function* () {
-    const {
-      terminalManager,
-      zeropsAgentAuth,
-      recordAuthorizer,
-      isZeropsEnvironment: enabled,
-    } = options;
+    const { terminalManager, zeropsAgentAuth, isZeropsEnvironment: enabled } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentLoginByAgent>(4);
     const subscribeMutex = yield* Semaphore.make(1);
 
@@ -311,12 +297,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
 
         if (result.nextPhase === "succeeded") {
-          // Provenance before the recheck: the recheck is what republishes the
-          // snapshot, so the record has to be on disk for that snapshot to
-          // carry it.
-          if (recordAuthorizer !== undefined) {
-            yield* recordAuthorizer(agentId, session.subject);
-          }
+          // The record of WHO signed in is a tag on the Mate's project, written
+          // by the app as the person (D6, `ZeropsProjectSigners`): this
+          // container's own key cannot write tags, which is the whole reason
+          // the record moved off its disk. All this does is republish the
+          // snapshot, which re-reads the tags.
           yield* zeropsAgentAuth.recheckNow(agentId);
         }
 
@@ -459,18 +444,10 @@ export const layer = Layer.effect(
     const terminalManager = yield* TerminalManager;
     const zeropsAgentAuth = yield* ZeropsAgentAuth;
     const config = yield* ServerConfig;
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const authorizersPath = path.join(
-      config.stateDir,
-      ZeropsAgentAuthorizers.ZEROPS_AGENT_AUTHORIZERS_FILE,
-    );
     return yield* make({
       terminalManager,
       zeropsAgentAuth,
       isZeropsEnvironment: isZeropsEnvironment(config),
-      recordAuthorizer: (agentId, subject) =>
-        ZeropsAgentAuthorizers.recordAuthorizer(fs, authorizersPath, agentId, subject),
     });
   }),
 );

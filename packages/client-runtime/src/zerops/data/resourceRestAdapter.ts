@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
-import { recipeFromProjectExport } from "../recipeExport.ts";
 import type { ZeropsResourceAdapter, ZeropsResourceSourceError } from "./resources.ts";
 
 const resourceError = (cause: unknown): ZeropsResourceSourceError => {
@@ -30,20 +29,14 @@ const request = <Value>(
 /** Adapts scoped configuration reads and strips secret-bearing source rows at the boundary. */
 export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsResourceAdapter {
   return {
-    readRecipeGroup: (input, context) =>
-      request(() => client.readRecipeGroup(input.groupId, context.abortSignal)),
-    readProjectCloneSourceRecipe: (input, context) =>
-      request(async () =>
-        recipeFromProjectExport(
-          await client.exportProject(input.project.projectId, context.abortSignal),
-        ),
-      ),
     readOrganizationLocations: (input, context) =>
       request(() =>
         client.listClientLocations(input.organization.organizationId, context.abortSignal),
       ),
     readServiceAuthorizedAgents: (input, context) =>
       request(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
+    readServiceDeployedVersion: (input, context) =>
+      request(() => client.readDeployedVersionName(input.service.serviceId, context.abortSignal)),
     readOrganizationIntegrationTokenGrants: (input, context) =>
       request(async () =>
         (

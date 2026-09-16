@@ -51,14 +51,18 @@ export type ServerAuthPolicy = typeof ServerAuthPolicy.Type;
  *   shell can pair the renderer without a login screen
  * - `one-time-token`: a short-lived pairing token, suitable for manual pairing
  *   flows such as `/pair?token=...`
- * - `zerops-identity`: the caller presents a Zerops access token and the server
- *   proves they are a member of the project this environment runs in. Offered
- *   only by an environment running inside a Zerops project container.
+ * - `zerops-throwaway`: the caller presents a Zerops integration token with no
+ *   rights at all, minted seconds ago and named for this one Mate, and the
+ *   server reads who made it. Nothing of the caller's outlives the request, so
+ *   a container never holds a credential of theirs — which is the point: a
+ *   person's own Zerops token reaches every org they belong to and never
+ *   expires, and no container is ever handed one. Offered only inside a Zerops
+ *   project container.
  */
 export const ServerAuthBootstrapMethod = Schema.Literals([
   "desktop-bootstrap",
   "one-time-token",
-  "zerops-identity",
+  "zerops-throwaway",
 ]);
 export type ServerAuthBootstrapMethod = typeof ServerAuthBootstrapMethod.Type;
 
@@ -124,6 +128,24 @@ export const AuthStandardClientScopes = [
   AuthReviewWriteScope,
   AuthRelayReadScope,
 ] as const;
+/**
+ * What a Mate's own client asks for when it exchanges its bootstrap
+ * credential: the standard set plus command execution.
+ *
+ * Not the same list as {@link AuthStandardClientScopes}, and deliberately so.
+ * The standard set is what a pairing token handed to some other device
+ * carries, and `exec:operate` must stay off that. A Mate client gets it
+ * because its door already proved the caller is a member of the container's
+ * Zerops project, who can open a shell in it through code-server and through
+ * the agent anyway.
+ *
+ * It has to be exactly what the door grants (`ZeropsIdentityGate`): the token
+ * exchange refuses a request for any scope the grant does not carry, so a
+ * client asking for one scope too many gets no session at all — and a client
+ * asking for one too few gets a session that fails on a verb it offers. Both
+ * halves are asserted in `RpcAuthorization.clientScopes.test.ts`.
+ */
+export const AuthZeropsClientScopes = [...AuthStandardClientScopes, AuthExecOperateScope] as const;
 export const AuthAdministrativeScopes = [
   ...AuthStandardClientScopes,
   AuthAccessReadScope,
@@ -173,9 +195,10 @@ export const AuthBrowserSessionRequest = Schema.Struct({
 export type AuthBrowserSessionRequest = typeof AuthBrowserSessionRequest.Type;
 
 /**
- * A Zerops access token, presented so the environment can prove the caller is
- * a member of the project it runs in. The server validates it against the
- * Zerops API and discards it; it is never stored.
+ * A throwaway Zerops integration token, presented so the environment can learn
+ * who minted it. It carries no rights, the app deletes it seconds later, and
+ * the server validates it against the Zerops API and discards it; it is never
+ * stored.
  */
 export const AuthZeropsIdentityRequest = Schema.Struct({
   token: TrimmedNonEmptyString,

@@ -66,8 +66,8 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import { ZeropsCli, type ZeropsCliError } from "./ZeropsCli.ts";
-import * as ZeropsAgentAuthorizers from "./ZeropsAgentAuthorizers.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import {
   spawnAgentAuthProbe,
   verifyAgentAuth,
@@ -114,10 +114,14 @@ export const computeAgentAuthState = (inputs: {
 export type ZembedEnv = Readonly<Record<string, string>>;
 
 /**
- * Which Zerops user signed an agent in here, as recorded when a server-driven
- * login succeeded. The subject is the door's session subject — the Zerops user
- * id — never anything read out of the credential, whose contents this module
- * still never opens.
+ * Which Zerops user signed an agent in here, read from the Mate's project tag
+ * `mate:signer:{agent}:{userId}` (`ZeropsProjectSigners`). The subject is the
+ * Zerops user id — never anything read out of the credential, whose contents
+ * this module still never opens.
+ *
+ * The record lives on the project rather than in this container because a
+ * Mate's own key cannot write tags: neither it nor its agent can forge whose
+ * login this is (D6).
  */
 export type ZeropsAgentAuthorizer = NonNullable<ZeropsAgentAuthContract["authorizedBy"]>;
 
@@ -241,11 +245,13 @@ export interface ZeropsAgentAuthOptions {
   readonly homeDir: string;
   readonly envStorePath: string;
   /**
-   * Where `ZeropsAgentAuthorizers` records who signed each agent in. Absent
-   * disables provenance entirely — every snapshot then omits `authorizedBy`,
-   * which is exactly the pre-existing behaviour.
+   * Who signed each agent in, from the Mate's project tags
+   * (`ZeropsProjectSigners`). Re-read per publish rather than cached here: a
+   * login is the same event that changes the credential, so the read that
+   * follows it must see the new record. Absent disables provenance entirely —
+   * every snapshot then omits `authorizedBy`.
    */
-  readonly authorizersPath?: string;
+  readonly readSigners?: Effect.Effect<Readonly<Partial<Record<ZeropsAgentId, string>>>>;
   readonly isZeropsEnvironment: boolean;
   /**
    * Watches `target`, tolerating it not existing yet (falls back to
@@ -338,7 +344,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       refreshProviderAuth,
       homeDir,
       envStorePath,
-      authorizersPath,
+      readSigners,
       watch,
       isZeropsEnvironment: enabled,
     } = options;
@@ -383,10 +389,13 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       // Re-read per publish rather than cached: a login writing the file is
       // the same event that changes the credential, so the read that follows
       // it must see the write. The document is a handful of bytes.
-      const authorizers =
-        authorizersPath === undefined
-          ? {}
-          : yield* ZeropsAgentAuthorizers.readAuthorizers(fs, authorizersPath);
+      const signers = readSigners === undefined ? {} : yield* readSigners;
+      const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
+      for (const [agentId, subject] of Object.entries(signers)) {
+        if (typeof subject === "string" && subject.length > 0) {
+          authorizers[agentId as ZeropsAgentId] = { subject };
+        }
+      }
       const snapshot = buildSnapshot(
         current.env,
         current.credPresence,
@@ -670,7 +679,7 @@ export const layer = Layer.effect(
     const cli = yield* ZeropsCli;
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const config = yield* ServerConfig;
-    const path = yield* Path.Path;
+    const projectSigners = yield* ZeropsProjectSignersModule.ZeropsProjectSigners;
     const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
 
     return yield* make({
@@ -678,10 +687,7 @@ export const layer = Layer.effect(
       refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
-      authorizersPath: path.join(
-        config.stateDir,
-        ZeropsAgentAuthorizers.ZEROPS_AGENT_AUTHORIZERS_FILE,
-      ),
+      readSigners: projectSigners.signers,
       isZeropsEnvironment: isZeropsEnvironment(config),
       watch: watchWithFallback,
     });

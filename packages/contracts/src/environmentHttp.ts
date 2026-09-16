@@ -64,6 +64,14 @@ export type EnvironmentAuthInvalidReason = typeof EnvironmentAuthInvalidReason.T
 export const EnvironmentOperationForbiddenReason = Schema.Literals([
   "current_session_revoke_not_allowed",
   "zerops_project_membership_required",
+  // The presented credential is not a throwaway minted for this Mate. One
+  // reason for all six shape rules on purpose: naming which one failed is
+  // telling the caller how to build a token that passes.
+  "zerops_throwaway_required",
+  // The caller is a `READ_ONLY` member here: the Mate is theirs to see in the
+  // list and not to open (D5). Never the generic permission error — the app
+  // turns this one into "Jan's Mate — only Jan opens it".
+  "zerops_read_only",
   "origin_not_allowed",
   "browser_session_unsupported",
 ]);
@@ -570,7 +578,7 @@ export class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
   ) {}
 
 export class EnvironmentZeropsHttpApi extends HttpApiGroup.make("zerops").add(
-  HttpApiEndpoint.post("identity", "/api/auth/zerops-identity", {
+  HttpApiEndpoint.post("throwawayIdentity", "/api/auth/zerops-throwaway", {
     headers: OptionalDpopProofHeaders,
     payload: AuthZeropsIdentityRequest,
     success: AuthPairingCredentialResult,

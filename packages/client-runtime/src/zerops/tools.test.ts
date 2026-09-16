@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { buildGiteaImportYaml, buildGiteaRunnerImportYaml } from "./giteaRecipe.ts";
 import {
   deriveGiteaState,
   formatToolTag,
   partitionZeropsToolProjects,
+  planGiteaProjectSetup,
   readZeropsToolKind,
+  type ZeropsGiteaSetupInput,
   type ZeropsGiteaStepState,
 } from "./tools.ts";
 
@@ -33,7 +34,12 @@ const WEB_ACTIVE = service("web", "ACTIVE", {
   ],
 });
 
-const RECIPE_SERVICES = [service("db", "ACTIVE"), service("volume", "ACTIVE"), WEB_ACTIVE];
+const RECIPE_SERVICES = [
+  service("db", "ACTIVE"),
+  service("volume", "ACTIVE"),
+  WEB_ACTIVE,
+  service("broker", "ACTIVE"),
+];
 
 function stepState(
   state: ReturnType<typeof deriveGiteaState>,
@@ -195,38 +201,62 @@ describe("deriveGiteaState", () => {
     });
   });
 
-  it("reports runners only once the addon has been imported", () => {
-    expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "runners")).toBe("optional");
+  it("reports the broker only once the import has created it", () => {
+    expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "broker")).toBe("done");
 
-    const withRunner = deriveGiteaState(GITEA_PROJECT, [
-      ...RECIPE_SERVICES,
-      service("runner", "ACTIVE"),
-    ]);
-    expect(stepState(withRunner, "runners")).toBe("done");
-    expect(withRunner.runnersImported).toBe(true);
+    const withoutBroker = deriveGiteaState(
+      GITEA_PROJECT,
+      RECIPE_SERVICES.filter((entry) => entry.name !== "broker"),
+    );
+    expect(stepState(withoutBroker, "broker")).toBe("pending");
+    expect(withoutBroker.brokerImported).toBe(false);
   });
 });
 
-describe("the Gitea recipe", () => {
-  it("takes the project's real region rather than the recipe's unresolvable host", () => {
-    const yaml = buildGiteaImportYaml("prg1");
-    expect(yaml).toContain("GITEA_DOMAIN: web-${zeropsSubdomainHost}-3000.prg1.zerops.app");
-    expect(yaml).not.toContain("app-prg1");
-  });
+describe("planGiteaProjectSetup", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly input: ZeropsGiteaSetupInput;
+    readonly expected: ReadonlyArray<string>;
+  }> = [
+    {
+      name: "nothing yet",
+      input: { project: undefined, services: [], tokenNames: [] },
+      expected: ["create-project", "mint-broker-token", "import-services"],
+    },
+    {
+      name: "the project exists, nothing else does",
+      input: { project: { id: "p-1" }, services: [], tokenNames: [] },
+      expected: ["mint-broker-token", "import-services"],
+    },
+    {
+      name: "the project and the token exist, the import never ran",
+      input: { project: { id: "p-1" }, services: [], tokenNames: ["mate-broker"] },
+      // Nobody holds the value of a token minted before a tab closed.
+      expected: ["regenerate-broker-token", "import-services"],
+    },
+    {
+      name: "the import was accepted but only half of it appeared",
+      input: { project: { id: "p-1" }, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
+      expected: ["regenerate-broker-token", "import-services"],
+    },
+    {
+      name: "all done",
+      input: {
+        project: { id: "p-1" },
+        services: [{ name: "web" }, { name: "broker" }, { name: "db" }],
+        tokenNames: ["mate-broker"],
+      },
+      expected: [],
+    },
+    {
+      name: "services without a project is not a state, and plans a project",
+      input: { project: undefined, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
+      expected: ["create-project", "regenerate-broker-token", "import-services"],
+    },
+  ];
 
-  it("keeps the preprocessor header the generated password depends on", () => {
-    const yaml = buildGiteaImportYaml("prg1");
-    expect(yaml.startsWith("#zeropsPreprocessor=on")).toBe(true);
-    expect(yaml).toContain("<@generateRandomString(<32>)>");
-  });
-
-  it("carries no project block, which the import endpoint rejects", () => {
-    expect(buildGiteaImportYaml("prg1")).not.toMatch(/^project:/m);
-  });
-
-  it("substitutes the runner registration token", () => {
-    const yaml = buildGiteaRunnerImportYaml("abc123");
-    expect(yaml).toContain("value: abc123");
-    expect(yaml).not.toContain("<generated-token>");
+  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    expect(planGiteaProjectSetup(row.input)).toEqual(row.expected);
   });
 });

@@ -52,6 +52,7 @@ export type RightPanelSurface =
   | { id: "browser"; kind: "browser" }
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
   | { id: "data"; kind: "data" }
+  | { id: "git"; kind: "git" }
   | { id: `data:${string}`; kind: "data"; service: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
@@ -131,6 +132,8 @@ const singletonSurface = (
       return { id: "browser", kind };
     case "data":
       return { id: "data", kind };
+    case "git":
+      return { id: "git", kind };
   }
 };
 

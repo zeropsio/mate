@@ -11,19 +11,25 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { mintZeropsPairingCredential, zeropsGrantScopes } from "./ZeropsIdentityGate.ts";
+import { mintZeropsThrowawayPairingCredential, zeropsGrantScopes } from "./ZeropsIdentityGate.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
 const USER_ID = "8yLPr0kbTA6MZKfMLBQe0A";
-const TOKEN = "a-zerops-access-token";
-const MEMBERSHIP_TTL_SECONDS = 120;
+/** A throwaway minted for this Mate. Nobody's own Zerops token is ever here. */
+const DOOR_TOKEN = "a-mate-door-throwaway";
+const SESSION_MAX_AGE_SECONDS = 120;
+
+const MATE_KEY = "the-mates-own-zerops-key";
+const TOKEN_ID = "tok-throwaway";
+const API_NOW = "Tue, 16 Sep 2026 10:00:00 GMT";
 
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
   allowedOrigins: [],
-  membershipTtlSeconds: MEMBERSHIP_TTL_SECONDS,
+  sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
+  apiToken: MATE_KEY,
 })!;
 
 const json = (body: unknown, status = 200) =>
@@ -39,18 +45,6 @@ const httpClientLayer = (route: (url: string) => Response) =>
       Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url))),
     ),
   );
-
-const memberRoute = (url: string) =>
-  url.endsWith(`/project/${PROJECT_ID}`)
-    ? json({ id: PROJECT_ID, clientId: CLIENT_ID })
-    : url.endsWith("/user/info")
-      ? json({
-          id: USER_ID,
-          clientUserList: [{ id: "cu-1", clientId: CLIENT_ID, userId: USER_ID, roleCode: "OWNER" }],
-        })
-      : json({ message: "unexpected route" }, 500);
-
-const forbiddenRoute = () => json({ error: { code: "insufficientPermissions" } }, 403);
 
 const makeLayer = (route: (url: string) => Response) =>
   EnvironmentAuth.layer.pipe(
@@ -80,11 +74,56 @@ const requestMetadata = {
   browser: "Chrome",
 };
 
-it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
-  it.effect("mints a grant whose subject is the Zerops user id", () =>
+/**
+ * A door that answers every read a throwaway check makes, with the caller's
+ * org role as the one variable.
+ */
+const throwawayRoute =
+  (orgRole: string) =>
+  (url: string): Response => {
+    if (url.endsWith(`/project/${PROJECT_ID}`))
+      return json({ id: PROJECT_ID, clientId: CLIENT_ID });
+    if (url.endsWith("/user/info")) return json({ id: TOKEN_ID });
+    if (url.includes("/integration-token/")) {
+      return new Response(
+        JSON.stringify({
+          id: TOKEN_ID,
+          name: `mate-door:${PROJECT_ID}:a1b2c3`,
+          created: DateTime.formatIso(DateTime.makeUnsafe(Date.parse(API_NOW) - 5_000)),
+          createdByUser: USER_ID,
+          roleCode: "NO_ACCESS",
+          projects: [],
+          canCreateProjects: false,
+        }),
+        { status: 200, headers: { "content-type": "application/json", date: API_NOW } },
+      );
+    }
+    if (url.endsWith("/user/list")) {
+      return json({
+        items: [
+          {
+            id: "cu-1",
+            userId: USER_ID,
+            roleCode: orgRole,
+            status: "ACTIVE",
+            canCreateProjects: false,
+          },
+        ],
+      });
+    }
+    return json({ message: "unexpected route" }, 500);
+  };
+
+const forbiddenRoute = () => json({ error: { code: "insufficientPermissions" } }, 403);
+
+it.layer(NodeServices.layer)("mintZeropsThrowawayPairingCredential", (it) => {
+  it.effect("mints a grant whose subject is the person who made the throwaway", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* mintZeropsPairingCredential({ environment, token: TOKEN });
+      const issued = yield* mintZeropsThrowawayPairingCredential({
+        environment,
+        token: DOOR_TOKEN,
+      });
 
       assert.isAbove(issued.credential.length, 0);
       assert.strictEqual(issued.label, "Zerops OWNER");
@@ -92,74 +131,125 @@ it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
       const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
       assert.strictEqual(links.length, 1);
       assert.strictEqual(links[0]!.subject, `zerops-user:${USER_ID}`);
+      // Role decides whether the door opens, never how far.
       assert.deepStrictEqual([...links[0]!.scopes], [...zeropsGrantScopes]);
-    }).pipe(Effect.provide(makeLayer(memberRoute))),
+    }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
   );
 
   it.effect("issues a short-lived grant — a pairing credential, not a session", () =>
     Effect.gen(function* () {
-      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const now = yield* DateTime.now;
-      const issued = yield* mintZeropsPairingCredential({ environment, token: TOKEN });
+      const issued = yield* mintZeropsThrowawayPairingCredential({
+        environment,
+        token: DOOR_TOKEN,
+      });
       const lifetimeMs = issued.expiresAt.epochMilliseconds - now.epochMilliseconds;
 
       assert.isAtMost(lifetimeMs, Duration.toMillis(Duration.minutes(5)));
       assert.isAbove(lifetimeMs, 0);
-      void serverAuth;
-    }).pipe(Effect.provide(makeLayer(memberRoute))),
+    }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
   );
 
-  it.effect("exchanges into a session whose subject is the user and whose life is the window", () =>
+  it.effect("exchanges into a session that outlives the throwaway by a long way", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* mintZeropsPairingCredential({ environment, token: TOKEN });
-      const now = yield* DateTime.now;
+      const issued = yield* mintZeropsThrowawayPairingCredential({
+        environment,
+        token: DOOR_TOKEN,
+      });
       const access = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
         issued.credential,
         undefined,
         requestMetadata,
       );
 
-      // The membership window IS the session lifetime: the client re-mints with
-      // its Zerops token, and that re-mint is the real membership check.
-      assert.isAtMost(access.expires_in, MEMBERSHIP_TTL_SECONDS);
-      assert.isAbove(access.expires_in, MEMBERSHIP_TTL_SECONDS - 30);
+      // Nothing is ever re-presented: the server re-reads roles itself, so the
+      // session's cap is a promise about age, not a membership window.
+      assert.isAtMost(access.expires_in, SESSION_MAX_AGE_SECONDS);
+      assert.isAbove(access.expires_in, SESSION_MAX_AGE_SECONDS - 30);
 
       const sessions = yield* serverAuth.listSessions();
       assert.strictEqual(sessions.length, 1);
       assert.strictEqual(sessions[0]!.subject, `zerops-user:${USER_ID}`);
-      void now;
-    }).pipe(Effect.provide(makeLayer(memberRoute))),
+    }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
   );
 
-  it.effect("refuses a non-member and leaves no grant behind", () =>
+  for (const [orgRole, outcome] of [
+    ["OWNER", "open"],
+    ["ADMIN", "open"],
+    ["BASIC_USER", "open"],
+    ["READ_ONLY", "ZeropsReadOnlyError"],
+    ["NO_ACCESS", "ZeropsNotAMemberError"],
+  ] as const) {
+    it.effect(`a ${orgRole} caller: ${outcome}`, () =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const attempt = mintZeropsThrowawayPairingCredential({
+          environment,
+          token: DOOR_TOKEN,
+        });
+        if (outcome === "open") {
+          const issued = yield* attempt;
+          assert.strictEqual(issued.label, `Zerops ${orgRole}`);
+        } else {
+          const error = yield* Effect.flip(attempt);
+          assert.strictEqual(error._tag, outcome);
+          // A refusal issues nothing at all — not a narrower grant, nothing.
+          const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
+          assert.strictEqual(links.length, 0);
+        }
+      }).pipe(Effect.provide(makeLayer(throwawayRoute(orgRole)))),
+    );
+  }
+
+  it.effect("refuses a credential that is not a throwaway, and leaves no grant behind", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const error = yield* Effect.flip(mintZeropsPairingCredential({ environment, token: TOKEN }));
+      const error = yield* Effect.flip(
+        mintZeropsThrowawayPairingCredential({ environment, token: DOOR_TOKEN }),
+      );
 
-      assert.strictEqual(error._tag, "ZeropsNotAMemberError");
+      assert.strictEqual(error._tag, "ZeropsThrowawayRefusedError");
       const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
       assert.strictEqual(links.length, 0);
-    }).pipe(Effect.provide(makeLayer(forbiddenRoute))),
+    }).pipe(
+      Effect.provide(
+        makeLayer((url) =>
+          url.endsWith(`/project/${PROJECT_ID}`)
+            ? json({ id: PROJECT_ID, clientId: CLIENT_ID })
+            : forbiddenRoute(),
+        ),
+      ),
+    ),
   );
 
   it.effect("refuses an invalid token and leaves no grant behind", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const error = yield* Effect.flip(mintZeropsPairingCredential({ environment, token: TOKEN }));
+      const error = yield* Effect.flip(
+        mintZeropsThrowawayPairingCredential({ environment, token: DOOR_TOKEN }),
+      );
 
       assert.strictEqual(error._tag, "ZeropsInvalidTokenError");
       const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
       assert.strictEqual(links.length, 0);
-    }).pipe(Effect.provide(makeLayer(() => json({ error: { code: "notAuthorized" } }, 401)))),
+    }).pipe(
+      Effect.provide(
+        makeLayer((url) =>
+          url.endsWith(`/project/${PROJECT_ID}`)
+            ? json({ id: PROJECT_ID, clientId: CLIENT_ID })
+            : json({ error: { code: "notAuthorized" } }, 401),
+        ),
+      ),
+    ),
   );
 
   it.effect("binds the grant to a DPoP key when the caller proves one", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const issued = yield* mintZeropsPairingCredential({
+      const issued = yield* mintZeropsThrowawayPairingCredential({
         environment,
-        token: TOKEN,
+        token: DOOR_TOKEN,
         proofKeyThumbprint: "a-jwk-thumbprint",
       });
 
@@ -172,6 +262,6 @@ it.layer(NodeServices.layer)("mintZeropsPairingCredential", (it) => {
         ),
       );
       assert.strictEqual(error._tag, "ServerAuthInvalidCredentialError");
-    }).pipe(Effect.provide(makeLayer(memberRoute))),
+    }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
   );
 });

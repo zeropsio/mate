@@ -224,7 +224,7 @@
         },
         {
           "action": "Select a service, node, or run a query",
-          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
+          "reverse": "none: browsing is read-only in this slice \u2014 there is nothing to undo, only a different selection to make."
         }
       ],
       "docs": {
@@ -241,6 +241,76 @@
         "apps/web/src/components/zerops/ZeropsDataFilters.test.tsx",
         "apps/web/src/components/zerops/ZeropsDataRowDrawer.test.tsx",
         "packages/client-runtime/src/zerops/dataConsole.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-git-tab",
+      "title": "Zerops Git tab",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
+        "apps/web/src/components/zerops/ZeropsGitTab.tsx",
+        "packages/client-runtime/src/zerops/gitTab.ts",
+        "packages/client-runtime/src/zerops/release.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Git (shortcut G)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/gitTab",
+        "@t3tools/client-runtime/zerops/release",
+        "subscribeVcsStatus",
+        "zerops.git.probeRemote"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open pull request",
+          "reverse": "none: a pull request is closed in Gitea, which owns it."
+        },
+        {
+          "action": "Merge",
+          "reverse": "none: a merge is undone by a revert, which is a new change."
+        },
+        {
+          "action": "Release",
+          "reverse": "Roll back to this"
+        },
+        {
+          "action": "Roll back to this",
+          "reverse": "Release"
+        },
+        {
+          "action": "Update from main",
+          "reverse": "none: the checkout keeps what it pulled."
+        },
+        {
+          "action": "Sign in to Gitea",
+          "reverse": "none: the session ends with the tab (nothing is persisted)."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Git tab yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsGitBlock.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPanel.test.tsx",
+        "packages/client-runtime/src/zerops/gitTab.test.ts",
+        "packages/client-runtime/src/zerops/release.test.ts"
       ],
       "captures": []
     },
@@ -627,8 +697,10 @@
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsPullRequestRow.tsx",
         "apps/web/src/components/zerops/ZeropsProvisioningPanel.tsx",
         "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+        "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",

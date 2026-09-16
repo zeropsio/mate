@@ -224,6 +224,34 @@ export const ZeropsAgentId = Schema.Literals(["claude-code", "codex"]);
 export type ZeropsAgentId = typeof ZeropsAgentId.Type;
 
 /**
+ * Which agent a provider instance is, when it is one of the two Mate signs
+ * people in to.
+ *
+ * Two vocabularies meet here: a thread routes by `ProviderInstanceId`, whose
+ * default for a built-in driver is the driver kind (`claudeAgent`, `codex`),
+ * while the welcome flow and the agent-auth feed name the same agents
+ * `claude-code` and `codex`. Both spellings arrive on real threads, so both
+ * resolve.
+ *
+ * `undefined` for every other driver, and that is the answer: an agent this
+ * product never signs anybody in to has no recorded signer, so there is
+ * nothing to compare a caller against and nothing to refuse (D6).
+ */
+export const agentIdForProviderInstance = (
+  instanceId: string | undefined,
+): ZeropsAgentId | undefined => {
+  switch (instanceId) {
+    case "claudeAgent":
+    case "claude-code":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return undefined;
+  }
+};
+
+/**
  * The §3 W-STATE matrix, five values, mirrored verbatim from
  * `vscode-bootstrap-welcome.js`'s `computeAgentState` (docs/spec-welcome-mode.md
  * §3): the platform flag and the local credential artifact are two
@@ -307,9 +335,13 @@ export const ZeropsAgentAuth = Schema.Struct({
   /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
   login: Schema.optional(ZeropsAgentLoginState),
   /**
-   * Which Zerops user signed this agent in, recorded when a server-driven
-   * login succeeded. The subject is the Zerops user id — the same value the
-   * door puts on the session grant.
+   * Which Zerops user signed this agent in, from the tag
+   * `mate:signer:{agent}:{userId}` on the Mate's own project (D6). The subject
+   * is the Zerops user id — the same value the door puts on the session grant.
+   *
+   * It lives on the project because a Mate's own key cannot write tags, so
+   * neither the container nor its agent can forge whose login this is. The app
+   * writes it as the person at the moment their sign-in succeeds.
    *
    * This exists because an agent CLI's credential is a *personal* one. Under
    * Anthropic's consumer terms a subscription login is yours to use on your
@@ -325,7 +357,13 @@ export const ZeropsAgentAuth = Schema.Struct({
   authorizedBy: Schema.optional(
     Schema.Struct({
       subject: Schema.String,
-      at: Schema.DateTimeUtc,
+      /**
+       * When the sign-in happened, if anything recorded it. The project tag
+       * that carries the record (D6) records who and not when, so this is
+       * absent for everything written since — the fact the product needs is
+       * whose login it is.
+       */
+      at: Schema.optional(Schema.DateTimeUtc),
     }),
   ),
 });
@@ -769,3 +807,56 @@ export class ZeropsDataConsoleError extends Schema.TaggedErrorClass<ZeropsDataCo
     requestId: Schema.optional(Schema.String),
   },
 ) {}
+
+/**
+ * Whether a repository's remote actually answers — `git ls-remote` run now,
+ * in the service that owns the checkout (guide 4.5).
+ *
+ * The Git tab may not infer this from the last push, from the presence of a
+ * token or from a remote being configured at all: every one of those is true
+ * of a Mate whose Gitea credential was never written, and a tab that mixes
+ * them shows "configured" for a setup that cannot push.
+ */
+export const ZeropsGitRemoteProbeInput = Schema.Struct({
+  /** The checkout, as every other `vcs.*` call names it. */
+  cwd: TrimmedNonEmptyString,
+  /** Which remote to ask; `origin` when the caller does not say. */
+  remote: Schema.optional(TrimmedNonEmptyString),
+});
+export type ZeropsGitRemoteProbeInput = typeof ZeropsGitRemoteProbeInput.Type;
+
+/**
+ * How much of git's diagnostic leaves the container.
+ *
+ * A block's trouble line is one line in a panel, and `ls-remote`'s stderr can
+ * run to a paragraph; the server cuts it here and the tab shows what arrives.
+ */
+export const ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS = 200;
+
+/**
+ * What the probe found. `reachable: false` carries the first line of git's own
+ * diagnostic, sanitized to one line and capped at
+ * {@link ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS} — never a URL with credentials in
+ * it, because the remote this runs against carries none (the token is an
+ * askpass helper's, not part of the URL).
+ */
+export const ZeropsGitRemoteProbeResult = Schema.Struct({
+  reachable: Schema.Boolean,
+  /** The remote's name as asked for. */
+  remote: Schema.String,
+  /** How many refs it advertised; `0` for a remote that answered empty. */
+  refCount: Schema.Number,
+  /** Git's first diagnostic line when it refused; `null` when it answered. */
+  detail: Schema.NullOr(Schema.String),
+});
+export type ZeropsGitRemoteProbeResult = typeof ZeropsGitRemoteProbeResult.Type;
+
+/** The probe could not be run at all — no git, no checkout, or it timed out. */
+export class ZeropsGitRemoteProbeError extends Schema.TaggedErrorClass<ZeropsGitRemoteProbeError>()(
+  "ZeropsGitRemoteProbeError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return `The remote could not be probed: ${this.reason}`;
+  }
+}

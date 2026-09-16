@@ -914,6 +914,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         readonly kind:
           | "name-project-agent"
           | "update-project-group-tags"
+          | "set-project-member-role"
           | "create-project"
           | "create-project-with-mate"
           | "create-tool-project";
@@ -1030,6 +1031,23 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           options.client.nameProjectAgent(
             command.project.projectId,
             command.name,
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.flatMap((value) =>
+            projectCommandReceipt(command, value, { kind: command.kind, value }),
+          ),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "set-project-member-role":
+        return executeApi(context, (signal) =>
+          options.client.setProjectMemberRole(
+            {
+              projectId: command.project.projectId,
+              clientUserId: command.clientUserId,
+              roleCode: command.roleCode,
+            },
             signal,
             context.beforeProjectWrite,
           ),
@@ -1212,6 +1230,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               clientId: command.organization.organizationId,
               kind: command.toolKind,
               name: command.name,
+              appOrigins: command.appOrigins,
+              appUrl: command.appUrl,
               ...(command.location === undefined ? {} : { location: command.location }),
             },
             signal,
@@ -1221,6 +1241,73 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           Effect.flatMap((value) =>
             projectCommandReceipt(command, value.project, { kind: command.kind, value }),
           ),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "list-integration-token-grants":
+        return executeApi(context, (signal) =>
+          options.client.listIntegrationTokens(command.organization.organizationId, signal),
+        ).pipe(
+          Effect.map((tokens): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: {
+              kind: command.kind,
+              // Metadata only: a token's value never leaves the API client.
+              value: tokens.map((token) => ({
+                tokenId: token.id,
+                name: token.name,
+                grants: token.projects ?? [],
+              })),
+            },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "isolate-project-env":
+        return executeApi(context, (signal) =>
+          options.client.isolateProjectEnvironment(
+            command.project.projectId,
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "list-token-delegations":
+        return executeApi(context, (signal) =>
+          options.client.listIntegrationTokenDelegations(
+            { clientId: command.organization.organizationId, tokenId: command.tokenId },
+            signal,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "delete-token-delegation":
+        return executeApi(context, (signal) =>
+          options.client.deleteIntegrationTokenDelegation(
+            {
+              clientId: command.organization.organizationId,
+              tokenId: command.tokenId,
+              delegationId: command.delegationId,
+            },
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
           Effect.mapError(uncertainCommandError),
         );
       case "set-integration-token-projects":

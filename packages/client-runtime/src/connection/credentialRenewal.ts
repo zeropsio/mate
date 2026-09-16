@@ -10,12 +10,19 @@ import type { ConnectionAttemptError } from "./model.ts";
 /**
  * When a stored bearer should be exchanged for a fresh one.
  *
- * The Zerops identity door caps a session at one membership window (900s by
- * default) precisely because the server cannot re-check membership on its own:
- * the re-mint IS the membership check. Renewing ahead of the deadline therefore
- * runs that check MORE often than waiting for the window to lapse, and it keeps
- * the failure off the user's screen — a credential that expires unnoticed
- * surfaces as "Connection failed. The environment credential is invalid."
+ * Renewing ahead of the deadline keeps the failure off the user's screen — a
+ * credential that expires unnoticed surfaces as "Connection failed. The
+ * environment credential is invalid."
+ *
+ * **Nothing renews a Zerops session any more, and that is the point.** The
+ * Zerops door used to cap a session at one membership window because the
+ * server could not re-check membership on its own, so the client re-minted
+ * every fifteen minutes — which meant a person's own Zerops token arriving at
+ * a container four times an hour, forever. The server now re-reads roles
+ * itself (`ZeropsMembershipWatch`) and ends the sessions whose answer changed;
+ * the client re-sends nothing in between and opens a new one with a fresh
+ * throwaway when it has to (guide 3.5). This contract stays for a door that
+ * has something to re-present; no client supplies one today.
  */
 
 /** Long enough for a slow round trip on a bad connection. */
@@ -53,7 +60,7 @@ export function credentialRenewAtEpochMs(credential: RenewableCredentialLifetime
 
 /**
  * Exchanges a stored bearer for a fresh one, using whatever the door that
- * minted it needs (for `zerops-identity`, the caller's live Zerops token).
+ * minted it needs.
  *
  * Optional: a client that does not provide it keeps the reactive path — the
  * connection fails on an expired credential and something re-mints afterwards.

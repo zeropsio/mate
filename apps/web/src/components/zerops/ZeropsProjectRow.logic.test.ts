@@ -420,17 +420,17 @@ describe("environmentSummaryLine", () => {
   it.each([
     [
       "names the services and dates the deploy",
-      { hostnames: ["app", "db"], deployedAt: "2026-09-05T15:17:24Z" },
+      { hostnames: ["app", "db"], deployedAt: "2026-09-05T15:17:24Z", deployable: [] },
       "app, db · deployed 2h ago",
     ],
     [
       "names services nothing has been deployed to",
-      { hostnames: ["db"], deployedAt: undefined },
+      { hostnames: ["db"], deployedAt: undefined, deployable: [] },
       "db",
     ],
     [
       "says when a project holds only the platform's services",
-      { hostnames: [], deployedAt: undefined },
+      { hostnames: [], deployedAt: undefined, deployable: [] },
       "No services yet",
     ],
   ] as const)("%s", (_, services, expected) => {
@@ -467,5 +467,56 @@ describe("deriveZeropsRestartAction", () => {
       can,
     });
     expect(action.kind).toBe(kind);
+  });
+});
+
+describe("a Mate the person may see and not open (D5)", () => {
+  const listed = (candidate: ZeropsRowCandidate, ownerName?: string): ZeropsRowInput => ({
+    candidate,
+    health: "ready",
+    can: ALL,
+    visibility: "listed",
+    ...(ownerName === undefined ? {} : { ownerName }),
+  });
+
+  it("says whose it is in place of the verb", () => {
+    expect(deriveZeropsRowPresentation(listed(READY, "Jan"))).toEqual({
+      status: { label: "Not yours", tone: "off" },
+      detail: "Jan's Mate — only Jan opens it.",
+    });
+  });
+
+  it("says the same thing without a name when the account has none", () => {
+    expect(deriveZeropsRowPresentation(listed(READY)).detail).toBe(
+      "Only its owner opens this Mate.",
+    );
+  });
+
+  // Whose Mate it is outranks whatever its container is doing: "Ready" would
+  // be an invitation the door refuses, and "Starting" a wait that never ends.
+  it.each([
+    ["ready and healthy", READY, "ready" as const],
+    ["still starting", READY, "initializing" as const],
+    ["not answering", READY, "unreachable" as const],
+  ])("outranks a row that is %s", (_name, candidate, health) => {
+    expect(deriveZeropsRowPresentation({ ...listed(candidate), health }).status.label).toBe(
+      "Not yours",
+    );
+  });
+
+  it("offers no verb at all, not even a restart", () => {
+    expect(deriveZeropsRowAction(listed(READY))).toEqual({ kind: "none" });
+    expect(deriveZeropsRestartAction(listed(READY))).toEqual({ kind: "none" });
+  });
+
+  it("leaves a Mate the person can open exactly as it was", () => {
+    const open: ZeropsRowInput = {
+      candidate: READY,
+      health: "ready",
+      can: ALL,
+      visibility: "open",
+    };
+    expect(deriveZeropsRowPresentation(open)).toEqual({ status: { label: "Ready", tone: "ok" } });
+    expect(deriveZeropsRowAction(open)).toEqual({ kind: "connect", label: "Connect" });
   });
 });

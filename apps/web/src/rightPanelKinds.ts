@@ -15,6 +15,7 @@ export const RIGHT_PANEL_KINDS = [
   "zerops",
   "browser",
   "data",
+  "git",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -112,6 +113,15 @@ export const RIGHT_PANEL_KIND_META = {
       description: "Browse the project's managed data services.",
       // D/A/T are already Diff/Agents/Terminal; V stands in for "view".
       shortcut: "V",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
+  },
+  git: {
+    launcher: {
+      label: "Git",
+      description: "Follow this Mate's branches and where they go.",
+      shortcut: "G",
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,

@@ -7,7 +7,6 @@ import {
   AccountEpoch,
   ZeropsAccountId,
   ZeropsOrganizationId,
-  ZeropsProjectId,
   makeZeropsApiOrigin,
 } from "./types.ts";
 
@@ -21,11 +20,6 @@ const organization = {
   account,
   organizationId: ZeropsOrganizationId.make("organization"),
 };
-const project = {
-  kind: "project" as const,
-  organization,
-  projectId: ZeropsProjectId.make("project"),
-};
 
 function clientFor(body: unknown): ZeropsApiClient {
   const client = new ZeropsApiClient({
@@ -37,35 +31,6 @@ function clientFor(body: unknown): ZeropsApiClient {
 }
 
 describe("makeZeropsResourceRestAdapter", () => {
-  it.effect("strips raw project export secrets before the resource broker sees a value", () =>
-    Effect.gen(function* () {
-      const adapter = makeZeropsResourceRestAdapter(
-        clientFor({
-          yaml: [
-            "project:",
-            "  name: source",
-            "services:",
-            "  - hostname: app",
-            "    type: nodejs@22",
-            "    vault:",
-            "      SECRET: visible-only-at-source",
-            "  - hostname: zcp",
-            "    type: zcp@1",
-          ].join("\n"),
-        }),
-      );
-      const value = yield* adapter.readProjectCloneSourceRecipe(
-        { kind: "project-clone-source-recipe", account: scope, project },
-        { abortSignal: new AbortController().signal },
-      );
-
-      expect(value?.services).toEqual(["app"]);
-      expect(value?.droppedContainers).toEqual(["zcp"]);
-      expect(value?.servicesYaml).not.toContain("SECRET");
-      expect(value?.servicesYaml).not.toContain("visible-only-at-source");
-    }),
-  );
-
   it.effect("projects integration tokens to grant metadata without credential fields", () =>
     Effect.gen(function* () {
       const adapter = makeZeropsResourceRestAdapter(

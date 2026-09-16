@@ -8,6 +8,7 @@
  */
 
 import type { ZeropsOrganization } from "./api.ts";
+import { canCreateMates } from "./mateAccess.ts";
 
 export interface ZeropsOrganizationSelectionInput {
   /** The client selected by `/authorize-app`; it wins over stale local state. */
@@ -43,12 +44,17 @@ export function resolveActiveZeropsOrganization(
   return organizations.length === 1 ? (organizations[0] ?? null) : null;
 }
 
+/**
+ * The app's one *Add Mate* gate (guide 0.8).
+ *
+ * It used to be written twice — once here and once as a bare
+ * `canCreateProjects === true` where the data runtime decided whether an
+ * organization takes writes — so an org admin without the flag was offered the
+ * verb on one screen and refused it on the next. Both now call the shared role
+ * function, which is also what the Mate's door and the broker run.
+ */
 export function canCreateProjectsInOrganization(organization: ZeropsOrganization): boolean {
-  return (
-    organization.canCreateProjects === true ||
-    organization.roleCode === "OWNER" ||
-    organization.roleCode === "ADMIN"
-  );
+  return canCreateMates(organization);
 }
 
 export function zeropsOrganizationRoleLabel(organization: ZeropsOrganization): string {

@@ -80,7 +80,7 @@ function profileForGate(gate: AuthGateState): GateProfile {
         zeropsDoor: false,
       };
     case "requires-auth": {
-      const zeropsDoor = gate.auth.bootstrapMethods.includes("zerops-identity");
+      const zeropsDoor = gate.auth.bootstrapMethods.includes("zerops-throwaway");
       return {
         session: "none",
         hasAppGate: zeropsDoor,

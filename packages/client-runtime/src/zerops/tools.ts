@@ -1,7 +1,8 @@
 /**
  * Tools — the things an account runs *for itself* rather than as part of any
  * one application. Today that means Gitea: the git host the agent pushes to,
- * and the CI runners that deploy from it.
+ * and the broker beside it that mirrors Zerops roles into it, signs people in,
+ * gives each Mate its Gitea access and holds the only deploy key.
  *
  * A tool is a Zerops project like any other, marked with `mate:tool:<kind>`.
  * That keeps it out of the group tree without inventing a second storage
@@ -88,9 +89,18 @@ export interface ZeropsToolProject {
  */
 export const GITEA_HTTP_PORT = 3000;
 
-/** The service hostnames the recipe creates. */
+/** The service hostnames the import creates (`giteaRecipe.ts`). */
 export const GITEA_WEB_SERVICE = "web";
-export const GITEA_RUNNER_SERVICE = "runner";
+export const GITEA_BROKER_SERVICE = "broker";
+/** The port the broker's recipe publishes (`giteaRecipe.ts`, `LISTEN_ADDR`). */
+export const GITEA_BROKER_PORT = 8080;
+
+/**
+ * The broker's Zerops token, by name. One per account, and the name is the
+ * handle: a token's value is shown once, so "does this account already have
+ * one?" can only ever be asked of the token list.
+ */
+export const GITEA_BROKER_TOKEN_NAME = "mate-broker";
 
 /**
  * How far along Gitea is, stated only as far as the platform can actually see.
@@ -122,7 +132,7 @@ export interface ZeropsGiteaProbe {
 }
 
 export interface ZeropsGiteaSetupStep {
-  readonly id: "import" | "running" | "admin" | "runners" | "domain";
+  readonly id: "import" | "running" | "admin" | "broker" | "domain";
   readonly title: string;
   readonly state: ZeropsGiteaStepState;
   /** What the user has to do, when it is theirs to do. */
@@ -136,8 +146,18 @@ export interface ZeropsGiteaState {
   readonly url: string | undefined;
   /** The `web` service's own status, verbatim — `undefined` before it exists. */
   readonly webStatus: string | undefined;
-  /** Whether the CI runner addon has been imported. Registration itself is invisible from here. */
-  readonly runnersImported: boolean;
+  /** Whether the broker service exists — the half of the import that is not Gitea. */
+  readonly brokerImported: boolean;
+  /**
+   * `https://broker-<subdomain>-8080.<region>.zerops.app`, once the platform
+   * has assigned one — where the app asks for a Mate's Gitea access and where
+   * Gitea's sign-in is completed (guide 1.5, 3.6).
+   *
+   * Derived exactly as the Gitea URL is, from the project and the service's
+   * own port, so an account on a devel region or behind a custom domain is
+   * read rather than guessed.
+   */
+  readonly brokerUrl: string | undefined;
   /**
    * Whether the recipe's `GITEA_ADMIN_TOKEN` is on the `web` service — i.e.
    * whether mate can act as Gitea's admin without asking anyone for anything.
@@ -172,10 +192,6 @@ export const GITEA_ADMIN_PASSWORD_ENV_KEY = "GITEA_ADMIN_PASSWORD";
 export const GITEA_ADMIN_USER_COMMAND =
   "gitea admin user create --config /etc/gitea/app.ini --admin --username admin --email you@example.com --password '<choose-one>' --must-change-password=false";
 
-/** Prints the registration token the runner addon needs, from inside `web`. */
-export const GITEA_RUNNER_TOKEN_COMMAND =
-  "gitea actions generate-runner-token --config /etc/gitea/app.ini";
-
 /**
  * A service the user asked for, as opposed to one the platform made for
  * itself. Build and prepare containers show up in a project's service list
@@ -193,14 +209,18 @@ function findService(
   return userServices(services).find((service) => service.name === name);
 }
 
-function giteaUrl(project: ZeropsProject, web: ZeropsService | undefined): string | undefined {
-  if (web === undefined) return undefined;
-  const port = web.ports?.find((candidate) => candidate.port === GITEA_HTTP_PORT) ?? {
-    port: GITEA_HTTP_PORT,
+function servicePublicOrigin(
+  project: ZeropsProject,
+  service: ZeropsService | undefined,
+  portNumber: number,
+): string | undefined {
+  if (service === undefined) return undefined;
+  const port = service.ports?.find((candidate) => candidate.port === portNumber) ?? {
+    port: portNumber,
     httpSupport: true,
     scheme: "http",
   };
-  return servicePortOrigin(project, web, port);
+  return servicePortOrigin(project, service, port);
 }
 
 /**
@@ -218,7 +238,7 @@ export function deriveGiteaState(
   webEnvKeys?: ReadonlyArray<string>,
 ): ZeropsGiteaState {
   const web = findService(services, GITEA_WEB_SERVICE);
-  const runner = findService(services, GITEA_RUNNER_SERVICE);
+  const broker = findService(services, GITEA_BROKER_SERVICE);
   const webStatus = web?.status;
 
   // The platform's status is necessary but not sufficient: `ACTIVE` means the
@@ -233,7 +253,8 @@ export function deriveGiteaState(
         : "provisioning";
 
   const running = phase === "running";
-  const url = giteaUrl(project, web);
+  const url = servicePublicOrigin(project, web, GITEA_HTTP_PORT);
+  const brokerUrl = servicePublicOrigin(project, broker, GITEA_BROKER_PORT);
 
   // A published token outranks the user count: it is proof the recipe finished
   // its own bootstrap, it needs no probe, and it is the thing every later step
@@ -268,13 +289,11 @@ export function deriveGiteaState(
           }),
     },
     {
-      id: "runners",
-      title: "CI runners",
-      state: runner === undefined ? "optional" : "done",
-      ...(runner === undefined
-        ? {
-            detail: `Needs a registration token from the web service: ${GITEA_RUNNER_TOKEN_COMMAND}`,
-          }
+      id: "broker",
+      title: "Broker running",
+      state: broker === undefined ? "pending" : "done",
+      ...(broker === undefined
+        ? { detail: "The import has not created the broker service yet." }
         : {}),
     },
     { id: "domain", title: "Custom domain and SSH port", state: "optional" },
@@ -285,7 +304,8 @@ export function deriveGiteaState(
     phase,
     url,
     webStatus,
-    runnersImported: runner !== undefined,
+    brokerImported: broker !== undefined,
+    brokerUrl,
     adminCredentialPublished,
     steps,
   };
@@ -311,4 +331,66 @@ export function partitionZeropsToolProjects(projects: ReadonlyArray<ZeropsProjec
 
   tools.sort((left, right) => left.project.name.localeCompare(right.project.name, "en"));
   return { tools, rest };
+}
+
+/**
+ * Standing up the account's Gitea, as a reconcile rather than a script.
+ *
+ * It is three platform calls and about three minutes, run in the background
+ * right after sign-up on the new owner's session. A person closes the tab, a
+ * call fails, a browser sleeps — and the next time an owner opens the app it
+ * has to pick up exactly where it stopped, not start again on a half-built
+ * project. So every step states what proves it already happened.
+ *
+ * The one step that cannot simply be skipped is the token. A Zerops token's
+ * value is shown once, at the call that makes it; an account that has a
+ * `mate-broker` token but no imported services has a token nobody holds the
+ * value of. Regenerating is the way out — it hands the token to whoever
+ * regenerates it and kills the old value at once (measured 2026-09-15) — and
+ * it is safe precisely because nothing is using the old value yet.
+ */
+export type ZeropsGiteaSetupAction =
+  /** `POST /client/{id}/project` with the tool tag. */
+  | "create-project"
+  /** `POST /client/{id}/integration-token` — org `READ_ONLY`, `BASIC_USER` here. */
+  | "mint-broker-token"
+  /** The token exists but nobody holds its value, because the import never ran. */
+  | "regenerate-broker-token"
+  /** `POST /project/{id}/service-stack/import` with the filled document. */
+  | "import-services";
+
+export interface ZeropsGiteaSetupInput {
+  /** The account's Gitea project, when one already carries the tool tag. */
+  readonly project: { readonly id: string } | undefined;
+  /** Its services. Empty, or unread, when there is no project yet. */
+  readonly services: ReadonlyArray<{ readonly name: string }>;
+  /** The names of the account's integration tokens — never their values. */
+  readonly tokenNames: ReadonlyArray<string>;
+}
+
+/**
+ * What still has to happen, in order. An account whose Gitea is up plans
+ * nothing, which is what lets an owner's every visit run this.
+ */
+export function planGiteaProjectSetup(
+  input: ZeropsGiteaSetupInput,
+): ReadonlyArray<ZeropsGiteaSetupAction> {
+  const actions: Array<ZeropsGiteaSetupAction> = [];
+  if (input.project === undefined) actions.push("create-project");
+
+  const names = new Set(input.services.map((service) => service.name));
+  // Both halves, because the import is one call: `web` alone would mean the
+  // document was accepted and the broker never appeared, which is not a state
+  // to resume from by skipping the import.
+  const imported =
+    input.project !== undefined && names.has(GITEA_WEB_SERVICE) && names.has(GITEA_BROKER_SERVICE);
+  if (imported) return actions;
+
+  actions.push(
+    input.tokenNames.includes(GITEA_BROKER_TOKEN_NAME)
+      ? "regenerate-broker-token"
+      : "mint-broker-token",
+  );
+  actions.push("import-services");
+  return actions;
 }

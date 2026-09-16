@@ -1,8 +1,27 @@
 import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zerops";
 /**
- * `/zerops/new` — creates a Zerops project with a Zerops Mate container in
- * it, in the shape of the platform's own "add project" flow: scope (skipped
- * for a single membership) → project (name + location) → agents → wait.
+ * `/zerops/new` — *Add project*: a group, and its first Mate (guide 4.1, 4.2).
+ *
+ * ## A project is a registry entry
+ *
+ * Nothing platform-side is created for the project itself. The group is one
+ * `mate:gn:{groupId}:{slug}` tag written on the account's Gitea project
+ * (`groupCreation.ts`), and the account's broker builds the Gitea side from
+ * it — the org, its teams, the group repo, its runner — in about eighty
+ * seconds. The first Mate is an ordinary Zerops project created inside it and
+ * tagged with the group at birth, so it never exists ungrouped.
+ *
+ * That is why the registry write comes first and the Mate second: a Mate
+ * tagged into a group the registry does not know about is a Mate with no reach
+ * and no bot (guide 4.2).
+ *
+ * ## Two questions
+ *
+ * The name, and *What are we building?* — those words, and only those, become
+ * the Mate's first brief (D17). A generated hand-off is filled into the
+ * composer and left for the person to send; their own sentence is the one
+ * thing the app sends by itself, because they wrote it and watched the
+ * environment being built for it.
  *
  * The wait itself — polling, the ready → connect identity exchange, retry —
  * is `useZeropsProjectConnection` from `ZeropsProjectsPage`, shared with the
@@ -11,25 +30,31 @@ import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zer
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { OrganizationLocationsResourceRequest } from "@t3tools/client-runtime/zerops/data";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
-  canCreateProjectsInOrganization,
   generateBotName,
   generateZeropsGroupId,
+  planGroupMembership,
+  planGroupRegistration,
+  resolveAddProjectVerb,
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsOrganization,
+  type ZeropsRegistry,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
+import { findAccountGitea } from "~/zerops/giteaProject";
+import { InventoryContext } from "~/zerops/inventoryContext";
 import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import {
@@ -79,11 +104,28 @@ function isUncertainCreateFailure(cause: unknown): boolean {
 }
 
 /**
- * Runs the create call and reports which way it went. Kept free of React so
- * the create → wait / create → error branch is directly testable, and the
- * component only wires it to state.
+ * Registers the group, then creates its first Mate inside it.
+ *
+ * Kept free of React so the order — and every way it can stop half-way — is
+ * directly testable. The order is the point: the registry entry is what makes
+ * the group exist, and a Mate created before it would be a Mate in a group
+ * nobody has heard of. A registry write that fails therefore creates nothing;
+ * a Mate creation that fails leaves a registered group with no Mate in it,
+ * which is a group the person can add a Mate to and not a mess to clean up.
  */
 export async function submitZeropsNewProject(input: {
+  /** Writes `mate:gn:{groupId}:{slug}` on the account's Gitea project. */
+  readonly registerGroup: (registration: {
+    readonly groupId: string;
+    readonly tagList: ReadonlyArray<string>;
+  }) => Promise<void>;
+  /**
+   * Writes `mate:gm:{groupId}:{projectId}:mate` — the entry that gives the new
+   * Mate its reach and its Gitea bot (guide 4.2).
+   */
+  readonly registerMate: (tagList: ReadonlyArray<string>) => Promise<void>;
+  /** The registry as it stands, already read. */
+  readonly registry: ZeropsRegistry;
   readonly createProject: (args: {
     readonly clientId: string;
     readonly name: string;
@@ -108,24 +150,67 @@ export async function submitZeropsNewProject(input: {
    * The project exists. Called before the wait starts, so what this project is
    * for can be written down while its id is in hand (`creationHandoff.ts`).
    */
-  readonly onCreated?: (projectId: string) => void;
+  readonly onCreated?: (projectId: string, slug: string) => void;
   readonly onError: (message: string) => void;
   readonly onUncertain?: () => void;
 }): Promise<void> {
   const groupName = input.name.trim();
+  const registration = planGroupRegistration({
+    name: groupName,
+    groupId: input.groupId,
+    registry: input.registry,
+  });
+  if (!registration.ok) {
+    input.onError(registration.reason);
+    return;
+  }
+
+  try {
+    await input.registerGroup({
+      groupId: registration.plan.groupId,
+      tagList: registration.plan.tagList,
+    });
+  } catch (cause) {
+    input.onError(zeropsErrorMessage(cause));
+    return;
+  }
+
   try {
     const created = await input.createProject({
       clientId: input.clientId,
-      // A project IS a group, and what is created inside it is its first dev
-      // environment — so the environment carries the role in its name, the way
-      // every environment added afterwards does.
+      // The group has no project of its own; what is created here is its first
+      // dev environment, and it carries the role in its name the way every
+      // environment added afterwards does.
       name: `${groupName} - dev`,
       ...(input.locationId ? { location: input.locationId } : {}),
       agents: input.agents,
       group: { groupId: input.groupId, role: "dev", label: groupName },
       botName: input.botName,
     });
-    input.onCreated?.(created.project.id);
+    input.onCreated?.(created.project.id, registration.plan.slug);
+    // The membership entry, off the registry this call just wrote — not off a
+    // re-read, which would race the platform's own write.
+    const membership = planGroupMembership({
+      registry: {
+        ...input.registry,
+        groups: [
+          ...input.registry.groups,
+          {
+            groupId: input.groupId,
+            slug: registration.plan.slug,
+            projects: [],
+            matesMayRelease: false,
+          },
+        ],
+      },
+      groupId: input.groupId,
+      projectId: created.project.id,
+      kind: "mate",
+    });
+    // A membership write that fails leaves a Mate waiting for an owner, which
+    // is a state the rows already say — never a reason to fail a creation that
+    // produced a project that exists and runs.
+    if (membership.ok) await input.registerMate(membership.tagList).catch(() => undefined);
     input.onStartWaiting(input.clientId);
   } catch (cause) {
     if (isUncertainCreateFailure(cause)) input.onUncertain?.();
@@ -166,8 +251,11 @@ function ZeropsNewProjectContent() {
     setCreatingIn,
   } = useZeropsProjectConnection(activeOrganization?.id ?? null);
 
+  const inventory = useContext(InventoryContext);
+  const { client } = useZeropsSession();
   const [step, setStep] = useState<ZeropsNewProjectStep>("project");
-  const [name, setName] = useState("zerops-mate");
+  const [name, setName] = useState("");
+  const [brief, setBrief] = useState("");
   const [locationChoice, setLocationChoice] = useState<{
     readonly key: string;
     readonly id: string;
@@ -178,10 +266,28 @@ function ZeropsNewProjectContent() {
   const [creating, setCreating] = useState(false);
   const [createUncertain, setCreateUncertain] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Read once the Gitea project is known, and before the person reaches the
+  // create button: the slug is derived against the slugs already taken, and a
+  // registry read at click time would be a wait where none is expected.
+  const [registry, setRegistry] = useState<ZeropsRegistry | null>(null);
 
-  const canCreate = activeOrganization
-    ? canCreateProjectsInOrganization(activeOrganization)
-    : false;
+  // The registry lives on the account's Gitea project, and only its owners and
+  // admins may write it (D3) — a stricter gate than *can create projects*, and
+  // the one the platform will actually apply.
+  const gitea = useMemo(
+    () => findAccountGitea(inventory, activeOrganization?.id),
+    [activeOrganization?.id, inventory],
+  );
+  const addProject = resolveAddProjectVerb({
+    viewer: {
+      id: activeOrganization?.id ?? "",
+      membershipId: activeOrganization?.membershipId ?? "",
+      roleCode: activeOrganization?.roleCode,
+      canCreateProjects: activeOrganization?.canCreateProjects,
+    },
+    hasRegistry: gitea !== undefined,
+  });
+  const canCreate = addProject.offered;
   const locationRequest = useMemo<OrganizationLocationsResourceRequest | null>(
     () =>
       activeOrganization && canCreate
@@ -212,6 +318,23 @@ function ZeropsNewProjectContent() {
           : "loading";
   const locationError =
     locationResource.status === "failure" ? "Try again from the projects page." : null;
+
+  const giteaProjectId = gitea?.projectId;
+  useEffect(() => {
+    if (giteaProjectId === undefined) return;
+    const controller = new AbortController();
+    void client
+      .readGroupRegistry(giteaProjectId, controller.signal)
+      .then((read) => {
+        if (!controller.signal.aborted) setRegistry(read);
+      })
+      // A registry that cannot be read is a create that will say so when it is
+      // tried; there is nothing to tell the person about here.
+      .catch(() => undefined);
+    return () => {
+      controller.abort();
+    };
+  }, [client, giteaProjectId]);
 
   useEffect(() => {
     if (locations.length <= 1) return;
@@ -280,13 +403,13 @@ function ZeropsNewProjectContent() {
     );
   }
 
-  if (!canCreate) {
+  if (!addProject.offered) {
     return (
       <section className="rounded-xl border border-border/55 bg-card/20 px-4 py-4">
-        <h2 className="text-sm font-semibold text-foreground">Project creation is unavailable</h2>
+        <h2 className="text-sm font-semibold text-foreground">Nothing to add here</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          This membership can open assigned projects but cannot create a new one in{" "}
-          {activeOrganization.name}.
+          {addProject.reason} You can open every project of {activeOrganization.name} you have been
+          given.
         </p>
       </section>
     );
@@ -326,9 +449,18 @@ function ZeropsNewProjectContent() {
   }
 
   const createProject = () => {
+    if (gitea === undefined) return;
+    const giteaProjectId = gitea.projectId;
     setCreating(true);
     setCreateError(null);
     void submitZeropsNewProject({
+      registry: registry ?? { groups: [], leaving: [], other: [] },
+      registerGroup: async ({ tagList }) => {
+        await client.writeGroupRegistry({ giteaProjectId, tagList });
+      },
+      registerMate: async (tagList) => {
+        await client.writeGroupRegistry({ giteaProjectId, tagList });
+      },
       createProject: ({ clientId: _clientId, ...args }) =>
         runZeropsCommand(
           runtime.commands.createProjectWithMate({
@@ -345,12 +477,14 @@ function ZeropsNewProjectContent() {
       onCreated: (projectId) => {
         // The first Mate of a project is the one that most needs a job: there
         // is nothing in the environment yet, and setting that up is the whole
-        // reason it exists.
+        // reason it exists. What the person typed is carried with it — it, and
+        // not a sentence this app composed, is what gets sent (D17).
         rememberCreationHandoff(projectId, {
           environmentName: `${name.trim()} - dev`,
           groupName: name.trim(),
           role: "dev",
           source: { kind: "none" },
+          ...(brief.trim().length === 0 ? {} : { brief: brief.trim() }),
         });
       },
       onStartWaiting: (clientId) => {
@@ -373,10 +507,26 @@ function ZeropsNewProjectContent() {
             <Input
               id="zerops-new-project"
               value={name}
+              placeholder="Acme CRM"
               onChange={(event) => {
                 setName(event.target.value);
               }}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="zerops-new-project-brief">What are we building?</Label>
+            <Textarea
+              id="zerops-new-project-brief"
+              value={brief}
+              rows={3}
+              placeholder="A CRM for our sales team: contacts, deals and a weekly digest."
+              onChange={(event) => {
+                setBrief(event.target.value);
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Your first Mate gets these words, and only these, as its first message.
+            </p>
           </div>
           {locations.length > 1 ? (
             <div className="space-y-1.5">
@@ -448,7 +598,11 @@ function ZeropsNewProjectContent() {
             >
               Back
             </Button>
-            <Button size="sm" disabled={creating || createUncertain} onClick={createProject}>
+            <Button
+              size="sm"
+              disabled={creating || createUncertain || registry === null}
+              onClick={createProject}
+            >
               {creating ? <Spinner className="size-4" /> : null}
               Create project
             </Button>

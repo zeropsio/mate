@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ZeropsApiError, type ZeropsProject } from "@t3tools/client-runtime/zerops";
-import { canOperateProject, verifyOperableProjects } from "./projectAccess";
+import { canOperateProject, projectVisibility, verifyOperableProjects } from "./projectAccess";
 const membership = {
   id: "org",
   membershipId: "membership",
@@ -14,6 +14,56 @@ const project: ZeropsProject = {
   status: "ACTIVE",
 };
 describe("AL-08 / AL-10 authoritative project access", () => {
+  // A READ_ONLY project is listed, never opened (D5): it keeps its place in
+  // the tree so a colleague can name the Mate they want access to, and its row
+  // says whose it is.
+  it.each([
+    ["OWNER", "open"],
+    ["ADMIN", "open"],
+    ["BASIC_USER", "open"],
+    ["READ_ONLY", "listed"],
+    ["NO_ACCESS", "hidden"],
+  ] as const)("a %s override reads as %s", (roleCode, visibility) => {
+    expect(
+      projectVisibility(
+        { ...project, userRoles: [{ clientUserId: membership.membershipId, roleCode }] },
+        membership,
+      ),
+    ).toBe(visibility);
+  });
+
+  it("keeps a READ_ONLY project in the tree, not openable", async () => {
+    const readOnly: ZeropsProject = {
+      ...project,
+      userRoles: [{ clientUserId: membership.membershipId, roleCode: "READ_ONLY" }],
+    };
+    const result = await verifyOperableProjects(
+      {
+        listAccessibleClientProjects: async () => [readOnly],
+        fetchProject: async () => readOnly,
+      },
+      membership,
+    );
+
+    expect(result).toEqual([{ project: readOnly, role: "READ_ONLY", visibility: "listed" }]);
+  });
+
+  it("drops a NO_ACCESS project — that Mate is not theirs to know about", async () => {
+    const hidden: ZeropsProject = {
+      ...project,
+      userRoles: [{ clientUserId: membership.membershipId, roleCode: "NO_ACCESS" }],
+    };
+    const result = await verifyOperableProjects(
+      {
+        listAccessibleClientProjects: async () => [hidden],
+        fetchProject: async () => hidden,
+      },
+      membership,
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it.each([
     ["ADMIN", true],
     ["BASIC_USER", true],

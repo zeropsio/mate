@@ -13,6 +13,7 @@ import { Route as ZeropsRouteImport } from './routes/zerops'
 import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
+import { Route as GiteaSigninRouteImport } from './routes/gitea-signin'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
@@ -27,6 +28,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as GiteaCallbackRouteImport } from './routes/gitea.callback'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -48,6 +50,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GiteaSigninRoute = GiteaSigninRouteImport.update({
+  id: '/gitea-signin',
+  path: '/gitea-signin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -119,6 +126,11 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/projects/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GiteaCallbackRoute = GiteaCallbackRouteImport.update({
+  id: '/gitea/callback',
+  path: '/gitea/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -133,10 +145,12 @@ const ChatEnvironmentIdThreadIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -153,10 +167,12 @@ export interface FileRoutesByFullPath {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRoutesByTo {
+  '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -176,10 +192,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -200,10 +218,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/gitea-signin'
     | '/pair'
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -220,10 +240,12 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/gitea-signin'
     | '/pair'
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -242,10 +264,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/gitea-signin'
     | '/pair'
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -265,10 +289,12 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  GiteaSigninRoute: typeof GiteaSigninRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
+  GiteaCallbackRoute: typeof GiteaCallbackRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
@@ -302,6 +328,13 @@ declare module '@tanstack/react-router' {
       path: '/pair'
       fullPath: '/pair'
       preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gitea-signin': {
+      id: '/gitea-signin'
+      path: '/gitea-signin'
+      fullPath: '/gitea-signin'
+      preLoaderRoute: typeof GiteaSigninRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -402,6 +435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gitea/callback': {
+      id: '/gitea/callback'
+      path: '/gitea/callback'
+      fullPath: '/gitea/callback'
+      preLoaderRoute: typeof GiteaCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -463,10 +503,12 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  GiteaSigninRoute: GiteaSigninRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
+  GiteaCallbackRoute: GiteaCallbackRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
   ZeropsNewRoute: ZeropsNewRoute,

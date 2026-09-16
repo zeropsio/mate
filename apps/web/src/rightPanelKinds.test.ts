@@ -24,7 +24,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the seven launcher rows in their established order", () => {
+  it("keeps the eight launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -85,6 +85,13 @@ describe("right panel kinds", () => {
         shortcut: "V",
         unavailableHint: "Available in a Zerops project.",
       },
+      {
+        kind: "git",
+        label: "Git",
+        description: "Follow this Mate's branches and where they go.",
+        shortcut: "G",
+        unavailableHint: "Available in a Zerops project.",
+      },
     ]);
   });
 
@@ -106,6 +113,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        git: "available",
         data: "available",
       },
     },
@@ -126,6 +134,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unavailable",
         browser: "unavailable",
+        git: "unavailable",
         data: "unavailable",
       },
     },
@@ -140,6 +149,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unknown",
         browser: "unknown",
+        git: "unknown",
         data: "unknown",
       },
     },
@@ -154,6 +164,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        git: "available",
         data: "available",
       },
     },

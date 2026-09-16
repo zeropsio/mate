@@ -64,6 +64,7 @@ import {
   type TerminalMetadataStreamEvent,
   WS_METHODS,
   WsRpcGroup,
+  agentIdForProviderInstance,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
@@ -121,11 +122,15 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
+import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
+import { isTurnStartingCommand, mayStartTurn } from "./zerops/ZeropsProjectSigners.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
+import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
@@ -605,11 +610,13 @@ const makeWsRpcLayer = (
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
+      const projectSigners = yield* ZeropsProjectSigners.ZeropsProjectSigners;
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
+      const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -1185,6 +1192,68 @@ const makeWsRpcLayer = (
           );
         });
 
+      /**
+       * D6: only the person who signed an agent in runs it.
+       *
+       * The agent is resolved from the command's own model selection, or from
+       * the thread's when the command names none. An agent Mate never signs
+       * anybody in to, and an agent authorized by a token rather than by a
+       * personal login, are both unaffected — a token belongs to the project.
+       *
+       * The record is a tag on the Mate's project, which this container's key
+       * cannot write, so neither it nor its agent can forge it
+       * (`ZeropsProjectSigners`). A read that fails leaves the record
+       * unknown, and unknown refuses: "nobody recorded it" and "somebody
+       * else's" are the same thing to everyone but the person who knows.
+       */
+      const refuseTurnOnSomebodyElsesAgent = Effect.fnUntraced(function* (
+        normalizedCommand: OrchestrationCommand,
+      ) {
+        if (!isTurnStartingCommand(normalizedCommand.type)) return;
+        if (!isZeropsEnvironment(config)) return;
+        const commandInstanceId =
+          "modelSelection" in normalizedCommand
+            ? normalizedCommand.modelSelection?.instanceId
+            : undefined;
+        const threadInstanceId =
+          commandInstanceId === undefined && "threadId" in normalizedCommand
+            ? yield* projectionSnapshotQuery.getThreadShellById(normalizedCommand.threadId).pipe(
+                Effect.map(
+                  Option.match({
+                    onNone: () => undefined,
+                    onSome: (thread) => thread.modelSelection.instanceId as string | undefined,
+                  }),
+                ),
+                Effect.catchCause(() => Effect.succeed(undefined)),
+              )
+            : undefined;
+        const agentId = agentIdForProviderInstance(commandInstanceId ?? threadInstanceId);
+        if (agentId === undefined) return;
+
+        const snapshot = yield* zeropsAgentAuth.latest;
+        const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
+        if (agent === undefined) return;
+        const signers = yield* projectSigners.signers;
+        if (
+          mayStartTurn({
+            signer: signers[agentId],
+            subject: currentSession.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+              ? currentSession.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
+              : undefined,
+            credPresent: agent.credPresent,
+            tokenAuthorized: agent.flagToken,
+          })
+        ) {
+          return;
+        }
+        return yield* new OrchestrationDispatchCommandError({
+          message:
+            signers[agentId] === undefined
+              ? "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first."
+              : "This agent was signed in by another project member — only they can run it. Sign in with your own account first.",
+        });
+      });
+
       const dispatchNormalizedCommand = (
         normalizedCommand: OrchestrationCommand,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
@@ -1205,13 +1274,17 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        return startup
-          .enqueueCommand(dispatchEffect)
-          .pipe(
-            Effect.mapError((cause) =>
-              toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-            ),
-          );
+        return refuseTurnOnSomebodyElsesAgent(normalizedCommand).pipe(
+          Effect.andThen(
+            startup
+              .enqueueCommand(dispatchEffect)
+              .pipe(
+                Effect.mapError((cause) =>
+                  toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
+                ),
+              ),
+          ),
+        );
       };
 
       const loadServerConfig = Effect.gen(function* () {
@@ -2037,6 +2110,7 @@ const makeWsRpcLayer = (
           isZeropsEnvironment: isZeropsEnvironment(config),
           serverVersion: serverPackageJson.version,
           zeropsDataConsole,
+          zeropsGitRemoteProbe,
           subject: currentSession.subject,
           observeRpcEffect,
           observeRpcStream,

@@ -14,37 +14,16 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ZeropsLocation } from "../api.ts";
 import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
-import type { ExportedRecipe } from "../recipeExport.ts";
-import type { ZeropsGroupRecord } from "../recipeStore.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
   AccessState,
   AccountRef,
   AccountScope,
   OrganizationRef,
-  ProjectRef,
   ServiceRef,
   VerifiedAccessGrant,
 } from "./types.ts";
 import { organizationKeyOf, projectRoleGrantsAccess } from "./types.ts";
-
-/** A group recipe is read only while a creation surface explicitly demands it. */
-export interface RecipeGroupResourceRequest {
-  readonly kind: "recipe-group";
-  readonly account: AccountScope;
-  readonly organization: OrganizationRef;
-  readonly groupId: string;
-}
-
-/**
- * The adapter must strip project exports before returning from this request.
- * Raw export YAML is deliberately absent from every broker type.
- */
-export interface ProjectCloneSourceRecipeResourceRequest {
-  readonly kind: "project-clone-source-recipe";
-  readonly account: AccountScope;
-  readonly project: ProjectRef;
-}
 
 export interface OrganizationLocationsResourceRequest {
   readonly kind: "organization-locations";
@@ -65,11 +44,21 @@ export interface OrganizationIntegrationTokenGrantsResourceRequest {
   readonly organization: OrganizationRef;
 }
 
+/**
+ * What a group environment's service is running — the sha in the deployed
+ * version's name (guide 4.5, `groupDeploys.ts`). Read per service, because the
+ * name lives on the service and nowhere else.
+ */
+export interface ServiceDeployedVersionResourceRequest {
+  readonly kind: "service-deployed-version";
+  readonly account: AccountScope;
+  readonly service: ServiceRef;
+}
+
 export type ZeropsResourceRequest =
-  | RecipeGroupResourceRequest
-  | ProjectCloneSourceRecipeResourceRequest
   | OrganizationLocationsResourceRequest
   | ServiceAuthorizedAgentsResourceRequest
+  | ServiceDeployedVersionResourceRequest
   | OrganizationIntegrationTokenGrantsResourceRequest;
 
 export type ZeropsResourceKind = ZeropsResourceRequest["kind"];
@@ -82,10 +71,10 @@ export interface ZeropsIntegrationTokenGrantMetadata {
 }
 
 export interface ZeropsResourceValues {
-  readonly "recipe-group": ZeropsGroupRecord | undefined;
-  readonly "project-clone-source-recipe": ExportedRecipe | undefined;
   readonly "organization-locations": ReadonlyArray<ZeropsLocation>;
   readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
+  /** `undefined` for a service nothing has ever been deployed to. */
+  readonly "service-deployed-version": string | undefined;
   readonly "organization-integration-token-grants": ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
 }
 
@@ -132,17 +121,6 @@ export interface ZeropsResourceRequestContext {
  * before their Effects succeed.
  */
 export interface ZeropsResourceAdapter {
-  readonly readRecipeGroup: (
-    request: RecipeGroupResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<ZeropsResourceValues["recipe-group"], ZeropsResourceSourceError>;
-  readonly readProjectCloneSourceRecipe: (
-    request: ProjectCloneSourceRecipeResourceRequest,
-    context: ZeropsResourceRequestContext,
-  ) => Effect.Effect<
-    ZeropsResourceValues["project-clone-source-recipe"],
-    ZeropsResourceSourceError
-  >;
   readonly readOrganizationLocations: (
     request: OrganizationLocationsResourceRequest,
     context: ZeropsResourceRequestContext,
@@ -151,6 +129,10 @@ export interface ZeropsResourceAdapter {
     request: ServiceAuthorizedAgentsResourceRequest,
     context: ZeropsResourceRequestContext,
   ) => Effect.Effect<ZeropsResourceValues["service-authorized-agents"], ZeropsResourceSourceError>;
+  readonly readServiceDeployedVersion: (
+    request: ServiceDeployedVersionResourceRequest,
+    context: ZeropsResourceRequestContext,
+  ) => Effect.Effect<ZeropsResourceValues["service-deployed-version"], ZeropsResourceSourceError>;
   readonly readOrganizationIntegrationTokenGrants: (
     request: OrganizationIntegrationTokenGrantsResourceRequest,
     context: ZeropsResourceRequestContext,
@@ -190,7 +172,6 @@ export interface ZeropsResourceDiagnostics {
   readonly loading: number;
   readonly success: number;
   readonly failure: number;
-  readonly sensitiveEntries: number;
   readonly byKind: Readonly<Record<ZeropsResourceKind, number>>;
 }
 
@@ -248,13 +229,11 @@ const usableGrant = (access: AccessState): VerifiedAccessGrant | null => {
 
 const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
   switch (request.kind) {
-    case "recipe-group":
     case "organization-locations":
     case "organization-integration-token-grants":
       return request.organization;
-    case "project-clone-source-recipe":
-      return request.project.organization;
     case "service-authorized-agents":
+    case "service-deployed-version":
       return request.service.project.organization;
   }
 };
@@ -269,14 +248,11 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
     organization.organizationId,
   ];
   switch (request.kind) {
-    case "recipe-group":
-      return JSON.stringify([...prefix, request.groupId]) as ZeropsResourceKey;
-    case "project-clone-source-recipe":
-      return JSON.stringify([...prefix, request.project.projectId]) as ZeropsResourceKey;
     case "organization-locations":
     case "organization-integration-token-grants":
       return JSON.stringify(prefix) as ZeropsResourceKey;
     case "service-authorized-agents":
+    case "service-deployed-version":
       return JSON.stringify([
         ...prefix,
         request.service.project.projectId,
@@ -332,13 +308,8 @@ function resourceAdmission(
     return admissionError("access-denied");
   }
   if (
-    (request.kind === "project-clone-source-recipe" ||
-      request.kind === "service-authorized-agents") &&
-    !projectRoleGrantsAccess(
-      grant,
-      request.kind === "project-clone-source-recipe" ? request.project : request.service.project,
-      "any-role",
-    )
+    (request.kind === "service-authorized-agents" || request.kind === "service-deployed-version") &&
+    !projectRoleGrantsAccess(grant, request.service.project, "any-role")
   ) {
     return admissionError("access-denied");
   }
@@ -351,14 +322,12 @@ function readResource(
   context: ZeropsResourceRequestContext,
 ): Effect.Effect<AnyResourceValue, ZeropsResourceSourceError> {
   switch (request.kind) {
-    case "recipe-group":
-      return adapter.readRecipeGroup(request, context);
-    case "project-clone-source-recipe":
-      return adapter.readProjectCloneSourceRecipe(request, context);
     case "organization-locations":
       return adapter.readOrganizationLocations(request, context);
     case "service-authorized-agents":
       return adapter.readServiceAuthorizedAgents(request, context);
+    case "service-deployed-version":
+      return adapter.readServiceDeployedVersion(request, context);
     case "organization-integration-token-grants":
       return adapter.readOrganizationIntegrationTokenGrants(request, context);
   }
@@ -604,27 +573,19 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
   const diagnostics: Effect.Effect<ZeropsResourceDiagnostics> = lock.withPermit(
     Effect.sync(() => {
       const byKind: Record<ZeropsResourceKind, number> = {
-        "recipe-group": 0,
-        "project-clone-source-recipe": 0,
         "organization-locations": 0,
         "service-authorized-agents": 0,
+        "service-deployed-version": 0,
         "organization-integration-token-grants": 0,
       };
       let loading = 0;
       let success = 0;
       let failure = 0;
-      let sensitiveEntries = 0;
       for (const entry of entries.values()) {
         byKind[entry.request.kind] += 1;
         if (entry.snapshot.status === "loading") loading += 1;
         if (entry.snapshot.status === "success") success += 1;
         if (entry.snapshot.status === "failure") failure += 1;
-        if (
-          entry.request.kind === "recipe-group" ||
-          entry.request.kind === "project-clone-source-recipe"
-        ) {
-          sensitiveEntries += 1;
-        }
       }
       return {
         entries: entries.size,
@@ -632,7 +593,6 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         loading,
         success,
         failure,
-        sensitiveEntries,
         byKind,
       };
     }),

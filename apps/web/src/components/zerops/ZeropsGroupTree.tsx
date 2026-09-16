@@ -55,6 +55,14 @@ export interface ZeropsGroupTreeProps<T> {
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /** A tool's row — a different question from an environment's. */
   readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
+  /**
+   * Rows of a group that are not one of its Zerops projects — today the open
+   * pull requests on its group repo, which are changes to what its
+   * environments are made of (`groupRows.ts`). They land at the end of the
+   * same list the environments are in, because they are read in the same
+   * pass: who you talk to, where the code runs, what is waiting to change.
+   */
+  readonly renderGroupRows?: (group: ZeropsGroup) => ReactNode;
   /** Absent hides every create affordance — used where the tree is read-only. */
   readonly onCreateEnvironment?: (groupId: string, role: ZeropsEnvironmentRole) => void;
   /** Absent hides the tools section's own action. */
@@ -72,6 +80,13 @@ export interface ZeropsGroupTreeProps<T> {
   readonly creating?: boolean;
   /** A group's own actions, at the end of its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
+  /**
+   * One line under a group's name, when the group has something to say about
+   * itself as a whole — today only that its repositories are still being made
+   * (`groupRows.ts`). Empty is the usual answer and renders nothing, so the
+   * heading's height does not depend on an answer that arrives late.
+   */
+  readonly groupLine?: (group: ZeropsGroup) => string;
   readonly className?: string;
 }
 
@@ -167,6 +182,7 @@ function Members<T>({
   renderMate,
   renderEnvironment,
   addMate,
+  extraRows,
 }: {
   readonly entries: ReadonlyArray<{
     readonly item: T;
@@ -178,6 +194,8 @@ function Members<T>({
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   /** The "Add Mate" tile, or null where the caller cannot create one. */
   readonly addMate: ReactNode;
+  /** The group's rows that are not environments, after them. */
+  readonly extraRows?: ReactNode;
 }) {
   const mates = entries.filter(({ item }) => isMate(item));
   const others = entries.filter(({ item }) => !isMate(item));
@@ -191,7 +209,7 @@ function Members<T>({
           {addMate}
         </div>
       ) : null}
-      {others.length > 0 ? (
+      {others.length > 0 || (extraRows !== undefined && extraRows !== null) ? (
         <ul
           className="flex flex-col divide-y divide-border/50"
           data-zerops-surface="environment-rows"
@@ -199,6 +217,7 @@ function Members<T>({
           {others.map(({ item, role }) => (
             <Fragment key={getKey(item)}>{renderEnvironment(item, role)}</Fragment>
           ))}
+          {extraRows}
         </ul>
       ) : null}
     </>
@@ -212,16 +231,19 @@ export function ZeropsGroupTree<T>({
   renderMate,
   renderEnvironment,
   renderTool,
+  renderGroupRows,
   onCreateEnvironment,
   onCreateTool,
   onCreateProject,
   creating = false,
   renderGroupMenu,
+  groupLine,
   className,
 }: ZeropsGroupTreeProps<T>) {
   const members = (
     entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
     addMate: ReactNode,
+    extraRows?: ReactNode,
   ) => (
     <Members
       addMate={addMate}
@@ -230,6 +252,7 @@ export function ZeropsGroupTree<T>({
       isMate={isMate}
       renderEnvironment={renderEnvironment}
       renderMate={renderMate}
+      {...(extraRows === undefined ? {} : { extraRows })}
     />
   );
 
@@ -278,8 +301,12 @@ export function ZeropsGroupTree<T>({
               {groupNameIsPlaceholder(group) ? (
                 <span className="text-xs text-muted-foreground">This project has no name yet</span>
               ) : null}
+              {/* The group's own one line, when it has one. */}
+              {(groupLine?.(group) ?? "").length > 0 ? (
+                <span className="text-xs text-muted-foreground">{groupLine?.(group)}</span>
+              ) : null}
             </div>
-            {members(environments, addMate)}
+            {members(environments, addMate, renderGroupRows?.(group))}
             {missing.length > 0 ? (
               <div
                 className="-ms-1.5 flex flex-wrap items-center gap-1"

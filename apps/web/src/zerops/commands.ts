@@ -10,6 +10,10 @@
  *   (spec-mate.md §2.9 step 2), gated by the same `capabilities.mateUpdate`.
  * - `dataConsoleCall` — server scope: `AuthOrchestrationReadScope` (read-only
  *   in this slice — `dataconsole-api.md` §3, spec-dataconsole.md §4.3).
+ * - `gitProbeRemote` — server scope: `AuthOrchestrationReadScope`; a read, and
+ *   the only party that can answer whether a checkout's remote actually
+ *   answers (guide 4.5). The Git tab asks it on open and after each action,
+ *   never on a timer.
  *
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
@@ -49,6 +53,10 @@ export function createZeropsCommandAtoms<R, E>(
     label: "environment-data:zerops:dataConsoleCall",
     tag: WS_METHODS.zeropsDataConsoleCall,
   });
+  const gitProbeRemote = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:git:probeRemote",
+    tag: WS_METHODS.zeropsGitProbeRemote,
+  });
 
   return {
     agentLoginStart,
@@ -57,5 +65,6 @@ export function createZeropsCommandAtoms<R, E>(
     mateUpdate,
     mateCheckUpdate,
     dataConsoleCall,
+    gitProbeRemote,
   };
 }

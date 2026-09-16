@@ -6,14 +6,12 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
-import type { ZeropsGroupRecord } from "../recipeStore.ts";
+import type { ZeropsLocation } from "../api.ts";
 import {
   makeZeropsResourceBroker,
   zeropsResourceKeyOf,
   type OrganizationIntegrationTokenGrantsResourceRequest,
   type OrganizationLocationsResourceRequest,
-  type ProjectCloneSourceRecipeResourceRequest,
-  type RecipeGroupResourceRequest,
   type ServiceAuthorizedAgentsResourceRequest,
   type ZeropsResourceAdapter,
   type ZeropsResourceSourceError,
@@ -67,16 +65,6 @@ const service = (
   serviceId: ZeropsServiceId.make(serviceId),
 });
 
-const recipeGroupRequest = (
-  scope: AccountScope,
-  groupId = "group-a",
-): RecipeGroupResourceRequest => ({
-  kind: "recipe-group",
-  account: scope,
-  organization: organization(scope),
-  groupId,
-});
-
 const locationsRequest = (
   scope: AccountScope,
   orgId = "org-a",
@@ -86,22 +74,14 @@ const locationsRequest = (
   organization: organization(scope, orgId),
 });
 
-const cloneRequest = (
-  scope: AccountScope,
-  projectId = "project-a",
-): ProjectCloneSourceRecipeResourceRequest => ({
-  kind: "project-clone-source-recipe",
-  account: scope,
-  project: project(scope, projectId),
-});
-
 const authorizedAgentsRequest = (
   scope: AccountScope,
   serviceId = "service-a",
+  projectId = "project-a",
 ): ServiceAuthorizedAgentsResourceRequest => ({
   kind: "service-authorized-agents",
   account: scope,
-  service: service(scope, serviceId),
+  service: service(scope, serviceId, projectId),
 });
 
 const tokenGrantsRequest = (
@@ -113,10 +93,9 @@ const tokenGrantsRequest = (
 });
 
 const unusedAdapter = (overrides: Partial<ZeropsResourceAdapter> = {}): ZeropsResourceAdapter => ({
-  readRecipeGroup: () => Effect.sync(() => undefined),
-  readProjectCloneSourceRecipe: () => Effect.sync(() => undefined),
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
+  readServiceDeployedVersion: () => Effect.sync(() => undefined),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
   ...overrides,
 });
@@ -225,24 +204,6 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
         adapter: unusedAdapter({
-          readRecipeGroup: () => {
-            calls.push("recipe");
-            return Effect.succeed({
-              groupId: "group-a",
-              name: "App",
-              recipes: { dev: "services:\n  - hostname: app\n    envSecrets:\n      KEY: secret" },
-            });
-          },
-          readProjectCloneSourceRecipe: () => {
-            calls.push("clone");
-            return Effect.succeed({
-              servicesYaml: "services:\n  - hostname: app\n",
-              services: ["app"],
-              droppedContainers: ["zcp"],
-              builtFromGit: ["app"],
-              scrubbedBlocks: 2,
-            });
-          },
           readOrganizationLocations: () => {
             calls.push("locations");
             return Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]);
@@ -264,8 +225,6 @@ describe("makeZeropsResourceBroker", () => {
         }),
       });
       const requests = [
-        recipeGroupRequest(scope),
-        cloneRequest(scope),
         locationsRequest(scope),
         authorizedAgentsRequest(scope),
         tokenGrantsRequest(scope),
@@ -276,10 +235,10 @@ describe("makeZeropsResourceBroker", () => {
       );
       yield* Effect.forEach(leases, (lease) => lease.awaitSettled, { concurrency: "unbounded" });
 
-      expect(calls.sort()).toEqual(["agents", "clone", "grants", "locations", "recipe"]);
-      const agents = yield* leases[3]!.snapshot;
+      expect(calls.sort()).toEqual(["agents", "grants", "locations"]);
+      const agents = yield* leases[1]!.snapshot;
       expect(agents.status === "success" ? agents.value : null).toEqual(["codex"]);
-      const grants = yield* leases[4]!.snapshot;
+      const grants = yield* leases[2]!.snapshot;
       expect(grants.status === "success" ? grants.value : null).toEqual([
         {
           tokenId: "token-id",
@@ -288,7 +247,7 @@ describe("makeZeropsResourceBroker", () => {
         },
       ]);
       const diagnostics = yield* broker.diagnostics;
-      expect(diagnostics).toMatchObject({ entries: 5, success: 5, sensitiveEntries: 2 });
+      expect(diagnostics).toMatchObject({ entries: 3, success: 3 });
       expect(diagnostics).not.toHaveProperty("value");
       expect(diagnostics).not.toHaveProperty("error");
       yield* broker.shutdown;
@@ -298,28 +257,23 @@ describe("makeZeropsResourceBroker", () => {
     }),
   );
 
-  it.effect("retains an adapter-owned recipe value without normalizing its nested data", () =>
+  it.effect("retains an adapter-owned value without normalizing its nested data", () =>
     Effect.gen(function* () {
       const scope = accountScope();
-      const recipes: ZeropsGroupRecord["recipes"] = {
-        dev: "services:\n  - hostname: app\n    config:\n      exact: <@keep(this)>",
-        prod: "services:\n  - hostname: app\n",
-        stage: "services:\n  - hostname: app\n",
-      };
-      const value: ZeropsGroupRecord = { groupId: "group-a", name: "App", recipes };
+      const value: ReadonlyArray<ZeropsLocation> = [
+        { id: "prg1", name: "Prague", pingUrl: "https://ping.test" },
+      ];
       const broker = yield* makeZeropsResourceBroker({
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
-        adapter: unusedAdapter({ readRecipeGroup: () => Effect.succeed(value) }),
+        adapter: unusedAdapter({ readOrganizationLocations: () => Effect.succeed(value) }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker
-        .acquire(recipeGroupRequest(scope))
-        .pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
       const loaded = yield* lease.awaitSettled;
 
       expect(loaded.status === "success" ? loaded.value : null).toBe(value);
-      expect(loaded.status === "success" ? loaded.value?.recipes : null).toBe(recipes);
+      expect(loaded.status === "success" ? loaded.value[0] : null).toBe(value[0]);
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
@@ -369,15 +323,15 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
         adapter: unusedAdapter({
-          readProjectCloneSourceRecipe: () => {
+          readServiceAuthorizedAgents: () => {
             calls += 1;
-            return Effect.succeed(undefined);
+            return Effect.succeed([]);
           },
         }),
       });
       const leaseScope = yield* Scope.make();
       const denied = yield* broker
-        .acquire(cloneRequest(scope, "not-granted"))
+        .acquire(authorizedAgentsRequest(scope, "service-a", "not-granted"))
         .pipe(Scope.provide(leaseScope), Effect.result);
 
       expect(denied).toMatchObject({
@@ -399,20 +353,14 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Ref.get(access),
         adapter: unusedAdapter({
-          readRecipeGroup: (_request, context) => {
+          readOrganizationLocations: (_request, context) => {
             signal = context.abortSignal;
-            return Effect.succeed({
-              groupId: "group-a",
-              name: "Private",
-              recipes: { dev: "SECRET=erase-me" },
-            });
+            return Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]);
           },
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker
-        .acquire(recipeGroupRequest(scope))
-        .pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
       expect((yield* lease.awaitSettled).status).toBe("success");
 
       yield* Ref.set(access, {
@@ -426,7 +374,7 @@ describe("makeZeropsResourceBroker", () => {
 
       expect(yield* lease.snapshot).toEqual({ status: "released" });
       expect(signal?.aborted).toBe(true);
-      expect(yield* broker.diagnostics).toMatchObject({ entries: 0, sensitiveEntries: 0 });
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }),
@@ -439,21 +387,19 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope, 10)),
         adapter: unusedAdapter({
-          readRecipeGroup: () =>
-            Effect.succeed({ groupId: "group-a", name: "Private", recipes: { dev: "secret" } }),
+          readOrganizationLocations: () =>
+            Effect.succeed([{ id: "prg1", name: "Prague", pingUrl: "https://ping.test" }]),
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker
-        .acquire(recipeGroupRequest(scope))
-        .pipe(Scope.provide(leaseScope));
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
       expect((yield* lease.awaitSettled).status).toBe("success");
 
       yield* TestClock.adjust("10 millis");
       yield* Effect.yieldNow;
 
       expect(yield* lease.snapshot).toEqual({ status: "released" });
-      expect(yield* broker.diagnostics).toMatchObject({ entries: 0, sensitiveEntries: 0 });
+      expect(yield* broker.diagnostics).toMatchObject({ entries: 0 });
       yield* Scope.close(leaseScope, Exit.void);
       yield* broker.shutdown;
     }).pipe(Effect.provide(TestClock.layer())),
@@ -469,23 +415,19 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
         adapter: unusedAdapter({
-          readProjectCloneSourceRecipe: (_request, context) => {
+          readServiceAuthorizedAgents: (_request, context) => {
             signal = context.abortSignal;
             return Deferred.succeed(started, undefined).pipe(
               Effect.andThen(Deferred.await(finish)),
-              Effect.as({
-                servicesYaml: "services:\n  - hostname: private\n",
-                services: ["private"],
-                droppedContainers: [],
-                builtFromGit: [],
-                scrubbedBlocks: 1,
-              }),
+              Effect.as(["codex"] as const),
             );
           },
         }),
       });
       const leaseScope = yield* Scope.make();
-      const lease = yield* broker.acquire(cloneRequest(scope)).pipe(Scope.provide(leaseScope));
+      const lease = yield* broker
+        .acquire(authorizedAgentsRequest(scope))
+        .pipe(Scope.provide(leaseScope));
       yield* Deferred.await(started);
       yield* lease.release;
       expect(signal?.aborted).toBe(true);
@@ -506,17 +448,17 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
         adapter: unusedAdapter({
-          readRecipeGroup: () => {
+          readOrganizationLocations: () => {
             calls += 1;
             return calls === 1
               ? Effect.fail({ ...transportFailure(), message: "signed-url=do-not-publish" })
-              : Effect.succeed({ groupId: "group-a", name: "App", recipes: {} });
+              : Effect.succeed([]);
           },
         }),
       });
       const firstScope = yield* Scope.make();
       const secondScope = yield* Scope.make();
-      const request = recipeGroupRequest(scope);
+      const request = locationsRequest(scope);
       const first = yield* broker.acquire(request).pipe(Scope.provide(firstScope));
       const second = yield* broker.acquire(request).pipe(Scope.provide(secondScope));
       const failed = yield* first.awaitSettled;
@@ -534,7 +476,7 @@ describe("makeZeropsResourceBroker", () => {
       expect(yield* second.awaitSettled).toEqual({
         status: "success",
         attempt: 2,
-        value: { groupId: "group-a", name: "App", recipes: {} },
+        value: [],
       });
       expect(calls).toBe(2);
       yield* Scope.close(firstScope, Exit.void);
@@ -578,7 +520,7 @@ describe("makeZeropsResourceBroker", () => {
     }),
   );
 
-  it.effect("aborts and erases sensitive values on idempotent release and shutdown", () =>
+  it.effect("aborts and erases retained values on idempotent release and shutdown", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       const signals: Array<AbortSignal> = [];
@@ -586,15 +528,11 @@ describe("makeZeropsResourceBroker", () => {
         scope,
         access: Effect.succeed(verifiedAccess(scope)),
         adapter: unusedAdapter({
-          readRecipeGroup: (_request, context) => {
+          readOrganizationLocations: (_request, context) => {
             signals.push(context.abortSignal);
-            return Effect.succeed({
-              groupId: "group-a",
-              name: "App",
-              recipes: { dev: "services:\n  - envSecrets:\n      SECRET: erase-me" },
-            });
+            return Effect.succeed([{ id: "prg1", name: "erase-me", pingUrl: "https://ping.test" }]);
           },
-          readProjectCloneSourceRecipe: (_request, context) => {
+          readServiceAuthorizedAgents: (_request, context) => {
             signals.push(context.abortSignal);
             return Effect.never;
           },
@@ -603,13 +541,13 @@ describe("makeZeropsResourceBroker", () => {
       const recipeScope = yield* Scope.make();
       const cloneScope = yield* Scope.make();
       const recipe = yield* broker
-        .acquire(recipeGroupRequest(scope))
+        .acquire(locationsRequest(scope))
         .pipe(Scope.provide(recipeScope));
-      const clone = yield* broker.acquire(cloneRequest(scope)).pipe(Scope.provide(cloneScope));
+      const clone = yield* broker
+        .acquire(authorizedAgentsRequest(scope))
+        .pipe(Scope.provide(cloneScope));
       const loaded = yield* recipe.awaitSettled;
-      expect(
-        loaded.status === "success" ? loaded.value?.recipes.dev?.includes("erase-me") : false,
-      ).toBe(true);
+      expect(loaded.status === "success" ? loaded.value[0]?.name : undefined).toBe("erase-me");
       yield* recipe.release;
       yield* recipe.release;
       expect("value" in (yield* recipe.snapshot)).toBe(false);
@@ -624,7 +562,6 @@ describe("makeZeropsResourceBroker", () => {
         loading: 0,
         success: 0,
         failure: 0,
-        sensitiveEntries: 0,
       });
       const afterCloseScope = yield* Scope.make();
       const afterClose = yield* broker

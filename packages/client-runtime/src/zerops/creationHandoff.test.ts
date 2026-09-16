@@ -12,67 +12,62 @@ import {
   type ZeropsCreationHandoff,
 } from "./creationHandoff.ts";
 
-const CLONED: ZeropsCreationHandoff = {
+const FROM_TIER: ZeropsCreationHandoff = {
   environmentName: "Aurora - stage",
   groupName: "Aurora",
   role: "stage",
-  source: { kind: "clone", name: "Aurora - dev", needsDeploy: ["app"] },
+  source: { kind: "tier", services: ["app"] },
 };
 
 describe("creationHandoffPrompt", () => {
   it("names what the environment is, where it came from, and the job", () => {
-    const prompt = creationHandoffPrompt(CLONED);
+    const prompt = creationHandoffPrompt(FROM_TIER);
     expect(prompt).toContain("Aurora - stage");
     expect(prompt).toContain("stage environment");
     expect(prompt).toContain("Aurora");
-    expect(prompt).toContain("cloned from Aurora - dev");
+    expect(prompt).toContain("the project's recipe");
     expect(prompt).toContain("app");
   });
 
-  it("asks for a first deploy only where the clone could not carry the build", () => {
+  it("says nothing about deploying a tier that declared no services", () => {
     const prompt = creationHandoffPrompt({
-      ...CLONED,
-      source: { kind: "clone", name: "Aurora - dev", needsDeploy: [] },
+      ...FROM_TIER,
+      source: { kind: "tier", services: [] },
     });
     expect(prompt).not.toContain("deploy");
-    expect(prompt).toContain("cloned from Aurora - dev");
+    expect(prompt).toContain("the project's recipe");
   });
 
   it("lists every service that needs one, not just the first", () => {
     const prompt = creationHandoffPrompt({
-      ...CLONED,
-      source: { kind: "clone", name: "Aurora - dev", needsDeploy: ["api", "web"] },
+      ...FROM_TIER,
+      source: { kind: "tier", services: ["api", "web"] },
     });
     expect(prompt).toContain("api, web");
   });
 
-  it("tells a store-built environment which recipe it came up on", () => {
-    const prompt = creationHandoffPrompt({ ...CLONED, source: { kind: "store" } });
-    expect(prompt).toContain("the group's stage recipe");
-  });
-
   it("gives an empty environment the setting-up job instead", () => {
-    const prompt = creationHandoffPrompt({ ...CLONED, source: { kind: "none" } });
+    const prompt = creationHandoffPrompt({ ...FROM_TIER, source: { kind: "none" } });
     expect(prompt).toContain("nothing in it yet");
-    expect(prompt).not.toContain("cloned from");
+    expect(prompt).not.toContain("the project's recipe");
   });
 
   it("says the group only when it adds something the name does not", () => {
     // "Aurora - stage" already carries "Aurora"; repeating it reads like a bug.
-    expect(creationHandoffPrompt(CLONED)).not.toContain("in the Aurora project");
+    expect(creationHandoffPrompt(FROM_TIER)).not.toContain("in the Aurora project");
     expect(
-      creationHandoffPrompt({ ...CLONED, environmentName: "Nightly", groupName: "Aurora" }),
+      creationHandoffPrompt({ ...FROM_TIER, environmentName: "Nightly", groupName: "Aurora" }),
     ).toContain("in the Aurora project");
   });
 
   it("ends by asking for a report, so the run has somewhere to land", () => {
-    expect(creationHandoffPrompt(CLONED).trimEnd()).toMatch(/\.$/u);
-    expect(creationHandoffPrompt(CLONED)).toContain("tell me");
+    expect(creationHandoffPrompt(FROM_TIER).trimEnd()).toMatch(/\.$/u);
+    expect(creationHandoffPrompt(FROM_TIER)).toContain("tell me");
   });
 });
 
 describe("creation handoff storage", () => {
-  const handoff: ZeropsCreationHandoff = CLONED;
+  const handoff: ZeropsCreationHandoff = FROM_TIER;
 
   it("keeps a handoff against the project, which is all a creation knows", () => {
     const stored = withCreationHandoff({}, { projectId: "proj-1" }, handoff);
@@ -125,15 +120,34 @@ describe("creation handoff storage", () => {
 describe("creationJobToStart", () => {
   const READY = {
     environmentId: "env-1",
-    handoff: CLONED,
+    handoff: FROM_TIER,
     hasTarget: true,
     ready: true,
     agentSignInRequired: false,
     startedFor: null,
   };
 
-  it("says the job once everything it needs is there", () => {
-    expect(creationJobToStart(READY)).toEqual(CLONED);
+  it("fills the composer with a generated hand-off and leaves it there", () => {
+    expect(creationJobToStart(READY)).toEqual({
+      kind: "compose",
+      prompt: creationHandoffPrompt(FROM_TIER),
+    });
+  });
+
+  it("sends the person's own words, and only those (D17)", () => {
+    expect(
+      creationJobToStart({
+        ...READY,
+        handoff: { ...FROM_TIER, brief: "A CRM for our sales team." },
+      }),
+    ).toEqual({ kind: "send", prompt: "A CRM for our sales team." });
+  });
+
+  it("treats a blank answer as no answer rather than sending nothing", () => {
+    expect(creationJobToStart({ ...READY, handoff: { ...FROM_TIER, brief: "  \n " } })).toEqual({
+      kind: "compose",
+      prompt: creationHandoffPrompt(FROM_TIER),
+    });
   });
 
   it.each([
@@ -143,17 +157,17 @@ describe("creationJobToStart", () => {
     { name: "nothing was created here", patch: { handoff: undefined } },
     { name: "no agent is signed in", patch: { agentSignInRequired: true } },
     { name: "this caller already said it", patch: { startedFor: "env-1" } },
-  ])("says nothing while $name", ({ patch }) => {
-    expect(creationJobToStart({ ...READY, ...patch })).toBeUndefined();
+  ])("waits while $name", ({ patch }) => {
+    expect(creationJobToStart({ ...READY, ...patch })).toEqual({ kind: "wait" });
   });
 
   it("still speaks for a different environment than the one already started", () => {
-    expect(creationJobToStart({ ...READY, startedFor: "env-2" })).toEqual(CLONED);
+    expect(creationJobToStart({ ...READY, startedFor: "env-2" }).kind).toBe("compose");
   });
 
   it("waits rather than gives up: the same input answers again once it is ready", () => {
-    expect(creationJobToStart({ ...READY, ready: false })).toBeUndefined();
-    expect(creationJobToStart(READY)).toEqual(CLONED);
+    expect(creationJobToStart({ ...READY, ready: false })).toEqual({ kind: "wait" });
+    expect(creationJobToStart(READY).kind).toBe("compose");
   });
 });
 

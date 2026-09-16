@@ -17,6 +17,12 @@ export interface ZeropsEnvironmentServices {
   readonly hostnames: ReadonlyArray<string>;
   /** When code last landed in any of them; absent when nothing has been deployed. */
   readonly deployedAt: string | undefined;
+  /**
+   * The same services with their ids, which a version read needs — the name
+   * a version was deployed under lives on the service and is read per id
+   * (`groupDeploys.ts`). Same order as {@link ZeropsEnvironmentServices.hostnames}.
+   */
+  readonly deployable: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }
 
 function byName(left: string, right: string): number {
@@ -39,8 +45,10 @@ export function summarizeEnvironmentServices(
     if (version === null || version === undefined) continue;
     deployedAt = newer(deployedAt, version.lastUpdate ?? version.created);
   }
+  const ordered = [...own].sort((left, right) => byName(left.name, right.name));
   return {
-    hostnames: own.map((service) => service.name).sort(byName),
+    hostnames: ordered.map((service) => service.name),
     deployedAt,
+    deployable: ordered.map((service) => ({ serviceId: service.id, hostname: service.name })),
   };
 }

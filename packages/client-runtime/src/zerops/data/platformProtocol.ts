@@ -1051,6 +1051,7 @@ type ProjectResponseCommand = Extract<
     readonly kind:
       | "name-project-agent"
       | "update-project-group-tags"
+      | "set-project-member-role"
       | "create-project"
       | "create-project-with-mate"
       | "create-tool-project";
@@ -1064,7 +1065,9 @@ export function decodeProjectCommandResponse(
 ): ProtocolDecodeResult {
   const row = Option.getOrUndefined(decodeProjectRow(input));
   const expectedProject =
-    command.kind === "name-project-agent" || command.kind === "update-project-group-tags"
+    command.kind === "name-project-agent" ||
+    command.kind === "update-project-group-tags" ||
+    command.kind === "set-project-member-role"
       ? command.project
       : null;
   if (
@@ -1087,6 +1090,7 @@ export function decodeProjectCommandResponse(
     switch (command.kind) {
       case "name-project-agent":
       case "update-project-group-tags":
+      case "set-project-member-role":
         return command.project.organization;
       case "create-project":
       case "create-project-with-mate":

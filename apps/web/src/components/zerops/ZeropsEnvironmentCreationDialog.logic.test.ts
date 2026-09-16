@@ -8,89 +8,61 @@ import {
   type RecipeOption,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
-const SOURCE = {
-  projectId: "p1",
-  name: "acme-docs-dev",
-  agentName: "Fen",
-  services: ["app", "db"],
-  builtFromGit: [],
-  yaml: "services:\n  - hostname: app\n",
+/** A tier as the group repo's `main` hands it over, already import-ready. */
+const TIER = {
+  kind: "tier" as const,
+  tier: "stage" as const,
+  yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
+  sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
 };
 
 describe("recipeOptions", () => {
-  it("offers the store recipe first, then clones, then nothing yet", () => {
+  it("offers the project's recipe first, then nothing yet", () => {
     const options = recipeOptions({
       roleLabel: "Stage",
-      storeRecipeAvailable: true,
-      sources: [SOURCE],
+      tier: TIER,
+      services: ["app", "db"],
     });
-    expect(options.map((option) => option.id)).toEqual(["store", "clone:p1", "none"]);
-    expect(options[0]?.label).toBe("The group's stage recipe");
-    expect(options[1]?.label).toBe("Clone Fen (acme-docs-dev)");
-    expect(options[1]?.detail).toBe("app, db · copied without code; the first deploy fills them");
+    expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
+    expect(options[0]?.label).toBe("The project's stage recipe");
   });
 
   /**
-   * Measured on the demo: `Shortlink - stage` and `- production` both cloned a
-   * dev whose app was deployed by `zerops_deploy`, so `builtFromGit` was empty
-   * and nothing was said — and both came up `READY_TO_DEPLOY` with no code.
-   * The old note answered "was this built from git"; the reader is asking
-   * "will this run when it comes up".
+   * Every service arrives empty whatever the tier said: the platform cannot
+   * clone a private repository, so `importReadyTier` turned each build into
+   * `startWithoutCode` and the first deploy is what fills them. Measured on the
+   * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
-  it("says a clone arrives without code, whatever the source was built by", () => {
-    const options = recipeOptions({
-      roleLabel: "Stage",
-      storeRecipeAvailable: false,
-      sources: [SOURCE],
-    });
-    expect(options[0]?.detail).toBe("app, db · copied without code; the first deploy fills them");
+  it("says the services arrive without code", () => {
+    const options = recipeOptions({ roleLabel: "Stage", tier: TIER, services: ["app", "db"] });
+    expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
   });
 
-  it("keeps the sharper warning for a service whose build setup cannot be carried", () => {
-    const options = recipeOptions({
-      roleLabel: "Dev",
-      storeRecipeAvailable: false,
-      sources: [{ ...SOURCE, builtFromGit: ["app"] }],
-    });
-    expect(options[0]?.detail).toBe(
-      "app, db · copied without code; the first deploy fills them · app builds from a repository, and its build setup is not carried",
-    );
-  });
-
-  it("explains an empty clone list rather than showing a lone option", () => {
-    const options = recipeOptions({ roleLabel: "Dev", storeRecipeAvailable: false, sources: [] });
-    expect(options).toHaveLength(1);
-    expect(options[0]?.detail).toBe(
-      "Nothing in this project has services to copy yet. The agent sets the application up.",
-    );
-  });
-
-  it("always offers nothing yet, even with no store and no siblings", () => {
-    const options = recipeOptions({ roleLabel: "Dev", storeRecipeAvailable: false, sources: [] });
+  it("explains a project with no recipe rather than showing a lone option", () => {
+    const options = recipeOptions({ roleLabel: "Dev", tier: undefined, services: [] });
     expect(options.map((option) => option.id)).toEqual(["none"]);
+    expect(options[0]?.detail).toBe(
+      "This project has no recipe on main yet. The agent sets the application up.",
+    );
   });
 
-  it("names a sibling by its project when it has no agent", () => {
-    const options = recipeOptions({
-      roleLabel: "Dev",
-      storeRecipeAvailable: false,
-      sources: [{ ...SOURCE, agentName: undefined }],
-    });
-    expect(options[0]?.label).toBe("Clone acme-docs-dev");
+  it("still names the recipe when the tier declares no services", () => {
+    const options = recipeOptions({ roleLabel: "Dev", tier: TIER, services: [] });
+    expect(options[0]?.detail).toBe("From the project's repository, on main.");
   });
 });
 
 describe("validateCreationForm", () => {
   const options: ReadonlyArray<RecipeOption> = recipeOptions({
     roleLabel: "Stage",
-    storeRecipeAvailable: false,
-    sources: [SOURCE],
+    tier: TIER,
+    services: ["app"],
   });
   const valid = {
     name: "Acme Docs - stage",
     withAgent: true,
     botName: "Otto",
-    recipeId: "clone:p1",
+    recipeId: "tier",
   };
 
   it("accepts a complete form", () => {
@@ -144,35 +116,28 @@ describe("validateCreationForm", () => {
 
 describe("validateCreationForm, on an environment with no agent", () => {
   /**
-   * A production is a copy of a dev's services, so it cannot be made until a
-   * dev has some. The old message stated the rule and left the reader to
-   * deduce the order — measured on the demo, where "Add production" refused
-   * on a group whose only Mate had not built anything yet.
+   * With no recipe on `main` the fix is not in this dialog at all — it is a
+   * pull request on the group repo. The old message stated the rule and left
+   * the reader to deduce the order.
    */
-  it("says to build something first when the group has nothing to copy", () => {
-    const options = recipeOptions({ roleLabel: "Prod", storeRecipeAvailable: false, sources: [] });
+  it("says to merge a recipe first when the project has none", () => {
+    const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [] });
     expect(
       validateCreationForm(
         { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
         { takenBotNames: [], options },
       ).recipe,
-    ).toBe(
-      "Nothing in this project has services to copy yet. Build something in a dev environment first, or switch the agent on.",
-    );
+    ).toBe("This project has no recipe on main yet. Merge one first, or switch the agent on.");
   });
 
-  it("says to pick one when there is something to copy", () => {
-    const options = recipeOptions({
-      roleLabel: "Prod",
-      storeRecipeAvailable: false,
-      sources: [SOURCE],
-    });
+  it("says to take the recipe when there is one", () => {
+    const options = recipeOptions({ roleLabel: "Prod", tier: TIER, services: ["app"] });
     expect(
       validateCreationForm(
         { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
         { takenBotNames: [], options },
       ).recipe,
-    ).toBe("Choose an application to copy, or switch the agent on to have one set up.");
+    ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
   });
 });
 

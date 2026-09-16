@@ -18,16 +18,31 @@ import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
+import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
+import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
+import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
-  ZeropsAgentLoginModule.layer.pipe(Layer.provideMerge(ZeropsAgentAuth.layer)),
+  // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
+  // reads who signed each agent in for its snapshot, and `ws.ts` asks the same
+  // service before it lets a turn start (D6). One reader, one cache.
+  ZeropsAgentLoginModule.layer.pipe(
+    Layer.provideMerge(ZeropsAgentAuth.layer),
+    Layer.provideMerge(ZeropsProjectSignersModule.layer),
+  ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
   ZeropsDataConsoleModule.layer,
+  ZeropsGitRemoteProbeModule.layer,
+  // Not a feed: the loop that ends a session whose person's role changed. It
+  // lives here because this is where the Zerops services are composed, and it
+  // is deliberately absent from the fixture layer — a fixture scene has no
+  // platform to re-read.
+  ZeropsMembershipWatchModule.layer,
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

@@ -153,11 +153,19 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
+import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
+import {
+  AGENT_OWNERSHIP_RECOVERY_LABEL,
+  agentOwnershipComposerNotice,
+  resolveAgentOwnership,
+} from "@t3tools/client-runtime/zerops/agentOwnership";
+import { agentIdForProviderInstance } from "@t3tools/contracts";
 import { useProjectTopology } from "../zerops/useProjectTopology";
 import {
   deriveAgentPanelModel,
@@ -172,6 +180,7 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   GitBranchIcon,
+  LockIcon,
   Minimize2Icon,
   PaperclipIcon,
   WifiOffIcon,
@@ -3306,6 +3315,10 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "data");
   }, [activeThreadRef]);
+  const addGitSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "git");
+  }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
       if (!activeThreadRef) return;
@@ -3335,6 +3348,26 @@ function ChatViewContent(props: ChatViewProps) {
     if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
   }, [activeThreadRef, zeropsTopology]);
   const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
+  // The agent this composer would actually spend — the selected provider
+  // instance, resolved to one of the two agents Mate signs people in to. A
+  // driver Mate never signs anybody in to has no signer to speak of.
+  const zeropsOwnedAgent = zeropsAgentAuth?.agents.find(
+    (agent) =>
+      agent.agentId ===
+      agentIdForProviderInstance(
+        activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+      ),
+  );
+  // D6: only the person who signed an agent in runs it. The server refuses
+  // everybody else's turn; this is what says so before they type one.
+  const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
+  const zeropsAgentOwnership = resolveAgentOwnership({
+    credPresent: zeropsOwnedAgent?.credPresent ?? false,
+    ...(zeropsOwnedAgent?.authorizedBy === undefined
+      ? {}
+      : { authorizedBy: { subject: zeropsOwnedAgent.authorizedBy.subject } }),
+    viewerSubject: zeropsViewerSubject,
+  });
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
@@ -4701,10 +4734,35 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
+  const agentOwnershipBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (zeropsOwnedAgent === undefined) return null;
+    // A token-authorized agent is nobody's personal login: an API key belongs
+    // to the project, so nothing is said about it.
+    if (zeropsOwnedAgent.flagToken) return null;
+    const notice = agentOwnershipComposerNotice(zeropsAgentOwnership);
+    if (notice === undefined) return null;
+    return {
+      id: `agent-ownership:${zeropsOwnedAgent.agentId}:${zeropsAgentOwnership}`,
+      variant: "warning",
+      icon: <LockIcon />,
+      title: notice,
+      actions: (
+        <Button size="xs" onClick={openAgentAuthDialog}>
+          {AGENT_OWNERSHIP_RECOVERY_LABEL}
+        </Button>
+      ),
+    } satisfies ComposerBannerStackItem;
+  }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent]);
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
-    const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
+    const urgentSystemItems = [
+      // Whose agent this is comes first: it is the one banner that says the
+      // turn they are about to type will not run at all.
+      ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
+      ...systemComposerBannerItems.filter(isUrgentSystemItem),
+    ];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
@@ -4771,6 +4829,7 @@ function ChatViewContent(props: ChatViewProps) {
     ];
   }, [
     activeBranchMismatchKey,
+    agentOwnershipBannerItem,
     backgroundLivenessBannerItem,
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
@@ -6527,6 +6586,9 @@ function ChatViewContent(props: ChatViewProps) {
       case "data":
         addDataSurface();
         return;
+      case "git":
+        addGitSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -6614,6 +6676,8 @@ function ChatViewContent(props: ChatViewProps) {
                     </div>
                   );
                 });
+            case "git":
+              return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;

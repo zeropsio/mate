@@ -11,11 +11,7 @@ import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   ZeropsServiceId,
-  type RecipeGroupResourceRequest,
   type ServiceAuthorizedAgentsResourceRequest,
-  type ZeropsResourceBroker,
-  type ZeropsResourceRequest,
-  type ZeropsResourceValue,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import type * as React from "react";
@@ -28,12 +24,20 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  resolveMateOwnerName,
+  resolveMateVerbs,
+  resolveMateVisibility,
+  type MateVerbs,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
+import { randomUUID } from "~/lib/utils";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import {
   useZeropsCandidates,
@@ -41,11 +45,21 @@ import {
 } from "~/zerops/useZeropsCandidates";
 import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
 import { mateUpdateLine } from "~/zerops/mateUpdate";
-import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
+import {
+  integrationTokensFromGrantMetadata,
+  useZeropsGroupReach,
+} from "~/zerops/useZeropsGroupReach";
+import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
+import {
+  fetchMateGiteaCredential,
+  useZeropsGiteaCredential,
+} from "~/zerops/useZeropsGiteaCredential";
+import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
+import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
+import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
@@ -54,14 +68,22 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
-  canCreateEnvironment,
+  deployWord,
+  environmentRow,
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
+  GROUP_BEING_SET_UP_LINE,
   hasMate,
+  isZcpService,
   planEnvironmentCreation,
+  planGroupMembership,
+  pullRequestRow,
+  registerMateVerb,
+  resolveMateRegistration,
   readZeropsGroupTags,
+  resolveGroupGitea,
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
@@ -94,7 +116,19 @@ import {
   type ZeropsMenuEntry,
 } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
-import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
+import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
+import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
+import { findAccountGitea } from "~/zerops/giteaProject";
+import { giteaClientFor } from "~/zerops/giteaSession";
+import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
+import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "~/zerops/useZeropsGroupDeploys";
+import {
+  readZeropsResourceOnce,
+  useZeropsDeployedVersionReader,
+} from "~/zerops/useZeropsDeployedVersion";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
 import {
@@ -118,28 +152,6 @@ interface EnvironmentCreationView {
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
 }
 
-/**
- * A one-shot action demand owns its lease until the resource settles, or
- * until `signal` aborts — an unmount abandoning the flow releases the lease
- * immediately instead of holding it until the read finally settles.
- */
-export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
-  resources: ZeropsResourceBroker,
-  request: Request,
-  signal?: AbortSignal,
-): Promise<ZeropsResourceValue<Request> | undefined> {
-  return Effect.runPromise(
-    Effect.scoped(
-      resources.acquire(request).pipe(
-        Effect.flatMap((lease) => lease.awaitSettled),
-        Effect.map((snapshot) => (snapshot.status === "success" ? snapshot.value : undefined)),
-        Effect.orElseSucceed(() => undefined),
-      ),
-    ),
-    signal === undefined ? undefined : { signal },
-  ).catch(() => undefined);
-}
-
 export function autoConnectServedZeropsEnvironment(input: {
   readonly attempted: { current: boolean };
   readonly status: ZeropsSessionStatus;
@@ -158,7 +170,8 @@ export function autoConnectServedZeropsEnvironment(input: {
     input.status !== "signed-in" ||
     !input.zeropsToken ||
     input.authGate.status !== "requires-auth" ||
-    !input.authGate.auth.bootstrapMethods.includes("zerops-identity")
+    // The throwaway door, which is the only one this client presents at.
+    !input.authGate.auth.bootstrapMethods.includes("zerops-throwaway")
   ) {
     return;
   }
@@ -481,23 +494,63 @@ function ZeropsProjectsContent() {
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
   const pageError = connectError ?? error;
+  // What this person may do with each Mate, from the one role function the
+  // door runs too (D5). A `listed` row is shown and never opened.
+  const viewer =
+    activeOrganization === null
+      ? null
+      : {
+          id: activeOrganization.id,
+          membershipId: activeOrganization.membershipId,
+          roleCode: activeOrganization.roleCode,
+          canCreateProjects: activeOrganization.canCreateProjects,
+        };
+  const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
+    viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+  // Guide 0.8: a verb this person cannot finish is not offered. Every one of
+  // them is a platform write the platform would refuse from the wrong role.
+  const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
+    viewer === null
+      ? { open: true, rename: true, tag: true, move: true, assign: false }
+      : resolveMateVerbs({ project: candidate.project, viewer });
+  // The member list is read when a row would use a name — a Mate this person
+  // may see and not open — and when they may hand a Mate over and so need
+  // somebody to hand it to. Never otherwise.
+  const anyListed = candidates.some((candidate) => visibilityOf(candidate) === "listed");
+  const anyAssignable = candidates.some((candidate) => verbsOf(candidate).assign);
+  const assignableMembers = useZeropsOrganizationMembers({
+    clientId: activeOrganization?.id,
+    enabled: anyListed || anyAssignable,
+  });
+  const members = assignableMembers;
+
   const rowInput = (
     candidate: ZeropsCandidate,
     role?: ZeropsEnvironmentRole | undefined,
-  ): ZeropsRowInput => ({
-    candidate,
-    health: candidateHealth.get(candidate.key),
-    can: {
-      open: true,
-      connect: true,
-      enable: true,
-      wait: true,
-      setUpMate: true,
-      start: true,
-      restart: true,
-    },
-    ...(role === undefined ? {} : { role }),
-  });
+  ): ZeropsRowInput => {
+    const visibility = visibilityOf(candidate);
+    const openable = visibility !== "listed";
+    const ownerName =
+      visibility === "listed"
+        ? resolveMateOwnerName({ project: candidate.project, members })
+        : undefined;
+    return {
+      candidate,
+      health: candidateHealth.get(candidate.key),
+      can: {
+        open: openable,
+        connect: openable,
+        enable: openable,
+        wait: openable,
+        setUpMate: openable,
+        start: openable,
+        restart: openable,
+      },
+      ...(role === undefined ? {} : { role }),
+      ...(visibility === undefined ? {} : { visibility }),
+      ...(ownerName === undefined ? {} : { ownerName }),
+    };
+  };
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
 
@@ -610,6 +663,7 @@ function ZeropsProjectsContent() {
   const [rowDialog, setRowDialog] = useState<
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
+    | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | null
   >(null);
@@ -629,6 +683,23 @@ function ZeropsProjectsContent() {
           runtime.commands.nameProjectAgent(
             projectRef(activeOrganization.id, candidate.project.id),
             name,
+          ),
+        );
+      }),
+    [activeOrganization, projectRef, runWrite, runtime.commands],
+  );
+  /**
+   * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
+   * for the person picked. The one write in the app that carries `userRoles`.
+   */
+  const assignMate = useCallback(
+    (candidate: ZeropsCandidate, clientUserId: string) =>
+      runWrite(() => {
+        if (activeOrganization === null) return Promise.resolve();
+        return runZeropsCommand(
+          runtime.commands.setProjectMemberRole(
+            projectRef(activeOrganization.id, candidate.project.id),
+            { clientUserId, roleCode: "OWNER" },
           ),
         );
       }),
@@ -695,6 +766,58 @@ function ZeropsProjectsContent() {
     );
 
   /**
+   * *Register in {group}* — the write a colleague's Mate is waiting on.
+   *
+   * A member with *can create projects* makes a Mate and cannot write the
+   * registry, so it runs with no group reach and no bot until an owner or an
+   * admin adds it (guide 4.2). Offered to them and to nobody else: the row
+   * already says who it is waiting for.
+   */
+  const registerVerb = (
+    candidate: ZeropsCandidatePresentation,
+    tags: ZeropsGroupTags,
+  ): string | undefined => {
+    if (tags.groupId === undefined || !hasMate(candidate)) return undefined;
+    const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
+    if (group === undefined) return undefined;
+    return registerMateVerb({
+      registration: resolveMateRegistration({
+        registry: registryState.registry,
+        projectId: candidate.project.id,
+      }),
+      viewerRole: activeOrganization?.roleCode,
+      groupName: group.name,
+    });
+  };
+
+  /** Writes the group's registry entry for a Mate, as the owner. */
+  const registerMate = async (
+    candidate: ZeropsCandidatePresentation,
+    tags: ZeropsGroupTags,
+  ): Promise<void> => {
+    if (tags.groupId === undefined || giteaProjectId === undefined) return;
+    const membership = planGroupMembership({
+      registry: registryState.registry,
+      groupId: tags.groupId,
+      projectId: candidate.project.id,
+      kind: "mate",
+    });
+    if (!membership.ok) {
+      setToolError(membership.reason);
+      return;
+    }
+    try {
+      await client.writeGroupRegistry({ giteaProjectId, tagList: membership.tagList });
+      // The credential reconcile runs off the registry, so the Mate gets its
+      // bot on the next pass rather than on a step this verb has to sequence.
+      registryState.refresh();
+      setToolError(null);
+    } catch (cause) {
+      setToolError(zeropsErrorMessage(cause));
+    }
+  };
+
+  /**
    * The quiet actions of a card or a row: the environment's public access,
    * the Mate's name when there is a Mate, and where the environment sits in
    * its project.
@@ -707,6 +830,7 @@ function ZeropsProjectsContent() {
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const verbs = verbsOf(candidate);
     const restart = deriveZeropsRestartAction(rowInput(candidate));
     const quickActions: ReadonlyArray<ZeropsMenuAction> = mate
       ? [
@@ -742,7 +866,7 @@ function ZeropsProjectsContent() {
           ...(quickActions.length > 0
             ? [{ id: "quick", separator: true } satisfies ZeropsMenuEntry]
             : []),
-          ...(mate
+          ...(mate && verbs.rename
             ? [
                 {
                   id: "rename-agent",
@@ -753,14 +877,41 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          {
-            id: "move",
-            label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
-            onSelect: () => {
-              setRowDialog({ kind: "move", candidate });
-            },
-          },
-          ...(tags.groupId === undefined
+          ...(registerVerb(candidate, tags) === undefined
+            ? []
+            : [
+                {
+                  id: "register",
+                  label: registerVerb(candidate, tags) ?? "",
+                  onSelect: () => {
+                    void registerMate(candidate, tags);
+                  },
+                },
+              ]),
+          ...(verbs.assign
+            ? [
+                {
+                  id: "assign",
+                  label: "Hand this Mate over",
+                  onSelect: () => {
+                    setRowDialog({ kind: "assign", candidate });
+                  },
+                },
+              ]
+            : []),
+          ...(verbs.move
+            ? [
+                {
+                  id: "move",
+                  label:
+                    tags.groupId === undefined ? "Move to a project" : "Change project or role",
+                  onSelect: () => {
+                    setRowDialog({ kind: "move", candidate });
+                  },
+                },
+              ]
+            : []),
+          ...(tags.groupId === undefined || !verbs.move
             ? []
             : [
                 {
@@ -993,39 +1144,109 @@ function ZeropsProjectsContent() {
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  const cloneSiblings = useMemo(
+  const accountGitea = useMemo(
+    () => findAccountGitea(inventory, activeOrganization?.id),
+    [activeOrganization?.id, inventory],
+  );
+  const giteaProjectId = accountGitea?.projectId;
+  const giteaEndpoints = useMemo(() => {
+    const state = accountGitea?.state;
+    return state?.url === undefined || state.brokerUrl === undefined
+      ? undefined
+      : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
+  }, [accountGitea]);
+  // The registry — which groups exist, and what each one's Gitea org is called
+  // (guide 4.1). One project read, on the one screen that sees the account.
+  const registryState = useZeropsRegistry({
+    giteaProjectId: giteaProjectId,
+    enabled: status === "signed-in",
+  });
+
+  // The recipe is the group repo's, read as the person (guide 4.3) — never a
+  // sibling's export, which carried service shapes without their build setup
+  // and produced environments that could not build.
+  const groupRecipe = useZeropsGroupRecipe({
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    tier:
+      creationRequest?.role === "prod"
+        ? "production"
+        : creationRequest?.role === "stage"
+          ? "stage"
+          : "mate",
+    enabled: creationRequest !== null,
+  });
+
+  // The registry says which groups were asked for; `GET /orgs/{slug}` says
+  // which the broker has actually made (guide 4.5).
+  const giteaOrganizations = useZeropsGroupOrganizations({
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    slugs: registryState.registry.groups.map((group) => group.slug),
+    enabled: status === "signed-in",
+  });
+
+  /**
+   * Which Zerops projects each group holds, and what runtime services are in
+   * them — the account's half of the environment rows. The group repo's half
+   * (which of them an environment declares, and what feeds it) is the hook's.
+   */
+  const deployGroups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
     () =>
-      requestedGroup === undefined
-        ? null
-        : requestedGroup.environments.map(({ item }) => {
-            const bot = readZeropsGroupTags(item.project.tagList).bot?.trim();
-            return {
+      registryState.registry.groups.flatMap((entry) => {
+        const tree = groupTree.groups.find(({ group }) => group.groupId === entry.groupId);
+        if (tree === undefined) return [];
+        return [
+          {
+            groupId: entry.groupId,
+            slug: entry.slug,
+            projects: tree.environments.map(({ item }) => ({
               projectId: item.project.id,
               name: item.project.name,
-              agentName: bot === undefined || bot.length === 0 ? undefined : bot,
-            };
-          }),
-    [requestedGroup],
+              services: item.services?.deployable ?? [],
+            })),
+          },
+        ];
+      }),
+    [groupTree.groups, registryState.registry.groups],
   );
-  const cloneSources = useZeropsCloneSources(activeOrganization?.id ?? null, cloneSiblings);
-  const storeRecipeRequest = useMemo<RecipeGroupResourceRequest | null>(
-    () =>
-      creationRequest !== null && activeOrganization !== null
-        ? {
-            kind: "recipe-group",
-            account: runtime.scope,
-            organization: organizationRef(activeOrganization.id),
-            groupId: creationRequest.groupId,
-          }
-        : null,
-    [activeOrganization, creationRequest, organizationRef, runtime.scope],
+
+  const readDeployedVersion = useZeropsDeployedVersionReader();
+  const groupDeploys = useZeropsGroupDeploys({
+    groups: deployGroups,
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    readVersion: readDeployedVersion,
+    enabled: status === "signed-in",
+  });
+
+  /**
+   * The environment row of one Zerops project, when some group declares it.
+   * A project no `environments.yaml` names is not a group environment and
+   * keeps the row it always had.
+   */
+  const declaredEnvironment = useCallback(
+    (projectId: string) => {
+      for (const state of groupDeploys.values()) {
+        const found = state.environments.find((entry) => entry.projectId === projectId);
+        if (found !== undefined) return environmentRow(found);
+      }
+      return undefined;
+    },
+    [groupDeploys],
   );
-  const storeRecipeResource = useZeropsResource(storeRecipeRequest);
-  const storeRecipeRecord =
-    storeRecipeResource.status === "success" ? storeRecipeResource.value : undefined;
-  const storeRecipeAvailable =
-    creationRequest !== null &&
-    canCreateEnvironment(storeRecipeRecord, creationRequest.role).allowed;
+
+  /**
+   * The one line a group says about itself: that the broker has not finished
+   * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
+   * about says nothing, so the heading never grows a line and then loses it.
+   */
+  const groupLines = useMemo(() => {
+    const lines = new Map<string, string>();
+    for (const entry of registryState.registry.groups) {
+      const state = resolveGroupGitea({ organizationExists: giteaOrganizations.get(entry.slug) });
+      lines.set(entry.groupId, state === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "");
+    }
+    return lines;
+  }, [giteaOrganizations, registryState.registry.groups]);
 
   const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
@@ -1087,10 +1308,6 @@ function ZeropsProjectsContent() {
         ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
-        record:
-          creationRequest?.groupId === groupId && storeRecipeResource.status === "success"
-            ? storeRecipeRecord
-            : undefined,
         agents: await readGroupAgents(entry.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
@@ -1128,10 +1345,61 @@ function ZeropsProjectsContent() {
             runZeropsCommand(
               runtime.commands.importServices(projectRef(activeOrganization.id, projectId), yaml),
             ),
+          listIntegrationTokenGrants: async ({ clientId: _clientId }) =>
+            integrationTokensFromGrantMetadata(
+              await runZeropsCommand(
+                runtime.commands.listIntegrationTokenGrants(organizationRef(activeOrganization.id)),
+              ),
+            ),
+          setIntegrationTokenProjects: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.setIntegrationTokenProjects({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
+          listTokenDelegations: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.listTokenDelegations({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
+          deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.deleteTokenDelegation({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
+          isolateProjectEnvironment: ({ projectId }) =>
+            runZeropsCommand(
+              runtime.commands.isolateProjectEnv(projectRef(activeOrganization.id, projectId)),
+            ),
           importProject: ({ clientId: _clientId, yaml }) =>
             runZeropsCommand(
               runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
             ),
+          // Tolerant by design: a Mate that exists and runs is not a failed
+          // creation because its account's Gitea is not up yet. Whatever this
+          // answers, the reconcile above asks again on the next read.
+          fetchGiteaCredential: async ({ projectId }) => {
+            const outcome = inventoryRef.current.services.get(projectId);
+            const serviceId =
+              outcome?.status === "resolved"
+                ? outcome.services.find((service) => isZcpService(service))?.id
+                : undefined;
+            if (serviceId === undefined) return { kind: "waiting-for-gitea" as const };
+            const current = await client.readMateGiteaEnv(serviceId).catch(() => undefined);
+            if (current === undefined) return { kind: "waiting-for-gitea" as const };
+            return fetchMateGiteaCredential({
+              client,
+              clientId: activeOrganization.id,
+              endpoints: giteaEndpoints,
+              mate: { projectId, serviceId, current },
+              nonce: randomUUID(),
+            });
+          },
           readObservedServices: async (projectId) => {
             const outcome = inventoryRef.current.services.get(projectId);
             return outcome?.status === "resolved"
@@ -1179,14 +1447,39 @@ function ZeropsProjectsContent() {
         groupName: group.name,
         role,
         source:
-          choice.recipe.kind === "services"
-            ? {
-                kind: "clone",
-                name: choice.recipe.source,
-                needsDeploy: choice.recipe.needsDeploy ?? [],
-              }
-            : { kind: choice.recipe.kind },
+          choice.recipe.kind === "tier"
+            ? // Imported `startWithoutCode`: the services that build from a
+              // repository exist and run nothing until their first deploy. A
+              // managed service needs none, so it is not named.
+              { kind: "tier", services: Object.keys(choice.recipe.sources) }
+            : { kind: "none" },
       });
+
+      // A stage or a production is a **group environment**: it goes in the
+      // registry, the broker's token has to reach it, and its sources have to
+      // be declared on the group repo before the broker will deploy anything
+      // (guide 5.2). A Mate is none of those things.
+      if (role === "stage" || role === "prod") {
+        const written = await addGroupEnvironment({
+          client,
+          gitea: giteaEndpoints === undefined ? null : giteaClientFor(giteaEndpoints.giteaOrigin),
+          clientId: activeOrganization.id,
+          giteaProjectId,
+          registry: registryState.registry,
+          groupId,
+          slug: registryGroupSlug(registryState.registry, groupId),
+          environment: {
+            displayName: name,
+            tier: role === "prod" ? "production" : "stage",
+            project: outcome.projectId,
+          },
+        });
+        registryState.refresh();
+        if (!isCurrent()) return;
+        // Not a failed creation: the project exists and runs, and what is
+        // outstanding is named so the person knows what is waiting on whom.
+        if (written.failed !== undefined) setToolError(written.failed.reason);
+      }
 
       if (outcome.awaitingAgent) {
         // The imports were accepted; the container wait is the provisioning
@@ -1216,9 +1509,11 @@ function ZeropsProjectsContent() {
       resetConnectingTarget,
       setConnectError,
       setCreatingIn,
-      storeRecipeRecord,
-      storeRecipeResource.status,
       runtime.commands,
+      client,
+      giteaEndpoints,
+      giteaProjectId,
+      registryState,
     ],
   );
 
@@ -1236,6 +1531,11 @@ function ZeropsProjectsContent() {
           organization: organizationRef(activeOrganization.id),
           toolKind: "gitea",
           name: "Gitea",
+          // Gitea matches an origin string literally, port included, so the
+          // one this page is being served from has to be in the list or the
+          // app cannot drive Gitea from the browser at all.
+          appOrigins: [window.location.origin],
+          appUrl: window.location.origin,
         }),
       );
     } catch (cause) {
@@ -1260,6 +1560,34 @@ function ZeropsProjectsContent() {
         })),
       [groupTree.groups],
     ),
+  });
+
+  // The throwaways a crashed tab left on the account. Nothing a person did
+  // asks for this; it is here because this is where an account is read.
+  useZeropsThrowawaySweep({
+    clientId: activeOrganization?.id,
+    enabled: status === "signed-in",
+  });
+
+  // And every Mate's Gitea access (guide 1.5). Both endpoints come from the
+  // account's own Gitea project, read exactly as its URL is — an account on a
+  // devel region or behind a custom domain is read, never guessed. No Gitea,
+  // no broker, no call.
+  const giteaMates = useMemo(
+    () =>
+      candidates
+        .filter((candidate) => hasMate(candidate) && !isZeropsToolCandidate(candidate))
+        .map((candidate) => ({
+          projectId: candidate.project.id,
+          serviceId: candidate.service?.id,
+        })),
+    [candidates],
+  );
+  useZeropsGiteaCredential({
+    clientId: activeOrganization?.id,
+    endpoints: giteaEndpoints,
+    mates: giteaMates,
+    enabled: status === "signed-in" && !isLoading,
   });
 
   useEffect(() => {
@@ -1385,6 +1713,7 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         creating={creationRunning}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
+        groupLine={(group) => groupLines.get(group.groupId) ?? ""}
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
@@ -1409,6 +1738,13 @@ function ZeropsProjectsContent() {
           const projectTrouble =
             candidate.group === "provisioning" ||
             (candidate.group === "unavailable" && candidate.missingContainer !== true);
+          // A group environment says what it follows and what it runs — the
+          // branch and the deployed commit, from the two parties that can
+          // prove each (`groupDeploys.ts`). Anything else keeps the summary of
+          // what it holds.
+          const declared = declaredEnvironment(candidate.project.id);
+          const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
+          const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
           return (
             <ZeropsEnvironmentRow
               action={
@@ -1434,13 +1770,37 @@ function ZeropsProjectsContent() {
                       ? {}
                       : { pulse: presentation.status.pulse })}
                   />
+                ) : deployTone !== undefined && deployLabel !== undefined ? (
+                  <StatusDot label={deployLabel} tone={deployTone} />
                 ) : undefined
               }
-              summary={summaryOf(candidate)}
+              summary={declared === undefined ? summaryOf(candidate) : declared.line}
               tag={environmentRoleTag(role)}
             />
           );
         }}
+        renderGroupRows={(group: ZeropsGroup) =>
+          (groupDeploys.get(group.groupId)?.pullRequests ?? []).map((pull) => {
+            const row = pullRequestRow(pull);
+            return (
+              <ZeropsPullRequestRow
+                action={
+                  pull.html_url === undefined ? undefined : (
+                    <ZeropsMateVerb
+                      label="Review"
+                      onClick={() => {
+                        window.open(pull.html_url, "_blank", "noopener");
+                      }}
+                    />
+                  )
+                }
+                key={`pull-${group.groupId}-${row.number}`}
+                line={row.line}
+                title={row.title}
+              />
+            );
+          })
+        }
         renderGroupMenu={(group: ZeropsGroup) => (
           <ZeropsProjectMenu
             actions={[
@@ -1511,6 +1871,10 @@ function ZeropsProjectsContent() {
                     menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
                     name={name}
                     onSelect={select}
+                    snippet={live?.subject === undefined ? undefined : live.snippet}
+                    time={
+                      live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)
+                    }
                     tint={tint}
                     updateLine={updateLine}
                   />
@@ -1647,17 +2011,33 @@ function ZeropsProjectsContent() {
           projectName={rowDialog.candidate.project.name}
         />
       ) : null}
+      {rowDialog?.kind === "assign" ? (
+        <ZeropsAssignMateDialog
+          currentOwnerId={
+            rowDialog.candidate.project.userRoles?.find((entry) => entry.roleCode === "OWNER")
+              ?.clientUserId
+          }
+          key={`assign:${rowDialog.candidate.key}`}
+          members={assignableMembers}
+          onCancel={() => {
+            setRowDialog(null);
+          }}
+          onOpenChange={(open) => {
+            if (!open) setRowDialog(null);
+          }}
+          onSubmit={(clientUserId) => {
+            const { candidate } = rowDialog;
+            setRowDialog(null);
+            void assignMate(candidate, clientUserId);
+          }}
+          projectName={rowDialog.candidate.project.name}
+        />
+      ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
-          cloneSources={cloneSources.sources.map((source) => ({
-            projectId: source.projectId,
-            name: source.name,
-            agentName: source.agentName,
-            services: source.recipe.services,
-            builtFromGit: source.recipe.builtFromGit,
-            yaml: source.recipe.servicesYaml,
-          }))}
-          cloneSourcesLoading={cloneSources.loading}
+          tier={groupRecipe.tier}
+          tierServices={groupRecipe.services}
+          tierLoading={groupRecipe.loading}
           defaultBotName={creationRequest.botName}
           defaultName={proposedEnvironmentName({
             groupName: requestedGroup.group.name,
@@ -1681,7 +2061,6 @@ function ZeropsProjectsContent() {
           }}
           open
           role={creationRequest.role}
-          storeRecipeAvailable={storeRecipeAvailable}
           takenBotNames={takenBotNames}
         />
       )}

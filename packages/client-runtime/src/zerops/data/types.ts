@@ -6,10 +6,11 @@ import type * as Stream from "effect/Stream";
 import type { Atom } from "effect/unstable/reactivity";
 import type { ActivityAppVersion } from "../activity/dto.ts";
 import type { ZeropsProject } from "../api.ts";
-import type { ZeropsProjectGrant } from "../groupReach.ts";
+import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
+import type { ZeropsIntegrationTokenGrantMetadata } from "./resources.ts";
 
 /**
  * Stable platform identities. Adapters decode untrusted values with these
@@ -1370,6 +1371,7 @@ export type PlatformCommandKind =
   | "start-project"
   | "name-project-agent"
   | "update-project-group-tags"
+  | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
   | "enable-subdomain-access"
@@ -1378,7 +1380,11 @@ export type PlatformCommandKind =
   | "import-project"
   | "import-services"
   | "create-tool-project"
-  | "set-integration-token-projects";
+  | "list-integration-token-grants"
+  | "set-integration-token-projects"
+  | "list-token-delegations"
+  | "delete-token-delegation"
+  | "isolate-project-env";
 
 interface CommandAttemptBase {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1595,6 +1601,21 @@ export interface UpdateProjectGroupTagsCommandIntent {
   };
 }
 
+/** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
+export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
+
+/**
+ * Handing a Mate to a person — a per-project role override (guide 0.8, D11).
+ * Lowered, the same command takes a Mate away.
+ */
+export interface SetProjectMemberRoleCommandIntent {
+  readonly kind: "set-project-member-role";
+  readonly project: ProjectRef;
+  /** The `clientUser` id — what a project's `userRoles` names. */
+  readonly clientUserId: string;
+  readonly roleCode: MateProjectRoleCode;
+}
+
 export interface ImportDevelopmentContainerCommandIntent {
   readonly kind: "import-development-container";
   readonly project: ProjectRef;
@@ -1655,6 +1676,27 @@ export interface CreateToolProjectCommandIntent {
   readonly toolKind: ZeropsToolKind;
   readonly name: string;
   readonly location?: string;
+  /**
+   * Every origin the Mate app is served from, the current one at least, and
+   * where its Gitea sign-in consent page lives. Only the shell knows these,
+   * and Gitea matches an origin string literally (`giteaRecipe.ts`).
+   */
+  readonly appOrigins: ReadonlyArray<string>;
+  readonly appUrl: string;
+}
+
+/**
+ * `GET /client/{id}/integration-token/list`, as grant metadata.
+ *
+ * A read shaped as a command because its caller is a write sequence, not a
+ * screen: `secure-container-token` has to look up the token the container
+ * import just minted, in the middle of a creation, and a resource lease is the
+ * wrong instrument for one answer used once. Grant metadata carries no token
+ * value, exactly as the resource of the same name does.
+ */
+export interface ListIntegrationTokenGrantsCommandIntent {
+  readonly kind: "list-integration-token-grants";
+  readonly organization: OrganizationRef;
 }
 
 export interface SetIntegrationTokenProjectsCommandIntent {
@@ -1666,12 +1708,42 @@ export interface SetIntegrationTokenProjectsCommandIntent {
   readonly projects: ReadonlyArray<ZeropsProjectGrant>;
 }
 
+/**
+ * `GET /client/{id}/integration-token/{tokenId}/delegation`.
+ *
+ * A read shaped as a command for the same reason as the grant listing above:
+ * its caller is a repair sequence, not a screen.
+ */
+export interface ListTokenDelegationsCommandIntent {
+  readonly kind: "list-token-delegations";
+  readonly organization: OrganizationRef;
+  readonly tokenId: string;
+}
+
+export interface DeleteTokenDelegationCommandIntent {
+  readonly kind: "delete-token-delegation";
+  readonly organization: OrganizationRef;
+  readonly tokenId: string;
+  readonly delegationId: string;
+}
+
+/**
+ * Guide 0.10: `envIsolation` to `service`, `ZCP_API_KEY` moved onto the
+ * container, the project entry deleted, every service restarted. Idempotent —
+ * a project already isolated makes it a read.
+ */
+export interface IsolateProjectEnvCommandIntent {
+  readonly kind: "isolate-project-env";
+  readonly project: ProjectRef;
+}
+
 export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
   | StartProjectCommandIntent
   | NameProjectAgentCommandIntent
   | UpdateProjectGroupTagsCommandIntent
+  | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
   | EnableSubdomainAccessCommandIntent
@@ -1680,7 +1752,11 @@ export type PlatformCommandIntent =
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
   | CreateToolProjectCommandIntent
-  | SetIntegrationTokenProjectsCommandIntent;
+  | ListIntegrationTokenGrantsCommandIntent
+  | SetIntegrationTokenProjectsCommandIntent
+  | ListTokenDelegationsCommandIntent
+  | DeleteTokenDelegationCommandIntent
+  | IsolateProjectEnvCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1717,6 +1793,7 @@ export type PlatformCommandResult =
   | { readonly kind: "start-project"; readonly value: void }
   | { readonly kind: "name-project-agent"; readonly value: ZeropsProject }
   | { readonly kind: "update-project-group-tags"; readonly value: ZeropsProject }
+  | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
       readonly value: { readonly serviceName: string };
@@ -1734,7 +1811,17 @@ export type PlatformCommandResult =
       readonly kind: "create-tool-project";
       readonly value: { readonly project: ZeropsProject };
     }
-  | { readonly kind: "set-integration-token-projects"; readonly value: void };
+  | {
+      readonly kind: "list-integration-token-grants";
+      readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+    }
+  | { readonly kind: "set-integration-token-projects"; readonly value: void }
+  | {
+      readonly kind: "list-token-delegations";
+      readonly value: ReadonlyArray<ZeropsTokenDelegation>;
+    }
+  | { readonly kind: "delete-token-delegation"; readonly value: void }
+  | { readonly kind: "isolate-project-env"; readonly value: void };
 
 export interface PlatformCommandReceipt {
   readonly processRefs: ReadonlyArray<ProcessRef>;
@@ -1901,6 +1988,14 @@ export interface ZeropsDataCommands {
     project: ProjectRef,
     next: UpdateProjectGroupTagsCommandIntent["next"],
   ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
+  /**
+   * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
+   * command that writes a project's `userRoles`.
+   */
+  readonly setProjectMemberRole: (
+    project: ProjectRef,
+    input: Omit<SetProjectMemberRoleCommandIntent, "kind" | "project">,
+  ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
   readonly importDevelopmentContainer: (
     input: Omit<ImportDevelopmentContainerCommandIntent, "kind" | "project"> & {
       readonly project: ProjectRef;
@@ -1947,10 +2042,32 @@ export interface ZeropsDataCommands {
     CommandExecution<{ readonly project: ZeropsProject }>,
     CommandAdmissionError | AdapterError
   >;
+  readonly listIntegrationTokenGrants: (
+    organization: OrganizationRef,
+  ) => Effect.Effect<
+    CommandExecution<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>>,
+    CommandAdmissionError | AdapterError
+  >;
   readonly setIntegrationTokenProjects: (
     input: Omit<SetIntegrationTokenProjectsCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;
     },
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly listTokenDelegations: (
+    input: Omit<ListTokenDelegationsCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
+  ) => Effect.Effect<
+    CommandExecution<ReadonlyArray<ZeropsTokenDelegation>>,
+    CommandAdmissionError | AdapterError
+  >;
+  readonly deleteTokenDelegation: (
+    input: Omit<DeleteTokenDelegationCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly isolateProjectEnv: (
+    project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
 }
 

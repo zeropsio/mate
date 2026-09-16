@@ -55,6 +55,14 @@ function recordingFetch(handler: (request: RecordedRequest) => Response | Promis
   };
 }
 
+const TOOL_INPUT = {
+  clientId: "org-1",
+  kind: "gitea",
+  name: "Gitea",
+  appOrigins: ["https://app.zerops.io"],
+  appUrl: "https://app.zerops.io",
+} as const;
+
 describe("zeropsRegionFromPublicZone", () => {
   it("reads the region out of a project's publicZone, not just prg1", () => {
     expect(zeropsRegionFromPublicZone("fte2334ab.prg1-zerops.zone")).toBe("prg1");
@@ -924,14 +932,18 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
   });
 
   it("rechecks runtime admission before every write in a compound command", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [], totalCount: 0 });
+      }
+      return jsonResponse(200, {
         id: "project-1",
         name: "tool",
         status: "ACTIVE",
         publicZone: "project-1.prg1-zerops.zone",
-      }),
-    );
+      });
+    });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
     client.setWritesAllowed(true);
@@ -943,18 +955,85 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     };
 
     await expect(
-      client.createToolProject(
-        { clientId: "org-1", kind: "gitea", name: "tool" },
-        undefined,
-        async () => {
-          checks += 1;
-          if (checks === 2) throw denied;
-        },
-      ),
+      client.createToolProject(TOOL_INPUT, undefined, async () => {
+        checks += 1;
+        if (checks === 2) throw denied;
+      }),
     ).rejects.toMatchObject({ kind: "uncertain" });
 
+    // The project write went out; the broker's token mint was refused before
+    // it did, and the import never ran.
     expect(checks).toBe(2);
-    expect(stub.requests).toHaveLength(1);
+    expect(stub.requests.filter((request) => request.method !== "GET")).toHaveLength(1);
+  });
+
+  it("resumes a Gitea setup instead of building a second one", async () => {
+    const project = {
+      id: "project-1",
+      name: "Gitea",
+      status: "ACTIVE",
+      publicZone: "project-1.prg1-zerops.zone",
+      tagList: ["mate:tool:gitea"],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        return jsonResponse(200, { list: [{ id: "tok-b", name: "mate-broker" }] });
+      }
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [project], totalCount: 1 });
+      }
+      if (request.url.includes("/service-stack?")) return jsonResponse(200, { items: [] });
+      if (request.url.includes("/regenerate")) return jsonResponse(200, { token: "fresh" });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+
+    await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
+      project: { id: "project-1" },
+    });
+
+    const writes = stub.requests.filter((request) => request.method !== "GET");
+    // No second project; the token nobody holds the value of is regenerated,
+    // and the import runs with the fresh value.
+    expect(writes.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
+      "PUT /api/rest/public/client/org-1/integration-token/tok-b/regenerate",
+      "POST /api/rest/public/project/project-1/service-stack/import",
+    ]);
+    expect(writes[1]?.body).toContain("fresh");
+  });
+
+  it("does nothing at all for an account whose Gitea is already up", async () => {
+    const project = {
+      id: "project-1",
+      name: "Gitea",
+      status: "ACTIVE",
+      publicZone: "project-1.prg1-zerops.zone",
+      tagList: ["mate:tool:gitea"],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        return jsonResponse(200, { list: [{ id: "tok-b", name: "mate-broker" }] });
+      }
+      if (request.method === "GET" && request.url.includes("/client/org-1/project")) {
+        return jsonResponse(200, { list: [project], totalCount: 1 });
+      }
+      return jsonResponse(200, {
+        items: [
+          { id: "s1", name: "web" },
+          { id: "s2", name: "broker" },
+        ],
+      });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+
+    await expect(client.createToolProject(TOOL_INPUT)).resolves.toMatchObject({
+      project: { id: "project-1" },
+    });
+    expect(stub.requests.filter((request) => request.method !== "GET")).toEqual([]);
   });
 
   it("classifies a denied second write in create-with-Mate as partial-write uncertainty", async () => {
@@ -1176,5 +1255,209 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
       client.createProjectWithZeropsMate({ clientId: "org", name: "Project" }),
     ).rejects.toMatchObject({ kind: "uncertain" });
     expect(stub.requests).toHaveLength(2);
+  });
+});
+
+describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
+  const project = {
+    id: "p1",
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: "org-1",
+    description: "the Mate",
+    tagList: ["mate", "mate:g:acme"],
+    userRoles: [{ clientUserId: "cu-jan", roleCode: "OWNER" }],
+  };
+
+  it("sends the whole record with one person's role changed", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.setProjectMemberRole({
+      projectId: "p1",
+      clientUserId: "cu-eva",
+      roleCode: "OWNER",
+    });
+
+    // Read, then write: `PUT /project/{id}` replaces whatever it is sent.
+    expect(stub.requests.map((request) => request.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
+      name: "Fen",
+      description: "the Mate",
+      // The tags survive the write — this is a role change, not a re-tag.
+      tagList: ["mate", "mate:g:acme"],
+      userRoles: [
+        { clientUserId: "cu-jan", roleCode: "OWNER" },
+        { clientUserId: "cu-eva", roleCode: "OWNER" },
+      ],
+    });
+  });
+
+  // Overrides are measured in both directions: the same call, lowered, takes
+  // a Mate away.
+  it("takes a Mate away when it lowers its owner", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.setProjectMemberRole({
+      projectId: "p1",
+      clientUserId: "cu-jan",
+      roleCode: "READ_ONLY",
+    });
+
+    expect(JSON.parse(stub.requests[1]?.body ?? "{}").userRoles).toEqual([
+      { clientUserId: "cu-jan", roleCode: "READ_ONLY" },
+    ]);
+  });
+});
+
+describe("ZeropsApiClient.recordProjectAgentSigner — who signed an agent in (D6)", () => {
+  const project = {
+    id: "p1",
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: "org-1",
+    tagList: ["mate", "mate:signer:claude-code:old-user"],
+  };
+
+  it("replaces this agent's signer and keeps every other tag", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, project));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.recordProjectAgentSigner({
+      projectId: "p1",
+      agentId: "claude-code",
+      userId: "jan",
+    });
+
+    const body = JSON.parse(stub.requests[1]?.body ?? "{}");
+    expect(body.tagList).toEqual(["mate", "mate:signer:claude-code:jan"]);
+    // A tag write must never carry `userRoles`: the platform replaces what it
+    // is sent, and a stale list would silently rewrite who may open the Mate.
+    expect(body.userRoles).toBeUndefined();
+  });
+
+  // Signing in again with the same account costs a read and nothing more.
+  it("writes nothing when the record already says the same thing", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { ...project, tagList: ["mate", "mate:signer:claude-code:jan"] }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.recordProjectAgentSigner({
+      projectId: "p1",
+      agentId: "claude-code",
+      userId: "jan",
+    });
+
+    expect(stub.requests.map((request) => request.method)).toEqual(["GET"]);
+  });
+});
+
+describe("ZeropsApiClient Gitea credential", () => {
+  const ENV = [
+    { id: "e1", key: "GITEA_URL", content: "https://old.example" },
+    { id: "e2", key: "GITEA_TOKEN", content: "REDACTED" },
+    { id: "e3", key: "VSCODE_PASSWORD", content: "REDACTED" },
+  ];
+
+  it("reads the three keys it decides on, and nothing else of the service's", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: ENV }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    // The env records carry every secret the service holds; only the three
+    // keys `giteaCredential.ts` reads ever leave this client.
+    expect(await client.readMateGiteaEnv("svc-1")).toEqual({
+      GITEA_URL: "https://old.example",
+      GITEA_TOKEN: "REDACTED",
+    });
+  });
+
+  it("deletes then creates each key, and restarts the container into them", async () => {
+    const stub = recordingFetch((request) =>
+      request.url.endsWith("/env") ? jsonResponse(200, { items: ENV }) : jsonResponse(200, {}),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.writeMateGiteaCredential({
+      serviceId: "svc-1",
+      plan: {
+        upToDate: false,
+        write: ["GITEA_URL", "MATE_BROKER_URL", "GITEA_TOKEN"],
+        sensitive: ["GITEA_TOKEN"],
+        values: {
+          GITEA_URL: "https://web-1-3000.prg1.zerops.app",
+          MATE_BROKER_URL: "https://broker-1-8080.prg1.zerops.app",
+        },
+        restart: true,
+      },
+      token: "the-bots-token",
+    });
+
+    const calls = stub.requests.map(
+      (request) => `${request.method} ${request.url.split("/api/rest/public")[1] ?? ""}`,
+    );
+    expect(calls).toEqual([
+      "GET /service-stack/svc-1/env",
+      // Only the keys that already exist are deleted first; the platform has
+      // no update for a user-data entry.
+      "DELETE /user-data/e1",
+      "POST /service-stack/svc-1/user-data",
+      "POST /service-stack/svc-1/user-data",
+      "DELETE /user-data/e2",
+      "POST /service-stack/svc-1/user-data",
+      // A service env change reaches new processes only.
+      "PUT /service-stack/svc-1/restart",
+    ]);
+
+    const bodies = stub.requests
+      .filter((request) => request.url.endsWith("/user-data"))
+      .map((request) => JSON.parse(request.body ?? "{}"));
+    expect(bodies[2]).toEqual({
+      key: "GITEA_TOKEN",
+      content: "the-bots-token",
+      sensitive: true,
+    });
+    expect(bodies[0]?.sensitive).toBe(false);
+  });
+
+  it("writes nothing at all for a plan that has nothing to write", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.writeMateGiteaCredential({
+      serviceId: "svc-1",
+      plan: { upToDate: true, write: [], sensitive: [], values: {}, restart: false },
+    });
+
+    expect(stub.requests).toEqual([]);
+  });
+
+  // Writing the key without a value would replace a working credential with
+  // nothing.
+  it("refuses to write a token it was not given", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(
+      client.writeMateGiteaCredential({
+        serviceId: "svc-1",
+        plan: {
+          upToDate: false,
+          write: ["GITEA_TOKEN"],
+          sensitive: ["GITEA_TOKEN"],
+          values: {},
+          restart: true,
+        },
+      }),
+    ).rejects.toThrow(/GITEA_TOKEN/);
   });
 });

@@ -2,12 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
-import { GO_HELLO_WORLD_GROUP } from "./recipeStoreSeed.ts";
 import {
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
 } from "./runEnvironmentCreation.ts";
+
+/** A tier already converted to import-ready form (`recipeTier.ts`). */
+const TIER_YAML = "services:\n  - hostname: api\n    startWithoutCode: true\n";
 
 function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationStep> {
   const result = planEnvironmentCreation({
@@ -15,7 +17,12 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     groupId: "7k2m9qx4vb1c",
     groupName: "Go Hello World",
     name: `Go Hello World - ${role}`,
-    record: GO_HELLO_WORLD_GROUP,
+    recipe: {
+      kind: "tier",
+      tier: role === "prod" ? "production" : "mate",
+      yaml: TIER_YAML,
+      sources: {},
+    },
     role,
     agents: ["claude-code"],
     ...(role === "prod" ? {} : { botName: "Ada" }),
@@ -23,6 +30,13 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
   if (!result.ok) throw new Error(result.reason);
   return result.steps;
 }
+
+/** The token the platform mints with the container, as it mints it. */
+const MINTED_TOKEN = {
+  id: "tok-mate",
+  name: "zcp-Go Hello World - dev",
+  projects: [{ projectId: "proj-1", roleCode: "ADMIN" }],
+} as const;
 
 /** A platform that records what it was asked and answers as the live one does. */
 function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
@@ -44,6 +58,32 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
     importProject: (input) => {
       calls.push(`importProject:${input.yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
+    },
+    fetchGiteaCredential: (input) => {
+      calls.push(`gitea:${input.projectId}`);
+      return Promise.resolve({ kind: "written" as const });
+    },
+    listIntegrationTokenGrants: ({ clientId }) => {
+      calls.push(`tokens:${clientId}`);
+      return Promise.resolve([MINTED_TOKEN]);
+    },
+    setIntegrationTokenProjects: (input) => {
+      calls.push(
+        `token:${input.tokenId}:${input.projects.map((grant) => `${grant.projectId}=${grant.roleCode}`).join(",")}`,
+      );
+      return Promise.resolve();
+    },
+    listTokenDelegations: ({ tokenId }) => {
+      calls.push(`delegations:${tokenId}`);
+      return Promise.resolve([{ id: "del-1", tokenId }]);
+    },
+    deleteTokenDelegation: ({ tokenId, delegationId }) => {
+      calls.push(`delegation:${tokenId}:${delegationId}`);
+      return Promise.resolve();
+    },
+    isolateProjectEnvironment: ({ projectId }) => {
+      calls.push(`isolate:${projectId}`);
+      return Promise.resolve();
     },
     readObservedServices: (projectId) => {
       serviceReads += 1;
@@ -145,7 +185,15 @@ describe("runEnvironmentCreation", () => {
       "create:Go Hello World - dev:mate:g:7k2m9qx4vb1c,mate:role:dev,mate:name:Go Hello World,mate,mate:bot:Ada",
       // The group's agents reach the container import, not just the plan.
       "container:proj-1:claude-code",
-      `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
+      "tokens:client-1",
+      "token:tok-mate:proj-1=BASIC_USER",
+      // The token list is read once and shared by the two steps that need it.
+      "delegations:tok-mate",
+      "delegation:tok-mate:del-1",
+      // Before the application import: no app container and no build ever
+      // boots holding the Mate's key or its agent's login.
+      "isolate:proj-1",
+      `import:proj-1:${TIER_YAML.length}`,
     ]);
   });
 
@@ -158,7 +206,18 @@ describe("runEnvironmentCreation", () => {
     expect(outcome.ok && outcome.awaitingAgent).toBe(true);
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "running"]);
+    expect(last.map((entry) => entry.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+      "done",
+      "done",
+      "running",
+      // The Gitea step is the caller's to run once the container is up: the
+      // provisioning wait it hands off to is where "ready" is decided.
+      "queued",
+    ]);
   });
 
   it("waits for every service of an environment without an agent", async () => {
@@ -237,8 +296,17 @@ describe("runEnvironmentCreation", () => {
     // Nothing after the failure runs.
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "failed", "queued"]);
-    expect(last[2]?.error).toBe("projectImportProjectIncluded");
+    expect(last.map((entry) => entry.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+      "done",
+      "failed",
+      "queued",
+      "queued",
+    ]);
+    expect(last[5]?.error).toBe("projectImportProjectIncluded");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -258,6 +326,10 @@ describe("runEnvironmentCreation", () => {
       "queued",
       "queued",
       "queued",
+      "queued",
+      "queued",
+      "queued",
+      "queued",
     ]);
   });
 
@@ -267,5 +339,171 @@ describe("runEnvironmentCreation", () => {
     const [first] = reports.at(-1)!;
     expect(first?.startedAtMs).toBeDefined();
     expect(first?.finishedAtMs).toBeGreaterThanOrEqual(first?.startedAtMs ?? Infinity);
+  });
+});
+
+describe("runEnvironmentCreation — securing the container's token", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly tokens: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly projects?: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>;
+    }>;
+    readonly write: string | null;
+    readonly ok: boolean;
+  }> = [
+    {
+      name: "lowers the token the container import just minted",
+      tokens: [MINTED_TOKEN],
+      write: "token:tok-mate:proj-1=BASIC_USER",
+      ok: true,
+    },
+    {
+      name: "writes nothing when the platform already minted it lowered",
+      tokens: [{ ...MINTED_TOKEN, projects: [{ projectId: "proj-1", roleCode: "BASIC_USER" }] }],
+      write: null,
+      ok: true,
+    },
+    {
+      name: "lowers this project's token, not another Mate's",
+      tokens: [
+        {
+          id: "tok-elsewhere",
+          name: "zcp-Aurora",
+          projects: [{ projectId: "p-9", roleCode: "ADMIN" }],
+        },
+        MINTED_TOKEN,
+      ],
+      write: "token:tok-mate:proj-1=BASIC_USER",
+      ok: true,
+    },
+    {
+      name: "fails rather than report a Mate secured whose token it never found",
+      tokens: [{ id: "tok-owner", name: "personal" }],
+      write: null,
+      ok: false,
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { platform, calls } = fakePlatform({
+      listIntegrationTokenGrants: () => Promise.resolve(row.tokens as never),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(row.ok);
+    expect(calls.filter((call) => call.startsWith("token:"))).toEqual(
+      row.write === null ? [] : [row.write],
+    );
+    if (!outcome.ok) {
+      expect(outcome.failedStep.kind).toBe("secure-container-token");
+      // The half that exists is still named, so the user is not left guessing.
+      expect(outcome.projectId).toBe("proj-1");
+    }
+  });
+});
+
+describe("runEnvironmentCreation — dropping the container's delegation", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly delegations: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
+    readonly deleted: ReadonlyArray<string>;
+  }> = [
+    {
+      name: "deletes the one the container import granted",
+      delegations: [{ id: "del-1", tokenId: "tok-mate" }],
+      deleted: ["delegation:tok-mate:del-1"],
+    },
+    {
+      name: "tolerates a Mate that was granted none",
+      delegations: [],
+      deleted: [],
+    },
+    {
+      name: "deletes every one it finds, not just the first",
+      delegations: [
+        { id: "del-1", tokenId: "tok-mate" },
+        { id: "del-2", tokenId: "tok-mate" },
+      ],
+      deleted: ["delegation:tok-mate:del-1", "delegation:tok-mate:del-2"],
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { platform, calls } = fakePlatform({
+      listTokenDelegations: () => Promise.resolve(row.delegations),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(true);
+    // Exactly this token's delegations, and only through the delete call.
+    expect(calls.filter((call) => call.startsWith("delegation:"))).toEqual(row.deleted);
+  });
+
+  it("stops the creation when the delegation cannot be taken back", async () => {
+    // A Mate left holding a one-time mint can name its creator as the person
+    // who granted it — the exact claim the door trusts — so this is not a
+    // failure worth swallowing.
+    const { platform } = fakePlatform({
+      deleteTokenDelegation: () => Promise.reject(new Error("insufficientPermissions")),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failedStep.kind).toBe("drop-container-delegation");
+  });
+});
+
+describe("the Mate's Gitea access", () => {
+  /**
+   * A plan that reaches the step. A Mate's own plan hands off at
+   * `await-ready`, so its Gitea step is the caller's to run once the container
+   * is up; this is the executor being handed a plan that does reach it.
+   */
+  const giteaPlan = (): ReadonlyArray<EnvironmentCreationStep> => [
+    { kind: "create-project", name: "stage", tagList: [], location: undefined },
+    { kind: "fetch-gitea-credential" },
+  ];
+
+  it("asks for the Mate's Gitea access and says it was written", async () => {
+    const { platform, calls } = fakePlatform();
+    const { outcome, reports } = await run(giteaPlan(), platform);
+
+    expect(calls).toContain("gitea:proj-1");
+    expect(outcome.ok && outcome.giteaCredential).toEqual({ kind: "written" });
+    expect(reports.at(-1)!.at(-1)?.state).toBe("done");
+  });
+
+  // Tolerant on purpose: a Mate that exists and runs is not a failed creation
+  // because its account's Gitea is not up yet. The projects-screen reconcile
+  // asks again on the next read.
+  for (const [name, answer, note] of [
+    ["the account has no Gitea yet", { kind: "waiting-for-gitea" as const }, "Waiting for Gitea"],
+    [
+      "the broker refused",
+      { kind: "unavailable" as const, reason: "not_registered" },
+      "not_registered",
+    ],
+  ] as const) {
+    it(`finishes the creation when ${name}`, async () => {
+      const { platform } = fakePlatform({
+        fetchGiteaCredential: () => Promise.resolve(answer),
+      });
+      const { outcome, reports } = await run(giteaPlan(), platform);
+
+      expect(outcome.ok).toBe(true);
+      const last = reports.at(-1)!.at(-1);
+      expect(last?.state).toBe("done");
+      expect(last?.note).toBe(note);
+    });
+  }
+
+  // A Mate's creation hands off at `await-ready`: the provisioning wait it
+  // hands to is where "ready" is decided, and the credential is fetched there.
+  it("says nothing about Gitea when the creation handed off before the step", async () => {
+    const { platform } = fakePlatform();
+    const { outcome } = await run(plan("dev"), platform);
+    expect(outcome.ok && outcome.giteaCredential).toBeUndefined();
   });
 });

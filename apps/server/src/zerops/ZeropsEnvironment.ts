@@ -26,17 +26,26 @@ export const DEFAULT_ZEROPS_API_HOST = "api.app-prg1.zerops.io";
 export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
 
 /**
- * How long a membership decision stays good.
+ * How often the server re-reads who may still be here.
  *
- * The server never stores the caller's Zerops token, and the platform has no
- * endpoint that lists a project's members, so membership cannot be re-verified
- * server-side. Instead this window IS the lifetime of a session minted through
- * the Zerops door: when it lapses the next connect fails and the client
- * re-mints with the Zerops token it already holds, and that re-mint performs
- * the real membership call. Removing a member therefore ends their access
- * within one window.
+ * A session minted at the throwaway door carries no credential of the caller's
+ * to re-present, so nothing about it expires on its own. Instead the server
+ * asks the platform on this interval — with its own key — and ends the
+ * sessions whose answer changed. Five minutes is the window a removed
+ * colleague keeps their screen for; the two extra reads it costs are the same
+ * two the door already makes.
  */
-export const DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS = 900;
+export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 300;
+
+/**
+ * The longest a session lives on one proof.
+ *
+ * Role changes end a session within one re-check, so this is not a security
+ * window — it is the promise that nothing runs forever on a credential nobody
+ * has looked at since. A day, because a working day is the unit a person
+ * notices, and signing in again costs one throwaway.
+ */
+export const DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 /** Resolved Zerops settings; present only inside a Zerops project container. */
 export interface ZeropsEnvironment {
@@ -46,8 +55,6 @@ export interface ZeropsEnvironment {
   readonly apiBaseUrl: string;
   /** Extra browser origins allowed to reach this server, beyond the built-ins. */
   readonly allowedOrigins: ReadonlyArray<string>;
-  /** See {@link DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS}. */
-  readonly membershipTtl: Duration.Duration;
   /**
    * An explicit override for this container's own public origin (e.g.
    * `https://zcp-26a7-8080.prg1.zerops.app`), set via `T3CODE_ZEROPS_PUBLIC_ORIGIN`.
@@ -56,6 +63,27 @@ export interface ZeropsEnvironment {
    * this is absent (`cloud/http.ts`'s `resolveZeropsLinkProofOrigin`).
    */
   readonly publicOrigin: string | undefined;
+  /**
+   * **The Mate's own Zerops key** (`ZCP_API_KEY`), which zcp already holds in
+   * this container and which the platform scopes to this one project at
+   * `BASIC_USER`.
+   *
+   * It is what lets the server answer questions about *other* people without
+   * holding anything of theirs: who is an `ACTIVE` member of the org, and what
+   * role this project's `userRoles` gives them. A caller proves who they are
+   * with a throwaway that has no rights at all
+   * ({@link ./ZeropsThrowawayIdentity.ts}); every right is then looked up with
+   * this key.
+   *
+   * Undefined outside a Zerops container, and on a container old enough not to
+   * pass it through. Both the door and the re-check treat that as "cannot
+   * answer" — never as "admit".
+   */
+  readonly apiToken: string | undefined;
+  /** See {@link DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS}. */
+  readonly roleRecheckInterval: Duration.Duration;
+  /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
+  readonly sessionMaxAge: Duration.Duration;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -63,8 +91,10 @@ export interface ZeropsEnvironmentInput {
   readonly projectId: string | undefined;
   readonly apiHost: string | undefined;
   readonly allowedOrigins: ReadonlyArray<string>;
-  readonly membershipTtlSeconds: number | undefined;
   readonly publicOrigin?: string | undefined;
+  readonly apiToken?: string | undefined;
+  readonly roleRecheckSeconds?: number | undefined;
+  readonly sessionMaxAgeSeconds?: number | undefined;
 }
 
 /**
@@ -94,19 +124,22 @@ export const resolveZeropsEnvironment = (
   if (projectId.length === 0) {
     return undefined;
   }
-  const membershipTtlSeconds =
-    input.membershipTtlSeconds !== undefined &&
-    Number.isFinite(input.membershipTtlSeconds) &&
-    input.membershipTtlSeconds > 0
-      ? input.membershipTtlSeconds
-      : DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS;
+  const positive = (value: number | undefined, fallback: number): number =>
+    value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
   const publicOrigin = input.publicOrigin?.trim();
+  const apiToken = input.apiToken?.trim();
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
     allowedOrigins: input.allowedOrigins,
-    membershipTtl: Duration.seconds(membershipTtlSeconds),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
+    apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
+    roleRecheckInterval: Duration.seconds(
+      positive(input.roleRecheckSeconds, DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
+    ),
+    sessionMaxAge: Duration.seconds(
+      positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
+    ),
   };
 };
 

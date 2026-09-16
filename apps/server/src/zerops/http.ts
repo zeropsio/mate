@@ -1,6 +1,6 @@
 /**
- * The HTTP surface of the Zerops door: one route that turns a Zerops access
- * token into an ordinary pairing credential.
+ * The HTTP surface of the Zerops door: one route that turns a throwaway into
+ * an ordinary pairing credential.
  *
  * It answers the platform's own three-way verdict, so a client can tell the
  * cases apart without guessing: `401` the token is not valid, `403` the token
@@ -26,7 +26,7 @@ import {
 } from "../auth/http.ts";
 import { verifyRequestDpopProof } from "../auth/dpop.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { mintZeropsPairingCredential } from "./ZeropsIdentityGate.ts";
+import { mintZeropsThrowawayPairingCredential } from "./ZeropsIdentityGate.ts";
 
 export const zeropsHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -35,8 +35,8 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
     const config = yield* ServerConfig.ServerConfig;
 
     return handlers.handle(
-      "identity",
-      Effect.fn("environment.zerops.identity")(
+      "throwawayIdentity",
+      Effect.fn("environment.zerops.throwawayIdentity")(
         function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const environment = config.zerops;
@@ -44,8 +44,6 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
             return yield* failEnvironmentNotFound("zerops_identity_unavailable");
           }
           const request = yield* HttpServerRequest.HttpServerRequest;
-          // A client that binds its access token to a key proves that key here,
-          // so the grant it gets back can only be redeemed by the same key.
           const proofKeyThumbprint = args.headers.dpop
             ? yield* verifyRequestDpopProof({ request }).pipe(
                 Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, () =>
@@ -57,7 +55,7 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
               )
             : undefined;
 
-          return yield* mintZeropsPairingCredential({
+          return yield* mintZeropsThrowawayPairingCredential({
             environment,
             token: args.payload.token,
             ...(proofKeyThumbprint ? { proofKeyThumbprint } : {}),
@@ -65,6 +63,16 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
         },
         Effect.catchTag("ZeropsInvalidTokenError", () =>
           failEnvironmentAuthInvalid("invalid_credential"),
+        ),
+        // One reason for all six shape rules: which rule failed is a hint
+        // towards a token that would pass, and the caller never needs it —
+        // the app's answer to every one of them is to mint a fresh
+        // throwaway.
+        Effect.catchTag("ZeropsThrowawayRefusedError", () =>
+          failEnvironmentOperationForbidden("zerops_throwaway_required"),
+        ),
+        Effect.catchTag("ZeropsReadOnlyError", () =>
+          failEnvironmentOperationForbidden("zerops_read_only"),
         ),
         Effect.catchTag("ZeropsNotAMemberError", () =>
           failEnvironmentOperationForbidden("zerops_project_membership_required"),

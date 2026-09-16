@@ -558,10 +558,9 @@ const unavailableResource = (): Effect.Effect<never, ZeropsResourceSourceError> 
   });
 
 const unavailableResourceAdapter: ZeropsResourceAdapter = {
-  readRecipeGroup: unavailableResource,
-  readProjectCloneSourceRecipe: unavailableResource,
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
+  readServiceDeployedVersion: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
 };
 
@@ -2783,6 +2782,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    setProjectMemberRole: (project, input) =>
+      runCommand({ kind: "set-project-member-role", project, ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "set-project-member-role"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
     importDevelopmentContainer: (input) =>
       runCommand({ kind: "import-development-container", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
@@ -2847,10 +2854,42 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    listIntegrationTokenGrants: (organization) =>
+      runCommand({ kind: "list-integration-token-grants", organization }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "list-integration-token-grants"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
     setIntegrationTokenProjects: (input) =>
       runCommand({ kind: "set-integration-token-projects", ...input }).pipe(
         Effect.flatMap(({ attempt, result }) =>
           result.kind === "set-integration-token-projects"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
+    listTokenDelegations: (input) =>
+      runCommand({ kind: "list-token-delegations", ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "list-token-delegations"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
+    deleteTokenDelegation: (input) =>
+      runCommand({ kind: "delete-token-delegation", ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "delete-token-delegation"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
+    isolateProjectEnv: (project) =>
+      runCommand({ kind: "isolate-project-env", project }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "isolate-project-env"
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),

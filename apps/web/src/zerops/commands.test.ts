@@ -5,6 +5,8 @@ import type {
   ZeropsAgentLoginCancelInput,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
+  ZeropsGitRemoteProbeInput,
+  ZeropsGitRemoteProbeResult,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -23,6 +25,13 @@ const makeHarness = Effect.gen(function* () {
   const startCalls: Array<ZeropsAgentLoginStartInput> = [];
   const cancelCalls: Array<ZeropsAgentLoginCancelInput> = [];
   const startResult: ZeropsAgentLoginStartResult = { terminalId: "terminal-login-1" };
+  const probeCalls: Array<ZeropsGitRemoteProbeInput> = [];
+  const probeResult: ZeropsGitRemoteProbeResult = {
+    reachable: false,
+    remote: "origin",
+    refCount: 0,
+    detail: "remote: Gitea: user does not have permission",
+  };
   const client = {
     [WS_METHODS.zeropsAgentLoginStart]: (input: ZeropsAgentLoginStartInput) => {
       startCalls.push(input);
@@ -31,6 +40,10 @@ const makeHarness = Effect.gen(function* () {
     [WS_METHODS.zeropsAgentLoginCancel]: (input: ZeropsAgentLoginCancelInput) => {
       cancelCalls.push(input);
       return Effect.void;
+    },
+    [WS_METHODS.zeropsGitProbeRemote]: (input: ZeropsGitRemoteProbeInput) => {
+      probeCalls.push(input);
+      return Effect.succeed(probeResult);
     },
   } as unknown as RpcSession["client"];
   const session = yield* SubscriptionRef.make(
@@ -63,6 +76,8 @@ const makeHarness = Effect.gen(function* () {
   return {
     cancelCalls,
     commands: createZeropsCommandAtoms(Atom.runtime(layer)),
+    probeCalls,
+    probeResult,
     registry,
     startCalls,
     startResult,
@@ -89,6 +104,25 @@ describe("createZeropsCommandAtoms", () => {
       expect(result._tag).toBe("Success");
       if (result._tag === "Success") {
         expect(result.value).toEqual(rig.startResult);
+      }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("asks the container whether a checkout's remote answers", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const input: ZeropsGitRemoteProbeInput = { cwd: "/var/www/api" };
+
+      const result = yield* Effect.promise(() =>
+        rig.commands.gitProbeRemote.run(rig.registry, { environmentId: ENVIRONMENT_ID, input }),
+      );
+
+      expect(rig.probeCalls).toEqual([input]);
+      expect(result._tag).toBe("Success");
+      if (result._tag === "Success") {
+        // A remote that refuses is an answer, not a failure: the block shows
+        // git's own line and drops the verbs that would run against it.
+        expect(result.value).toEqual(rig.probeResult);
       }
     }).pipe(Effect.scoped),
   );

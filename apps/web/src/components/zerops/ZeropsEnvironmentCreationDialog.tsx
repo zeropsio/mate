@@ -33,7 +33,6 @@ import {
   hasCreationErrors,
   recipeOptions,
   validateCreationForm,
-  type CloneSourceSummary,
   type CreationFormErrors,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
@@ -52,9 +51,12 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly defaultBotName: string;
   readonly defaultWithAgent: boolean;
   readonly takenBotNames: ReadonlyArray<string>;
-  readonly storeRecipeAvailable: boolean;
-  readonly cloneSources: ReadonlyArray<CloneSourceSummary & { readonly yaml: string }>;
-  readonly cloneSourcesLoading: boolean;
+  /** The tier read from the group repo's `main`, when one is merged. */
+  readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
+  /** The services that tier declares, for the line under the option. */
+  readonly tierServices: ReadonlyArray<string>;
+  /** True while the group repo is still being read. */
+  readonly tierLoading: boolean;
   readonly onCancel: () => void;
   readonly onCreate: (choice: EnvironmentCreationChoice) => void;
 }
@@ -67,23 +69,23 @@ export function ZeropsEnvironmentCreationForm({
   defaultBotName,
   defaultWithAgent,
   takenBotNames,
-  storeRecipeAvailable,
-  cloneSources,
-  cloneSourcesLoading,
+  tier,
+  tierServices,
+  tierLoading,
   onCancel,
   onCreate,
 }: ZeropsEnvironmentCreationFormProps) {
   const id = useId();
   const roleLabel = environmentRoleLabel(role) ?? role;
   const options = useMemo(
-    () => recipeOptions({ roleLabel, storeRecipeAvailable, sources: cloneSources }),
-    [cloneSources, roleLabel, storeRecipeAvailable],
+    () => recipeOptions({ roleLabel, tier, services: tierServices }),
+    [roleLabel, tier, tierServices],
   );
   const [name, setName] = useState(defaultName);
   const [withAgent, setWithAgent] = useState(defaultWithAgent);
   const [botName, setBotName] = useState(defaultBotName);
-  // The best option on offer is the default, and it may improve while the
-  // siblings' exports are still being read; a choice the person made sticks.
+  // The best option on offer is the default, and it improves the moment the
+  // group repo answers; a choice the person made sticks.
   const [chosenRecipeId, setChosenRecipeId] = useState<string | null>(null);
   const recipeId = chosenRecipeId ?? options[0]?.id ?? "none";
   const [submitted, setSubmitted] = useState(false);
@@ -182,9 +184,9 @@ export function ZeropsEnvironmentCreationForm({
               </span>
             </label>
           ))}
-          {cloneSourcesLoading ? (
+          {tierLoading ? (
             <div
-              aria-label="Reading the group's environments"
+              aria-label="Reading the project's recipe"
               className="flex items-center gap-3 px-3 py-2.5"
               role="status"
             >

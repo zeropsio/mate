@@ -9,13 +9,11 @@ import {
 import {
   ConnectionBlockedError,
   Connectivity,
-  CredentialRenewal,
   type PlatformConnectionRegistration,
-  renewZeropsIdentityCredential,
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
-import { AuthStandardClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -23,7 +21,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { FetchHttpClient } from "effect/unstable/http";
 
 import { APP_VERSION } from "../branding";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
@@ -34,8 +31,6 @@ import {
 } from "../environments/primary/target";
 import { isHostedStaticApp } from "../hostedPairing";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
-import { loadZeropsSession } from "@t3tools/client-runtime/zerops/session";
-import { browserZeropsStorage } from "../zerops/storage";
 import { connectionStorageLayer } from "./storage";
 import { clientPresentationMetadata } from "./clientMetadata";
 
@@ -148,7 +143,7 @@ const capabilitiesLayer = Layer.effectContext(
   Effect.sync(() => {
     const presentation = ClientPresentation.of({
       metadata: clientMetadata(),
-      scopes: AuthStandardClientScopes,
+      scopes: AuthZeropsClientScopes,
     });
     const identity = RelayDeviceIdentity.of({
       deviceId: Effect.succeed(Option.none()),
@@ -230,7 +225,7 @@ export function primaryPlatformRegistrationStream(
 ): Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>> {
   return gate !== null &&
     gate.status === "requires-auth" &&
-    gate.auth.bootstrapMethods.includes("zerops-identity")
+    gate.auth.bootstrapMethods.includes("zerops-throwaway")
     ? registrations.pipe(
         Stream.map((current) =>
           current.filter((registration) => registration._tag !== "PrimaryConnectionRegistration"),
@@ -287,50 +282,11 @@ const rpcRequestObserverLayer = Layer.succeed(
   }),
 );
 
-/**
- * Keeps a Zerops-door bearer ahead of its 15-minute membership window.
- *
- * The Zerops account token is read from storage on each attempt rather than
- * captured from React: the session provider holds a `useMemo`-stable client, so
- * a closure over it would keep whatever token existed when the layer was built.
- *
- * A credential minted at any other door is left alone (`Option.none`), and so is
- * one whose profile carries no origin to re-mint against.
- */
-const credentialRenewerLayer = CredentialRenewal.layer({
-  renew: ({ httpBaseUrl, credential }) =>
-    Effect.gen(function* () {
-      if (credential.origin !== "zerops-identity" || httpBaseUrl === undefined) {
-        return Option.none();
-      }
-      const session = yield* Effect.promise(() => loadZeropsSession(browserZeropsStorage));
-      const zeropsToken = session?.accessToken;
-      if (!zeropsToken) {
-        // Signed out of Zerops: nothing here can re-mint, and the door would
-        // only answer 401. The reactive path surfaces it when it matters.
-        return Option.none();
-      }
-      return Option.some(
-        yield* renewZeropsIdentityCredential({ httpBaseUrl, zeropsToken }).pipe(
-          Effect.provide(FetchHttpClient.layer),
-          Effect.provideService(
-            ClientPresentation,
-            ClientPresentation.of({
-              metadata: clientMetadata(),
-              scopes: AuthStandardClientScopes,
-            }),
-          ),
-        ),
-      );
-    }),
-});
-
 type ConnectionPlatformLayerSource =
   | typeof connectionStorageLayer
   | typeof connectivityLayer
   | typeof wakeupsLayer
   | typeof capabilitiesLayer
-  | typeof credentialRenewerLayer
   | typeof platformConnectionSourceLayer
   | typeof environmentOwnedDataCleanupLayer
   | typeof rpcRequestObserverLayer;
@@ -344,7 +300,6 @@ export const connectionPlatformLayer: Layer.Layer<
   connectivityLayer,
   wakeupsLayer,
   capabilitiesLayer,
-  credentialRenewerLayer,
   platformConnectionSourceLayer,
   environmentOwnedDataCleanupLayer,
   rpcRequestObserverLayer,

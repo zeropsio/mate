@@ -149,9 +149,11 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
+import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
+import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
@@ -532,6 +534,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
     | ZeropsDataConsoleModule.ZeropsDataConsole
+    | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
+    | ZeropsProjectSignersModule.ZeropsProjectSigners
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -583,6 +587,7 @@ const buildAppUnderTest = (options?: {
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
     zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
+    zeropsGitRemoteProbe?: Partial<ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1096,6 +1101,12 @@ const buildAppUnderTest = (options?: {
                 ),
               ...options?.layers?.zeropsAgentLogin,
             }),
+            // A test machine has no Mate project to read signer tags off, so
+            // nobody signed anything in and nothing is ever signed out.
+            Layer.mock(ZeropsProjectSignersModule.ZeropsProjectSigners)({
+              signers: Effect.succeed({}),
+              checkLeaversNow: Effect.succeed(0),
+            }),
             // A test machine has no agent-browser daemon — mocked to
             // `no-browser` so the suite never opens a real socket or reads
             // `~/.agent-browser/default.stream`.
@@ -1131,6 +1142,18 @@ const buildAppUnderTest = (options?: {
                   }),
                 ),
               ...options?.layers?.zeropsDataConsole,
+            }),
+            // A test machine has no checkout and no remote; the probe answers
+            // what an unreachable one answers rather than running git.
+            Layer.mock(ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe)({
+              probe: () =>
+                Effect.succeed({
+                  reachable: false,
+                  remote: "origin",
+                  refCount: 0,
+                  detail: "no remote in the test harness",
+                }),
+              ...options?.layers?.zeropsGitRemoteProbe,
             }),
           ),
       ),
@@ -1612,7 +1635,7 @@ const issueFixtureGrant = (
 ) =>
   testAuth.pipe(
     Effect.flatMap((auth) =>
-      auth.createPairingLink({ method: "zerops-identity", subject: "zerops-user:test", scopes }),
+      auth.createPairingLink({ method: "zerops-throwaway", subject: "zerops-user:test", scopes }),
     ),
   );
 
@@ -1693,7 +1716,6 @@ const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = [], publi
     projectId: "nTV3oMB2SS634ImDJnQckg",
     apiHost: undefined,
     allowedOrigins,
-    membershipTtlSeconds: undefined,
     publicOrigin,
   });
 

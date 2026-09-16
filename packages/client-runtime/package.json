@@ -195,6 +195,22 @@
       "types": "./src/zerops/candidateLoading.ts",
       "default": "./src/zerops/candidateLoading.ts"
     },
+    "./zerops/giteaSignIn": {
+      "types": "./src/zerops/giteaSignIn.ts",
+      "default": "./src/zerops/giteaSignIn.ts"
+    },
+    "./zerops/agentOwnership": {
+      "types": "./src/zerops/agentOwnership.ts",
+      "default": "./src/zerops/agentOwnership.ts"
+    },
+    "./zerops/mateAccess": {
+      "types": "./src/zerops/mateAccess.ts",
+      "default": "./src/zerops/mateAccess.ts"
+    },
+    "./zerops/doorThrowaway": {
+      "types": "./src/zerops/doorThrowaway.ts",
+      "default": "./src/zerops/doorThrowaway.ts"
+    },
     "./zerops/candidates": {
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
@@ -303,6 +319,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
     "vite-plus": "catalog:"
   }
 }

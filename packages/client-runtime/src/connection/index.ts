@@ -20,7 +20,6 @@ export {
   prepareSshRegistration,
   registerPairingConnection,
   registerSshConnection,
-  renewZeropsIdentityCredential,
   updateBearerConnection,
 } from "./onboarding.ts";
 export * from "./presentation.ts";

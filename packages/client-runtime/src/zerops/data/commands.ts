@@ -30,15 +30,20 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
       return intent.service;
     case "name-project-agent":
     case "update-project-group-tags":
+    case "set-project-member-role":
     case "import-development-container":
     case "import-services":
     case "start-project":
+    case "isolate-project-env":
       return intent.project;
     case "create-project":
     case "create-project-with-mate":
     case "import-project":
     case "create-tool-project":
+    case "list-integration-token-grants":
     case "set-integration-token-projects":
+    case "list-token-delegations":
+    case "delete-token-delegation":
       return intent.organization;
   }
 }

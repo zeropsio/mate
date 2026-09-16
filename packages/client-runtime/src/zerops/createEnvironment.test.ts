@@ -7,14 +7,21 @@ import {
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
-import { GO_HELLO_WORLD_GROUP } from "./recipeStoreSeed.ts";
+
+/** A tier as `importReadyTier` hands it over: services, and where their code is. */
+const TIER = {
+  kind: "tier" as const,
+  tier: "production" as const,
+  yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
+  sources: { api: { repository: "https://gitea.test/acme/api", setup: "api" } },
+};
 
 const BASE = {
   clientId: "client-1",
   groupId: "7k2m9qx4vb1c",
   groupName: "Go Hello World",
   name: "Go Hello World - production",
-  record: GO_HELLO_WORLD_GROUP,
+  recipe: TIER,
   role: "prod" as ZeropsEnvironmentRole,
 };
 
@@ -37,15 +44,13 @@ describe("defaultAgentForRole", () => {
 });
 
 describe("planEnvironmentCreation", () => {
-  it("refuses a group with no recipe for the role, and says why", () => {
-    const plan = planEnvironmentCreation({ ...BASE, role: "devstage" });
+  it("refuses a project whose recipe has not been merged yet", () => {
+    const plan = planEnvironmentCreation({
+      ...BASE,
+      recipe: { ...TIER, yaml: "   " },
+    });
     expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toContain("devstage");
-  });
-
-  it("refuses a group with no store record at all", () => {
-    const plan = planEnvironmentCreation({ ...BASE, record: undefined });
-    expect(plan.ok).toBe(false);
+    if (!plan.ok) expect(plan.reason).toContain("no recipe merged yet");
   });
 
   it("refuses a blank name", () => {
@@ -89,14 +94,31 @@ describe("planEnvironmentCreation", () => {
 
   it("gives a dev environment its agent, before the application", () => {
     // The agent is what narrates the rest, and what fixes a failed import.
+    // Its token is lowered the moment it exists, before anything is imported
+    // beside it and before anyone can talk to it (guide 0.2).
     const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "import-container",
+      "secure-container-token",
+      "drop-container-delegation",
+      "isolate-project-env",
       "import-recipe",
       "await-ready",
+      // Last and tolerant: the Mate's Gitea access, which needs a container
+      // that is up and an account whose Gitea is (guide 1.5).
+      "fetch-gitea-credential",
     ]);
+  });
+
+  it("plans no token lowering for an environment with no container", () => {
+    // Nothing was minted, so there is nothing to lower.
+    const plan = planEnvironmentCreation(BASE);
+    if (!plan.ok) throw new Error("expected a plan");
+    expect(stepKinds(plan.steps)).not.toContain("secure-container-token");
+    expect(stepKinds(plan.steps)).not.toContain("drop-container-delegation");
+    expect(stepKinds(plan.steps)).not.toContain("isolate-project-env");
   });
 
   it("gives the new container the agents the group is signed in with", () => {
@@ -126,12 +148,11 @@ describe("planEnvironmentCreation", () => {
     expect(stepKinds(plan.steps)).toContain("import-container");
   });
 
-  it("carries the role's own recipe, not some other role's", () => {
+  it("carries the tier the caller read, byte for byte", () => {
     const plan = planEnvironmentCreation({ ...BASE, role: "prod" });
     if (!plan.ok) throw new Error("expected a plan");
     const step = plan.steps.find((entry) => entry.kind === "import-recipe");
-    expect(step?.kind === "import-recipe" && step.yaml).toBe(GO_HELLO_WORLD_GROUP.recipes.prod);
-    expect(step?.kind === "import-recipe" && step.yaml).toContain("minContainers: 2");
+    expect(step?.kind === "import-recipe" && step.yaml).toBe(TIER.yaml);
   });
 
   it("passes the location through when one was chosen", () => {
@@ -157,8 +178,12 @@ describe("environmentCreationStepLabel", () => {
     expect(plan.steps.map(environmentCreationStepLabel)).toEqual([
       "Creating the environment",
       "Adding the agent container",
+      "Locking the container's access",
+      "Taking back the container's one-time permit",
+      "Closing the project's shared variables",
       "Importing the application",
       "Waiting for the agent",
+      "Giving the Mate its Gitea access",
     ]);
   });
 
@@ -170,19 +195,13 @@ describe("environmentCreationStepLabel", () => {
 });
 
 describe("the agent's name", () => {
-  const RECORD = {
-    groupId: "g1",
-    name: "Beviro CRM",
-    recipes: { stage: "services:\n  - hostname: api\n" },
-  };
-
   it("is written onto the project at birth, not added afterwards", () => {
     const plan = planEnvironmentCreation({
       clientId: "c1",
       groupId: "g1",
       role: "stage",
       name: "crm-stage",
-      record: RECORD,
+      recipe: { ...TIER, tier: "stage" as const },
       botName: "Ada",
     });
     expect(plan.ok).toBe(true);
@@ -211,7 +230,7 @@ describe("the agent's name", () => {
       groupId: "g1",
       role: "stage",
       name: "crm-stage",
-      record: RECORD,
+      recipe: { ...TIER, tier: "stage" as const },
     });
     expect(plan.ok).toBe(true);
     const step = plan.ok ? plan.steps[0] : undefined;
@@ -221,24 +240,14 @@ describe("the agent's name", () => {
 });
 
 describe("the recipe choice", () => {
-  it("imports the services a caller hands it instead of the store's", () => {
-    const plan = planEnvironmentCreation({
-      ...BASE,
-      record: undefined,
-      recipe: { kind: "services", yaml: "services:\n  - hostname: app\n", source: "acme-docs-dev" },
-    });
+  it("imports the tier it is handed, and keeps its source map", () => {
+    const plan = planEnvironmentCreation(BASE);
     if (!plan.ok) throw new Error(plan.reason);
     const step = plan.steps.find((entry) => entry.kind === "import-recipe");
-    expect(step?.kind === "import-recipe" && step.yaml).toContain("hostname: app");
-  });
-
-  it("refuses a clone with nothing in it, naming the source", () => {
-    const plan = planEnvironmentCreation({
-      ...BASE,
-      recipe: { kind: "services", yaml: "   ", source: "acme-docs-dev" },
-    });
-    expect(plan.ok).toBe(false);
-    if (!plan.ok) expect(plan.reason).toContain("acme-docs-dev");
+    expect(step?.kind === "import-recipe" && step.yaml).toContain("startWithoutCode: true");
+    // The only record of which repository a service's code comes from; the
+    // party that adopts the environment afterwards has no other way to know.
+    expect(step?.kind === "import-recipe" && step.sources).toEqual(TIER.sources);
   });
 
   it("skips the application entirely when the agent is to set it up", () => {
@@ -246,11 +255,18 @@ describe("the recipe choice", () => {
       ...BASE,
       role: "dev",
       name: "dev",
-      record: undefined,
       recipe: { kind: "none" },
     });
     if (!plan.ok) throw new Error(plan.reason);
-    expect(stepKinds(plan.steps)).toEqual(["create-project", "import-container", "await-ready"]);
+    expect(stepKinds(plan.steps)).toEqual([
+      "create-project",
+      "import-container",
+      "secure-container-token",
+      "drop-container-delegation",
+      "isolate-project-env",
+      "await-ready",
+      "fetch-gitea-credential",
+    ]);
   });
 
   it("refuses an environment with neither an agent nor an application", () => {
@@ -276,8 +292,7 @@ services:
       groupId: "g1",
       role: "prod",
       name: "Aurora - production",
-      record: undefined,
-      recipe: { kind: "services", yaml: recipe, source: "test" },
+      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe, sources: {} },
       withAgent: false,
       ...extra,
     });
@@ -305,7 +320,11 @@ services:
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
       "import-project",
       "import-container",
+      "secure-container-token",
+      "drop-container-delegation",
+      "isolate-project-env",
       "await-ready",
+      "fetch-gitea-credential",
     ]);
   });
 

@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
-  readZeropsResourceOnce,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
@@ -17,11 +16,22 @@ import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExcha
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
+/** A throwaway the door tests hand over in place of a person's own token. */
+const TEST_THROWAWAY = {
+  platform: {
+    mint: async () => ({ id: "token-1", token: "a-throwaway-value" }),
+    remove: async () => undefined,
+  },
+  clientId: "an-org",
+  projectId: "a-project",
+  nonce: "n1",
+};
+
 const ZEROPS_DOOR_GATE = {
   status: "requires-auth",
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: ["zerops-identity", "one-time-token"],
+    bootstrapMethods: ["zerops-throwaway", "one-time-token"],
     sessionMethods: ["bearer-access-token", "dpop-access-token"],
     sessionCookieName: "t3_session",
   },
@@ -31,45 +41,16 @@ const SAME_ORIGIN_CANDIDATE = {
   containerOrigin: APP_ORIGIN,
 };
 
-describe("readZeropsResourceOnce", () => {
-  it("releases the lease and resolves undefined when the signal aborts before settling", async () => {
-    let released = false;
-    const broker = {
-      acquire: () =>
-        Effect.acquireRelease(
-          Effect.succeed({
-            key: "k" as never,
-            request: {} as never,
-            snapshot: undefined as never,
-            changes: undefined as never,
-            // Never settles on its own; only interruption (abort) resolves the read.
-            awaitSettled: Effect.never,
-            retry: undefined as never,
-            release: Effect.void,
-          }),
-          () =>
-            Effect.sync(() => {
-              released = true;
-            }),
-        ),
-    } as unknown as import("~/zerops/zeropsDataContext").ZeropsDataContextValue["runtime"]["resources"];
-    const controller = new AbortController();
-    const pending = readZeropsResourceOnce(broker, {} as never, controller.signal);
-    controller.abort();
-    await expect(pending).resolves.toBeUndefined();
-    expect(released).toBe(true);
-  });
-});
-
 describe("same-origin Zerops identity bootstrap", () => {
   it("routes configuration reads through scoped resources", () => {
     expect(projectsPageSource).toContain(
       "readZeropsResourceOnce(runtime.resources, request, unmountRef.current?.signal)",
     );
-    expect(projectsPageSource).toContain("useZeropsResource(storeRecipeRequest)");
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
+    // The recipe is the group repo's, read as the person over Gitea — there is
+    // no Zerops endpoint for it and no mock standing in for one any more.
     expect(projectsPageSource).not.toContain(".readRecipeGroup(");
-    expect(typeof readZeropsResourceOnce).toBe("function");
+    expect(projectsPageSource).toContain("useZeropsGroupRecipe(");
   });
 
   it("routes project and service writes through typed runtime commands", () => {
@@ -207,7 +188,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       zeropsToken: null,
     },
     {
-      name: "the server does not offer the Zerops identity door",
+      name: "the server does not offer the Zerops throwaway door",
       authGate: {
         ...ZEROPS_DOOR_GATE,
         auth: { ...ZEROPS_DOOR_GATE.auth, bootstrapMethods: ["one-time-token"] as const },
@@ -296,13 +277,13 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: "zerops-account-token",
+      throwaway: TEST_THROWAWAY,
       connect,
     });
 
     expect(connect).toHaveBeenCalledWith({
       httpBaseUrl: `${APP_ORIGIN}/mate`,
-      zeropsToken: "zerops-account-token",
+      doorToken: "a-throwaway-value",
     });
     expect(result).toEqual({
       _tag: "Failure",
@@ -317,7 +298,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: null,
+      throwaway: null,
       connect,
     });
 
@@ -336,7 +317,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: "zerops-account-token",
+      throwaway: TEST_THROWAWAY,
       connect,
     });
 

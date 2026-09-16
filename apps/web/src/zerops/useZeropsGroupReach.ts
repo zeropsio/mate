@@ -1,5 +1,7 @@
 /**
- * Keeps every Mate's token reaching exactly its group.
+ * Keeps every Mate's token reaching exactly its group, holding no more of that
+ * group than it needs, and carrying no one-time mint — and every project in
+ * the group from handing its variables to each of its own containers.
  *
  * The decision is `groupReach.ts`; this is the shell that reads the account
  * and performs the writes. It runs off the same candidate list the projects
@@ -14,6 +16,13 @@
  * removed from anywhere — this client, another device, the Zerops GUI — is
  * reconciled the next time somebody looks at their projects.
  *
+ * Every Mate is read, solo ones included. Reach is not the only thing the plan
+ * decides any more: it also lowers the token the platform minted with `ADMIN`
+ * to `BASIC_USER` (guide 0.2), and that is how a Mate this client never
+ * created — the pool's from sign-up, an older account's — is secured at all. A
+ * group of one used to be skipped because it had no sibling to reach; it has a
+ * token to lower.
+ *
  * Failures are swallowed on purpose. This is a background repair of something
  * the user did not ask for; a token the account is not allowed to rewrite, or
  * a network that dropped, must not put an error on a screen that is otherwise
@@ -27,6 +36,7 @@ import type {
 import { useEffect, useMemo, useRef } from "react";
 
 import {
+  findAccountMateTokens,
   planAccountGroupReach,
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
@@ -61,28 +71,27 @@ export function useZeropsGroupReach(input: {
   readonly enabled: boolean;
 }): void {
   const { clientId, groups, enabled } = input;
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef, projectRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
-  const hasSharedGroup = groups.some((group) => group.projectIds.length >= 2);
+  const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
   const request = useMemo<OrganizationIntegrationTokenGrantsResourceRequest | null>(
     () =>
-      enabled && clientId !== undefined && hasSharedGroup
+      enabled && clientId !== undefined && hasMate
         ? {
             kind: "organization-integration-token-grants",
             account: runtime.scope,
             organization: organizationRef(clientId),
           }
         : null,
-    [clientId, enabled, hasSharedGroup, organizationRef, runtime.scope],
+    [clientId, enabled, hasMate, organizationRef, runtime.scope],
   );
   const grantsResource = useZeropsResource(request);
   const grantMetadata = grantsResource.status === "success" ? grantsResource.value : null;
 
   useEffect(() => {
-    // A group of one has no sibling to reach, so an account of solo Mates
-    // never lists the tokens at all.
-    if (!enabled || clientId === undefined || !hasSharedGroup) return;
+    // An account with no Mate has no token of ours to touch.
+    if (!enabled || clientId === undefined || !hasMate) return;
     if (grantsResource.status === "failure") {
       lastKey.current = null;
       return;
@@ -94,16 +103,52 @@ export function useZeropsGroupReach(input: {
     let cancelled = false;
     void (async () => {
       try {
-        for (const write of planAccountGroupReach({
-          groups,
-          tokens: integrationTokensFromGrantMetadata(grantMetadata),
-        })) {
+        const tokens = integrationTokensFromGrantMetadata(grantMetadata);
+        for (const write of planAccountGroupReach({ groups, tokens })) {
           if (cancelled) return;
           await runZeropsCommand(
             runtime.commands.setIntegrationTokenProjects({
               organization: organizationRef(clientId),
               ...write,
             }),
+          );
+        }
+
+        // The other half of the repair (guide 0.4): the one-time mint the
+        // platform grants every Mate at creation. A Mate this client never
+        // created — the pool's from sign-up, an older account's — is where
+        // this is the only path, and a token whose reach is already right can
+        // still be carrying one, so it runs over every Mate rather than over
+        // the writes above.
+        for (const token of findAccountMateTokens({ groups, tokens })) {
+          if (cancelled) return;
+          const delegations = await runZeropsCommand(
+            runtime.commands.listTokenDelegations({
+              organization: organizationRef(clientId),
+              tokenId: token.id,
+            }),
+          );
+          for (const delegation of delegations) {
+            if (cancelled) return;
+            await runZeropsCommand(
+              runtime.commands.deleteTokenDelegation({
+                organization: organizationRef(clientId),
+                tokenId: token.id,
+                delegationId: delegation.id,
+              }),
+            );
+          }
+        }
+
+        // And the third (guide 0.10): every project in the group, not only its
+        // Mates. A stage or production project made the old way carries the
+        // same `envIsolation: none` and the same project-wide `ZCP_API_KEY`,
+        // with ADMIN on itself, in every one of its containers. A project
+        // already closed makes the call two reads and no writes.
+        for (const projectId of new Set(groups.flatMap((group) => group.projectIds))) {
+          if (cancelled) return;
+          await runZeropsCommand(
+            runtime.commands.isolateProjectEnv(projectRef(clientId, projectId)),
           );
         }
       } catch {
@@ -122,9 +167,10 @@ export function useZeropsGroupReach(input: {
     grantMetadata,
     grantsResource.status,
     groups,
-    hasSharedGroup,
+    hasMate,
     key,
     organizationRef,
+    projectRef,
     runtime.commands,
   ]);
 }

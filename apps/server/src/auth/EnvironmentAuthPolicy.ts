@@ -32,8 +32,11 @@ export const make = Effect.gen(function* () {
         ? "remote-reachable"
         : "loopback-browser";
 
+  // One Zerops door, and it takes nothing of the caller's: a throwaway with no
+  // rights, minted for this Mate and deleted seconds later. There is no door
+  // here that accepts a person's own Zerops token any more (guide 3.5).
   const bootstrapMethods: ServerAuthDescriptor["bootstrapMethods"] = isZerops
-    ? ["zerops-identity"]
+    ? ["zerops-throwaway"]
     : [];
 
   const descriptor: ServerAuthDescriptor = {

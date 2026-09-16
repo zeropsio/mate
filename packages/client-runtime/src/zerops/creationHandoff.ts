@@ -2,8 +2,8 @@
  * What a Mate is told to do the moment it is created.
  *
  * Adding a Mate to a group stands the environment up but does not finish the
- * job: a clone carries a sibling's service *shapes* and not its build setup
- * (`recipeExport.ts`), so the application is there and not running. Until now
+ * job: a tier imports its services `startWithoutCode` (`recipeTier.ts`), so
+ * the application is there and running nothing. Until now
  * the new Mate opened on the same fixed line every connected environment gets
  * — "Introduce yourself, tell me what is running here" — which asks a Mate
  * that was created for a reason to guess what that reason was.
@@ -20,10 +20,12 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 
 /** Where the new environment's application came from, as the prompt needs it. */
 export type ZeropsCreationSource =
-  /** A sibling's export. `needsDeploy` are the services whose build it could not carry. */
-  | { readonly kind: "clone"; readonly name: string; readonly needsDeploy: ReadonlyArray<string> }
-  /** The group's published recipe for this role. */
-  | { readonly kind: "store" }
+  /**
+   * A tier of the group repo. Its services came up **empty**: the platform
+   * cannot clone a private repository, so every one of them was imported
+   * `startWithoutCode` and waits for its first deploy (`recipeTier.ts`).
+   */
+  | { readonly kind: "tier"; readonly services: ReadonlyArray<string> }
   /** Nothing — the agent is the first thing in the environment. */
   | { readonly kind: "none" };
 
@@ -32,6 +34,11 @@ export interface ZeropsCreationHandoff {
   readonly groupName: string;
   readonly role: ZeropsEnvironmentRole;
   readonly source: ZeropsCreationSource;
+  /**
+   * What the person answered to *What are we building?* — their own words,
+   * carried verbatim from *Add project* (D17). Absent when they wrote nothing.
+   */
+  readonly brief?: string | undefined;
 }
 
 /** The role as it reads mid-sentence: "the stage environment of Aurora". */
@@ -52,24 +59,19 @@ export function creationHandoffPrompt(handoff: ZeropsCreationHandoff): string {
   const lines = [`You were just created as ${place}.`];
 
   switch (handoff.source.kind) {
-    case "clone": {
-      const { name, needsDeploy } = handoff.source;
-      lines.push(`Its services were cloned from ${name}.`);
-      if (needsDeploy.length > 0) {
-        // The export carries no `zeropsSetup`, so these came up with nothing
-        // deployed. This is the whole reason the agent is here first.
+    case "tier": {
+      const { services } = handoff.source;
+      lines.push(`Its services came up from the project's recipe.`);
+      if (services.length > 0) {
+        // Imported `startWithoutCode`, so they exist and run nothing. This is
+        // the whole reason the agent is here first.
         lines.push(
-          `The clone could not carry their build setup, so ${needsDeploy.join(", ")} ${
-            needsDeploy.length === 1 ? "has" : "have"
-          } no build yet.`,
+          `${services.join(", ")} ${services.length === 1 ? "has" : "have"} no code deployed yet.`,
           "Get them building and running.",
         );
       }
       break;
     }
-    case "store":
-      lines.push(`Its services came up from the group's ${role} recipe.`);
-      break;
     case "none":
       lines.push("It has nothing in it yet — setting the application up is the job.");
       break;
@@ -109,11 +111,13 @@ function isHandoff(value: unknown): value is ZeropsCreationHandoff {
   const source = record["source"];
   if (typeof source !== "object" || source === null) return false;
   const kind = (source as Record<string, unknown>)["kind"];
+  const brief = record["brief"];
   return (
     typeof record["environmentName"] === "string" &&
     typeof record["groupName"] === "string" &&
     ROLES.has(record["role"] as ZeropsEnvironmentRole) &&
-    (kind === "clone" || kind === "store" || kind === "none")
+    (brief === undefined || typeof brief === "string") &&
+    (kind === "tier" || kind === "none")
   );
 }
 
@@ -173,24 +177,38 @@ export function withoutCreationHandoff(
 }
 
 /**
- * The job to say now, or nothing.
+ * What to do with a new environment's opening message: send it, write it into
+ * the composer and leave it, or wait (D17).
  *
- * A creation's opening message is the one prompt mate sends by itself rather
- * than composing — the person asked for this environment and waited two
- * minutes for it, so the turn is not a surprise. Four things gate it:
+ * The distinction is the whole of D17, and it is about **whose sentence it
+ * is**. The person answered *What are we building?* in *Add project* and then
+ * watched an environment being built for those words; sending them is finishing
+ * what they started, not a turn they did not ask for. A sentence this app
+ * composed about services and build setups is a guess at a job, and a guess is
+ * filled in for them to read, edit and send — never spent on their behalf.
+ *
+ * `wait` is not `never`: connecting, busy, unreachable and "no agent signed in
+ * yet" all mean the caller asks again in a moment. Four things gate it:
  *
  * - a **handoff**, which only a creation writes;
- * - somewhere to say it (`hasTarget`) and a thread that can take it
- *   (`ready`) — connecting, busy or unreachable all mean "not yet", never
- *   "never", so the caller simply asks again;
- * - a **signed-in coding agent**. There is nothing on the other end until
- *   then, and a turn spent on nothing is a turn wasted. This is the gate the
- *   whole flow is built around: authorization is the one step a person still
- *   has to do themselves (`spec-mate.md` §8), and everything after it is
- *   automatic;
+ * - somewhere to say it (`hasTarget`) and a thread that can take it (`ready`);
+ * - a **signed-in coding agent**. There is nothing on the other end until then,
+ *   and a turn spent on nothing is a turn wasted. This is the gate the whole
+ *   flow is built around: authorization is the one step a person still has to
+ *   do themselves (`spec-mate.md` §8), and everything after it is automatic;
  * - and **once**: `startedFor` is the environment this caller has already
  *   spoken for, so a re-render, a reconnect or a second tab says nothing.
  */
+export type ZeropsCreationJob =
+  /** The person's own words. Written into the composer and sent. */
+  | { readonly kind: "send"; readonly prompt: string }
+  /** A generated hand-off. Written into the composer and left there. */
+  | { readonly kind: "compose"; readonly prompt: string }
+  /** Not yet, or not at all. */
+  | { readonly kind: "wait" };
+
+const WAIT: ZeropsCreationJob = { kind: "wait" };
+
 export function creationJobToStart(input: {
   readonly environmentId: string | null;
   readonly handoff: ZeropsCreationHandoff | undefined;
@@ -198,11 +216,16 @@ export function creationJobToStart(input: {
   readonly ready: boolean;
   readonly agentSignInRequired: boolean;
   readonly startedFor: string | null;
-}): ZeropsCreationHandoff | undefined {
-  if (input.environmentId === null || !input.hasTarget || !input.ready) return undefined;
-  if (input.startedFor === input.environmentId) return undefined;
-  if (input.agentSignInRequired) return undefined;
-  return input.handoff;
+}): ZeropsCreationJob {
+  if (input.environmentId === null || !input.hasTarget || !input.ready) return WAIT;
+  if (input.startedFor === input.environmentId) return WAIT;
+  if (input.agentSignInRequired) return WAIT;
+  if (input.handoff === undefined) return WAIT;
+
+  const brief = input.handoff.brief?.trim() ?? "";
+  return brief.length > 0
+    ? { kind: "send", prompt: brief }
+    : { kind: "compose", prompt: creationHandoffPrompt(input.handoff) };
 }
 
 /**

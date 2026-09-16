@@ -25,6 +25,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
+import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 
 type ZeropsRpcTag =
@@ -38,6 +39,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
+  | typeof WS_METHODS.zeropsGitProbeRemote
   | typeof WS_METHODS.subscribeZeropsDataConsole;
 
 type ZeropsRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: ZeropsRpcTag }>;
@@ -65,6 +67,7 @@ export interface RegisterZeropsRpcDeps {
   /** This server's own version, read before `zcp mate update` runs. */
   readonly serverVersion: string;
   readonly zeropsDataConsole: ZeropsDataConsoleModule.ZeropsDataConsole["Service"];
+  readonly zeropsGitRemoteProbe: ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"];
   /**
    * The connecting session's subject — the Zerops user id the door put on the
    * grant. Taken from the authenticated session in `ws.ts`, never from RPC
@@ -162,6 +165,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsAgentLogin,
     zeropsBrowserStream,
     zeropsDataConsole,
+    zeropsGitRemoteProbe,
     subject,
     observeRpcEffect,
     observeRpcStream,
@@ -249,6 +253,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       }),
     [WS_METHODS.zeropsDataConsoleCall]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsDataConsoleCall, zeropsDataConsole.call(input), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsGitProbeRemote]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsGitProbeRemote, zeropsGitRemoteProbe.probe(input), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.subscribeZeropsDataConsole]: (_input) =>

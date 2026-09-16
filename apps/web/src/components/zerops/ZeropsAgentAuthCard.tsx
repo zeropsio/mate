@@ -16,6 +16,11 @@
  * caller so this stays pure.
  */
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
+import {
+  agentOwnershipNeedsAttention,
+  agentOwnershipNotice,
+  resolveAgentOwnership,
+} from "@t3tools/client-runtime/zerops/agentOwnership";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Button } from "~/components/ui/button";
@@ -40,10 +45,13 @@ const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
 
 export function ZeropsAgentAuthCard({
   snapshot,
+  viewerSubject,
   onSignIn,
   onCancel,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
+  /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
+  readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
@@ -55,7 +63,12 @@ export function ZeropsAgentAuthCard({
           Sign in inside this Zerops Control Plane. Access is shared by this project.
         </p>
       </header>
-      <ZeropsAgentAuthRows onCancel={onCancel} onSignIn={onSignIn} snapshot={snapshot} />
+      <ZeropsAgentAuthRows
+        onCancel={onCancel}
+        onSignIn={onSignIn}
+        snapshot={snapshot}
+        viewerSubject={viewerSubject}
+      />
     </FlatCard>
   );
 }
@@ -67,10 +80,12 @@ export function ZeropsAgentAuthCard({
  */
 export function ZeropsAgentAuthRows({
   snapshot,
+  viewerSubject,
   onSignIn,
   onCancel,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
+  readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
@@ -82,6 +97,7 @@ export function ZeropsAgentAuthRows({
           agent={agent}
           onSignIn={onSignIn}
           onCancel={onCancel}
+          viewerSubject={viewerSubject}
         />
       ))}
     </div>
@@ -90,16 +106,28 @@ export function ZeropsAgentAuthRows({
 
 function ZeropsAgentAuthRow({
   agent,
+  viewerSubject,
   onSignIn,
   onCancel,
 }: {
   readonly agent: ZeropsAgentAuth;
+  readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
   const login = classifyAgentLogin(agent.login);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
   const status = agentStatusPresentation(agent, login);
+  // Whose subscription a turn here would spend. Silent for your own agent —
+  // telling someone their own login is theirs is noise on every screen.
+  const ownership = resolveAgentOwnership({
+    credPresent: agent.credPresent,
+    ...(agent.authorizedBy === undefined
+      ? {}
+      : { authorizedBy: { subject: agent.authorizedBy.subject } }),
+    viewerSubject,
+  });
+  const ownershipNotice = agentOwnershipNotice(ownership);
 
   return (
     <div
@@ -123,12 +151,26 @@ function ZeropsAgentAuthRow({
           </div>
         </div>
       </div>
-      <ZeropsAgentAuthActionSlot
-        agent={agent}
-        login={login}
-        onSignIn={onSignIn}
-        onCancel={onCancel}
-      />
+      <div className="flex min-w-0 flex-col items-stretch gap-1.5 sm:items-end">
+        {ownershipNotice === undefined ? null : (
+          <p
+            className={
+              agentOwnershipNeedsAttention(ownership)
+                ? "text-xs leading-4 text-warning"
+                : "text-xs leading-4 text-muted-foreground"
+            }
+            data-zerops-agent-ownership={ownership}
+          >
+            {ownershipNotice}
+          </p>
+        )}
+        <ZeropsAgentAuthActionSlot
+          agent={agent}
+          login={login}
+          onSignIn={onSignIn}
+          onCancel={onCancel}
+        />
+      </div>
     </div>
   );
 }

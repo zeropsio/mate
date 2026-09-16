@@ -140,14 +140,24 @@ const EnvServerConfig = Config.all({
         .filter((entry) => entry.length > 0),
     ),
   ),
-  zeropsMembershipTtlSeconds: Config.int("T3CODE_ZEROPS_MEMBERSHIP_TTL_SECONDS").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
   // Explicit override for this container's own public origin, consulted by
   // the environment-link proof before falling back to the linking request's
   // Origin/Host (see ZeropsEnvironment.publicOrigin).
   zeropsPublicOrigin: Config.string("T3CODE_ZEROPS_PUBLIC_ORIGIN").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // The Mate's own Zerops key, as zcp already sets it in this container. The
+  // door never asks the caller for rights; it looks them up with this.
+  zeropsApiToken: Config.string("ZCP_API_KEY").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsRoleRecheckSeconds: Config.int("T3CODE_ZEROPS_ROLE_RECHECK_SECONDS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsSessionMaxAgeSeconds: Config.int("T3CODE_ZEROPS_SESSION_MAX_AGE_SECONDS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -421,8 +431,10 @@ export const resolveServerConfig = (
               projectId: env.zeropsProjectId,
               apiHost: env.zeropsApiHost,
               allowedOrigins: env.zeropsAllowedOrigins,
-              membershipTtlSeconds: env.zeropsMembershipTtlSeconds,
               publicOrigin: env.zeropsPublicOrigin,
+              apiToken: env.zeropsApiToken,
+              roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
+              sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
             })
           : undefined,
       noBrowser,

@@ -28,6 +28,13 @@
  */
 
 import type { EnvironmentCreationStep } from "./createEnvironment.ts";
+import {
+  findMateIntegrationToken,
+  planGroupReach,
+  type ZeropsIntegrationToken,
+  type ZeropsProjectGrant,
+  type ZeropsTokenDelegation,
+} from "./groupReach.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 
 /** The platform calls a creation makes, in the shape `api.ts` offers them. */
@@ -51,11 +58,68 @@ export interface EnvironmentCreationPlatform {
     readonly clientId: string;
     readonly yaml: string;
   }) => Promise<{ readonly projectId: string }>;
+  /**
+   * `GET /client/{id}/integration-token/list`, as grant metadata — names and
+   * project grants, never a token value. The step needs the id of the token
+   * the container import just minted, and nothing else about it.
+   */
+  readonly listIntegrationTokenGrants: (input: {
+    readonly clientId: string;
+  }) => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
+  /** `PUT /client/{id}/integration-token/{tokenId}` — the whole record, replaced. */
+  readonly setIntegrationTokenProjects: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  }) => Promise<void>;
+  /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
+  readonly listTokenDelegations: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+  }) => Promise<ReadonlyArray<ZeropsTokenDelegation>>;
+  /** `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`. */
+  readonly deleteTokenDelegation: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+    readonly delegationId: string;
+  }) => Promise<void>;
+  /**
+   * The whole of `projectIsolation.ts`'s plan against one project — the read,
+   * the writes, the re-read and the restarts. One call rather than a port per
+   * platform verb: the decision is the pure planner's and is tested there,
+   * and the entry ids the writes need never leave the caller that read them.
+   */
+  readonly isolateProjectEnvironment: (input: { readonly projectId: string }) => Promise<void>;
+  /**
+   * Asks the org's broker for this Mate's Gitea access and writes it onto the
+   * Mate (guide 1.5). Answers what happened rather than throwing: an account
+   * whose Gitea is not up yet is not a failed creation.
+   */
+  readonly fetchGiteaCredential: (input: {
+    readonly projectId: string;
+  }) => Promise<GiteaCredentialOutcome>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
   ) => Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>;
 }
+
+/**
+ * What came of asking for a Mate's Gitea access.
+ *
+ * None of them is a failure of the creation: the Mate exists and runs either
+ * way, and the projects-screen reconcile asks again on every read.
+ */
+export type GiteaCredentialOutcome =
+  /** Written and the container restarted into it. */
+  | { readonly kind: "written" }
+  /** The Mate already holds this Gitea's token; nothing to do. */
+  | { readonly kind: "up-to-date" }
+  /** The account has no Gitea yet, or it is still coming up. */
+  | { readonly kind: "waiting-for-gitea" }
+  /** The broker refused or could not be reached. Said, not thrown. */
+  | { readonly kind: "unavailable"; readonly reason: string };
 
 export type EnvironmentCreationStepState = "queued" | "running" | "done" | "failed";
 
@@ -64,6 +128,11 @@ export interface EnvironmentCreationStepProgress {
   readonly state: EnvironmentCreationStepState;
   /** Set on `failed`: what the platform said. */
   readonly error?: string;
+  /**
+   * A step that finished without doing its work, and why — the tolerant
+   * steps' answer. `fetch-gitea-credential` is the only one today.
+   */
+  readonly note?: string;
   readonly startedAtMs?: number;
   readonly finishedAtMs?: number;
 }
@@ -86,6 +155,12 @@ export type EnvironmentCreationOutcome =
        * through. The environment is up; these are what it still needs.
        */
       readonly undeployed: ReadonlyArray<string>;
+      /**
+       * What came of the Gitea step, when the plan reached it. Absent when the
+       * creation handed off at `await-ready` — a Mate's credential is then the
+       * caller's to fetch once its container is up, through the same call.
+       */
+      readonly giteaCredential?: GiteaCredentialOutcome;
     }
   | {
       readonly ok: false;
@@ -151,6 +226,24 @@ export async function runEnvironmentCreation(
   let projectId: string | undefined;
   let serviceName: string | undefined;
   let undeployed: ReadonlyArray<string> = [];
+  let giteaCredential: GiteaCredentialOutcome | undefined;
+  // Read once and shared by the two steps that need it: the account's token
+  // list does not change under a creation, and one read is one round trip
+  // fewer between the container coming up and its ADMIN going away.
+  let mateToken: ZeropsIntegrationToken | undefined;
+  const resolveMateToken = async (): Promise<ZeropsIntegrationToken> => {
+    if (mateToken !== undefined) return mateToken;
+    const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
+    assertCurrent();
+    const found = findMateIntegrationToken(tokens, requireProject(projectId));
+    if (found === undefined) {
+      throw new Error(
+        "The container's own access token could not be found, so it still holds more of this project than it needs.",
+      );
+    }
+    mateToken = found;
+    return found;
+  };
   report();
 
   for (let index = 0; index < input.steps.length; index += 1) {
@@ -189,8 +282,71 @@ export async function runEnvironmentCreation(
           serviceName = imported.serviceName;
           break;
         }
+        case "secure-container-token": {
+          const token = await resolveMateToken();
+          const write = planGroupReach({
+            token,
+            selfProjectId: requireProject(projectId),
+            // A group of one: the new environment's siblings, if it has any,
+            // are the projects-screen reconcile's business — that one runs on
+            // every read and can see the whole account, while this runs once
+            // and can see only what it just made.
+            groupProjectIds: [requireProject(projectId)],
+          });
+          // Already exactly right — a platform that starts minting the lowered
+          // shape makes this step a read.
+          if (write !== undefined) {
+            await input.platform.setIntegrationTokenProjects({
+              clientId: input.clientId,
+              tokenId: write.tokenId,
+              name: token.name,
+              projects: write.projects,
+            });
+          }
+          break;
+        }
+        case "drop-container-delegation": {
+          const token = await resolveMateToken();
+          const delegations = await input.platform.listTokenDelegations({
+            clientId: input.clientId,
+            tokenId: token.id,
+          });
+          assertCurrent();
+          // Every one of them, and only this token's. A Mate is never given a
+          // delegation on purpose, so there is no shape worth keeping; an
+          // account whose platform stopped granting them makes this a read.
+          for (const delegation of delegations) {
+            await input.platform.deleteTokenDelegation({
+              clientId: input.clientId,
+              tokenId: token.id,
+              delegationId: delegation.id,
+            });
+            assertCurrent();
+          }
+          break;
+        }
+        case "isolate-project-env": {
+          await input.platform.isolateProjectEnvironment({
+            projectId: requireProject(projectId),
+          });
+          break;
+        }
         case "import-recipe": {
           await input.platform.importServices(requireProject(projectId), step.yaml);
+          break;
+        }
+        case "fetch-gitea-credential": {
+          // Tolerant on purpose: whatever the broker says, the environment is
+          // built. The reconcile on the projects screen asks again.
+          const outcome = await input.platform.fetchGiteaCredential({
+            projectId: requireProject(projectId),
+          });
+          giteaCredential = outcome;
+          if (outcome.kind === "waiting-for-gitea") {
+            mark(index, { note: "Waiting for Gitea" });
+          } else if (outcome.kind === "unavailable") {
+            mark(index, { note: outcome.reason });
+          }
           break;
         }
         case "await-ready": {
@@ -233,6 +389,7 @@ export async function runEnvironmentCreation(
     serviceName,
     awaitingAgent: false,
     undeployed,
+    ...(giteaCredential === undefined ? {} : { giteaCredential }),
   };
 }
 

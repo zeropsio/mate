@@ -443,10 +443,10 @@ const GATE_EXPECTATIONS = [
     ],
   },
   {
-    label: "requires-auth:zerops-identity+one-time-token",
+    label: "requires-auth:zerops-throwaway+one-time-token",
     gate: {
       status: "requires-auth",
-      auth: authDescriptor(["zerops-identity", "one-time-token"]),
+      auth: authDescriptor(["zerops-throwaway", "one-time-token"]),
     },
     rows: [
       {
@@ -457,7 +457,7 @@ const GATE_EXPECTATIONS = [
           shell: "app",
           redirect: null,
           surface: "zerops-onboarding",
-          manualLink: { methods: ["zerops-identity", "one-time-token"] },
+          manualLink: { methods: ["zerops-throwaway", "one-time-token"] },
         },
       },
       {
@@ -479,7 +479,7 @@ const GATE_EXPECTATIONS = [
           shell: "bare",
           redirect: null,
           surface: "zerops-onboarding",
-          manualLink: { methods: ["zerops-identity", "one-time-token"] },
+          manualLink: { methods: ["zerops-throwaway", "one-time-token"] },
         },
       },
       {
@@ -1070,7 +1070,7 @@ describe("resolveDoor", () => {
 
 describe("an unpaired server with a usable environment", () => {
   const unpairedGates = GATE_EXPECTATIONS.filter(
-    ({ label }) => label.startsWith("requires-auth:") && !label.includes("zerops-identity"),
+    ({ label }) => label.startsWith("requires-auth:") && !label.includes("zerops-throwaway"),
   );
   const enteredRows = unpairedGates.flatMap(({ label, gate, rows }) =>
     rows

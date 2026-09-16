@@ -40,7 +40,18 @@ describe("summarizeEnvironmentServices", () => {
   });
 
   it("has nothing to name for a project holding only the core", () => {
-    expect(summarizeEnvironmentServices([CORE])).toEqual({ hostnames: [], deployedAt: undefined });
+    expect(summarizeEnvironmentServices([CORE])).toEqual({
+      hostnames: [],
+      deployedAt: undefined,
+      deployable: [],
+    });
+  });
+
+  it("carries the same services by id, for the reads that need one", () => {
+    expect(summarizeEnvironmentServices([BUILD, ZCP, DB, APP, CORE]).deployable).toEqual([
+      { serviceId: "app-id", hostname: "app" },
+      { serviceId: "db-id", hostname: "db" },
+    ]);
   });
 
   it.each([

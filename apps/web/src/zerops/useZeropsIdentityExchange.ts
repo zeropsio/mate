@@ -7,12 +7,15 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import {
   exchangeZeropsContainerIdentity as exchangeZeropsContainerIdentityShared,
+  type ZeropsDoorThrowaway,
   type ZeropsIdentityExchangeResult,
 } from "@t3tools/client-runtime/zerops/identityExchange";
+import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useCallback } from "react";
 
 import { appBasePath } from "~/basePath";
 import { connectZeropsIdentity } from "~/connection/onboarding";
+import { randomUUID } from "~/lib/utils";
 import { useAtomCommand } from "~/state/use-atom-command";
 
 import { promoteCreationHandoff } from "./creationHandoffStorage";
@@ -25,21 +28,21 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
   readonly containerOrigin: string;
   readonly appOrigin: string;
   readonly basePath: string;
-  readonly zeropsToken: string | null;
+  readonly throwaway: ZeropsDoorThrowaway | null;
   readonly connect: (input: {
     readonly httpBaseUrl: string;
-    readonly zeropsToken: string;
+    readonly doorToken: string;
   }) => Promise<AtomCommandResult<EnvironmentId, E>>;
 }): Promise<ZeropsIdentityExchangeResult> {
   return exchangeZeropsContainerIdentityShared(
-    { zeropsToken: input.zeropsToken, connect: input.connect },
+    { throwaway: input.throwaway, connect: input.connect },
     input.containerOrigin,
     { servedApp: { origin: input.appOrigin, basePath: input.basePath } },
   );
 }
 
 export function useZeropsIdentityExchange() {
-  const { client } = useZeropsSession();
+  const { client, activeOrganization } = useZeropsSession();
   const inventory = useZeropsInventory();
   const connect = useAtomCommand(connectZeropsIdentity, { reportFailure: false });
 
@@ -56,13 +59,24 @@ export function useZeropsIdentityExchange() {
           _tag: "Failure",
           error: "This environment is not in your verified Zerops projects.",
         };
+      // The token is minted in the org that owns the Mate's project — the
+      // active organization only stands in when the project read carried none.
+      const clientId = candidate.project.clientId ?? activeOrganization?.id;
       const finish = beginEnvironmentIdentityExchange(containerOrigin);
       try {
         const result = await exchangeZeropsContainerIdentity({
           containerOrigin,
           appOrigin: window.location.origin,
           basePath: appBasePath(),
-          zeropsToken: client.session?.accessToken ?? null,
+          throwaway:
+            client.session?.accessToken && clientId
+              ? {
+                  platform: zeropsThrowawayPlatform(client),
+                  clientId,
+                  projectId: candidate.project.id,
+                  nonce: randomUUID(),
+                }
+              : null,
           connect: (input) => connect({ ...input, expectedProjectId: candidate.project.id }),
         });
         if (result._tag === "Success" && alive()) {
@@ -75,6 +89,6 @@ export function useZeropsIdentityExchange() {
         finish();
       }
     },
-    [client, connect, inventory.projects, inventory.services, inventory.error],
+    [activeOrganization, client, connect, inventory.projects, inventory.services, inventory.error],
   );
 }

@@ -164,9 +164,10 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       // The container binds loopback and is published by its own nginx, so the
       // bind address says nothing about who can reach it.
       expect(descriptor.policy).toBe("remote-reachable");
-      // The identity door first; the authenticated pairing-token path stays so
-      // a signed-in member can still pair a second device.
-      expect(descriptor.bootstrapMethods).toEqual(["zerops-identity"]);
+      // One Zerops door, and it takes nothing of the caller's; the
+      // authenticated pairing-token path stays so a signed-in member can still
+      // pair a second device.
+      expect(descriptor.bootstrapMethods).toEqual(["zerops-throwaway"]);
       // No cookie inside a Zerops project: the hosted client is bearer/DPoP
       // only, so nothing this server issues can ride a cross-origin request by
       // itself.
@@ -180,7 +181,6 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
             projectId: "nTV3oMB2SS634ImDJnQckg",
             apiHost: undefined,
             allowedOrigins: [],
-            membershipTtlSeconds: undefined,
           }),
         }),
       ),
