@@ -368,6 +368,7 @@ export {
   canWriteRegistry,
   onlyTheseCanAddAProject,
   planGroupMembership,
+  registerMateVerb,
   planGroupRegistration,
   mateAwaitingRegistryLine,
   resolveAddProjectVerb,

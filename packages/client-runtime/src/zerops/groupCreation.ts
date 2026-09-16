@@ -265,3 +265,28 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
   const who = names.length === 0 ? "an owner or admin" : names.join(" or ");
   return `Waiting for ${who} to add it to the project — until then it cannot push.`;
 }
+
+/**
+ * The verb an owner sees on a colleague's unregistered Mate (guide 4.2).
+ *
+ * A member with *can create projects* makes a Mate and cannot write the
+ * registry, so their Mate runs with no group reach and no bot until somebody
+ * who can adds it. That somebody is an org owner or admin — the only people the
+ * platform lets write the Gitea project's tags (D3) — and this is the one verb
+ * that finishes the job.
+ *
+ * `undefined` for everybody else, and for a Mate already in the registry: a
+ * disabled button on a row a person can do nothing about is noise, and the row
+ * already says who it is waiting for (`mateAwaitingRegistryLine`).
+ */
+export function registerMateVerb(input: {
+  readonly registration: MateRegistration;
+  /** The viewer's org role, as the platform spells it. */
+  readonly viewerRole: string | undefined;
+  /** What the group is called, for the verb itself. */
+  readonly groupName: string;
+}): string | undefined {
+  if (input.registration !== "awaiting-owner") return undefined;
+  if (input.viewerRole !== "OWNER" && input.viewerRole !== "ADMIN") return undefined;
+  return `Register in ${input.groupName}`;
+}

@@ -81,7 +81,10 @@ import {
   hasMate,
   isZcpService,
   planEnvironmentCreation,
+  planGroupMembership,
   pullRequestRow,
+  registerMateVerb,
+  resolveMateRegistration,
   readZeropsGroupTags,
   resolveGroupGitea,
   runEnvironmentCreation,
@@ -784,6 +787,58 @@ function ZeropsProjectsContent() {
     );
 
   /**
+   * *Register in {group}* — the write a colleague's Mate is waiting on.
+   *
+   * A member with *can create projects* makes a Mate and cannot write the
+   * registry, so it runs with no group reach and no bot until an owner or an
+   * admin adds it (guide 4.2). Offered to them and to nobody else: the row
+   * already says who it is waiting for.
+   */
+  const registerVerb = (
+    candidate: ZeropsCandidatePresentation,
+    tags: ZeropsGroupTags,
+  ): string | undefined => {
+    if (tags.groupId === undefined || !hasMate(candidate)) return undefined;
+    const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
+    if (group === undefined) return undefined;
+    return registerMateVerb({
+      registration: resolveMateRegistration({
+        registry: registryState.registry,
+        projectId: candidate.project.id,
+      }),
+      viewerRole: activeOrganization?.roleCode,
+      groupName: group.name,
+    });
+  };
+
+  /** Writes the group's registry entry for a Mate, as the owner. */
+  const registerMate = async (
+    candidate: ZeropsCandidatePresentation,
+    tags: ZeropsGroupTags,
+  ): Promise<void> => {
+    if (tags.groupId === undefined || giteaProjectId === undefined) return;
+    const membership = planGroupMembership({
+      registry: registryState.registry,
+      groupId: tags.groupId,
+      projectId: candidate.project.id,
+      kind: "mate",
+    });
+    if (!membership.ok) {
+      setToolError(membership.reason);
+      return;
+    }
+    try {
+      await client.writeGroupRegistry({ giteaProjectId, tagList: membership.tagList });
+      // The credential reconcile runs off the registry, so the Mate gets its
+      // bot on the next pass rather than on a step this verb has to sequence.
+      registryState.refresh();
+      setToolError(null);
+    } catch (cause) {
+      setToolError(zeropsErrorMessage(cause));
+    }
+  };
+
+  /**
    * The quiet actions of a card or a row: the environment's public access,
    * the Mate's name when there is a Mate, and where the environment sits in
    * its project.
@@ -843,6 +898,17 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
+          ...(registerVerb(candidate, tags) === undefined
+            ? []
+            : [
+                {
+                  id: "register",
+                  label: registerVerb(candidate, tags) ?? "",
+                  onSelect: () => {
+                    void registerMate(candidate, tags);
+                  },
+                },
+              ]),
           ...(verbs.assign
             ? [
                 {

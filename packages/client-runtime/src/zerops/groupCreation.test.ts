@@ -8,6 +8,7 @@ import {
   planGroupRegistration,
   resolveAddProjectVerb,
   resolveGroupGitea,
+  registerMateVerb,
   resolveMateRegistration,
 } from "./groupCreation.ts";
 import { parseZeropsRegistry } from "./groupRegistry.ts";
@@ -237,4 +238,56 @@ describe("resolveMateRegistration", () => {
   ])("says $expected", ({ admins, expected }) => {
     expect(mateAwaitingRegistryLine(admins)).toBe(expected);
   });
+});
+
+describe("registerMateVerb", () => {
+  it.each([
+    {
+      name: "an owner, on a Mate nobody has registered",
+      registration: "awaiting-owner",
+      viewerRole: "OWNER",
+      expected: "Register in Acme CRM",
+    },
+    {
+      name: "an admin, who may write the registry too",
+      registration: "awaiting-owner",
+      viewerRole: "ADMIN",
+      expected: "Register in Acme CRM",
+    },
+    {
+      name: "the member who made it, and cannot finish it",
+      registration: "awaiting-owner",
+      viewerRole: "READ_ONLY",
+      expected: undefined,
+    },
+    {
+      name: "a BASIC_USER, who still cannot write the Gitea project's tags",
+      registration: "awaiting-owner",
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
+    {
+      name: "an owner, on a Mate already in the registry",
+      registration: "registered",
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "somebody whose role has not been read yet",
+      registration: "awaiting-owner",
+      viewerRole: undefined,
+      expected: undefined,
+    },
+  ] as const)(
+    "offers nothing but the right verb to $name",
+    ({ registration, viewerRole, expected }) => {
+      expect(
+        registerMateVerb({
+          registration,
+          ...(viewerRole === undefined ? {} : { viewerRole }),
+          groupName: "Acme CRM",
+        }),
+      ).toBe(expected);
+    },
+  );
 });
