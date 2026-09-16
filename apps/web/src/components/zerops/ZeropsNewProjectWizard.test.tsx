@@ -7,11 +7,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 
-import {
-  exitZeropsNewProjectWait,
-  submitZeropsNewProject,
-  zeropsNewProjectScopeStepVisible,
-} from "./ZeropsNewProjectWizard";
+import { submitZeropsNewProject, zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectWizard";
 
 const ORGANIZATION: ZeropsOrganization = {
   id: "client-1",
@@ -21,7 +17,7 @@ const ORGANIZATION: ZeropsOrganization = {
   canCreateProjects: true,
 };
 
-describe("zeropsNewProjectScopeStepVisible", () => {
+describe("ZeropsNewProjectWizard source", () => {
   it("creates through the typed runtime command", () => {
     expect(wizardSource).toContain("runtime.commands.createProjectWithMate(");
     expect(wizardSource).not.toContain("client.createProjectWithZeropsMate(");
@@ -33,6 +29,43 @@ describe("zeropsNewProjectScopeStepVisible", () => {
     expect(wizardSource).not.toContain(".listClientLocations(");
   });
 
+  it("is one form: a name, a location, one button", () => {
+    // No brief (the Mate falls back to its onboarding line) and no agents
+    // step (an empty selection omits `ZCP_AGENTS`, which offers every agent).
+    expect(wizardSource).not.toContain("Textarea");
+    expect(wizardSource).not.toContain("What are we building?");
+    expect(wizardSource).not.toContain("ZeropsNewProjectAgents");
+    expect(wizardSource).not.toContain("ZeropsNewProjectStep");
+    expect(wizardSource).toContain("agents: [],");
+    expect(wizardSource).not.toContain(">Continue<");
+    expect(wizardSource).not.toContain("in {activeOrganization.name}");
+  });
+
+  it("hands the wait to the projects page instead of rendering one", () => {
+    expect(wizardSource).not.toContain("ZeropsProvisioningPanel");
+    expect(wizardSource).not.toContain("provisioning.start(");
+    expect(wizardSource).not.toContain("exitZeropsNewProjectWait");
+    expect(wizardSource).toContain('navigate({ to: "/zerops" })');
+  });
+
+  it("says the page's name once, in the breadcrumb", () => {
+    expect(wizardSource).not.toContain("<h1");
+    expect(wizardSource).toContain(
+      "Name it. Its first Mate is up in a few minutes, with Git hosting alongside.",
+    );
+    expect(wizardSource).not.toContain("lowest-latency location is preselected");
+  });
+
+  it("is a white card no wider than a form", () => {
+    expect(wizardSource).not.toContain("bg-card/20");
+    expect(wizardSource).toContain(
+      "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card",
+    );
+    expect(wizardSource).toContain("max-w-xl");
+  });
+});
+
+describe("zeropsNewProjectScopeStepVisible", () => {
   it("is hidden once a single-membership account auto-resolves its organization", () => {
     expect(
       zeropsNewProjectScopeStepVisible({
@@ -461,33 +494,5 @@ describe("submitZeropsNewProject", () => {
 
     expect(onStartWaiting).toHaveBeenCalledWith("client-1");
     expect(onError).not.toHaveBeenCalled();
-  });
-});
-
-describe("exitZeropsNewProjectWait", () => {
-  // `provisioning.state` in the wizard is non-null only after a create
-  // already succeeded, so the exit has no phase-conditional branch and
-  // nothing here ever returns to a step whose action would create a SECOND
-  // project — pinned by construction: the signature has no way to reach a
-  // "go back to the agents step" call at all.
-  it.each([
-    "awaiting-project",
-    "awaiting-container",
-    "awaiting-health",
-    "needs-enable",
-    "ready",
-    "timed-out",
-    "pool-exhausted",
-    "not-yet-available",
-  ])("cancels the wait and returns to the project list regardless of phase (%s)", () => {
-    const cancel = vi.fn();
-    const clearCreatingIn = vi.fn();
-    const navigateToProjects = vi.fn();
-
-    exitZeropsNewProjectWait({ cancel, clearCreatingIn, navigateToProjects });
-
-    expect(cancel).toHaveBeenCalledTimes(1);
-    expect(clearCreatingIn).toHaveBeenCalledTimes(1);
-    expect(navigateToProjects).toHaveBeenCalledTimes(1);
   });
 });

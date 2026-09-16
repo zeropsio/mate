@@ -15,17 +15,16 @@ import { ZeropsApiError, type ZeropsLocation } from "@t3tools/client-runtime/zer
  * tagged into a group the registry does not know about is a Mate with no reach
  * and no bot (guide 4.2).
  *
- * ## Two questions
+ * ## One question
  *
- * The name, and *What are we building?* — those words, and only those, become
- * the Mate's first brief (D17). A generated hand-off is filled into the
- * composer and left for the person to send; their own sentence is the one
- * thing the app sends by itself, because they wrote it and watched the
- * environment being built for it.
+ * The name. No brief — the Mate opens on its own onboarding line — and no
+ * agent pick: the container offers every agent when `ZCP_AGENTS` is absent,
+ * which an empty selection is (`newProject.ts`). The handoff is still written
+ * so the projects page can resume the creation on a reload.
  *
- * The wait itself — polling, the ready → connect identity exchange, retry —
- * is `useZeropsProjectConnection` from `ZeropsProjectsPage`, shared with the
- * picker page rather than duplicated here.
+ * The wait — polling, the ready → connect identity exchange, retry — is the
+ * projects page's; a successful create marks the organization as creating
+ * and goes there.
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -54,7 +53,6 @@ import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zer
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import {
@@ -68,14 +66,9 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
-import { ZeropsProvisioningPanel } from "./ZeropsProvisioningPanel";
 import { useZeropsProjectConnection } from "./ZeropsProjectsPage";
-import {
-  ZEROPS_NEW_PROJECT_AGENTS_DEFAULT_SELECTION,
-  ZeropsNewProjectAgents,
-} from "./ZeropsNewProjectAgents";
 
-type ZeropsNewProjectStep = "project" | "agents";
+const CARD_CLASS = "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card";
 
 const EMPTY_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
 
@@ -259,51 +252,20 @@ export async function submitZeropsNewProject(input: {
   }
 }
 
-/**
- * The wait's only exit, whatever phase it settles or times out in: cancel it
- * and return to the project list. `provisioning.state` is non-null only
- * AFTER a create already succeeded, so — unlike the picker page, which can
- * legitimately have nothing to create yet — there is no phase here that
- * should exit back into an armed create step. Re-arming "Create project"
- * from the agents step would create a SECOND project for the same account.
- */
-export function exitZeropsNewProjectWait(input: {
-  readonly cancel: () => void;
-  readonly clearCreatingIn: () => void;
-  readonly navigateToProjects: () => void;
-}): void {
-  input.cancel();
-  input.clearCreatingIn();
-  input.navigateToProjects();
-}
-
 function ZeropsNewProjectContent() {
   const { activeOrganization, organizationStatus, organizations, selectOrganization, status } =
     useZeropsSession();
   const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
-  const {
-    provisioning,
-    connectError,
-    upgradeRecovery,
-    serverVersion,
-    connectingOrigin,
-    retryProjectConnection,
-    setCreatingIn,
-  } = useZeropsProjectConnection(activeOrganization?.id ?? null);
+  const { setCreatingIn } = useZeropsProjectConnection(activeOrganization?.id ?? null);
 
   const inventory = useContext(InventoryContext);
   const { client } = useZeropsSession();
-  const [step, setStep] = useState<ZeropsNewProjectStep>("project");
   const [name, setName] = useState("");
-  const [brief, setBrief] = useState("");
   const [locationChoice, setLocationChoice] = useState<{
     readonly key: string;
     readonly id: string;
   } | null>(null);
-  const [selectedAgents, setSelectedAgents] = useState<ReadonlyArray<ZeropsAgentType>>(
-    ZEROPS_NEW_PROJECT_AGENTS_DEFAULT_SELECTION,
-  );
   const [creating, setCreating] = useState(false);
   const [phase, setPhase] = useState<ZeropsNewProjectPhase>("project");
   const [createUncertain, setCreateUncertain] = useState(false);
@@ -446,46 +408,13 @@ function ZeropsNewProjectContent() {
 
   if (!addProject.offered) {
     return (
-      <section className="rounded-xl border border-border/55 bg-card/20 px-4 py-4">
+      <section className={`max-w-xl px-5 py-4 ${CARD_CLASS}`}>
         <h2 className="text-sm font-semibold text-foreground">Nothing to add here</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {addProject.reason} You can open every project of {activeOrganization.name} you have been
           given.
         </p>
       </section>
-    );
-  }
-
-  if (provisioning.state) {
-    return (
-      <div className="space-y-4">
-        <ZeropsProvisioningPanel
-          state={provisioning.state}
-          busy={provisioning.busy || connectingOrigin !== null}
-          error={connectError ?? provisioning.error}
-          onRetry={retryProjectConnection}
-          onEnable={provisioning.enable}
-          upgradeRecovery={upgradeRecovery}
-          serverVersion={serverVersion}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            exitZeropsNewProjectWait({
-              cancel: provisioning.cancel,
-              clearCreatingIn: () => {
-                setCreatingIn(null);
-              },
-              navigateToProjects: () => {
-                void navigate({ to: "/zerops" });
-              },
-            });
-          }}
-        >
-          Back to projects
-        </Button>
-      </div>
     );
   }
 
@@ -531,25 +460,25 @@ function ZeropsNewProjectContent() {
       clientId: activeOrganization.id,
       name,
       locationId,
-      agents: selectedAgents,
+      // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
+      agents: [],
       groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
       botName: generateBotName([], (bytes) => crypto.getRandomValues(bytes)),
       onCreated: (projectId) => {
-        // The first Mate of a project is the one that most needs a job: there
-        // is nothing in the environment yet, and setting that up is the whole
-        // reason it exists. What the person typed is carried with it — it, and
-        // not a sentence this app composed, is what gets sent (D17).
+        // What this project is, written down while its id is in hand: the
+        // projects page reads it to resume the creation, and the Mate opens
+        // on its own onboarding line — nothing typed here is sent for the
+        // person.
         rememberCreationHandoff(projectId, {
           environmentName: `${name.trim()} - dev`,
           groupName: name.trim(),
           role: "dev",
           source: { kind: "none" },
-          ...(brief.trim().length === 0 ? {} : { brief: brief.trim() }),
         });
       },
       onStartWaiting: (clientId) => {
         setCreatingIn(clientId);
-        provisioning.start({ zcpClaimed: true });
+        void navigate({ to: "/zerops" });
       },
       onError: setCreateError,
       onUncertain: () => setCreateUncertain(true),
@@ -559,122 +488,70 @@ function ZeropsNewProjectContent() {
   };
 
   return (
-    <div className="space-y-6" data-zerops-new-project-step={step}>
-      {step === "project" ? (
-        <section className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="zerops-new-project">Name</Label>
-            <Input
-              id="zerops-new-project"
-              value={name}
-              placeholder="Acme CRM"
-              onChange={(event) => {
-                setName(event.target.value);
-              }}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="zerops-new-project-brief">What are we building?</Label>
-            <Textarea
-              id="zerops-new-project-brief"
-              value={brief}
-              rows={3}
-              placeholder="A CRM for our sales team: contacts, deals and a weekly digest."
-              onChange={(event) => {
-                setBrief(event.target.value);
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              Your first Mate gets these words, and only these, as its first message.
-            </p>
-          </div>
-          {locations.length > 1 ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="zerops-new-project-location">Location</Label>
-              <Select
-                value={locationId}
-                onValueChange={(value) => {
-                  if (value !== null) setLocationChoice({ key: locationKey, id: value });
-                }}
-              >
-                <SelectTrigger id="zerops-new-project-location" aria-label="Project location">
-                  <SelectValue placeholder="Choose a location">
-                    {locations.find((location) => location.id === locationId)?.name ??
-                      "Choose a location"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                The lowest-latency location is preselected. You can choose another region.
-              </p>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              disabled={
-                name.trim().length === 0 ||
-                locationStatus === "loading" ||
-                locationStatus === "failed" ||
-                (locations.length > 0 && !locationId)
-              }
-              onClick={() => {
-                setStep("agents");
-              }}
-            >
-              {locationStatus === "loading" ? <Spinner className="size-4" /> : null}
-              Continue
-            </Button>
-            <span className="text-xs text-muted-foreground">in {activeOrganization.name}</span>
-          </div>
-          {locationError ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
-              Could not load project locations. {locationError}
-            </p>
-          ) : null}
-        </section>
-      ) : (
-        <section className="space-y-4 rounded-xl border border-border/55 bg-card/20 px-4 py-4">
-          <ZeropsNewProjectAgents
-            selected={selectedAgents}
-            onChange={setSelectedAgents}
-            disabled={creating}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                setStep("project");
-              }}
-            >
-              Back
-            </Button>
-            <Button
-              size="sm"
-              disabled={creating || createUncertain || (gitea !== undefined && registry === null)}
-              onClick={createProject}
-            >
-              {creating ? <Spinner className="size-4" /> : null}
-              {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
-            </Button>
-          </div>
-          {createError ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
-              {createError}
-            </p>
-          ) : null}
-        </section>
-      )}
-    </div>
+    <section className={`max-w-xl space-y-4 px-5 py-5 ${CARD_CLASS}`}>
+      <div className="space-y-1.5">
+        <Label htmlFor="zerops-new-project">Name</Label>
+        <Input
+          id="zerops-new-project"
+          value={name}
+          placeholder="Acme CRM"
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
+        />
+      </div>
+      {locations.length > 1 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="zerops-new-project-location">Location</Label>
+          <Select
+            value={locationId}
+            onValueChange={(value) => {
+              if (value !== null) setLocationChoice({ key: locationKey, id: value });
+            }}
+          >
+            <SelectTrigger id="zerops-new-project-location" aria-label="Project location">
+              <SelectValue placeholder="Choose a location">
+                {locations.find((location) => location.id === locationId)?.name ??
+                  "Choose a location"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {locations.map((location) => (
+                <SelectItem key={location.id} value={location.id}>
+                  {location.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      ) : null}
+      <Button
+        size="sm"
+        disabled={
+          creating ||
+          createUncertain ||
+          name.trim().length === 0 ||
+          locationStatus === "loading" ||
+          locationStatus === "failed" ||
+          (locations.length > 0 && !locationId) ||
+          (gitea !== undefined && registry === null)
+        }
+        onClick={createProject}
+      >
+        {creating || locationStatus === "loading" ? <Spinner className="size-4" /> : null}
+        {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
+      </Button>
+      {locationError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
+          Could not load project locations. {locationError}
+        </p>
+      ) : null}
+      {createError ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-2 text-sm text-destructive-foreground">
+          {createError}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -694,13 +571,9 @@ export function ZeropsNewProjectWizard() {
         </WorkspaceBreadcrumb>
       }
     >
-      <div className="space-y-1" data-zerops-project-scope="true">
-        <h1 className="text-xl font-medium text-foreground">New project</h1>
-        <p className="text-sm text-muted-foreground">
-          A project, with its first Mate in it. More Mates, a stage and a production come later,
-          from here.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground" data-zerops-project-scope="true">
+        Name it. Its first Mate is up in a few minutes, with Git hosting alongside.
+      </p>
       <ZeropsNewProjectContent />
     </ZeropsHostedFrame>
   );

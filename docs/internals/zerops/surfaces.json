@@ -844,7 +844,6 @@
       "title": "Zerops new project wizard",
       "components": [
         "apps/web/src/components/zerops/ZeropsNewProjectWizard.tsx",
-        "apps/web/src/components/zerops/ZeropsNewProjectAgents.tsx",
         "packages/client-runtime/src/zerops/newProject.ts"
       ],
       "entryPoints": [
@@ -926,7 +925,6 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsNewProjectWizard.test.tsx",
-        "apps/web/src/components/zerops/ZeropsNewProjectAgents.test.tsx",
         "packages/client-runtime/src/zerops/newProject.test.ts",
         "packages/client-runtime/src/zerops/data/commands.test.ts",
         "packages/client-runtime/src/zerops/data/runtime.test.ts",
