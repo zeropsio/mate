@@ -149,7 +149,7 @@ const json = (body: unknown, status = 200) =>
   });
 
 const MEMBERS = {
-  items: [
+  clientUserList: [
     { id: "cu-jan", userId: JAN, roleCode: "BASIC_USER", status: "ACTIVE" },
     { id: "cu-eva", userId: EVA, roleCode: "READ_ONLY", status: "ACTIVE" },
     { id: "cu-gone", userId: "gone", roleCode: "BASIC_USER", status: "INVITED" },
@@ -223,7 +223,7 @@ describe("readProjectMembership", () => {
   it.effect("reads an empty member list as an outage, never as a lockout", () => {
     const { layer } = readLayer((url) =>
       url.endsWith("/user/list")
-        ? json({ items: [] })
+        ? json({ clientUserList: [] })
         : json({ id: PROJECT_ID, clientId: CLIENT_ID }),
     );
     return readProjectMembership({ environment }).pipe(

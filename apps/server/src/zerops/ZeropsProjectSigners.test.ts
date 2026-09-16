@@ -259,7 +259,7 @@ describe("readActiveMemberIds", () => {
       Effect.provide(
         httpLayer(
           route({
-            items: [
+            clientUserList: [
               { id: "cu-jan", userId: JAN, status: "ACTIVE" },
               { id: "cu-eva", userId: EVA, status: "ACTIVE" },
               { id: "cu-gone", userId: "gone", status: "INVITED" },
@@ -274,7 +274,7 @@ describe("readActiveMemberIds", () => {
   // delete every login in the container.
   for (const [name, members, status] of [
     ["the member list cannot be read", {}, 500],
-    ["the member list comes back empty", { items: [] }, 200],
+    ["the member list comes back empty", { clientUserList: [] }, 200],
     ["the member list is not a list", { members: [] }, 200],
   ] as const) {
     it.effect(`answers nothing when ${name}`, () =>

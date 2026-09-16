@@ -100,7 +100,7 @@ const throwawayRoute =
     }
     if (url.endsWith("/user/list")) {
       return json({
-        items: [
+        clientUserList: [
           {
             id: "cu-1",
             userId: USER_ID,
