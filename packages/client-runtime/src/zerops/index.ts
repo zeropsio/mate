@@ -139,12 +139,16 @@ export {
   GITEA_ADMIN_PASSWORD_ENV_KEY,
   GITEA_ADMIN_TOKEN_ENV_KEY,
   GITEA_ADMIN_USER_COMMAND,
+  GITEA_BROKER_SERVICE,
+  GITEA_BROKER_TOKEN_NAME,
   GITEA_ADMIN_USER_ENV_KEY,
   GITEA_HTTP_PORT,
-  GITEA_RUNNER_TOKEN_COMMAND,
+  planGiteaProjectSetup,
   partitionZeropsToolProjects,
   readZeropsToolKind,
   type ZeropsGiteaPhase,
+  type ZeropsGiteaSetupAction,
+  type ZeropsGiteaSetupInput,
   type ZeropsGiteaProbe,
   type ZeropsGiteaSetupStep,
   type ZeropsGiteaState,
@@ -152,7 +156,12 @@ export {
   type ZeropsToolKind,
   type ZeropsToolProject,
 } from "./tools.ts";
-export { buildGiteaImportYaml, buildGiteaRunnerImportYaml } from "./giteaRecipe.ts";
+export {
+  buildGiteaImportYaml,
+  GITEA_IMPORT_PLACEHOLDERS,
+  GITEA_MATE_REPOSITORY,
+  type GiteaImportInput,
+} from "./giteaRecipe.ts";
 export {
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,

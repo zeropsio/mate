@@ -17,6 +17,7 @@ import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.t
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
+  ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
 import {
@@ -26,7 +27,14 @@ import {
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
 import { RECIPE_GROUP_PATH, type ZeropsGroupRecord } from "./recipeStore.ts";
-import { formatToolTag, type ZeropsToolKind } from "./tools.ts";
+import {
+  formatToolTag,
+  GITEA_BROKER_TOKEN_NAME,
+  planGiteaProjectSetup,
+  readZeropsToolKind,
+  type ZeropsGiteaSetupAction,
+  type ZeropsToolKind,
+} from "./tools.ts";
 import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
@@ -318,6 +326,14 @@ export function isZcpService(service: ZeropsService): boolean {
   return (service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "").startsWith(
     ZCP_SERVICE_TYPE_PREFIX,
   );
+}
+
+/** A tool project the reconcile has to have by now (`createToolProject`). */
+function requireToolProject(project: ZeropsProject | undefined): ZeropsProject {
+  if (project === undefined) {
+    throw new Error("The tool project has not been created yet.");
+  }
+  return project;
 }
 
 /** One record from `GET /service-stack/{id}/env`. */
@@ -1078,14 +1094,20 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Stands up an account-level tool — today only Gitea — as its own tagged
-   * project.
+   * Stands up the account's Gitea and the broker beside it — as a **reconcile**
+   * rather than a script.
    *
-   * Two calls, in this order for a reason: the region is only knowable once
-   * the project exists (`publicZone`), and the Gitea recipe needs it to write
-   * a `GITEA_DOMAIN` that resolves. The published recipe hardcodes a host that
-   * does not (`giteaRecipe.ts`), so a caller that skipped this would get an
-   * instance whose every clone URL points nowhere.
+   * It runs in the background right after sign-up, on the new owner's session,
+   * and takes about three minutes. A tab closes, a call fails, a laptop
+   * sleeps; the next time an owner opens the app this has to pick up exactly
+   * where it stopped. `planGiteaProjectSetup` decides what is still missing
+   * from what exists — the project, the broker's token by name, the services —
+   * and an account whose Gitea is up plans nothing at all.
+   *
+   * Order is fixed by two facts. The region is only knowable once the project
+   * exists (`publicZone`), and the import needs it to write a `GITEA_DOMAIN`
+   * that resolves. And the broker's token has to grant `BASIC_USER` on this
+   * project, which likewise does not exist until it does.
    *
    * No `zcp` container: a tool is not an environment and has no agent.
    */
@@ -1095,56 +1117,255 @@ export class ZeropsApiClient {
       readonly kind: ZeropsToolKind;
       readonly name: string;
       readonly location?: string;
+      /** Every origin the Mate app is served from — the current one at least. */
+      readonly appOrigins: ReadonlyArray<string>;
+      /** Where the Gitea sign-in consent page lives. */
+      readonly appUrl: string;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly project: ZeropsProject }> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const projectResponse = await this.#request<unknown>(
-      `/client/${input.clientId}/project`,
+
+    const existing = (await this.listAccessibleClientProjects(input.clientId)).find(
+      (candidate) => readZeropsToolKind(candidate.tagList) === input.kind,
+    );
+    this.#assertGeneration(generation);
+    const [services, tokens] = await Promise.all([
+      existing === undefined
+        ? Promise.resolve<ReadonlyArray<ZeropsService>>([])
+        : this.listProjectServices(existing.id, signal),
+      this.listIntegrationTokens(input.clientId, signal),
+    ]);
+    this.#assertGeneration(generation);
+
+    const actions = planGiteaProjectSetup({
+      ...(existing === undefined ? { project: undefined } : { project: { id: existing.id } }),
+      services: services.filter((service) => service.isSystem !== true),
+      tokenNames: tokens.map((token) => token.name),
+    });
+    let project = existing;
+    if (actions.length === 0) {
+      if (project === undefined) throw new Error("A finished setup must have a project.");
+      return { project };
+    }
+
+    try {
+      project = await this.#runGiteaSetup({
+        actions,
+        // A creation that fails afterwards still made a project, and the
+        // caller has to be told which one rather than left to find it.
+        onProject: (created) => {
+          project = created;
+        },
+        clientId: input.clientId,
+        kind: input.kind,
+        name: input.name,
+        ...(input.location === undefined ? {} : { location: input.location }),
+        appOrigins: input.appOrigins,
+        appUrl: input.appUrl,
+        tokens,
+        project,
+        signal,
+        ...(beforeWrite === undefined ? {} : { beforeWrite }),
+      });
+    } catch (cause) {
+      // Resumable, not lost: the next run reads what exists and plans the
+      // rest. But the caller has to hear that it is not finished.
+      if (project === undefined) throw cause;
+      throw new ZeropsApiError(
+        `Project "${project.name}" exists, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
+        "uncertain",
+      );
+    }
+
+    return { project: requireToolProject(project) };
+  }
+
+  async #runGiteaSetup(input: {
+    readonly actions: ReadonlyArray<ZeropsGiteaSetupAction>;
+    readonly onProject: (project: ZeropsProject) => void;
+    readonly clientId: string;
+    readonly kind: ZeropsToolKind;
+    readonly name: string;
+    readonly location?: string;
+    readonly appOrigins: ReadonlyArray<string>;
+    readonly appUrl: string;
+    readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
+    readonly project: ZeropsProject | undefined;
+    readonly signal?: AbortSignal | undefined;
+    readonly beforeWrite?: () => Promise<void>;
+  }): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    const { signal, beforeWrite, tokens } = input;
+    let project = input.project;
+    let brokerToken: string | undefined;
+
+    for (const action of input.actions) {
+      this.#assertGeneration(generation);
+      switch (action) {
+        case "create-project": {
+          const response = await this.#request<unknown>(
+            `/client/${input.clientId}/project`,
+            {
+              method: "POST",
+              signal: signal ?? null,
+              body: JSON.stringify(
+                buildCreateProjectBody({
+                  clientId: input.clientId,
+                  name: input.name,
+                  ...(input.location ? { location: input.location } : {}),
+                  tagList: [formatToolTag(input.kind)],
+                }),
+              ),
+            },
+            {
+              operationKind: "project-write",
+              ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+            },
+          );
+          if (!isCompleteCommandProject(response)) {
+            throw new ZeropsApiError(
+              "Zerops may have created the tool project, but its response was incomplete. Check your projects before trying again.",
+              "uncertain",
+            );
+          }
+          project = response;
+          input.onProject(response);
+          break;
+        }
+        case "mint-broker-token":
+        case "regenerate-broker-token": {
+          const target = requireToolProject(project);
+          const current = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
+          brokerToken =
+            action === "regenerate-broker-token" && current !== undefined
+              ? await this.regenerateIntegrationToken(
+                  { clientId: input.clientId, tokenId: current.id },
+                  signal,
+                  beforeWrite,
+                )
+              : await this.mintIntegrationToken(
+                  {
+                    clientId: input.clientId,
+                    name: GITEA_BROKER_TOKEN_NAME,
+                    // The broker reads the whole org and writes only where it
+                    // is granted; stage and production grants are added to
+                    // this same token as those projects are created, so no new
+                    // secret ever travels to it.
+                    roleCode: "READ_ONLY",
+                    projects: [{ projectId: target.id, roleCode: "BASIC_USER" }],
+                  },
+                  signal,
+                  beforeWrite,
+                );
+          break;
+        }
+        case "import-services": {
+          const target = requireToolProject(project);
+          const region = target.publicZone ? zeropsRegionFromPublicZone(target.publicZone) : null;
+          if (region === null || brokerToken === undefined) {
+            throw new ZeropsApiError(
+              `Project "${target.name}" exists, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
+              "uncertain",
+            );
+          }
+          await this.importServicesIntoProject(
+            target.id,
+            buildGiteaImportYaml({
+              region,
+              appOrigins: input.appOrigins,
+              appUrl: input.appUrl,
+              clientId: input.clientId,
+              projectId: target.id,
+              brokerToken,
+            }),
+            signal,
+            beforeWrite,
+          );
+          break;
+        }
+      }
+    }
+
+    return requireToolProject(project);
+  }
+
+  /**
+   * `POST /client/{id}/integration-token` — mints a token and returns its
+   * value, which the platform shows exactly once.
+   *
+   * No flags, ever: `canCreateProjects` and the finance flags are what turn a
+   * token into something that can name a person at a door (3.2), and nothing
+   * this client mints needs them.
+   */
+  async mintIntegrationToken(
+    input: {
+      readonly clientId: string;
+      readonly name: string;
+      readonly roleCode: ZeropsProjectRole;
+      readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<string> {
+    const response = await this.#request<{ readonly token?: string }>(
+      `/client/${input.clientId}/integration-token`,
       {
         method: "POST",
         signal: signal ?? null,
-        body: JSON.stringify(
-          buildCreateProjectBody({
-            clientId: input.clientId,
-            name: input.name,
-            ...(input.location ? { location: input.location } : {}),
-            tagList: [formatToolTag(input.kind)],
-          }),
-        ),
+        body: JSON.stringify({
+          name: input.name,
+          roleCode: input.roleCode,
+          canCreateProjects: false,
+          canViewFinances: false,
+          canEditFinances: false,
+          ...(input.projects === undefined ? {} : { projects: input.projects }),
+        }),
       },
       {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-    if (!isCompleteCommandProject(projectResponse)) {
+    if (!response.token) {
       throw new ZeropsApiError(
-        "Zerops may have created the tool project, but its response was incomplete. Check your projects before trying again.",
+        "Zerops accepted the token but did not return its value, so it cannot be used. Delete it and try again.",
         "uncertain",
       );
     }
-    const project = projectResponse;
+    return response.token;
+  }
 
-    try {
-      const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
-      if (region === null) throw new Error("The created project had no usable region.");
-      this.#assertGeneration(generation);
-      await this.importServicesIntoProject(
-        project.id,
-        buildGiteaImportYaml(region),
-        signal,
-        beforeWrite,
-      );
-    } catch {
+  /**
+   * `PUT /client/{id}/integration-token/{tokenId}/regenerate` — a new value for
+   * a token nobody holds the value of any more.
+   *
+   * The old value dies at once and whoever regenerates becomes the token's
+   * creator (measured 2026-09-15), so this is only ever right where nothing is
+   * using the old value yet.
+   */
+  async regenerateIntegrationToken(
+    input: { readonly clientId: string; readonly tokenId: string },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<string> {
+    const response = await this.#request<{ readonly token?: string }>(
+      `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
+      { method: "PUT", signal: signal ?? null },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+    if (!response.token) {
       throw new ZeropsApiError(
-        `Project "${project.name}" was created, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
+        "Zerops regenerated the token but did not return its value, so it cannot be used.",
         "uncertain",
       );
     }
-    return { project };
+    return response.token;
   }
 
   /** Locations the selected organization may place a new project in. */

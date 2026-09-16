@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
-import { buildGiteaImportYaml, buildGiteaRunnerImportYaml } from "./giteaRecipe.ts";
+import { buildGiteaImportYaml, GITEA_IMPORT_PLACEHOLDERS } from "./giteaRecipe.ts";
 import {
   deriveGiteaState,
   formatToolTag,
   partitionZeropsToolProjects,
+  planGiteaProjectSetup,
   readZeropsToolKind,
+  type ZeropsGiteaSetupInput,
   type ZeropsGiteaStepState,
 } from "./tools.ts";
 
@@ -33,7 +35,12 @@ const WEB_ACTIVE = service("web", "ACTIVE", {
   ],
 });
 
-const RECIPE_SERVICES = [service("db", "ACTIVE"), service("volume", "ACTIVE"), WEB_ACTIVE];
+const RECIPE_SERVICES = [
+  service("db", "ACTIVE"),
+  service("volume", "ACTIVE"),
+  WEB_ACTIVE,
+  service("broker", "ACTIVE"),
+];
 
 function stepState(
   state: ReturnType<typeof deriveGiteaState>,
@@ -195,38 +202,139 @@ describe("deriveGiteaState", () => {
     });
   });
 
-  it("reports runners only once the addon has been imported", () => {
-    expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "runners")).toBe("optional");
+  it("reports the broker only once the import has created it", () => {
+    expect(stepState(deriveGiteaState(GITEA_PROJECT, RECIPE_SERVICES), "broker")).toBe("done");
 
-    const withRunner = deriveGiteaState(GITEA_PROJECT, [
-      ...RECIPE_SERVICES,
-      service("runner", "ACTIVE"),
-    ]);
-    expect(stepState(withRunner, "runners")).toBe("done");
-    expect(withRunner.runnersImported).toBe(true);
+    const withoutBroker = deriveGiteaState(
+      GITEA_PROJECT,
+      RECIPE_SERVICES.filter((entry) => entry.name !== "broker"),
+    );
+    expect(stepState(withoutBroker, "broker")).toBe("pending");
+    expect(withoutBroker.brokerImported).toBe(false);
   });
 });
 
-describe("the Gitea recipe", () => {
-  it("takes the project's real region rather than the recipe's unresolvable host", () => {
-    const yaml = buildGiteaImportYaml("prg1");
-    expect(yaml).toContain("GITEA_DOMAIN: web-${zeropsSubdomainHost}-3000.prg1.zerops.app");
-    expect(yaml).not.toContain("app-prg1");
+const IMPORT = {
+  region: "prg1",
+  appOrigins: ["https://app.zerops.io", "http://localhost:5733/"],
+  appUrl: "https://app.zerops.io/",
+  clientId: "org-1",
+  projectId: "proj-1",
+  brokerToken: "BROKER-TOKEN-VALUE",
+} as const;
+
+describe("the Gitea import", () => {
+  it("leaves no placeholder in the document", () => {
+    const yaml = buildGiteaImportYaml(IMPORT);
+    for (const placeholder of GITEA_IMPORT_PLACEHOLDERS) {
+      expect(yaml, placeholder).not.toContain(placeholder);
+    }
   });
 
-  it("keeps the preprocessor header the generated password depends on", () => {
-    const yaml = buildGiteaImportYaml("prg1");
+  it("fills every blank the app is the only one to know", () => {
+    const yaml = buildGiteaImportYaml(IMPORT);
+    expect(yaml).toContain("GITEA_DOMAIN: web-${zeropsSubdomainHost}-3000.prg1.zerops.app");
+    expect(yaml).toContain("ZEROPS_API_URL: https://api.app-prg1.zerops.io");
+    expect(yaml).toContain("ZEROPS_CLIENT_ID: org-1");
+    expect(yaml).toContain("ZEROPS_PROJECT_ID: proj-1");
+    expect(yaml).toContain("MATE_APP_URL: https://app.zerops.io");
+    expect(yaml).toContain("value: BROKER-TOKEN-VALUE");
+  });
+
+  it("lists every app origin literally, comma-separated, without a trailing slash", () => {
+    // ALLOW_DOMAIN matches the origin string: localhost does not cover
+    // 127.0.0.1, and a port is part of the string.
+    expect(buildGiteaImportYaml(IMPORT)).toContain(
+      "GITEA_CORS_ALLOW_DOMAIN: https://app.zerops.io,http://localhost:5733",
+    );
+  });
+
+  it("refuses a document that would answer no browser origin at all", () => {
+    expect(() => buildGiteaImportYaml({ ...IMPORT, appOrigins: [] })).toThrow(/origin/u);
+    expect(() => buildGiteaImportYaml({ ...IMPORT, appOrigins: ["", "  /"] })).toThrow(/origin/u);
+  });
+
+  it("builds Gitea and the broker from one repository, each picking its half", () => {
+    const yaml = buildGiteaImportYaml(IMPORT);
+    expect(yaml).toContain("zeropsSetup: gitea");
+    expect(yaml).toContain("zeropsSetup: broker");
+    expect(yaml.match(/buildFromGit: https:\/\/github\.com\/zeropsio\/gitea-mate/gu)).toHaveLength(
+      2,
+    );
+  });
+
+  it("runs one Postgres rather than a cluster, and imports no runner", () => {
+    const yaml = buildGiteaImportYaml(IMPORT);
+    expect(yaml).toContain("type: postgresql@18");
+    expect(yaml).toContain("mode: NON_HA");
+    expect(yaml).not.toContain("postgresql:ha");
+    // The broker imports one per group when that group's first workflow
+    // appears; an account that never adds a project runs none.
+    expect(yaml).not.toContain("runner");
+  });
+
+  it("generates the broker's own secrets inside the import, not in the browser", () => {
+    const yaml = buildGiteaImportYaml(IMPORT);
     expect(yaml.startsWith("#zeropsPreprocessor=on")).toBe(true);
-    expect(yaml).toContain("<@generateRandomString(<32>)>");
+    for (const key of ["GITEA_WEBHOOK_SECRET", "OIDC_CLIENT_SECRET", "OIDC_SEED"]) {
+      expect(yaml, key).toMatch(new RegExp(`${key}:\\n\\s+value: <@generateRandomString`, "u"));
+    }
+  });
+
+  it("references Gitea's admin token rather than copying it", () => {
+    // A reference resolves in the broker's container and nowhere else.
+    expect(buildGiteaImportYaml(IMPORT)).toContain("GITEA_ADMIN_TOKEN: ${web_GITEA_ADMIN_TOKEN}");
   });
 
   it("carries no project block, which the import endpoint rejects", () => {
-    expect(buildGiteaImportYaml("prg1")).not.toMatch(/^project:/m);
+    expect(buildGiteaImportYaml(IMPORT)).not.toMatch(/^project:/mu);
   });
+});
 
-  it("substitutes the runner registration token", () => {
-    const yaml = buildGiteaRunnerImportYaml("abc123");
-    expect(yaml).toContain("value: abc123");
-    expect(yaml).not.toContain("<generated-token>");
+describe("planGiteaProjectSetup", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly input: ZeropsGiteaSetupInput;
+    readonly expected: ReadonlyArray<string>;
+  }> = [
+    {
+      name: "nothing yet",
+      input: { project: undefined, services: [], tokenNames: [] },
+      expected: ["create-project", "mint-broker-token", "import-services"],
+    },
+    {
+      name: "the project exists, nothing else does",
+      input: { project: { id: "p-1" }, services: [], tokenNames: [] },
+      expected: ["mint-broker-token", "import-services"],
+    },
+    {
+      name: "the project and the token exist, the import never ran",
+      input: { project: { id: "p-1" }, services: [], tokenNames: ["mate-broker"] },
+      // Nobody holds the value of a token minted before a tab closed.
+      expected: ["regenerate-broker-token", "import-services"],
+    },
+    {
+      name: "the import was accepted but only half of it appeared",
+      input: { project: { id: "p-1" }, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
+      expected: ["regenerate-broker-token", "import-services"],
+    },
+    {
+      name: "all done",
+      input: {
+        project: { id: "p-1" },
+        services: [{ name: "web" }, { name: "broker" }, { name: "db" }],
+        tokenNames: ["mate-broker"],
+      },
+      expected: [],
+    },
+    {
+      name: "services without a project is not a state, and plans a project",
+      input: { project: undefined, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
+      expected: ["create-project", "regenerate-broker-token", "import-services"],
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    expect(planGiteaProjectSetup(row.input)).toEqual(row.expected);
   });
 });
