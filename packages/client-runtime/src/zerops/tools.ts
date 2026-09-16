@@ -245,10 +245,14 @@ export function deriveGiteaState(
   // container runs, not that Gitea answers. A probe that came back
   // unreachable demotes it.
   const platformRunning = webStatus === "ACTIVE";
+  // A `web` the list does not carry yet is a Gitea whose import the inventory
+  // has not caught up with (seconds after the import, the project is ACTIVE
+  // and lists no service at all — measured 2026-09-16): setting up, not gone.
+  // Only a deletion in progress is "unavailable".
   const phase: ZeropsGiteaPhase =
     platformRunning && probe?.reachable !== false
       ? "running"
-      : webStatus === undefined || webStatus === "DELETING"
+      : webStatus === "DELETING"
         ? "unavailable"
         : "provisioning";
 

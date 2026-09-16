@@ -220,7 +220,15 @@ export function retryZeropsProjectConnection(input: {
 export function hasNoZeropsProject(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly isLoading: boolean;
+  /**
+   * A creation this client made and has not connected to yet. The wizard
+   * navigates here the moment the project exists, before the inventory lists
+   * it — painting the invitation in that gap is the flash the roster then
+   * takes back.
+   */
+  readonly creationPending?: boolean;
 }): boolean {
+  if (input.creationPending === true) return false;
   if (input.isLoading && input.candidates.length === 0) return false;
   const view = buildZeropsGroupTree(input.candidates, { rank: rankZeropsCandidateForListing });
   return view.groups.length === 0 && view.ungrouped.length === 0;
@@ -547,6 +555,7 @@ function ZeropsProjectsContent() {
   // Read on every render rather than memoized: the store is the connect's
   // to spend, and nothing this component holds changes when it does.
   const pendingCreations = new Set(pendingCreationProjects());
+  const creationPending = pendingCreations.size > 0;
 
   const rowInput = (
     candidate: ZeropsCandidate,
@@ -1846,7 +1855,7 @@ function ZeropsProjectsContent() {
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ candidates, isLoading })
+          hasNoZeropsProject({ candidates, isLoading, creationPending })
             ? () => {
                 void navigate({ to: "/zerops/new" });
               }
@@ -2222,7 +2231,11 @@ export function ZeropsProjectsPage() {
   // First run owns the page: an account with nothing in it gets the
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
-  const firstRun = hasNoZeropsProject({ candidates, isLoading });
+  const firstRun = hasNoZeropsProject({
+    candidates,
+    isLoading,
+    creationPending: pendingCreationProjects().length > 0,
+  });
 
   return (
     <ZeropsHostedFrame

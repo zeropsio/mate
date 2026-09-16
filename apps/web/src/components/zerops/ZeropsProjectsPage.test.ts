@@ -350,4 +350,12 @@ describe("hasNoZeropsProject", () => {
   it("answers from what has already arrived while a refresh runs", () => {
     expect(hasNoZeropsProject({ candidates: [candidate([])], isLoading: true })).toBe(false);
   });
+
+  it("answers no while a creation this client made is not listed yet", () => {
+    // The wizard lands here before the inventory carries the new project;
+    // the invitation must not paint in that gap only to be taken back.
+    expect(hasNoZeropsProject({ candidates: [], isLoading: false, creationPending: true })).toBe(
+      false,
+    );
+  });
 });

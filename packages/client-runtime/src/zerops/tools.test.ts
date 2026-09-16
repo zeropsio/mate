@@ -112,8 +112,10 @@ describe("deriveGiteaState", () => {
     expect(deriveGiteaState(GITEA_PROJECT, services).phase).toBe(phase);
   });
 
-  it("is unavailable when the web service does not exist yet", () => {
-    expect(deriveGiteaState(GITEA_PROJECT, []).phase).toBe("unavailable");
+  it("is provisioning while the web service is not listed yet", () => {
+    // Seconds after the import the project is ACTIVE and lists nothing; the
+    // inventory catches up on its next read. Not gone: setting up.
+    expect(deriveGiteaState(GITEA_PROJECT, []).phase).toBe("provisioning");
   });
 
   it("ignores the transient build and prepare services the platform creates", () => {
