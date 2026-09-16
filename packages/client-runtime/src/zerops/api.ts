@@ -1927,6 +1927,13 @@ export class ZeropsApiClient {
       readonly tokenId: string;
       readonly name: string;
       readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+      /**
+       * The token's own org role, round-tripped. `PUT` replaces the record, so
+       * omitting it would lower the token — which matters for exactly one token
+       * on the account: the broker's is org `READ_ONLY` and would stop being
+       * able to read the org at all (`docs/vocabulary.md`).
+       */
+      readonly roleCode?: string | undefined;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1938,7 +1945,7 @@ export class ZeropsApiClient {
         signal: signal ?? null,
         body: JSON.stringify({
           name: input.name,
-          roleCode: "NO_ACCESS",
+          roleCode: input.roleCode ?? "NO_ACCESS",
           canCreateProjects: false,
           canViewFinances: false,
           canEditFinances: false,

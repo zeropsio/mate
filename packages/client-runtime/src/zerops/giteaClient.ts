@@ -69,6 +69,13 @@ export interface GiteaBranch {
   readonly name: string;
   readonly commit?: { readonly id?: string | undefined } | undefined;
   readonly protected?: boolean | undefined;
+  /**
+   * Gitea's own answer to "may this person merge into it". The mirror lags a
+   * role change by minutes, so this is what decides whether the app merges its
+   * own pull request — never the role the app happens to know (guide 4.5).
+   */
+  readonly user_can_merge?: boolean | undefined;
+  readonly user_can_push?: boolean | undefined;
 }
 
 export interface GiteaFile {
@@ -173,6 +180,8 @@ export interface GiteaClient {
 
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
   listBranches(owner: string, repo: string): Promise<ReadonlyArray<GiteaBranch>>;
+  /** `undefined` when the branch is not there — a group repo with no `main` yet. */
+  getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
 
   /** `undefined` when the path is not in that ref — an empty group repo, say. */
   readFile(
@@ -344,6 +353,12 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       json<ReadonlyArray<GiteaBranch>>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches` },
         "list the branches",
+      ),
+
+    getBranch: (owner, repo, branch) =>
+      optional<GiteaBranch>(
+        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/branches/${enc(branch)}` },
+        "read the branch",
       ),
 
     readFile: async (owner, repo, path, ref) => {

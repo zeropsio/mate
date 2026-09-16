@@ -91,6 +91,8 @@ export interface ZeropsProjectGrant {
 export interface ZeropsIntegrationToken {
   readonly id: string;
   readonly name: string;
+  /** The token's org role, round-tripped by any write to it. */
+  readonly roleCode?: string | undefined;
   readonly projects?: ReadonlyArray<ZeropsProjectGrant> | undefined;
   /** When the platform minted it. The start-up throwaway sweep dates rows by it. */
   readonly created?: string | undefined;

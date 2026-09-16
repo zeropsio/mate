@@ -112,7 +112,9 @@ import {
 } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
+import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { findAccountGitea } from "~/zerops/giteaProject";
+import { giteaClientFor } from "~/zerops/giteaSession";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
@@ -1088,6 +1090,39 @@ function ZeropsProjectsContent() {
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
+  const accountGitea = useMemo(
+    () => findAccountGitea(inventory, activeOrganization?.id),
+    [activeOrganization?.id, inventory],
+  );
+  const giteaProjectId = accountGitea?.projectId;
+  const giteaEndpoints = useMemo(() => {
+    const state = accountGitea?.state;
+    return state?.url === undefined || state.brokerUrl === undefined
+      ? undefined
+      : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
+  }, [accountGitea]);
+  // The registry — which groups exist, and what each one's Gitea org is called
+  // (guide 4.1). One project read, on the one screen that sees the account.
+  const registryState = useZeropsRegistry({
+    giteaProjectId: giteaProjectId,
+    enabled: status === "signed-in",
+  });
+
+  // The recipe is the group repo's, read as the person (guide 4.3) — never a
+  // sibling's export, which carried service shapes without their build setup
+  // and produced environments that could not build.
+  const groupRecipe = useZeropsGroupRecipe({
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    tier:
+      creationRequest?.role === "prod"
+        ? "production"
+        : creationRequest?.role === "stage"
+          ? "stage"
+          : "mate",
+    enabled: creationRequest !== null,
+  });
+
   const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
    * Publish a service on its `*.zerops.app` subdomain.
@@ -1295,6 +1330,32 @@ function ZeropsProjectsContent() {
             : { kind: "none" },
       });
 
+      // A stage or a production is a **group environment**: it goes in the
+      // registry, the broker's token has to reach it, and its sources have to
+      // be declared on the group repo before the broker will deploy anything
+      // (guide 5.2). A Mate is none of those things.
+      if (role === "stage" || role === "prod") {
+        const written = await addGroupEnvironment({
+          client,
+          gitea: giteaEndpoints === undefined ? null : giteaClientFor(giteaEndpoints.giteaOrigin),
+          clientId: activeOrganization.id,
+          giteaProjectId,
+          registry: registryState.registry,
+          groupId,
+          slug: registryGroupSlug(registryState.registry, groupId),
+          environment: {
+            displayName: name,
+            tier: role === "prod" ? "production" : "stage",
+            project: outcome.projectId,
+          },
+        });
+        registryState.refresh();
+        if (!isCurrent()) return;
+        // Not a failed creation: the project exists and runs, and what is
+        // outstanding is named so the person knows what is waiting on whom.
+        if (written.failed !== undefined) setToolError(written.failed.reason);
+      }
+
       if (outcome.awaitingAgent) {
         // The imports were accepted; the container wait is the provisioning
         // machinery's, which also does the connect and the hand-over to `/`.
@@ -1324,6 +1385,10 @@ function ZeropsProjectsContent() {
       setConnectError,
       setCreatingIn,
       runtime.commands,
+      client,
+      giteaEndpoints,
+      giteaProjectId,
+      registryState,
     ],
   );
 
@@ -1383,39 +1448,6 @@ function ZeropsProjectsContent() {
   // account's own Gitea project, read exactly as its URL is — an account on a
   // devel region or behind a custom domain is read, never guessed. No Gitea,
   // no broker, no call.
-  const accountGitea = useMemo(
-    () => findAccountGitea(inventory, activeOrganization?.id),
-    [activeOrganization?.id, inventory],
-  );
-  const giteaProjectId = accountGitea?.projectId;
-  const giteaEndpoints = useMemo(() => {
-    const state = accountGitea?.state;
-    return state?.url === undefined || state.brokerUrl === undefined
-      ? undefined
-      : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
-  }, [accountGitea]);
-  // The registry — which groups exist, and what each one's Gitea org is called
-  // (guide 4.1). One project read, on the one screen that sees the account.
-  const registryState = useZeropsRegistry({
-    giteaProjectId: giteaProjectId,
-    enabled: status === "signed-in",
-  });
-
-  // The recipe is the group repo's, read as the person (guide 4.3) — never a
-  // sibling's export, which carried service shapes without their build setup
-  // and produced environments that could not build.
-  const groupRecipe = useZeropsGroupRecipe({
-    giteaOrigin: giteaEndpoints?.giteaOrigin,
-    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
-    tier:
-      creationRequest?.role === "prod"
-        ? "production"
-        : creationRequest?.role === "stage"
-          ? "stage"
-          : "mate",
-    enabled: creationRequest !== null,
-  });
-
   const giteaMates = useMemo(
     () =>
       candidates
