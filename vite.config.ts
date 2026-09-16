@@ -41,6 +41,10 @@ export default defineConfig({
       "apps/web/src/lib/vendor/qrcodegen.ts",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
+      // A byte-identical copy of `internal/roles/fixtures.json` in
+      // `zeropsio/gitea-mate`; both repositories assert the two files match, so
+      // reformatting it here would break the Go side's test, not ours.
+      "packages/shared/src/zeropsRoles.fixtures.json",
     ],
     sortPackageJson: {},
     overrides: [

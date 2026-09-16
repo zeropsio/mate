@@ -51,6 +51,10 @@
       "types": "./src/threadStatus.ts",
       "import": "./src/threadStatus.ts"
     },
+    "./zeropsRoles": {
+      "types": "./src/zeropsRoles.ts",
+      "import": "./src/zeropsRoles.ts"
+    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
