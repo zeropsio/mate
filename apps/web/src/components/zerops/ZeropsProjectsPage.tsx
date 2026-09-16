@@ -1144,6 +1144,20 @@ function ZeropsProjectsContent() {
                 ...input,
               }),
             ),
+          listTokenDelegations: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.listTokenDelegations({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
+          deleteTokenDelegation: ({ clientId: _clientId, ...input }) =>
+            runZeropsCommand(
+              runtime.commands.deleteTokenDelegation({
+                organization: organizationRef(activeOrganization.id),
+                ...input,
+              }),
+            ),
           importProject: ({ clientId: _clientId, yaml }) =>
             runZeropsCommand(
               runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),

@@ -95,6 +95,22 @@ export interface ZeropsIntegrationToken {
 }
 
 /**
+ * A one-time permission to mint one token of an exact shape, granted by a
+ * person and attached to a token.
+ *
+ * Environment creation leaves one on every Mate: the platform's
+ * development-container import grants `NO_ACCESS` + *can create projects*
+ * (measured 2026-09-15), so every Mate on the account can make itself one more
+ * project — and, worse for the door, a token whose `createdByUser` is the
+ * person who granted it. Nothing zcp does needs it: its delegated launch path
+ * falls back to a manual key.
+ */
+export interface ZeropsTokenDelegation {
+  readonly id: string;
+  readonly tokenId: string;
+}
+
+/**
  * The token that belongs to a Mate's container, out of every token on the
  * account.
  *
@@ -225,4 +241,27 @@ export function planAccountGroupReach(input: {
     }
   }
   return writes;
+}
+
+/**
+ * Every Mate's own token on the account, once each.
+ *
+ * What the reconcile needs that {@link planAccountGroupReach} cannot give it:
+ * that one returns the tokens whose *grants* are wrong, and a Mate whose reach
+ * is already right can still be carrying a delegation nobody wants (0.4). Two
+ * groups naming the same Mate — a project mid-move — yield one token, so a
+ * repair never runs twice over the same one.
+ */
+export function findAccountMateTokens(input: {
+  readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
+  readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
+}): ReadonlyArray<ZeropsIntegrationToken> {
+  const found = new Map<string, ZeropsIntegrationToken>();
+  for (const group of input.groups) {
+    for (const selfProjectId of group.mateProjectIds) {
+      const token = findMateIntegrationToken(input.tokens, selfProjectId);
+      if (token !== undefined) found.set(token.id, token);
+    }
+  }
+  return [...found.values()];
 }

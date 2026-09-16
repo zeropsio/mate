@@ -62,6 +62,14 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       );
       return Promise.resolve();
     },
+    listTokenDelegations: ({ tokenId }) => {
+      calls.push(`delegations:${tokenId}`);
+      return Promise.resolve([{ id: "del-1", tokenId }]);
+    },
+    deleteTokenDelegation: ({ tokenId, delegationId }) => {
+      calls.push(`delegation:${tokenId}:${delegationId}`);
+      return Promise.resolve();
+    },
     readObservedServices: (projectId) => {
       serviceReads += 1;
       calls.push(`services:${projectId}:${serviceReads}`);
@@ -164,6 +172,9 @@ describe("runEnvironmentCreation", () => {
       "container:proj-1:claude-code",
       "tokens:client-1",
       "token:tok-mate:proj-1=BASIC_USER",
+      // The token list is read once and shared by the two steps that need it.
+      "delegations:tok-mate",
+      "delegation:tok-mate:del-1",
       `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
     ]);
   });
@@ -177,7 +188,14 @@ describe("runEnvironmentCreation", () => {
     expect(outcome.ok && outcome.awaitingAgent).toBe(true);
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "done", "running"]);
+    expect(last.map((entry) => entry.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+      "done",
+      "running",
+    ]);
   });
 
   it("waits for every service of an environment without an agent", async () => {
@@ -256,8 +274,15 @@ describe("runEnvironmentCreation", () => {
     // Nothing after the failure runs.
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual(["done", "done", "done", "failed", "queued"]);
-    expect(last[3]?.error).toBe("projectImportProjectIncluded");
+    expect(last.map((entry) => entry.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+      "failed",
+      "queued",
+    ]);
+    expect(last[4]?.error).toBe("projectImportProjectIncluded");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -273,6 +298,7 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
+      "queued",
       "queued",
       "queued",
       "queued",
@@ -349,5 +375,56 @@ describe("runEnvironmentCreation — securing the container's token", () => {
       // The half that exists is still named, so the user is not left guessing.
       expect(outcome.projectId).toBe("proj-1");
     }
+  });
+});
+
+describe("runEnvironmentCreation — dropping the container's delegation", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly delegations: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
+    readonly deleted: ReadonlyArray<string>;
+  }> = [
+    {
+      name: "deletes the one the container import granted",
+      delegations: [{ id: "del-1", tokenId: "tok-mate" }],
+      deleted: ["delegation:tok-mate:del-1"],
+    },
+    {
+      name: "tolerates a Mate that was granted none",
+      delegations: [],
+      deleted: [],
+    },
+    {
+      name: "deletes every one it finds, not just the first",
+      delegations: [
+        { id: "del-1", tokenId: "tok-mate" },
+        { id: "del-2", tokenId: "tok-mate" },
+      ],
+      deleted: ["delegation:tok-mate:del-1", "delegation:tok-mate:del-2"],
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", async (_name, row) => {
+    const { platform, calls } = fakePlatform({
+      listTokenDelegations: () => Promise.resolve(row.delegations),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(true);
+    // Exactly this token's delegations, and only through the delete call.
+    expect(calls.filter((call) => call.startsWith("delegation:"))).toEqual(row.deleted);
+  });
+
+  it("stops the creation when the delegation cannot be taken back", async () => {
+    // A Mate left holding a one-time mint can name its creator as the person
+    // who granted it — the exact claim the door trusts — so this is not a
+    // failure worth swallowing.
+    const { platform } = fakePlatform({
+      deleteTokenDelegation: () => Promise.reject(new Error("insufficientPermissions")),
+    });
+    const { outcome } = await run(plan("dev"), platform);
+
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.failedStep.kind).toBe("drop-container-delegation");
   });
 });

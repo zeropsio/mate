@@ -40,6 +40,8 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "create-tool-project":
     case "list-integration-token-grants":
     case "set-integration-token-projects":
+    case "list-token-delegations":
+    case "delete-token-delegation":
       return intent.organization;
   }
 }

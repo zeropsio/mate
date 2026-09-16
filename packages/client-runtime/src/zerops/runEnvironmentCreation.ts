@@ -33,6 +33,7 @@ import {
   planGroupReach,
   type ZeropsIntegrationToken,
   type ZeropsProjectGrant,
+  type ZeropsTokenDelegation,
 } from "./groupReach.ts";
 import type { ZeropsAgentType } from "./newProject.ts";
 
@@ -71,6 +72,17 @@ export interface EnvironmentCreationPlatform {
     readonly tokenId: string;
     readonly name: string;
     readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+  }) => Promise<void>;
+  /** `GET /client/{id}/integration-token/{tokenId}/delegation`. */
+  readonly listTokenDelegations: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+  }) => Promise<ReadonlyArray<ZeropsTokenDelegation>>;
+  /** `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`. */
+  readonly deleteTokenDelegation: (input: {
+    readonly clientId: string;
+    readonly tokenId: string;
+    readonly delegationId: string;
   }) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
@@ -172,6 +184,23 @@ export async function runEnvironmentCreation(
   let projectId: string | undefined;
   let serviceName: string | undefined;
   let undeployed: ReadonlyArray<string> = [];
+  // Read once and shared by the two steps that need it: the account's token
+  // list does not change under a creation, and one read is one round trip
+  // fewer between the container coming up and its ADMIN going away.
+  let mateToken: ZeropsIntegrationToken | undefined;
+  const resolveMateToken = async (): Promise<ZeropsIntegrationToken> => {
+    if (mateToken !== undefined) return mateToken;
+    const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
+    assertCurrent();
+    const found = findMateIntegrationToken(tokens, requireProject(projectId));
+    if (found === undefined) {
+      throw new Error(
+        "The container's own access token could not be found, so it still holds more of this project than it needs.",
+      );
+    }
+    mateToken = found;
+    return found;
+  };
   report();
 
   for (let index = 0; index < input.steps.length; index += 1) {
@@ -211,12 +240,46 @@ export async function runEnvironmentCreation(
           break;
         }
         case "secure-container-token": {
-          await secureContainerToken({
-            clientId: input.clientId,
-            projectId: requireProject(projectId),
-            platform: input.platform,
-            assertCurrent,
+          const token = await resolveMateToken();
+          const write = planGroupReach({
+            token,
+            selfProjectId: requireProject(projectId),
+            // A group of one: the new environment's siblings, if it has any,
+            // are the projects-screen reconcile's business — that one runs on
+            // every read and can see the whole account, while this runs once
+            // and can see only what it just made.
+            groupProjectIds: [requireProject(projectId)],
           });
+          // Already exactly right — a platform that starts minting the lowered
+          // shape makes this step a read.
+          if (write !== undefined) {
+            await input.platform.setIntegrationTokenProjects({
+              clientId: input.clientId,
+              tokenId: write.tokenId,
+              name: token.name,
+              projects: write.projects,
+            });
+          }
+          break;
+        }
+        case "drop-container-delegation": {
+          const token = await resolveMateToken();
+          const delegations = await input.platform.listTokenDelegations({
+            clientId: input.clientId,
+            tokenId: token.id,
+          });
+          assertCurrent();
+          // Every one of them, and only this token's. A Mate is never given a
+          // delegation on purpose, so there is no shape worth keeping; an
+          // account whose platform stopped granting them makes this a read.
+          for (const delegation of delegations) {
+            await input.platform.deleteTokenDelegation({
+              clientId: input.clientId,
+              tokenId: token.id,
+              delegationId: delegation.id,
+            });
+            assertCurrent();
+          }
           break;
         }
         case "import-recipe": {
@@ -264,51 +327,6 @@ export async function runEnvironmentCreation(
     awaitingAgent: false,
     undeployed,
   };
-}
-
-/**
- * Lowers the token the container import just minted to what zcp needs
- * (`groupReach.ts`): `NO_ACCESS` at the org, `BASIC_USER` on this one project.
- *
- * The new environment is planned as a group of one. Its siblings, if it has
- * any, are the projects-screen reconcile's business — that one runs on every
- * read and can see the whole account, while this runs once and can see only
- * what it just made.
- *
- * A token that cannot be found **fails the step**. The alternative is a
- * creation that reports success over a container whose shell holds project
- * `ADMIN`, which is the exact thing this step exists to prevent; the project
- * still exists and the reconcile lowers it on the next projects read, so a
- * failure here costs a sentence, not the environment.
- */
-async function secureContainerToken(input: {
-  readonly clientId: string;
-  readonly projectId: string;
-  readonly platform: EnvironmentCreationPlatform;
-  readonly assertCurrent: () => void;
-}): Promise<void> {
-  const tokens = await input.platform.listIntegrationTokenGrants({ clientId: input.clientId });
-  input.assertCurrent();
-  const token = findMateIntegrationToken(tokens, input.projectId);
-  if (token === undefined) {
-    throw new Error(
-      "The container's own access token could not be found, so it still holds more of this project than it needs.",
-    );
-  }
-  const write = planGroupReach({
-    token,
-    selfProjectId: input.projectId,
-    groupProjectIds: [input.projectId],
-  });
-  // Already exactly right — a platform that starts minting the lowered shape
-  // makes this step a read.
-  if (write === undefined) return;
-  await input.platform.setIntegrationTokenProjects({
-    clientId: input.clientId,
-    tokenId: write.tokenId,
-    name: token.name,
-    projects: write.projects,
-  });
 }
 
 function requireProject(projectId: string | undefined): string {

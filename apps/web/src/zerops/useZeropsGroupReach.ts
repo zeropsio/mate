@@ -1,5 +1,6 @@
 /**
- * Keeps every Mate's token reaching exactly its group.
+ * Keeps every Mate's token reaching exactly its group, holding no more of that
+ * group than it needs, and carrying no one-time mint.
  *
  * The decision is `groupReach.ts`; this is the shell that reads the account
  * and performs the writes. It runs off the same candidate list the projects
@@ -34,6 +35,7 @@ import type {
 import { useEffect, useMemo, useRef } from "react";
 
 import {
+  findAccountMateTokens,
   planAccountGroupReach,
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
@@ -100,10 +102,8 @@ export function useZeropsGroupReach(input: {
     let cancelled = false;
     void (async () => {
       try {
-        for (const write of planAccountGroupReach({
-          groups,
-          tokens: integrationTokensFromGrantMetadata(grantMetadata),
-        })) {
+        const tokens = integrationTokensFromGrantMetadata(grantMetadata);
+        for (const write of planAccountGroupReach({ groups, tokens })) {
           if (cancelled) return;
           await runZeropsCommand(
             runtime.commands.setIntegrationTokenProjects({
@@ -111,6 +111,32 @@ export function useZeropsGroupReach(input: {
               ...write,
             }),
           );
+        }
+
+        // The other half of the repair (guide 0.4): the one-time mint the
+        // platform grants every Mate at creation. A Mate this client never
+        // created — the pool's from sign-up, an older account's — is where
+        // this is the only path, and a token whose reach is already right can
+        // still be carrying one, so it runs over every Mate rather than over
+        // the writes above.
+        for (const token of findAccountMateTokens({ groups, tokens })) {
+          if (cancelled) return;
+          const delegations = await runZeropsCommand(
+            runtime.commands.listTokenDelegations({
+              organization: organizationRef(clientId),
+              tokenId: token.id,
+            }),
+          );
+          for (const delegation of delegations) {
+            if (cancelled) return;
+            await runZeropsCommand(
+              runtime.commands.deleteTokenDelegation({
+                organization: organizationRef(clientId),
+                tokenId: token.id,
+                delegationId: delegation.id,
+              }),
+            );
+          }
         }
       } catch {
         // Background repair: try again on the next read rather than showing

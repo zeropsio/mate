@@ -109,13 +109,26 @@ const GROUP: ZeropsGroupReachGroup = {
 
 type GrantsBroker = FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>;
 
-function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
+function contextFor(
+  broker: GrantsBroker,
+  setIntegrationTokenProjects: (input: unknown) => void,
+  delegations: {
+    readonly list?: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
+    readonly onDelete?: (input: unknown) => void;
+  } = {},
+) {
   const runtime = {
     scope,
     resources: { acquire: broker.acquire },
     commands: {
       setIntegrationTokenProjects: (input: unknown) => {
         setIntegrationTokenProjects(input);
+        return Effect.succeed({ attempt: {} as never, value: undefined });
+      },
+      listTokenDelegations: () =>
+        Effect.succeed({ attempt: {} as never, value: delegations.list ?? [] }),
+      deleteTokenDelegation: (input: unknown) => {
+        delegations.onDelete?.(input);
         return Effect.succeed({ attempt: {} as never, value: undefined });
       },
     },
@@ -198,6 +211,53 @@ describe("useZeropsGroupReach", () => {
       });
       await flushEffects();
       expect(writes).toHaveLength(1);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  it("takes back every Mate's one-time mint, including one whose reach is already right", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const deletes: unknown[] = [];
+    const context = contextFor(broker, () => {}, {
+      list: [{ id: "del-1", tokenId: "token-a" }],
+      onDelete: (input) => deletes.push(input),
+    });
+    const settled: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
+      {
+        tokenId: "token-a",
+        name: "zcp-a",
+        grants: [
+          { projectId: "project-a", roleCode: "BASIC_USER" },
+          { projectId: "project-b", roleCode: "READ_ONLY" },
+        ],
+      },
+    ];
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: settled });
+      });
+      await flushEffects();
+
+      expect(deletes).toEqual([{ organization, tokenId: "token-a", delegationId: "del-1" }]);
     } finally {
       await act(() => root.unmount());
     }

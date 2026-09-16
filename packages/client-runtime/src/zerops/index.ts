@@ -215,7 +215,9 @@ export {
 } from "./giteaCredential.ts";
 export {
   buildGroupGrants,
+  findAccountMateTokens,
   findMateIntegrationToken,
+  MATE_SELF_PROJECT_ROLE,
   planAccountGroupReach,
   planGroupReach,
   type ZeropsGroupReachGroup,
@@ -223,4 +225,5 @@ export {
   type ZeropsIntegrationToken,
   type ZeropsProjectGrant,
   type ZeropsProjectRole,
+  type ZeropsTokenDelegation,
 } from "./groupReach.ts";

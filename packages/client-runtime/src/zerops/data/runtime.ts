@@ -2863,6 +2863,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             : Effect.fail(missingCommandResult()),
         ),
       ),
+    listTokenDelegations: (input) =>
+      runCommand({ kind: "list-token-delegations", ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "list-token-delegations"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
+    deleteTokenDelegation: (input) =>
+      runCommand({ kind: "delete-token-delegation", ...input }).pipe(
+        Effect.flatMap(({ attempt, result }) =>
+          result.kind === "delete-token-delegation"
+            ? Effect.succeed({ attempt, value: result.value })
+            : Effect.fail(missingCommandResult()),
+        ),
+      ),
   };
 
   const observeAccess = (observation: AccessObservation): Effect.Effect<void> =>

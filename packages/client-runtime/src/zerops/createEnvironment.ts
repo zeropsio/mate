@@ -137,6 +137,17 @@ export type EnvironmentCreationStep =
    * so it sits directly after the container import rather than at the end.
    */
   | { readonly kind: "secure-container-token" }
+  /**
+   * `DELETE /client/{clientId}/integration-token/{tokenId}/delegation/{id}` —
+   * the one-time mint the platform hands every new Mate.
+   *
+   * It grants `NO_ACCESS` + *can create projects*, so the Mate can make one
+   * more project; and a token minted through a delegation names the
+   * **delegating person** as its creator, which is precisely the claim a
+   * throwaway at the door is trusted for. Lowering the token (above) does not
+   * touch it — it is a separate record — so it gets a step of its own.
+   */
+  | { readonly kind: "drop-container-delegation" }
   /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
   | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
   /**
@@ -239,6 +250,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     // Only a container has a token to lower: an environment created without
     // one is a deployment target, and the platform mints it nothing.
     steps.push({ kind: "secure-container-token" });
+    steps.push({ kind: "drop-container-delegation" });
   }
   if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
@@ -259,6 +271,8 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Adding the agent container";
     case "secure-container-token":
       return "Locking the container's access";
+    case "drop-container-delegation":
+      return "Taking back the container's one-time permit";
     case "import-recipe":
       return "Importing the application";
     case "await-ready":

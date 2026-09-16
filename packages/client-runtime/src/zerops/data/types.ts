@@ -6,7 +6,7 @@ import type * as Stream from "effect/Stream";
 import type { Atom } from "effect/unstable/reactivity";
 import type { ActivityAppVersion } from "../activity/dto.ts";
 import type { ZeropsProject } from "../api.ts";
-import type { ZeropsProjectGrant } from "../groupReach.ts";
+import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
 import type { ZeropsEnvironmentRole } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import type { ZeropsToolKind } from "../tools.ts";
@@ -1380,7 +1380,9 @@ export type PlatformCommandKind =
   | "import-services"
   | "create-tool-project"
   | "list-integration-token-grants"
-  | "set-integration-token-projects";
+  | "set-integration-token-projects"
+  | "list-token-delegations"
+  | "delete-token-delegation";
 
 interface CommandAttemptBase {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1682,6 +1684,25 @@ export interface SetIntegrationTokenProjectsCommandIntent {
   readonly projects: ReadonlyArray<ZeropsProjectGrant>;
 }
 
+/**
+ * `GET /client/{id}/integration-token/{tokenId}/delegation`.
+ *
+ * A read shaped as a command for the same reason as the grant listing above:
+ * its caller is a repair sequence, not a screen.
+ */
+export interface ListTokenDelegationsCommandIntent {
+  readonly kind: "list-token-delegations";
+  readonly organization: OrganizationRef;
+  readonly tokenId: string;
+}
+
+export interface DeleteTokenDelegationCommandIntent {
+  readonly kind: "delete-token-delegation";
+  readonly organization: OrganizationRef;
+  readonly tokenId: string;
+  readonly delegationId: string;
+}
+
 export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
@@ -1697,7 +1718,9 @@ export type PlatformCommandIntent =
   | ImportServicesCommandIntent
   | CreateToolProjectCommandIntent
   | ListIntegrationTokenGrantsCommandIntent
-  | SetIntegrationTokenProjectsCommandIntent;
+  | SetIntegrationTokenProjectsCommandIntent
+  | ListTokenDelegationsCommandIntent
+  | DeleteTokenDelegationCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1755,7 +1778,12 @@ export type PlatformCommandResult =
       readonly kind: "list-integration-token-grants";
       readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
     }
-  | { readonly kind: "set-integration-token-projects"; readonly value: void };
+  | { readonly kind: "set-integration-token-projects"; readonly value: void }
+  | {
+      readonly kind: "list-token-delegations";
+      readonly value: ReadonlyArray<ZeropsTokenDelegation>;
+    }
+  | { readonly kind: "delete-token-delegation"; readonly value: void };
 
 export interface PlatformCommandReceipt {
   readonly processRefs: ReadonlyArray<ProcessRef>;
@@ -1976,6 +2004,19 @@ export interface ZeropsDataCommands {
   >;
   readonly setIntegrationTokenProjects: (
     input: Omit<SetIntegrationTokenProjectsCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly listTokenDelegations: (
+    input: Omit<ListTokenDelegationsCommandIntent, "kind" | "organization"> & {
+      readonly organization: OrganizationRef;
+    },
+  ) => Effect.Effect<
+    CommandExecution<ReadonlyArray<ZeropsTokenDelegation>>,
+    CommandAdmissionError | AdapterError
+  >;
+  readonly deleteTokenDelegation: (
+    input: Omit<DeleteTokenDelegationCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;

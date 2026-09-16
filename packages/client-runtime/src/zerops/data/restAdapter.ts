@@ -1242,6 +1242,39 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           })),
           Effect.mapError(uncertainCommandError),
         );
+      case "list-token-delegations":
+        return executeApi(context, (signal) =>
+          options.client.listIntegrationTokenDelegations(
+            { clientId: command.organization.organizationId, tokenId: command.tokenId },
+            signal,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
+      case "delete-token-delegation":
+        return executeApi(context, (signal) =>
+          options.client.deleteIntegrationTokenDelegation(
+            {
+              clientId: command.organization.organizationId,
+              tokenId: command.tokenId,
+              delegationId: command.delegationId,
+            },
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
       case "set-integration-token-projects":
         return executeApi(context, (signal) =>
           options.client.setIntegrationTokenProjects(

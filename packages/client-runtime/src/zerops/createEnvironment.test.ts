@@ -97,6 +97,7 @@ describe("planEnvironmentCreation", () => {
       "create-project",
       "import-container",
       "secure-container-token",
+      "drop-container-delegation",
       "import-recipe",
       "await-ready",
     ]);
@@ -107,6 +108,7 @@ describe("planEnvironmentCreation", () => {
     const plan = planEnvironmentCreation(BASE);
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).not.toContain("secure-container-token");
+    expect(stepKinds(plan.steps)).not.toContain("drop-container-delegation");
   });
 
   it("gives the new container the agents the group is signed in with", () => {
@@ -168,6 +170,7 @@ describe("environmentCreationStepLabel", () => {
       "Creating the environment",
       "Adding the agent container",
       "Locking the container's access",
+      "Taking back the container's one-time permit",
       "Importing the application",
       "Waiting for the agent",
     ]);
@@ -265,6 +268,7 @@ describe("the recipe choice", () => {
       "create-project",
       "import-container",
       "secure-container-token",
+      "drop-container-delegation",
       "await-ready",
     ]);
   });
@@ -322,6 +326,7 @@ services:
       "import-project",
       "import-container",
       "secure-container-token",
+      "drop-container-delegation",
       "await-ready",
     ]);
   });
