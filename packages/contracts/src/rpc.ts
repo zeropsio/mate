@@ -167,6 +167,9 @@ import {
   ZeropsDataConsoleRequest,
   ZeropsDataConsoleResponse,
   ZeropsDataConsoleSessionEvent,
+  ZeropsGitRemoteProbeError,
+  ZeropsGitRemoteProbeInput,
+  ZeropsGitRemoteProbeResult,
   ZeropsLifecycle,
   ZeropsLifecycleGetInput,
   ZeropsMateUpdateError,
@@ -298,6 +301,7 @@ export const WS_METHODS = {
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
+  zeropsGitProbeRemote: "zerops.git.probeRemote",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -973,6 +977,20 @@ export const WsZeropsDataConsoleCallRpc = Rpc.make(WS_METHODS.zeropsDataConsoleC
   error: Schema.Union([EnvironmentAuthorizationError, ZeropsDataConsoleError]),
 });
 
+/**
+ * `git ls-remote` against one checkout's remote, run now (guide 4.5).
+ *
+ * A read, and the only party that can answer it: the checkout lives in the dev
+ * container and its credential helper lives beside it, so neither the browser
+ * nor Gitea can say whether this Mate can actually reach its remote. The Git
+ * tab asks it rather than inferring health from a remote being configured.
+ */
+export const WsZeropsGitProbeRemoteRpc = Rpc.make(WS_METHODS.zeropsGitProbeRemote, {
+  payload: ZeropsGitRemoteProbeInput,
+  success: ZeropsGitRemoteProbeResult,
+  error: Schema.Union([ZeropsGitRemoteProbeError, EnvironmentAuthorizationError]),
+});
+
 /** The console child process's own lifecycle — idle/starting/ready/unavailable/unsupported — so the panel can show a spawn/degrade state without polling. */
 export const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataConsole, {
   payload: Schema.Struct({}),
@@ -1068,6 +1086,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,
+  WsZeropsGitProbeRemoteRpc,
   WsSubscribeZeropsDataConsoleRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,

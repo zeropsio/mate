@@ -153,6 +153,7 @@ import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
+import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
@@ -533,6 +534,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
     | ZeropsDataConsoleModule.ZeropsDataConsole
+    | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
   >;
   layers?: {
@@ -585,6 +587,7 @@ const buildAppUnderTest = (options?: {
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
     zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
+    zeropsGitRemoteProbe?: Partial<ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe["Service"]>;
   };
 }) =>
   Effect.gen(function* () {
@@ -1139,6 +1142,18 @@ const buildAppUnderTest = (options?: {
                   }),
                 ),
               ...options?.layers?.zeropsDataConsole,
+            }),
+            // A test machine has no checkout and no remote; the probe answers
+            // what an unreachable one answers rather than running git.
+            Layer.mock(ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe)({
+              probe: () =>
+                Effect.succeed({
+                  reachable: false,
+                  remote: "origin",
+                  refCount: 0,
+                  detail: "no remote in the test harness",
+                }),
+              ...options?.layers?.zeropsGitRemoteProbe,
             }),
           ),
       ),

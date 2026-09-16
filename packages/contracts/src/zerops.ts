@@ -807,3 +807,47 @@ export class ZeropsDataConsoleError extends Schema.TaggedErrorClass<ZeropsDataCo
     requestId: Schema.optional(Schema.String),
   },
 ) {}
+
+/**
+ * Whether a repository's remote actually answers — `git ls-remote` run now,
+ * in the service that owns the checkout (guide 4.5).
+ *
+ * The Git tab may not infer this from the last push, from the presence of a
+ * token or from a remote being configured at all: every one of those is true
+ * of a Mate whose Gitea credential was never written, and a tab that mixes
+ * them shows "configured" for a setup that cannot push.
+ */
+export const ZeropsGitRemoteProbeInput = Schema.Struct({
+  /** The checkout, as every other `vcs.*` call names it. */
+  cwd: TrimmedNonEmptyString,
+  /** Which remote to ask; `origin` when the caller does not say. */
+  remote: Schema.optional(TrimmedNonEmptyString),
+});
+export type ZeropsGitRemoteProbeInput = typeof ZeropsGitRemoteProbeInput.Type;
+
+/**
+ * What the probe found. `reachable: false` carries the first line of git's own
+ * diagnostic, sanitized to one line — never a URL with credentials in it,
+ * because the remote this runs against carries none (the token is an askpass
+ * helper's, not part of the URL).
+ */
+export const ZeropsGitRemoteProbeResult = Schema.Struct({
+  reachable: Schema.Boolean,
+  /** The remote's name as asked for. */
+  remote: Schema.String,
+  /** How many refs it advertised; `0` for a remote that answered empty. */
+  refCount: Schema.Number,
+  /** Git's first diagnostic line when it refused; `null` when it answered. */
+  detail: Schema.NullOr(Schema.String),
+});
+export type ZeropsGitRemoteProbeResult = typeof ZeropsGitRemoteProbeResult.Type;
+
+/** The probe could not be run at all — no git, no checkout, or it timed out. */
+export class ZeropsGitRemoteProbeError extends Schema.TaggedErrorClass<ZeropsGitRemoteProbeError>()(
+  "ZeropsGitRemoteProbeError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return `The remote could not be probed: ${this.reason}`;
+  }
+}

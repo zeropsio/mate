@@ -130,6 +130,7 @@ import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
+import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
@@ -615,6 +616,7 @@ const makeWsRpcLayer = (
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
+      const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -2108,6 +2110,7 @@ const makeWsRpcLayer = (
           isZeropsEnvironment: isZeropsEnvironment(config),
           serverVersion: serverPackageJson.version,
           zeropsDataConsole,
+          zeropsGitRemoteProbe,
           subject: currentSession.subject,
           observeRpcEffect,
           observeRpcStream,

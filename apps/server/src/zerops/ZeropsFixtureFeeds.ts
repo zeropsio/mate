@@ -32,6 +32,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -454,6 +455,20 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
     dataConsoleLayer(),
+    // A fixture scene has no remote either: nothing to probe, and saying so
+    // is honest where inventing "reachable" would not be.
+    Layer.succeed(
+      ZeropsGitRemoteProbe.ZeropsGitRemoteProbe,
+      ZeropsGitRemoteProbe.ZeropsGitRemoteProbe.of({
+        probe: (input) =>
+          Effect.succeed({
+            reachable: false,
+            remote: input.remote ?? ZeropsGitRemoteProbe.DEFAULT_REMOTE,
+            refCount: 0,
+            detail: "this is a fixture scene, which has no remote",
+          }),
+      }),
+    ),
     // A fixture scene has no platform to read tags from: nobody signed
     // anything in, and nothing is ever signed out.
     Layer.succeed(
