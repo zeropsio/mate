@@ -357,9 +357,9 @@ describe("ZeropsPanel — the Mate's home", () => {
       expect(html.includes("Coding agents")).toBe(!matched);
       for (const id of ["svc-zcp", "svc-probe"]) {
         const start = html.indexOf(`data-zerops-service-id="${id}"`);
-        const row = new Set(html.slice(start, html.indexOf("</li>", start)));
-        expect(row.has("data-zerops-agent-auth-card")).toBe(id === serviceId);
-        expect(row.has("data-zerops-mate-home")).toBe(id === serviceId);
+        const row = html.slice(start, html.indexOf("</li>", start));
+        expect(row.includes("data-zerops-agent-auth-card")).toBe(id === serviceId);
+        expect(row.includes("data-zerops-mate-home")).toBe(id === serviceId);
       }
       buttonState.handlers.get("Cancel")?.();
       expect(actions.cancel).toHaveBeenCalledExactlyOnceWith("codex");
