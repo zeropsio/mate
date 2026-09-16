@@ -234,17 +234,4 @@ describe("GiteaClient request shapes", () => {
       "GET /api/v1/repos/acme/api/actions/jobs/9/logs",
     ]);
   });
-
-  it("lists and creates the app's own OAuth application", async () => {
-    const { client, calls } = fake([
-      { body: [] },
-      { status: 201, body: { id: 1, name: "Zerops Mate", client_id: "c1" } },
-    ]);
-    await client.listOAuthApplications();
-    await client.createOAuthApplication({ name: "Zerops Mate" });
-    expect(calls.map((call) => `${call.method} ${call.url.slice(ORIGIN.length)}`)).toEqual([
-      "GET /api/v1/user/applications/oauth2",
-      "POST /api/v1/user/applications/oauth2",
-    ]);
-  });
 });

@@ -134,15 +134,6 @@ export interface GiteaActionJob {
   readonly run_id?: number | undefined;
 }
 
-/** The registration the app makes for itself (`giteaOAuth.ts`). */
-export interface GiteaOAuthApplicationRecord {
-  readonly id: number;
-  readonly name: string;
-  readonly client_id: string;
-  readonly redirect_uris?: ReadonlyArray<string> | undefined;
-  readonly confidential_client?: boolean | undefined;
-}
-
 export interface GiteaUser {
   readonly id: number;
   readonly login: string;
@@ -171,9 +162,6 @@ export interface GiteaClient {
   }): Promise<T>;
 
   currentUser(): Promise<GiteaUser>;
-
-  listOAuthApplications(): Promise<ReadonlyArray<GiteaOAuthApplicationRecord>>;
-  createOAuthApplication(body: unknown): Promise<GiteaOAuthApplicationRecord>;
 
   /** `undefined` while the broker has not made the group's org yet. */
   getOrganization(slug: string): Promise<GiteaOrganization | undefined>;
@@ -328,17 +316,6 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     request: (input) => json(input, `answer ${input.method} ${input.path}`),
 
     currentUser: () => json<GiteaUser>({ method: "GET", path: "/user" }, "say who you are"),
-
-    listOAuthApplications: () =>
-      json<ReadonlyArray<GiteaOAuthApplicationRecord>>(
-        { method: "GET", path: "/user/applications/oauth2" },
-        "list your applications",
-      ),
-    createOAuthApplication: (body) =>
-      json<GiteaOAuthApplicationRecord>(
-        { method: "POST", path: "/user/applications/oauth2", body },
-        "register the application",
-      ),
 
     getOrganization: (slug) =>
       optional<GiteaOrganization>({ method: "GET", path: `/orgs/${enc(slug)}` }, "read the group"),

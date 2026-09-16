@@ -4,12 +4,12 @@ import {
   base64UrlEncode,
   buildGiteaAuthorizationRequest,
   createGiteaPkcePair,
-  findGiteaOAuthApplication,
-  GITEA_OAUTH_APPLICATION_NAME,
-  giteaOAuthApplicationBody,
+  GITEA_OAUTH_CLIENT_PENDING,
+  GITEA_OAUTH_CLIENT_WRONG_ORIGIN,
   giteaOAuthRedirectUri,
   giteaRefreshBody,
   giteaTokenExchangeBody,
+  readGiteaBrokerOAuthClient,
   readGiteaCallback,
   readGiteaTokenAnswer,
 } from "./giteaOAuth.ts";
@@ -183,55 +183,70 @@ describe("readGiteaTokenAnswer", () => {
   });
 });
 
-describe("the OAuth application", () => {
-  it("registers a public client with this origin's callback", () => {
-    expect(giteaOAuthApplicationBody(`${APP}/`)).toEqual({
-      name: GITEA_OAUTH_APPLICATION_NAME,
-      redirect_uris: [`${APP}/gitea/callback`],
-      confidential_client: false,
-    });
-  });
+describe("the broker's OAuth registration", () => {
+  const answer = {
+    clientId: "c1",
+    redirectUris: [`${APP}/gitea/callback`],
+    authorizeUrl: `${GITEA}/login/oauth/authorize`,
+    tokenUrl: `${GITEA}/login/oauth/access_token`,
+  };
 
   it("derives the redirect from the app's origin, trailing slash or not", () => {
     expect(giteaOAuthRedirectUri(`${APP}//`)).toBe(`${APP}/gitea/callback`);
   });
 
-  const mine = {
-    id: 1,
-    name: GITEA_OAUTH_APPLICATION_NAME,
-    client_id: "c1",
-    redirect_uris: [`${APP}/gitea/callback`],
-    confidential_client: false,
-  };
+  it("takes the client id and the endpoints the broker named", () => {
+    expect(readGiteaBrokerOAuthClient(answer, APP)).toEqual({ ok: true, client: answer });
+  });
 
   it.each([
-    { name: "one registered for this very origin", applications: [mine], expected: "c1" },
-    { name: "nothing registered at all", applications: [], expected: undefined },
+    { name: "nothing at all", body: null, reason: GITEA_OAUTH_CLIENT_PENDING },
     {
-      name: "one of somebody else's applications",
-      applications: [{ ...mine, name: "Some CI" }],
-      expected: undefined,
+      name: "the 503 envelope before the broker's first pass",
+      body: { error: "not_registered_yet" },
+      reason: GITEA_OAUTH_CLIENT_PENDING,
     },
     {
-      name: "one registered for another origin",
-      applications: [{ ...mine, redirect_uris: ["https://other.example/gitea/callback"] }],
-      expected: undefined,
+      name: "an empty client id",
+      body: { ...answer, clientId: "  " },
+      reason: GITEA_OAUTH_CLIENT_PENDING,
     },
     {
-      name: "a confidential client, which has a secret this app cannot hold",
-      applications: [{ ...mine, confidential_client: true }],
-      expected: undefined,
+      name: "a registration for another origin",
+      body: { ...answer, redirectUris: ["https://other.example/gitea/callback"] },
+      reason: GITEA_OAUTH_CLIENT_WRONG_ORIGIN,
     },
     {
-      name: "the right one among several",
-      applications: [
-        { ...mine, name: "Some CI", client_id: "other" },
-        { ...mine, redirect_uris: ["https://other.example/gitea/callback"], client_id: "stale" },
-        mine,
-      ],
-      expected: "c1",
+      name: "no redirect at all",
+      body: { ...answer, redirectUris: [] },
+      reason: GITEA_OAUTH_CLIENT_WRONG_ORIGIN,
     },
-  ])("finds $name", ({ applications, expected }) => {
-    expect(findGiteaOAuthApplication(applications, APP)?.client_id).toBe(expected);
+  ])("refuses $name", ({ body, reason }) => {
+    expect(readGiteaBrokerOAuthClient(body, APP)).toEqual({ ok: false, reason });
+  });
+
+  it("accepts a redirect the broker wrote with a trailing slash", () => {
+    const result = readGiteaBrokerOAuthClient(
+      { ...answer, redirectUris: [`${APP}/gitea/callback/`] },
+      APP,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a registration covering several origins, this one among them", () => {
+    const result = readGiteaBrokerOAuthClient(
+      {
+        ...answer,
+        redirectUris: ["https://other.example/gitea/callback", `${APP}/gitea/callback`],
+      },
+      APP,
+    );
+    expect(result).toEqual({
+      ok: true,
+      client: {
+        ...answer,
+        redirectUris: ["https://other.example/gitea/callback", `${APP}/gitea/callback`],
+      },
+    });
   });
 });

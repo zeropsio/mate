@@ -10,25 +10,29 @@
  * change however the app asks. The broker is not in this path at all, so
  * nothing the app does here can widen anybody's reach.
  *
- * ## The public application, made as the person
+ * ## The public application belongs to the broker, not to a person
  *
- * Gitea has no way to declare an OAuth application out of band, and the broker
- * deliberately does not make one: creating applications is a site-admin write,
- * and the broker's whole contract is that it never acts for a caller it did not
- * prove. So the app registers its own, lazily, **as the person** after their
- * first Gitea sign-in through the broker's consent page:
+ * Registering an OAuth application in Gitea is a write, and a write made by
+ * whoever happens to sign in first: the app used to create its own with the
+ * person's Gitea session cookie, which meant the registration was owned by an
+ * arbitrary colleague, vanished with their account, and needed a cookie the
+ * app is not supposed to have. The broker registers it once, as part of
+ * setting the org's Gitea up, and answers
  *
  * ```
- * POST /user/applications/oauth2
- * { name: "Zerops Mate", redirect_uris: ["<app origin>/gitea/callback"],
- *   confidential_client: false }
+ * GET {MATE_BROKER_URL}/gitea/oauth-client
+ * { clientId, redirectUris, authorizeUrl, tokenUrl }
  * ```
  *
- * or reuses one already named `Zerops Mate` **whose redirect URIs cover this
- * origin**. A public client has no secret, so the `client_id` is not a
- * credential; it is still kept in memory only, per app origin, because an app
- * served from a second origin needs a second redirect URI and therefore a
- * different registration rather than a stale one from a previous run.
+ * to anyone, with no auth — a public client has no secret, so the `client_id`
+ * is not a credential. Before the broker's first pass there is nothing to
+ * answer and it says `503 not_registered_yet`, which is a real, temporary
+ * state a person is told about rather than an error
+ * (`../gitea-mate/docs/broker-api.md`).
+ *
+ * The answer is still only believed when its `redirectUris` cover **this**
+ * app origin: a client id registered for another origin fails at the very last
+ * step of the flow, with a message about a redirect nobody typed.
  *
  * ## What never touches storage
  *
@@ -43,10 +47,7 @@
  * @module giteaOAuth
  */
 
-/** What the app registers itself as in Gitea, and looks for before registering. */
 import type { RandomBytes } from "./newProject.ts";
-
-export const GITEA_OAUTH_APPLICATION_NAME = "Zerops Mate";
 
 /** Where Gitea sends the browser back. Relative to the app's own origin. */
 export const GITEA_OAUTH_CALLBACK_PATH = "/gitea/callback";
@@ -249,53 +250,64 @@ export function readGiteaTokenAnswer(body: unknown): GiteaTokenAnswer | null {
   };
 }
 
-/** What `POST /user/applications/oauth2` is asked for. */
-export function giteaOAuthApplicationBody(appOrigin: string): {
-  readonly name: string;
-  readonly redirect_uris: ReadonlyArray<string>;
-  readonly confidential_client: boolean;
-} {
-  return {
-    name: GITEA_OAUTH_APPLICATION_NAME,
-    redirect_uris: [giteaOAuthRedirectUri(appOrigin)],
-    confidential_client: false,
-  };
+/** Where the broker answers with the app's OAuth registration. */
+export const GITEA_BROKER_OAUTH_CLIENT_PATH = "/gitea/oauth-client";
+
+/** The broker's answer, as far as the flow depends on it. */
+export interface GiteaBrokerOAuthClient {
+  readonly clientId: string;
+  readonly redirectUris: ReadonlyArray<string>;
+  /** Gitea's own `/login/oauth/authorize`, as the broker knows its origin. */
+  readonly authorizeUrl: string;
+  readonly tokenUrl: string;
 }
 
-/** As much of Gitea's application record as choosing one needs. */
-export interface GiteaOAuthApplication {
-  readonly id?: number;
-  readonly name?: string | undefined;
-  readonly client_id?: string | undefined;
-  readonly redirect_uris?: ReadonlyArray<string> | undefined;
-  readonly confidential_client?: boolean | undefined;
-}
+/** What a person is told while the broker has not registered anything yet. */
+export const GITEA_OAUTH_CLIENT_PENDING =
+  "The broker is still setting up Gitea sign-in. Try again in a moment.";
+
+/** What a person is told when the registration is not for this app. */
+export const GITEA_OAUTH_CLIENT_WRONG_ORIGIN =
+  "The broker registered Mate for another address, so signing in here would not come back.";
+
+export type GiteaBrokerOAuthClientResult =
+  | { readonly ok: true; readonly client: GiteaBrokerOAuthClient }
+  | { readonly ok: false; readonly reason: string };
 
 /**
- * An existing registration this origin may use, or `undefined`.
+ * The broker's registration, checked against the origin this app is served
+ * from.
  *
- * Both halves matter. The name is how a second run finds what the first one
- * made; the redirect URI is what Gitea checks at the exchange, so a `Zerops
- * Mate` registered by the desktop app for `t3code://` is not a registration a
- * browser on `https://…` can use — and reusing it would fail at the very last
- * step of the flow, with a message about a redirect nobody typed.
- *
- * A confidential application is skipped too: it needs a secret this app does
- * not have and must not be given one.
+ * Both halves matter, for the reason the old lookup existed: Gitea checks the
+ * redirect URI at the exchange, so a registration whose URIs do not cover this
+ * origin is one the flow would die on after the person had already granted it.
+ * Refusing here costs a sentence; believing it costs the whole round trip.
  */
-export function findGiteaOAuthApplication(
-  applications: ReadonlyArray<GiteaOAuthApplication>,
+export function readGiteaBrokerOAuthClient(
+  body: unknown,
   appOrigin: string,
-): GiteaOAuthApplication | undefined {
+): GiteaBrokerOAuthClientResult {
+  if (typeof body !== "object" || body === null)
+    return { ok: false, reason: GITEA_OAUTH_CLIENT_PENDING };
+  const record = body as Record<string, unknown>;
+  const clientId = typeof record.clientId === "string" ? record.clientId.trim() : "";
+  if (clientId.length === 0) return { ok: false, reason: GITEA_OAUTH_CLIENT_PENDING };
+  const redirectUris = Array.isArray(record.redirectUris)
+    ? record.redirectUris.filter((entry): entry is string => typeof entry === "string")
+    : [];
   const redirect = giteaOAuthRedirectUri(appOrigin);
-  return applications.find(
-    (application) =>
-      application.name === GITEA_OAUTH_APPLICATION_NAME &&
-      application.confidential_client !== true &&
-      typeof application.client_id === "string" &&
-      application.client_id.length > 0 &&
-      (application.redirect_uris ?? []).includes(redirect),
-  );
+  if (!redirectUris.some((entry) => origin(entry) === redirect)) {
+    return { ok: false, reason: GITEA_OAUTH_CLIENT_WRONG_ORIGIN };
+  }
+  return {
+    ok: true,
+    client: {
+      clientId,
+      redirectUris,
+      authorizeUrl: typeof record.authorizeUrl === "string" ? record.authorizeUrl : "",
+      tokenUrl: typeof record.tokenUrl === "string" ? record.tokenUrl : "",
+    },
+  };
 }
 
 function origin(value: string): string {

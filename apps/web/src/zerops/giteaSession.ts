@@ -13,7 +13,7 @@
  * The access token, the refresh token and the `client_id` live in module
  * memory, keyed by Gitea origin (the `client_id` also by app origin, because a
  * registration is bound to its redirect URI — an app served from a second
- * origin needs a second application, not this one). A reload signs the person
+ * origin needs the broker to have registered that one too). A reload signs the person
  * in again, which is a second of a redirect they are already signed in for, and
  * is the price of not leaving a token that acts as them in a company forge
  * where every script on the origin can read it.
@@ -28,14 +28,14 @@
 import {
   buildGiteaAuthorizationRequest,
   createGiteaClient,
-  findGiteaOAuthApplication,
-  giteaOAuthApplicationBody,
+  GITEA_BROKER_OAUTH_CLIENT_PATH,
+  GITEA_OAUTH_CLIENT_PENDING,
   giteaRefreshBody,
   giteaTokenExchangeBody,
+  readGiteaBrokerOAuthClient,
   readGiteaCallback,
   readGiteaTokenAnswer,
   type GiteaClient,
-  type GiteaOAuthApplication,
 } from "@t3tools/client-runtime/zerops";
 
 const PENDING_KEY = "mate:gitea-oauth:v1";
@@ -94,56 +94,42 @@ export class GiteaSignInError extends Error {
 }
 
 /**
- * The `client_id` for this (Gitea, app origin) pair, registering one as the
- * person if Gitea holds none.
+ * The `client_id` for this (Gitea, app origin) pair, asked of the org's broker.
  *
- * The registration call is made with the person's **Gitea session** rather than
- * a token, because a token is the thing being bootstrapped. That is why it is
- * the one call here sent with `credentials: "include"`, and why a Gitea the
- * person has not signed in to yet answers `401` — the message says so, and the
- * caller sends them through the broker's consent page first.
+ * The broker registered the application when it set the org's Gitea up, so
+ * this call carries no auth and no cookie: a public client's id is not a
+ * credential, and the alternative — the app creating its own registration with
+ * the person's Gitea session — made an arbitrary colleague the owner of
+ * everyone's sign-in. Before the broker's first pass it answers `503`, which
+ * is a temporary state the person is told about rather than a failure.
  */
 export async function ensureGiteaOAuthClientId(input: {
   readonly giteaOrigin: string;
+  readonly brokerOrigin: string;
   readonly appOrigin: string;
 }): Promise<string> {
   const key = registrationKey(input.giteaOrigin, input.appOrigin);
   const known = clientIds.get(key);
   if (known !== undefined) return known;
 
-  const base = `${normalize(input.giteaOrigin)}/api/v1/user/applications/oauth2`;
-  const listed = await fetch(base, {
-    credentials: "include",
-    headers: { accept: "application/json" },
-  });
-  if (listed.status === 401 || listed.status === 403) {
-    throw new GiteaSignInError("Sign in to Gitea first — the consent page is one click away.");
+  const response = await fetch(
+    `${normalize(input.brokerOrigin)}${GITEA_BROKER_OAUTH_CLIENT_PATH}`,
+    { headers: { accept: "application/json" } },
+  ).catch(() => null);
+  if (response === null) {
+    throw new GiteaSignInError("The broker did not answer, so Gitea sign-in cannot start.");
   }
-  if (!listed.ok) {
-    throw new GiteaSignInError("Gitea would not say which applications you have registered.");
+  if (response.status === 503) throw new GiteaSignInError(GITEA_OAUTH_CLIENT_PENDING);
+  if (!response.ok) {
+    throw new GiteaSignInError("The broker would not say how Mate signs in to Gitea.");
   }
-  const applications = (await listed.json()) as ReadonlyArray<GiteaOAuthApplication>;
-  const existing = findGiteaOAuthApplication(applications, input.appOrigin);
-  if (existing?.client_id !== undefined) {
-    clientIds.set(key, existing.client_id);
-    return existing.client_id;
-  }
-
-  const created = await fetch(base, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(giteaOAuthApplicationBody(input.appOrigin)),
-  });
-  if (!created.ok) {
-    throw new GiteaSignInError("Gitea would not register Mate as an application.");
-  }
-  const application = (await created.json()) as GiteaOAuthApplication;
-  if (typeof application.client_id !== "string" || application.client_id.length === 0) {
-    throw new GiteaSignInError("Gitea registered the application without a client id.");
-  }
-  clientIds.set(key, application.client_id);
-  return application.client_id;
+  const answer = readGiteaBrokerOAuthClient(
+    await response.json().catch(() => null),
+    input.appOrigin,
+  );
+  if (!answer.ok) throw new GiteaSignInError(answer.reason);
+  clientIds.set(key, answer.client.clientId);
+  return answer.client.clientId;
 }
 
 interface PendingRequest {
@@ -182,11 +168,13 @@ function takePending(): PendingRequest | null {
  */
 export async function startGiteaSignIn(input: {
   readonly giteaOrigin: string;
+  readonly brokerOrigin: string;
   readonly returnTo: string;
 }): Promise<void> {
   const appOrigin = window.location.origin;
   const clientId = await ensureGiteaOAuthClientId({
     giteaOrigin: input.giteaOrigin,
+    brokerOrigin: input.brokerOrigin,
     appOrigin,
   });
   const request = await buildGiteaAuthorizationRequest({
