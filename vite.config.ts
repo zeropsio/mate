@@ -45,6 +45,10 @@ export default defineConfig({
       // `zeropsio/gitea-mate`; both repositories assert the two files match, so
       // reformatting it here would break the Go side's test, not ours.
       "packages/shared/src/zeropsRoles.fixtures.json",
+      // A byte-identical copy of `import/gitea-project.yaml` in
+      // `zeropsio/gitea-mate`; `giteaRecipe.test.ts` asserts the two files
+      // match, so reformatting it here would break the copy, not improve it.
+      "packages/client-runtime/src/zerops/giteaProjectImport.yaml",
     ],
     sortPackageJson: {},
     overrides: [
