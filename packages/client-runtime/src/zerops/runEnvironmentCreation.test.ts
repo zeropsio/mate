@@ -70,6 +70,10 @@ function fakePlatform(overrides: Partial<EnvironmentCreationPlatform> = {}) {
       calls.push(`delegation:${tokenId}:${delegationId}`);
       return Promise.resolve();
     },
+    isolateProjectEnvironment: ({ projectId }) => {
+      calls.push(`isolate:${projectId}`);
+      return Promise.resolve();
+    },
     readObservedServices: (projectId) => {
       serviceReads += 1;
       calls.push(`services:${projectId}:${serviceReads}`);
@@ -175,6 +179,9 @@ describe("runEnvironmentCreation", () => {
       // The token list is read once and shared by the two steps that need it.
       "delegations:tok-mate",
       "delegation:tok-mate:del-1",
+      // Before the application import: no app container and no build ever
+      // boots holding the Mate's key or its agent's login.
+      "isolate:proj-1",
       `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
     ]);
   });
@@ -189,6 +196,7 @@ describe("runEnvironmentCreation", () => {
     expect(calls.some((call) => call.startsWith("services:"))).toBe(false);
     const last = reports.at(-1)!;
     expect(last.map((entry) => entry.state)).toEqual([
+      "done",
       "done",
       "done",
       "done",
@@ -279,10 +287,11 @@ describe("runEnvironmentCreation", () => {
       "done",
       "done",
       "done",
+      "done",
       "failed",
       "queued",
     ]);
-    expect(last[4]?.error).toBe("projectImportProjectIncluded");
+    expect(last[5]?.error).toBe("projectImportProjectIncluded");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -298,6 +307,7 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
+      "queued",
       "queued",
       "queued",
       "queued",

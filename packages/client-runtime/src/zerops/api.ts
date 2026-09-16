@@ -13,6 +13,7 @@
  */
 
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
+import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
@@ -304,6 +305,19 @@ export interface ZeropsService {
   readonly gitlabIntegration?: ZeropsGitIntegration | null;
   /** The effective autoscaling envelope; `null` on the core service. */
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
+}
+
+/**
+ * The zcp container's service type. A control plane is identified by its
+ * **type**, never by its hostname: the hostname is editable, and a Mate whose
+ * container was renamed must still be recognised as one.
+ */
+const ZCP_SERVICE_TYPE_PREFIX = "zcp@";
+
+export function isZcpService(service: ZeropsService): boolean {
+  return (service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "").startsWith(
+    ZCP_SERVICE_TYPE_PREFIX,
+  );
 }
 
 /** One record from `GET /service-stack/{id}/env`. */
@@ -1523,6 +1537,203 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+  }
+
+  /**
+   * `POST /project/search` for one project, for its `envList` alone.
+   *
+   * The only read that carries project variables **with their entry ids**, and
+   * an id is what every update and delete needs — `POST /project/{pid}/env`
+   * answers with a *process* id, not the entry's (measured 2026-09-16). The
+   * index trails the write path, so this is re-read rather than remembered.
+   */
+  async readProjectEnv(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ProjectEnvEntry>> {
+    const response = await this.#request<{
+      readonly items?: ReadonlyArray<{ readonly envList?: ReadonlyArray<ProjectEnvEntry> }>;
+    }>(
+      "/project/search",
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({
+          limit: 1,
+          search: [{ name: "id", operator: "eq", value: projectId }],
+        }),
+      },
+      { operationKind: "read" },
+    );
+    return response.items?.[0]?.envList ?? [];
+  }
+
+  /** `GET /project/{id}/service-stack` — the project's own services. */
+  async listProjectServices(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsService>> {
+    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsService> }>(
+      `/project/${projectId}/service-stack?limit=500`,
+      { signal: signal ?? null },
+      { operationKind: "read" },
+    );
+    return response.items ?? [];
+  }
+
+  /**
+   * Stops a Mate's project handing its container's key — and its agent's
+   * login — to every container in it (`projectIsolation.ts`, guide 0.10).
+   *
+   * The decision is the pure planner's; this reads what it needs, walks the
+   * plan, and re-reads the entry ids before the delete because that is the
+   * only place they come from. Safe to call on a project that has already been
+   * through it: the plan is then empty and nothing, restarts included, runs.
+   */
+  async isolateProjectEnvironment(
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    const generation = this.#generation;
+    const [envList, services] = await Promise.all([
+      this.readProjectEnv(projectId, signal),
+      this.listProjectServices(projectId, signal),
+    ]);
+    const own = services.filter((service) => service.isSystem !== true);
+    const steps = planProjectIsolation({
+      envList,
+      services: own.map((service) => ({
+        name: service.name,
+        isControlPlane: isZcpService(service),
+      })),
+    });
+    if (steps.length === 0) return;
+
+    const write = {
+      operationKind: "project-write" as const,
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    };
+    const serviceIdByName = new Map(own.map((service) => [service.name, service.id]));
+    const valueOf = (entryId: string): string =>
+      envList.find((entry) => entry.id === entryId)?.content ?? "";
+    let fresh = envList;
+
+    for (const step of steps) {
+      this.#assertGeneration(generation);
+      switch (step.kind) {
+        case "update-project-env":
+          // `key` beside `content`: a body carrying content alone is
+          // `400 invalidUserInput` — "key: field is required" — even for the
+          // project's owner (measured 2026-09-16).
+          await this.#request(
+            `/project-env/${step.entryId}`,
+            {
+              method: "PUT",
+              signal: signal ?? null,
+              body: JSON.stringify({ key: step.key, content: step.content }),
+            },
+            write,
+          );
+          break;
+        case "create-project-env":
+          await this.#request(
+            `/project/${projectId}/env`,
+            {
+              method: "POST",
+              signal: signal ?? null,
+              body: JSON.stringify({
+                key: step.key,
+                content: step.content,
+                sensitive: step.sensitive,
+              }),
+            },
+            write,
+          );
+          break;
+        case "move-key-to-service": {
+          const serviceId = serviceIdByName.get(step.serviceName);
+          if (serviceId === undefined) {
+            throw new ZeropsApiError(
+              `The container "${step.serviceName}" is no longer in this project.`,
+              "uncertain",
+            );
+          }
+          const content = valueOf(step.fromEntryId);
+          await this.#writeServiceEnvOnce(
+            { serviceId, key: step.key, content, sensitive: true },
+            signal,
+            beforeWrite,
+          );
+          break;
+        }
+        case "reread-project-env":
+          fresh = await this.readProjectEnv(projectId, signal);
+          break;
+        case "delete-project-env": {
+          const entry = fresh.find((candidate) => candidate.key === step.key);
+          // Gone already — a half-finished earlier run, or someone else's
+          // edit. Nothing to take back.
+          if (entry === undefined) break;
+          await this.#request(
+            `/project-env/${entry.id}`,
+            { method: "DELETE", signal: signal ?? null },
+            write,
+          );
+          break;
+        }
+        case "restart-service": {
+          const serviceId = serviceIdByName.get(step.serviceName);
+          if (serviceId === undefined) break;
+          await this.restartService(serviceId, signal, beforeWrite);
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * `POST /service-stack/{id}/user-data`.
+   *
+   * A create the platform refuses is checked rather than swallowed: the only
+   * way the key is already there is a run of this that moved it and then
+   * failed before deleting the project entry, and in that case the move is
+   * done. Anything else still throws, because losing the key silently would
+   * leave a Mate that cannot reach the platform at all.
+   */
+  async #writeServiceEnvOnce(
+    input: {
+      readonly serviceId: string;
+      readonly key: string;
+      readonly content: string;
+      readonly sensitive: boolean;
+    },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await this.#request(
+        `/service-stack/${input.serviceId}/user-data`,
+        {
+          method: "POST",
+          signal: signal ?? null,
+          body: JSON.stringify({
+            key: input.key,
+            content: input.content,
+            sensitive: input.sensitive,
+          }),
+        },
+        {
+          operationKind: "project-write",
+          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        },
+      );
+    } catch (cause) {
+      const present = (await this.#serviceEnv(input.serviceId, signal)).find(
+        (entry) => entry.key === input.key && entry.content === input.content,
+      );
+      if (present === undefined) throw cause;
+    }
   }
 
   /**

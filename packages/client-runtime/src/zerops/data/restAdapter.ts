@@ -1242,6 +1242,21 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           })),
           Effect.mapError(uncertainCommandError),
         );
+      case "isolate-project-env":
+        return executeApi(context, (signal) =>
+          options.client.isolateProjectEnvironment(
+            command.project.projectId,
+            signal,
+            context.beforeProjectWrite,
+          ),
+        ).pipe(
+          Effect.map((value): PlatformCommandReceipt => ({
+            processRefs: [],
+            observations: [],
+            result: { kind: command.kind, value },
+          })),
+          Effect.mapError(uncertainCommandError),
+        );
       case "list-token-delegations":
         return executeApi(context, (signal) =>
           options.client.listIntegrationTokenDelegations(

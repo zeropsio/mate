@@ -84,6 +84,13 @@ export interface EnvironmentCreationPlatform {
     readonly tokenId: string;
     readonly delegationId: string;
   }) => Promise<void>;
+  /**
+   * The whole of `projectIsolation.ts`'s plan against one project — the read,
+   * the writes, the re-read and the restarts. One call rather than a port per
+   * platform verb: the decision is the pure planner's and is tested there,
+   * and the entry ids the writes need never leave the caller that read them.
+   */
+  readonly isolateProjectEnvironment: (input: { readonly projectId: string }) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
@@ -280,6 +287,12 @@ export async function runEnvironmentCreation(
             });
             assertCurrent();
           }
+          break;
+        }
+        case "isolate-project-env": {
+          await input.platform.isolateProjectEnvironment({
+            projectId: requireProject(projectId),
+          });
           break;
         }
         case "import-recipe": {

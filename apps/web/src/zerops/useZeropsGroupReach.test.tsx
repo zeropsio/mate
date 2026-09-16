@@ -116,6 +116,7 @@ function contextFor(
     readonly list?: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
     readonly onDelete?: (input: unknown) => void;
   } = {},
+  isolated: Array<unknown> = [],
 ) {
   const runtime = {
     scope,
@@ -127,6 +128,10 @@ function contextFor(
       },
       listTokenDelegations: () =>
         Effect.succeed({ attempt: {} as never, value: delegations.list ?? [] }),
+      isolateProjectEnv: (project: unknown) => {
+        isolated.push(project);
+        return Effect.succeed({ attempt: {} as never, value: undefined });
+      },
       deleteTokenDelegation: (input: unknown) => {
         delegations.onDelete?.(input);
         return Effect.succeed({ attempt: {} as never, value: undefined });
@@ -136,9 +141,8 @@ function contextFor(
   return {
     runtime,
     organizationRef: () => organization,
-    projectRef: () => {
-      throw new Error("not used");
-    },
+    projectRef: (_organizationId: string, projectId: string) =>
+      ({ kind: "project", organization, projectId }) as never,
   } satisfies ZeropsDataContextValue;
 }
 
@@ -258,6 +262,46 @@ describe("useZeropsGroupReach", () => {
       await flushEffects();
 
       expect(deletes).toEqual([{ organization, tokenId: "token-a", delegationId: "del-1" }]);
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
+
+  it("closes every project in the group, not only the ones holding a Mate", async () => {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const isolated: Array<unknown> = [];
+    const context = contextFor(broker, () => {}, {}, isolated);
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
+      });
+      await flushEffects();
+
+      // project-b holds no Mate; made the old way it carries the same
+      // project-wide key, with ADMIN on itself, in every one of its
+      // containers.
+      expect(isolated).toEqual([
+        { kind: "project", organization, projectId: "project-a" },
+        { kind: "project", organization, projectId: "project-b" },
+      ]);
     } finally {
       await act(() => root.unmount());
     }

@@ -214,6 +214,17 @@ export {
   type ZeropsGiteaCredentialPlan,
 } from "./giteaCredential.ts";
 export {
+  planProjectIsolation,
+  projectIsolationStepLabel,
+  PROJECT_ENV_ISOLATION_KEY,
+  PROJECT_ENV_ISOLATION_SERVICE,
+  ZCP_API_KEY_ENV_KEY,
+  type ProjectEnvEntry,
+  type ProjectIsolationInput,
+  type ProjectIsolationService,
+  type ProjectIsolationStep,
+} from "./projectIsolation.ts";
+export {
   buildGroupGrants,
   findAccountMateTokens,
   findMateIntegrationToken,

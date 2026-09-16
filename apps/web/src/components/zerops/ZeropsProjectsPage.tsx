@@ -1158,6 +1158,10 @@ function ZeropsProjectsContent() {
                 ...input,
               }),
             ),
+          isolateProjectEnvironment: ({ projectId }) =>
+            runZeropsCommand(
+              runtime.commands.isolateProjectEnv(projectRef(activeOrganization.id, projectId)),
+            ),
           importProject: ({ clientId: _clientId, yaml }) =>
             runZeropsCommand(
               runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),

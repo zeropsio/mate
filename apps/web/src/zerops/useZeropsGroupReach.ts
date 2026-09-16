@@ -1,6 +1,7 @@
 /**
  * Keeps every Mate's token reaching exactly its group, holding no more of that
- * group than it needs, and carrying no one-time mint.
+ * group than it needs, and carrying no one-time mint — and every project in
+ * the group from handing its variables to each of its own containers.
  *
  * The decision is `groupReach.ts`; this is the shell that reads the account
  * and performs the writes. It runs off the same candidate list the projects
@@ -70,7 +71,7 @@ export function useZeropsGroupReach(input: {
   readonly enabled: boolean;
 }): void {
   const { clientId, groups, enabled } = input;
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef, projectRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
   const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
@@ -138,6 +139,18 @@ export function useZeropsGroupReach(input: {
             );
           }
         }
+
+        // And the third (guide 0.10): every project in the group, not only its
+        // Mates. A stage or production project made the old way carries the
+        // same `envIsolation: none` and the same project-wide `ZCP_API_KEY`,
+        // with ADMIN on itself, in every one of its containers. A project
+        // already closed makes the call two reads and no writes.
+        for (const projectId of new Set(groups.flatMap((group) => group.projectIds))) {
+          if (cancelled) return;
+          await runZeropsCommand(
+            runtime.commands.isolateProjectEnv(projectRef(clientId, projectId)),
+          );
+        }
       } catch {
         // Background repair: try again on the next read rather than showing
         // the user an error about something they did not ask for.
@@ -157,6 +170,7 @@ export function useZeropsGroupReach(input: {
     hasMate,
     key,
     organizationRef,
+    projectRef,
     runtime.commands,
   ]);
 }

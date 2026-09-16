@@ -1382,7 +1382,8 @@ export type PlatformCommandKind =
   | "list-integration-token-grants"
   | "set-integration-token-projects"
   | "list-token-delegations"
-  | "delete-token-delegation";
+  | "delete-token-delegation"
+  | "isolate-project-env";
 
 interface CommandAttemptBase {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1703,6 +1704,16 @@ export interface DeleteTokenDelegationCommandIntent {
   readonly delegationId: string;
 }
 
+/**
+ * Guide 0.10: `envIsolation` to `service`, `ZCP_API_KEY` moved onto the
+ * container, the project entry deleted, every service restarted. Idempotent —
+ * a project already isolated makes it a read.
+ */
+export interface IsolateProjectEnvCommandIntent {
+  readonly kind: "isolate-project-env";
+  readonly project: ProjectRef;
+}
+
 export type PlatformCommandIntent =
   | RestartServiceCommandIntent
   | StartServiceCommandIntent
@@ -1720,7 +1731,8 @@ export type PlatformCommandIntent =
   | ListIntegrationTokenGrantsCommandIntent
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
-  | DeleteTokenDelegationCommandIntent;
+  | DeleteTokenDelegationCommandIntent
+  | IsolateProjectEnvCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
   readonly attemptId: ZeropsCommandAttemptId;
@@ -1783,7 +1795,8 @@ export type PlatformCommandResult =
       readonly kind: "list-token-delegations";
       readonly value: ReadonlyArray<ZeropsTokenDelegation>;
     }
-  | { readonly kind: "delete-token-delegation"; readonly value: void };
+  | { readonly kind: "delete-token-delegation"; readonly value: void }
+  | { readonly kind: "isolate-project-env"; readonly value: void };
 
 export interface PlatformCommandReceipt {
   readonly processRefs: ReadonlyArray<ProcessRef>;
@@ -2019,6 +2032,9 @@ export interface ZeropsDataCommands {
     input: Omit<DeleteTokenDelegationCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;
     },
+  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  readonly isolateProjectEnv: (
+    project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
 }
 

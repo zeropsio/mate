@@ -148,6 +148,18 @@ export type EnvironmentCreationStep =
    * touch it — it is a separate record — so it gets a step of its own.
    */
   | { readonly kind: "drop-container-delegation" }
+  /**
+   * The project's own variables stop reaching every container in it
+   * (`projectIsolation.ts`): `envIsolation` to `service`, `ZCP_API_KEY` moved
+   * onto the container as a sensitive service variable, the project entry
+   * deleted, every service restarted.
+   *
+   * Before the application import rather than after it, so no app container
+   * and no build ever boots holding the Mate's key and its agent's login —
+   * and so the restarts this step ends with are over one container, not over
+   * services that were still being created.
+   */
+  | { readonly kind: "isolate-project-env" }
   /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
   | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
   /**
@@ -251,6 +263,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     // one is a deployment target, and the platform mints it nothing.
     steps.push({ kind: "secure-container-token" });
     steps.push({ kind: "drop-container-delegation" });
+    steps.push({ kind: "isolate-project-env" });
   }
   if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
   steps.push({ kind: "await-ready", withAgent });
@@ -273,6 +286,8 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Locking the container's access";
     case "drop-container-delegation":
       return "Taking back the container's one-time permit";
+    case "isolate-project-env":
+      return "Closing the project's shared variables";
     case "import-recipe":
       return "Importing the application";
     case "await-ready":

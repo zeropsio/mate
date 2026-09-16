@@ -9,8 +9,10 @@
  * the decisions are testable without a network.
  */
 
+export { isZcpService } from "./api.ts";
 import {
   buildZeropsContainerUrl,
+  isZcpService,
   zeropsRegionFromPublicZone,
   type ZeropsProject,
   type ZeropsService,
@@ -48,7 +50,6 @@ export interface ZeropsCandidate {
  * `zcp` is only the default name, and matching on it reports "no container"
  * for a project that demonstrably has one.
  */
-const ZCP_SERVICE_TYPE_PREFIX = "zcp@";
 
 /**
  * The container's single public port. Zerops Mate rides on it under `/mate/`,
@@ -78,12 +79,6 @@ export function zeropsMateBaseUrl(
       ? normalizeBasePath(servedApp.basePath)
       : ZEROPS_MATE_BASE_PATH;
   return `${normalizedContainerOrigin}${basePath}`;
-}
-
-export function isZcpService(service: ZeropsService): boolean {
-  return (service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "").startsWith(
-    ZCP_SERVICE_TYPE_PREFIX,
-  );
 }
 
 /** `https://…` → its origin, lowercased, for comparing against a registered environment's URL. */

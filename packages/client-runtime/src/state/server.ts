@@ -117,9 +117,10 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
       Effect.forkScoped,
     );
 
-    yield* subscribe(WS_METHODS.subscribeServerConfig, {
-      ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
-    }).pipe(
+    yield* subscribe(
+      WS_METHODS.subscribeServerConfig,
+      subscription.usageLimitSources === true ? { usageLimitSources: true } : {},
+    ).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
           const next = applyServerConfigProjection(yield* SubscriptionRef.get(state), event);
@@ -221,9 +222,10 @@ export function createServerEnvironmentAtoms<R, E>(
   const configProjectionFamily = Atom.family((environmentId: EnvironmentId) =>
     runtime
       .atom(
-        serverConfigStateChanges(environmentId, {
-          ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
-        }),
+        serverConfigStateChanges(
+          environmentId,
+          options.usageLimitSources === true ? { usageLimitSources: true } : {},
+        ),
       )
       .pipe(
         Atom.setIdleTTL(5 * 60_000),
