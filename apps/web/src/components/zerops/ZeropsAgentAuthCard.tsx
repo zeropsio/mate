@@ -31,6 +31,7 @@ import {
   classifyAgentLogin,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
+import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
 import { FlatCard, StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {
@@ -120,11 +121,11 @@ function ZeropsAgentAuthRow({
   const status = agentStatusPresentation(agent, login);
   // Whose subscription a turn here would spend. Silent for your own agent —
   // telling someone their own login is theirs is noise on every screen.
+  // The record this client wrote itself counts until the snapshot carries it.
+  const localSigners = useLocalAgentSigners();
   const ownership = resolveAgentOwnership({
     credPresent: agent.credPresent,
-    ...(agent.authorizedBy === undefined
-      ? {}
-      : { authorizedBy: { subject: agent.authorizedBy.subject } }),
+    authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, localSigners),
     viewerSubject,
   });
   const ownershipNotice = agentOwnershipNotice(ownership);
