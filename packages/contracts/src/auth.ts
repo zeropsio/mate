@@ -124,6 +124,24 @@ export const AuthStandardClientScopes = [
   AuthReviewWriteScope,
   AuthRelayReadScope,
 ] as const;
+/**
+ * What a Mate's own client asks for when it exchanges its bootstrap
+ * credential: the standard set plus command execution.
+ *
+ * Not the same list as {@link AuthStandardClientScopes}, and deliberately so.
+ * The standard set is what a pairing token handed to some other device
+ * carries, and `exec:operate` must stay off that. A Mate client gets it
+ * because its door already proved the caller is a member of the container's
+ * Zerops project, who can open a shell in it through code-server and through
+ * the agent anyway.
+ *
+ * It has to be exactly what the door grants (`ZeropsIdentityGate`): the token
+ * exchange refuses a request for any scope the grant does not carry, so a
+ * client asking for one scope too many gets no session at all — and a client
+ * asking for one too few gets a session that fails on a verb it offers. Both
+ * halves are asserted in `RpcAuthorization.clientScopes.test.ts`.
+ */
+export const AuthZeropsClientScopes = [...AuthStandardClientScopes, AuthExecOperateScope] as const;
 export const AuthAdministrativeScopes = [
   ...AuthStandardClientScopes,
   AuthAccessReadScope,

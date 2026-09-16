@@ -15,7 +15,7 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
-import { AuthStandardClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -148,7 +148,7 @@ const capabilitiesLayer = Layer.effectContext(
   Effect.sync(() => {
     const presentation = ClientPresentation.of({
       metadata: clientMetadata(),
-      scopes: AuthStandardClientScopes,
+      scopes: AuthZeropsClientScopes,
     });
     const identity = RelayDeviceIdentity.of({
       deviceId: Effect.succeed(Option.none()),
@@ -317,7 +317,7 @@ const credentialRenewerLayer = CredentialRenewal.layer({
             ClientPresentation,
             ClientPresentation.of({
               metadata: clientMetadata(),
-              scopes: AuthStandardClientScopes,
+              scopes: AuthZeropsClientScopes,
             }),
           ),
         ),

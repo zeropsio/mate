@@ -17,7 +17,7 @@
  * @module ZeropsIdentityGate
  */
 import type { AuthEnvironmentScope, AuthPairingCredentialResult } from "@t3tools/contracts";
-import { AuthExecOperateScope, AuthStandardClientScopes } from "@t3tools/contracts";
+import { AuthZeropsClientScopes } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
@@ -37,16 +37,10 @@ export const ZEROPS_PAIRING_GRANT_TTL = Duration.minutes(2);
  * command execution. Administrative scopes - managing other clients' access -
  * stay off this path; membership is the door, not a privilege level.
  *
- * `exec:operate` is here because a member of this project can already open a
- * shell in this container through code-server and through the agent, so it
- * grants no reach the door has not already proven. It is deliberately NOT in
- * the standard client set, so a pairing token handed to some other device does
- * not carry it.
+ * The same list the client asks for (`AuthZeropsClientScopes`), and it has to
+ * be: the exchange refuses a request for a scope the grant does not carry.
  */
-export const zeropsGrantScopes: ReadonlyArray<AuthEnvironmentScope> = [
-  ...AuthStandardClientScopes,
-  AuthExecOperateScope,
-];
+export const zeropsGrantScopes: ReadonlyArray<AuthEnvironmentScope> = AuthZeropsClientScopes;
 
 /**
  * Proves membership and mints the pairing grant. Fails without issuing
