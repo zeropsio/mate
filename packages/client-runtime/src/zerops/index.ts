@@ -214,6 +214,18 @@ export {
   type ZeropsGiteaCredentialPlan,
 } from "./giteaCredential.ts";
 export {
+  deriveGroupSlug,
+  formatZeropsRegistryTags,
+  GROUP_SLUG_MAX_LENGTH,
+  GROUP_SLUG_PATTERN,
+  parseZeropsRegistry,
+  projectTagWriteBody,
+  toRoleRegistry,
+  type ZeropsRegistry,
+  type ZeropsRegistryGroup,
+  type ZeropsRegistryProject,
+} from "./groupRegistry.ts";
+export {
   planProjectIsolation,
   projectIsolationStepLabel,
   PROJECT_ENV_ISOLATION_KEY,
