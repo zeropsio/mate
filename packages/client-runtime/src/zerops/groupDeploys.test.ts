@@ -8,11 +8,13 @@ import {
   deployWord,
   planDeployStatusReads,
   planDeployedVersionReads,
+  releaseDeploys,
 } from "./groupDeploys.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
+const OLD = "1111111111111111111111111111111111111111";
 
 const stage: GroupEnvironment = {
   name: "stage",
@@ -238,5 +240,61 @@ describe("the word beside the dot", () => {
     { tone: "neutral", word: undefined },
   ] as const)("says $word for $tone", ({ tone, word }) => {
     expect(deployWord(tone)).toBe(word);
+  });
+});
+
+describe("what a release compares", () => {
+  const snapshot = (
+    versions: ReadonlyMap<string, string>,
+    declarations: ReadonlyArray<GroupEnvironment> = [stage, production],
+  ) =>
+    buildGroupEnvironmentRowInputs({
+      owner: "acme",
+      declarations,
+      projectNames: new Map(),
+      services,
+      versions,
+      statuses: new Map(),
+    });
+
+  it("reads both sides from the sha in the deployed version's name", () => {
+    const commits = releaseDeploys(
+      snapshot(
+        new Map([
+          ["s1", `${API} v1.2.0 ada`],
+          ["s2", WEB],
+          ["s3", OLD],
+        ]),
+      ),
+    );
+    expect([...commits.stage]).toEqual([
+      ["api", API],
+      ["web", WEB],
+    ]);
+    expect([...commits.production]).toEqual([["api", OLD]]);
+  });
+
+  it("leaves out a service whose version somebody named by hand", () => {
+    const commits = releaseDeploys(snapshot(new Map([["s1", "hotfix"]])));
+    expect(commits.stage.size).toBe(0);
+  });
+
+  it("has nothing to compare for a group that has deployed nothing", () => {
+    const commits = releaseDeploys(snapshot(new Map()));
+    expect(commits.stage.size).toBe(0);
+    expect(commits.production.size).toBe(0);
+  });
+
+  it("takes the first declared stage where two of them run the same service", () => {
+    const commits = releaseDeploys(
+      snapshot(
+        new Map([
+          ["s4", OLD],
+          ["s1", API],
+        ]),
+        [{ ...stage, name: "stage-client-x", project: "p-mate" }, stage, production],
+      ),
+    );
+    expect(commits.stage.get("api")).toBe(OLD);
   });
 });

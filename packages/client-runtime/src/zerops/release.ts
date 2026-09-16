@@ -210,6 +210,13 @@ export type ReleaseGate =
 /** What the app says when it will not offer the button. */
 export const RELEASE_NOT_A_RELEASER = "Only releasers can tag.";
 export const RELEASE_NOTHING_TO_LIST = "The stage has not deployed anything to release.";
+/**
+ * Every service of the stage already runs what production runs, so the tag
+ * would list production's own state back to it and the broker would redeploy
+ * what is live. A tag still lists an unchanged service (that is what a tag is);
+ * a release where *nothing* moved is not a release.
+ */
+export const RELEASE_NOTHING_CHANGED = "Production already runs what the stage runs.";
 
 /**
  * Whether to offer *Release* at all.
@@ -222,10 +229,49 @@ export const RELEASE_NOTHING_TO_LIST = "The stage has not deployed anything to r
 export function releaseGate(input: {
   readonly mayRelease: boolean;
   readonly entries: ReadonlyArray<ReleaseEntry>;
+  /**
+   * Per service, the stage against production. Omitted where production's
+   * side is not known — then the gate says nothing about what would move.
+   */
+  readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
 }): ReleaseGate {
   if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
   if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_TO_LIST };
+  const comparison = input.comparison;
+  if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
+    return { allowed: false, reason: RELEASE_NOTHING_CHANGED };
+  }
   return { allowed: true };
+}
+
+/**
+ * What the button shows before it is pressed, from what the two environments
+ * actually run.
+ *
+ * The whole offer in one answer, so the tab holds no release logic of its own:
+ * the comparison the person reads, the tag name that would be suggested, and
+ * whether it is offered at all.
+ */
+export function releaseOffer(input: {
+  readonly mayRelease: boolean;
+  /** `{service: full sha}` the stage runs (`groupDeploys.releaseDeploys`). */
+  readonly stage: ReadonlyMap<string, string>;
+  /** The same for production. */
+  readonly production: ReadonlyMap<string, string>;
+  /** Every `v*` tag on the group repo, so no name is suggested twice. */
+  readonly tags: ReadonlyArray<string>;
+}): {
+  readonly gate: ReleaseGate;
+  readonly suggestion: string;
+  readonly comparison: ReadonlyArray<ReleaseComparison>;
+} {
+  const entries = releaseEntriesFromStage(input.stage);
+  const comparison = compareForRelease({ stage: input.stage, production: input.production });
+  return {
+    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison }),
+    suggestion: suggestReleaseTags(input.tags).patch,
+    comparison,
+  };
 }
 
 /**

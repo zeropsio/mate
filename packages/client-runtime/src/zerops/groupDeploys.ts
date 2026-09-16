@@ -180,6 +180,43 @@ export function buildGroupEnvironmentRows(
   return buildGroupEnvironmentRowInputs(input).map((entry) => environmentRow(entry));
 }
 
+/** `{service hostname: full sha}` per side of a release. */
+export interface ReleaseDeploys {
+  /** What the stage runs. Several stages: the first the file declares (D16). */
+  readonly stage: ReadonlyMap<string, string>;
+  /** What production runs, read the same way and never from a release tag. */
+  readonly production: ReadonlyMap<string, string>;
+}
+
+/**
+ * What *Release* compares, from the same snapshot the rows are built from.
+ *
+ * Both sides are the sha in a deployed version's name (`deployedCommit`) and
+ * nothing else — not a branch head, which is what *should* be there, and not
+ * the newest release tag, which is what the broker was asked to deploy rather
+ * than what is running. A service whose name is not a commit has no side: it
+ * was deployed by hand, and a tag listing a guess is a tag the broker deploys.
+ *
+ * With several stages declared (D16) the first one the file declares wins for
+ * a service they both run: the file's order is the group's own, and picking by
+ * anything else would make the release depend on the order of an account read.
+ */
+export function releaseDeploys(
+  environments: ReadonlyArray<GroupEnvironmentRowInput>,
+): ReleaseDeploys {
+  const stage = new Map<string, string>();
+  const production = new Map<string, string>();
+  for (const environment of environments) {
+    const side = environment.tier === "production" ? production : stage;
+    for (const service of environment.services) {
+      const sha = deployedCommit(service.appVersionName);
+      if (sha === undefined || side.has(service.hostname)) continue;
+      side.set(service.hostname, sha);
+    }
+  }
+  return { stage, production };
+}
+
 /**
  * The one word beside a deploy's dot — never a sentence, never "configured"
  * (design system R5).

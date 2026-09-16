@@ -11,11 +11,11 @@
  * **Which commit an environment is running.** That lives in the deployed
  * version's name on the Zerops side, and the group repo cannot prove it: a
  * branch head is what *should* be there (guide 4.5). So an environment row
- * here names what feeds it and stops, and the commit is shown on the projects
- * screen, which holds the account read that can prove it (`groupDeploys.ts`).
- * What **production** runs is the exception — the newest tag the broker
- * approved lists it, which is the broker's own statement — and that is where
- * the release comparison's production side comes from.
+ * here names what feeds it and stops. The commit comes from the account read
+ * beside this one (`groupDeploys.ts`), which the surface performs for this
+ * Mate's group exactly as the projects screen does for every group — including
+ * production's side of the release comparison, which is what production runs
+ * rather than what the newest tag asked for.
  *
  * Re-read when the tab opens, after each action, and every sixty seconds while
  * it is open (`useZeropsGitForge` keeps the same clock). Nothing here is
@@ -51,11 +51,6 @@ export interface ZeropsGroupRepoState {
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly releases: ReadonlyArray<ZeropsGitRelease>;
   readonly recipeChanges: ReadonlyArray<ZeropsGitRecipeChange>;
-  /**
-   * `{service: full sha}` for production, from the newest release the broker
-   * approved — a refused tag deploys nothing, ever (`docs/group-repo.md`).
-   */
-  readonly productionCommits: ReadonlyMap<string, string>;
   /** Every `v*` tag, so the next one can be suggested without reusing a name. */
   readonly tags: ReadonlyArray<string>;
 }
@@ -65,7 +60,6 @@ const EMPTY: ZeropsGroupRepoState = {
   environments: [],
   releases: [],
   recipeChanges: [],
-  productionCommits: new Map(),
   tags: [],
 };
 
@@ -132,7 +126,6 @@ async function readGroupRepo(client: GiteaClient, owner: string): Promise<Zerops
   const tags = await client.listTags(owner, GROUP_REPOSITORY).catch(() => []);
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name));
   const releases: Array<ZeropsGitRelease> = [];
-  const productionCommits = new Map<string, string>();
   for (const tag of releaseTags) {
     const entries = readReleaseMessage(tag.message ?? "");
     const sha = tag.commit?.sha;
@@ -147,11 +140,6 @@ async function readGroupRepo(client: GiteaClient, owner: string): Promise<Zerops
       detail: verdict === "refused" ? detail : undefined,
       line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     });
-    // What production runs is the newest tag the broker approved, and nothing
-    // else — a refused tag deploys nothing, ever (`docs/group-repo.md`).
-    if (verdict === "approved" && productionCommits.size === 0) {
-      for (const entry of entries) productionCommits.set(entry.service, entry.commit);
-    }
   }
 
   const pulls = await client
@@ -166,7 +154,6 @@ async function readGroupRepo(client: GiteaClient, owner: string): Promise<Zerops
       const row = pullRequestRow(pull);
       return { number: row.number, title: row.title, line: row.line, url: pull.html_url };
     }),
-    productionCommits,
     tags: releaseTags.map((tag) => tag.name),
   };
 }

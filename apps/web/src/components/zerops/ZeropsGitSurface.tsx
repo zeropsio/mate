@@ -5,21 +5,23 @@
  * tells it *which* forge: the account's Gitea, the group this Mate's project
  * belongs to, and whether this person is the Mate's owner (D11). All of it
  * comes from the providers the whole app already mounts — the session, the
- * inventory and the registry — so opening the tab costs one group-repo read
- * and nothing else.
+ * inventory and the registry — so opening the tab costs the group repo and the
+ * version of each service its environments run (`groupDeploys.ts`), which is
+ * the read the projects screen already performs for every group.
  *
  * Signed out of Gitea, only the checkout half can speak; the tab says so and
  * offers the way in, which is the broker's consent page (`giteaSession.ts`).
  */
 import {
-  compareForRelease,
+  environmentRow,
   readZeropsGroupTags,
+  releaseDeploys,
   releaseEntriesFromStage,
-  releaseGate,
   releaseMessage,
+  releaseOffer,
   releaseTagName,
   rollbackTo,
-  suggestReleaseTags,
+  summarizeEnvironmentServices,
   type GitBlock,
 } from "@t3tools/client-runtime/zerops";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -30,6 +32,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { findAccountGitea } from "../../zerops/giteaProject";
 import { giteaClientFor, hasGiteaSession, startGiteaSignIn } from "../../zerops/giteaSession";
 import { browserZeropsStorage } from "../../zerops/storage";
+import { useZeropsDeployedVersionReader } from "../../zerops/useZeropsDeployedVersion";
+import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "../../zerops/useZeropsGroupDeploys";
 import { useZeropsGroupRepo } from "../../zerops/useZeropsGroupRepo";
 import { registryGroupSlug, useZeropsRegistry } from "../../zerops/useZeropsRegistry";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
@@ -104,18 +108,76 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const mayRelease =
     session?.activeOrganization?.roleCode === "ADMIN" ||
     session?.activeOrganization?.roleCode === "OWNER";
-  // What a release would list. The stage's commits are the account's to prove
-  // (`groupDeploys.ts`) and the tab does not hold that read, so until it does
-  // the gate says there is nothing to release rather than tagging a guess.
-  const stageCommits = useMemo(() => new Map<string, string>(), []);
-  const release = useMemo(() => {
-    const entries = releaseEntriesFromStage(stageCommits);
-    return {
-      gate: releaseGate({ mayRelease, entries }),
-      suggestion: suggestReleaseTags(group.tags).patch,
-      comparison: compareForRelease({ stage: stageCommits, production: group.productionCommits }),
-    };
-  }, [group.productionCommits, group.tags, mayRelease, stageCommits]);
+  /**
+   * The group's Zerops side: every project the registry tags into this group,
+   * with the runtime services a version read is issued for. The declarations
+   * decide which of them is an environment (`groupDeploys.ts`); the account
+   * only says what is there.
+   */
+  const deployGroups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(() => {
+    if (groupId === undefined || owner === undefined) return [];
+    return [
+      {
+        groupId,
+        slug: owner,
+        projects: inventory.projects
+          .filter((entry) => readZeropsGroupTags(entry.tagList ?? []).groupId === groupId)
+          .map((entry) => {
+            const services = inventory.services.get(entry.id);
+            return {
+              projectId: entry.id,
+              name: entry.name,
+              services:
+                services?.status === "resolved"
+                  ? summarizeEnvironmentServices(services.services).deployable
+                  : [],
+            };
+          }),
+      },
+    ];
+  }, [groupId, inventory.projects, inventory.services, owner]);
+
+  /**
+   * What each environment of the group runs — the projects screen's read,
+   * performed here for the one group this Mate belongs to (`groupDeploys.ts`).
+   * It is what *Release* compares and what puts a commit on the rows below:
+   * the group repo can say what feeds an environment and never what it runs.
+   */
+  const readVersion = useZeropsDeployedVersionReader();
+  const deploys = useZeropsGroupDeploys({
+    groups: deployGroups,
+    giteaOrigin,
+    readVersion,
+    enabled: signedIn,
+  });
+  const deployed = groupId === undefined ? undefined : deploys.get(groupId);
+  const deployedCommits = useMemo(
+    () => releaseDeploys(deployed?.environments ?? []),
+    [deployed?.environments],
+  );
+  const release = useMemo(
+    () =>
+      releaseOffer({
+        mayRelease,
+        stage: deployedCommits.stage,
+        production: deployedCommits.production,
+        tags: group.tags,
+      }),
+    [deployedCommits, group.tags, mayRelease],
+  );
+
+  /**
+   * The rows themselves: the group repo's until the versions land, and the
+   * account's afterwards. Both are built from the same declarations in the
+   * same order, so a row never moves — it gains the commit it runs.
+   */
+  const environments = useMemo(
+    () =>
+      deployed === undefined || deployed.environments.length === 0
+        ? group.environments
+        : deployed.environments.map((entry) => environmentRow(entry)),
+    [deployed, group.environments],
+  );
 
   const tagAs = useCallback(
     async (tag: string, message: string) => {
@@ -146,10 +208,10 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   );
 
   const onRelease = useCallback(() => {
-    const entries = releaseEntriesFromStage(stageCommits);
+    const entries = releaseEntriesFromStage(deployedCommits.stage);
     if (entries.length === 0) return;
     void tagAs(releaseTagName(release.suggestion.replace(/^v/u, "")), releaseMessage(entries));
-  }, [release.suggestion, stageCommits, tagAs]);
+  }, [deployedCommits, release.suggestion, tagAs]);
 
   const onRollBack = useCallback(
     (earlier: ZeropsGitRelease) => {
@@ -207,7 +269,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         declarations={group.declarations}
         giteaOrigin={giteaOrigin}
         group={{
-          environments: group.environments,
+          environments,
           releases: group.releases,
           recipeChanges: group.recipeChanges,
           release,

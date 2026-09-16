@@ -9,9 +9,11 @@ import {
   releaseEntriesFromStage,
   releaseGate,
   releaseMessage,
+  releaseOffer,
   releaseStatusContext,
   releaseVerdict,
   releaseWord,
+  RELEASE_NOTHING_CHANGED,
   RELEASE_NOTHING_TO_LIST,
   RELEASE_NOT_A_RELEASER,
   rollbackTo,
@@ -160,6 +162,69 @@ describe("the app's own gate", () => {
     },
   ])("for $name", ({ mayRelease, entries: list, allowed, reason }) => {
     const gate = releaseGate({ mayRelease, entries: list });
+    expect(gate.allowed).toBe(allowed);
+    if (!gate.allowed) expect(gate.reason).toBe(reason);
+  });
+});
+
+describe("what Release offers, from what the environments run", () => {
+  const stage = new Map([
+    ["api", API],
+    ["web", WEB],
+  ]);
+
+  it("compares the stage against production, per service, and offers the next patch", () => {
+    const offer = releaseOffer({
+      mayRelease: true,
+      stage,
+      production: new Map([
+        ["api", OLD],
+        ["web", WEB],
+      ]),
+      tags: ["v1.2.0"],
+    });
+    expect(offer.gate.allowed).toBe(true);
+    expect(offer.suggestion).toBe("v1.2.1");
+    expect(offer.comparison).toEqual([
+      { service: "api", stage: "3f9c1b2", production: "1111111", changed: true },
+      { service: "web", stage: "77ab0e1", production: "77ab0e1", changed: false },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "a stage two services ahead of production",
+      mayRelease: true,
+      stage,
+      production: new Map([["api", OLD]]),
+      allowed: true,
+    },
+    {
+      name: "a production already running what the stage runs",
+      mayRelease: true,
+      stage,
+      production: new Map(stage),
+      allowed: false,
+      reason: RELEASE_NOTHING_CHANGED,
+    },
+    {
+      name: "a stage that has deployed nothing",
+      mayRelease: true,
+      stage: new Map<string, string>(),
+      production: new Map([["api", OLD]]),
+      allowed: false,
+      reason: RELEASE_NOTHING_TO_LIST,
+    },
+    {
+      name: "somebody who is not a releaser",
+      mayRelease: false,
+      stage,
+      production: new Map<string, string>(),
+      allowed: false,
+      reason: RELEASE_NOT_A_RELEASER,
+    },
+  ])("answers, for $name", ({ mayRelease, stage: stageCommits, production, allowed, reason }) => {
+    const gate = releaseOffer({ mayRelease, stage: stageCommits, production, tags: [] }).gate;
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
   });

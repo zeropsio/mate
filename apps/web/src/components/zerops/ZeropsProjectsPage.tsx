@@ -12,9 +12,6 @@ import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connect
 import {
   ZeropsServiceId,
   type ServiceAuthorizedAgentsResourceRequest,
-  type ZeropsResourceBroker,
-  type ZeropsResourceRequest,
-  type ZeropsResourceValue,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import type * as React from "react";
@@ -126,6 +123,10 @@ import { giteaClientFor } from "~/zerops/giteaSession";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "~/zerops/useZeropsGroupDeploys";
+import {
+  readZeropsResourceOnce,
+  useZeropsDeployedVersionReader,
+} from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
@@ -149,28 +150,6 @@ interface EnvironmentCreationView {
   readonly name: string;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
-}
-
-/**
- * A one-shot action demand owns its lease until the resource settles, or
- * until `signal` aborts — an unmount abandoning the flow releases the lease
- * immediately instead of holding it until the read finally settles.
- */
-export function readZeropsResourceOnce<Request extends ZeropsResourceRequest>(
-  resources: ZeropsResourceBroker,
-  request: Request,
-  signal?: AbortSignal,
-): Promise<ZeropsResourceValue<Request> | undefined> {
-  return Effect.runPromise(
-    Effect.scoped(
-      resources.acquire(request).pipe(
-        Effect.flatMap((lease) => lease.awaitSettled),
-        Effect.map((snapshot) => (snapshot.status === "success" ? snapshot.value : undefined)),
-        Effect.orElseSucceed(() => undefined),
-      ),
-    ),
-    signal === undefined ? undefined : { signal },
-  ).catch(() => undefined);
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -1231,31 +1210,7 @@ function ZeropsProjectsContent() {
     [groupTree.groups, registryState.registry.groups],
   );
 
-  /**
-   * One service's deployed version name, through the account's runtime — the
-   * sha is its first token (`groupDeploys.ts`). A read that fails answers
-   * nothing, which is a row without a commit rather than a row that lies.
-   */
-  const readDeployedVersion = useCallback(
-    async (projectId: string, serviceId: string, signal: AbortSignal) => {
-      if (activeOrganization === null) return undefined;
-      return readZeropsResourceOnce(
-        runtime.resources,
-        {
-          kind: "service-deployed-version",
-          account: runtime.scope,
-          service: {
-            kind: "service",
-            project: projectRef(activeOrganization.id, projectId),
-            serviceId: ZeropsServiceId.make(serviceId),
-          },
-        },
-        signal,
-      );
-    },
-    [activeOrganization, projectRef, runtime.resources, runtime.scope],
-  );
-
+  const readDeployedVersion = useZeropsDeployedVersionReader();
   const groupDeploys = useZeropsGroupDeploys({
     groups: deployGroups,
     giteaOrigin: giteaEndpoints?.giteaOrigin,
