@@ -1,11 +1,15 @@
 /**
- * The app's one call to the org's broker: a Mate's Gitea access.
+ * The app's two calls to the org's broker: a Mate's Gitea access, and a
+ * person's own Gitea sign-in.
  *
  * `POST /mate/credential`, as the person, proved by a `gitea-signin` throwaway
  * (`zeropsThrowaway.ts`). The broker checks the project is a `mate` entry of
  * the registry and that the caller may — its owner, or an org owner or admin —
  * makes the Mate's bot if it is missing, and answers with the bot's Gitea
  * token, or with nothing new when a live one already exists.
+ *
+ * `POST /oidc/complete` proves the same person the same way, and answers where
+ * to send the browser to finish signing in to Gitea (guide 3.6).
  *
  * **No endpoint of the broker's takes a Zerops key**, and this sends none: the
  * bearer is a token with no rights at all, minted for this call and deleted
@@ -153,4 +157,71 @@ function readCredential(body: unknown): MateCredentialAnswer | null {
     minted: record.minted,
     ...(record.minted ? { token: record.token as string } : {}),
   };
+}
+
+export interface CompleteGiteaSignInInput {
+  /** The broker's public origin — already matched against the person's own. */
+  readonly brokerUrl: string;
+  /** Gitea's public origin; the throwaway is named after its host. */
+  readonly giteaUrl: string;
+  readonly clientId: string;
+  /** The request id the broker put in the consent URL. */
+  readonly rid: string;
+  readonly nonce: string;
+  readonly platform: ZeropsThrowawayPlatform;
+  readonly fetch: typeof globalThis.fetch;
+  readonly signal?: AbortSignal | undefined;
+  readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
+}
+
+/**
+ * Completes a Gitea sign-in the broker started (guide 3.6).
+ *
+ * The person is proved the same way a Mate's credential request proves them:
+ * a throwaway with no rights, minted for this one Gitea, presented once and
+ * deleted whatever the broker answered. What comes back is where to send the
+ * browser next — Gitea's own callback, with the code the broker just issued.
+ *
+ * The `redirect` is the broker's to compose and the browser's to follow; this
+ * neither builds it nor keeps it.
+ */
+export async function completeGiteaSignIn(
+  input: CompleteGiteaSignInInput,
+): Promise<{ readonly redirect: string }> {
+  const url = `${input.brokerUrl.replace(/\/+$/u, "")}/oidc/complete`;
+  return withThrowaway({
+    platform: input.platform,
+    clientId: input.clientId,
+    name: giteaThrowawayName(input.giteaUrl, input.nonce),
+    ...(input.onOrphanedThrowaway === undefined ? {} : { onOrphaned: input.onOrphanedThrowaway }),
+    use: async (token) => {
+      const response = await input.fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rid: input.rid }),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = readBrokerError(body);
+        throw new MateCredentialError(
+          error.message ?? "The broker could not complete this sign-in.",
+          error.code,
+          response.status,
+        );
+      }
+      const redirect =
+        typeof body === "object" && body !== null
+          ? (body as { readonly redirect?: unknown }).redirect
+          : undefined;
+      if (typeof redirect !== "string" || redirect.length === 0) {
+        throw new MateCredentialError(
+          "The broker did not say where to continue the sign-in.",
+          undefined,
+          response.status,
+        );
+      }
+      return { redirect };
+    },
+  });
 }

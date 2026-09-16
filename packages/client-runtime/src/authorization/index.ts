@@ -6,8 +6,10 @@ export {
 } from "./service.ts";
 export * as TokenStore from "./tokenStore.ts";
 export {
+  completeGiteaSignIn,
   MateCredentialError,
   requestMateCredential,
+  type CompleteGiteaSignInInput,
   type MateCredentialAnswer,
   type MateCredentialMode,
   type RequestMateCredentialInput,

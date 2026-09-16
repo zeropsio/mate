@@ -79,7 +79,7 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { status: zeropsSessionStatus } = useZeropsSession();
   const accountGate = resolveZeropsAccountGate({ pathname, status: zeropsSessionStatus });
-  if (accountGate === "handover") return <Outlet />;
+  if (accountGate === "pre-account") return <Outlet />;
   if (accountGate === "auth-only") return <ZeropsHostedLanding />;
   return <SignedInRootRouteView />;
 }

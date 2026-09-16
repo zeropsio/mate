@@ -195,6 +195,10 @@
       "types": "./src/zerops/candidateLoading.ts",
       "default": "./src/zerops/candidateLoading.ts"
     },
+    "./zerops/giteaSignIn": {
+      "types": "./src/zerops/giteaSignIn.ts",
+      "default": "./src/zerops/giteaSignIn.ts"
+    },
     "./zerops/agentOwnership": {
       "types": "./src/zerops/agentOwnership.ts",
       "default": "./src/zerops/agentOwnership.ts"
