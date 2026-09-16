@@ -226,24 +226,31 @@ export interface ZeropsOrgMember {
   readonly canCreateProjects: boolean;
 }
 
-/** Pulls the one member row a user id names out of a member-list body. */
-export function findOrgMember(
-  entries: ReadonlyArray<unknown>,
-  userId: string,
-): ZeropsOrgMember | null {
+/** Every usable row of a member-list body, in the order the platform sent them. */
+export function readOrgMembers(entries: ReadonlyArray<unknown>): ReadonlyArray<ZeropsOrgMember> {
+  const members: Array<ZeropsOrgMember> = [];
   for (const entry of entries) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry as Record<string, unknown>;
-    if (record["userId"] !== userId) continue;
-    return {
+    const userId = record["userId"];
+    if (typeof userId !== "string" || userId.length === 0) continue;
+    members.push({
       clientUserId: typeof record["id"] === "string" ? record["id"] : "",
       userId,
       orgRole: typeof record["roleCode"] === "string" ? record["roleCode"] : "",
       status: typeof record["status"] === "string" ? record["status"] : "",
       canCreateProjects: record["canCreateProjects"] === true,
-    };
+    });
   }
-  return null;
+  return members;
+}
+
+/** Pulls the one member row a user id names out of a member-list body. */
+export function findOrgMember(
+  entries: ReadonlyArray<unknown>,
+  userId: string,
+): ZeropsOrgMember | null {
+  return readOrgMembers(entries).find((member) => member.userId === userId) ?? null;
 }
 
 const KNOWN_ROLES: ReadonlyArray<ZeropsOrgRole> = [

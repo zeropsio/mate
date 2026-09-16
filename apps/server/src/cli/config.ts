@@ -157,6 +157,14 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  zeropsRoleRecheckSeconds: Config.int("T3CODE_ZEROPS_ROLE_RECHECK_SECONDS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsSessionMaxAgeSeconds: Config.int("T3CODE_ZEROPS_SESSION_MAX_AGE_SECONDS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   zeropsFixtures: Config.string("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -430,6 +438,8 @@ export const resolveServerConfig = (
               membershipTtlSeconds: env.zeropsMembershipTtlSeconds,
               publicOrigin: env.zeropsPublicOrigin,
               apiToken: env.zeropsApiToken,
+              roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
+              sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
             })
           : undefined,
       noBrowser,

@@ -21,6 +21,7 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
+import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
@@ -28,6 +29,11 @@ const liveLayer = Layer.mergeAll(
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),
   ZeropsDataConsoleModule.layer,
+  // Not a feed: the loop that ends a session whose person's role changed. It
+  // lives here because this is where the Zerops services are composed, and it
+  // is deliberately absent from the fixture layer — a fixture scene has no
+  // platform to re-read.
+  ZeropsMembershipWatchModule.layer,
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

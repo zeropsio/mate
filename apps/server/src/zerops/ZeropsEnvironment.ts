@@ -38,6 +38,28 @@ export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
  */
 export const DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS = 900;
 
+/**
+ * How often the server re-reads who may still be here.
+ *
+ * A session minted at the throwaway door carries no credential of the caller's
+ * to re-present, so nothing about it expires on its own. Instead the server
+ * asks the platform on this interval — with its own key — and ends the
+ * sessions whose answer changed. Five minutes is the window a removed
+ * colleague keeps their screen for; the two extra reads it costs are the same
+ * two the door already makes.
+ */
+export const DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS = 300;
+
+/**
+ * The longest a session lives on one proof.
+ *
+ * Role changes end a session within one re-check, so this is not a security
+ * window — it is the promise that nothing runs forever on a credential nobody
+ * has looked at since. A day, because a working day is the unit a person
+ * notices, and signing in again costs one throwaway.
+ */
+export const DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+
 /** Resolved Zerops settings; present only inside a Zerops project container. */
 export interface ZeropsEnvironment {
   /** The project this container belongs to - the membership check's target. */
@@ -73,6 +95,10 @@ export interface ZeropsEnvironment {
    * answer" — never as "admit".
    */
   readonly apiToken: string | undefined;
+  /** See {@link DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS}. */
+  readonly roleRecheckInterval: Duration.Duration;
+  /** See {@link DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS}. */
+  readonly sessionMaxAge: Duration.Duration;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -83,6 +109,8 @@ export interface ZeropsEnvironmentInput {
   readonly membershipTtlSeconds: number | undefined;
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
+  readonly roleRecheckSeconds?: number | undefined;
+  readonly sessionMaxAgeSeconds?: number | undefined;
 }
 
 /**
@@ -112,12 +140,12 @@ export const resolveZeropsEnvironment = (
   if (projectId.length === 0) {
     return undefined;
   }
-  const membershipTtlSeconds =
-    input.membershipTtlSeconds !== undefined &&
-    Number.isFinite(input.membershipTtlSeconds) &&
-    input.membershipTtlSeconds > 0
-      ? input.membershipTtlSeconds
-      : DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS;
+  const positive = (value: number | undefined, fallback: number): number =>
+    value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+  const membershipTtlSeconds = positive(
+    input.membershipTtlSeconds,
+    DEFAULT_ZEROPS_MEMBERSHIP_TTL_SECONDS,
+  );
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
   return {
@@ -127,6 +155,12 @@ export const resolveZeropsEnvironment = (
     membershipTtl: Duration.seconds(membershipTtlSeconds),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
+    roleRecheckInterval: Duration.seconds(
+      positive(input.roleRecheckSeconds, DEFAULT_ZEROPS_ROLE_RECHECK_SECONDS),
+    ),
+    sessionMaxAge: Duration.seconds(
+      positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
+    ),
   };
 };
 

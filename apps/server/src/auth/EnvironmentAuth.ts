@@ -673,8 +673,16 @@ export const make = Effect.gen(function* () {
             if (!grantedScopes.every((scope) => grant.scopes.includes(scope))) {
               return yield* new ServerAuthScopeNotGrantedError({});
             }
-            // Renewal repeats the project permission check at the identity door.
-            const sessionTtl = serverConfig.zerops.membershipTtl;
+            // Two doors, two clocks. `zerops-identity` caps a session at one
+            // membership window because nothing re-checks it: the client's
+            // re-mint IS the check. `zerops-throwaway` has no re-mint at all —
+            // the server re-reads roles itself (`ZeropsMembershipWatch`) and
+            // ends the sessions whose answer changed — so its cap is only the
+            // promise that nothing runs forever on one proof.
+            const sessionTtl =
+              grant.method === "zerops-throwaway"
+                ? serverConfig.zerops.sessionMaxAge
+                : serverConfig.zerops.membershipTtl;
             return yield* sessions
               .issue({
                 method: input?.proofKeyThumbprint ? "dpop-access-token" : "bearer-access-token",

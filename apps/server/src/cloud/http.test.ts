@@ -654,6 +654,8 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
           membershipTtl: Duration.seconds(900),
           publicOrigin: undefined,
           apiToken: undefined,
+          roleRecheckInterval: Duration.seconds(300),
+          sessionMaxAge: Duration.hours(24),
         }),
         proofRequest,
         "http://127.0.0.1:7331",
