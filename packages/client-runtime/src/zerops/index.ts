@@ -309,3 +309,16 @@ export {
   type GiteaRepositoryPermissions,
   type GiteaUser,
 } from "./giteaClient.ts";
+export {
+  canWriteRegistry,
+  onlyTheseCanAddAProject,
+  planGroupMembership,
+  planGroupRegistration,
+  resolveAddProjectVerb,
+  resolveGroupGitea,
+  type GroupGiteaState,
+  type GroupMembershipResult,
+  type GroupRegistrationPlan,
+  type GroupRegistrationResult,
+  type GroupVerb,
+} from "./groupCreation.ts";

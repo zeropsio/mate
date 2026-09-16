@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsOrganization, ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  parseZeropsRegistry,
+  type ZeropsOrganization,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import wizardSource from "./ZeropsNewProjectWizard.tsx?raw";
 
 import {
@@ -59,6 +63,8 @@ describe("zeropsNewProjectScopeStepVisible", () => {
 
 describe("submitZeropsNewProject", () => {
   const PROJECT: ZeropsProject = { id: "project-1", name: "zerops-mate", status: "ACTIVE" };
+  /** An account whose Gitea is up and that has no group yet. */
+  const REGISTRY = parseZeropsRegistry(["mate:tool:gitea"]);
 
   it("carries the selected agents through to the create call", async () => {
     const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
@@ -66,6 +72,8 @@ describe("submitZeropsNewProject", () => {
     const onError = vi.fn();
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -94,6 +102,8 @@ describe("submitZeropsNewProject", () => {
     const onCreated = vi.fn();
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -106,13 +116,15 @@ describe("submitZeropsNewProject", () => {
       onError: vi.fn(),
     });
 
-    expect(onCreated).toHaveBeenCalledWith("project-1");
+    expect(onCreated).toHaveBeenCalledWith("project-1", "zerops-mate");
   });
 
   it("says nothing was created when the create fails", async () => {
     const onCreated = vi.fn();
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockRejectedValue(new Error("nope")),
       clientId: "client-1",
       name: "zerops-mate",
@@ -132,6 +144,8 @@ describe("submitZeropsNewProject", () => {
     const onUncertain = vi.fn();
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject: vi.fn().mockRejectedValue({
         _tag: "ZeropsDataAdapterError",
         kind: "uncertain",
@@ -155,6 +169,8 @@ describe("submitZeropsNewProject", () => {
     const createProject = vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" });
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -182,6 +198,8 @@ describe("submitZeropsNewProject", () => {
     const onError = vi.fn();
 
     await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockResolvedValue(undefined),
       createProject,
       clientId: "client-1",
       name: "zerops-mate",
@@ -195,6 +213,81 @@ describe("submitZeropsNewProject", () => {
 
     expect(onStartWaiting).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith("Project name is taken.");
+  });
+
+  it("writes the group's registry entry before it creates anything", async () => {
+    const order: Array<string> = [];
+    const registerGroup = vi.fn(async ({ tagList }: { tagList: ReadonlyArray<string> }) => {
+      order.push(`register:${tagList.join(",")}`);
+    });
+    const createProject = vi.fn(async () => {
+      order.push("create");
+      return { project: PROJECT, serviceName: "zcp" };
+    });
+
+    await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup,
+      createProject,
+      clientId: "client-1",
+      name: "Acme CRM",
+      locationId: null,
+      groupId: "g-1",
+      botName: "Nia",
+      agents: [],
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(order).toEqual(["register:mate:gn:g-1:acme-crm,mate:tool:gitea", "create"]);
+  });
+
+  it("creates nothing when the registry write is refused", async () => {
+    const createProject = vi.fn();
+    const onError = vi.fn();
+
+    await submitZeropsNewProject({
+      registry: REGISTRY,
+      registerGroup: vi.fn().mockRejectedValue(new Error("Only owners write tags.")),
+      createProject,
+      clientId: "client-1",
+      name: "Acme CRM",
+      locationId: null,
+      groupId: "g-1",
+      botName: "Nia",
+      agents: [],
+      onStartWaiting: vi.fn(),
+      onError,
+    });
+
+    expect(createProject).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith("Only owners write tags.");
+  });
+
+  it("numbers the slug when another project already took the name", async () => {
+    const registerGroup = vi.fn().mockResolvedValue(undefined);
+    const onCreated = vi.fn();
+
+    await submitZeropsNewProject({
+      registry: parseZeropsRegistry(["mate:tool:gitea", "mate:gn:g-old:acme"]),
+      registerGroup,
+      createProject: vi.fn().mockResolvedValue({ project: PROJECT, serviceName: "zcp" }),
+      clientId: "client-1",
+      name: "Acme",
+      locationId: null,
+      groupId: "g-1",
+      botName: "Nia",
+      agents: [],
+      onCreated,
+      onStartWaiting: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(registerGroup).toHaveBeenCalledWith({
+      groupId: "g-1",
+      tagList: ["mate:gn:g-1:acme-2", "mate:gn:g-old:acme", "mate:tool:gitea"],
+    });
+    expect(onCreated).toHaveBeenCalledWith("project-1", "acme-2");
   });
 });
 

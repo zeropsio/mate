@@ -32,6 +32,11 @@ export interface ZeropsCreationHandoff {
   readonly groupName: string;
   readonly role: ZeropsEnvironmentRole;
   readonly source: ZeropsCreationSource;
+  /**
+   * What the person answered to *What are we building?* — their own words,
+   * carried verbatim from *Add project* (D17). Absent when they wrote nothing.
+   */
+  readonly brief?: string | undefined;
 }
 
 /** The role as it reads mid-sentence: "the stage environment of Aurora". */
@@ -109,10 +114,12 @@ function isHandoff(value: unknown): value is ZeropsCreationHandoff {
   const source = record["source"];
   if (typeof source !== "object" || source === null) return false;
   const kind = (source as Record<string, unknown>)["kind"];
+  const brief = record["brief"];
   return (
     typeof record["environmentName"] === "string" &&
     typeof record["groupName"] === "string" &&
     ROLES.has(record["role"] as ZeropsEnvironmentRole) &&
+    (brief === undefined || typeof brief === "string") &&
     (kind === "clone" || kind === "store" || kind === "none")
   );
 }

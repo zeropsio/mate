@@ -20,6 +20,7 @@ import {
 } from "./giteaCredential.ts";
 import { mateSignerTagIsCurrent, withMateProjectRole, withMateSignerTag } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
+import { parseZeropsRegistry, projectTagWriteBody, type ZeropsRegistry } from "./groupRegistry.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import type {
   ZeropsIntegrationToken,
@@ -162,6 +163,15 @@ export interface ZeropsProject {
   readonly tagList?: ReadonlyArray<string>;
   /** Round-tripped by `updateProjectGroupTags`, which must not blank it. */
   readonly description?: string;
+  /**
+   * Round-tripped by the registry write (`writeGroupRegistry`). `PUT
+   * /project/{id}` replaces the record, so a tag write that omitted these two
+   * would quietly take a shared IPv4 away or reset somebody's credit limit —
+   * on the Gitea project, which is the one project the whole account depends
+   * on.
+   */
+  readonly publicIpV4Shared?: boolean;
+  readonly maxCreditLimit?: number | null;
 }
 
 function isCompleteCommandProject(value: unknown): value is ZeropsProject {
@@ -1075,6 +1085,62 @@ export class ZeropsApiClient {
           description: project.description ?? "",
           tagList: withMateSignerTag(project.tagList, input.agentId, input.userId),
         }),
+      },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
+  /**
+   * The account's registry, read off the Gitea project's tags (guide 4.1, D3).
+   *
+   * One project read. The registry is the whole account's membership map, and
+   * it lives where its subjects cannot write it — a Mate has no grant on the
+   * Gitea project at all (`groupRegistry.ts`).
+   */
+  async readGroupRegistry(giteaProjectId: string, signal?: AbortSignal): Promise<ZeropsRegistry> {
+    const project = await this.fetchProject(giteaProjectId, signal);
+    return parseZeropsRegistry(project.tagList);
+  }
+
+  /**
+   * Writes the registry back, as the person — an org owner or admin, because
+   * the platform refuses a project write from anybody else.
+   *
+   * Read-modify-write against a tag list the **caller** produced, not against
+   * whatever is on the project now: the caller parsed the registry, decided,
+   * and formatted it back with every tag it did not own carried through
+   * (`groupRegistry.ts`). Re-reading here and merging again would silently
+   * resolve a concurrent write instead of letting the next read see it.
+   *
+   * `userRoles` is not sent. `PUT /project/{id}` replaces what it is given,
+   * and the Gitea project is exactly where a mistake there would be worst.
+   */
+  async writeGroupRegistry(
+    input: { readonly giteaProjectId: string; readonly tagList: ReadonlyArray<string> },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<ZeropsProject> {
+    const generation = this.#generation;
+    this.#assertGeneration(generation);
+    const project = await this.fetchProject(input.giteaProjectId, signal);
+    this.#assertGeneration(generation);
+    return this.#request<ZeropsProject>(
+      `/project/${input.giteaProjectId}`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify(
+          projectTagWriteBody({
+            name: project.name,
+            description: project.description,
+            tagList: input.tagList,
+            publicIpV4Shared: project.publicIpV4Shared,
+            maxCreditLimit: project.maxCreditLimit,
+          }),
+        ),
       },
       {
         operationKind: "project-write",
