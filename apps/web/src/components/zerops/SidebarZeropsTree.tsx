@@ -65,7 +65,7 @@ type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undef
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
   readonly onSelect: (candidate: T) => void;
-  /** Opens the projects screen — the only route out of an empty menu. */
+  /** Opens the projects screen — the way out of a menu whose projects have no Mate. */
   readonly onBrowseProjects: () => void;
   readonly activeProjectId?: string | null;
   /**
@@ -101,23 +101,29 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     return null;
   }
 
+  // No project at all: nothing to list and nothing to say — the header's
+  // "+ New project" is the one affordance, and the projects screen already
+  // makes the invitation. A second "New project" here would be the same verb
+  // three times on one screen.
+  if (emptyReason === "no-projects") {
+    return null;
+  }
+
+  // Projects, but none with a Mate: one quiet line on the menu's own left
+  // edge, where every other row starts, and the way to the projects screen.
   if (emptyReason !== undefined) {
     return (
       <div
-        className={cn("flex flex-col items-center gap-2 px-2 py-6 text-center", className)}
+        className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-[var(--muted-foreground)]">
-          {/* Never "no projects" when there are projects: that sends someone
-              looking for something they already have. */}
-          {emptyReason === "no-projects" ? "No Zerops projects yet" : "No environment has Mate yet"}
-        </span>
+        <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
           type="button"
         >
-          {emptyReason === "no-projects" ? "New project" : "Set up Mate"}
+          Set up Mate
         </button>
       </div>
     );

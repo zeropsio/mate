@@ -133,8 +133,8 @@ describe("SidebarZeropsTree", () => {
 
   it('says nothing while the candidate list is on its first read, rather than "none"', () => {
     expect(render([], { loading: true })).toBe("");
-    // Read once and empty: the empty state, as before.
-    expect(render([], { loading: false })).toContain("sidebar-environments-empty");
+    // Read once and Mate-less: the empty state, as before.
+    expect(render([CRM_STAGE], { loading: false })).toContain("sidebar-environments-empty");
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {
@@ -204,17 +204,38 @@ describe("SidebarZeropsTree", () => {
     expect(render([CRM_DEV, LOOSE])).toContain("Ungrouped");
   });
 
-  it("says Mate is missing, not that projects are, when the account has projects", () => {
-    const html = render([CRM_STAGE]);
-    expect(html).toContain("No environment has Mate yet");
-    expect(html).toContain("Set up Mate");
-    expect(html).not.toContain("No Zerops projects yet");
+  // The menu's one empty state: a project without a Mate. An account without
+  // a project says nothing here — the header's "+ New project" is the
+  // affordance, and the projects screen already says the rest.
+  it.each([
+    {
+      name: "says Mate is missing, and offers to set one up, when the account has projects",
+      candidates: [CRM_STAGE],
+      shows: ["sidebar-environments-empty", "No environment has Mate yet", "Set up Mate"],
+      hides: ["No Zerops projects yet", "New project"],
+    },
+    {
+      name: "says nothing at all when the account has no project",
+      candidates: [],
+      shows: [],
+      hides: ["sidebar-environments-empty", "No Zerops projects yet", "New project", "Set up Mate"],
+    },
+  ])("$name", ({ candidates, shows, hides }) => {
+    const html = render(candidates);
+    for (const text of shows) expect(html).toContain(text);
+    for (const text of hides) expect(html).not.toContain(text);
   });
 
-  it("says there are no projects only when there are none", () => {
-    const html = render([]);
-    expect(html).toContain("No Zerops projects yet");
-    expect(html).toContain("New project");
+  it("left-aligns the empty state to the menu's own edge, like every other row", () => {
+    const html = render([CRM_STAGE]);
+    const block = html.match(
+      /<div class="([^"]*)" data-zerops-surface="sidebar-environments-empty"/u,
+    );
+    expect(block).not.toBeNull();
+    const classes = block![1]!.split(" ");
+    expect(classes).toContain("items-start");
+    expect(classes).not.toContain("items-center");
+    expect(classes).not.toContain("text-center");
   });
 
   it("marks the active Mate", () => {

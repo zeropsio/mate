@@ -61,11 +61,14 @@ function SidebarBrand() {
 }
 
 function SidebarUtilityItem({
+  active = false,
   className,
   icon,
   label,
   onClick,
 }: {
+  /** The page this item opens is the one open now: lit the way the menu lights its open row. */
+  active?: boolean;
   className?: string;
   icon: ReactNode;
   label: string;
@@ -76,7 +79,13 @@ function SidebarUtilityItem({
       <Tooltip>
         <TooltipTrigger
           render={
-            <SidebarMenuButton aria-label={label} onClick={onClick} size="icon">
+            <SidebarMenuButton
+              aria-current={active ? "page" : undefined}
+              aria-label={label}
+              isActive={active}
+              onClick={onClick}
+              size="icon"
+            >
               {icon}
             </SidebarMenuButton>
           }
@@ -91,6 +100,10 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
+  // Where the footer is a way back: the pages that are somewhere else. The
+  // projects screen (/zerops) is the root of a Zerops account, not somewhere
+  // else — there the footer keeps its shape and lights its own icon, so the
+  // sidebar looks the same on every visit to the route.
   const currentFooterPage = useLocation({
     select: (location) =>
       /^\/settings(?:\/|$)/.test(location.pathname)
@@ -99,10 +112,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           ? "project-settings"
           : location.pathname === "/usage"
             ? "usage"
-            : location.pathname === "/zerops"
-              ? "zerops"
-              : null,
+            : null,
   });
+  const onZeropsProjects = useLocation({ select: (location) => location.pathname === "/zerops" });
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -150,7 +162,12 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             label="Settings"
             onClick={handleSettingsClick}
           />
-          <SidebarUtilityItem icon={<CloudIcon />} label="Zerops" onClick={handleZeropsClick} />
+          <SidebarUtilityItem
+            active={onZeropsProjects}
+            icon={<CloudIcon />}
+            label="Zerops"
+            onClick={handleZeropsClick}
+          />
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
             label="Usage"
