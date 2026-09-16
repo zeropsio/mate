@@ -19,6 +19,10 @@ import {
   type ZeropsEnvironmentServices,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  mateOnlyOwnerOpensIt,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
@@ -32,6 +36,14 @@ export interface ZeropsRowInput {
   readonly health: ZeropsContainerHealth | undefined;
   /** The environment's role in its project, when it has one. */
   readonly role?: ZeropsEnvironmentRole | undefined;
+  /**
+   * What this viewer may do with this Mate (D5). `listed` is shown and never
+   * opened; absent means the caller is not making that distinction (an
+   * environment that is not a Mate, a list with no membership to judge by).
+   */
+  readonly visibility?: RoleMateVisibility | undefined;
+  /** Who owns it, when the account can be read for a name. */
+  readonly ownerName?: string | undefined;
   /**
    * The platform process, when one is known to be running against this
    * candidate's container — what an `initializing` row's detail names,
@@ -149,6 +161,16 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health, runningProcessKind } = input;
 
+  // Whose Mate it is outranks whatever its container is doing. A person who
+  // cannot open it is not waiting for it to start, and telling them it is
+  // "Ready" would be an invitation the door refuses.
+  if (input.visibility === "listed") {
+    return {
+      status: { label: "Not yours", tone: "off" },
+      detail: mateOnlyOwnerOpensIt(input.ownerName),
+    };
+  }
+
   if (candidate.group === "connected") {
     return { status: { label: "Connected", tone: "ok" } };
   }
@@ -259,6 +281,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
+  if (input.visibility === "listed") return { kind: "none" };
   return can.restart && candidate.project.status === "ACTIVE" && candidate.service?.id !== undefined
     ? { kind: "restart", label: "Restart" }
     : { kind: "none" };
@@ -267,6 +290,9 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can, role } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
+  // A verb the door would refuse is not offered (D5). The row says why in
+  // place of it.
+  if (input.visibility === "listed") return { kind: "none" };
 
   switch (candidate.group) {
     case "connected":

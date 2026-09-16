@@ -1,6 +1,10 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import {
+  resolveMateVisibility,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, View } from "react-native";
@@ -34,9 +38,13 @@ function CandidateRow(props: {
   readonly candidate: ZeropsCandidate;
   readonly busy: boolean;
   readonly disabled: boolean;
+  readonly visibility?: RoleMateVisibility | undefined;
   readonly onPress: () => void;
 }) {
-  const presentation = zeropsCandidatePresentation(props.candidate.group);
+  const presentation = zeropsCandidatePresentation(
+    props.candidate.group,
+    props.visibility === undefined ? {} : { visibility: props.visibility },
+  );
   return (
     <View className="gap-3 rounded-[18px] bg-card px-4 py-4">
       <View className="flex-row items-start justify-between gap-4">
@@ -55,7 +63,9 @@ function CandidateRow(props: {
         />
       </View>
 
-      {props.candidate.reason ? (
+      {presentation.notice ? (
+        <Text className="text-sm leading-normal text-foreground-muted">{presentation.notice}</Text>
+      ) : props.candidate.reason ? (
         <Text className="text-sm leading-normal text-foreground-muted">
           {props.candidate.reason}
         </Text>
@@ -248,6 +258,25 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
       })).filter((section) => section.candidates.length > 0),
     [candidates],
   );
+  // What this person may do with each Mate, from the one role function the
+  // door runs too (D5). Undefined when nobody is signed in to judge by.
+  const viewerOrganization = user?.clientUserList?.[0];
+  const visibilityOf = useCallback(
+    (candidate: ZeropsCandidate): RoleMateVisibility | undefined => {
+      const organizationId = viewerOrganization?.clientId;
+      if (viewerOrganization === undefined || organizationId === undefined) return undefined;
+      return resolveMateVisibility({
+        project: candidate.project,
+        viewer: {
+          id: organizationId,
+          membershipId: viewerOrganization.id,
+          roleCode: viewerOrganization.roleCode,
+          canCreateProjects: viewerOrganization.canCreateProjects,
+        },
+      });
+    },
+    [viewerOrganization],
+  );
 
   const openCandidate = useCallback(
     async (candidate: ZeropsCandidate) => {
@@ -256,6 +285,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         props.onDone(candidate.environmentId);
         return;
       }
+      if (visibilityOf(candidate) === "listed") return;
       if (candidate.group !== "ready" || !candidate.containerOrigin) return;
       connectingRef.current = true;
       setConnectingKey(candidate.key);
@@ -288,7 +318,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         setConnectingKey(null);
       }
     },
-    [client, connect, props],
+    [client, connect, props, visibilityOf],
   );
 
   return (
@@ -382,6 +412,9 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
                 disabled={isConnecting}
                 key={candidate.key}
                 onPress={() => void openCandidate(candidate)}
+                {...(visibilityOf(candidate) === undefined
+                  ? {}
+                  : { visibility: visibilityOf(candidate) })}
               />
             ))}
           </View>

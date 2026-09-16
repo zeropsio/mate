@@ -1,4 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
+import { mateOnlyOwnerOpensIt, ZEROPS_READ_ONLY_DOOR_REASON } from "../zerops/mateAccess.ts";
 import type { RemoteEnvironmentAuthError } from "../authorization/remote.ts";
 import {
   ConnectionBlockedError,
@@ -40,8 +41,23 @@ export function mapRemoteEnvironmentError(
         detail: "The environment credential is invalid.",
         traceId: error.traceId,
       });
-    case "EnvironmentScopeRequiredError":
     case "EnvironmentOperationForbiddenError":
+      // The Mate is theirs to see and not to open. Kept apart from the generic
+      // permission error on purpose: that one reads as something to fix, and
+      // this is whose Mate it is.
+      if (error.reason === ZEROPS_READ_ONLY_DOOR_REASON) {
+        return new ConnectionBlockedError({
+          reason: "read-only",
+          detail: mateOnlyOwnerOpensIt(),
+          traceId: error.traceId,
+        });
+      }
+      return new ConnectionBlockedError({
+        reason: "permission",
+        detail: "The environment credential does not grant the required access.",
+        traceId: error.traceId,
+      });
+    case "EnvironmentScopeRequiredError":
       return new ConnectionBlockedError({
         reason: "permission",
         detail: "The environment credential does not grant the required access.",

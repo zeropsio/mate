@@ -111,6 +111,27 @@ export interface ZeropsLocation {
   readonly pingUrl: string;
 }
 
+/**
+ * One row of `GET /client/{org}/user/list`. Open about what it does not
+ * promise: the platform names a person in more than one place, and a member
+ * with none of them is shown by their e-mail rather than by a blank.
+ */
+export interface ZeropsOrganizationMember {
+  /** The `clientUser` id — what a project's `userRoles` names. */
+  readonly id: string;
+  readonly userId?: string;
+  readonly status?: string;
+  readonly roleCode?: string;
+  readonly canCreateProjects?: boolean;
+  readonly user?: {
+    readonly id?: string;
+    readonly fullName?: string;
+    readonly firstName?: string;
+    readonly lastName?: string;
+    readonly email?: string;
+  };
+}
+
 export interface ZeropsProject {
   readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
   readonly id: string;
@@ -1719,6 +1740,25 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+  }
+
+  /**
+   * `GET /client/{id}/user/list` — the org's members, so a Mate a person
+   * cannot open can still say **whose** it is.
+   *
+   * Any token of the org may read it, integration tokens included (measured
+   * 2026-09-15). What comes back is metadata — names, e-mails, roles — and
+   * never a credential.
+   */
+  async listOrganizationMembers(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsOrganizationMember>> {
+    const body = await this.#request<{
+      readonly items?: ReadonlyArray<ZeropsOrganizationMember>;
+      readonly list?: ReadonlyArray<ZeropsOrganizationMember>;
+    }>(`/client/${clientId}/user/list?limit=100`, { signal: signal ?? null });
+    return body.items ?? body.list ?? [];
   }
 
   /**

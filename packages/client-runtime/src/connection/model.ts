@@ -71,6 +71,11 @@ export const ConnectionBlockedReason = Schema.Literals([
   "authentication",
   "configuration",
   "permission",
+  // The door knows the caller and will not let them in: they are `READ_ONLY`
+  // on this Mate's project, so it is theirs to see in the list and not to
+  // open (D5). Its own reason because it is not a fault to recover from —
+  // there is nothing to retry and nothing to fix.
+  "read-only",
   "unsupported",
 ]);
 export type ConnectionBlockedReason = typeof ConnectionBlockedReason.Type;

@@ -195,6 +195,10 @@
       "types": "./src/zerops/candidateLoading.ts",
       "default": "./src/zerops/candidateLoading.ts"
     },
+    "./zerops/mateAccess": {
+      "types": "./src/zerops/mateAccess.ts",
+      "default": "./src/zerops/mateAccess.ts"
+    },
     "./zerops/doorThrowaway": {
       "types": "./src/zerops/doorThrowaway.ts",
       "default": "./src/zerops/doorThrowaway.ts"

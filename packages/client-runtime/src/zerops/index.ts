@@ -12,6 +12,7 @@ export {
   type ZeropsLoginResponse,
   type ZeropsLocation,
   type ZeropsOrganization,
+  type ZeropsOrganizationMember,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
   type ZeropsService,

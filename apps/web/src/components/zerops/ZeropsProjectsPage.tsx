@@ -28,6 +28,11 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  resolveMateOwnerName,
+  resolveMateVisibility,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
@@ -46,6 +51,7 @@ import {
   useZeropsGroupReach,
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
+import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -486,23 +492,54 @@ function ZeropsProjectsContent() {
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
   const pageError = connectError ?? error;
+  // What this person may do with each Mate, from the one role function the
+  // door runs too (D5). A `listed` row is shown and never opened.
+  const viewer =
+    activeOrganization === null
+      ? null
+      : {
+          id: activeOrganization.id,
+          membershipId: activeOrganization.membershipId,
+          roleCode: activeOrganization.roleCode,
+          canCreateProjects: activeOrganization.canCreateProjects,
+        };
+  const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
+    viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+  // The member list is read only when a row would use a name, and never
+  // otherwise: a person who can open everything they can see never asks.
+  const anyListed = candidates.some((candidate) => visibilityOf(candidate) === "listed");
+  const members = useZeropsOrganizationMembers({
+    clientId: activeOrganization?.id,
+    enabled: anyListed,
+  });
+
   const rowInput = (
     candidate: ZeropsCandidate,
     role?: ZeropsEnvironmentRole | undefined,
-  ): ZeropsRowInput => ({
-    candidate,
-    health: candidateHealth.get(candidate.key),
-    can: {
-      open: true,
-      connect: true,
-      enable: true,
-      wait: true,
-      setUpMate: true,
-      start: true,
-      restart: true,
-    },
-    ...(role === undefined ? {} : { role }),
-  });
+  ): ZeropsRowInput => {
+    const visibility = visibilityOf(candidate);
+    const openable = visibility !== "listed";
+    const ownerName =
+      visibility === "listed"
+        ? resolveMateOwnerName({ project: candidate.project, members })
+        : undefined;
+    return {
+      candidate,
+      health: candidateHealth.get(candidate.key),
+      can: {
+        open: openable,
+        connect: openable,
+        enable: openable,
+        wait: openable,
+        setUpMate: openable,
+        start: openable,
+        restart: openable,
+      },
+      ...(role === undefined ? {} : { role }),
+      ...(visibility === undefined ? {} : { visibility }),
+      ...(ownerName === undefined ? {} : { ownerName }),
+    };
+  };
 
   const [settingUpKey, setSettingUpKey] = useState<string | null>(null);
 
