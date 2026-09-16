@@ -282,7 +282,7 @@ export function mateAwaitingRegistryLine(admins: ReadonlyArray<MateOwnerCandidat
 export function registerMateVerb(input: {
   readonly registration: MateRegistration;
   /** The viewer's org role, as the platform spells it. */
-  readonly viewerRole: string | undefined;
+  readonly viewerRole?: string | undefined;
   /** What the group is called, for the verb itself. */
   readonly groupName: string;
 }): string | undefined {
