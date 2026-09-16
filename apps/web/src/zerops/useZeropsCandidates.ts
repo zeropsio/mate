@@ -111,7 +111,11 @@ function zeropsConnectionsByOrigin(
 }
 
 /** A project that is not up holds nothing anyone deployed. */
-const NO_SERVICES: ZeropsEnvironmentServices = { hostnames: [], deployedAt: undefined };
+const NO_SERVICES: ZeropsEnvironmentServices = {
+  hostnames: [],
+  deployedAt: undefined,
+  deployable: [],
+};
 const EMPTY_PROJECTS_READ_ATOM = Atom.make<CollectionRead<ProjectRecord> | null>(null).pipe(
   Atom.withLabel("zerops:candidates-projects-empty"),
 );

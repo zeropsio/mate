@@ -44,9 +44,21 @@ export interface OrganizationIntegrationTokenGrantsResourceRequest {
   readonly organization: OrganizationRef;
 }
 
+/**
+ * What a group environment's service is running — the sha in the deployed
+ * version's name (guide 4.5, `groupDeploys.ts`). Read per service, because the
+ * name lives on the service and nowhere else.
+ */
+export interface ServiceDeployedVersionResourceRequest {
+  readonly kind: "service-deployed-version";
+  readonly account: AccountScope;
+  readonly service: ServiceRef;
+}
+
 export type ZeropsResourceRequest =
   | OrganizationLocationsResourceRequest
   | ServiceAuthorizedAgentsResourceRequest
+  | ServiceDeployedVersionResourceRequest
   | OrganizationIntegrationTokenGrantsResourceRequest;
 
 export type ZeropsResourceKind = ZeropsResourceRequest["kind"];
@@ -61,6 +73,8 @@ export interface ZeropsIntegrationTokenGrantMetadata {
 export interface ZeropsResourceValues {
   readonly "organization-locations": ReadonlyArray<ZeropsLocation>;
   readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
+  /** `undefined` for a service nothing has ever been deployed to. */
+  readonly "service-deployed-version": string | undefined;
   readonly "organization-integration-token-grants": ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
 }
 
@@ -115,6 +129,10 @@ export interface ZeropsResourceAdapter {
     request: ServiceAuthorizedAgentsResourceRequest,
     context: ZeropsResourceRequestContext,
   ) => Effect.Effect<ZeropsResourceValues["service-authorized-agents"], ZeropsResourceSourceError>;
+  readonly readServiceDeployedVersion: (
+    request: ServiceDeployedVersionResourceRequest,
+    context: ZeropsResourceRequestContext,
+  ) => Effect.Effect<ZeropsResourceValues["service-deployed-version"], ZeropsResourceSourceError>;
   readonly readOrganizationIntegrationTokenGrants: (
     request: OrganizationIntegrationTokenGrantsResourceRequest,
     context: ZeropsResourceRequestContext,
@@ -215,6 +233,7 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
     case "organization-integration-token-grants":
       return request.organization;
     case "service-authorized-agents":
+    case "service-deployed-version":
       return request.service.project.organization;
   }
 };
@@ -233,6 +252,7 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
     case "organization-integration-token-grants":
       return JSON.stringify(prefix) as ZeropsResourceKey;
     case "service-authorized-agents":
+    case "service-deployed-version":
       return JSON.stringify([
         ...prefix,
         request.service.project.projectId,
@@ -288,7 +308,7 @@ function resourceAdmission(
     return admissionError("access-denied");
   }
   if (
-    request.kind === "service-authorized-agents" &&
+    (request.kind === "service-authorized-agents" || request.kind === "service-deployed-version") &&
     !projectRoleGrantsAccess(grant, request.service.project, "any-role")
   ) {
     return admissionError("access-denied");
@@ -306,6 +326,8 @@ function readResource(
       return adapter.readOrganizationLocations(request, context);
     case "service-authorized-agents":
       return adapter.readServiceAuthorizedAgents(request, context);
+    case "service-deployed-version":
+      return adapter.readServiceDeployedVersion(request, context);
     case "organization-integration-token-grants":
       return adapter.readOrganizationIntegrationTokenGrants(request, context);
   }
@@ -553,6 +575,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
       const byKind: Record<ZeropsResourceKind, number> = {
         "organization-locations": 0,
         "service-authorized-agents": 0,
+        "service-deployed-version": 0,
         "organization-integration-token-grants": 0,
       };
       let loading = 0;

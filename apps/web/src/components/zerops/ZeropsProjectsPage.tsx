@@ -71,6 +71,8 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  deployWord,
+  environmentRow,
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
@@ -79,6 +81,7 @@ import {
   hasMate,
   isZcpService,
   planEnvironmentCreation,
+  pullRequestRow,
   readZeropsGroupTags,
   resolveGroupGitea,
   runEnvironmentCreation,
@@ -119,6 +122,9 @@ import { findAccountGitea } from "~/zerops/giteaProject";
 import { giteaClientFor } from "~/zerops/giteaSession";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "~/zerops/useZeropsGroupDeploys";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
 import {
@@ -1135,6 +1141,79 @@ function ZeropsProjectsContent() {
   });
 
   /**
+   * Which Zerops projects each group holds, and what runtime services are in
+   * them — the account's half of the environment rows. The group repo's half
+   * (which of them an environment declares, and what feeds it) is the hook's.
+   */
+  const deployGroups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
+    () =>
+      registryState.registry.groups.flatMap((entry) => {
+        const tree = groupTree.groups.find(({ group }) => group.groupId === entry.groupId);
+        if (tree === undefined) return [];
+        return [
+          {
+            groupId: entry.groupId,
+            slug: entry.slug,
+            projects: tree.environments.map(({ item }) => ({
+              projectId: item.project.id,
+              name: item.project.name,
+              services: item.services?.deployable ?? [],
+            })),
+          },
+        ];
+      }),
+    [groupTree.groups, registryState.registry.groups],
+  );
+
+  /**
+   * One service's deployed version name, through the account's runtime — the
+   * sha is its first token (`groupDeploys.ts`). A read that fails answers
+   * nothing, which is a row without a commit rather than a row that lies.
+   */
+  const readDeployedVersion = useCallback(
+    async (projectId: string, serviceId: string, signal: AbortSignal) => {
+      if (activeOrganization === null) return undefined;
+      return readZeropsResourceOnce(
+        runtime.resources,
+        {
+          kind: "service-deployed-version",
+          account: runtime.scope,
+          service: {
+            kind: "service",
+            project: projectRef(activeOrganization.id, projectId),
+            serviceId: ZeropsServiceId.make(serviceId),
+          },
+        },
+        signal,
+      );
+    },
+    [activeOrganization, projectRef, runtime.resources, runtime.scope],
+  );
+
+  const groupDeploys = useZeropsGroupDeploys({
+    groups: deployGroups,
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    readVersion: readDeployedVersion,
+    enabled: status === "signed-in",
+  });
+
+  /**
+   * The environment row of one Zerops project, when some group declares it.
+   * A project no `environments.yaml` names is not a group environment and
+   * keeps the row it always had.
+   */
+  const declaredEnvironment = useCallback(
+    (projectId: string) => {
+      for (const state of groupDeploys.values()) {
+        const found = state.environments.find((entry) => entry.projectId === projectId);
+        if (found !== undefined) return environmentRow(found);
+      }
+      return undefined;
+    },
+    [groupDeploys],
+  );
+
+  /**
    * The one line a group says about itself: that the broker has not finished
    * its Gitea side yet (`groupRows.ts`). A group whose org has not been asked
    * about says nothing, so the heading never grows a line and then loses it.
@@ -1638,6 +1717,13 @@ function ZeropsProjectsContent() {
           const projectTrouble =
             candidate.group === "provisioning" ||
             (candidate.group === "unavailable" && candidate.missingContainer !== true);
+          // A group environment says what it follows and what it runs — the
+          // branch and the deployed commit, from the two parties that can
+          // prove each (`groupDeploys.ts`). Anything else keeps the summary of
+          // what it holds.
+          const declared = declaredEnvironment(candidate.project.id);
+          const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
+          const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
           return (
             <ZeropsEnvironmentRow
               action={
@@ -1663,13 +1749,37 @@ function ZeropsProjectsContent() {
                       ? {}
                       : { pulse: presentation.status.pulse })}
                   />
+                ) : deployTone !== undefined && deployLabel !== undefined ? (
+                  <StatusDot label={deployLabel} tone={deployTone} />
                 ) : undefined
               }
-              summary={summaryOf(candidate)}
+              summary={declared === undefined ? summaryOf(candidate) : declared.line}
               tag={environmentRoleTag(role)}
             />
           );
         }}
+        renderGroupRows={(group: ZeropsGroup) =>
+          (groupDeploys.get(group.groupId)?.pullRequests ?? []).map((pull) => {
+            const row = pullRequestRow(pull);
+            return (
+              <ZeropsPullRequestRow
+                action={
+                  pull.html_url === undefined ? undefined : (
+                    <ZeropsMateVerb
+                      label="Review"
+                      onClick={() => {
+                        window.open(pull.html_url, "_blank", "noopener");
+                      }}
+                    />
+                  )
+                }
+                key={`pull-${group.groupId}-${row.number}`}
+                line={row.line}
+                title={row.title}
+              />
+            );
+          })
+        }
         renderGroupMenu={(group: ZeropsGroup) => (
           <ZeropsProjectMenu
             actions={[
@@ -1740,6 +1850,10 @@ function ZeropsProjectsContent() {
                     menu={renderEnvironmentMenu(candidate, tags, true, action, menuActions)}
                     name={name}
                     onSelect={select}
+                    snippet={live?.subject === undefined ? undefined : live.snippet}
+                    time={
+                      live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)
+                    }
                     tint={tint}
                     updateLine={updateLine}
                   />

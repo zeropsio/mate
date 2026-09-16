@@ -297,3 +297,25 @@ describe("adding to a group that already has everything", () => {
     expect(html.slice(pills)).toContain("Add production");
   });
 });
+
+describe("a group's other rows", () => {
+  const pull = { renderGroupRows: () => <li data-test-pull="true">Add a worker</li> };
+
+  it("puts them after the environments they would change, in the same list", () => {
+    const html = render([CRM_DEV, CRM_STAGE], pull);
+    expect(html).toContain('data-zerops-surface="environment-rows"');
+    expect(html.indexOf('data-test-environment="crm-stage"')).toBeLessThan(
+      html.indexOf('data-test-pull="true"'),
+    );
+  });
+
+  it("opens the list for a group whose only rows are those", () => {
+    const html = render([CRM_DEV], pull);
+    expect(html).toContain('data-zerops-surface="environment-rows"');
+    expect(html).toContain('data-test-pull="true"');
+  });
+
+  it("leaves the list closed for a group with neither", () => {
+    expect(render([CRM_DEV])).not.toContain('data-zerops-surface="environment-rows"');
+  });
+});

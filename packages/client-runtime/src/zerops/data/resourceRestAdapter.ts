@@ -35,6 +35,8 @@ export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsRe
       ),
     readServiceAuthorizedAgents: (input, context) =>
       request(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
+    readServiceDeployedVersion: (input, context) =>
+      request(() => client.readDeployedVersionName(input.service.serviceId, context.abortSignal)),
     readOrganizationIntegrationTokenGrants: (input, context) =>
       request(async () =>
         (

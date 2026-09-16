@@ -2371,6 +2371,31 @@ export class ZeropsApiClient {
   }
 
   /**
+   * `GET /service-stack/{id}` — the name of the version a service is running.
+   *
+   * The name is the one place the commit survives: the app-version API never
+   * returns a `name` at all, and the string the broker sent comes back only as
+   * `userData[].appVersionName` on the service, for the active version
+   * (measured 2026-09-16). So "what is deployed" is read from here and from
+   * nowhere else — never from a branch head, which says what *should* be
+   * running (guide 4.5).
+   *
+   * `undefined` for a service that has never been deployed, which is the
+   * normal state of an environment created a minute ago.
+   */
+  async readDeployedVersionName(
+    serviceId: string,
+    signal?: AbortSignal,
+  ): Promise<string | undefined> {
+    const body = await this.#request<{
+      readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string }>;
+    }>(`/service-stack/${serviceId}`, { signal: signal ?? null });
+    const entry = (body.userData ?? []).find((item) => item.key === "appVersionName");
+    const name = entry?.content?.trim();
+    return name === undefined || name.length === 0 ? undefined : name;
+  }
+
+  /**
    * `PUT /service-stack/{id}/enable-subdomain-access` — publish a service on
    * its `*.zerops.app` subdomain.
    *

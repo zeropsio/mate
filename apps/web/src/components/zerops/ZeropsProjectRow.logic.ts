@@ -17,6 +17,7 @@ import {
   readZeropsToolKind,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
+  type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -342,4 +343,25 @@ export function environmentSummaryLine(
   return services.deployedAt === undefined
     ? names
     : `${names} · deployed ${age(services.deployedAt)}`;
+}
+
+/**
+ * A deploy's tone as a dot's, for a group environment's row.
+ *
+ * `undefined` where the row model says `neutral`: nothing has been deployed
+ * there, or nobody is signed in to Gitea to be told how it went, and a dot
+ * without a word is exactly what rule R5 forbids. A row that has nothing to
+ * say about its deploy says nothing.
+ */
+export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefined {
+  switch (tone) {
+    case "good":
+      return "ok";
+    case "pending":
+      return "busy";
+    case "bad":
+      return "failed";
+    case "neutral":
+      return undefined;
+  }
 }

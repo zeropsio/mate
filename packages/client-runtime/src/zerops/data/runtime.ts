@@ -560,6 +560,7 @@ const unavailableResource = (): Effect.Effect<never, ZeropsResourceSourceError> 
 const unavailableResourceAdapter: ZeropsResourceAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
+  readServiceDeployedVersion: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
 };
 

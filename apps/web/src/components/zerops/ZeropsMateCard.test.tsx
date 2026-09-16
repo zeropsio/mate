@@ -33,7 +33,30 @@ describe("ZeropsMateCard", () => {
   it("lets the name sit alone for a Mate with nothing to say yet, at the card's full height", () => {
     const html = card();
     expect(html).not.toContain("mate-line");
-    expect(html).toContain("min-h-[3.75rem]");
+    // The height a name, a line and a snippet need, reserved whether or not
+    // the conversation has answered: a card that grew on the socket's answer
+    // would push every card below it down the page.
+    expect(html).toContain("min-h-[4.5rem]");
+  });
+
+  it("dates the Mate at the name's edge and quotes its last words under the line", () => {
+    const html = card({
+      line: <span>Reviewing the migration</span>,
+      snippet: "Done — the column is nullable now",
+      time: "2h",
+    });
+    expect(html).toContain('data-zerops-surface="mate-time"');
+    expect(html).toContain(">2h<");
+    expect(html).toContain('data-zerops-surface="mate-snippet"');
+    expect(html.indexOf("Reviewing the migration")).toBeLessThan(
+      html.indexOf("Done — the column is nullable now"),
+    );
+  });
+
+  it("says nothing where there is no time and no last word", () => {
+    const html = card({ snippet: undefined, time: undefined });
+    expect(html).not.toContain("mate-time");
+    expect(html).not.toContain("mate-snippet");
   });
 
   it("is the way in when it can be: the name is the button and stretches over the card", () => {

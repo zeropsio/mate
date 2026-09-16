@@ -293,6 +293,18 @@ export {
   type Sha256,
 } from "./giteaOAuth.ts";
 export {
+  buildGroupEnvironmentRowInputs,
+  buildGroupEnvironmentRows,
+  deployStatusKey,
+  deployWord,
+  planDeployStatusReads,
+  planDeployedVersionReads,
+  type DeployStatusRead,
+  type DeployedVersionRead,
+  type GroupEnvironmentRowInput,
+  type GroupEnvironmentService,
+} from "./groupDeploys.ts";
+export {
   base64Decode,
   base64Encode,
   createGiteaClient,
