@@ -23,10 +23,82 @@
 
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { browserZeropsStorage } from "./storage";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+
+/**
+ * The records this client wrote itself, agent to Zerops user id, held until
+ * the server's snapshot carries them.
+ *
+ * The server reads the signers when it publishes on the credential event,
+ * which is before this client has written the record; it re-reads on its own
+ * schedule (`ZeropsAgentAuth`'s `SIGNER_RECHECK_INTERVAL`), but the person
+ * who just signed in should not sit in front of a closed composer for it.
+ * They are the one person who already knows what the record says, so the
+ * client remembers it for them, and forgets it the moment the snapshot says
+ * the same thing.
+ */
+export type LocalAgentSigners = Readonly<Partial<Record<ZeropsAgentId, string>>>;
+
+let localAgentSigners: LocalAgentSigners = {};
+const localAgentSignerListeners = new Set<() => void>();
+
+function setLocalAgentSigners(next: LocalAgentSigners): void {
+  localAgentSigners = next;
+  for (const listener of localAgentSignerListeners) listener();
+}
+
+export function readLocalAgentSigners(): LocalAgentSigners {
+  return localAgentSigners;
+}
+
+export function subscribeLocalAgentSigners(listener: () => void): () => void {
+  localAgentSignerListeners.add(listener);
+  return () => {
+    localAgentSignerListeners.delete(listener);
+  };
+}
+
+export function rememberLocalAgentSigner(agentId: ZeropsAgentId, userId: string): void {
+  if (localAgentSigners[agentId] === userId) return;
+  setLocalAgentSigners({ ...localAgentSigners, [agentId]: userId });
+}
+
+/** Forgets every entry the snapshot now carries itself: the server has caught up. */
+export function localSignersSettledBy(snapshot: ZeropsAgentAuthSnapshot): void {
+  const settled = snapshot.agents.filter(
+    (agent) => agent.authorizedBy !== undefined && localAgentSigners[agent.agentId] !== undefined,
+  );
+  if (settled.length === 0) return;
+  const next: Partial<Record<ZeropsAgentId, string>> = { ...localAgentSigners };
+  for (const agent of settled) delete next[agent.agentId];
+  setLocalAgentSigners(next);
+}
+
+export function useLocalAgentSigners(): LocalAgentSigners {
+  return useSyncExternalStore(
+    subscribeLocalAgentSigners,
+    readLocalAgentSigners,
+    readLocalAgentSigners,
+  );
+}
+
+/**
+ * Who signed this agent in, for ownership: the snapshot's own record when it
+ * has one, else the record this client wrote and the server has not read back
+ * yet, else nobody.
+ */
+export function resolveAgentAuthorizer(
+  agentId: ZeropsAgentId,
+  authorizedBy: { readonly subject: string } | undefined,
+  local: LocalAgentSigners,
+): { readonly subject: string } | undefined {
+  if (authorizedBy !== undefined) return { subject: authorizedBy.subject };
+  const subject = local[agentId];
+  return subject === undefined ? undefined : { subject };
+}
 
 /**
  * Which agents' sign-ins have just succeeded, given what the snapshot said
@@ -60,6 +132,10 @@ export function useZeropsAgentSignerRecord(input: {
   const userId = user?.id;
 
   useEffect(() => {
+    if (snapshot !== null) localSignersSettledBy(snapshot);
+  }, [snapshot]);
+
+  useEffect(() => {
     if (snapshot === null) return;
     const succeeded = agentSignInsJustSucceeded(previous.current, snapshot);
     previous.current = snapshot;
@@ -71,6 +147,7 @@ export function useZeropsAgentSignerRecord(input: {
         if (controller.signal.aborted) return;
         try {
           await client.recordProjectAgentSigner({ projectId, agentId, userId }, controller.signal);
+          rememberLocalAgentSigner(agentId, userId);
         } catch {
           // The card says nobody is recorded and the agent refuses the turn;
           // signing in again writes the tag.

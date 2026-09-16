@@ -276,6 +276,7 @@ import {
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
 import { creationJobSendable } from "@t3tools/client-runtime/zerops";
 import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
+import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -3361,11 +3362,18 @@ function ChatViewContent(props: ChatViewProps) {
   // D6: only the person who signed an agent in runs it. The server refuses
   // everybody else's turn; this is what says so before they type one.
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
+  // The record this client wrote itself counts until the snapshot carries it.
+  const zeropsLocalSigners = useLocalAgentSigners();
   const zeropsAgentOwnership = resolveAgentOwnership({
     credPresent: zeropsOwnedAgent?.credPresent ?? false,
-    ...(zeropsOwnedAgent?.authorizedBy === undefined
-      ? {}
-      : { authorizedBy: { subject: zeropsOwnedAgent.authorizedBy.subject } }),
+    authorizedBy:
+      zeropsOwnedAgent === undefined
+        ? undefined
+        : resolveAgentAuthorizer(
+            zeropsOwnedAgent.agentId,
+            zeropsOwnedAgent.authorizedBy,
+            zeropsLocalSigners,
+          ),
     viewerSubject: zeropsViewerSubject,
   });
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {

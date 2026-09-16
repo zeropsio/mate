@@ -204,6 +204,23 @@ const PROVIDER_CHECK_DEBOUNCE_MS = 1000;
 const MARK_OAUTH_RETRY_SCHEDULE = Schedule.exponential(Duration.millis(50));
 const MARK_OAUTH_RETRY_ATTEMPTS = 2;
 
+/**
+ * How often the feed re-reads the signer record for an agent that has a
+ * credential but no recorded signer (see the catch-up fiber in {@link make}).
+ * Just past `ZeropsProjectSigners`'s `SIGNERS_CACHE_TTL` (30 s), so every
+ * tick's read is a fresh one and never the cached miss the login's own
+ * publish saw. Pinned by `ZeropsAgentAuth.test.ts`.
+ */
+export const SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
+
+/**
+ * An agent whose login somebody could still turn out to own: it has a
+ * credential, is not on a project token (an API key belongs to the project,
+ * not a person) and names no signer yet.
+ */
+const awaitsSigner = (agent: ZeropsAgentAuthSnapshot["agents"][number]): boolean =>
+  agent.credPresent && !agent.flagToken && agent.authorizedBy === undefined;
+
 export class ZeropsAgentAuth extends Context.Service<
   ZeropsAgentAuth,
   {
@@ -248,8 +265,10 @@ export interface ZeropsAgentAuthOptions {
    * Who signed each agent in, from the Mate's project tags
    * (`ZeropsProjectSigners`). Re-read per publish rather than cached here: a
    * login is the same event that changes the credential, so the read that
-   * follows it must see the new record. Absent disables provenance entirely —
-   * every snapshot then omits `authorizedBy`.
+   * follows it must see the new record — and re-read every
+   * {@link SIGNER_RECHECK_INTERVAL} for an agent still without one, since the
+   * client writes the record only after it sees the login succeed. Absent
+   * disables provenance entirely — every snapshot then omits `authorizedBy`.
    */
   readonly readSigners?: Effect.Effect<Readonly<Partial<Record<ZeropsAgentId, string>>>>;
   readonly isZeropsEnvironment: boolean;
@@ -642,9 +661,38 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     }
     yield* runWatcher(envStorePath, path.dirname(envStorePath), recomputeEnvStore);
 
+    // The signer record lands AFTER the login it belongs to: the client
+    // writes the project tag once it sees the login succeed, which is after
+    // the credential event's own publish has already read the signers.
+    // Nothing else republishes on its own, so an agent that has a credential
+    // but no signer is re-read every SIGNER_RECHECK_INTERVAL until it has
+    // one. `publish` dedups, so an unchanged read publishes nothing; an agent
+    // with its signer, or one on a project token, costs no read at all.
+    if (readSigners !== undefined) {
+      yield* Effect.gen(function* () {
+        const { lastPublished } = yield* Ref.get(state);
+        if (lastPublished?.agents.some(awaitsSigner)) {
+          yield* publish;
+        }
+      }).pipe(
+        Effect.delay(SIGNER_RECHECK_INTERVAL),
+        Effect.forever,
+        Effect.catchCause((cause) =>
+          Effect.logWarning("zerops agent auth: signer recheck stopped", { cause }),
+        ),
+        Effect.forkScoped,
+      );
+    }
+
+    // What was last published, signers included: a subscriber arriving now
+    // (a reload) and every recombine `registerZeropsRpc` does on a change
+    // start from the same snapshot the change stream carries. `make` has
+    // already published once by here, so the fallback is only for the type.
     const latest = Ref.get(state).pipe(
-      Effect.map((current) =>
-        buildSnapshot(current.env, current.credPresence, current.providerAuth),
+      Effect.map(
+        (current) =>
+          current.lastPublished ??
+          buildSnapshot(current.env, current.credPresence, current.providerAuth),
       ),
     );
 
