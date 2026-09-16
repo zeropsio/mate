@@ -11,7 +11,6 @@ import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   ZeropsServiceId,
-  type RecipeGroupResourceRequest,
   type ServiceAuthorizedAgentsResourceRequest,
   type ZeropsResourceBroker,
   type ZeropsResourceRequest,
@@ -63,7 +62,7 @@ import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { runZeropsCommand, useZeropsData, useZeropsResource } from "~/zerops/zeropsDataContext";
+import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
@@ -72,17 +71,14 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
-  canCreateEnvironment,
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
   generateZeropsGroupId,
-  deriveGiteaState,
   hasMate,
   isZcpService,
   planEnvironmentCreation,
   readZeropsGroupTags,
-  readZeropsToolKind,
   runEnvironmentCreation,
   unionAgents,
   type EnvironmentCreationStepProgress,
@@ -115,7 +111,9 @@ import {
   type ZeropsMenuEntry,
 } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
-import { useZeropsCloneSources } from "~/zerops/useZeropsCloneSources";
+import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
+import { findAccountGitea } from "~/zerops/giteaProject";
+import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
 import {
@@ -1090,40 +1088,6 @@ function ZeropsProjectsContent() {
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  const cloneSiblings = useMemo(
-    () =>
-      requestedGroup === undefined
-        ? null
-        : requestedGroup.environments.map(({ item }) => {
-            const bot = readZeropsGroupTags(item.project.tagList).bot?.trim();
-            return {
-              projectId: item.project.id,
-              name: item.project.name,
-              agentName: bot === undefined || bot.length === 0 ? undefined : bot,
-            };
-          }),
-    [requestedGroup],
-  );
-  const cloneSources = useZeropsCloneSources(activeOrganization?.id ?? null, cloneSiblings);
-  const storeRecipeRequest = useMemo<RecipeGroupResourceRequest | null>(
-    () =>
-      creationRequest !== null && activeOrganization !== null
-        ? {
-            kind: "recipe-group",
-            account: runtime.scope,
-            organization: organizationRef(activeOrganization.id),
-            groupId: creationRequest.groupId,
-          }
-        : null,
-    [activeOrganization, creationRequest, organizationRef, runtime.scope],
-  );
-  const storeRecipeResource = useZeropsResource(storeRecipeRequest);
-  const storeRecipeRecord =
-    storeRecipeResource.status === "success" ? storeRecipeResource.value : undefined;
-  const storeRecipeAvailable =
-    creationRequest !== null &&
-    canCreateEnvironment(storeRecipeRecord, creationRequest.role).allowed;
-
   const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
    * Publish a service on its `*.zerops.app` subdomain.
@@ -1184,10 +1148,6 @@ function ZeropsProjectsContent() {
         ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
-        record:
-          creationRequest?.groupId === groupId && storeRecipeResource.status === "success"
-            ? storeRecipeRecord
-            : undefined,
         agents: await readGroupAgents(entry.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
@@ -1327,13 +1287,12 @@ function ZeropsProjectsContent() {
         groupName: group.name,
         role,
         source:
-          choice.recipe.kind === "services"
-            ? {
-                kind: "clone",
-                name: choice.recipe.source,
-                needsDeploy: choice.recipe.needsDeploy ?? [],
-              }
-            : { kind: choice.recipe.kind },
+          choice.recipe.kind === "tier"
+            ? // Imported `startWithoutCode`: the services that build from a
+              // repository exist and run nothing until their first deploy. A
+              // managed service needs none, so it is not named.
+              { kind: "tier", services: Object.keys(choice.recipe.sources) }
+            : { kind: "none" },
       });
 
       if (outcome.awaitingAgent) {
@@ -1364,8 +1323,6 @@ function ZeropsProjectsContent() {
       resetConnectingTarget,
       setConnectError,
       setCreatingIn,
-      storeRecipeRecord,
-      storeRecipeResource.status,
       runtime.commands,
     ],
   );
@@ -1426,18 +1383,39 @@ function ZeropsProjectsContent() {
   // account's own Gitea project, read exactly as its URL is — an account on a
   // devel region or behind a custom domain is read, never guessed. No Gitea,
   // no broker, no call.
+  const accountGitea = useMemo(
+    () => findAccountGitea(inventory, activeOrganization?.id),
+    [activeOrganization?.id, inventory],
+  );
+  const giteaProjectId = accountGitea?.projectId;
   const giteaEndpoints = useMemo(() => {
-    const tool = inventory.projects.find(
-      (project) => readZeropsToolKind(project.tagList) === "gitea",
-    );
-    if (tool === undefined) return undefined;
-    const outcome = inventory.services.get(tool.id);
-    if (outcome?.status !== "resolved") return undefined;
-    const state = deriveGiteaState(tool, outcome.services);
-    return state.url === undefined || state.brokerUrl === undefined
+    const state = accountGitea?.state;
+    return state?.url === undefined || state.brokerUrl === undefined
       ? undefined
       : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
-  }, [inventory.projects, inventory.services]);
+  }, [accountGitea]);
+  // The registry — which groups exist, and what each one's Gitea org is called
+  // (guide 4.1). One project read, on the one screen that sees the account.
+  const registryState = useZeropsRegistry({
+    giteaProjectId: giteaProjectId,
+    enabled: status === "signed-in",
+  });
+
+  // The recipe is the group repo's, read as the person (guide 4.3) — never a
+  // sibling's export, which carried service shapes without their build setup
+  // and produced environments that could not build.
+  const groupRecipe = useZeropsGroupRecipe({
+    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    tier:
+      creationRequest?.role === "prod"
+        ? "production"
+        : creationRequest?.role === "stage"
+          ? "stage"
+          : "mate",
+    enabled: creationRequest !== null,
+  });
+
   const giteaMates = useMemo(
     () =>
       candidates
@@ -1864,15 +1842,9 @@ function ZeropsProjectsContent() {
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
-          cloneSources={cloneSources.sources.map((source) => ({
-            projectId: source.projectId,
-            name: source.name,
-            agentName: source.agentName,
-            services: source.recipe.services,
-            builtFromGit: source.recipe.builtFromGit,
-            yaml: source.recipe.servicesYaml,
-          }))}
-          cloneSourcesLoading={cloneSources.loading}
+          tier={groupRecipe.tier}
+          tierServices={groupRecipe.services}
+          tierLoading={groupRecipe.loading}
           defaultBotName={creationRequest.botName}
           defaultName={proposedEnvironmentName({
             groupName: requestedGroup.group.name,
@@ -1896,7 +1868,6 @@ function ZeropsProjectsContent() {
           }}
           open
           role={creationRequest.role}
-          storeRecipeAvailable={storeRecipeAvailable}
           takenBotNames={takenBotNames}
         />
       )}

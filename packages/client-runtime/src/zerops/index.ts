@@ -94,12 +94,16 @@ export {
   type ZeropsGroupTree,
 } from "./groups.ts";
 export {
-  canCreateEnvironment,
-  RECIPE_GROUP_PATH,
+  ENVIRONMENTS_DOCUMENT_PATH,
+  hasProjectBlock,
+  importReadyTier,
+  RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
   recipeServicesYaml,
-  type ZeropsGroupRecord,
-} from "./recipeStore.ts";
+  type ImportReadyTier,
+  type RecipeServiceSource,
+  type RecipeTier,
+} from "./recipeTier.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
 export {
   ZEROPS_CREATION_HANDOFF_STORAGE_KEY,
@@ -115,8 +119,6 @@ export {
   type ZeropsCreationHandoffs,
   type ZeropsCreationSource,
 } from "./creationHandoff.ts";
-export { withRecipeStoreMock, type RecipeStoreMockOptions } from "./recipeStoreMock.ts";
-export { GO_HELLO_WORLD_GROUP, GO_HELLO_WORLD_GROUP_ID } from "./recipeStoreSeed.ts";
 export {
   derivePublicRouteOffers,
   derivePublicRoutes,
@@ -128,7 +130,6 @@ export {
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
 export { assignCandidateMateTints, assignMateTints, preferredMateTint } from "./mateTints.ts";
-export { recipeFromProjectExport, type ExportedRecipe } from "./recipeExport.ts";
 export {
   selectAutoConnectTargets,
   ZEROPS_AUTO_CONNECT_LIMIT,

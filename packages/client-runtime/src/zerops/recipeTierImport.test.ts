@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { recipeProjectImportYaml, recipeServicesYaml } from "./recipeStore.ts";
+import { recipeProjectImportYaml, recipeServicesYaml } from "./recipeTier.ts";
 
 /** The shape every tier in `zeropsio/recipes` has, comments and all. */
 const TIER = `#zeropsPreprocessor=on

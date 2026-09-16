@@ -2,12 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
-import { GO_HELLO_WORLD_GROUP } from "./recipeStoreSeed.ts";
 import {
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
 } from "./runEnvironmentCreation.ts";
+
+/** A tier already converted to import-ready form (`recipeTier.ts`). */
+const TIER_YAML = "services:\n  - hostname: api\n    startWithoutCode: true\n";
 
 function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationStep> {
   const result = planEnvironmentCreation({
@@ -15,7 +17,12 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     groupId: "7k2m9qx4vb1c",
     groupName: "Go Hello World",
     name: `Go Hello World - ${role}`,
-    record: GO_HELLO_WORLD_GROUP,
+    recipe: {
+      kind: "tier",
+      tier: role === "prod" ? "production" : "mate",
+      yaml: TIER_YAML,
+      sources: {},
+    },
     role,
     agents: ["claude-code"],
     ...(role === "prod" ? {} : { botName: "Ada" }),
@@ -186,7 +193,7 @@ describe("runEnvironmentCreation", () => {
       // Before the application import: no app container and no build ever
       // boots holding the Mate's key or its agent's login.
       "isolate:proj-1",
-      `import:proj-1:${GO_HELLO_WORLD_GROUP.recipes.dev?.length}`,
+      `import:proj-1:${TIER_YAML.length}`,
     ]);
   });
 

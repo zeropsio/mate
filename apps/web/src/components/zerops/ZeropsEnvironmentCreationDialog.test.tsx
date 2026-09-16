@@ -6,17 +6,6 @@ import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog
 function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[0]> = {}) {
   return renderToStaticMarkup(
     <ZeropsEnvironmentCreationForm
-      cloneSources={[
-        {
-          projectId: "p1",
-          name: "acme-docs-dev",
-          agentName: "Fen",
-          services: ["app", "db"],
-          builtFromGit: [],
-          yaml: "services:\n  - hostname: app\n",
-        },
-      ]}
-      cloneSourcesLoading={false}
       defaultBotName="Otto"
       defaultName="Acme Docs - stage"
       defaultWithAgent
@@ -24,8 +13,15 @@ function render(props: Partial<Parameters<typeof ZeropsEnvironmentCreationForm>[
       onCancel={() => {}}
       onCreate={() => {}}
       role="stage"
-      storeRecipeAvailable={false}
       takenBotNames={["Fen"]}
+      tier={{
+        kind: "tier",
+        tier: "stage",
+        yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
+        sources: { app: { repository: "https://gitea.test/acme/app", setup: "app" } },
+      }}
+      tierLoading={false}
+      tierServices={["app", "db"]}
       {...props}
     />,
   );
@@ -39,21 +35,22 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).toContain("Add stage to Acme Docs");
   });
 
-  it("offers a sibling to clone, and nothing yet", () => {
+  it("offers the project's own recipe, and nothing yet", () => {
     const html = render();
-    expect(html).toContain("Clone Fen (acme-docs-dev)");
+    expect(html).toContain("The project&#x27;s stage recipe");
     expect(html).toContain("app, db");
     expect(html).toContain("Nothing yet");
-    expect(html).not.toContain("The group&#x27;s stage recipe");
   });
 
-  it("offers the group's own recipe when the store has one", () => {
-    expect(render({ storeRecipeAvailable: true })).toContain("stage recipe");
+  it("offers only an empty environment when nothing is merged on main", () => {
+    const html = render({ tier: undefined, tierServices: [] });
+    expect(html).not.toContain("stage recipe");
+    expect(html).toContain("no recipe on main yet");
   });
 
-  it("says it is still reading the siblings", () => {
-    expect(render({ cloneSources: [], cloneSourcesLoading: true })).toContain(
-      "Reading the group&#x27;s environments",
+  it("says it is still reading the recipe", () => {
+    expect(render({ tier: undefined, tierServices: [], tierLoading: true })).toContain(
+      "Reading the project&#x27;s recipe",
     );
   });
 

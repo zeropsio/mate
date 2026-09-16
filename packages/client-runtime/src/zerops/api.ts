@@ -34,7 +34,6 @@ import {
   withZeropsMateTag,
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
-import { RECIPE_GROUP_PATH, type ZeropsGroupRecord } from "./recipeStore.ts";
 import {
   formatToolTag,
   GITEA_BROKER_TOKEN_NAME,
@@ -1199,19 +1198,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /project/{id}/export` — the platform's own import YAML for a live
-   * project, `project:` block, containers and vaults included (measured
-   * 2026-09-05). Never a recipe as returned: `recipeFromProjectExport` is the
-   * only thing that may read it, and it strips the secrets first.
-   */
-  async exportProject(projectId: string, signal?: AbortSignal): Promise<string> {
-    const body = await this.#request<{ readonly yaml?: string }>(`/project/${projectId}/export`, {
-      signal: signal ?? null,
-    });
-    return body.yaml ?? "";
-  }
-
-  /**
    * `PUT /project/{id}` with the agent's name in `mate:bot:` and every other
    * tag kept — the write replaces the list wholesale, so this is a
    * read-modify-write like `updateProjectGroupTags`, and it goes through
@@ -1595,32 +1581,6 @@ export class ZeropsApiClient {
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
-  }
-
-  /**
-   * `GET /recipe-group/{groupId}` — the group's published recipe, or
-   * `undefined` when nobody has published one.
-   *
-   * A group without a recipe is the normal state of an app zcp has not
-   * adopted yet, so a 404 is an answer and not a failure; every other status
-   * still throws. There is no write counterpart on purpose (`recipeStore.ts`).
-   *
-   * The endpoint does not exist yet — `recipeStoreMock.ts` answers it in the
-   * client's own `fetch` until it does, which is why this method needs no
-   * flag and no branch.
-   */
-  async readRecipeGroup(
-    groupId: string,
-    signal?: AbortSignal,
-  ): Promise<ZeropsGroupRecord | undefined> {
-    try {
-      return await this.#request<ZeropsGroupRecord>(`${RECIPE_GROUP_PATH}/${groupId}`, {
-        signal: signal ?? null,
-      });
-    } catch (cause) {
-      if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
-      throw cause;
-    }
   }
 
   /**

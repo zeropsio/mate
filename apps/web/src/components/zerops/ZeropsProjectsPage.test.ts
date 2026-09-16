@@ -77,9 +77,11 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(projectsPageSource).toContain(
       "readZeropsResourceOnce(runtime.resources, request, unmountRef.current?.signal)",
     );
-    expect(projectsPageSource).toContain("useZeropsResource(storeRecipeRequest)");
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
+    // The recipe is the group repo's, read as the person over Gitea — there is
+    // no Zerops endpoint for it and no mock standing in for one any more.
     expect(projectsPageSource).not.toContain(".readRecipeGroup(");
+    expect(projectsPageSource).toContain("useZeropsGroupRecipe(");
     expect(typeof readZeropsResourceOnce).toBe("function");
   });
 

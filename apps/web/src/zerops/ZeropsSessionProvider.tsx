@@ -11,7 +11,6 @@
 
 import {
   ZEROPS_SESSION_STORAGE_KEY,
-  withRecipeStoreMock,
   ZeropsApiClient,
   clearZeropsSession,
   loadZeropsSelection,
@@ -106,7 +105,7 @@ export function ZeropsSessionProvider({
     () =>
       new ZeropsApiClient({
         // The recipe endpoint mock passes all other traffic to the platform.
-        fetch: withRecipeStoreMock(globalThis.fetch.bind(globalThis)),
+        fetch: globalThis.fetch.bind(globalThis),
         onSessionChange: (session: ZeropsSession | null) => {
           if (session === null) {
             // The client clears itself when a refresh fails mid-flight, so a

@@ -10,9 +10,10 @@
  * and undeletable.
  *
  * So nothing here reads a container. Every step is a platform call with the
- * user's own token, over data that came from the recipe store — which is why a
- * group can create its production environment while every one of its dev
- * environments is switched off, and why deleting any member breaks nothing.
+ * user's own token, over a tier read from the group repo (`recipeTier.ts`) —
+ * which is why a group can create its production environment while every one
+ * of its dev environments is switched off, and why deleting any member breaks
+ * nothing.
  *
  * ## Pure, like `candidates.ts`
  *
@@ -34,11 +35,11 @@ import {
   type ZeropsEnvironmentRole,
 } from "./groups.ts";
 import {
-  canCreateEnvironment,
   hasProjectBlock,
   recipeProjectImportYaml,
-  type ZeropsGroupRecord,
-} from "./recipeStore.ts";
+  type RecipeServiceSource,
+  type RecipeTier,
+} from "./recipeTier.ts";
 
 /**
  * Whether a new environment gets a `zcp` container — and so an agent, and a
@@ -56,26 +57,24 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
 /**
  * Where the new environment's application comes from.
  *
- * - `store`: the group's published recipe for this role (`recipeStore.ts`).
- * - `services`: services-only import YAML the caller already holds — today a
- *   sibling's export with its container and secrets stripped
- *   (`recipeExport.ts`); `source` names where it came from, for the record.
+ * - `tier`: a tier of the group repo, already converted to import-ready form
+ *   (`importReadyTier`). Its `sources` say which repository each service's code
+ *   comes from — the map zcp adopts an environment with (guide 2.4) — and is
+ *   carried through rather than reconstructed later.
  * - `none`: no application yet. The agent is the first thing in the
  *   environment and sets the rest up — which is the whole point of having one.
+ *
+ * There is no third option any more. The group repo is the one place a
+ * group's shape is written down (D13); cloning a sibling's export carried
+ * service shapes without their build setup, so it produced environments that
+ * looked created and could not build.
  */
 export type EnvironmentRecipeChoice =
-  | { readonly kind: "store" }
   | {
-      readonly kind: "services";
+      readonly kind: "tier";
+      readonly tier: RecipeTier;
       readonly yaml: string;
-      readonly source: string;
-      /**
-       * Services this YAML declares but cannot build: the export carries no
-       * `zeropsSetup`, so they come up with nothing deployed
-       * (`recipeExport.ts`). Carried through so the environment's opening
-       * message can name them — it is the job the new Mate is created for.
-       */
-      readonly needsDeploy?: ReadonlyArray<string>;
+      readonly sources: Readonly<Record<string, RecipeServiceSource>>;
     }
   | { readonly kind: "none" };
 
@@ -87,9 +86,7 @@ export interface EnvironmentCreationInput {
   readonly role: ZeropsEnvironmentRole;
   /** What this environment is called, e.g. `"Beviro CRM - production"`. */
   readonly name: string;
-  /** The group's store record — the source of the recipe when `recipe` is `store`. */
-  readonly record: ZeropsGroupRecord | undefined;
-  /** Defaults to the store. */
+  /** Defaults to an empty environment with an agent in it. */
   readonly recipe?: EnvironmentRecipeChoice;
   readonly location?: string;
   /** Overrides {@link defaultAgentForRole}. */
@@ -160,8 +157,20 @@ export type EnvironmentCreationStep =
    * services that were still being created.
    */
   | { readonly kind: "isolate-project-env" }
-  /** `POST /project/{id}/service-stack/import` with the group's recipe for this role. */
-  | { readonly kind: "import-recipe"; readonly role: ZeropsEnvironmentRole; readonly yaml: string }
+  /**
+   * `POST /project/{id}/service-stack/import` with the group's tier for this
+   * role, converted to `startWithoutCode` (`recipeTier.ts`).
+   *
+   * `sources` rides along: it is the only record of which repository each
+   * service's code comes from, and the party that adopts the environment
+   * afterwards has no other way to find out.
+   */
+  | {
+      readonly kind: "import-recipe";
+      readonly role: ZeropsEnvironmentRole;
+      readonly yaml: string;
+      readonly sources: Readonly<Record<string, RecipeServiceSource>>;
+    }
   /**
    * `POST /client/{clientId}/project/import` — the project *and* its services
    * from one document, taken when the recipe carries a `project:` block.
@@ -218,22 +227,17 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   if (name.length === 0) return { ok: false, reason: "An environment needs a name." };
 
   const withAgent = input.withAgent ?? defaultAgentForRole(input.role);
-  const recipe = input.recipe ?? { kind: "store" };
+  const recipe = input.recipe ?? { kind: "none" };
 
   let yaml: string | null;
+  let sources: Readonly<Record<string, RecipeServiceSource>> = {};
   switch (recipe.kind) {
-    case "store": {
-      const gate = canCreateEnvironment(input.record, input.role);
-      if (!gate.allowed) return { ok: false, reason: gate.reason ?? "No recipe for this role." };
-      // `canCreateEnvironment` already proved this is a non-blank string.
-      yaml = input.record?.recipes[input.role] ?? "";
-      break;
-    }
-    case "services": {
+    case "tier": {
       if (recipe.yaml.trim().length === 0) {
-        return { ok: false, reason: `There is nothing to clone from ${recipe.source}.` };
+        return { ok: false, reason: "This project has no recipe merged yet." };
       }
       yaml = recipe.yaml;
+      sources = recipe.sources;
       break;
     }
     case "none":
@@ -277,7 +281,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     steps.push({ kind: "drop-container-delegation" });
     steps.push({ kind: "isolate-project-env" });
   }
-  if (yaml !== null && !wholeProject) steps.push({ kind: "import-recipe", role: input.role, yaml });
+  if (yaml !== null && !wholeProject) {
+    steps.push({ kind: "import-recipe", role: input.role, yaml, sources });
+  }
   steps.push({ kind: "await-ready", withAgent });
   // Only a Mate has a `zcp` service to write the credential onto, and only a
   // ready one can be restarted into it — so this follows the wait.

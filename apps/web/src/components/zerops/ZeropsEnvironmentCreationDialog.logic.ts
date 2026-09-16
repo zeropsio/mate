@@ -7,15 +7,6 @@ import {
   type EnvironmentRecipeChoice,
 } from "@t3tools/client-runtime/zerops";
 
-export interface CloneSourceSummary {
-  readonly projectId: string;
-  readonly name: string;
-  readonly agentName: string | undefined;
-  readonly services: ReadonlyArray<string>;
-  /** Services whose build setup a clone cannot carry; they will need a deploy. */
-  readonly builtFromGit: ReadonlyArray<string>;
-}
-
 export interface RecipeOption {
   readonly id: string;
   readonly label: string;
@@ -24,59 +15,47 @@ export interface RecipeOption {
 }
 
 /**
- * The application choices, best first: the group's own recipe when the store
- * has one, then each sibling that has something to clone, then nothing yet.
- * The last is always offered — with an agent, an empty environment is a
- * starting point, not a mistake.
+ * The two things a new environment can start as: the project's own recipe, or
+ * nothing.
+ *
+ * There is no third. The group repo is where a project's shape is written down
+ * (D13), and a tier read from its `main` is the only description of it anybody
+ * has agreed on. Cloning a sibling used to be offered here; it carried service
+ * shapes without their build setup, so it produced environments that looked
+ * created and could not build.
+ *
+ * A project with no merged recipe is offered only the second, and the option
+ * says why rather than leaving a list of one that reads like a stub.
  */
 export function recipeOptions(input: {
   readonly roleLabel: string;
-  readonly storeRecipeAvailable: boolean;
-  readonly sources: ReadonlyArray<CloneSourceSummary & { readonly yaml: string }>;
+  /** The tier read from the group repo, when there is one merged. */
+  readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
+  /** Every service that tier declares, for the line under it. */
+  readonly services: ReadonlyArray<string>;
 }): ReadonlyArray<RecipeOption> {
   const options: Array<RecipeOption> = [];
-  if (input.storeRecipeAvailable) {
+  if (input.tier !== undefined) {
     options.push({
-      id: "store",
-      label: `The group's ${input.roleLabel.toLowerCase()} recipe`,
-      detail: "Published for this group.",
-      choice: { kind: "store" },
+      id: "tier",
+      label: `The project's ${input.roleLabel.toLowerCase()} recipe`,
+      // Every service arrives empty: the platform cannot clone a private
+      // repository, so the tier is imported `startWithoutCode` and the first
+      // deploy fills them.
+      detail:
+        input.services.length === 0
+          ? "From the project's repository, on main."
+          : `${input.services.join(", ")} · imported without code; the first deploy fills them`,
+      choice: input.tier,
     });
   }
-  for (const source of input.sources) {
-    const who =
-      source.agentName === undefined ? source.name : `${source.agentName} (${source.name})`;
-    // A clone imports services, never their contents, so every runtime in one
-    // arrives empty — whatever the source was built by. Saying so only when
-    // `builtFromGit` was non-empty left a cloned stage and production coming
-    // up READY_TO_DEPLOY with nothing said. That list is a sharper, separate
-    // warning: the export carries no build setup for those, so their first
-    // build fails rather than merely being empty.
-    const buildSetup =
-      source.builtFromGit.length === 0
-        ? ""
-        : ` · ${source.builtFromGit.join(", ")} builds from a repository, and its build setup is not carried`;
-    options.push({
-      id: `clone:${source.projectId}`,
-      label: `Clone ${who}`,
-      detail: `${source.services.join(", ")} · copied without code; the first deploy fills them${buildSetup}`,
-      choice: {
-        kind: "services",
-        yaml: source.yaml,
-        source: source.name,
-        needsDeploy: source.builtFromGit,
-      },
-    });
-  }
-  // On a group with nothing built yet this is the only option, and a radio
-  // list of one reads like a stub unless it says why it is alone.
-  const alone = options.length === 0;
   options.push({
     id: "none",
     label: "Nothing yet",
-    detail: alone
-      ? "Nothing in this project has services to copy yet. The agent sets the application up."
-      : "The agent sets the application up.",
+    detail:
+      options.length === 0
+        ? "This project has no recipe on main yet. The agent sets the application up."
+        : "The agent sets the application up.",
     choice: { kind: "none" },
   });
   return options;
@@ -132,13 +111,12 @@ export function validateCreationForm(
   const option = context.options.find((entry) => entry.id === form.recipeId);
   if (option === undefined) errors.recipe = "Choose what goes in the environment.";
   else if (option.choice.kind === "none" && !form.withAgent) {
-    // Name the way out, not just the rule. A production is a copy of a dev's
-    // services, so on a group that has not built anything the fix is not in
-    // this dialog at all — it is one environment over.
-    const nothingToCopy = context.options.every((entry) => entry.choice.kind === "none");
-    errors.recipe = nothingToCopy
-      ? "Nothing in this project has services to copy yet. Build something in a dev environment first, or switch the agent on."
-      : "Choose an application to copy, or switch the agent on to have one set up.";
+    // Name the way out, not just the rule. With no recipe on `main` the fix is
+    // not in this dialog at all — it is a pull request on the group repo.
+    const noRecipe = context.options.every((entry) => entry.choice.kind === "none");
+    errors.recipe = noRecipe
+      ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
+      : "Take the project's recipe, or switch the agent on to have one set up.";
   }
   return errors;
 }

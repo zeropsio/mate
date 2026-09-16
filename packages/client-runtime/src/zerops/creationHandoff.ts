@@ -2,8 +2,8 @@
  * What a Mate is told to do the moment it is created.
  *
  * Adding a Mate to a group stands the environment up but does not finish the
- * job: a clone carries a sibling's service *shapes* and not its build setup
- * (`recipeExport.ts`), so the application is there and not running. Until now
+ * job: a tier imports its services `startWithoutCode` (`recipeTier.ts`), so
+ * the application is there and running nothing. Until now
  * the new Mate opened on the same fixed line every connected environment gets
  * — "Introduce yourself, tell me what is running here" — which asks a Mate
  * that was created for a reason to guess what that reason was.
@@ -20,10 +20,12 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 
 /** Where the new environment's application came from, as the prompt needs it. */
 export type ZeropsCreationSource =
-  /** A sibling's export. `needsDeploy` are the services whose build it could not carry. */
-  | { readonly kind: "clone"; readonly name: string; readonly needsDeploy: ReadonlyArray<string> }
-  /** The group's published recipe for this role. */
-  | { readonly kind: "store" }
+  /**
+   * A tier of the group repo. Its services came up **empty**: the platform
+   * cannot clone a private repository, so every one of them was imported
+   * `startWithoutCode` and waits for its first deploy (`recipeTier.ts`).
+   */
+  | { readonly kind: "tier"; readonly services: ReadonlyArray<string> }
   /** Nothing — the agent is the first thing in the environment. */
   | { readonly kind: "none" };
 
@@ -57,24 +59,19 @@ export function creationHandoffPrompt(handoff: ZeropsCreationHandoff): string {
   const lines = [`You were just created as ${place}.`];
 
   switch (handoff.source.kind) {
-    case "clone": {
-      const { name, needsDeploy } = handoff.source;
-      lines.push(`Its services were cloned from ${name}.`);
-      if (needsDeploy.length > 0) {
-        // The export carries no `zeropsSetup`, so these came up with nothing
-        // deployed. This is the whole reason the agent is here first.
+    case "tier": {
+      const { services } = handoff.source;
+      lines.push(`Its services came up from the project's recipe.`);
+      if (services.length > 0) {
+        // Imported `startWithoutCode`, so they exist and run nothing. This is
+        // the whole reason the agent is here first.
         lines.push(
-          `The clone could not carry their build setup, so ${needsDeploy.join(", ")} ${
-            needsDeploy.length === 1 ? "has" : "have"
-          } no build yet.`,
+          `${services.join(", ")} ${services.length === 1 ? "has" : "have"} no code deployed yet.`,
           "Get them building and running.",
         );
       }
       break;
     }
-    case "store":
-      lines.push(`Its services came up from the group's ${role} recipe.`);
-      break;
     case "none":
       lines.push("It has nothing in it yet — setting the application up is the job.");
       break;
@@ -120,7 +117,7 @@ function isHandoff(value: unknown): value is ZeropsCreationHandoff {
     typeof record["groupName"] === "string" &&
     ROLES.has(record["role"] as ZeropsEnvironmentRole) &&
     (brief === undefined || typeof brief === "string") &&
-    (kind === "clone" || kind === "store" || kind === "none")
+    (kind === "tier" || kind === "none")
   );
 }
 

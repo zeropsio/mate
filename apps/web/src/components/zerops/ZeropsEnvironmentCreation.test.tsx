@@ -9,7 +9,7 @@ import { environmentCreationSteps, ZeropsEnvironmentCreation } from "./ZeropsEnv
 
 const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
   { kind: "create-project", name: "Beviro CRM - production", tagList: [], location: undefined },
-  { kind: "import-recipe", role: "prod", yaml: "services: []" },
+  { kind: "import-recipe", role: "prod", yaml: "services: []", sources: {} },
   { kind: "await-ready", withAgent: false },
 ];
 
