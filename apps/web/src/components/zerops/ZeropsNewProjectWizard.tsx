@@ -103,19 +103,39 @@ function isUncertainCreateFailure(cause: unknown): boolean {
   );
 }
 
+/** The account's Gitea — where the registry lives — and the registry as read from it. */
+export interface ZeropsRegistryHome {
+  readonly projectId: string;
+  readonly registry: ZeropsRegistry;
+}
+
+export type ZeropsNewProjectPhase = "gitea" | "project";
+
 /**
- * Registers the group, then creates its first Mate inside it.
+ * Stands the account's Gitea up if it has none, registers the group, then
+ * creates its first Mate inside it.
  *
  * Kept free of React so the order — and every way it can stop half-way — is
- * directly testable. The order is the point: the registry entry is what makes
- * the group exist, and a Mate created before it would be a Mate in a group
- * nobody has heard of. A registry write that fails therefore creates nothing;
- * a Mate creation that fails leaves a registered group with no Mate in it,
- * which is a group the person can add a Mate to and not a mess to clean up.
+ * directly testable. The order is the point: the registry lives on the Gitea
+ * project, so an account without one gets it first (the first project brings
+ * Git hosting along; nobody is told to add it); the registry entry is what
+ * makes the group exist, and a Mate created before it would be a Mate in a
+ * group nobody has heard of. A Gitea that cannot be stood up creates nothing;
+ * a registry write that fails creates nothing; a Mate creation that fails
+ * leaves a registered group with no Mate in it, which is a group the person
+ * can add a Mate to and not a mess to clean up.
  */
 export async function submitZeropsNewProject(input: {
+  /** The account's Gitea and its registry, already read — or nothing yet. */
+  readonly gitea: ZeropsRegistryHome | undefined;
+  /**
+   * Stands the account's Gitea up and reads its registry back — the fresh
+   * project's own tags, so the write that follows keeps its `mate:tool:gitea`.
+   */
+  readonly ensureGitea: () => Promise<ZeropsRegistryHome>;
   /** Writes `mate:gn:{groupId}:{slug}` on the account's Gitea project. */
   readonly registerGroup: (registration: {
+    readonly giteaProjectId: string;
     readonly groupId: string;
     readonly tagList: ReadonlyArray<string>;
   }) => Promise<void>;
@@ -123,9 +143,10 @@ export async function submitZeropsNewProject(input: {
    * Writes `mate:gm:{groupId}:{projectId}:mate` — the entry that gives the new
    * Mate its reach and its Gitea bot (guide 4.2).
    */
-  readonly registerMate: (tagList: ReadonlyArray<string>) => Promise<void>;
-  /** The registry as it stands, already read. */
-  readonly registry: ZeropsRegistry;
+  readonly registerMate: (registration: {
+    readonly giteaProjectId: string;
+    readonly tagList: ReadonlyArray<string>;
+  }) => Promise<void>;
   readonly createProject: (args: {
     readonly clientId: string;
     readonly name: string;
@@ -145,6 +166,8 @@ export async function submitZeropsNewProject(input: {
   /** The group this project starts as, and the name of the Mate in it. */
   readonly groupId: string;
   readonly botName: string;
+  /** Which half is running, for a button that says so. */
+  readonly onPhase?: (phase: ZeropsNewProjectPhase) => void;
   readonly onStartWaiting: (clientId: string) => void;
   /**
    * The project exists. Called before the wait starts, so what this project is
@@ -155,10 +178,23 @@ export async function submitZeropsNewProject(input: {
   readonly onUncertain?: () => void;
 }): Promise<void> {
   const groupName = input.name.trim();
+
+  let gitea = input.gitea;
+  if (gitea === undefined) {
+    input.onPhase?.("gitea");
+    try {
+      gitea = await input.ensureGitea();
+    } catch (cause) {
+      input.onError(zeropsErrorMessage(cause));
+      return;
+    }
+  }
+  input.onPhase?.("project");
+
   const registration = planGroupRegistration({
     name: groupName,
     groupId: input.groupId,
-    registry: input.registry,
+    registry: gitea.registry,
   });
   if (!registration.ok) {
     input.onError(registration.reason);
@@ -167,6 +203,7 @@ export async function submitZeropsNewProject(input: {
 
   try {
     await input.registerGroup({
+      giteaProjectId: gitea.projectId,
       groupId: registration.plan.groupId,
       tagList: registration.plan.tagList,
     });
@@ -192,9 +229,9 @@ export async function submitZeropsNewProject(input: {
     // re-read, which would race the platform's own write.
     const membership = planGroupMembership({
       registry: {
-        ...input.registry,
+        ...gitea.registry,
         groups: [
-          ...input.registry.groups,
+          ...gitea.registry.groups,
           {
             groupId: input.groupId,
             slug: registration.plan.slug,
@@ -210,7 +247,11 @@ export async function submitZeropsNewProject(input: {
     // A membership write that fails leaves a Mate waiting for an owner, which
     // is a state the rows already say — never a reason to fail a creation that
     // produced a project that exists and runs.
-    if (membership.ok) await input.registerMate(membership.tagList).catch(() => undefined);
+    if (membership.ok) {
+      await input
+        .registerMate({ giteaProjectId: gitea.projectId, tagList: membership.tagList })
+        .catch(() => undefined);
+    }
     input.onStartWaiting(input.clientId);
   } catch (cause) {
     if (isUncertainCreateFailure(cause)) input.onUncertain?.();
@@ -264,6 +305,7 @@ function ZeropsNewProjectContent() {
     ZEROPS_NEW_PROJECT_AGENTS_DEFAULT_SELECTION,
   );
   const [creating, setCreating] = useState(false);
+  const [phase, setPhase] = useState<ZeropsNewProjectPhase>("project");
   const [createUncertain, setCreateUncertain] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   // Read once the Gitea project is known, and before the person reaches the
@@ -285,7 +327,6 @@ function ZeropsNewProjectContent() {
       roleCode: activeOrganization?.roleCode,
       canCreateProjects: activeOrganization?.canCreateProjects,
     },
-    hasRegistry: gitea !== undefined,
   });
   const canCreate = addProject.offered;
   const locationRequest = useMemo<OrganizationLocationsResourceRequest | null>(
@@ -449,18 +490,37 @@ function ZeropsNewProjectContent() {
   }
 
   const createProject = () => {
-    if (gitea === undefined) return;
-    const giteaProjectId = gitea.projectId;
+    const home =
+      gitea === undefined || registry === null
+        ? undefined
+        : { projectId: gitea.projectId, registry };
     setCreating(true);
     setCreateError(null);
     void submitZeropsNewProject({
-      registry: registry ?? { groups: [], leaving: [], other: [] },
-      registerGroup: async ({ tagList }) => {
+      gitea: home,
+      // The first project brings Git hosting along: the same stand-up the
+      // projects page offers an older account, then the fresh project's own
+      // tags read back as the registry the group is written into.
+      ensureGitea: async () => {
+        const origin = window.location.origin;
+        const { project } = await runZeropsCommand(
+          runtime.commands.createToolProject({
+            organization: organizationRef(activeOrganization.id),
+            toolKind: "gitea",
+            name: "Gitea",
+            appOrigins: [origin],
+            appUrl: origin,
+          }),
+        );
+        return { projectId: project.id, registry: await client.readGroupRegistry(project.id) };
+      },
+      registerGroup: async ({ giteaProjectId, tagList }) => {
         await client.writeGroupRegistry({ giteaProjectId, tagList });
       },
-      registerMate: async (tagList) => {
+      registerMate: async ({ giteaProjectId, tagList }) => {
         await client.writeGroupRegistry({ giteaProjectId, tagList });
       },
+      onPhase: setPhase,
       createProject: ({ clientId: _clientId, ...args }) =>
         runZeropsCommand(
           runtime.commands.createProjectWithMate({
@@ -600,11 +660,11 @@ function ZeropsNewProjectContent() {
             </Button>
             <Button
               size="sm"
-              disabled={creating || createUncertain || registry === null}
+              disabled={creating || createUncertain || (gitea !== undefined && registry === null)}
               onClick={createProject}
             >
               {creating ? <Spinner className="size-4" /> : null}
-              Create project
+              {creating && phase === "gitea" ? "Setting up Git hosting" : "Create project"}
             </Button>
           </div>
           {createError ? (

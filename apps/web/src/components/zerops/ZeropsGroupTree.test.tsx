@@ -199,6 +199,13 @@ describe("ZeropsGroupTree", () => {
     expect(render([CRM_DEV, GITEA], { onCreateTool: () => {} })).not.toContain("Add Gitea");
   });
 
+  it("does not offer Gitea to an account that has not started — its first project brings it", () => {
+    const html = render([], { onCreateProject: () => {}, onCreateTool: () => {} });
+    expect(html).not.toContain("Add Gitea");
+    expect(html).not.toContain("Git hosting for your Mates");
+    expect(html).toContain('data-zerops-surface="first-run"');
+  });
+
   it("renders the project's menu at the end of its heading, on hover", () => {
     const html = render([CRM_DEV], {
       renderGroupMenu: () => <span data-test="group-menu" />,

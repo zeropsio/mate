@@ -133,8 +133,8 @@ function FirstRun({
           </h2>
           <p className="text-sm leading-6 text-muted-foreground">
             A Mate is a coding agent with a dev environment of its own: a terminal, somewhere to run
-            what it builds, and one conversation you come back to. A project holds as many as the
-            people on it want.
+            what it builds, and one conversation you come back to. A project holds as many Mates as
+            the people on it want, and your first one brings Git hosting for them along.
           </p>
         </div>
         <Pill disabled={creating} label="New project" onClick={onCreateProject} />
@@ -258,8 +258,8 @@ export function ZeropsGroupTree<T>({
 
   // A tool is not a project, so an account holding nothing but Gitea is still
   // an account that has not started.
-  const firstRun =
-    onCreateProject !== undefined && view.groups.length === 0 && view.ungrouped.length === 0;
+  const started = view.groups.length > 0 || view.ungrouped.length > 0;
+  const firstRun = onCreateProject !== undefined && !started;
 
   return (
     <nav
@@ -343,8 +343,10 @@ export function ZeropsGroupTree<T>({
       ) : null}
 
       {/* Account-level, so last: a tool belongs to no group and to no
-          environment's dev/stage/production axis. */}
-      {view.tools.length > 0 || onCreateTool ? (
+          environment's dev/stage/production axis. An account that has not
+          started is not offered one either: its first project brings Gitea
+          along, so the only thing to click on that page is *New project*. */}
+      {view.tools.length > 0 || (onCreateTool && started) ? (
         <section className="flex flex-col gap-3" data-zerops-tools="true">
           <div className="flex flex-col gap-0.5">
             <Heading muted name="Tools" />
@@ -363,7 +365,7 @@ export function ZeropsGroupTree<T>({
               ))}
             </ul>
           ) : null}
-          {onCreateTool && view.tools.every((tool) => tool.kind !== "gitea") ? (
+          {onCreateTool && started && view.tools.every((tool) => tool.kind !== "gitea") ? (
             <div className="-ms-1.5 flex items-center" data-zerops-surface="add-tools">
               <button
                 className={ADD_BUTTON_CLASS}

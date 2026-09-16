@@ -42,22 +42,12 @@ describe("who may add a project", () => {
     const verb = resolveAddProjectVerb({
       viewer: viewer("READ_ONLY", { canCreateProjects: true }),
       admins: [{ id: "cu-9", user: { fullName: "Jan Novák" } }],
-      hasRegistry: true,
     });
     expect(verb).toEqual({ offered: false, reason: "Only Jan Novák adds a project." });
   });
 
-  it("offers it to an owner once the account has a Gitea", () => {
-    expect(resolveAddProjectVerb({ viewer: viewer("OWNER"), hasRegistry: true })).toEqual({
-      offered: true,
-    });
-  });
-
-  it("refuses an owner too while there is no registry to write to", () => {
-    expect(resolveAddProjectVerb({ viewer: viewer("OWNER"), hasRegistry: false })).toEqual({
-      offered: false,
-      reason: "Your account's Gitea is still being set up.",
-    });
+  it("offers it to an owner, Gitea or no Gitea — the first project stands it up", () => {
+    expect(resolveAddProjectVerb({ viewer: viewer("OWNER") })).toEqual({ offered: true });
   });
 
   it.each([

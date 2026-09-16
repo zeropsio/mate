@@ -57,22 +57,17 @@ export function canWriteRegistry(viewer: { readonly roleCode?: string | undefine
 /**
  * Whether this person is offered *Add project*, and what the row says instead.
  *
- * Two refusals, and they are different things: an account whose Gitea is not up
- * has nowhere to put a registry entry yet — nobody can add a project, including
- * the owner — and a member simply is not the one who does this.
+ * One refusal: a member simply is not the one who does this. An account with
+ * no Gitea yet is not a refusal — the first project stands it up on its way
+ * (`submitZeropsNewProject`), so nobody has to know the word.
  */
 export function resolveAddProjectVerb(input: {
   readonly viewer: MateAccessViewer;
   /** The org's owners and admins, for the refusal that names them. */
   readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
-  /** Whether the account's Gitea project exists — the registry's home. */
-  readonly hasRegistry: boolean;
 }): GroupVerb {
   if (!canWriteRegistry(input.viewer)) {
     return { offered: false, reason: onlyTheseCanAddAProject(input.admins ?? []) };
-  }
-  if (!input.hasRegistry) {
-    return { offered: false, reason: "Your account's Gitea is still being set up." };
   }
   return OFFERED;
 }
