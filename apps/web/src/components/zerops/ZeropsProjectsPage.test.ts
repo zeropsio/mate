@@ -17,11 +17,22 @@ import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExcha
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
+/** A throwaway the door tests hand over in place of a person's own token. */
+const TEST_THROWAWAY = {
+  platform: {
+    mint: async () => ({ id: "token-1", token: "a-throwaway-value" }),
+    remove: async () => undefined,
+  },
+  clientId: "an-org",
+  projectId: "a-project",
+  nonce: "n1",
+};
+
 const ZEROPS_DOOR_GATE = {
   status: "requires-auth",
   auth: {
     policy: "remote-reachable",
-    bootstrapMethods: ["zerops-identity", "one-time-token"],
+    bootstrapMethods: ["zerops-identity", "zerops-throwaway", "one-time-token"],
     sessionMethods: ["bearer-access-token", "dpop-access-token"],
     sessionCookieName: "t3_session",
   },
@@ -207,7 +218,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       zeropsToken: null,
     },
     {
-      name: "the server does not offer the Zerops identity door",
+      name: "the server does not offer the Zerops throwaway door",
       authGate: {
         ...ZEROPS_DOOR_GATE,
         auth: { ...ZEROPS_DOOR_GATE.auth, bootstrapMethods: ["one-time-token"] as const },
@@ -296,13 +307,13 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: "zerops-account-token",
+      throwaway: TEST_THROWAWAY,
       connect,
     });
 
     expect(connect).toHaveBeenCalledWith({
       httpBaseUrl: `${APP_ORIGIN}/mate`,
-      zeropsToken: "zerops-account-token",
+      doorToken: "a-throwaway-value",
     });
     expect(result).toEqual({
       _tag: "Failure",
@@ -317,7 +328,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: null,
+      throwaway: null,
       connect,
     });
 
@@ -336,7 +347,7 @@ describe("same-origin Zerops identity bootstrap", () => {
       containerOrigin: APP_ORIGIN,
       appOrigin: APP_ORIGIN,
       basePath: "/mate/",
-      zeropsToken: "zerops-account-token",
+      throwaway: TEST_THROWAWAY,
       connect,
     });
 

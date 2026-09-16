@@ -9,7 +9,8 @@ import { prepareZeropsIdentityRegistration } from "./onboarding.ts";
 
 /** The container's mate, which lives under a path prefix beside code-server. */
 const BASE_URL = "https://zcp-26a7-8080.prg1.zerops.app/mate";
-const ZEROPS_TOKEN = "a-zerops-access-token";
+/** A throwaway minted for this one Mate; the person's own token stays home. */
+const DOOR_TOKEN = "mate-door-throwaway-value";
 
 const CLIENT_PRESENTATION_LAYER = Layer.succeed(
   ClientPresentation,
@@ -70,7 +71,7 @@ function zeropsHttpLayer(
       );
     }
 
-    if (url.endsWith("/api/auth/zerops-identity")) {
+    if (url.endsWith("/api/auth/zerops-throwaway")) {
       if (options?.identityStatus !== undefined) {
         return Promise.resolve(
           Response.json(
@@ -113,12 +114,12 @@ function zeropsHttpLayer(
 }
 
 describe("Zerops identity onboarding", () => {
-  it.effect("rejects an older server before transmitting the Zerops credential", () =>
+  it.effect("rejects an older server before transmitting the throwaway", () =>
     Effect.gen(function* () {
       const calls: Array<Call> = [];
       const failure = yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -134,7 +135,7 @@ describe("Zerops identity onboarding", () => {
         minimumServerVersion: "0.7.0",
       });
       expect(calls).toHaveLength(1);
-      expect(headerText(calls[0]!.init)).not.toContain(ZEROPS_TOKEN);
+      expect(headerText(calls[0]!.init)).not.toContain(DOOR_TOKEN);
     }),
   );
   it.effect("accepts the minimum supported server without the optional lifecycle capability", () =>
@@ -142,7 +143,7 @@ describe("Zerops identity onboarding", () => {
       const calls: Array<Call> = [];
       const registration = yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
@@ -160,7 +161,7 @@ describe("Zerops identity onboarding", () => {
       const calls: Array<Call> = [];
       yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
         expectedProjectId: "expected",
       }).pipe(
         Effect.provide(
@@ -181,7 +182,7 @@ describe("Zerops identity onboarding", () => {
 
       const registration = yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, zeropsHttpLayer(calls))));
 
       expect(registration).toMatchObject({
@@ -202,41 +203,40 @@ describe("Zerops identity onboarding", () => {
 
       yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, zeropsHttpLayer(calls))));
 
       const urls = calls.map((call) => call.url);
       expect(urls).toEqual([
         `${BASE_URL}/.well-known/t3/environment`,
-        `${BASE_URL}/api/auth/zerops-identity`,
+        `${BASE_URL}/api/auth/zerops-throwaway`,
         `${BASE_URL}/oauth/token`,
       ]);
 
-      // The exchange carries the minted grant, not the Zerops token.
+      // The exchange carries the minted grant, not the throwaway.
       const exchange = calls.at(-1);
       expect(exchange ? bodyText(exchange.init) : "").toContain("a-pairing-credential");
     }),
   );
 
-  it.effect("puts the Zerops token in the identity request and nowhere else", () =>
+  it.effect("puts the throwaway in the door request and nowhere else", () =>
     Effect.gen(function* () {
       const calls: Array<Call> = [];
 
       yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, zeropsHttpLayer(calls))));
 
       const carrying = calls.filter(
         (call) =>
-          bodyText(call.init).includes(ZEROPS_TOKEN) ||
-          headerText(call.init).includes(ZEROPS_TOKEN),
+          bodyText(call.init).includes(DOOR_TOKEN) || headerText(call.init).includes(DOOR_TOKEN),
       );
 
       expect(carrying).toHaveLength(1);
-      expect(carrying[0]?.url).toBe(`${BASE_URL}/api/auth/zerops-identity`);
+      expect(carrying[0]?.url).toBe(`${BASE_URL}/api/auth/zerops-throwaway`);
       // It is the subject being proven, not a bearer for that request.
-      expect(carrying[0] ? headerText(carrying[0].init) : "").not.toContain(ZEROPS_TOKEN);
+      expect(carrying[0] ? headerText(carrying[0].init) : "").not.toContain(DOOR_TOKEN);
     }),
   );
 
@@ -246,7 +246,7 @@ describe("Zerops identity onboarding", () => {
 
       const error = yield* prepareZeropsIdentityRegistration({
         httpBaseUrl: BASE_URL,
-        zeropsToken: ZEROPS_TOKEN,
+        doorToken: DOOR_TOKEN,
       }).pipe(
         Effect.provide(
           Layer.mergeAll(

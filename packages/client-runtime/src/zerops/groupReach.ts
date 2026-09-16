@@ -92,6 +92,8 @@ export interface ZeropsIntegrationToken {
   readonly id: string;
   readonly name: string;
   readonly projects?: ReadonlyArray<ZeropsProjectGrant> | undefined;
+  /** When the platform minted it. The start-up throwaway sweep dates rows by it. */
+  readonly created?: string | undefined;
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   integrationTokensFromGrantMetadata,
   useZeropsGroupReach,
 } from "~/zerops/useZeropsGroupReach";
+import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -161,7 +162,8 @@ export function autoConnectServedZeropsEnvironment(input: {
     input.status !== "signed-in" ||
     !input.zeropsToken ||
     input.authGate.status !== "requires-auth" ||
-    !input.authGate.auth.bootstrapMethods.includes("zerops-identity")
+    // The throwaway door, which is the only one this client presents at.
+    !input.authGate.auth.bootstrapMethods.includes("zerops-throwaway")
   ) {
     return;
   }
@@ -1299,6 +1301,13 @@ function ZeropsProjectsContent() {
         })),
       [groupTree.groups],
     ),
+  });
+
+  // The throwaways a crashed tab left on the account. Nothing a person did
+  // asks for this; it is here because this is where an account is read.
+  useZeropsThrowawaySweep({
+    clientId: activeOrganization?.id,
+    enabled: status === "signed-in",
   });
 
   useEffect(() => {

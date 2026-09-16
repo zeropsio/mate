@@ -14,7 +14,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 
 import { bootstrapRemoteBearerSession } from "../authorization/remote.ts";
-import { mintZeropsIdentityCredential } from "../authorization/zerops.ts";
+import { mintZeropsIdentityCredential, presentZeropsThrowaway } from "../authorization/zerops.ts";
 import { deriveWsBaseUrl, normalizeHttpBaseUrl } from "../environment/endpoint.ts";
 import { fetchRemoteEnvironmentDescriptor } from "../environment/descriptor.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
@@ -49,12 +49,29 @@ export interface SshConnectionInput {
   readonly label?: string;
 }
 
-export interface ZeropsIdentityConnectionInput {
+export interface ZeropsDoorConnectionInput {
   readonly expectedProjectId?: string;
   /**
    * The container's mate base URL — the public origin plus the path prefix it is
    * proxied under, `https://<container>/mate`.
    */
+  readonly httpBaseUrl: string;
+  /**
+   * A throwaway minted for **this one Mate** and deleted the moment the door
+   * answers (`zerops/doorThrowaway.ts`). It carries no rights; what the door
+   * reads out of it is who minted it. The signed-in account's own Zerops token
+   * never comes here.
+   */
+  readonly doorToken: string;
+}
+
+/**
+ * The renewal path's input, which still carries the person's own token.
+ *
+ * The throwaway door needs no renewal — the server re-checks roles itself — so
+ * this is the last caller of `zerops-identity` and goes with it (guide 3.5).
+ */
+export interface ZeropsIdentityConnectionInput {
   readonly httpBaseUrl: string;
   /** The signed-in account's Zerops access token, held only by the client. */
   readonly zeropsToken: string;
@@ -76,7 +93,7 @@ export class ConnectionOnboarding extends Context.Service<
       ConnectionAttemptError | Persistence.ConnectionPersistenceError
     >;
     readonly registerZeropsIdentity: (
-      input: ZeropsIdentityConnectionInput,
+      input: ZeropsDoorConnectionInput,
     ) => Effect.Effect<
       EnvironmentId,
       ConnectionAttemptError | Persistence.ConnectionPersistenceError
@@ -165,17 +182,17 @@ export const preparePairingRegistration = Effect.fn(
 /**
  * The Zerops door, which differs from pairing only in where the one-time
  * credential comes from: instead of a code the user typed, the environment
- * mints one after proving the caller is a member of its project. Everything
- * after that — the RFC 8693 exchange, the registration shape — is upstream's,
- * unchanged.
+ * reads who minted the throwaway it was handed and mints one on that proof.
+ * Everything after that — the RFC 8693 exchange, the registration shape — is
+ * upstream's, unchanged.
  *
- * The Zerops access token is spent here and nowhere else. It travels in the
- * identity request's body as the subject being proven, never as an
- * Authorization header, and never reaches the token exchange.
+ * The throwaway is spent here and nowhere else. It travels in the request's
+ * body as the subject being proven, never as an Authorization header, and
+ * never reaches the token exchange.
  */
 export const prepareZeropsIdentityRegistration = Effect.fn(
   "clientRuntime.connection.onboarding.prepareZeropsIdentityRegistration",
-)(function* (input: ZeropsIdentityConnectionInput) {
+)(function* (input: ZeropsDoorConnectionInput) {
   const httpBaseUrl = yield* Effect.try({
     try: () => normalizeHttpBaseUrl(input.httpBaseUrl),
     catch: (cause) =>
@@ -203,9 +220,9 @@ export const prepareZeropsIdentityRegistration = Effect.fn(
         "This URL no longer belongs to the selected Zerops project. Refresh your projects before connecting.",
     });
   }
-  const minted = yield* mintZeropsIdentityCredential({
+  const minted = yield* presentZeropsThrowaway({
     httpBaseUrl,
-    zeropsToken: input.zeropsToken,
+    doorToken: input.doorToken,
   }).pipe(Effect.mapError(mapRemoteEnvironmentError));
   const access = yield* bootstrapRemoteBearerSession({
     httpBaseUrl,
@@ -277,7 +294,7 @@ export const renewZeropsIdentityCredential = Effect.fn(
 
 export const registerZeropsIdentityConnection = Effect.fn(
   "clientRuntime.connection.onboarding.registerZeropsIdentityConnection",
-)(function* (input: ZeropsIdentityConnectionInput) {
+)(function* (input: ZeropsDoorConnectionInput) {
   const registration = yield* prepareZeropsIdentityRegistration(input);
   const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
   yield* registry.register(registration);

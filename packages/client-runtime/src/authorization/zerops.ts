@@ -19,6 +19,33 @@ import { executeEnvironmentHttpRequest, makeEnvironmentHttpApiClient } from "../
 
 const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * Presents a throwaway at the Mate's door.
+ *
+ * The token in the body has no rights at all and is deleted seconds later
+ * (`zeropsThrowaway.ts`); what the door reads out of it is who minted it. It
+ * travels in the body as the subject being proven, never as this request's
+ * Authorization header, and nothing here keeps it.
+ */
+export const presentZeropsThrowaway = Effect.fn(
+  "clientRuntime.authorization.presentZeropsThrowaway",
+)(function* (input: {
+  readonly httpBaseUrl: string;
+  readonly doorToken: string;
+  readonly dpopProof?: string;
+  readonly timeoutMs?: number;
+}) {
+  const client = yield* makeEnvironmentHttpApiClient(input.httpBaseUrl);
+  return yield* executeEnvironmentHttpRequest(
+    environmentEndpointUrl(input.httpBaseUrl, "/api/auth/zerops-throwaway"),
+    input.timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS,
+    client.zerops.throwawayIdentity({
+      headers: input.dpopProof ? { dpop: input.dpopProof } : {},
+      payload: { token: input.doorToken },
+    }),
+  );
+});
+
 export const mintZeropsIdentityCredential = Effect.fn(
   "clientRuntime.authorization.mintZeropsIdentityCredential",
 )(function* (input: {

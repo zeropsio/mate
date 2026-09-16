@@ -1,5 +1,6 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, View } from "react-native";
@@ -12,6 +13,7 @@ import { StatusDot } from "../../components/zerops";
 import { connectZeropsIdentity } from "../../connection/onboarding";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { uuidv4 } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ConnectionSheetButton } from "../connection/ConnectionSheetButton";
 import { useSetHomeEnvironmentId } from "../home/home-list-options";
@@ -259,9 +261,19 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
       setConnectingKey(candidate.key);
       setActionError(null);
       try {
+        // The token is minted in the org that owns the Mate's project.
+        const clientId = candidate.project.clientId;
         const result = await exchangeZeropsContainerIdentity({
           containerOrigin: candidate.containerOrigin,
-          zeropsToken: client.session?.accessToken ?? null,
+          throwaway:
+            client.session?.accessToken && clientId
+              ? {
+                  platform: zeropsThrowawayPlatform(client),
+                  clientId,
+                  projectId: candidate.project.id,
+                  nonce: uuidv4(),
+                }
+              : null,
           connect,
         });
         if (result._tag === "Failure") {
