@@ -464,11 +464,11 @@ committed.
 
 **Where was** `apps/web/src/zerops/recipeStore.ts` — the web app's recipe store answered every unseeded group with the seed's dev / stage / prod tiers, so "Add stage" on a live group imported `go-hello-world` rather than that group's application. That file is gone (H-27); the same guarantee is now a test on the mocked endpoint, which 404s a group it does not hold.
 **Fix** The creation dialog chooses the application per environment (`EnvironmentRecipeChoice`, `createEnvironment.ts`): the group's store recipe when the store has one, a clone of a sibling's export with its container and secrets stripped (`recipeFromProjectExport`, measured in `verified.md`), or nothing yet with the agent to set it up. The mock store is seeded with the showcase group alone and `fallbackRecipes` is gone.
-**Still open** The store zcp writes does not exist, so no live group has a store recipe; the clone is lossy (`zeropsSetup`, `priority`, `profile` do not round-trip). Both go away when zcp publishes recipes into the platform store.
+**Closed 2026-09-16** The store is the group repo in the org's Gitea: a Mate's zcp proposes the recipe there as a pull request (three tiers, `zcp` `83bd6a75`), and _Add Mate_ reads it from `main` as the person (`b296a0139`). The clone went with H-27; `recipeFromProjectExport` is gone.
 
-### H-27 · The recipe store endpoint is mocked inside the client's `fetch` · in place
+### H-27 · The recipe store endpoint is mocked inside the client's `fetch` · paid back (2026-09-16)
 
 **Where** `packages/client-runtime/src/zerops/recipeStoreMock.ts`, mounted in `apps/web/src/zerops/ZeropsSessionProvider.tsx`.
 **Why** `GET /recipe-group/{groupId}` does not exist on the Zerops API yet, and the client needs an answer today. The alternative that was in the tree — a `ZeropsRecipeStore` object backed by `localStorage` — made the caller fake instead of the transport: reading a recipe went through code that would ship to nobody, writes existed on a store whose real form has no write route, and the record a demo needed had to be injected into a browser by hand.
 **What it costs** The mock answers before the network, so a recipe read never appears in devtools; and the endpoint's path, `recipe-group`, is this fork's guess at a name the platform has not chosen. Everything else is real: `ZeropsApiClient.readRecipeGroup` builds the same path under the same base URL with the same auth header, and maps the same 404 to "no recipe yet".
-**Paid back by** deleting this file and the one `fetch:` line that mounts it, once the endpoint exists.
+**Paid back** `b296a0139` deleted the file and its mount. No platform endpoint arrived; the recipe's home became the group repo in Gitea (D13), read with the person's own Gitea token, so `readRecipeGroup` and the guessed path went too.
