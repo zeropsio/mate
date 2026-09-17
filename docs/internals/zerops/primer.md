@@ -255,6 +255,18 @@ In the order the owner ranked them, then the rest:
     root, never a repository. Fixed in 0.11.12: a turn's end refreshes every mounted checkout
     (`CheckpointReactor`, `resolveCheckpointTargets`); it reaches a Mate through the release and the
     Mate's next update, not the running Dara. A change made outside a turn still needs the reload.
+20. **A refused import says "Zerops request result is uncertain"** — every failure of `import-project`
+    is mapped to that sentence (`uncertainCommandError`), so a plain `400` on a bad document (the
+    two-name project block of 2026-09-17) reads as a maybe. Fix: keep the platform's words for a
+    refusal the platform clearly gave, and "uncertain" for a request whose outcome is unknown.
+21. **A push to `main` with no environment following it fails the service repo's workflow** — zcp's
+    `.gitea/workflows/zerops.yml` runs the deploy action on every push to `main`; with no stage
+    declared yet the job fails after 4 s and the Git tab counts a red check on `main` (journal 22, for
+    the hardening person: the action could end cleanly on "no environment").
+22. **zcp after an expansion** — the recipe was not re-proposed when `zerops.yaml`'s setups changed
+    (spec 2.2 "kept current"), and the expansion dropped the pair's Gitea record so `group-recipe`
+    refused with "no pair has its Gitea repository yet". The record is kept since zcp `f04dcc77`
+    (unreleased at 15:00Z); re-proposing on a setup change is the hardening person's.
 
 ## 8. Working on it
 
