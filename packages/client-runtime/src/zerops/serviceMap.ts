@@ -414,15 +414,24 @@ export function zeropsServiceFacts(
 }
 
 /** `kanbanstage` → `kanbandev`, the hostname its dev partner would have. */
-const devPartnerOf = (hostname: string): string | undefined =>
-  hostname.endsWith(STAGE_SUFFIX) && hostname.length > STAGE_SUFFIX.length
-    ? `${hostname.slice(0, -STAGE_SUFFIX.length)}${DEV_SUFFIX}`
-    : undefined;
+/**
+ * The names a `{name}stage` service's dev partner may carry: `{name}dev`, the
+ * pair zcp makes in standard mode, and `{name}` itself, a single service zcp
+ * later expanded into a pair (Dara's `todoapp` with `todoappstage`,
+ * 2026-09-17) — the dev half keeps its hostname, since a hostname never
+ * changes.
+ */
+const devPartnersOf = (hostname: string): ReadonlyArray<string> => {
+  if (!hostname.endsWith(STAGE_SUFFIX) || hostname.length <= STAGE_SUFFIX.length) return [];
+  const name = hostname.slice(0, -STAGE_SUFFIX.length);
+  return [`${name}${DEV_SUFFIX}`, name];
+};
 
 /**
  * The stage halves of the dev/stage pairs among `services`: every `{name}stage`
- * whose `{name}dev` partner is there in the same group. A folded stage holds
- * no checkout and no row of its own — it is where its dev partner's code is
+ * whose dev partner — `{name}dev`, or `{name}` when the pair grew out of a
+ * single service — is there in the same group. A folded stage holds no
+ * checkout and no row of its own — it is where its dev partner's code is
  * deployed, built, unmounted — so the service map nests it under the dev and
  * the Git tab does not list it at all. Pairing is within a group: a
  * `cachestage` managed service is not the stage half of a `cachedev` runtime,
@@ -434,13 +443,19 @@ export function foldedStageHostnames(
   const byHostname = new Map(services.map((entry) => [entry.hostname, entry]));
   const folded = new Set<string>();
   for (const entry of services) {
-    const partner = devPartnerOf(entry.hostname);
-    const dev = partner === undefined ? undefined : byHostname.get(partner);
-    if (dev !== undefined && dev.group === entry.group) {
-      folded.add(entry.hostname);
-    }
+    if (devPartnerHostname(entry, byHostname) !== undefined) folded.add(entry.hostname);
   }
   return folded;
+}
+
+/** The dev half a `{name}stage` service folds under, when it is there in the same group. */
+export function devPartnerHostname(
+  stage: Pick<ZeropsTopologyService, "hostname" | "group">,
+  byHostname: ReadonlyMap<string, Pick<ZeropsTopologyService, "hostname" | "group">>,
+): string | undefined {
+  return devPartnersOf(stage.hostname).find(
+    (partner) => byHostname.get(partner)?.group === stage.group,
+  );
 }
 
 export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
@@ -479,6 +494,7 @@ export function buildZeropsServiceMap(
 
   // A stage folded into its dev row must not also stand on its own.
   const folded = foldedStageHostnames(topology.services);
+  const byHostname = new Map(topology.services.map((entry) => [entry.hostname, entry]));
 
   const groups = GROUP_ORDER.map(({ group, title }) => ({
     group,
@@ -500,7 +516,8 @@ export function buildZeropsServiceMap(
       .map((entry): ZeropsServiceRow => {
         const stage = topology.services.find(
           (candidate) =>
-            folded.has(candidate.hostname) && devPartnerOf(candidate.hostname) === entry.hostname,
+            folded.has(candidate.hostname) &&
+            devPartnerHostname(candidate, byHostname) === entry.hostname,
         );
         const portLabel = zeropsPortLabel(entry);
         // The control plane is named by its glossary word; its hostname and

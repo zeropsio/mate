@@ -38,6 +38,7 @@ import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
+import { ZeropsRepositorySource } from "../../zerops/ZeropsRepositorySource.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { CheckpointReactorLive } from "./CheckpointReactor.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
@@ -303,6 +304,8 @@ describe("CheckpointReactor", () => {
     readonly providerSessionCwd?: string;
     readonly providerName?: ProviderDriverKind;
     readonly gitStatusRefreshCalls?: Array<string>;
+    /** Zerops: the services mounted under the cwd, each a repository of its own. */
+    readonly repositoryHosts?: ReadonlyArray<string>;
   }) {
     const cwd = createGitRepository();
     tempDirs.push(cwd);
@@ -352,12 +355,28 @@ describe("CheckpointReactor", () => {
       streamStatus: () => Stream.empty,
     });
 
+    const repositories = (options?.repositoryHosts ?? []).map((host) => ({
+      host,
+      mountPath: NodePath.join(cwd, host),
+      remotePath: "/var/www",
+    }));
+    const repositorySourceLayer =
+      options?.repositoryHosts === undefined
+        ? Layer.empty
+        : Layer.succeed(ZeropsRepositorySource, {
+            list: Effect.succeed({ _tag: "available" as const, repositories }),
+            refresh: Effect.succeed({ _tag: "available" as const, repositories }),
+            known: Effect.succeed(repositories),
+            remember: () => Effect.void,
+          });
+
     const layer = CheckpointReactorLive.pipe(
       Layer.provide(
         options?.workspaceHistory
           ? Layer.mock(WorkspaceHistory)(options.workspaceHistory)
           : Layer.empty,
       ),
+      Layer.provide(repositorySourceLayer),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(RuntimeReceiptBusTest),
@@ -698,6 +717,39 @@ describe("CheckpointReactor", () => {
     await harness.drain();
 
     expect(gitStatusRefreshCalls).toEqual([harness.cwd]);
+  });
+
+  it("refreshes every mounted checkout on turn completion, not only the workspace root", async () => {
+    // Dara's run of 2026-09-17: the agent made `todoapp` a repository
+    // mid-turn, and the Git tab's row said "no repository yet" until a
+    // reload — the turn's refresh reached the thread's cwd, which on Zerops
+    // is the workspace root and never a repository, and not the mounts.
+    const gitStatusRefreshCalls: string[] = [];
+    const harness = await createHarness({
+      seedFilesystemCheckpoints: false,
+      gitStatusRefreshCalls,
+      repositoryHosts: ["todoapp", "apidev"],
+    });
+
+    harness.provider.emit({
+      type: "turn.completed",
+      eventId: EventId.make("evt-turn-completed-refresh-every-mount"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: ThreadId.make("thread-1"),
+      turnId: asTurnId("turn-refresh-every-mount"),
+      payload: { state: "completed" },
+    });
+
+    await harness.drain();
+
+    expect([...gitStatusRefreshCalls].sort()).toEqual(
+      [
+        harness.cwd,
+        NodePath.join(harness.cwd, "apidev"),
+        NodePath.join(harness.cwd, "todoapp"),
+      ].sort(),
+    );
   });
 
   it("adopts a drifted checkout as the thread branch on a dedicated worktree", async () => {

@@ -185,6 +185,18 @@ describe("buildZeropsServiceMap", () => {
     expect(rows[0]?.stage?.transient).toBe(true);
   });
 
+  it("folds a stage under the single service it was expanded from", () => {
+    // Dara's `todoapp` (2026-09-17): made in simple mode, then expanded into
+    // a pair — the dev half keeps its hostname and the stage is `todoappstage`.
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "todoapp" }), service({ hostname: "todoappstage" })]),
+    );
+    const rows = view?.groups[0]?.rows ?? [];
+
+    expect(rows.map((row) => row.service.hostname)).toEqual(["todoapp"]);
+    expect(rows[0]?.stage?.hostname).toBe("todoappstage");
+  });
+
   /**
    * A stage half is a container of its own, with its own allocation and its
    * own load. Folding it in as a bare status line rendered it exactly like a

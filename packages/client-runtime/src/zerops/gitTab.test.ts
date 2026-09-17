@@ -394,6 +394,18 @@ describe("gitCheckoutHostnames", () => {
     expect(gitCheckoutHostnames(services)).toEqual(["appdev", "api"]);
   });
 
+  it("lists a service expanded from a single one as the dev half, never its stage", () => {
+    // Dara's `todoapp` (2026-09-17), made in simple mode and expanded into a
+    // pair: the dev half keeps its hostname, the stage is `todoappstage`.
+    expect(
+      gitCheckoutHostnames([
+        { hostname: "todoapp", group: "runtimes" },
+        { hostname: "todoappstage", group: "runtimes" },
+        { hostname: "tododb", group: "data" },
+      ]),
+    ).toEqual(["todoapp"]);
+  });
+
   it("keeps a runtime whose name ends in stage when it has no dev partner", () => {
     expect(
       gitCheckoutHostnames([

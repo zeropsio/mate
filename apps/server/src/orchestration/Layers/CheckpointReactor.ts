@@ -636,6 +636,30 @@ const make = Effect.gen(function* () {
         local,
       });
     }
+    // On Zerops the thread's cwd is the workspace root, never a repository:
+    // the repositories are the services mounted inside it. A turn that made a
+    // checkout in one, or committed there, is not seen by the refresh above,
+    // and the Git tab's row said "no repository yet" until a reload (the
+    // owner, 2026-09-17). Everywhere else the targets collapse to the cwd.
+    const targets = yield* resolveTargets(sessionRuntime.value.cwd);
+    yield* Effect.forEach(
+      targets.filter((target) => target.cwd !== sessionRuntime.value.cwd),
+      (target) =>
+        vcsStatusBroadcaster.refreshLocalStatus(target.cwd).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning(
+              "failed to refresh a mounted checkout's git status after turn completion",
+              {
+                threadId: event.threadId,
+                turnId: event.turnId ?? null,
+                cwd: target.cwd,
+                detail: error.message,
+              },
+            ),
+          ),
+        ),
+      { concurrency: "unbounded", discard: true },
+    );
   });
 
   // A `git checkout` run inside a thread's dedicated worktree (by an agent or
