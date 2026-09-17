@@ -6,7 +6,8 @@
  *    the person, an org owner or admin. Without it nothing else knows the
  *    project belongs to the group, so it goes first.
  * 2. **The broker's grants** — `BASIC_USER` on the new project, added to what
- *    the broker already holds. Its token's value is never read or written; only
+ *    the broker already holds (`brokerGrant.ts`, the same write a Mate's
+ *    registration makes). Its token's value is never read or written; only
  *    its grant list and its own org role are round-tripped.
  * 3. **`environments.yaml`** — always as a pull request from
  *    `mate-app/env-{name}`, because `main` takes no direct push from anybody;
@@ -27,10 +28,8 @@ import {
   deriveEnvironmentName,
   ENVIRONMENTS_DOCUMENT_PATH,
   environmentCommitMessage,
-  findBrokerToken,
   planEnvironmentWrite,
   planGroupMembership,
-  withBrokerProjectGrant,
   readGroupEnvironments,
   withGroupEnvironment,
   type GiteaClient,
@@ -39,6 +38,8 @@ import {
   type ZeropsApiClient,
   type ZeropsRegistry,
 } from "@t3tools/client-runtime/zerops";
+
+import { grantBrokerProject } from "./brokerGrant";
 
 /** The group repo of a group, by its slug (`{slug}/group`). */
 export const GROUP_REPOSITORY = "group";
@@ -105,32 +106,17 @@ export async function addGroupEnvironment(input: {
     return stop("registry", messageOf(cause));
   }
 
-  try {
-    const tokens = await input.client.listIntegrationTokens(input.clientId, input.signal);
-    const broker = findBrokerToken(tokens);
-    if (broker === undefined) {
-      return stop("broker-grant", "This account has no broker to deploy with yet.");
-    }
-    const grants = withBrokerProjectGrant(broker.projects, input.environment.project);
-    if (!grants.ok) return stop("broker-grant", grants.reason);
-    // An identical list is the same array back, so a retried creation costs a
-    // read and writes nothing.
-    if (grants.grants !== broker.projects) {
-      await input.client.setIntegrationTokenProjects(
-        {
-          clientId: input.clientId,
-          tokenId: broker.id,
-          name: broker.name,
-          projects: grants.grants,
-          ...(broker.roleCode === undefined ? {} : { roleCode: broker.roleCode }),
-        },
-        input.signal,
-      );
-    }
-    done.push("broker-grant");
-  } catch (cause) {
-    return stop("broker-grant", messageOf(cause));
-  }
+  // A stage the broker cannot reach is a stage it cannot deploy, so an
+  // account with no broker stops here — unlike a Mate, which is registered
+  // either way (`brokerGrant.ts`).
+  const grant = await grantBrokerProject({
+    client: input.client,
+    clientId: input.clientId,
+    projectId: input.environment.project,
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+  });
+  if (grant.kind !== "granted") return stop("broker-grant", grant.reason);
+  done.push("broker-grant");
 
   const gitea = input.gitea;
   const slug = input.slug;

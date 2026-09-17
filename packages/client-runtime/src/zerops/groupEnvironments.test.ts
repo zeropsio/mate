@@ -6,6 +6,7 @@ import {
   environmentBranchName,
   environmentCommitMessage,
   findBrokerToken,
+  planBrokerProjectGrant,
   planEnvironmentWrite,
   readGroupEnvironments,
   withBrokerProjectGrant,
@@ -276,6 +277,71 @@ describe("the broker's grants", () => {
       ok: false,
       reason: "There is no project to give the broker.",
     });
+  });
+});
+
+describe("planBrokerProjectGrant", () => {
+  const BROKER = {
+    id: "t-2",
+    name: BROKER_TOKEN_NAME,
+    roleCode: "READ_ONLY",
+    projects: [{ projectId: "p-gitea", roleCode: "BASIC_USER" as const }],
+  };
+  const OTHERS = [
+    { id: "t-1", name: "zcp-fen", projects: [{ projectId: "p-1", roleCode: "ADMIN" as const }] },
+  ];
+
+  it.each([
+    {
+      name: "an account with no broker yet",
+      tokens: OTHERS,
+      projectId: "p-mate",
+      expected: { kind: "no-broker", reason: "This account has no broker to deploy with yet." },
+    },
+    {
+      name: "a blank project",
+      tokens: [...OTHERS, BROKER],
+      projectId: " ",
+      expected: { kind: "refused", reason: "There is no project to give the broker." },
+    },
+    {
+      name: "a project the broker already reaches",
+      tokens: [...OTHERS, BROKER],
+      projectId: "p-gitea",
+      expected: { kind: "held", broker: BROKER },
+    },
+    {
+      name: "a project the broker does not reach yet",
+      tokens: [...OTHERS, BROKER],
+      projectId: "p-mate",
+      expected: {
+        kind: "write",
+        broker: BROKER,
+        projects: [
+          { projectId: "p-gitea", roleCode: "BASIC_USER" },
+          { projectId: "p-mate", roleCode: "BASIC_USER" },
+        ],
+      },
+    },
+    {
+      name: "a broker with no grants at all",
+      tokens: [{ id: "t-2", name: BROKER_TOKEN_NAME }],
+      projectId: "p-mate",
+      expected: {
+        kind: "write",
+        broker: { id: "t-2", name: BROKER_TOKEN_NAME },
+        projects: [{ projectId: "p-mate", roleCode: "BASIC_USER" }],
+      },
+    },
+  ])("plans for $name", ({ tokens, projectId, expected }) => {
+    expect(planBrokerProjectGrant(tokens, projectId)).toEqual(expected);
+  });
+
+  // The other tokens on the account are never in the plan: the write replaces
+  // one token's grant list, and it must be the broker's.
+  it("hands back the broker's own token, so the write goes to it and nothing else", () => {
+    const plan = planBrokerProjectGrant([...OTHERS, BROKER], "p-mate");
+    expect(plan.kind === "write" && plan.broker).toBe(BROKER);
   });
 });
 

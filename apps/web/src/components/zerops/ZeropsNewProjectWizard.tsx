@@ -45,6 +45,7 @@ import {
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
+import { registerMateProject } from "~/zerops/brokerGrant";
 import { rememberCreationHandoff } from "~/zerops/creationHandoffStorage";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { InventoryContext } from "~/zerops/inventoryContext";
@@ -134,10 +135,13 @@ export async function submitZeropsNewProject(input: {
   }) => Promise<void>;
   /**
    * Writes `mate:gm:{groupId}:{projectId}:mate` — the entry that gives the new
-   * Mate its reach and its Gitea bot (guide 4.2).
+   * Mate its reach and its Gitea bot (guide 4.2) — and gives the broker's
+   * token the Mate's project, so its rights loop can deliver that bot's
+   * access (D20, `brokerGrant.ts`).
    */
   readonly registerMate: (registration: {
     readonly giteaProjectId: string;
+    readonly projectId: string;
     readonly tagList: ReadonlyArray<string>;
   }) => Promise<void>;
   readonly createProject: (args: {
@@ -242,7 +246,11 @@ export async function submitZeropsNewProject(input: {
     // produced a project that exists and runs.
     if (membership.ok) {
       await input
-        .registerMate({ giteaProjectId: gitea.projectId, tagList: membership.tagList })
+        .registerMate({
+          giteaProjectId: gitea.projectId,
+          projectId: created.project.id,
+          tagList: membership.tagList,
+        })
         .catch(() => undefined);
     }
     input.onStartWaiting(input.clientId);
@@ -446,8 +454,18 @@ function ZeropsNewProjectContent() {
       registerGroup: async ({ giteaProjectId, tagList }) => {
         await client.writeGroupRegistry({ giteaProjectId, tagList });
       },
-      registerMate: async ({ giteaProjectId, tagList }) => {
-        await client.writeGroupRegistry({ giteaProjectId, tagList });
+      // What did not go through is not reported here: a Mate the registry
+      // does not name waits for its owner on the projects page, and one the
+      // broker does not reach yet is what the broker's loop reports and the
+      // next registration retries.
+      registerMate: async ({ giteaProjectId, projectId, tagList }) => {
+        await registerMateProject({
+          client,
+          clientId: activeOrganization.id,
+          giteaProjectId,
+          projectId,
+          tagList,
+        });
       },
       onPhase: setPhase,
       createProject: ({ clientId: _clientId, ...args }) =>

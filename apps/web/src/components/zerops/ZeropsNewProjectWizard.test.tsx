@@ -367,8 +367,10 @@ describe("submitZeropsNewProject", () => {
       onError: vi.fn(),
     });
 
+    // With the project itself, so the broker's token can be given it (D20).
     expect(registerMate).toHaveBeenCalledWith({
       giteaProjectId: "gitea-1",
+      projectId: "project-1",
       tagList: ["mate:gm:g-1:project-1:mate", "mate:gn:g-1:acme", "mate:tool:gitea"],
     });
   });

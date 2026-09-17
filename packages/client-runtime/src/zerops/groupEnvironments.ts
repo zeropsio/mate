@@ -310,6 +310,9 @@ export function planEnvironmentWrite(input: {
 /** What the broker's Zerops token is called (`docs/vocabulary.md`). */
 export const BROKER_TOKEN_NAME = "mate-broker";
 
+/** An account minted before it had a Gitea has no broker to give anything to. */
+export const NO_BROKER_REASON = "This account has no broker to deploy with yet.";
+
 /** The broker's token, out of every token on the account. */
 export function findBrokerToken<Token extends { readonly name: string }>(
   tokens: ReadonlyArray<Token>,
@@ -350,4 +353,44 @@ export function withBrokerProjectGrant(
       { projectId, roleCode: "BASIC_USER" },
     ],
   };
+}
+
+/** What the account's token list says about one token: enough to plan a grant. */
+export interface BrokerTokenLike {
+  readonly name: string;
+  readonly projects?: ReadonlyArray<ZeropsProjectGrant> | undefined;
+}
+
+/**
+ * What to do so the broker reaches one project at `BASIC_USER`.
+ *
+ * `no-broker` is not a refusal: an account older than its Gitea has no broker
+ * yet, and whether that stops the caller is the caller's call — a stage cannot
+ * be deployed without one, a Mate is registered either way. `held` says the
+ * broker already reaches the project, so a retry costs the read and nothing
+ * else. `write` carries the broker's own token and its whole new grant list,
+ * because the platform's write replaces the list.
+ */
+export type BrokerGrantPlan<Token extends BrokerTokenLike> =
+  | { readonly kind: "no-broker"; readonly reason: string }
+  | { readonly kind: "refused"; readonly reason: string }
+  | { readonly kind: "held"; readonly broker: Token }
+  | {
+      readonly kind: "write";
+      readonly broker: Token;
+      readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+    };
+
+/** The grant one project needs from the broker, planned off the account's tokens. */
+export function planBrokerProjectGrant<Token extends BrokerTokenLike>(
+  tokens: ReadonlyArray<Token>,
+  projectId: string,
+): BrokerGrantPlan<Token> {
+  const broker = findBrokerToken(tokens);
+  if (broker === undefined) return { kind: "no-broker", reason: NO_BROKER_REASON };
+  const write = withBrokerProjectGrant(broker.projects, projectId);
+  if (!write.ok) return { kind: "refused", reason: write.reason };
+  // An identical list is the same array back (`withBrokerProjectGrant`).
+  if (write.grants === broker.projects) return { kind: "held", broker };
+  return { kind: "write", broker, projects: write.grants };
 }

@@ -124,6 +124,7 @@ import {
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
+import { registerMateProject } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { giteaClientFor } from "~/zerops/giteaSession";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
@@ -885,7 +886,7 @@ function ZeropsProjectsContent() {
     candidate: ZeropsCandidatePresentation,
     tags: ZeropsGroupTags,
   ): Promise<void> => {
-    if (tags.groupId === undefined || giteaProjectId === undefined) return;
+    if (tags.groupId === undefined || giteaProjectId === undefined || !activeOrganization) return;
     const membership = planGroupMembership({
       registry: registryState.registry,
       groupId: tags.groupId,
@@ -896,15 +897,23 @@ function ZeropsProjectsContent() {
       setToolError(membership.reason);
       return;
     }
-    try {
-      await client.writeGroupRegistry({ giteaProjectId, tagList: membership.tagList });
-      // The credential reconcile runs off the registry, so the Mate gets its
-      // bot on the next pass rather than on a step this verb has to sequence.
-      registryState.refresh();
-      setToolError(null);
-    } catch (cause) {
-      setToolError(zeropsErrorMessage(cause));
+    const outcome = await registerMateProject({
+      client,
+      clientId: activeOrganization.id,
+      giteaProjectId,
+      projectId: candidate.project.id,
+      tagList: membership.tagList,
+    });
+    if (outcome.kind === "registry-failed") {
+      setToolError(outcome.reason);
+      return;
     }
+    // The broker's rights loop runs off the registry and the grant, so the
+    // Mate gets its bot's access on the loop's next pass rather than on a
+    // step this verb has to sequence. A grant that failed is said, not
+    // fatal: the entry is written, and registering again retries the grant.
+    registryState.refresh();
+    setToolError(outcome.grant.kind === "failed" ? outcome.grant.reason : null);
   };
 
   /**
