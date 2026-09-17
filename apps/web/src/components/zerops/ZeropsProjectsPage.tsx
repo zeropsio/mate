@@ -1643,6 +1643,34 @@ function ZeropsProjectsContent() {
       });
 
       if (!isCurrent()) return;
+
+      // A Mate an owner or an admin makes is registered as soon as its project
+      // exists, the way *New project* registers the first — a creation that
+      // failed past that point included (Fen, 2026-09-17: a step after the
+      // project failed and the Mate ran unregistered, with no bot and no
+      // token). Without the entry the broker gives it no bot, and its agent
+      // cannot push to the group's repositories. A member cannot write the
+      // registry; their Mate waits on the card's *Register in {group}*
+      // (guide 4.2).
+      if (
+        role === "dev" &&
+        outcome.projectId !== undefined &&
+        giteaProjectId !== undefined &&
+        canWriteRegistry(activeOrganization)
+      ) {
+        const outstanding = await registerMateInGroup({
+          client,
+          clientId: activeOrganization.id,
+          giteaProjectId,
+          registry: registryState.registry,
+          groupId,
+          projectId: outcome.projectId,
+        });
+        registryState.refresh();
+        if (!isCurrent()) return;
+        if (outstanding !== null) setToolError(outstanding);
+      }
+
       if (!outcome.ok) {
         setCreation((current) =>
           current === null
@@ -1675,25 +1703,6 @@ function ZeropsProjectsContent() {
               { kind: "tier", services: Object.keys(choice.recipe.sources) }
             : { kind: "none" },
       });
-
-      // A Mate an owner or an admin makes is registered at birth, the way
-      // *New project* registers the first: without the entry the broker gives
-      // it no bot, and its agent cannot push to the group's repositories. A
-      // member cannot write the registry; their Mate waits on the card's
-      // *Register in {group}* (guide 4.2).
-      if (role === "dev" && giteaProjectId !== undefined && canWriteRegistry(activeOrganization)) {
-        const outstanding = await registerMateInGroup({
-          client,
-          clientId: activeOrganization.id,
-          giteaProjectId,
-          registry: registryState.registry,
-          groupId,
-          projectId: outcome.projectId,
-        });
-        registryState.refresh();
-        if (!isCurrent()) return;
-        if (outstanding !== null) setToolError(outstanding);
-      }
 
       // A stage or a production is a **group environment**: it goes in the
       // registry, the broker's token has to reach it, and its sources have to
