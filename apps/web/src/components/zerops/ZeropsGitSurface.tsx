@@ -31,12 +31,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { findAccountGitea } from "../../zerops/giteaProject";
-import {
-  ensureGiteaSession,
-  giteaClientFor,
-  giteaSignInMessage,
-  useGiteaSignedIn,
-} from "../../zerops/giteaSession";
+import { giteaClientFor, useGiteaSession } from "../../zerops/giteaSession";
 import { browserZeropsStorage } from "../../zerops/storage";
 import { useZeropsDeployedVersionReader } from "../../zerops/useZeropsDeployedVersion";
 import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "../../zerops/useZeropsGroupDeploys";
@@ -50,9 +45,6 @@ import type { ZeropsGitRelease } from "./ZeropsGitPanel";
 /** The group repo, whose tags are the releases. */
 const GROUP_REPOSITORY = "group";
 
-/** How long to wait before asking a Gitea that is still setting up again. */
-const GITEA_RETRY_MS = 20_000;
-
 export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThreadRef | null }) {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
@@ -62,8 +54,6 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   >(undefined);
   const [generation, setGeneration] = useState(0);
   const [trouble, setTrouble] = useState<string | null>(null);
-  /** A refusal of the Gitea sign-in, said once where the sign-in line was. */
-  const [signInTrouble, setSignInTrouble] = useState<string | null>(null);
 
   useEffect(() => {
     if (environmentId === undefined) return;
@@ -88,54 +78,19 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const project = inventory.projects.find((entry) => entry.id === projectRef?.projectId);
   const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
   const owner = registryGroupSlug(registry.registry, groupId);
-  const signedIn = useGiteaSignedIn(giteaOrigin);
   const zeropsClient = session?.client;
-  const orgId = projectRef?.orgId;
-
-  /**
-   * Signed in to Mate is signed in to Gitea (D21). The token that acts as
-   * the person comes from the org's broker on a throwaway, the same proof the
-   * door takes — nothing to click. A Gitea still setting up is asked again in
-   * a while; a refusal is said once and left.
-   */
-  useEffect(() => {
-    if (
-      signedIn ||
-      giteaOrigin === undefined ||
-      brokerOrigin === undefined ||
-      zeropsClient === undefined ||
-      orgId === undefined
-    ) {
-      return;
-    }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const attempt = () => {
-      void ensureGiteaSession({
-        giteaOrigin,
-        brokerOrigin,
-        clientId: orgId,
-        platform: zeropsThrowawayPlatform(zeropsClient),
-      })
-        .then(() => {
-          if (!cancelled) setSignInTrouble(null);
-        })
-        .catch((cause: unknown) => {
-          if (cancelled) return;
-          const failure = giteaSignInMessage(cause);
-          if (failure.pending) {
-            timer = setTimeout(attempt, GITEA_RETRY_MS);
-            return;
-          }
-          setSignInTrouble(failure.message);
-        });
-    };
-    attempt();
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [signedIn, giteaOrigin, brokerOrigin, zeropsClient, orgId]);
+  const platform = useMemo(
+    () => (zeropsClient === undefined ? undefined : zeropsThrowawayPlatform(zeropsClient)),
+    [zeropsClient],
+  );
+  // Signed in to Mate is signed in to Gitea (D21); a refusal is said once
+  // where the sign-in line was.
+  const { signedIn, trouble: signInTrouble } = useGiteaSession({
+    giteaOrigin,
+    brokerOrigin,
+    clientId: projectRef?.orgId,
+    platform,
+  });
 
   const group = useZeropsGroupRepo({ giteaOrigin, owner, generation, enabled: signedIn });
 

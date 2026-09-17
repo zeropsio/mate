@@ -26,7 +26,7 @@
  * origin is in flight at most and everybody awaits it.
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import {
   acquireGiteaPersonToken,
@@ -86,6 +86,69 @@ export function useGiteaSignedIn(giteaOrigin: string | undefined): boolean {
     () => giteaOrigin !== undefined && hasGiteaSession(giteaOrigin),
     () => false,
   );
+}
+
+/** How long to wait before asking a Gitea that is still setting up again. */
+export const GITEA_RETRY_MS = 20_000;
+
+/**
+ * Signed in to Mate is signed in to Gitea (D21): this tab holds a session for
+ * the account's Gitea, acquired from the org's broker on a throwaway — the
+ * same proof the door takes — with nothing to click. A Gitea still setting up
+ * is asked again in a while; a refusal is said once and left, in `trouble`.
+ *
+ * Any surface that reads Gitea as the person calls this, the projects page
+ * first: the sign-in lived in the Git tab alone, so the page read no group
+ * repo — no environments, no pull requests, no tiers to offer — until a Git
+ * tab had been opened once in this browser (the owner, 2026-09-17: "why am I
+ * not signed in to gitea once at page load").
+ */
+export function useGiteaSession(input: {
+  readonly giteaOrigin: string | undefined;
+  readonly brokerOrigin: string | undefined;
+  /** The org that owns the Gitea — where the throwaway is minted. */
+  readonly clientId: string | undefined;
+  readonly platform: ZeropsThrowawayPlatform | undefined;
+}): { readonly signedIn: boolean; readonly trouble: string | null } {
+  const { brokerOrigin, clientId, giteaOrigin, platform } = input;
+  const signedIn = useGiteaSignedIn(giteaOrigin);
+  const [trouble, setTrouble] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      signedIn ||
+      giteaOrigin === undefined ||
+      brokerOrigin === undefined ||
+      clientId === undefined ||
+      platform === undefined
+    ) {
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = () => {
+      void ensureGiteaSession({ giteaOrigin, brokerOrigin, clientId, platform })
+        .then(() => {
+          if (!cancelled) setTrouble(null);
+        })
+        .catch((cause: unknown) => {
+          if (cancelled) return;
+          const failure = giteaSignInMessage(cause);
+          if (failure.pending) {
+            timer = setTimeout(attempt, GITEA_RETRY_MS);
+            return;
+          }
+          setTrouble(failure.message);
+        });
+    };
+    attempt();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [signedIn, giteaOrigin, brokerOrigin, clientId, platform]);
+
+  return { signedIn, trouble };
 }
 
 /**

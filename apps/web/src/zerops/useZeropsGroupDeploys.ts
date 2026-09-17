@@ -23,14 +23,18 @@
 import {
   buildGroupEnvironmentRowInputs,
   deployStatusKey,
+  missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
   readGroupEnvironments,
+  RECIPE_TIER_PATHS,
   type GiteaCommitStatus,
   type GiteaPullRequest,
   type GroupEnvironment,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
+  type GroupEnvironmentTier,
+  type MissingEnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useState } from "react";
 
@@ -39,6 +43,13 @@ import { giteaClientFor } from "./giteaSession";
 /** Where `environments.yaml` lives, and what the group repo is called. */
 const GROUP_REPOSITORY = "group";
 const ENVIRONMENTS_PATH = "environments.yaml";
+/**
+ * How often the group repo is read again while the screen is open. The
+ * recipe lands on `main` minutes after the Mate is up, by the broker's hand
+ * and not the account's, so nothing in the inventory says it did; the rows
+ * that ask for a stage and a production follow it on this clock.
+ */
+export const GROUP_DEPLOYS_REFRESH_MS = 60_000;
 
 /** One group, as this hook needs to see it. */
 export interface ZeropsDeployGroup {
@@ -59,6 +70,8 @@ export interface ZeropsGroupDeployState {
   readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
   /** The recipe changes waiting on somebody — the group repo's open pulls. */
   readonly pullRequests: ReadonlyArray<GiteaPullRequest>;
+  /** The tiers the recipe offers and the group has not added — the rows that ask. */
+  readonly missing: ReadonlyArray<MissingEnvironmentRow>;
 }
 
 export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
@@ -99,6 +112,17 @@ export function useZeropsGroupDeploys(input: {
     readonly key: string;
     readonly deploys: ZeropsGroupDeploys;
   } | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (key === "") return;
+    const timer = window.setInterval(() => {
+      setTick((count) => count + 1);
+    }, GROUP_DEPLOYS_REFRESH_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [key]);
 
   useEffect(() => {
     if (key === "" || giteaOrigin === undefined) return;
@@ -124,8 +148,16 @@ export function useZeropsGroupDeploys(input: {
             : await client
                 .listPullRequests(group.slug, GROUP_REPOSITORY, { state: "open" })
                 .catch((): ReadonlyArray<GiteaPullRequest> => []);
+        const tiersOnMain =
+          client === null
+            ? []
+            : await readTiersOnMain(client, group.slug).catch(
+                (): ReadonlyArray<GroupEnvironmentTier> => [],
+              );
         if (controller.signal.aborted) return;
-        if (declarations.length === 0 && pullRequests.length === 0) continue;
+        const missing = missingEnvironmentRows({ tiersOnMain, declarations });
+        if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
+          continue;
 
         const services: ReadonlyArray<GroupEnvironmentService> = group.projects.flatMap((project) =>
           project.services.map((service) => ({
@@ -163,6 +195,7 @@ export function useZeropsGroupDeploys(input: {
 
         deploys.set(group.groupId, {
           pullRequests,
+          missing,
           environments: buildGroupEnvironmentRowInputs({
             owner: group.slug,
             declarations,
@@ -183,10 +216,28 @@ export function useZeropsGroupDeploys(input: {
     };
     // `key` is the serialisation of `groups`, which is what the reads depend
     // on; keying on the array's identity would read the whole account again
-    // on every render.
-  }, [giteaOrigin, groups, key, readVersion]);
+    // on every render. `tick` is the clock: the same reads again, with what
+    // was read last staying up until they land.
+  }, [giteaOrigin, groups, key, readVersion, tick]);
 
   return answer?.key === key ? answer.deploys : EMPTY;
+}
+
+/** The tiers whose import is on the group repo's `main` — what a person can add. */
+async function readTiersOnMain(
+  client: NonNullable<ReturnType<typeof giteaClientFor>>,
+  slug: string,
+): Promise<ReadonlyArray<GroupEnvironmentTier>> {
+  const tiers: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
+  const present = await Promise.all(
+    tiers.map(async (tier) => {
+      const file = await client
+        .readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main")
+        .catch(() => undefined);
+      return file === undefined ? [] : [tier];
+    }),
+  );
+  return present.flat();
 }
 
 async function readDeclarations(

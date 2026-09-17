@@ -389,3 +389,14 @@ describe("a group's other rows", () => {
     expect(render([CRM_DEV])).not.toContain('data-zerops-surface="environment-rows"');
   });
 });
+
+describe("roleOffered", () => {
+  it("keeps a role's add verb off the group's foot when its row carries it", () => {
+    const html = render([CRM_DEV], {
+      onCreateEnvironment: () => undefined,
+      roleOffered: (_group: unknown, role: string) => role !== "stage",
+    });
+    expect(html).not.toContain("Add stage");
+    expect(html).toContain("Add production");
+  });
+});

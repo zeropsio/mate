@@ -40,7 +40,7 @@ import {
   type GroupGiteaState,
   type MateRegistration,
 } from "./groupCreation.ts";
-import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
+import type { GroupEnvironmentTier, GroupEnvironment } from "./groupEnvironments.ts";
 import { mateOnlyOwnerOpensIt, type MateOwnerCandidate } from "./mateAccess.ts";
 import type { RoleMateVisibility } from "@t3tools/shared/zeropsRoles";
 
@@ -78,7 +78,46 @@ export interface PullRequestRow {
   readonly tone: GroupRowTone;
 }
 
-export type GroupRow = MateRow | EnvironmentRow | PullRequestRow;
+/**
+ * A tier the group's recipe offers and the group does not have yet — the row
+ * that asks. Once the recipe is on the group repo's `main`, a stage and a
+ * production are the person's next steps, and a group that showed only its
+ * Mate never said so (the owner, twice, 2026-09-17: "it never asked me to
+ * setup production").
+ */
+export interface MissingEnvironmentRow {
+  readonly kind: "missing-environment";
+  readonly tier: GroupEnvironmentTier;
+  readonly name: string;
+  readonly line: string;
+}
+
+export type GroupRow = MateRow | EnvironmentRow | PullRequestRow | MissingEnvironmentRow;
+
+/** What a missing tier's row says. */
+export const MISSING_ENVIRONMENT_LINE = "not set up yet";
+
+/**
+ * One row per tier the recipe offers on `main` and no declared environment
+ * fills, stage before production — the order the person adds them in.
+ */
+export function missingEnvironmentRows(input: {
+  /** The tiers whose import is on the group repo's `main`. */
+  readonly tiersOnMain: ReadonlyArray<GroupEnvironmentTier>;
+  readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "tier">>;
+}): ReadonlyArray<MissingEnvironmentRow> {
+  const declared = new Set(input.declarations.map((entry) => entry.tier));
+  const offered = new Set(input.tiersOnMain);
+  const order: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
+  return order
+    .filter((tier) => offered.has(tier) && !declared.has(tier))
+    .map((tier) => ({
+      kind: "missing-environment",
+      tier,
+      name: tier === "stage" ? "Stage" : "Production",
+      line: MISSING_ENVIRONMENT_LINE,
+    }));
+}
 
 export interface GroupRows {
   readonly groupId: string;

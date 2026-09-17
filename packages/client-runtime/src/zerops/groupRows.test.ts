@@ -8,6 +8,8 @@ import {
   environmentRow,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
+  missingEnvironmentRows,
+  MISSING_ENVIRONMENT_LINE,
   pullRequestRow,
   shortCommit,
   type EnvironmentServiceState,
@@ -283,4 +285,54 @@ describe("buildGroupRows", () => {
     expect(group.line).toBe(expected);
     expect(group.rows).toEqual([]);
   });
+});
+
+describe("missingEnvironmentRows", () => {
+  // The owner, twice on 2026-09-17: "it never asked me to setup production".
+  const cases = [
+    {
+      name: "asks for both once the recipe offers both and the group has neither",
+      tiersOnMain: ["stage", "production"],
+      declared: [],
+      want: ["Stage", "Production"],
+    },
+    {
+      name: "asks only for what is missing",
+      tiersOnMain: ["stage", "production"],
+      declared: ["stage"],
+      want: ["Production"],
+    },
+    {
+      name: "asks for nothing before the recipe is on main",
+      tiersOnMain: [],
+      declared: [],
+      want: [],
+    },
+    {
+      name: "asks for nothing the recipe does not offer",
+      tiersOnMain: ["stage"],
+      declared: [],
+      want: ["Stage"],
+    },
+    {
+      name: "stage before production, whatever the order on main",
+      tiersOnMain: ["production", "stage"],
+      declared: [],
+      want: ["Stage", "Production"],
+    },
+  ] as const;
+
+  for (const tc of cases) {
+    it(tc.name, () => {
+      const rows = missingEnvironmentRows({
+        tiersOnMain: tc.tiersOnMain,
+        declarations: tc.declared.map((tier) => ({ tier })),
+      });
+      expect(rows.map((row) => row.name)).toEqual(tc.want);
+      for (const row of rows) {
+        expect(row.kind).toBe("missing-environment");
+        expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
+      }
+    });
+  }
 });

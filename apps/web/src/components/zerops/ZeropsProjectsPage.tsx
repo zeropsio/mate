@@ -121,7 +121,8 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateProject } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
-import { giteaClientFor } from "~/zerops/giteaSession";
+import { giteaClientFor, useGiteaSession } from "~/zerops/giteaSession";
+import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "~/zerops/useZeropsGroupDeploys";
@@ -1358,6 +1359,20 @@ function ZeropsProjectsContent() {
     [candidates],
   );
 
+  // A group is offered more once its first Mate is up — connected, or its
+  // container answering ready — and not a minute before. Shared by the
+  // group's foot and the rows that ask for a missing tier.
+  const groupAddsOffered = useCallback(
+    (group: ZeropsGroup) =>
+      (
+        groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? []
+      ).some(
+        ({ item }) =>
+          hasMate(item) && mateIsUp({ candidate: item, health: candidateHealth.get(item.key) }),
+      ),
+    [candidateHealth, groupTree.groups],
+  );
+
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
     readonly groupId: string;
@@ -1435,11 +1450,21 @@ function ZeropsProjectsContent() {
   );
 
   const readDeployedVersion = useZeropsDeployedVersionReader();
+  // The page reads the group repo as the person, so it signs in to Gitea
+  // itself (D21) — until 0.11.13 only a Git tab did, and the page showed no
+  // environment, pull request or tier to add until one had been opened.
+  const throwawayPlatform = useMemo(() => zeropsThrowawayPlatform(client), [client]);
+  const { signedIn: giteaSignedIn } = useGiteaSession({
+    giteaOrigin,
+    brokerOrigin: accountGitea?.state.brokerUrl,
+    clientId: activeOrganization?.id,
+    platform: throwawayPlatform,
+  });
   const groupDeploys = useZeropsGroupDeploys({
     groups: deployGroups,
     giteaOrigin,
     readVersion: readDeployedVersion,
-    enabled: status === "signed-in",
+    enabled: status === "signed-in" && giteaSignedIn,
   });
 
   /**
@@ -1908,15 +1933,7 @@ function ZeropsProjectsContent() {
       <ZeropsGroupTree
         // A group is offered more once its first Mate is up — connected, or
         // its container answering ready — and not a minute before.
-        addsOffered={(group) =>
-          (
-            groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
-            []
-          ).some(
-            ({ item }) =>
-              hasMate(item) && mateIsUp({ candidate: item, health: candidateHealth.get(item.key) }),
-          )
-        }
+        addsOffered={groupAddsOffered}
         creating={creationRunning}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groupLine={(group) => groupLines.get(group.groupId) ?? ""}
@@ -2001,27 +2018,60 @@ function ZeropsProjectsContent() {
             />
           );
         }}
-        renderGroupRows={(group: ZeropsGroup) =>
-          (groupDeploys.get(group.groupId)?.pullRequests ?? []).map((pull) => {
-            const row = pullRequestRow(pull);
-            return (
-              <ZeropsPullRequestRow
-                action={
-                  pull.html_url === undefined ? undefined : (
-                    <ZeropsMateVerb
-                      label="Review"
-                      onClick={() => {
-                        window.open(pull.html_url, "_blank", "noopener");
-                      }}
-                    />
-                  )
-                }
-                key={`pull-${group.groupId}-${row.number}`}
-                line={row.line}
-                title={row.title}
-              />
-            );
-          })
+        renderGroupRows={(group: ZeropsGroup) => (
+          <>
+            {(groupDeploys.get(group.groupId)?.pullRequests ?? []).map((pull) => {
+              const row = pullRequestRow(pull);
+              return (
+                <ZeropsPullRequestRow
+                  action={
+                    pull.html_url === undefined ? undefined : (
+                      <ZeropsMateVerb
+                        label="Review"
+                        onClick={() => {
+                          window.open(pull.html_url, "_blank", "noopener");
+                        }}
+                      />
+                    )
+                  }
+                  key={`pull-${group.groupId}-${row.number}`}
+                  line={row.line}
+                  title={row.title}
+                />
+              );
+            })}
+            {/* The tiers the recipe offers and the group lacks: the rows that
+                ask. The verb is the same one the group's foot offered, moved
+                up to where the answer will sit; it waits for the first Mate
+                like the foot does. */}
+            {(groupDeploys.get(group.groupId)?.missing ?? []).map((row) => {
+              const role = row.tier === "stage" ? "stage" : "prod";
+              return (
+                <ZeropsEnvironmentRow
+                  action={
+                    groupAddsOffered(group) ? (
+                      <ZeropsMateVerb
+                        disabled={creationRunning}
+                        label={`Add ${row.name.toLowerCase()}`}
+                        onClick={() => {
+                          requestEnvironment(group.groupId, role);
+                        }}
+                      />
+                    ) : undefined
+                  }
+                  key={`missing-${group.groupId}-${row.tier}`}
+                  name={row.name}
+                  summary={row.line}
+                  tag={environmentRoleTag(role)}
+                />
+              );
+            })}
+          </>
+        )}
+        roleOffered={(group: ZeropsGroup, role) =>
+          !(groupDeploys.get(group.groupId)?.missing ?? []).some(
+            (row) => (row.tier === "stage" ? "stage" : "prod") === role,
+          )
         }
         renderGroupMenu={(group: ZeropsGroup) => (
           <ZeropsProjectMenu

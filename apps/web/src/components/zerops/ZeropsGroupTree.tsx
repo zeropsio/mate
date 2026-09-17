@@ -86,6 +86,12 @@ export interface ZeropsGroupTreeProps<T> {
    * first Mate has booted. Absent offers them always.
    */
   readonly addsOffered?: ((group: ZeropsGroup) => boolean) | undefined;
+  /**
+   * Whether a role's add verb belongs at the group's foot, or somewhere the
+   * caller already put it — the row that asks for a missing stage carries
+   * its own. Absent keeps every verb at the foot.
+   */
+  readonly roleOffered?: ((group: ZeropsGroup, role: ZeropsEnvironmentRole) => boolean) | undefined;
   /** A group's own actions, at the end of its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
   /**
@@ -236,6 +242,7 @@ export function ZeropsGroupTree<T>({
   onCreateProject,
   creating = false,
   addsOffered,
+  roleOffered,
   renderGroupMenu,
   groupLine,
   className,
@@ -270,7 +277,9 @@ export function ZeropsGroupTree<T>({
         // The add verbs wait for the first Mate: a group is offered more only
         // once the caller says it is ready for more.
         const missing =
-          onCreateEnvironment && (addsOffered?.(group) ?? true) ? creatableRoles(group) : [];
+          onCreateEnvironment && (addsOffered?.(group) ?? true)
+            ? creatableRoles(group).filter((role) => roleOffered?.(group, role) ?? true)
+            : [];
         return (
           <section
             className="flex flex-col gap-3"
