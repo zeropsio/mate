@@ -89,6 +89,14 @@ project's `userRoles`, and call the API with the token; then re-invite it.
 
 ### Q-17 · Does a person the broker created sign in to Gitea's own pages as the same account?
 
+**Answered 2026-09-17, no.** Gitea's OAuth2 callback looks for an external-login row, never for a
+user bound by `login_name`; with `[oauth2_client] ACCOUNT_LINKING = disabled` it tried to register
+`u-iwbxltjisnogy3r7nj28bg` again and answered 500 "user already exists" (the owner, from the Git
+tab's link to a pull request). With `ACCOUNT_LINKING = auto` (gitea-mate v3.7) the arriving `u-…`
+identity is linked to the account of that username: measured on the test org after a redeploy of
+`web` — Gitea's _Sign in with Zerops_ landed on the dashboard as the broker-made account
+(ledger, _The owner's own poking after the run_).
+
 **Blocks** Nothing in the product — the app gets the person's token from the broker (D21) and never sends them to Gitea's pages; it decides whether a person who opens a repository URL in Gitea's UI and clicks _Sign in with Zerops_ lands on their account or on an "account exists" error (`ACCOUNT_LINKING=disabled`).
 **Why unclear** The broker creates the account bound to the OIDC source with `login_name` = the Zerops user id (measured on the lab, 2026-09-17). Gitea's OAuth2 callback is expected to look an account up by `(login_source, login_name)` before it registers or links one, which would make the two the same account; that lookup is read from Gitea's source, not measured.
 **How to answer** On a live run, open the Gitea URL in a browser as a person the app has already signed in (their account exists, made by the broker), click _Sign in with Zerops_, and see whether the session lands on `u-{id}`. One row in `verified.md` either way; if it errors, the recipe moves to `ACCOUNT_LINKING=auto` (safe: the broker is the only provider and derives username and e-mail from the member list).

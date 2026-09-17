@@ -246,9 +246,10 @@ In the order the owner ranked them, then the rest:
    signed-in agent, or is skipped.
 4. **A broker-made person on Gitea's own pages** (Q-17): measured 2026-09-17 — Gitea answered 500
    ("user already exists": its callback looks for an external-login row, not a `login_name`, and
-   `ACCOUNT_LINKING = disabled` refused to link). Fixed in gitea-mate v3.7 (`auto`); a Gitea made
-   before it takes a redeploy of `web` (`--setup gitea`). The app's own links do send people there
-   (a pull request's page, _Review_), which is a design question of its own (§7, 27).
+   `ACCOUNT_LINKING = disabled` refused to link). Fixed in gitea-mate v3.7 (`auto`) and measured
+   working on the test org after a redeploy of `web` (`--setup gitea`): the dashboard as the
+   broker-made account. Closed. The app's own links do send people there (a pull request's page,
+   _Review_), which is a design question of its own (§7, 27).
 5. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
    page as one composed flow: the real Mate mark, the sidebar hidden on an empty account, editorial
    type and spacing, one motion moment, verified at 1786 and 1280 in both themes. The 2026-09-16
