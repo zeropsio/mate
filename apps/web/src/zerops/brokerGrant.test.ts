@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { grantBrokerProject, registerMateProject } from "./brokerGrant";
+import { parseZeropsRegistry } from "@t3tools/client-runtime/zerops";
+
+import { grantBrokerProject, registerMateInGroup, registerMateProject } from "./brokerGrant";
 
 const BROKER = {
   id: "t-2",
@@ -143,5 +145,66 @@ describe("registerMateProject", () => {
       kind: "registered",
       grant: { kind: "no-broker", reason: "This account has no broker to deploy with yet." },
     });
+  });
+});
+
+describe("registerMateInGroup", () => {
+  const ACME = parseZeropsRegistry([
+    "mate:tool:gitea",
+    "mate:gn:g-acme:acme",
+    "mate:gm:g-acme:p-fen:mate",
+  ]);
+
+  // Add Mate by an owner registers at birth, the card's Register in {group}
+  // finishes a member's Mate: one path, so the second Mate of a group gets its
+  // bot the way the first one did (the owner's two-Mate run, 2026-09-17).
+  it.each([
+    {
+      name: "registers a second Mate beside the first and gives the broker its project",
+      groupId: "g-acme",
+      api: {},
+      expected: null,
+      written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
+    },
+    {
+      name: "says why when the group is not in the registry, and writes nothing",
+      groupId: "g-gone",
+      api: {},
+      expected: "That project is not in the registry.",
+      written: null,
+    },
+    {
+      name: "says a registry write that failed",
+      groupId: "g-acme",
+      api: { writeGroupRegistry: vi.fn().mockRejectedValue(new Error("Only owners write tags.")) },
+      expected: "Only owners write tags.",
+      written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
+    },
+    {
+      name: "says a grant that failed, with the Mate registered",
+      groupId: "g-acme",
+      api: { setIntegrationTokenProjects: vi.fn().mockRejectedValue(new Error("Forbidden.")) },
+      expected: "Forbidden.",
+      written: ["mate:gm:g-acme:p-ada:mate", "mate:gm:g-acme:p-fen:mate"],
+    },
+  ])("$name", async ({ groupId, api: overrides, expected, written }) => {
+    const api = apiFake(overrides);
+
+    const outcome = await registerMateInGroup({
+      client: api as never,
+      clientId: "org-1",
+      giteaProjectId: "p-gitea",
+      registry: ACME,
+      groupId,
+      projectId: "p-ada",
+    });
+
+    expect(outcome).toBe(expected);
+    if (written === null) {
+      expect(api.writeGroupRegistry).not.toHaveBeenCalled();
+      return;
+    }
+    const [{ tagList }] = api.writeGroupRegistry.mock.calls[0] as [{ tagList: Array<string> }];
+    expect(tagList.filter((tag) => tag.startsWith("mate:gm:")).toSorted()).toEqual(written);
   });
 });

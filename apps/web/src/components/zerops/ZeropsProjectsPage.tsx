@@ -80,7 +80,7 @@ import {
   GROUP_BEING_SET_UP_LINE,
   hasMate,
   planEnvironmentCreation,
-  planGroupMembership,
+  canWriteRegistry,
   pullRequestRow,
   registerMateVerb,
   resolveMateRegistration,
@@ -120,7 +120,7 @@ import {
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
-import { registerMateProject } from "~/zerops/brokerGrant";
+import { registerMateInGroup } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { giteaClientFor, useGiteaSession } from "~/zerops/giteaSession";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
@@ -899,33 +899,19 @@ function ZeropsProjectsContent() {
     tags: ZeropsGroupTags,
   ): Promise<void> => {
     if (tags.groupId === undefined || giteaProjectId === undefined || !activeOrganization) return;
-    const membership = planGroupMembership({
-      registry: registryState.registry,
-      groupId: tags.groupId,
-      projectId: candidate.project.id,
-      kind: "mate",
-    });
-    if (!membership.ok) {
-      setToolError(membership.reason);
-      return;
-    }
-    const outcome = await registerMateProject({
+    // The broker's rights loop runs off the registry and the grant, so the
+    // Mate gets its bot's access on the loop's next pass rather than on a
+    // step this verb has to sequence.
+    const outstanding = await registerMateInGroup({
       client,
       clientId: activeOrganization.id,
       giteaProjectId,
+      registry: registryState.registry,
+      groupId: tags.groupId,
       projectId: candidate.project.id,
-      tagList: membership.tagList,
     });
-    if (outcome.kind === "registry-failed") {
-      setToolError(outcome.reason);
-      return;
-    }
-    // The broker's rights loop runs off the registry and the grant, so the
-    // Mate gets its bot's access on the loop's next pass rather than on a
-    // step this verb has to sequence. A grant that failed is said, not
-    // fatal: the entry is written, and registering again retries the grant.
     registryState.refresh();
-    setToolError(outcome.grant.kind === "failed" ? outcome.grant.reason : null);
+    setToolError(outstanding);
   };
 
   /**
@@ -1689,6 +1675,25 @@ function ZeropsProjectsContent() {
               { kind: "tier", services: Object.keys(choice.recipe.sources) }
             : { kind: "none" },
       });
+
+      // A Mate an owner or an admin makes is registered at birth, the way
+      // *New project* registers the first: without the entry the broker gives
+      // it no bot, and its agent cannot push to the group's repositories. A
+      // member cannot write the registry; their Mate waits on the card's
+      // *Register in {group}* (guide 4.2).
+      if (role === "dev" && giteaProjectId !== undefined && canWriteRegistry(activeOrganization)) {
+        const outstanding = await registerMateInGroup({
+          client,
+          clientId: activeOrganization.id,
+          giteaProjectId,
+          registry: registryState.registry,
+          groupId,
+          projectId: outcome.projectId,
+        });
+        registryState.refresh();
+        if (!isCurrent()) return;
+        if (outstanding !== null) setToolError(outstanding);
+      }
 
       // A stage or a production is a **group environment**: it goes in the
       // registry, the broker's token has to reach it, and its sources have to

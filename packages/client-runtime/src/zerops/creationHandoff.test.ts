@@ -40,6 +40,19 @@ describe("creationHandoffPrompt", () => {
     expect(prompt).toContain("the project's recipe");
   });
 
+  // A second Mate's services are the app the first Mate built: their code is
+  // on Gitea, and a Mate that writes a new app has joined nothing.
+  it("sends a Mate made from the recipe to the group's code on Gitea", () => {
+    const prompt = creationHandoffPrompt({
+      ...FROM_TIER,
+      environmentName: "Aurora - Ada",
+      role: "dev",
+    });
+    expect(prompt).toContain("Their code is on the project's Gitea, on main");
+    expect(prompt).toContain("never a new app");
+    expect(creationHandoffPrompt(FROM_TIER)).not.toContain("Gitea");
+  });
+
   it("lists every service that needs one, not just the first", () => {
     const prompt = creationHandoffPrompt({
       ...FROM_TIER,

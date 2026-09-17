@@ -75,8 +75,15 @@ export function creationHandoffPrompt(handoff: ZeropsCreationHandoff): string {
         // the whole reason the agent is here first.
         lines.push(
           `${services.join(", ")} ${services.length === 1 ? "has" : "have"} no code deployed yet.`,
-          "Get them building and running.",
         );
+        // A Mate's tier is the app another Mate of the group built: the code
+        // exists, and the job is to join it rather than start over.
+        if (handoff.role === "dev" || handoff.role === "devstage") {
+          lines.push(
+            "Their code is on the project's Gitea, on main of each service's repository: work from it, never a new app.",
+          );
+        }
+        lines.push("Get them building and running.");
       }
       break;
     }

@@ -18,8 +18,10 @@
 
 import {
   planBrokerProjectGrant,
+  planGroupMembership,
   type ZeropsApiClient,
   type ZeropsIntegrationToken,
+  type ZeropsRegistry,
 } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
@@ -117,4 +119,42 @@ export async function registerMateProject(input: {
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     }),
   };
+}
+
+/**
+ * Registers a Mate in its group and says what is outstanding, if anything: the
+ * one path *Add Mate* takes at birth for an owner or an admin, and the card's
+ * *Register in {group}* takes for a member's Mate (guide 4.2).
+ *
+ * `null` once the entry is written and the broker reaches the project, or when
+ * the account has no broker to reach it with; the words to show otherwise. A
+ * grant that failed leaves the Mate registered, and registering again retries
+ * the grant.
+ */
+export async function registerMateInGroup(input: {
+  readonly client: BrokerGrantClient & Pick<ZeropsApiClient, "writeGroupRegistry">;
+  readonly clientId: string;
+  /** The account's Gitea project, where the registry lives. */
+  readonly giteaProjectId: string;
+  readonly registry: ZeropsRegistry;
+  readonly groupId: string;
+  /** The Mate's project. */
+  readonly projectId: string;
+}): Promise<string | null> {
+  const membership = planGroupMembership({
+    registry: input.registry,
+    groupId: input.groupId,
+    projectId: input.projectId,
+    kind: "mate",
+  });
+  if (!membership.ok) return membership.reason;
+  const outcome = await registerMateProject({
+    client: input.client,
+    clientId: input.clientId,
+    giteaProjectId: input.giteaProjectId,
+    projectId: input.projectId,
+    tagList: membership.tagList,
+  });
+  if (outcome.kind === "registry-failed") return outcome.reason;
+  return outcome.grant.kind === "failed" ? outcome.grant.reason : null;
 }
