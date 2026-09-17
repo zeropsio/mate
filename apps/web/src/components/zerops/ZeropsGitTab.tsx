@@ -91,7 +91,6 @@ export interface ZeropsGitTabProps {
   /** The group half of the panel, which the caller assembles. */
   readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn">;
   readonly signedIn: boolean;
-  readonly onSignIn?: (() => void) | undefined;
   readonly onOpenPullRequest?: ((block: GitBlock) => void) | undefined;
   readonly onCreatePullRequest?: ((block: GitBlock) => void) | undefined;
   readonly onMergePullRequest?: ((block: GitBlock) => void) | undefined;
@@ -231,7 +230,6 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           : { onOpenRecipeChange: props.onOpenRecipeChange })}
         {...(props.onRelease === undefined ? {} : { onRelease: props.onRelease })}
         {...(props.onRollBack === undefined ? {} : { onRollBack: props.onRollBack })}
-        {...(props.onSignIn === undefined ? {} : { onSignIn: props.onSignIn })}
       />
     </>
   );

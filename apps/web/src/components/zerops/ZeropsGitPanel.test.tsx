@@ -74,7 +74,7 @@ describe("ZeropsGitPanel", () => {
 
   it("says a Mate has no repository rather than showing an empty list", () => {
     const html = render({ model: model({ blocks: [] }) });
-    expect(html).toContain("This Mate has no code repository yet.");
+    expect(html).toContain("No code repository yet. The first service brings one.");
   });
 
   it("names each environment with what it follows and what it runs", () => {
@@ -156,10 +156,11 @@ describe("ZeropsGitPanel", () => {
     expect(html).not.toContain("Roll back to this");
   });
 
-  it("keeps the checkout half and offers the way in when signed out of Gitea", () => {
-    const html = render({ model: model({ signedIn: false }), onSignIn: () => {} });
+  it("keeps the checkout half and says the Gitea half is on its way, with nothing to click", () => {
+    const html = render({ model: model({ signedIn: false }) });
     expect(html).toContain("api · feature/invoices");
-    expect(html).toContain("Sign in to Gitea");
+    expect(html).toContain("Signing you in to Gitea");
+    expect(html).not.toContain("Sign in to Gitea");
     // No empty sections that read as a group with nothing in it.
     expect(html).not.toContain('data-zerops-git-section="Environments"');
     expect(html).not.toContain('data-zerops-git-section="Releases"');

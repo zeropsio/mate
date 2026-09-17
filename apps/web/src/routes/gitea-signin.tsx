@@ -28,7 +28,7 @@ import {
   type KnownGiteaBroker,
 } from "@t3tools/client-runtime/zerops/giteaSignIn";
 import { createFileRoute } from "@tanstack/react-router";
-import { useContext, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { ZeropsLandingShell } from "../components/zerops/landing/ZeropsLandingShell";
 import { Button } from "../components/ui/button";
@@ -116,12 +116,51 @@ function GiteaSignInConsent() {
     [inventory],
   );
 
-  const pending = takeGiteaSignInRequest();
+  // Taken once per mount: the storage is cleared on the read, and a re-render
+  // must not lose the request the sign-in detour kept for this page.
+  const [pending] = useState(() => takeGiteaSignInRequest());
   const request = resolveGiteaSignInRequest({
     rid: search.rid ?? pending.rid,
     broker: search.broker ?? pending.broker,
     known,
   });
+
+  /**
+   * Nothing to click: a person signed in to Mate is proved to the broker the
+   * moment the request checks out — the throwaway is minted, presented and
+   * taken back, and the browser follows the broker's answer back to Gitea.
+   * Once per mount; the button below only exists for a second try after a
+   * failure, and that is the one place state is set outside the answer.
+   */
+  const run = useCallback(() => {
+    if (!request.ok) return;
+    void completeGiteaSignIn({
+      brokerUrl: request.brokerOrigin,
+      giteaUrl: request.giteaOrigin,
+      clientId: request.clientId,
+      rid: request.rid,
+      nonce: randomUUID(),
+      platform: zeropsThrowawayPlatform(client),
+      fetch: globalThis.fetch.bind(globalThis),
+    })
+      .then(({ redirect }) => {
+        window.location.assign(redirect);
+      })
+      .catch((cause: unknown) => {
+        setState({
+          kind: "failed",
+          message: cause instanceof MateCredentialError ? cause.message : zeropsErrorMessage(cause),
+        });
+      });
+  }, [client, request]);
+
+  const started = useRef(false);
+  const ready = status === "signed-in" && request.ok;
+  useEffect(() => {
+    if (!ready || started.current) return;
+    started.current = true;
+    run();
+  }, [ready, run]);
 
   if (status !== "signed-in") {
     if (search.rid !== undefined && search.broker !== undefined) {
@@ -166,36 +205,19 @@ function GiteaSignInConsent() {
       title="Sign in to Gitea"
     >
       <div className="space-y-3" data-gitea-signin-consent>
-        <Button
-          className="w-full"
-          disabled={state.kind === "working"}
-          onClick={() => {
-            setState({ kind: "working" });
-            void completeGiteaSignIn({
-              brokerUrl: request.brokerOrigin,
-              giteaUrl: request.giteaOrigin,
-              clientId: request.clientId,
-              rid: request.rid,
-              nonce: randomUUID(),
-              platform: zeropsThrowawayPlatform(client),
-              fetch: globalThis.fetch.bind(globalThis),
-            })
-              .then(({ redirect }) => {
-                window.location.assign(redirect);
-              })
-              .catch((cause: unknown) => {
-                setState({
-                  kind: "failed",
-                  message:
-                    cause instanceof MateCredentialError
-                      ? cause.message
-                      : zeropsErrorMessage(cause),
-                });
-              });
-          }}
-        >
-          {state.kind === "working" ? "Signing you in…" : "Continue"}
-        </Button>
+        {state.kind === "failed" ? (
+          <Button
+            className="w-full"
+            onClick={() => {
+              setState({ kind: "idle" });
+              run();
+            }}
+          >
+            Try again
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">Signing you in…</p>
+        )}
         {state.kind === "failed" ? (
           <p className="text-sm text-destructive-foreground" role="alert">
             {state.message}

@@ -1,13 +1,19 @@
-import { GITEA_OAUTH_CLIENT_PENDING } from "@t3tools/client-runtime/zerops";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import type { ZeropsThrowawayPlatform } from "@t3tools/client-runtime/authorization";
+import { describe, expect, it } from "vite-plus/test";
 
-import { ensureGiteaOAuthClientId, GiteaSignInError } from "./giteaSession";
-
-const APP = "https://mate.example.com";
+import {
+  ensureGiteaSession,
+  forgetGiteaSession,
+  giteaClientFor,
+  giteaSessionLogin,
+  GiteaSignInError,
+  hasGiteaSession,
+  subscribeGiteaSessions,
+} from "./giteaSession";
 
 /**
- * A distinct Gitea per case: the client id is memoised per (Gitea, app origin)
- * pair for the life of the tab, which is the behaviour, not a test artefact.
+ * A distinct Gitea per case: the session store is module memory for the life
+ * of the tab, which is the behaviour, not a test artefact.
  */
 let counter = 0;
 function origins(): { readonly giteaOrigin: string; readonly brokerOrigin: string } {
@@ -18,67 +24,141 @@ function origins(): { readonly giteaOrigin: string; readonly brokerOrigin: strin
   };
 }
 
-function answering(response: { readonly status: number; readonly body?: unknown }) {
-  const calls: Array<string> = [];
-  const fake = vi.fn((url: string | URL) => {
-    calls.push(String(url));
-    return Promise.resolve({
-      ok: response.status >= 200 && response.status < 300,
-      status: response.status,
-      json: () => Promise.resolve(response.body ?? null),
-    } as unknown as Response);
-  });
-  vi.stubGlobal("fetch", fake);
-  return calls;
+function recording() {
+  const minted: Array<string> = [];
+  const removed: Array<string> = [];
+  const platform: ZeropsThrowawayPlatform = {
+    mint: async (input) => {
+      minted.push(input.name);
+      return { id: `token-${minted.length}`, token: "the-throwaway" };
+    },
+    remove: async (input) => {
+      removed.push(input.tokenId);
+    },
+  };
+  return { platform, minted, removed } as const;
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+function answering(
+  response: { readonly status: number; readonly body?: unknown },
+  seen: Array<{ url: string; init: RequestInit }> = [],
+): { readonly fetch: typeof globalThis.fetch; readonly seen: typeof seen } {
+  const fetchFn = (async (url: string | URL | Request, init: RequestInit = {}) => {
+    seen.push({ url: String(url), init });
+    return new Response(JSON.stringify(response.body ?? null), {
+      status: response.status,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof globalThis.fetch;
+  return { fetch: fetchFn, seen };
+}
 
-describe("the OAuth client id from the broker", () => {
-  it("asks the broker, with no auth, and keeps the id", async () => {
+describe("ensureGiteaSession", () => {
+  it("acquires a token from the broker by throwaway, once, and keeps it for the tab", async () => {
     const where = origins();
-    const calls = answering({
+    const { platform, minted, removed } = recording();
+    const { fetch, seen } = answering({
       status: 200,
-      body: {
-        clientId: "c1",
-        redirectUris: [`${APP}/gitea/callback`],
-        authorizeUrl: `${where.giteaOrigin}/login/oauth/authorize`,
-        tokenUrl: `${where.giteaOrigin}/login/oauth/access_token`,
-      },
+      body: { token: "gitea-token", login: "u-abc", expiresIn: 43200 },
     });
 
-    expect(await ensureGiteaOAuthClientId({ ...where, appOrigin: APP })).toBe("c1");
-    // A second ask costs nothing: the registration does not change under a tab.
-    expect(await ensureGiteaOAuthClientId({ ...where, appOrigin: APP })).toBe("c1");
-    expect(calls).toEqual([`${where.brokerOrigin}/gitea/oauth-client`]);
-  });
+    const changes: Array<boolean> = [];
+    const stop = subscribeGiteaSessions(() => changes.push(hasGiteaSession(where.giteaOrigin)));
 
-  it("says the broker is still setting up on a 503", async () => {
-    answering({ status: 503, body: { error: "not_registered_yet" } });
-    await expect(ensureGiteaOAuthClientId({ ...origins(), appOrigin: APP })).rejects.toThrow(
-      GITEA_OAUTH_CLIENT_PENDING,
+    // Two surfaces ask in the same tick: one acquisition, both wait for it.
+    await Promise.all([
+      ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch }),
+      ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch }),
+    ]);
+    stop();
+
+    expect(seen.map((call) => call.url)).toEqual([`${where.brokerOrigin}/person/token`]);
+    const headers = seen[0]?.init.headers as Record<string, string> | undefined;
+    expect(headers?.authorization).toBe("Bearer the-throwaway");
+    // Named for the Gitea it is for, once, whatever the nonce.
+    expect(minted).toHaveLength(1);
+    expect(minted[0]).toMatch(
+      new RegExp(`^gitea-signin:web-${counter}-3000\\.prg1\\.zerops\\.app:`, "u"),
     );
+    expect(removed).toEqual(["token-1"]);
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(true);
+    expect(giteaSessionLogin(where.giteaOrigin)).toBe("u-abc");
+    expect(changes).toEqual([true]);
+
+    // A third ask costs nothing.
+    await ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch });
+    expect(seen).toHaveLength(1);
   });
 
-  it("refuses a registration whose redirect does not come back here", async () => {
-    answering({
-      status: 200,
-      body: { clientId: "c1", redirectUris: ["https://other.example/gitea/callback"] },
+  it("says the Gitea is still setting up when the broker cannot reach it, and is worth asking again", async () => {
+    const where = origins();
+    const { platform, removed } = recording();
+    const { fetch } = answering({
+      status: 502,
+      body: { error: "gitea", message: "Gitea could not be reached" },
     });
-    await expect(ensureGiteaOAuthClientId({ ...origins(), appOrigin: APP })).rejects.toBeInstanceOf(
-      GiteaSignInError,
-    );
+
+    const failure = await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch,
+    }).catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(GiteaSignInError);
+    expect((failure as GiteaSignInError).pending).toBe(true);
+    expect((failure as GiteaSignInError).message).toBe("Gitea is still setting up.");
+    // The throwaway was taken back whatever the broker answered, and nothing is held.
+    expect(removed).toEqual(["token-1"]);
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
   });
 
-  it("says so when the broker does not answer at all", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.reject(new Error("offline"))),
-    );
-    await expect(ensureGiteaOAuthClientId({ ...origins(), appOrigin: APP })).rejects.toBeInstanceOf(
-      GiteaSignInError,
-    );
+  it("names a refusal in the person's terms and does not retry it by itself", async () => {
+    const where = origins();
+    const { platform } = recording();
+    const { fetch } = answering({
+      status: 403,
+      body: { error: "not_a_member", message: "that account is not an active member" },
+    });
+    const failure = await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch,
+    }).catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(GiteaSignInError);
+    expect((failure as GiteaSignInError).pending).toBe(false);
+    expect((failure as GiteaSignInError).message).toContain("not a member");
+  });
+
+  it("forgets the session on the first 401 Gitea answers, so the surface acquires again", async () => {
+    const where = origins();
+    const { platform } = recording();
+    const { fetch } = answering({ status: 200, body: { token: "t1", login: "u-abc" } });
+    await ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch });
+
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "token does not exist" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      })) as typeof globalThis.fetch;
+    try {
+      const client = giteaClientFor(where.giteaOrigin);
+      expect(client).not.toBeNull();
+      await client?.listTags("acme", "group").catch(() => undefined);
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
+    expect(giteaClientFor(where.giteaOrigin)).toBeNull();
+  });
+
+  it("forgets on request", async () => {
+    const where = origins();
+    const { platform } = recording();
+    const { fetch } = answering({ status: 200, body: { token: "t1", login: "u-abc" } });
+    await ensureGiteaSession({ ...where, clientId: "org-1", platform, fetch });
+    forgetGiteaSession(where.giteaOrigin);
+    expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
   });
 });

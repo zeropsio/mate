@@ -1,10 +1,13 @@
 /**
- * The app's one call to the org's broker: a person's own Gitea sign-in.
+ * The app's two calls to the org's broker, both as the person and both proved
+ * by a `gitea-signin` throwaway (`zeropsThrowaway.ts`) — a token with no
+ * rights at all, minted for the one call and deleted after it.
  *
- * `POST /oidc/complete`, as the person, proved by a `gitea-signin` throwaway
- * (`zeropsThrowaway.ts`) — a token with no rights at all, minted for this call
- * and deleted after it. The broker answers where to send the browser to finish
- * signing in to Gitea (guide 3.6).
+ * `POST /person/token` is the person's own Gitea access: the broker, Gitea's
+ * site admin, makes sure their account exists and mints a token that acts as
+ * them (guide 4.4, D21). `POST /oidc/complete` is the consent step of Gitea's
+ * own *Sign in with Zerops*, for a person on Gitea's pages (guide 3.6); the
+ * broker answers where to send the browser to finish.
  *
  * **No endpoint of the broker's takes a Zerops key**, and this sends none.
  * That is the whole reason a browser may talk to a service sitting in the
@@ -108,6 +111,91 @@ export async function completeGiteaSignIn(
         );
       }
       return { redirect };
+    },
+  });
+}
+
+export interface AcquireGiteaPersonTokenInput {
+  /** The broker's public origin, from the account's Gitea project. */
+  readonly brokerUrl: string;
+  /** Gitea's public origin; the throwaway is named after its host. */
+  readonly giteaUrl: string;
+  /** The org that owns the Gitea — where the throwaway is minted. */
+  readonly clientId: string;
+  readonly nonce: string;
+  readonly platform: ZeropsThrowawayPlatform;
+  readonly fetch: typeof globalThis.fetch;
+  readonly signal?: AbortSignal | undefined;
+  readonly onOrphanedThrowaway?: ((cause: unknown) => void) | undefined;
+}
+
+export interface GiteaPersonToken {
+  /** Acts as the person on that Gitea. Held in memory, never persisted. */
+  readonly token: string;
+  /** The person's login there, `u-…`. */
+  readonly login: string;
+  /** How long the broker keeps it good, or `undefined` when it did not say. */
+  readonly expiresInMs: number | undefined;
+}
+
+/**
+ * A person's own Gitea token, from the org's broker (guide 4.4, D21).
+ *
+ * The same proof the app makes at a Mate's door: a throwaway with no rights,
+ * minted for this one Gitea, presented once and deleted whatever the broker
+ * answered. The broker makes sure the person's Gitea account exists and mints
+ * them a token that acts as them — so Gitea enforces their mirrored rights on
+ * every call, and no Gitea screen stands between a person signed in to Mate and
+ * the group's repositories.
+ */
+export async function acquireGiteaPersonToken(
+  input: AcquireGiteaPersonTokenInput,
+): Promise<GiteaPersonToken> {
+  const url = `${input.brokerUrl.replace(/\/+$/u, "")}/person/token`;
+  return withThrowaway({
+    platform: input.platform,
+    clientId: input.clientId,
+    name: giteaThrowawayName(input.giteaUrl, input.nonce),
+    ...(input.onOrphanedThrowaway === undefined ? {} : { onOrphaned: input.onOrphanedThrowaway }),
+    use: async (token) => {
+      const response = await input.fetch(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = readBrokerError(body);
+        throw new MateCredentialError(
+          error.message ?? "The broker could not sign you in to Gitea.",
+          error.code,
+          response.status,
+        );
+      }
+      const record =
+        typeof body === "object" && body !== null
+          ? (body as {
+              readonly token?: unknown;
+              readonly login?: unknown;
+              readonly expiresIn?: unknown;
+            })
+          : {};
+      if (
+        typeof record.token !== "string" ||
+        record.token.length === 0 ||
+        typeof record.login !== "string"
+      ) {
+        throw new MateCredentialError(
+          "The broker did not answer with a token.",
+          undefined,
+          response.status,
+        );
+      }
+      return {
+        token: record.token,
+        login: record.login,
+        expiresInMs: typeof record.expiresIn === "number" ? record.expiresIn * 1000 : undefined,
+      };
     },
   });
 }

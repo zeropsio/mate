@@ -28,7 +28,6 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
-import { Route as GiteaCallbackRouteImport } from './routes/gitea.callback'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -126,11 +125,6 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/projects/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GiteaCallbackRoute = GiteaCallbackRouteImport.update({
-  id: '/gitea/callback',
-  path: '/gitea/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -150,7 +144,6 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
-  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -172,7 +165,6 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
-  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -197,7 +189,6 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
-  '/gitea/callback': typeof GiteaCallbackRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -223,7 +214,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
-    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -245,7 +235,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
-    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -269,7 +258,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
-    | '/gitea/callback'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -294,7 +282,6 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
-  GiteaCallbackRoute: typeof GiteaCallbackRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
@@ -435,13 +422,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/gitea/callback': {
-      id: '/gitea/callback'
-      path: '/gitea/callback'
-      fullPath: '/gitea/callback'
-      preLoaderRoute: typeof GiteaCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -508,7 +488,6 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
-  GiteaCallbackRoute: GiteaCallbackRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
   ZeropsNewRoute: ZeropsNewRoute,

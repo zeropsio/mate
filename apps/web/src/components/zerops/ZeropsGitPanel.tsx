@@ -35,7 +35,7 @@ import { cn } from "~/lib/utils";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsGitBlock } from "./ZeropsGitBlock";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
-import { MicroLabel, Pill, StatusDot } from "./primitives";
+import { MicroLabel, StatusDot } from "./primitives";
 
 /** One release of the group, as the tab shows it. */
 export interface ZeropsGitRelease {
@@ -139,8 +139,6 @@ export interface ZeropsGitPanelProps {
   readonly onRelease?: (() => void) | undefined;
   /** Makes a new tag listing an earlier release's commits (5.6). */
   readonly onRollBack?: ((release: ZeropsGitRelease) => void) | undefined;
-  /** Sends the person through Gitea's sign-in, which is what the rest needs. */
-  readonly onSignIn?: (() => void) | undefined;
   readonly className?: string;
 }
 
@@ -151,7 +149,6 @@ export function ZeropsGitPanel({
   onOpenRecipeChange,
   onRelease,
   onRollBack,
-  onSignIn,
   className,
 }: ZeropsGitPanelProps) {
   const offer = model.release;
@@ -161,7 +158,7 @@ export function ZeropsGitPanel({
         <Section label="Repositories">
           {model.blocks.length === 0 ? (
             <span className="text-xs text-muted-foreground">
-              This Mate has no code repository yet.
+              No code repository yet. The first service brings one.
             </span>
           ) : (
             <ul className="flex flex-col divide-y divide-border/50">
@@ -182,15 +179,8 @@ export function ZeropsGitPanel({
         </Section>
 
         {model.signedIn ? null : (
-          <Section
-            hint="Sign in to Gitea to see this project's environments, its releases and its pull requests."
-            label="The project"
-          >
-            {onSignIn === undefined ? null : (
-              <div className="flex">
-                <Pill label="Sign in to Gitea" onClick={onSignIn} />
-              </div>
-            )}
+          <Section label="The project">
+            <span className="text-xs text-muted-foreground">Signing you in to Gitea…</span>
           </Section>
         )}
 
