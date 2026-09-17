@@ -1,19 +1,21 @@
 /**
- * The left menu's Mates: every agent on the account that has somewhere to
- * live, under the project it belongs to — and, folded under each project,
- * the other environments with a way out to what runs in them.
+ * The left menu's projects, each as a timeline: the Mates, what each has
+ * waiting to land, and the environments the code travels to (D26).
  *
- * A Mate is a row here, the menu's own kind of row — the surface every
- * thread and project in this menu has, lit on hover and when it is the one
- * open — and a tall one, the way a messenger lists people: the face in its
- * colour wearing the conversation's state, the name, when the Mate last did
+ * A project reads top to bottom the way its code moves. First its Mates —
+ * the menu's own kind of row, lit on hover and when it is the one open, and
+ * a tall one, the way a messenger lists people: the face in its colour
+ * wearing the conversation's state, the name, when the Mate last did
  * something at the right edge, and under it what the Mate is on or was last
- * on. The state is the face's to show; no word repeats it. Nothing about the
- * environment: a Mate is always in a dev box, and which Zerops project that
- * is matters on the projects screen, not here. The environments are folded
- * because they are where you look, not where you work: a row each, the name
- * and its tag as a pill, and the one glyph that opens the public route (or
- * offers them).
+ * on. The state is the face's to show; no word repeats it. Under each Mate,
+ * its open pull requests: one row each, the number and the title, the checks
+ * as a dot, and *Merge* where Gitea allows it — folded behind a count once
+ * there are more than a handful (`pullRequestsFolded`). Then the pull
+ * requests that are nobody's Mate's, a person's own branch. Then the
+ * project's other environments, stage before production: the name, its tag
+ * as a pill, the last deploy as a dot, *Release* on the production when
+ * there is something to release, and the one glyph that opens the public
+ * route (or offers them).
  *
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
@@ -21,7 +23,8 @@
  * Grouping is `buildZeropsGroupTree`, the same derivation the projects screen
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
- * shared.
+ * shared; whose pull request a change is, and whether a list folds, is
+ * `projectFlow.ts`, so the projects screen agrees on that too (R5).
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -30,11 +33,17 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  deployWord,
   hasMate,
   mateEnvironmentsEmptyReason,
+  pullRequestsByMate,
+  pullRequestsFolded,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
+  sidebarPullRequestTitle,
+  type EnvironmentRow,
+  type FlowPullRequest,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsPublicRoute,
@@ -47,11 +56,15 @@ import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
-import { MateFace } from "./primitives";
+import { MateFace, StatusDot } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
+import { checkDotTone } from "./ZeropsGitBlock";
 import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 
 /** What the client holds per environment, when it holds anything. */
@@ -61,6 +74,20 @@ type RosterCandidate = ZeropsCandidate & {
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
+
+/**
+ * One project's flow, as the menu needs it: the open pull requests, each
+ * declared environment's row by its Zerops project, whether the production
+ * has something to release, and the two verbs — both run as the person, in
+ * Gitea, and the caller re-reads once they settle.
+ */
+export interface SidebarProjectFlow {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly environments: ReadonlyMap<string, EnvironmentRow>;
+  readonly releaseOffered: boolean;
+  readonly onMerge: (pull: FlowPullRequest) => void;
+  readonly onRelease: () => void;
+}
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
@@ -77,6 +104,12 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * connected to, because then nobody knows.
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
+  /**
+   * The project's flow, when the account has read it (`projectFlowContext`).
+   * Absent — signed out of Gitea, nothing read yet — the timeline keeps its
+   * shape and simply carries no pull request, no dot and no verb.
+   */
+  readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   readonly className?: string;
   /**
    * Nothing has been read for this organization yet: say nothing rather than
@@ -91,11 +124,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onBrowseProjects,
   activeProjectId,
   getActivity,
+  getFlow,
   unread = false,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set());
+  const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
 
   // Nothing read yet is not nothing: an empty state that shows for the first
   // second of every reload and then gives way to the roster sends the whole
@@ -143,42 +177,73 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   const view = buildZeropsGroupTree(everyEnvironment, { rank: rankZeropsCandidateForListing });
   const tints = assignCandidateMateTints(candidates);
 
-  const toggle = (groupId: string) => {
-    setOpenGroups((current) => {
+  const toggle = (key: string) => {
+    setOpenLists((current) => {
       const next = new Set(current);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
-  /** A project: its name, its Mates as rows, its other environments folded. Nothing when nobody lives in it. */
-  const section = (id: string, entries: ReadonlyArray<Entry<T>>, header: ReactNode) => {
-    const mates = entries.filter(({ item }) => hasMate(item));
-    if (mates.length === 0) return null;
+  /**
+   * A project as a timeline: its name, its Mates with what each has waiting,
+   * the pull requests that are nobody's Mate's, then its other environments.
+   * Nothing when nobody lives in it.
+   */
+  const section = (
+    id: string,
+    entries: ReadonlyArray<Entry<T>>,
+    header: ReactNode,
+    flow: SidebarProjectFlow | undefined,
+  ) => {
+    const mateEntries = entries.filter(({ item }) => hasMate(item));
+    if (mateEntries.length === 0) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
+    const grouped = pullRequestsByMate(
+      flow?.pullRequests ?? [],
+      mateEntries.map(({ item }) => item.project.id),
+    );
     return (
       <>
         {header}
-        {mates.map(({ item }) => (
-          <MateRow
-            active={item.project.id === activeProjectId}
-            activity={getActivity?.(item)}
-            candidate={item}
-            key={item.key}
-            onSelect={onSelect}
-            tint={tints.get(item.project.id) ?? "slate"}
-          />
-        ))}
-        {others.length > 0 ? (
-          <EnvironmentsFold
-            environments={others}
-            onToggle={() => {
-              toggle(id);
-            }}
-            open={openGroups.has(id)}
-          />
-        ) : null}
+        {mateEntries.map(({ item }) => {
+          const pulls = grouped.byMate.get(item.project.id) ?? [];
+          const listKey = `${id}:${item.project.id}`;
+          return (
+            <div className="flex flex-col gap-px" key={item.key}>
+              <MateRow
+                active={item.project.id === activeProjectId}
+                activity={getActivity?.(item)}
+                candidate={item}
+                onSelect={onSelect}
+                tint={tints.get(item.project.id) ?? "slate"}
+              />
+              {pulls.length === 0 || flow === undefined ? null : (
+                <PullRequestList
+                  onMerge={flow.onMerge}
+                  onToggle={() => {
+                    toggle(listKey);
+                  }}
+                  open={openLists.has(listKey)}
+                  pulls={pulls}
+                />
+              )}
+            </div>
+          );
+        })}
+        {grouped.others.length === 0 || flow === undefined ? null : (
+          <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-other-pull-requests">
+            {grouped.others.map((pull) => (
+              <PullRequestRow
+                key={`${pull.repository}#${pull.number}`}
+                onMerge={flow.onMerge}
+                pull={pull}
+              />
+            ))}
+          </ul>
+        )}
+        {others.length > 0 ? <EnvironmentRows environments={others} flow={flow} /> : null}
       </>
     );
   };
@@ -201,7 +266,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           data-zerops-group={group.groupId}
           key={group.groupId}
         >
-          {section(group.groupId, environments, <ProjectName group={group} />)}
+          {section(
+            group.groupId,
+            environments,
+            <ProjectName group={group} />,
+            getFlow?.(group.groupId),
+          )}
         </section>
       ))}
 
@@ -211,6 +281,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             "ungrouped",
             ungrouped,
             groups.length > 0 ? <ProjectName muted name="Ungrouped" /> : null,
+            undefined,
           )}
         </section>
       ) : null}
@@ -325,54 +396,148 @@ function MateRow<T extends RosterCandidate>({
   );
 }
 
-function EnvironmentsFold<T extends RosterCandidate>({
-  environments,
+/** The indent of everything that hangs under a Mate — its name's own left edge. */
+const UNDER_MATE_CLASS = "ps-10 pe-0.5";
+
+/**
+ * A Mate's open pull requests: the rows themselves while there are a few, a
+ * count that opens to them once there are more (`pullRequestsFolded`).
+ */
+function PullRequestList({
+  pulls,
   open,
   onToggle,
+  onMerge,
 }: {
-  readonly environments: ReadonlyArray<Entry<T>>;
+  readonly pulls: ReadonlyArray<FlowPullRequest>;
   readonly open: boolean;
   readonly onToggle: () => void;
+  readonly onMerge: (pull: FlowPullRequest) => void;
 }) {
-  const count = environments.length;
+  const folded = pullRequestsFolded(pulls.length);
   return (
-    <div className="flex flex-col gap-0.5" data-zerops-surface="sidebar-environments-fold">
-      <button
-        aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-foreground"
-        onClick={onToggle}
-        type="button"
-      >
-        <ChevronRightIcon
-          aria-hidden="true"
-          className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
-        />
-        <span>
-          {count} {count === 1 ? "environment" : "environments"}
-        </span>
-      </button>
-      {open ? (
-        <ul className="flex flex-col gap-0.5" data-zerops-surface="sidebar-environment-rows">
-          {environments.map(({ item, role }) => {
-            const tag = environmentRoleTag(role);
-            return (
-              <li
-                className="flex h-7 min-w-0 items-center gap-2 ps-[1.625rem] pe-0.5 text-xs"
-                key={item.project.id}
-              >
-                <span className="min-w-0 truncate text-muted-foreground">{item.project.name}</span>
-                {tag === null ? null : <ZeropsRoleTag label={tag} />}
-                <span className="ms-auto flex w-6 shrink-0 justify-center">
-                  <ZeropsRoutesMenu
-                    label={`Public access of ${item.project.name}`}
-                    routes={item.routes ?? []}
-                  />
-                </span>
-              </li>
-            );
-          })}
+    <div className="flex flex-col gap-px" data-zerops-surface="sidebar-pull-requests">
+      {folded ? (
+        <button
+          aria-expanded={open}
+          className={cn(
+            "flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+            UNDER_MATE_CLASS,
+          )}
+          onClick={onToggle}
+          type="button"
+        >
+          <ChevronRightIcon
+            aria-hidden="true"
+            className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
+          />
+          <span>{pulls.length} pull requests</span>
+        </button>
+      ) : null}
+      {!folded || open ? (
+        <ul className="flex flex-col gap-px">
+          {pulls.map((pull) => (
+            <PullRequestRow
+              key={`${pull.repository}#${pull.number}`}
+              onMerge={onMerge}
+              pull={pull}
+            />
+          ))}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One pull request: its number and title, the way into Gitea; the checks as
+ * a dot with its word in a tooltip; *Merge* where Gitea said the branch
+ * merges. A person's own pull request names them after the title — there is
+ * no room for a line.
+ */
+function PullRequestRow({
+  pull,
+  onMerge,
+}: {
+  readonly pull: FlowPullRequest;
+  readonly onMerge: (pull: FlowPullRequest) => void;
+}) {
+  const tone = checkDotTone({ checks: pull.checks });
+  const title = sidebarPullRequestTitle(pull);
+  return (
+    <li
+      className={cn("flex h-7 min-w-0 items-center gap-2 text-xs", UNDER_MATE_CLASS)}
+      data-zerops-surface="sidebar-pull-request"
+    >
+      {pull.url === undefined ? (
+        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
+      ) : (
+        <a
+          className="min-w-0 flex-1 truncate rounded-sm text-sidebar-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          href={pull.url}
+          rel="noopener"
+          target="_blank"
+        >
+          {title}
+        </a>
+      )}
+      {tone === undefined || pull.checkWord === undefined ? null : (
+        <Tooltip>
+          <TooltipTrigger render={<StatusDot dotOnly label={pull.checkWord} tone={tone} />} />
+          <TooltipPopup side="right">{pull.checkWord}</TooltipPopup>
+        </Tooltip>
+      )}
+      {pull.mergeable ? <ZeropsMateVerb label="Merge" onClick={() => onMerge(pull)} /> : null}
+    </li>
+  );
+}
+
+/**
+ * The project's other environments, stage before production — the stops the
+ * code travels to. Each: the name, its tag, the last deploy as a dot when the
+ * flow knows it, *Release* on the production when there is something to
+ * release, and the glyph that opens the public route.
+ */
+function EnvironmentRows<T extends RosterCandidate>({
+  environments,
+  flow,
+}: {
+  readonly environments: ReadonlyArray<Entry<T>>;
+  readonly flow: SidebarProjectFlow | undefined;
+}) {
+  return (
+    <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-environment-rows">
+      {environments.map(({ item, role }) => {
+        const tag = environmentRoleTag(role);
+        const declared = flow?.environments.get(item.project.id);
+        const tone = declared === undefined ? undefined : deployRowTone(declared.tone);
+        const word = declared === undefined ? undefined : deployWord(declared.tone);
+        const release =
+          flow !== undefined && flow.releaseOffered && declared?.tier === "production";
+        return (
+          <li
+            className="flex h-7 min-w-0 items-center gap-2 ps-[1.625rem] pe-0.5 text-xs"
+            data-zerops-surface="sidebar-environment"
+            key={item.project.id}
+          >
+            <span className="min-w-0 truncate text-muted-foreground">{item.project.name}</span>
+            {tag === null ? null : <ZeropsRoleTag label={tag} />}
+            {tone === undefined || word === undefined ? null : (
+              <Tooltip>
+                <TooltipTrigger render={<StatusDot dotOnly label={word} tone={tone} />} />
+                <TooltipPopup side="right">{word}</TooltipPopup>
+              </Tooltip>
+            )}
+            {release ? <ZeropsMateVerb label="Release" onClick={flow.onRelease} /> : null}
+            <span className="ms-auto flex w-6 shrink-0 justify-center">
+              <ZeropsRoutesMenu
+                label={`Public access of ${item.project.name}`}
+                routes={item.routes ?? []}
+              />
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

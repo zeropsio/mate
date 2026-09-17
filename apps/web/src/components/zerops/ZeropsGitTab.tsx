@@ -38,7 +38,7 @@ import { useZeropsGitForge } from "../../zerops/useZeropsGitForge";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
-import { ZeropsGitPanel, type ZeropsGitPanelModel } from "./ZeropsGitPanel";
+import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 
 /**
@@ -89,8 +89,6 @@ export interface ZeropsGitTabProps {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /** Whether this Mate is the viewer's own (D11). */
   readonly isOwner: boolean;
-  /** The group half of the panel, which the caller assembles. */
-  readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn" | "signInTrouble">;
   readonly signedIn: boolean;
   /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
   readonly signInTrouble?: string | undefined;
@@ -99,12 +97,7 @@ export interface ZeropsGitTabProps {
   readonly onCreatePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
   /** Merges it in Gitea as the person; the forge is read again once it settles. */
   readonly onMergePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
-  readonly onRelease?: (() => void) | undefined;
-  readonly onRollBack?: ZeropsGitPanelProps["onRollBack"];
-  readonly onOpenRecipeChange?: ZeropsGitPanelProps["onOpenRecipeChange"];
 }
-
-type ZeropsGitPanelProps = Parameters<typeof ZeropsGitPanel>[0];
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const environmentId = props.threadRef?.environmentId;
@@ -231,21 +224,11 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             />
           ))}
       <ZeropsGitPanel
-        model={{
-          ...props.group,
-          blocks,
-          signedIn: props.signedIn,
-          signInTrouble: props.signInTrouble,
-        }}
+        model={{ blocks, signedIn: props.signedIn, signInTrouble: props.signInTrouble }}
         renderBlockAction={renderBlockAction}
         {...(props.onOpenPullRequest === undefined
           ? {}
           : { onOpenPullRequest: props.onOpenPullRequest })}
-        {...(props.onOpenRecipeChange === undefined
-          ? {}
-          : { onOpenRecipeChange: props.onOpenRecipeChange })}
-        {...(props.onRelease === undefined ? {} : { onRelease: props.onRelease })}
-        {...(props.onRollBack === undefined ? {} : { onRollBack: props.onRollBack })}
       />
     </>
   );

@@ -72,7 +72,6 @@ import {
   botDisplayName,
   buildZeropsGroupTree,
   deployWord,
-  environmentRow,
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
@@ -81,7 +80,8 @@ import {
   hasMate,
   planEnvironmentCreation,
   canWriteRegistry,
-  pullRequestRow,
+  pullRequestLineWith,
+  type FlowPullRequest,
   registerMateVerb,
   resolveMateRegistration,
   readZeropsGroupTags,
@@ -122,17 +122,14 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateInGroup } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
-import { giteaClientFor, useGiteaSession } from "~/zerops/giteaSession";
+import { giteaClientFor } from "~/zerops/giteaSession";
 import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import { useZeropsGroupDeploys, type ZeropsDeployGroup } from "~/zerops/useZeropsGroupDeploys";
-import {
-  readZeropsResourceOnce,
-  useZeropsDeployedVersionReader,
-} from "~/zerops/useZeropsDeployedVersion";
-import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
+import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
+import { deployRowTone, releaseRowTone } from "./ZeropsProjectRow.logic";
+import { checkDotTone } from "./ZeropsGitBlock";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
@@ -1412,48 +1409,11 @@ function ZeropsProjectsContent() {
     enabled: status === "signed-in",
   });
 
-  /**
-   * Which Zerops projects each group holds, and what runtime services are in
-   * them — the account's half of the environment rows. The group repo's half
-   * (which of them an environment declares, and what feeds it) is the hook's.
-   */
-  const deployGroups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
-    () =>
-      registryState.registry.groups.flatMap((entry) => {
-        const tree = groupTree.groups.find(({ group }) => group.groupId === entry.groupId);
-        if (tree === undefined) return [];
-        return [
-          {
-            groupId: entry.groupId,
-            slug: entry.slug,
-            projects: tree.environments.map(({ item }) => ({
-              projectId: item.project.id,
-              name: item.project.name,
-              services: item.services?.deployable ?? [],
-            })),
-          },
-        ];
-      }),
-    [groupTree.groups, registryState.registry.groups],
-  );
-
-  const readDeployedVersion = useZeropsDeployedVersionReader();
-  // The page reads the group repo as the person, so it signs in to Gitea
-  // itself (D21) — until 0.11.13 only a Git tab did, and the page showed no
-  // environment, pull request or tier to add until one had been opened.
-  const throwawayPlatform = useMemo(() => zeropsThrowawayPlatform(client), [client]);
-  const { signedIn: giteaSignedIn } = useGiteaSession({
-    giteaOrigin,
-    brokerOrigin: accountGitea?.state.brokerUrl,
-    clientId: activeOrganization?.id,
-    platform: throwawayPlatform,
-  });
-  const groupDeploys = useZeropsGroupDeploys({
-    groups: deployGroups,
-    giteaOrigin,
-    readVersion: readDeployedVersion,
-    enabled: status === "signed-in" && giteaSignedIn,
-  });
+  // Every group's flow — its declared environments and what they run, what
+  // is waiting to land, what was released — is read once for the account
+  // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
+  const projectFlow = useZeropsProjectFlow();
+  const groupDeploys = projectFlow.flows;
 
   /**
    * The environment row of one Zerops project, when some group declares it.
@@ -1464,12 +1424,78 @@ function ZeropsProjectsContent() {
     (projectId: string) => {
       for (const state of groupDeploys.values()) {
         const found = state.environments.find((entry) => entry.projectId === projectId);
-        if (found !== undefined) return environmentRow(found);
+        if (found !== undefined) return found;
       }
       return undefined;
     },
     [groupDeploys],
   );
+
+  /** Each Mate's name, for a pull request's line — the bot's, the project's when it has none. */
+  const mateNames = useMemo(
+    () =>
+      new Map(
+        groupTree.groups.flatMap(({ environments }) =>
+          environments.map(({ item }) => {
+            const tags = readZeropsGroupTags(item.project.tagList);
+            return [
+              item.project.id,
+              botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            ] as const;
+          }),
+        ),
+      ),
+    [groupTree.groups],
+  );
+
+  /**
+   * Why *Release* is not offered, when a production is declared and it is
+   * not: a verb that is missing says nothing (`release.ts`).
+   */
+  const releaseGateLine = (group: ZeropsGroup) => {
+    const flow = groupDeploys.get(group.groupId);
+    if (flow === undefined || flow.release.gate.allowed) return null;
+    if (!flow.environments.some((entry) => entry.tier === "production")) return null;
+    return (
+      <li
+        className="py-1.5 text-xs text-muted-foreground"
+        data-zerops-surface="release-gate"
+        key={`release-gate-${group.groupId}`}
+      >
+        {flow.release.gate.reason}
+      </li>
+    );
+  };
+
+  /** One pull request's row, the same on both ends of the list. */
+  const pullRequestRowOf = (group: ZeropsGroup, pull: FlowPullRequest) => {
+    const slug = groupDeploys.get(group.groupId)?.slug;
+    const tone = checkDotTone(pull);
+    return (
+      <ZeropsPullRequestRow
+        action={
+          pull.mergeable && slug !== undefined ? (
+            <ZeropsMateVerb
+              label="Merge"
+              onClick={() => {
+                void projectFlow.mergePullRequest(slug, pull);
+              }}
+            />
+          ) : undefined
+        }
+        key={`pull-${group.groupId}-${pull.repository}-${pull.number}`}
+        line={pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""))}
+        status={
+          tone === undefined || pull.checkWord === undefined ? undefined : (
+            <StatusDot label={pull.checkWord} tone={tone} />
+          )
+        }
+        tag={pull.kind === "recipe" ? "recipe" : "pr"}
+        title={pull.title}
+        url={pull.url}
+      />
+    );
+  };
 
   /**
    * The one line a group says about itself: that the broker has not finished
@@ -1835,7 +1861,7 @@ function ZeropsProjectsContent() {
     [candidates, declaredByGroup, registryState.registry],
   );
   useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && giteaSignedIn && !isLoading && !creationRunning,
+    enabled: status === "signed-in" && projectFlow.signedIn && !isLoading && !creationRunning,
     client,
     clientId: activeOrganization?.id,
     giteaOrigin,
@@ -2029,10 +2055,26 @@ function ZeropsProjectsContent() {
           const declared = declaredEnvironment(candidate.project.id);
           const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
           const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
+          // The production's one verb: Release, when the flow says there is
+          // something to release (`release.ts`). The way back to an earlier
+          // release sits on the release rows below.
+          const releaseFor =
+            declared?.tier === "production" &&
+            tags.groupId !== undefined &&
+            groupDeploys.get(tags.groupId)?.release.gate.allowed === true
+              ? tags.groupId
+              : undefined;
           return (
             <ZeropsEnvironmentRow
               action={
-                action.kind === "set-up-mate" ? (
+                releaseFor !== undefined ? (
+                  <ZeropsMateVerb
+                    label="Release"
+                    onClick={() => {
+                      void projectFlow.release(releaseFor);
+                    }}
+                  />
+                ) : action.kind === "set-up-mate" ? (
                   <ZeropsMateVerb
                     disabled={busy}
                     label={busy ? "Setting up…" : action.label}
@@ -2079,28 +2121,47 @@ function ZeropsProjectsContent() {
             />
           );
         }}
+        renderWaitingRows={(group: ZeropsGroup) =>
+          (groupDeploys.get(group.groupId)?.pullRequests ?? [])
+            .filter((pull) => pull.kind === "code")
+            .map((pull) => pullRequestRowOf(group, pull))
+        }
         renderGroupRows={(group: ZeropsGroup) => (
           <>
-            {(groupDeploys.get(group.groupId)?.pullRequests ?? []).map((pull) => {
-              const row = pullRequestRow(pull);
+            {releaseGateLine(group)}
+            {/* The releases, newest first, each with the broker's word and,
+                on an earlier approved one, the way back to it. */}
+            {(groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {
+              const tone = releaseRowTone(release.verdict);
               return (
-                <ZeropsPullRequestRow
+                <ZeropsEnvironmentRow
                   action={
-                    pull.html_url === undefined ? undefined : (
+                    release.rollBack ? (
                       <ZeropsMateVerb
-                        label="Review"
+                        label="Roll back to this"
                         onClick={() => {
-                          window.open(pull.html_url, "_blank", "noopener");
+                          void projectFlow.rollBack(group.groupId, release.tag);
                         }}
                       />
+                    ) : undefined
+                  }
+                  key={`release-${group.groupId}-${release.tag}`}
+                  name={release.tag}
+                  status={
+                    tone === undefined || release.word === undefined ? undefined : (
+                      <StatusDot label={release.word} tone={tone} />
                     )
                   }
-                  key={`pull-${group.groupId}-${row.number}`}
-                  line={row.line}
-                  title={row.title}
+                  summary={release.line}
+                  tag="release"
                 />
               );
             })}
+            {/* The recipe changes waiting on somebody: last, under the
+                environments they would change. */}
+            {(groupDeploys.get(group.groupId)?.pullRequests ?? [])
+              .filter((pull) => pull.kind === "recipe")
+              .map((pull) => pullRequestRowOf(group, pull))}
             {/* The tiers the recipe offers and the group lacks: the rows that
                 ask. The verb is the same one the group's foot offered, moved
                 up to where the answer will sit; it waits for the first Mate

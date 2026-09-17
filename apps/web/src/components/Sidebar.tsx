@@ -196,8 +196,9 @@ import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
-import { SidebarZeropsTree } from "./zerops/SidebarZeropsTree";
+import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
+import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -1708,6 +1709,28 @@ export default function Sidebar() {
     health: zeropsHealth,
     enabled: zeropsSignedIn,
   });
+  // Each project's flow — what its Mates have waiting, what its environments
+  // run, whether there is something to release — read once for the account
+  // (`ZeropsProjectFlowProvider`) and drawn under the project as a timeline.
+  const zeropsProjectFlow = useZeropsProjectFlowOptional();
+  const zeropsSidebarFlow = useCallback(
+    (groupId: string): SidebarProjectFlow | undefined => {
+      const flow = zeropsProjectFlow?.flows.get(groupId);
+      if (zeropsProjectFlow === null || flow === undefined) return undefined;
+      return {
+        pullRequests: flow.pullRequests,
+        environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
+        releaseOffered: flow.release.gate.allowed,
+        onMerge: (pull) => {
+          void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
+        },
+        onRelease: () => {
+          void zeropsProjectFlow.release(groupId);
+        },
+      };
+    },
+    [zeropsProjectFlow],
+  );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -3718,6 +3741,7 @@ export default function Sidebar() {
               className="mb-2"
               unread={!zeropsCandidatesRead}
               onBrowseProjects={navigateToZeropsProjects}
+              getFlow={zeropsSidebarFlow}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined
                   ? undefined

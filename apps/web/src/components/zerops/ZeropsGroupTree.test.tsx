@@ -390,6 +390,24 @@ describe("a group's other rows", () => {
   });
 });
 
+describe("what the group's Mates have waiting", () => {
+  const waiting = { renderWaitingRows: () => <li data-test-waiting="true">appdev #4</li> };
+
+  it("puts it before the environments, at the head of the same list", () => {
+    const html = render([CRM_DEV, CRM_STAGE], { ...waiting });
+    expect(html.indexOf('data-zerops-surface="environment-rows"')).toBeLessThan(
+      html.indexOf('data-test-waiting="true"'),
+    );
+    expect(html.indexOf('data-test-waiting="true"')).toBeLessThan(
+      html.indexOf('data-test-environment="crm-stage"'),
+    );
+  });
+
+  it("opens the list for a group whose only rows are those", () => {
+    expect(render([CRM_DEV], waiting)).toContain('data-test-waiting="true"');
+  });
+});
+
 describe("roleOffered", () => {
   it("keeps a role's add verb off the group's foot when its row carries it", () => {
     const html = render([CRM_DEV], {

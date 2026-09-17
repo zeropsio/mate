@@ -2,6 +2,7 @@ import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CloudIcon,
+  GitPullRequestIcon,
   PanelLeftCloseIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -115,6 +116,9 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             : null,
   });
   const onZeropsProjects = useLocation({ select: (location) => location.pathname === "/zerops" });
+  // The Gitea overview is a root of its own, like the projects screen: every
+  // repository the person can reach and what is open on it (D26).
+  const onGitea = useLocation({ select: (location) => location.pathname === "/gitea" });
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -128,6 +132,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const handleZeropsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/zerops" });
+  }, [closeMobileSidebar, navigate]);
+
+  const handleGiteaClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/gitea" });
   }, [closeMobileSidebar, navigate]);
 
   const handleUsageClick = useCallback(() => {
@@ -167,6 +176,12 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<CloudIcon />}
             label="Zerops"
             onClick={handleZeropsClick}
+          />
+          <SidebarUtilityItem
+            active={onGitea}
+            icon={<GitPullRequestIcon />}
+            label="Gitea"
+            onClick={handleGiteaClick}
           />
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}

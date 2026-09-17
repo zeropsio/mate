@@ -1,9 +1,10 @@
+import type { EnvironmentRow, FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { SidebarZeropsTree } from "./SidebarZeropsTree";
+import { SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 
 function candidate(
   id: string,
@@ -143,22 +144,27 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain("bg-sidebar-row-active");
   });
 
-  it("folds the other environments under the project and counts them, the Mate's own left out", () => {
+  it("lists the other environments after the Mates as the timeline's stops, the Mate's own left out", () => {
     const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    expect(html).toContain('data-zerops-surface="sidebar-environments-fold"');
-    expect(html).toContain("2 environments");
-    // Folded by default: the rows are not in the markup until opened.
-    expect(html).not.toContain('data-zerops-surface="sidebar-environment-rows"');
-    expect(html).toContain('aria-expanded="false"');
-    // A project whose only environment is its Mate's has nothing to fold.
-    expect(render([CRM_DEV])).not.toContain("sidebar-environments-fold");
+    expect(html).toContain('data-zerops-surface="sidebar-environment-rows"');
+    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(2);
+    // Stage before production — the order the code travels — and after the Mate.
+    expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
+      html.indexOf("crm-stage"),
+    );
+    expect(html.indexOf("crm-stage")).toBeLessThan(html.indexOf("crm-prod"));
+    // Nothing to unfold: the stops are the menu's, not a count to click open.
+    expect(html).not.toContain("2 environments");
+    expect(html).not.toContain("aria-expanded");
+    // A project whose only environment is its Mate's has no stops to list.
+    expect(render([CRM_DEV])).not.toContain("sidebar-environment-rows");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
     const prodWithContainer = candidate("crm-prod", ["mate:g:aaa", "mate:role:prod"], "connected");
     const html = render([CRM_DEV, prodWithContainer]);
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
-    expect(html).toContain("1 environment");
+    expect(html.match(/data-zerops-surface="sidebar-environment"/gu)).toHaveLength(1);
   });
 
   it("gives two Mates two colours", () => {
@@ -242,6 +248,129 @@ describe("SidebarZeropsTree", () => {
     const html = render([CRM_DEV, LOOSE], { activeProjectId: "loose" });
     expect(html).toContain('aria-current="true"');
     expect(html.match(/aria-current="true"/gu)).toHaveLength(1);
+  });
+});
+
+describe("the project's flow under it", () => {
+  const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPullRequest => ({
+    repository: "appdev",
+    number,
+    title: `Change ${number}`,
+    kind: "code",
+    mateProjectId: "crm-dev",
+    author: "mate-crm-dev",
+    url: `https://gitea.example/crm/appdev/pulls/${number}`,
+    checks: "passing",
+    checkWord: "Passing",
+    mergeable: true,
+    headSha: "abc",
+    baseBranch: "main",
+    line: `appdev #${number}`,
+    updatedAt: `2026-09-17T1${number}:00:00Z`,
+    ...overrides,
+  });
+  const stageRow: EnvironmentRow = {
+    kind: "environment",
+    projectId: "crm-stage",
+    name: "stage",
+    tier: "stage",
+    source: "main",
+    commit: "3f9c1b2",
+    line: "main · 3f9c1b2",
+    tone: "good",
+  };
+  const productionRow: EnvironmentRow = {
+    ...stageRow,
+    projectId: "crm-prod",
+    name: "production",
+    tier: "production",
+    source: "release",
+    tone: "neutral",
+  };
+  const flow = (overrides: Partial<SidebarProjectFlow> = {}): SidebarProjectFlow => ({
+    pullRequests: [pull(4)],
+    environments: new Map([
+      ["crm-stage", stageRow],
+      ["crm-prod", productionRow],
+    ]),
+    releaseOffered: true,
+    onMerge: () => {},
+    onRelease: () => {},
+    ...overrides,
+  });
+  const withFlow = (candidates: ReadonlyArray<ZeropsCandidate>, state = flow()) =>
+    render(candidates, { getFlow: () => state });
+
+  it("hangs the Mate's open pull requests under it, before the environments", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request"');
+    expect(html).toContain("#4 Change 4");
+    expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
+      html.indexOf("#4 Change 4"),
+    );
+    expect(html.indexOf("#4 Change 4")).toBeLessThan(html.indexOf("crm-stage"));
+    // The way into Gitea is the title; the checks are a dot, not a word.
+    expect(html).toContain('href="https://gitea.example/crm/appdev/pulls/4"');
+    expect(html).toContain('aria-label="Passing"');
+    expect(html).not.toContain(">Passing</span>");
+  });
+
+  it("offers Merge only where Gitea said the branch merges", () => {
+    expect(withFlow([CRM_DEV, CRM_STAGE])).toContain('data-zerops-primary-action="Merge"');
+    expect(
+      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+    ).not.toContain('data-zerops-primary-action="Merge"');
+  });
+
+  it("folds a Mate's pull requests behind a count once there are more than three", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({ pullRequests: [pull(1), pull(2), pull(3), pull(4)] }),
+    );
+    expect(html).toContain("4 pull requests");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
+    // Three read at a glance.
+    const three = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({ pullRequests: [pull(1), pull(2), pull(3)] }),
+    );
+    expect(three).not.toContain("pull requests");
+    expect(three.match(/data-zerops-surface="sidebar-pull-request"/gu)).toHaveLength(3);
+  });
+
+  it("lists a person's own pull request after the Mates, never under one", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({
+        pullRequests: [
+          pull(7, { mateProjectId: undefined, author: "ada", line: "appdev #7 · ada" }),
+        ],
+      }),
+    );
+    expect(html).toContain('data-zerops-surface="sidebar-other-pull-requests"');
+    expect(html).toContain("#7 Change 7 · ada");
+    expect(html).not.toContain('data-zerops-surface="sidebar-pull-requests"');
+  });
+
+  it("gives each environment its last deploy as a dot, and the production Release when offered", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    const stage = html.slice(html.indexOf("crm-stage"), html.indexOf("crm-prod"));
+    expect(stage).toContain('aria-label="Deployed"');
+    expect(stage).not.toContain("Release");
+    const production = html.slice(html.indexOf("crm-prod"));
+    expect(production).toContain('data-zerops-primary-action="Release"');
+    expect(withFlow([CRM_DEV, CRM_STAGE, CRM_PROD], flow({ releaseOffered: false }))).not.toContain(
+      "Release",
+    );
+  });
+
+  it("keeps the timeline's shape with nothing read: no row, no dot, no verb", () => {
+    const html = render([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html).toContain('data-zerops-surface="sidebar-environment-rows"');
+    expect(html).not.toContain("sidebar-pull-request");
+    expect(html).not.toContain("status-dot");
+    expect(html).not.toContain("Release");
   });
 });
 

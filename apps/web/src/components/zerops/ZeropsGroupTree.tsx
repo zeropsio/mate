@@ -58,11 +58,18 @@ export interface ZeropsGroupTreeProps<T> {
   /** A tool's card — a `ZeropsToolCard`, a different question from an environment's. */
   readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
   /**
-   * Rows of a group that are not one of its Zerops projects — today the open
-   * pull requests on its group repo, which are changes to what its
-   * environments are made of (`groupRows.ts`). They land at the end of the
-   * same list the environments are in, because they are read in the same
-   * pass: who you talk to, where the code runs, what is waiting to change.
+   * What the group's Mates have waiting to land — their open pull requests
+   * (`projectFlow.ts`) — as rows at the head of the same list the
+   * environments are in: who you talk to, what is waiting, where the code
+   * runs.
+   */
+  readonly renderWaitingRows?: (group: ZeropsGroup) => ReactNode;
+  /**
+   * Rows of a group that are not one of its Zerops projects — its releases,
+   * the open pull requests on its group repo (changes to what its
+   * environments are made of), the tiers it lacks. They land at the end of
+   * the same list the environments are in, because they are read in the same
+   * pass: where the code runs, what was released, what is waiting to change.
    */
   readonly renderGroupRows?: (group: ZeropsGroup) => ReactNode;
   /** Absent hides every create affordance — used where the tree is read-only. */
@@ -190,6 +197,7 @@ function Members<T>({
   isMate,
   renderMate,
   renderEnvironment,
+  leadingRows,
   extraRows,
 }: {
   readonly entries: ReadonlyArray<{
@@ -200,11 +208,14 @@ function Members<T>({
   readonly isMate: (item: T) => boolean;
   readonly renderMate: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
+  /** What is waiting to land, before the environments. */
+  readonly leadingRows?: ReactNode;
   /** The group's rows that are not environments, after them. */
   readonly extraRows?: ReactNode;
 }) {
   const mates = entries.filter(({ item }) => isMate(item));
   const others = entries.filter(({ item }) => !isMate(item));
+  const hasRows = (rows: ReactNode) => rows !== undefined && rows !== null;
   return (
     <>
       {mates.length > 0 ? (
@@ -214,11 +225,12 @@ function Members<T>({
           ))}
         </div>
       ) : null}
-      {others.length > 0 || (extraRows !== undefined && extraRows !== null) ? (
+      {others.length > 0 || hasRows(leadingRows) || hasRows(extraRows) ? (
         <ul
           className="flex flex-col divide-y divide-border/50"
           data-zerops-surface="environment-rows"
         >
+          {leadingRows}
           {others.map(({ item, role }) => (
             <Fragment key={getKey(item)}>{renderEnvironment(item, role)}</Fragment>
           ))}
@@ -236,6 +248,7 @@ export function ZeropsGroupTree<T>({
   renderMate,
   renderEnvironment,
   renderTool,
+  renderWaitingRows,
   renderGroupRows,
   onCreateEnvironment,
   onCreateTool,
@@ -250,6 +263,7 @@ export function ZeropsGroupTree<T>({
   const members = (
     entries: ReadonlyArray<{ readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }>,
     extraRows?: ReactNode,
+    leadingRows?: ReactNode,
   ) => (
     <Members
       entries={entries}
@@ -257,6 +271,7 @@ export function ZeropsGroupTree<T>({
       isMate={isMate}
       renderEnvironment={renderEnvironment}
       renderMate={renderMate}
+      {...(leadingRows === undefined ? {} : { leadingRows })}
       {...(extraRows === undefined ? {} : { extraRows })}
     />
   );
@@ -302,7 +317,7 @@ export function ZeropsGroupTree<T>({
                 <span className="text-xs text-muted-foreground">{groupLine?.(group)}</span>
               ) : null}
             </div>
-            {members(environments, renderGroupRows?.(group))}
+            {members(environments, renderGroupRows?.(group), renderWaitingRows?.(group))}
             {missing.length > 0 ? (
               <div
                 className="-ms-1.5 flex flex-wrap items-center gap-1"

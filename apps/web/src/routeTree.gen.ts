@@ -14,6 +14,7 @@ import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as GiteaSigninRouteImport } from './routes/gitea-signin'
+import { Route as GiteaRouteImport } from './routes/gitea'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
@@ -54,6 +55,11 @@ const PairRoute = PairRouteImport.update({
 const GiteaSigninRoute = GiteaSigninRouteImport.update({
   id: '/gitea-signin',
   path: '/gitea-signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GiteaRoute = GiteaRouteImport.update({
+  id: '/gitea',
+  path: '/gitea',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -139,6 +145,7 @@ const ChatEnvironmentIdThreadIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/gitea': typeof GiteaRoute
   '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -160,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRoutesByTo {
+  '/gitea': typeof GiteaRoute
   '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -184,6 +192,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/gitea': typeof GiteaRoute
   '/gitea-signin': typeof GiteaSigninRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/gitea'
     | '/gitea-signin'
     | '/pair'
     | '/settings'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/gitea'
     | '/gitea-signin'
     | '/pair'
     | '/settings'
@@ -253,6 +264,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/gitea'
     | '/gitea-signin'
     | '/pair'
     | '/settings'
@@ -277,6 +289,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  GiteaRoute: typeof GiteaRoute
   GiteaSigninRoute: typeof GiteaSigninRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       path: '/gitea-signin'
       fullPath: '/gitea-signin'
       preLoaderRoute: typeof GiteaSigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gitea': {
+      id: '/gitea'
+      path: '/gitea'
+      fullPath: '/gitea'
+      preLoaderRoute: typeof GiteaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -483,6 +503,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  GiteaRoute: GiteaRoute,
   GiteaSigninRoute: GiteaSigninRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,

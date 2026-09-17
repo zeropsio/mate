@@ -20,6 +20,7 @@ import {
   type ZeropsEnvironmentServices,
   type ZeropsGiteaState,
   type GroupRowTone,
+  type ReleaseVerdict,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -439,6 +440,20 @@ export function environmentSummaryLine(
  * without a word is exactly what rule R5 forbids. A row that has nothing to
  * say about its deploy says nothing.
  */
+/** The broker's verdict on a release as a dot's tone; none before it spoke. */
+export function releaseRowTone(verdict: ReleaseVerdict): ServiceStatusToneId | undefined {
+  switch (verdict) {
+    case "approved":
+      return "ok";
+    case "refused":
+      return "failed";
+    case "pending":
+      return "busy";
+    case "unknown":
+      return undefined;
+  }
+}
+
 export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefined {
   switch (tone) {
     case "good":

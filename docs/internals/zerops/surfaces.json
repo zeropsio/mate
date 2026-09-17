@@ -224,7 +224,7 @@
         },
         {
           "action": "Select a service, node, or run a query",
-          "reverse": "none: browsing is read-only in this slice \u2014 there is nothing to undo, only a different selection to make."
+          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
         }
       ],
       "docs": {
@@ -717,7 +717,9 @@
         "packages/client-runtime/src/zerops/provisioning.ts",
         "packages/client-runtime/src/zerops/publicRoutes.ts",
         "packages/client-runtime/src/zerops/registrationHandoff.ts",
-        "packages/client-runtime/src/zerops/tools.ts"
+        "packages/client-runtime/src/zerops/tools.ts",
+        "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+        "packages/client-runtime/src/zerops/projectFlow.ts"
       ],
       "entryPoints": [
         {
@@ -833,7 +835,51 @@
         "apps/web/src/zerops/useProjectTopology.test.ts",
         "packages/client-runtime/src/zerops/data/inventory.test.ts",
         "packages/client-runtime/src/zerops/data/projection.test.ts",
-        "packages/client-runtime/src/zerops/identityExchange.test.ts"
+        "packages/client-runtime/src/zerops/identityExchange.test.ts",
+        "packages/client-runtime/src/zerops/projectFlow.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-gitea",
+      "title": "Gitea overview",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
+        "packages/client-runtime/src/zerops/giteaOverview.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/gitea"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Gitea (the footer)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops/giteaOverview"],
+      "reverseStates": [
+        {
+          "action": "Open a repository or a pull request in Gitea",
+          "reverse": "none: navigation, in a new tab."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Gitea overview yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsGiteaPage.test.tsx",
+        "packages/client-runtime/src/zerops/giteaOverview.test.ts"
       ],
       "captures": []
     },
