@@ -55,7 +55,7 @@ Gitea org imperial-titan
 | The app — web, desktop, mobile | this repo (`zeropsio/mate`): `apps/web/src/zerops`, `apps/web/src/components/zerops`, `packages/client-runtime/src/zerops`                                  | mate **0.11.14**                                                                                                                                             | sign-in, the projects page, _New project_, the registry, throwaways, Gitea as the person, _Add Mate_, _Add stage_, _Add production_, _Release_, the Git tab                          |
 | The Mate server                | `apps/server/src/zerops`                                                                                                                                    | mate 0.11.14 (the turn-end refresh of every checkout, 0.11.12; otherwise unchanged since 0.11.5), installed into every Mate by zcp from the release manifest | the door (`zerops-throwaway`), the membership watch, the agent-signer gate, the checkout side of the Git tab                                                                         |
 | The role function              | `packages/shared/src/zeropsRoles.ts` and `gitea-mate/internal/roles`; `zeropsRoles.fixtures.json` byte-identical in both                                    | with each                                                                                                                                                    | one rule for the list, the door and the broker                                                                                                                                       |
-| zcp                            | `../zcp`                                                                                                                                                    | zcp **v9.176.0**                                                                                                                                             | in every Mate: the three Gitea variables from the live env store, a repository per dev pair, the pull request, the recipe pull request, the `.gitea` workflow, Gitea as a forge kind |
+| zcp                            | `../zcp`                                                                                                                                                    | zcp **v9.179.1** (tagged 2026-09-17 17:1xZ; a Mate boots the latest release, a running one keeps its build — `update.Once` caches a day)                     | in every Mate: the three Gitea variables from the live env store, a repository per dev pair, the pull request, the recipe pull request, the `.gitea` workflow, Gitea as a forge kind |
 | The broker; Gitea on Zerops    | `../gitea-mate` (`zeropsio/gitea-mate`): `cmd/broker`, `gitea/` (app.ini, init scripts), `import/` (what the app sends, a group's runner), `actions/deploy` | gitea-mate **v3.5**; the import builds both code services from `main`, so a push to `main` is the release and a tag is a marker                              | the registry, the rights loop, Mate access, a person's Gitea token, OIDC, deploys, the runner pool                                                                                   |
 
 The app carries a byte-identical copy of `gitea-mate/import/gitea-project.yaml`
@@ -98,8 +98,10 @@ driven end to end_, _The backbone's first live run_, _A real Mate through the ba
    recorded and the composer opens for them alone. The Git tab signs them in to Gitea by itself
    (D21, 0.11.6; a refusal said in Gitea's words, 0.11.8).
 5. **zcp** reads the variables from the live env store, gets each dev pair a repository from the
-   broker, pushes the pair's branch, opens its pull request, and proposes the recipe (three tiers)
-   to the group repo as a pull request from its fork, which the broker merges on its next pass (D23).
+   broker, and proposes the recipe (three tiers) to the group repo as a pull request from its fork,
+   which the broker merges on its next pass (D23 — ten seconds on the owner's Todo run). The first
+   deploy onto the pair's stage half commits the dev half's tree, pushes the pair's branch and opens
+   its pull request (D25, zcp v9.179.1; before it the agent pushed only when told to).
 6. **Add stage**: a project from the Stage tier, `environments.yaml` declared, the broker's token
    widened; a merge into `main` deploys through the webhook in 15 s and serves in under three
    minutes; a workflow's deploy through `actions/deploy@v1` with the job's token, the group's runner
@@ -194,6 +196,14 @@ ledger row or a test.
 - **D20 — who delivers a Mate's Gitea access** (2026-09-17). The broker's rights loop, for every
   registered Mate, into its `zcp` service's variables; the app grants the broker the Mate project at
   registration and asks it for nothing. `POST /mate/credential` is gone.
+- **D25 — delivery is the stage deploy** (2026-09-17, the owner, of a prompt that had to say
+  "deliver it with a git-push deploy": "this is fucking unnatural btw, no person is ever going to
+  say this"). A deploy onto a wired pair's stage half is the moment the work is shippable, so zcp
+  commits the dev half's tree as deployed, in the work session's words, pushes the Mate's branch,
+  opens or finds the pull request and proposes the recipe again; a push to the group's Gitea is
+  watched for no build and offers no integration; a wired pair's direct deploys are never
+  redirected. The group's stage and production tiers build the stage half's setup, and the
+  workflow names the promoted runtime — both measured wrong on the same run. zcp v9.179.1, MB-26.
 - **D24 — a group's Mates share its service repositories** (2026-09-17, the owner asking for a
   run that ends with two Mates, a stage and a production, all wired). The AI Agent tier's
   `buildFromGit` names the same repository for every Mate the recipe creates, and the broker
@@ -271,11 +281,17 @@ In the order the owner ranked them, then the rest:
 21. **A push to `main` with no environment following it fails the service repo's workflow** — zcp's
     `.gitea/workflows/zerops.yml` runs the deploy action on every push to `main`; with no stage
     declared yet the job fails after 4 s and the Git tab counts a red check on `main` (journal 22, for
-    the hardening person: the action could end cleanly on "no environment").
+    the hardening person: the action could end cleanly on "no environment"). A second cause, the
+    workflow naming the dev half (`service: appdev`) where the stage runs `app`, is fixed in zcp
+    v9.179.1; a repository whose workflow a v9.178.0 Mate wrote keeps the old name until a Mate on the
+    fix rewrites it (Kai's `todo/appdev`).
 22. **zcp after an expansion** — the recipe was not re-proposed when `zerops.yaml`'s setups changed
     (spec 2.2 "kept current"), and the expansion dropped the pair's Gitea record so `group-recipe`
     refused with "no pair has its Gitea repository yet". The record is kept since zcp `f04dcc77`
-    (unreleased at 15:00Z); re-proposing on a setup change is the hardening person's.
+    (v9.178.0); re-proposing on a setup change is the hardening person's — and a recipe composed
+    before v9.179.1 names the dev half's setup for the group's stage and production (Kai's
+    `todo/group` `main`: `zeropsSetup: appdev`, start `zsc noop`); the correction as the bot was
+    refused by the session's classifier and waits on the owner (ledger, _The owner's Todo run_).
 
 ## 8. Working on it
 
