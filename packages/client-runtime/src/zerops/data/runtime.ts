@@ -2379,6 +2379,57 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       }),
     );
 
+  const refresh: ZeropsDataRuntime["refresh"] = (organization) =>
+    lifecycleLock.withPermit(
+      Effect.gen(function* () {
+        if (yield* Ref.get(closed)) return;
+        const organizationKey = organizationKeyOf(organization);
+        const state = yield* Ref.get(model);
+        const held = [...interests.values()].filter(
+          (runtimeInterest) =>
+            runtimeInterest.leases.size > 0 &&
+            organizationKeyOf(organizationOfInterest(runtimeInterest.descriptor)) ===
+              organizationKey &&
+            state.interests.get(runtimeInterest.key)?.interest.status !== "paused",
+        );
+        if (held.length === 0) return;
+        // The replacement is in `receivers` before the stale one closes, so the
+        // stale socket's close reaches scheduleRecovery as a receiver that is no
+        // longer current and starts no recovery cycle.
+        const stale = receivers.get(organizationKey);
+        const replacement = makeReceiver(organization);
+        receivers.set(organizationKey, replacement);
+        for (const runtimeInterest of held) {
+          runtimeInterest.recoveryAttempts = 0;
+          const desired = yield* updateInterestIdentity(runtimeInterest, replacement);
+          yield* applyControl({ kind: "interest-upserted", interest: desired });
+        }
+        if (stale !== undefined && stale.handle !== null) {
+          yield* options.adapter.closeReceiver(stale.handle);
+        }
+        // The stale receiver's registrations went with it: an in-flight
+        // hydration is cancelled so scheduleHydration starts it fresh once the
+        // interests are re-established, and the organization's failure budget
+        // starts over with them.
+        yield* Effect.forEach(
+          [...hydrations.entries()].filter(
+            ([, hydration]) =>
+              organizationKeyOf(organizationOfEntityRef(hydration.target)) === organizationKey,
+          ),
+          ([key, hydration]) => cancelHydration(key, hydration),
+          { discard: true },
+        );
+        for (const [entityKey, record] of hydrationFailures) {
+          if (record.organizationKey === organizationKey) hydrationFailures.delete(entityKey);
+        }
+        yield* Effect.forEach(
+          held,
+          (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
+          { discard: true },
+        );
+      }),
+    );
+
   const acquire: ZeropsDataRuntime["acquire"] = (descriptor) =>
     Effect.gen(function* () {
       const leaseScope = yield* Scope.Scope;
@@ -2937,6 +2988,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     resources,
     logs,
     acquire,
+    refresh,
     shutdown,
     state: Ref.get(model),
     stateAtom: rootAtom,

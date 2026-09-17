@@ -1,4 +1,8 @@
-/** Requests a fresh runtime lease/baseline cycle for the account inventory. */
+/**
+ * Asks for the account inventory to be read again: a fresh verification
+ * round, and every organization's baseline re-read on a fresh receiver while
+ * what is held stays up (`ZeropsInventoryProvider`, `runtime.refresh`).
+ */
 
 import { useSyncExternalStore } from "react";
 

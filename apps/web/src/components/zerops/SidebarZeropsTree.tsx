@@ -78,8 +78,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly getActivity?: (candidate: T) => ZeropsAgentActivity | undefined;
   readonly className?: string;
-  /** The candidate list is still being read for the first time: say nothing rather than "none". */
-  readonly loading?: boolean;
+  /**
+   * Nothing has been read for this organization yet: say nothing rather than
+   * "none". A re-read is not that — the list already read stays up.
+   */
+  readonly unread?: boolean;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
@@ -88,7 +91,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   onBrowseProjects,
   activeProjectId,
   getActivity,
-  loading = false,
+  unread = false,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
@@ -97,7 +100,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // Nothing read yet is not nothing: an empty state that shows for the first
   // second of every reload and then gives way to the roster sends the whole
   // menu jumping. Say nothing until the list has been read once.
-  if (loading && candidates.length === 0) {
+  if (unread && candidates.length === 0) {
     return null;
   }
 

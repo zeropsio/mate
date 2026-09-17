@@ -122,7 +122,15 @@ const EMPTY_PROJECTS_READ_ATOM = Atom.make<CollectionRead<ProjectRecord> | null>
 
 export function useZeropsCandidates(): {
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
+  /** A read is in flight: the header's spinner, never a reason to paint less. */
   readonly isLoading: boolean;
+  /**
+   * The active organization's list has been read at least once. A re-read
+   * keeps it true — the list already read stays up while the fresh baseline
+   * lands. Until the first read, an empty list says nothing: "no projects"
+   * would be a guess the roster then takes back.
+   */
+  readonly readOnce: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
 } {
@@ -151,6 +159,7 @@ export function useZeropsCandidates(): {
     [activeOrganizationRef, runtime],
   );
   const rawProjects = useAtomValue(projectsReadAtom);
+  const readOnce = canLoad && rawProjects !== null && rawProjects.query.status === "observed";
   const serviceReadEntries = useMemo(
     () =>
       activeOrganizationRef === null
@@ -258,5 +267,5 @@ export function useZeropsCandidates(): {
     refreshZeropsCandidates();
   }, []);
 
-  return { candidates, isLoading, error, refresh };
+  return { candidates, isLoading, readOnce, error, refresh };
 }

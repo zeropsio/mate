@@ -129,10 +129,7 @@ export function useZeropsAtomSelections<Value>(
 }
 
 /** A React view owns only demand. The account runtime owns transport and data. */
-export function useZeropsDataInterest(
-  descriptor: RuntimeInterestDescriptor | null,
-  refreshKey: number = 0,
-): void {
+export function useZeropsDataInterest(descriptor: RuntimeInterestDescriptor | null): void {
   const { runtime } = useZeropsData();
   const identity = useMemo(
     () => (descriptor === null ? null : JSON.stringify(descriptor)),
@@ -149,7 +146,7 @@ export function useZeropsDataInterest(
     return () => {
       controller.abort();
     };
-  }, [runtime, identity, refreshKey]);
+  }, [runtime, identity]);
 }
 
 /** Holds one demand-scoped configuration resource lease for the mounted consumer. */

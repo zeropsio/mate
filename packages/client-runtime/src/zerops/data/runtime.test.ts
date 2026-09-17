@@ -2785,6 +2785,124 @@ it.effect("anchors a renewed service inventory with a direct collection despite 
   }),
 );
 
+it.effect("re-reads an organization's inventory on a fresh receiver and keeps what it holds", () =>
+  Effect.gen(function* () {
+    const { decodeRegistrationResponse, decodeEntityQueryPages } = yield* Effect.promise(
+      () => import("./platformProtocol.ts"),
+    );
+    const { selectProjectsOf } = yield* Effect.promise(() => import("./projection.ts"));
+    const registry = AtomRegistry.make();
+    const states = yield* Queue.unbounded<ZeropsDataState>();
+    const base = makeAdapterHarness();
+    const organization = project("p").organization;
+    const row = (name: string) => ({
+      id: "p",
+      name,
+      status: "ACTIVE",
+      created: "2026-09-01T00:00:00Z",
+    });
+    let currentName = "First";
+    let opens = 0;
+    let closes = 0;
+    let baselines = 0;
+    const runtime = yield* makeZeropsDataRuntime({
+      scope: runtimeScope,
+      atomRegistry: registry,
+      makeOpaqueId: makeIdFactory(),
+      adapter: {
+        ...base.adapter,
+        openReceiver: (_scope, org, identity) =>
+          Effect.sync(() => {
+            opens += 1;
+            return {
+              identity,
+              organization: org,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.never,
+            } satisfies ReceiverHandle;
+          }),
+        register: (_handle, request) =>
+          Effect.sync(() => {
+            if (
+              request.descriptor.kind !== "query-membership" ||
+              request.descriptor.query.kind !== "projects-of-organization"
+            )
+              return { responseObservations: [] };
+            baselines += 1;
+            return {
+              responseObservations: decodeRegistrationResponse(request, {
+                items: [row(currentName)],
+                total: 1,
+              }).observations,
+            };
+          }),
+        read: (ticket) =>
+          Effect.sync(() => {
+            if (
+              ticket.target.kind !== "query" ||
+              ticket.target.descriptor.kind !== "projects-of-organization"
+            )
+              return { observations: [] };
+            baselines += 1;
+            return {
+              observations: decodeEntityQueryPages(ticket.target.descriptor, ticket, [
+                { rows: [row(currentName)], totalCount: 1 },
+              ]).observations,
+            };
+          }),
+        closeReceiver: () => Effect.sync(() => void (closes += 1)),
+      },
+    });
+    const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+      Queue.offerUnsafe(states, state);
+    });
+    const scope = yield* Scope.make();
+    const lease = yield* runtime
+      .acquire({ kind: "organization-inventory", organization })
+      .pipe(Scope.provide(scope));
+    const settled = yield* waitForState(
+      states,
+      (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+    );
+    const nameOf = () => {
+      const first = registry.get(runtime.reads.projectsOf(organization)).value[0];
+      return first?.knowledge === "observed" && first.record.identity.knowledge === "observed"
+        ? first.record.identity.fields.name
+        : null;
+    };
+    expect(nameOf()).toBe("First");
+    const epochBefore = settled.interests.get(lease.interest)!.interest.identity.interestEpoch;
+    const baselinesBefore = baselines;
+
+    // The page keeps its list through the whole re-read: no published state
+    // has the project gone from the organization's projects, or the list
+    // back to unread.
+    currentName = "Renamed while the page held it";
+    let heldThroughout = true;
+    yield* runtime.refresh(organization);
+    yield* waitForState(states, (state) => {
+      const read = selectProjectsOf(state, organization);
+      if (read.value.length === 0 || read.query.status !== "observed") heldThroughout = false;
+      const interest = state.interests.get(lease.interest)?.interest;
+      return interest?.status === "observing" && interest.identity.interestEpoch !== epochBefore;
+    });
+    expect(heldThroughout).toBe(true);
+    expect(nameOf()).toBe("Renamed while the page held it");
+    expect(baselines).toBeGreaterThan(baselinesBefore);
+    expect({ opens, closes }).toEqual({ opens: 2, closes: 1 });
+    expect((yield* runtime.state).interests.has(lease.interest)).toBe(true);
+
+    // An organization nobody holds is left alone.
+    yield* runtime.refresh({ ...organization, organizationId: ZeropsOrganizationId.make("org-b") });
+    expect(opens).toBe(2);
+
+    yield* Scope.close(scope, Exit.void);
+    yield* runtime.shutdown("application-close");
+    unsubscribe();
+    registry.dispose();
+  }),
+);
+
 it.effect("aborts an in-flight direct inventory baseline when its final lease is released", () =>
   Effect.gen(function* () {
     const registry = AtomRegistry.make();

@@ -120,14 +120,8 @@ export function carryForwardServiceOutcome(
   return prior?.status === "resolved" ? prior : computed;
 }
 
-function InterestDemand({
-  descriptor,
-  refreshKey,
-}: {
-  readonly descriptor: RuntimeInterestDescriptor;
-  readonly refreshKey: number;
-}) {
-  useZeropsDataInterest(descriptor, refreshKey);
+function InterestDemand({ descriptor }: { readonly descriptor: RuntimeInterestDescriptor }) {
+  useZeropsDataInterest(descriptor);
   return null;
 }
 
@@ -299,6 +293,22 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       cancelled = true;
     };
   }, [client, projectRef, refreshKey, runtime, updateVerifiedMemberships]);
+
+  // A refresh re-reads every organization's inventory on a fresh receiver
+  // while the rows already read stay up (`runtime.refresh`). The leases are
+  // never re-taken for it: a released lease drops what it read, and the
+  // projects page painted "Reading your projects…" over the list it had a
+  // moment ago — every twenty seconds while a creation was on its way (the
+  // owner's run of 2026-09-17). The key at mount is not a refresh: the
+  // leases read their baseline by themselves.
+  const refreshedKey = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshedKey.current === refreshKey) return;
+    refreshedKey.current = refreshKey;
+    for (const descriptor of organizationDescriptors) {
+      void Effect.runPromise(runtime.refresh(descriptor.organization));
+    }
+  }, [organizationDescriptors, refreshKey, runtime]);
 
   const verifiedProjects =
     verification.status === "verified" ? verification.projects : lastVerifiedProjects.current;
@@ -586,18 +596,10 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   return (
     <>
       {organizationDescriptors.map((descriptor) => (
-        <InterestDemand
-          key={interestKeyOf(descriptor)}
-          descriptor={descriptor}
-          refreshKey={refreshKey}
-        />
+        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
       ))}
       {projectDescriptors.map((descriptor) => (
-        <InterestDemand
-          key={interestKeyOf(descriptor)}
-          descriptor={descriptor}
-          refreshKey={refreshKey}
-        />
+        <InterestDemand key={interestKeyOf(descriptor)} descriptor={descriptor} />
       ))}
       {!ready || readWindowExpired ? (
         visibleError !== null ? (

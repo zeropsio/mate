@@ -1697,8 +1697,7 @@ export default function Sidebar() {
   // else about the account is the projects screen's job.
   const { status: zeropsStatus } = useZeropsSession();
   const zeropsSignedIn = zeropsStatus === "signed-in";
-  const { candidates: zeropsCandidates, isLoading: zeropsCandidatesLoading } =
-    useZeropsCandidates();
+  const { candidates: zeropsCandidates, readOnce: zeropsCandidatesRead } = useZeropsCandidates();
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
   // health probe is registered on the user's behalf; from then on its socket
@@ -3717,7 +3716,7 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
               className="mb-2"
-              loading={zeropsCandidatesLoading}
+              unread={!zeropsCandidatesRead}
               onBrowseProjects={navigateToZeropsProjects}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined

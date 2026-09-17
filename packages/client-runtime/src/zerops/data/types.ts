@@ -2097,6 +2097,17 @@ export interface ZeropsDataRuntime {
     descriptor: RuntimeInterestDescriptor,
   ) => Effect.Effect<InterestLease, LeaseAdmissionError, Scope.Scope>;
   /**
+   * Re-reads an organization's inventory. Every interest held on the
+   * organization is re-established on a fresh receiver, so each baseline is
+   * read again, while what the reads already hold stays readable until the
+   * new baseline replaces it. No lease is released: a released lease drops
+   * what it read, and a screen that re-took its leases painted "Reading…"
+   * over the list it had a moment ago. An organization nobody holds is left
+   * alone, and so is a paused interest — the return to the foreground
+   * re-reads it.
+   */
+  readonly refresh: (organization: OrganizationRef) => Effect.Effect<void>;
+  /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.
    */

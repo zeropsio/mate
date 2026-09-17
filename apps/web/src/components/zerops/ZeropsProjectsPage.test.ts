@@ -380,22 +380,25 @@ describe("hasNoZeropsProject", () => {
     // A tool is not a project: an account holding only Gitea has not started.
     ["only a tool", [candidate(["mate:tool:gitea"])], true],
   ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
-    expect(hasNoZeropsProject({ candidates, isLoading: false })).toBe(expected);
+    expect(hasNoZeropsProject({ candidates, unread: false })).toBe(expected);
   });
 
   it("answers no while the first list is still being read", () => {
     // Otherwise the invitation paints for a second and the roster takes it back.
-    expect(hasNoZeropsProject({ candidates: [], isLoading: true })).toBe(false);
+    expect(hasNoZeropsProject({ candidates: [], unread: true })).toBe(false);
   });
 
-  it("answers from what has already arrived while a refresh runs", () => {
-    expect(hasNoZeropsProject({ candidates: [candidate([])], isLoading: true })).toBe(false);
+  it("keeps an empty organization's invitation up while its list is re-read", () => {
+    // The owner's run of 2026-09-17: a re-read every twenty seconds while a
+    // creation was on its way, and the page painted "Reading your projects…"
+    // over what it had a moment ago.
+    expect(hasNoZeropsProject({ candidates: [], unread: false })).toBe(true);
   });
 
   it("answers no while a creation this client made is not listed yet", () => {
     // The wizard lands here before the inventory carries the new project;
     // the invitation must not paint in that gap only to be taken back.
-    expect(hasNoZeropsProject({ candidates: [], isLoading: false, creationPending: true })).toBe(
+    expect(hasNoZeropsProject({ candidates: [], unread: false, creationPending: true })).toBe(
       false,
     );
   });

@@ -243,11 +243,17 @@ export function retryZeropsProjectConnection(input: {
  * create button so the invitation is not said twice, and the tree, which
  * carries the invitation. Both must agree, and neither may answer before the
  * first list has been read — an invitation that paints for a second and is
- * then replaced by the roster is a shift the reader has to undo.
+ * then replaced by the roster is a shift the reader has to undo. A re-read
+ * is not a first read: the list already read answers while it runs.
  */
 export function hasNoZeropsProject(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly isLoading: boolean;
+  /**
+   * Nothing has been read for this organization yet. A re-read is not that:
+   * the list already read stays up and answers, so an empty organization
+   * keeps its invitation while a fresh baseline lands.
+   */
+  readonly unread: boolean;
   /**
    * A creation this client made and has not connected to yet. The wizard
    * navigates here the moment the project exists, before the inventory lists
@@ -257,7 +263,7 @@ export function hasNoZeropsProject(input: {
   readonly creationPending?: boolean;
 }): boolean {
   if (input.creationPending === true) return false;
-  if (input.isLoading && input.candidates.length === 0) return false;
+  if (input.unread && input.candidates.length === 0) return false;
   const view = buildZeropsGroupTree(input.candidates, { rank: rankZeropsCandidateForListing });
   return view.groups.length === 0 && view.ungrouped.length === 0;
 }
@@ -456,7 +462,7 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const { candidates: observedCandidates, isLoading, error } = useZeropsCandidates();
+  const { candidates: observedCandidates, isLoading, readOnce, error } = useZeropsCandidates();
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
   // long the page waits, and its row says so instead.
@@ -1885,7 +1891,7 @@ function ZeropsProjectsContent() {
 
   return (
     <div className="space-y-6">
-      {isLoading && candidates.length === 0 ? (
+      {!readOnce && candidates.length === 0 ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
           <Spinner className="size-3.5" />
           <span>Reading your projects…</span>
@@ -1917,7 +1923,7 @@ function ZeropsProjectsContent() {
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ candidates, isLoading, creationPending })
+          hasNoZeropsProject({ candidates, unread: !readOnce, creationPending })
             ? () => {
                 void navigate({ to: "/zerops/new" });
               }
@@ -2318,7 +2324,7 @@ function ZeropsProjectsContent() {
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
-  const { candidates, isLoading, refresh } = useZeropsCandidates();
+  const { candidates, isLoading, readOnce, refresh } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
   // First run owns the page: an account with nothing in it gets the
@@ -2326,7 +2332,7 @@ export function ZeropsProjectsPage() {
   // over nothing frames emptiness as a failed list.
   const firstRun = hasNoZeropsProject({
     candidates,
-    isLoading,
+    unread: !readOnce,
     creationPending: pendingCreationProjects().length > 0,
   });
 

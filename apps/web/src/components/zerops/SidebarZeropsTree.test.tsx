@@ -132,9 +132,9 @@ describe("SidebarZeropsTree", () => {
   });
 
   it('says nothing while the candidate list is on its first read, rather than "none"', () => {
-    expect(render([], { loading: true })).toBe("");
+    expect(render([], { unread: true })).toBe("");
     // Read once and Mate-less: the empty state, as before.
-    expect(render([CRM_STAGE], { loading: false })).toContain("sidebar-environments-empty");
+    expect(render([CRM_STAGE], { unread: false })).toContain("sidebar-environments-empty");
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {
