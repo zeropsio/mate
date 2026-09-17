@@ -51,7 +51,10 @@ import {
  * is the wrong way to make it — a caller that wants one has to say so.
  */
 export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
-  return role !== "prod";
+  // A stage is a deploy target, as its form's note says; an agent there is
+  // the person's decision, like production's. A dev environment, on its own
+  // or with its stage half, is a Mate by default.
+  return role === "dev" || role === "devstage";
 }
 
 /**

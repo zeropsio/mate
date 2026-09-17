@@ -33,7 +33,9 @@ describe("defaultAgentForRole", () => {
   it.each([
     { role: "dev", expected: true },
     { role: "devstage", expected: true },
-    { role: "stage", expected: true },
+    // A stage is a deploy target (its form says so); an agent there is the
+    // person's decision, like production's (2026-09-17).
+    { role: "stage", expected: false },
     { role: "prod", expected: false },
   ] satisfies ReadonlyArray<{ role: ZeropsEnvironmentRole; expected: boolean }>)(
     "gives $role an agent: $expected",
@@ -198,6 +200,7 @@ describe("the agent's name", () => {
       role: "stage",
       name: "crm-stage",
       recipe: { ...TIER, tier: "stage" as const },
+      withAgent: true,
       botName: "Ada",
     });
     expect(plan.ok).toBe(true);
@@ -211,9 +214,13 @@ describe("the agent's name", () => {
       const step = plan.ok ? plan.steps[0] : undefined;
       return step?.kind === "create-project" ? step.tagList : [];
     };
-    // Stage gets an agent by default; production does not — and a caller can
-    // say so either way.
-    expect(tags(planEnvironmentCreation({ ...BASE, role: "stage" }))).toContain("mate");
+    // A dev environment gets an agent by default; a stage and a production
+    // do not — and a caller can say so either way.
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "dev" }))).toContain("mate");
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "stage" }))).not.toContain("mate");
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "stage", withAgent: true }))).toContain(
+      "mate",
+    );
     expect(tags(planEnvironmentCreation({ ...BASE, role: "prod" }))).not.toContain("mate");
     expect(tags(planEnvironmentCreation({ ...BASE, role: "prod", withAgent: true }))).toContain(
       "mate",
