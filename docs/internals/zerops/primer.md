@@ -201,9 +201,11 @@ In the order the owner ranked them, then the rest:
    0.11.2, and no page reconcile applies them; measured 2026-09-17 on Zane. Fix: run both right after
    the create, before the container's first boot, so nothing restarts.
 2. **The projects page card stays at "Almost there." after the Mate is up** (owner's run
-   2026-09-17). The wait reads the container from the pushed inventory (`useZeropsProvisioning`),
-   so a missed push leaves the card waiting while the Mate answers; a reload redirects to the
-   conversation at once. Fix: re-read the project's services over HTTP on each tick of the wait.
+   2026-09-17). The row gets its origin, its probe and its wait from the pushed inventory, so a
+   missed push leaves the card waiting while the Mate answers; a reload redirects to the
+   conversation at once. Fixed in 0.11.9: the inventory is re-read every twenty seconds while a
+   creation is on its way (`creationRefresh.ts`); unmeasured until the next creation lands without
+   a reload.
 3. **A broker-made person on Gitea's own pages** (Q-17): their _Sign in with Zerops_ is expected to
    land on the account the broker made, and is unmeasured; the app itself never sends them there.
 4. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
