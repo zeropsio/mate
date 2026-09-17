@@ -94,6 +94,7 @@ import {
   type ZeropsGroupTags,
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
+import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
 
 import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -595,6 +596,14 @@ function ZeropsProjectsContent() {
   // to spend, and nothing this component holds changes when it does.
   const pendingCreations = new Set(pendingCreationProjects());
   const creationPending = pendingCreations.size > 0;
+  // A creation's container reaches this page through the pushed inventory,
+  // and a push can be missed: the card then waits at "Almost there." on a Mate
+  // that answered minutes ago, while a reload finds it at once (the owner's
+  // run of 2026-09-17). While a creation is on its way, the inventory is
+  // re-read on a clock as well (`creationRefresh.ts`).
+  useCreationInventoryRefresh(
+    creationRefreshWanted({ creationPending, waitPhase: provisioning.state?.phase ?? null }),
+  );
 
   const rowInput = (
     candidate: ZeropsCandidate,
