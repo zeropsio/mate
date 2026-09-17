@@ -1678,11 +1678,9 @@ export interface CreateToolProjectCommandIntent {
   readonly name: string;
   readonly location?: string;
   /**
-   * Every origin the Mate app is served from, the current one at least, and
-   * where its Gitea sign-in consent page lives. Only the shell knows these,
-   * and Gitea matches an origin string literally (`giteaRecipe.ts`).
+   * Where the consent page of Gitea's own sign-in lives: the origin this
+   * shell is served from. Only the shell knows it (`giteaRecipe.ts`).
    */
-  readonly appOrigins: ReadonlyArray<string>;
   readonly appUrl: string;
 }
 

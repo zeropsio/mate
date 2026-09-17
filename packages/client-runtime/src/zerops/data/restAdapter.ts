@@ -1230,7 +1230,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
               clientId: command.organization.organizationId,
               kind: command.toolKind,
               name: command.name,
-              appOrigins: command.appOrigins,
               appUrl: command.appUrl,
               ...(command.location === undefined ? {} : { location: command.location }),
             },

@@ -1291,9 +1291,7 @@ export class ZeropsApiClient {
       readonly kind: ZeropsToolKind;
       readonly name: string;
       readonly location?: string;
-      /** Every origin the Mate app is served from — the current one at least. */
-      readonly appOrigins: ReadonlyArray<string>;
-      /** Where the Gitea sign-in consent page lives. */
+      /** Where the consent page of Gitea's own sign-in lives: this shell's origin. */
       readonly appUrl: string;
     },
     signal?: AbortSignal,
@@ -1337,7 +1335,6 @@ export class ZeropsApiClient {
         kind: input.kind,
         name: input.name,
         ...(input.location === undefined ? {} : { location: input.location }),
-        appOrigins: input.appOrigins,
         appUrl: input.appUrl,
         tokens,
         project,
@@ -1364,7 +1361,6 @@ export class ZeropsApiClient {
     readonly kind: ZeropsToolKind;
     readonly name: string;
     readonly location?: string;
-    readonly appOrigins: ReadonlyArray<string>;
     readonly appUrl: string;
     readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
     readonly project: ZeropsProject | undefined;
@@ -1451,7 +1447,6 @@ export class ZeropsApiClient {
             target.id,
             buildGiteaImportYaml({
               region,
-              appOrigins: input.appOrigins,
               appUrl: input.appUrl,
               clientId: input.clientId,
               projectId: target.id,

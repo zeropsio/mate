@@ -1724,10 +1724,6 @@ function ZeropsProjectsContent() {
           organization: organizationRef(activeOrganization.id),
           toolKind: "gitea",
           name: "Gitea",
-          // Gitea matches an origin string literally, port included, so the
-          // one this page is being served from has to be in the list or the
-          // app cannot drive Gitea from the browser at all.
-          appOrigins: [window.location.origin],
           appUrl: window.location.origin,
         }),
       );

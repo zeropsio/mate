@@ -59,7 +59,6 @@ const TOOL_INPUT = {
   clientId: "org-1",
   kind: "gitea",
   name: "Gitea",
-  appOrigins: ["https://app.zerops.io"],
   appUrl: "https://app.zerops.io",
 } as const;
 

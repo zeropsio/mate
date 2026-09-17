@@ -11,7 +11,6 @@ import {
 
 const IMPORT = {
   region: "prg1",
-  appOrigins: ["https://app.zerops.io", "http://localhost:5733/"],
   appUrl: "https://app.zerops.io/",
   clientId: "org-1",
   projectId: "proj-1",
@@ -40,7 +39,6 @@ describe("the copied import document", () => {
 
   it("declares every placeholder the build knows how to fill, and no other", () => {
     expect(GITEA_IMPORT_PLACEHOLDERS).toEqual([
-      "__CORS__",
       "__MATE_APP_URL__",
       "__REGION__",
       "__ZEROPS_CLIENT_ID__",
@@ -82,17 +80,12 @@ describe("the Gitea import", () => {
     expect(yaml).not.toMatch(/^\s+zerops_\w+:/imu);
   });
 
-  it("lists every app origin literally, comma-separated, without a trailing slash", () => {
-    // ALLOW_DOMAIN matches the origin string: localhost does not cover
-    // 127.0.0.1, and a port is part of the string.
-    expect(buildGiteaImportYaml(IMPORT)).toContain(
-      "GITEA_CORS_ALLOW_DOMAIN: https://app.zerops.io,http://localhost:5733",
-    );
-  });
-
-  it("refuses a document that would answer no browser origin at all", () => {
-    expect(() => buildGiteaImportYaml({ ...IMPORT, appOrigins: [] })).toThrow(/origin/u);
-    expect(() => buildGiteaImportYaml({ ...IMPORT, appOrigins: ["", "  /"] })).toThrow(/origin/u);
+  it("sends no origin list: a Gitea answers every origin, since every call carries a bearer", () => {
+    // D22. A list here would pin the Gitea to the origin that made it, and
+    // the localhost pair could not drive one made from mate.zerops.io.
+    const yaml = buildGiteaImportYaml(IMPORT);
+    expect(yaml).not.toContain("GITEA_CORS_ALLOW_DOMAIN");
+    expect(yaml).not.toContain("MATE_APP_ORIGINS");
   });
 
   it("builds Gitea and the broker from one repository, each picking its half", () => {

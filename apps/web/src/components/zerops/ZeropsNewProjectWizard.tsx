@@ -445,7 +445,6 @@ function ZeropsNewProjectContent() {
             organization: organizationRef(activeOrganization.id),
             toolKind: "gitea",
             name: "Gitea",
-            appOrigins: [origin],
             appUrl: origin,
           }),
         );

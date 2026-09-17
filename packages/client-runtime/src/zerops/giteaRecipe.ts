@@ -38,15 +38,17 @@
  *   `app-prg1.zerops.app`, a host that does not resolve; Gitea derives
  *   `ROOT_URL` and `SSH_DOMAIN` from it, so left alone every clone URL and web
  *   link it emits points nowhere (measured 2026-09-05).
- * - `__CORS__` — every origin the Mate app runs from, comma-separated and
- *   spelled exactly. Gitea's `ALLOW_DOMAIN` matches the origin string
- *   literally: `localhost` does not cover `127.0.0.1`, and a port is part of
- *   the string (measured 2026-09-16). Without it the app's own PKCE exchange
- *   against Gitea fails with `Failed to fetch` before a request is made.
  * - `__ZEROPS_TOKEN__` — the broker's Zerops token, minted moments earlier.
  * - `__ZEROPS_CLIENT_ID__`, `__ZEROPS_PROJECT_ID__` — the org, and the project
  *   the registry lives on.
- * - `__MATE_APP_URL__` — where the Gitea sign-in consent page lives.
+ * - `__MATE_APP_URL__` — where the consent page of Gitea's own sign-in lives:
+ *   the origin this shell is served from. A redirect target, not an allowlist.
+ *
+ * There is no origin list. Gitea's `[cors]` and the broker's
+ * `POST /person/token` answer every origin (D22): each browser call carries
+ * the person's token in a header and no cookie, so the origin proves nothing,
+ * and a Gitea made from mate.zerops.io is driven from a developer's localhost
+ * and back.
  *
  * The placeholders name Zerops; the variables they land in do not. A custom
  * variable whose name begins with `ZEROPS_` is refused by the import itself
@@ -71,8 +73,6 @@ import { GITEA_PROJECT_IMPORT_YAML } from "./giteaProjectImport.gen.ts";
 
 /** Replaced with the project's region before import. */
 const REGION_PLACEHOLDER = "__REGION__";
-/** Replaced with the app's origins, comma-separated. */
-const CORS_PLACEHOLDER = "__CORS__";
 /** Replaced with the broker's Zerops token. Never stored anywhere else. */
 const BROKER_TOKEN_PLACEHOLDER = "__ZEROPS_TOKEN__";
 const CLIENT_ID_PLACEHOLDER = "__ZEROPS_CLIENT_ID__";
@@ -95,11 +95,9 @@ export interface GiteaImportInput {
   /** `zeropsRegionFromPublicZone` off the freshly created project. */
   readonly region: string;
   /**
-   * Every origin the Mate app is served from — the current one at least.
-   * Listed literally, port included; Gitea matches the string.
+   * Where the consent page of Gitea's own sign-in lives: the origin this
+   * shell is served from.
    */
-  readonly appOrigins: ReadonlyArray<string>;
-  /** Where the Gitea sign-in consent page lives. */
   readonly appUrl: string;
   /** The org that owns the project. */
   readonly clientId: string;
@@ -115,18 +113,8 @@ export interface GiteaImportInput {
 
 /** The import body for the account's Gitea project, with every blank filled. */
 export function buildGiteaImportYaml(input: GiteaImportInput): string {
-  const origins = [...new Set(input.appOrigins.map((origin) => origin.trim().replace(/\/+$/u, "")))]
-    .filter((origin) => origin.length > 0)
-    .join(",");
-  if (origins.length === 0) {
-    // A Gitea that answers no browser origin cannot be driven from the app at
-    // all (P11), and the failure is a `Failed to fetch` with no request made —
-    // exactly the kind of thing worth refusing to build.
-    throw new Error("The Gitea import needs at least the app's own origin for CORS.");
-  }
   const values = new Map<string, string>([
     [REGION_PLACEHOLDER, input.region],
-    [CORS_PLACEHOLDER, origins],
     [BROKER_TOKEN_PLACEHOLDER, input.brokerToken],
     [CLIENT_ID_PLACEHOLDER, input.clientId],
     [PROJECT_ID_PLACEHOLDER, input.projectId],
