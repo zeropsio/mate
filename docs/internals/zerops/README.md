@@ -5,14 +5,16 @@ the mate client. Started during the 2026-08 proof of concept (tag `poc-2026-08-2
 the product is built from `upstream/main` with everything the POC learnt and none of its code —
 the real implementation needs to know what was measured, what was faked and why.
 
-**The plan lives elsewhere:** `../../../../zcp/plans/z3-brief-2026-08-28.md` (streams S0–S7,
-decisions, the dev loop) with its depth in `z3-concept-2026-08-28.md` next to it. These notes are
-the reference the plan cites; they hold no plan of their own.
+**The plan lives elsewhere:** `../../../../zcp/plans/` — the 2026-08-28 brief (streams S0–S7) and,
+since 2026-09-15, the auth-backbone guide. **Where the project stands** — every slice's state, what is
+proven, what is open — is [`primer.md`](primer.md). These notes are the reference both cite; they hold
+no plan of their own.
 
 ## The files
 
 | File                                   | Holds                                                                                                                                                           | Lifecycle                                                                                      |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [`primer.md`](primer.md)               | Where the whole stands: the parts and their homes, who holds what, the run as measured, every slice's state against the plan, what is open                      | Changes in the commit that changes the fact                                                    |
 | [`map.md`](map.md)                     | The systems and every channel between them                                                                                                                      | Changes when a channel is added or removed                                                     |
 | [`verified.md`](verified.md)           | Facts measured against real systems                                                                                                                             | Each entry decays; re-verify before trusting                                                   |
 | [`hacks.md`](hacks.md)                 | Shortcuts (POC and dev-loop) and what the real fix is                                                                                                           | Entries die when paid back                                                                     |

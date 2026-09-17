@@ -12,6 +12,7 @@ the spec or the ledger. To answer a question, go to the home:
 | Knowledge                                                                                                                | Home                                                                               |
 | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | Design / workflow decision                                                                                               | `../zcp/docs/spec-mate.md`                                                         |
+| Where the whole stands — the parts, who holds what, the run as measured, every slice's state, what is open               | `docs/internals/zerops/primer.md`                                                  |
 | Fork rules — zones, freeze, keep/delete, work loop, intake                                                               | `docs/internals/zerops/fork.md`                                                    |
 | Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                                     |
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
