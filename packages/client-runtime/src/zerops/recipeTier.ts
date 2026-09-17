@@ -71,11 +71,15 @@ export interface ImportReadyTier {
   readonly sources: Readonly<Record<string, RecipeServiceSource>>;
 }
 
+// Indentation is the author's: a person's two spaces and zcp's four both
+// read (Dara's tier, 2026-09-17, was four-space and read as "no recipe on
+// main"). A key that opens an item keeps its `- ` in the captured prefix, so
+// `- buildFromGit:` becomes `- startWithoutCode: true` in place.
 const SERVICES_KEY = /^services:\s*$/u;
-const ITEM_START = /^ {2}- /u;
-const HOSTNAME = /^(?: {2}- | {4})hostname:\s*(\S+)/u;
-const BUILD_FROM_GIT = /^(\s*)buildFromGit:\s*(\S.*)?$/u;
-const ZEROPS_SETUP = /^(\s*)zeropsSetup:\s*(\S.*)?$/u;
+const ITEM_START = /^\s+- /u;
+const HOSTNAME = /^\s*(?:- )?hostname:\s*(\S+)/u;
+const BUILD_FROM_GIT = /^(\s*(?:- )?)buildFromGit:\s*(\S.*)?$/u;
+const ZEROPS_SETUP = /^(\s*(?:- )?)zeropsSetup:\s*(\S.*)?$/u;
 const NESTED_URL = /^\s*url:\s*(\S.*)$/u;
 
 function indentOf(line: string): number {

@@ -140,3 +140,41 @@ other:
     expect(result?.sources).toEqual({});
   });
 });
+
+describe("importReadyTier on zcp's own tiers", () => {
+  // The stage tier zcp proposed on Dara's run (2026-09-17): four-space
+  // items, `buildFromGit` opening each built item, `zeropsSetup` last. The
+  // dialog read it as "no recipe on main yet".
+  const ZCP_TIER = `project:
+    name: Imperial Titan - dev stage
+services:
+    - buildFromGit: https://web-2fe9-3000.prg1.zerops.app/imperial-titan/todoapp
+      hostname: todoapp
+      maxContainers: 10
+      minContainers: 1
+      type: ubuntu/nodejs@22
+      verticalAutoscaling:
+        cpuMode: SHARED
+        maxCpu: 8
+      zeropsSetup: todoapp
+    - hostname: tododb
+      priority: 10
+      profile: oltp-staging
+      type: postgresql:single@18
+`;
+
+  it("reads four-space items and converts a build that opens its item", () => {
+    const ready = importReadyTier(ZCP_TIER);
+    expect(ready?.services).toEqual(["todoapp", "tododb"]);
+    expect(ready?.sources).toEqual({
+      todoapp: {
+        repository: "https://web-2fe9-3000.prg1.zerops.app/imperial-titan/todoapp",
+        setup: "todoapp",
+      },
+    });
+    expect(ready?.yaml).toContain("    - startWithoutCode: true\n      hostname: todoapp");
+    expect(ready?.yaml).not.toContain("buildFromGit");
+    expect(ready?.yaml).not.toContain("zeropsSetup");
+    expect(ready?.yaml).toContain("    - hostname: tododb\n      priority: 10");
+  });
+});
