@@ -12,12 +12,6 @@
  * persisted server-side.
  */
 
-import {
-  GITEA_TOKEN_ENV_KEY,
-  GITEA_URL_ENV_KEY,
-  MATE_BROKER_URL_ENV_KEY,
-  type ZeropsGiteaCredentialPlan,
-} from "./giteaCredential.ts";
 import { mateSignerTagIsCurrent, withMateProjectRole, withMateSignerTag } from "./mateAccess.ts";
 import { buildGiteaImportYaml } from "./giteaRecipe.ts";
 import { parseZeropsRegistry, projectTagWriteBody, type ZeropsRegistry } from "./groupRegistry.ts";
@@ -2324,89 +2318,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /**
-   * What a Mate holds of its Gitea access — the three keys and nothing else.
-   *
-   * The env records themselves stop inside this client (see `#serviceEnv`):
-   * they carry every secret the service has, and although the platform redacts
-   * sensitive values there is no reason for the shape to travel. What leaves
-   * is a map of the three keys `giteaCredential.ts` decides on. `GITEA_TOKEN`
-   * reads back as the literal `REDACTED` (measured 2026-09-06), which is
-   * exactly the signal that planner wants: whether the key is *there*.
-   */
-  async readMateGiteaEnv(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<Readonly<Record<string, string>>> {
-    const wanted = new Set([GITEA_URL_ENV_KEY, MATE_BROKER_URL_ENV_KEY, GITEA_TOKEN_ENV_KEY]);
-    const current: Record<string, string> = {};
-    for (const entry of await this.#serviceEnv(serviceId, signal)) {
-      if (wanted.has(entry.key)) current[entry.key] = entry.content;
-    }
-    return current;
-  }
-
-  /**
-   * Writes a Mate's Gitea access onto its `zcp` service and restarts it.
-   *
-   * The token is an argument and a request body and nothing else: it goes
-   * straight from the broker's answer into the write, is never returned, never
-   * stored, and never put on the plan a UI renders (`giteaCredential.ts`).
-   *
-   * A write is a delete followed by a create — the platform exposes no update
-   * for a user-data entry — and the restart is not optional: a service env
-   * change reaches new processes only, so a write without one changes nothing
-   * a running Mate can see.
-   */
-  async writeMateGiteaCredential(
-    input: {
-      readonly serviceId: string;
-      readonly plan: ZeropsGiteaCredentialPlan;
-      /** Present exactly when the broker minted one. */
-      readonly token?: string | undefined;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    if (input.plan.upToDate) return;
-    const generation = this.#generation;
-    const existing = await this.#serviceEnv(input.serviceId, signal);
-    const sensitive = new Set(input.plan.sensitive);
-
-    for (const key of input.plan.write) {
-      const content = key === GITEA_TOKEN_ENV_KEY ? input.token : input.plan.values[key];
-      if (content === undefined) {
-        throw new ZeropsApiError(
-          `The Gitea credential carried no value for ${key}, so it cannot be written.`,
-          "uncertain",
-        );
-      }
-      const present = existing.find((entry) => entry.key === key);
-      if (present !== undefined) {
-        this.#assertGeneration(generation);
-        await this.#request(
-          `/user-data/${present.id}`,
-          { method: "DELETE", signal: signal ?? null },
-          {
-            operationKind: "project-write",
-            ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-          },
-        );
-      }
-      this.#assertGeneration(generation);
-      await this.#writeServiceEnvOnce(
-        { serviceId: input.serviceId, key, content, sensitive: sensitive.has(key) },
-        signal,
-        beforeWrite,
-      );
-    }
-
-    if (input.plan.restart) {
-      this.#assertGeneration(generation);
-      await this.restartService(input.serviceId, signal, beforeWrite);
-    }
   }
 
   /**

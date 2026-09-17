@@ -16,10 +16,10 @@
  * - *what the person may do* comes from the repository probe's `permissions`,
  *   never from the role the app happens to know — the mirror lags a role
  *   change by minutes;
- * - *that the Mate is provisioned* comes from the credential reconcile's
- *   receipt, never from a `GITEA_TOKEN` key being present;
- * - *that the remote is healthy* comes from a live `git ls-remote`, never from
- *   the last push having worked.
+ * - *that the remote is healthy* — which is also the only proof the Mate holds
+ *   the Gitea access the broker's rights loop writes onto it — comes from a
+ *   live `git ls-remote`, never from the last push having worked or from a
+ *   `GITEA_TOKEN` key being present.
  *
  * A tab that mixes them shows "configured" for a broken setup, which is the one
  * outcome 4.5 names.
@@ -73,12 +73,10 @@ export interface GitForgeState {
 }
 
 /**
- * The two facts that have to be proved rather than assumed. `undefined` means
- * not asked yet, which says nothing — never "fine".
+ * The fact that has to be proved rather than assumed. `undefined` means not
+ * asked yet, which says nothing — never "fine".
  */
 export interface GitBlockEvidence {
-  /** The credential reconcile's receipt: this Mate has a bot's token. */
-  readonly provisioned: boolean | undefined;
   /** A live `git ls-remote` answered (`zerops.git.probeRemote`). */
   readonly remoteReachable: boolean | undefined;
   /**
@@ -203,7 +201,6 @@ export function gitHeadLine(checkout: GitCheckoutState): string {
  * same as everything being fine, and is why nothing is ever phrased as "ready".
  */
 export function gitTrouble(evidence: GitBlockEvidence): string {
-  if (evidence.provisioned === false) return "This Mate has no Gitea access yet.";
   if (evidence.remoteReachable === false) {
     const detail = evidence.remoteDetail?.trim() ?? "";
     return detail.length === 0

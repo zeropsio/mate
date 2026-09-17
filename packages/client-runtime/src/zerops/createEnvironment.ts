@@ -189,19 +189,7 @@ export type EnvironmentCreationStep =
       readonly yaml: string;
     }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
-  | { readonly kind: "await-ready"; readonly withAgent: boolean }
-  /**
-   * The Mate's Gitea access, asked of the org's broker as the person and
-   * written onto its `zcp` service (guide 1.5, `giteaCredential.ts`).
-   *
-   * Last, and **tolerant**. It needs the container to exist and the account's
-   * Gitea to be up, and neither is this creation's to guarantee: an account
-   * whose Gitea is still building says *waiting for Gitea* and the
-   * projects-screen reconcile picks it up on the next read. A Mate without it
-   * is a working Mate that cannot push yet, which is a far better outcome than
-   * a creation that reports failure over a project that exists and runs.
-   */
-  | { readonly kind: "fetch-gitea-credential" };
+  | { readonly kind: "await-ready"; readonly withAgent: boolean };
 
 export type EnvironmentCreationPlan =
   | { readonly ok: true; readonly steps: ReadonlyArray<EnvironmentCreationStep> }
@@ -284,10 +272,10 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   if (yaml !== null && !wholeProject) {
     steps.push({ kind: "import-recipe", role: input.role, yaml, sources });
   }
+  // Last. A Mate's Gitea access is no step of its creation: the broker's
+  // rights loop writes it onto every registered Mate's `zcp` service with the
+  // token the app granted it (D20, `brokerGrant.ts`).
   steps.push({ kind: "await-ready", withAgent });
-  // Only a Mate has a `zcp` service to write the credential onto, and only a
-  // ready one can be restarted into it — so this follows the wait.
-  if (withAgent) steps.push({ kind: "fetch-gitea-credential" });
 
   return { ok: true, steps };
 }
@@ -313,8 +301,6 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Importing the application";
     case "await-ready":
       return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
-    case "fetch-gitea-credential":
-      return "Giving the Mate its Gitea access";
   }
 }
 
