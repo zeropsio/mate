@@ -2,6 +2,7 @@ import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  gitCheckoutHostnames,
   checkTone,
   environmentForBranch,
   gitActionAllowed,
@@ -376,5 +377,30 @@ describe("the owner-only gate on checkout verbs", () => {
 
   it("no verb is nothing to press", () => {
     expect(gitActionAllowed(undefined, { isOwner: true })).toBe(false);
+  });
+});
+
+describe("gitCheckoutHostnames", () => {
+  it("lists the dev half of each pair and never its stage, nor a data service", () => {
+    // The owner's run of 2026-09-17: "appstage · no repository yet" — a stage
+    // gets its dev partner's compiled code deployed and is never a checkout.
+    const services = [
+      { hostname: "appdev", group: "runtimes" },
+      { hostname: "appstage", group: "runtimes" },
+      { hostname: "api", group: "runtimes" },
+      { hostname: "db", group: "data" },
+      { hostname: "zcp", group: "infrastructure" },
+    ] as const;
+    expect(gitCheckoutHostnames(services)).toEqual(["appdev", "api"]);
+  });
+
+  it("keeps a runtime whose name ends in stage when it has no dev partner", () => {
+    expect(
+      gitCheckoutHostnames([
+        { hostname: "backstage", group: "runtimes" },
+        { hostname: "cachestage", group: "data" },
+        { hostname: "cachedev", group: "runtimes" },
+      ]),
+    ).toEqual(["backstage", "cachedev"]);
   });
 });

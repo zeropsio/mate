@@ -419,6 +419,30 @@ const devPartnerOf = (hostname: string): string | undefined =>
     ? `${hostname.slice(0, -STAGE_SUFFIX.length)}${DEV_SUFFIX}`
     : undefined;
 
+/**
+ * The stage halves of the dev/stage pairs among `services`: every `{name}stage`
+ * whose `{name}dev` partner is there in the same group. A folded stage holds
+ * no checkout and no row of its own — it is where its dev partner's code is
+ * deployed, built, unmounted — so the service map nests it under the dev and
+ * the Git tab does not list it at all. Pairing is within a group: a
+ * `cachestage` managed service is not the stage half of a `cachedev` runtime,
+ * whatever the names suggest.
+ */
+export function foldedStageHostnames(
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
+): ReadonlySet<string> {
+  const byHostname = new Map(services.map((entry) => [entry.hostname, entry]));
+  const folded = new Set<string>();
+  for (const entry of services) {
+    const partner = devPartnerOf(entry.hostname);
+    const dev = partner === undefined ? undefined : byHostname.get(partner);
+    if (dev !== undefined && dev.group === entry.group) {
+      folded.add(entry.hostname);
+    }
+  }
+  return folded;
+}
+
 export function parseZeropsProductionLaunch(entry: string): ZeropsProductionLink {
   const match = PRODUCTION_LAUNCH.exec(entry.trim());
   const label = match?.[1]?.trim();
@@ -454,17 +478,7 @@ export function buildZeropsServiceMap(
   }
 
   // A stage folded into its dev row must not also stand on its own.
-  const byHostname = new Map(topology.services.map((entry) => [entry.hostname, entry]));
-  const folded = new Set<string>();
-  for (const entry of topology.services) {
-    const partner = devPartnerOf(entry.hostname);
-    const dev = partner === undefined ? undefined : byHostname.get(partner);
-    // Pairing is within a group: a `cachestage` managed service is not the
-    // stage half of a `cachedev` runtime, whatever the names suggest.
-    if (dev !== undefined && dev.group === entry.group) {
-      folded.add(entry.hostname);
-    }
-  }
+  const folded = foldedStageHostnames(topology.services);
 
   const groups = GROUP_ORDER.map(({ group, title }) => ({
     group,

@@ -24,6 +24,7 @@
 import {
   gitActionAllowed,
   gitBlock,
+  gitCheckoutHostnames,
   type GitBlock,
   type GitCheckoutState,
   type GroupEnvironment,
@@ -122,12 +123,13 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     });
   }, []);
 
-  /** A codebase is a runtime service; managed data services hold no repository. */
+  /**
+   * A codebase is a runtime service, minus the stage half of each dev/stage
+   * pair: a stage gets its partner's code deployed and is never a checkout
+   * (`gitCheckoutHostnames`). Managed data services hold no repository.
+   */
   const repositories = useMemo(
-    () =>
-      (topology.view?.services ?? [])
-        .filter((service) => service.group === "runtimes")
-        .map((service) => service.hostname),
+    () => gitCheckoutHostnames(topology.view?.services ?? []),
     [topology.view],
   );
 

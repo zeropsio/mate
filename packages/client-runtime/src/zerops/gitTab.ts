@@ -46,6 +46,8 @@ import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
 
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import { foldedStageHostnames } from "./serviceMap.ts";
+import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
 export interface GitCheckoutState {
@@ -318,4 +320,21 @@ export function gitActionAllowed(
 ): boolean {
   if (action === undefined) return false;
   return action.ownerOnly ? input.isOwner : true;
+}
+
+/**
+ * The repositories the Git tab lists: one per codebase, which is a runtime
+ * service — minus the stage half of every dev/stage pair. A stage is where its
+ * dev partner's code is deployed, built and unmounted; it never has a checkout,
+ * and a row for it said "no repository yet" about something that will never
+ * have one (the owner, 2026-09-17). Managed data services hold no repository
+ * either.
+ */
+export function gitCheckoutHostnames(
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
+): ReadonlyArray<string> {
+  const folded = foldedStageHostnames(services);
+  return services
+    .filter((service) => service.group === "runtimes" && !folded.has(service.hostname))
+    .map((service) => service.hostname);
 }

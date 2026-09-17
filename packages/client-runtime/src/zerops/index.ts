@@ -263,6 +263,7 @@ export {
   type ZeropsTokenDelegation,
 } from "./groupReach.ts";
 export {
+  gitCheckoutHostnames,
   checkTone,
   checkWord,
   environmentForBranch,
