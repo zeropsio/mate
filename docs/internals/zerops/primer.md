@@ -233,7 +233,9 @@ In the order the owner ranked them, then the rest:
   running container is the push loop (`../zcp/eval/scripts/mate-dev-push.sh`), not a release.
 - **Release.** Fork: bump the three `package.json` versions, tag `vX.Y.Z` on `main`; the workflow
   publishes the tarball, `SHA256SUMS` and `stable.json`; zcp installs it at the next boot or
-  `zcp mate update` (manifest cache one hour). zcp: its own release ritual, v9.176.0 carries the
+  `zcp mate update` (manifest cache one hour). The hosted app at mate.zerops.io rebuilds from a push
+  to `main` by itself (the root `zerops.yml`, setup `prod`), a new bundle within about two minutes
+  (measured 2026-09-17); it does not wait for the tag. zcp: its own release ritual, v9.176.0 carries the
   backbone. gitea-mate: a push to `main` is live for every new import; tag it as a marker.
 - **Live checks.** Single-person probes in the Onboarding org, two-person and empty-org runs in the
   test org `Mate`; resources tagged `probe:<topic>-<date>`, listed, deleted, counts diffed. Empty-org
