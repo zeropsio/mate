@@ -48,7 +48,7 @@ import {
 export interface GroupEnvironmentService {
   readonly projectId: string;
   readonly serviceId: string;
-  /** Its hostname, which is also its repository's name in the group's org. */
+  /** Its hostname in the environment — `app` for a pair's promoted runtime. */
   readonly hostname: string;
 }
 
@@ -75,14 +75,24 @@ export function planDeployedVersionReads(input: {
 export interface DeployStatusRead {
   /** The group's Gitea org. */
   readonly owner: string;
-  /** The service's repository — its hostname (`docs/group-repo.md`). */
+  /** The service's hostname in its environment — what the row is keyed by. */
+  readonly hostname: string;
+  /**
+   * The repository the read goes to: the one the tier's `buildFromGit` names
+   * (`appdev` for the promoted runtime `app` — a pair's repository is named
+   * after its dev half), the hostname when the tier does not say. Reading the
+   * hostname's answered `404` for every stage and production of the owner's
+   * run (2026-09-17), and the rows showed no deploy at all.
+   */
   readonly repo: string;
   readonly sha: string;
 }
 
-/** The key a planned status read is answered under. */
-export function deployStatusKey(read: DeployStatusRead): string {
-  return `${read.owner}/${read.repo}@${read.sha}`;
+/** The key a planned status read is answered under: the hostname's, not the repository's. */
+export function deployStatusKey(
+  read: Pick<DeployStatusRead, "owner" | "hostname" | "sha">,
+): string {
+  return `${read.owner}/${read.hostname}@${read.sha}`;
 }
 
 /**
@@ -99,6 +109,8 @@ export function planDeployStatusReads(input: {
   readonly versions: ReadonlyArray<{
     readonly hostname: string;
     readonly appVersionName?: string | undefined;
+    /** The repository's name in the org, from the tier's `buildFromGit`. */
+    readonly repository?: string | undefined;
   }>;
 }): ReadonlyArray<DeployStatusRead> {
   const seen = new Set<string>();
@@ -106,7 +118,12 @@ export function planDeployStatusReads(input: {
   for (const version of input.versions) {
     const sha = deployedCommit(version.appVersionName);
     if (sha === undefined) continue;
-    const read = { owner: input.owner, repo: version.hostname, sha };
+    const read = {
+      owner: input.owner,
+      hostname: version.hostname,
+      repo: version.repository ?? version.hostname,
+      sha,
+    };
     const key = deployStatusKey(read);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -159,7 +176,7 @@ export function buildGroupEnvironmentRowInputs(input: {
           sha === undefined
             ? undefined
             : input.statuses.get(
-                deployStatusKey({ owner: input.owner, repo: service.hostname, sha }),
+                deployStatusKey({ owner: input.owner, hostname: service.hostname, sha }),
               );
         return {
           hostname: service.hostname,

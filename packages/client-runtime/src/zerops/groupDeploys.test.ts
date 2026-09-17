@@ -78,6 +78,13 @@ describe("planning the reads", () => {
       expected: [],
     },
     {
+      // The promoted runtime `app` builds from the pair's repository `appdev`
+      // (the owner's run, 2026-09-17: reading `todo/app` answered 404).
+      name: "a runtime whose tier names another repository",
+      versions: [{ hostname: "app", appVersionName: API, repository: "appdev" }],
+      expected: [`acme/app@${API}`],
+    },
+    {
       name: "a version somebody named by hand",
       versions: [{ hostname: "api", appVersionName: "hotfix" }],
       expected: [],
@@ -86,6 +93,20 @@ describe("planning the reads", () => {
     expect(planDeployStatusReads({ owner: "acme", versions }).map(deployStatusKey)).toEqual(
       expected,
     );
+  });
+
+  it("reads the statuses on the tier's repository and keys them by the hostname", () => {
+    const reads = planDeployStatusReads({
+      owner: "acme",
+      versions: [
+        { hostname: "app", appVersionName: API, repository: "appdev" },
+        { hostname: "worker", appVersionName: API },
+      ],
+    });
+    expect(reads.map((read) => [read.repo, deployStatusKey(read)])).toEqual([
+      ["appdev", `acme/app@${API}`],
+      ["worker", `acme/worker@${API}`],
+    ]);
   });
 });
 

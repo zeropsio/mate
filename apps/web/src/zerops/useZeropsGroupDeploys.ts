@@ -33,10 +33,11 @@ import {
   type GroupEnvironment,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentService,
+  importReadyTier,
   type GroupEnvironmentTier,
   type MissingEnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
 
@@ -113,6 +114,16 @@ export function useZeropsGroupDeploys(input: {
     readonly deploys: ZeropsGroupDeploys;
   } | null>(null);
   const [tick, setTick] = useState(0);
+  // The reads run off `key` and the clock, never off the inputs' identity: on
+  // the Git tab the groups are rebuilt from an inventory that moves with every
+  // read this hook makes, and keying the effect on them read the group repo
+  // about 700 times a minute for as long as the tab was open (the owner's org,
+  // 2026-09-17, 19:35Z on). The latest inputs are read from here when a pass
+  // starts.
+  const latest = useRef({ groups, readVersion });
+  useEffect(() => {
+    latest.current = { groups, readVersion };
+  }, [groups, readVersion]);
 
   useEffect(() => {
     if (key === "") return;
@@ -130,6 +141,7 @@ export function useZeropsGroupDeploys(input: {
     const controller = new AbortController();
 
     void (async () => {
+      const { groups, readVersion } = latest.current;
       const deploys = new Map<string, ZeropsGroupDeployState>();
       for (const group of groups) {
         if (controller.signal.aborted) return;
@@ -148,12 +160,11 @@ export function useZeropsGroupDeploys(input: {
             : await client
                 .listPullRequests(group.slug, GROUP_REPOSITORY, { state: "open" })
                 .catch((): ReadonlyArray<GiteaPullRequest> => []);
-        const tiersOnMain =
+        const onMain =
           client === null
-            ? []
-            : await readTiersOnMain(client, group.slug).catch(
-                (): ReadonlyArray<GroupEnvironmentTier> => [],
-              );
+            ? NO_TIERS
+            : await readTiersOnMain(client, group.slug).catch((): TiersOnMain => NO_TIERS);
+        const tiersOnMain = onMain.tiers;
         if (controller.signal.aborted) return;
         const missing = missingEnvironmentRows({ tiersOnMain, declarations });
         if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
@@ -180,6 +191,7 @@ export function useZeropsGroupDeploys(input: {
             versions: services.map((service) => ({
               hostname: service.hostname,
               appVersionName: versions.get(service.serviceId),
+              repository: onMain.repositories.get(service.hostname),
             })),
           });
           for (const read of reads) {
@@ -218,26 +230,53 @@ export function useZeropsGroupDeploys(input: {
     // on; keying on the array's identity would read the whole account again
     // on every render. `tick` is the clock: the same reads again, with what
     // was read last staying up until they land.
-  }, [giteaOrigin, groups, key, readVersion, tick]);
+  }, [giteaOrigin, key, tick]);
 
   return answer?.key === key ? answer.deploys : EMPTY;
 }
 
-/** The tiers whose import is on the group repo's `main` — what a person can add. */
+/** What the group repo's `main` says: the tiers on it, and each hostname's repository. */
+interface TiersOnMain {
+  /** The tiers whose import is on `main` — what a person can add. */
+  readonly tiers: ReadonlyArray<GroupEnvironmentTier>;
+  /**
+   * The repository each runtime builds from, by hostname, from the tiers'
+   * `buildFromGit` — where a deploy's commit statuses are (`groupDeploys.ts`).
+   */
+  readonly repositories: ReadonlyMap<string, string>;
+}
+
+const NO_TIERS: TiersOnMain = { tiers: [], repositories: new Map() };
+
 async function readTiersOnMain(
   client: NonNullable<ReturnType<typeof giteaClientFor>>,
   slug: string,
-): Promise<ReadonlyArray<GroupEnvironmentTier>> {
+): Promise<TiersOnMain> {
   const tiers: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
+  const repositories = new Map<string, string>();
   const present = await Promise.all(
     tiers.map(async (tier) => {
       const file = await client
         .readFile(slug, GROUP_REPOSITORY, RECIPE_TIER_PATHS[tier], "main")
         .catch(() => undefined);
-      return file === undefined ? [] : [tier];
+      if (file === undefined) return [];
+      for (const [hostname, source] of Object.entries(
+        importReadyTier(file.content)?.sources ?? {},
+      )) {
+        const name = repositoryName(source.repository);
+        if (name !== undefined) repositories.set(hostname, name);
+      }
+      return [tier];
     }),
   );
-  return present.flat();
+  return { tiers: present.flat(), repositories };
+}
+
+/** `appdev` from `https://web-…/todo/appdev` or `…/appdev.git`. */
+function repositoryName(cloneUrl: string): string | undefined {
+  const last = cloneUrl.replace(/\/+$/u, "").split("/").at(-1);
+  if (last === undefined || last.length === 0) return undefined;
+  return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
 }
 
 async function readDeclarations(
