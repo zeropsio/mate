@@ -204,7 +204,8 @@ describe("signer catch-up", () => {
    */
   const makeFeed = (input: {
     readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>>;
-    readonly env?: Readonly<Record<string, string>>;
+    /** The env store's document, as the file holds it. */
+    readonly env?: string;
   }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -212,7 +213,7 @@ describe("signer catch-up", () => {
       const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-agent-auth-signers-" });
       const envStorePath = path.join(homeDir, "zembed-env.json");
       if (input.env !== undefined) {
-        yield* fs.writeFileString(envStorePath, JSON.stringify(input.env));
+        yield* fs.writeFileString(envStorePath, input.env);
       }
       const credential = path.join(homeDir, ".claude", ".credentials.json");
       yield* fs.makeDirectory(path.dirname(credential), { recursive: true });
@@ -287,7 +288,7 @@ describe("signer catch-up", () => {
         Effect.gen(function* () {
           const { subscription, calls } = yield* makeFeed({
             signers: {},
-            env: { ZCP_AGENT_TOKEN_CLAUDE_CODE: "sk-project" },
+            env: '{"ZCP_AGENT_TOKEN_CLAUDE_CODE":"sk-project"}',
           });
           assert.equal(agentState(subscription.latest, "claude-code")?.state, "authorized-token");
           const before = yield* Ref.get(calls);
