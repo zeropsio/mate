@@ -158,32 +158,46 @@ export async function addGroupEnvironment(input: {
     const write = withGroupEnvironment(document, environment);
     if (!write.ok) return stop("environments-document", write.reason);
 
-    await gitea.changeFiles(slug, GROUP_REPOSITORY, {
-      message: environmentCommitMessage(environment),
-      branch: "main",
-      newBranch: write.branch,
-      files: [
-        current === undefined
-          ? { operation: "create", path: ENVIRONMENTS_DOCUMENT_PATH, content: write.yaml }
-          : {
-              operation: "update",
-              path: ENVIRONMENTS_DOCUMENT_PATH,
-              content: write.yaml,
-              sha: current.sha,
-            },
-      ],
-    });
+    // An earlier attempt may have got as far as the branch, or the request
+    // (a tab closed between the two, 2026-09-17): what is there is reused,
+    // never written again — Gitea refuses a branch that exists.
+    const left = await gitea.getBranch(slug, GROUP_REPOSITORY, write.branch).catch(() => undefined);
+    if (left?.name !== write.branch) {
+      await gitea.changeFiles(slug, GROUP_REPOSITORY, {
+        message: environmentCommitMessage(environment),
+        branch: "main",
+        newBranch: write.branch,
+        files: [
+          current === undefined
+            ? { operation: "create", path: ENVIRONMENTS_DOCUMENT_PATH, content: write.yaml }
+            : {
+                operation: "update",
+                path: ENVIRONMENTS_DOCUMENT_PATH,
+                content: write.yaml,
+                sha: current.sha,
+              },
+        ],
+      });
+    }
 
     const main = await gitea.getBranch(slug, GROUP_REPOSITORY, "main");
     const plan = planEnvironmentWrite({
       name: environment.name,
       userCanMerge: main?.user_can_merge,
     });
-    const pull = await gitea.createPullRequest(slug, GROUP_REPOSITORY, {
-      head: plan.branch,
-      base: "main",
-      title: environmentCommitMessage(environment),
-    });
+    const open = await gitea.listPullRequests(slug, GROUP_REPOSITORY, { state: "open" }).catch(
+      (): ReadonlyArray<{
+        readonly number: number;
+        readonly head?: { readonly ref?: string } | undefined;
+      }> => [],
+    );
+    const pull =
+      open.find((entry) => entry.head?.ref === plan.branch) ??
+      (await gitea.createPullRequest(slug, GROUP_REPOSITORY, {
+        head: plan.branch,
+        base: "main",
+        title: environmentCommitMessage(environment),
+      }));
     let merged = false;
     if (plan.merge) {
       await gitea.mergePullRequest(slug, GROUP_REPOSITORY, pull.number);

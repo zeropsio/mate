@@ -1825,6 +1825,13 @@ function ZeropsProjectsContent() {
     registry: registryState.registry,
     refreshRegistry: registryState.refresh,
     halfMade,
+    // Not a failed creation: the project runs, and what is outstanding is
+    // named so the person knows what is waiting on whom.
+    onOutcome: (entry, outcome) => {
+      if (outcome.failed !== undefined) {
+        setToolError(`${entry.displayName}: ${outcome.failed.reason}`);
+      }
+    },
   });
 
   // The throwaways a crashed tab left on the account. Nothing a person did

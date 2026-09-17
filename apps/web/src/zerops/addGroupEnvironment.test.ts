@@ -17,7 +17,10 @@ function giteaFake(overrides: Partial<GiteaClient> = {}): GiteaClient {
     origin: "https://gitea.test",
     readFile: vi.fn().mockResolvedValue(undefined),
     changeFiles: vi.fn().mockResolvedValue(undefined),
-    getBranch: vi.fn().mockResolvedValue({ name: "main", user_can_merge: false }),
+    getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
+      name === "main" ? { name: "main", user_can_merge: false } : undefined,
+    ),
+    listPullRequests: vi.fn().mockResolvedValue([]),
     createPullRequest: vi.fn().mockResolvedValue({ number: 12, title: "t", state: "open" }),
     mergePullRequest: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -245,5 +248,39 @@ environments:
     expect(outcome.done).toEqual(["registry", "broker-grant", "environments-document"]);
     expect(gitea.changeFiles).not.toHaveBeenCalled();
     expect(gitea.createPullRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("an attempt an earlier one left half done", () => {
+  it("reuses the branch it left and opens the request from it", async () => {
+    const gitea = giteaFake({
+      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
+        name === "main" ? { name: "main", user_can_merge: true } : { name },
+      ),
+      listPullRequests: vi.fn().mockResolvedValue([]),
+    });
+    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
+    expect(outcome.failed).toBeUndefined();
+    expect(gitea.changeFiles).not.toHaveBeenCalled();
+    expect(gitea.createPullRequest).toHaveBeenCalledTimes(1);
+    expect(outcome.pullRequest).toEqual({ number: 12, merged: true });
+  });
+
+  it("reuses the request it left rather than opening a second", async () => {
+    const gitea = giteaFake({
+      getBranch: vi.fn(async (_owner: string, _repo: string, name: string) =>
+        name === "main" ? { name: "main", user_can_merge: true } : { name },
+      ),
+      listPullRequests: vi
+        .fn()
+        .mockResolvedValue([
+          { number: 7, state: "open", head: { ref: "mate-app/env-acme-stage" } },
+        ]),
+    });
+    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
+    expect(outcome.failed).toBeUndefined();
+    expect(gitea.createPullRequest).not.toHaveBeenCalled();
+    expect(gitea.mergePullRequest).toHaveBeenCalledWith("acme", "group", 7);
+    expect(outcome.pullRequest).toEqual({ number: 7, merged: true });
   });
 });

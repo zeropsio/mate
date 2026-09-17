@@ -22,7 +22,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef } from "react";
 
-import { addGroupEnvironment } from "./addGroupEnvironment";
+import { addGroupEnvironment, type AddGroupEnvironmentOutcome } from "./addGroupEnvironment";
 import { giteaClientFor } from "./giteaSession";
 import { registryGroupSlug } from "./useZeropsRegistry";
 
@@ -35,6 +35,10 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   readonly registry: ZeropsRegistry;
   readonly refreshRegistry: () => void;
   readonly halfMade: ReadonlyArray<HalfMadeGroupEnvironment>;
+  /** What each repair came to — the caller says what is still outstanding. */
+  readonly onOutcome?:
+    | ((entry: HalfMadeGroupEnvironment, outcome: AddGroupEnvironmentOutcome) => void)
+    | undefined;
 }): void {
   const { client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, refreshRegistry } =
     input;
@@ -42,6 +46,14 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   registry.current = input.registry;
   const refresh = useRef(refreshRegistry);
   refresh.current = refreshRegistry;
+  const onOutcome = useRef(input.onOutcome);
+  onOutcome.current = input.onOutcome;
+  // The list through a ref: its identity changes on every inventory push,
+  // and an effect keyed on it aborted a repair between the branch and the
+  // pull request (2026-09-17). The key below is what changes when the list
+  // does.
+  const latest = useRef(halfMade);
+  latest.current = halfMade;
   const attempted = useRef(new Set<string>());
   const key = halfMade
     .map((entry) => `${entry.groupId}:${entry.projectId}:${entry.tier}`)
@@ -50,14 +62,14 @@ export function useZeropsGroupEnvironmentReconcile(input: {
 
   useEffect(() => {
     if (!enabled || clientId === undefined || giteaOrigin === undefined || key === "") return;
-    const pending = halfMade.filter((entry) => !attempted.current.has(entry.projectId));
+    const pending = latest.current.filter((entry) => !attempted.current.has(entry.projectId));
     if (pending.length === 0) return;
     for (const entry of pending) attempted.current.add(entry.projectId);
     const controller = new AbortController();
     void (async () => {
       for (const entry of pending) {
         if (controller.signal.aborted) return;
-        await addGroupEnvironment({
+        const outcome = await addGroupEnvironment({
           client,
           gitea: giteaClientFor(giteaOrigin),
           clientId,
@@ -71,14 +83,16 @@ export function useZeropsGroupEnvironmentReconcile(input: {
             project: entry.projectId,
           },
           signal: controller.signal,
-        }).catch(() => undefined);
+        }).catch((): AddGroupEnvironmentOutcome | undefined => undefined);
+        if (outcome !== undefined && !controller.signal.aborted)
+          onOutcome.current?.(entry, outcome);
       }
       if (!controller.signal.aborted) refresh.current();
     })();
     return () => {
       controller.abort();
     };
-    // `key` is the half-made list; the registry and the refresh are read
-    // through refs so a registry re-read does not run the writes again.
-  }, [client, clientId, enabled, giteaOrigin, giteaProjectId, halfMade, key]);
+    // `key` is the half-made list; the list, the registry and the refresh are
+    // read through refs so a re-render does not abort a repair in flight.
+  }, [client, clientId, enabled, giteaOrigin, giteaProjectId, key]);
 }
