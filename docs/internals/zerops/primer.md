@@ -350,10 +350,11 @@ In the order the owner ranked them, then the rest:
     for this Mate and have project git somewhere else … a list of open PRs of each Mate between
     mates and the stage/prod"). Closed in 0.11.16 (D26): the Mate's tab keeps its own branch and
     pull request; the project's flow is the left menu's timeline and the projects screen's rows;
-    the Gitea overview is the footer's (ledger, _The Git tab split_). Open on it: the pull
-    requests under a Mate fold behind a count past three — the owner asked for "smartly
-    expandable", and whether a row itself should expand to its details is unmeasured; the
-    sidebar's dots carry the word only as a title.
+    the Gitea overview is the footer's (ledger, _The Git tab split_; the rows under each Mate
+    with _Merge_ measured live at 22:21Z on two pull requests the Mates opened on request). Open on
+    it: the pull requests under a Mate fold behind a count past three — the owner asked for
+    "smartly expandable", and whether a row itself should expand to its details is unmeasured; the
+    sidebar's dots carry the word in a tooltip.
 28. **Three faults found by the owner on the Git tab after the run** — the release word "Checking"
     (the status field), the environment rows' statuses read from the runtime's name, the tab
     re-reading the group repo 700 times a minute — fixed in `6790efee0` and `2c9f0bc79` (ledger,
@@ -369,3 +370,7 @@ In the order the owner ranked them, then the rest:
     _ACTION REQUIRED_ card stays after Claude Code is signed in; a failed creation says a generic
     sentence; the stage's row menu offers Mate verbs; and copy leaks the platform's words
     ("startWithoutCode") into rows. None fixed; each is a slice of its own.
+30. **zcp titles a Mate's pull request "Mate: appdev"** (2026-09-17 22:21Z, both rows of the
+    timeline read the same words). The commit is in the work session's words (D25) and the pull
+    request's title should be too — the task is what a person scans the list for. zcp
+    `openGiteaPairPullRequest`; a zcp release.
