@@ -206,7 +206,6 @@ export {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
   type EnvironmentCreationStepState,
-  type GiteaCredentialOutcome,
   type RunEnvironmentCreationInput,
 } from "./runEnvironmentCreation.ts";
 export {
@@ -226,21 +225,6 @@ export {
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
 export { botDisplayName, generateBotName, hasBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
-export {
-  GITEA_MATE_TOKEN_SCOPES,
-  GITEA_TOKEN_ENV_KEY,
-  GITEA_URL_ENV_KEY,
-  MATE_BROKER_URL_ENV_KEY,
-  planGiteaCredential,
-  planGiteaCredentialReconcile,
-  planGiteaCredentialRequest,
-  type GiteaCredentialReconcilePlan,
-  type GiteaEndpoints,
-  type MateGiteaAccess,
-  type ZeropsGiteaCredentialInput,
-  type ZeropsGiteaCredentialPlan,
-  type ZeropsGiteaCredentialRequestInput,
-} from "./giteaCredential.ts";
 export {
   deriveGroupSlug,
   formatZeropsRegistryTags,

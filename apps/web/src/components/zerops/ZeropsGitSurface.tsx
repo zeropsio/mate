@@ -29,7 +29,6 @@ import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/envi
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useMateGiteaReceipt } from "../../zerops/giteaCredentialReceipts";
 import { findAccountGitea } from "../../zerops/giteaProject";
 import { giteaClientFor, hasGiteaSession, startGiteaSignIn } from "../../zerops/giteaSession";
 import { browserZeropsStorage } from "../../zerops/storage";
@@ -180,13 +179,6 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     [deployed, group.environments],
   );
 
-  /**
-   * Whether this Mate has its bot's Gitea access — the credential reconcile's
-   * receipt (`giteaCredentialReceipts.ts`), never a `GITEA_TOKEN` key being
-   * present, and `undefined` until a reconcile has answered for it (guide 4.5).
-   */
-  const provisioned = useMateGiteaReceipt(projectRef?.projectId);
-
   const tagAs = useCallback(
     async (tag: string, message: string) => {
       if (giteaOrigin === undefined || owner === undefined) return;
@@ -289,7 +281,6 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         onRollBack={onRollBack}
         onSignIn={signIn}
         owner={owner}
-        provisioned={provisioned}
         signedIn={signedIn}
         threadRef={threadRef}
       />

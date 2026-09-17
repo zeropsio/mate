@@ -88,8 +88,6 @@ export interface ZeropsGitTabProps {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /** Whether this Mate is the viewer's own (D11). */
   readonly isOwner: boolean;
-  /** The credential reconcile's receipt — not `GITEA_TOKEN`'s presence. */
-  readonly provisioned: boolean | undefined;
   /** The group half of the panel, which the caller assembles. */
   readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn">;
   readonly signedIn: boolean;
@@ -177,13 +175,12 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           },
           declarations: props.declarations,
           evidence: {
-            provisioned: props.provisioned,
             remoteReachable: remotes.get(repository)?.reachable,
             remoteDetail: remotes.get(repository)?.detail,
           },
         }),
       ),
-    [checkouts, forges, props.declarations, props.provisioned, remotes, repositories],
+    [checkouts, forges, props.declarations, remotes, repositories],
   );
 
   const renderBlockAction = (block: GitBlock) => {

@@ -58,10 +58,9 @@
  *
  * ## Credential-free
  *
- * The plan never carries the key's value, the way `giteaCredential.ts` never
- * carries a Gitea token: a plan is progress a UI renders. It names the entry
- * the value comes from, and the caller — which already read that entry — moves
- * it across.
+ * The plan never carries the key's value: a plan is progress a UI renders. It
+ * names the entry the value comes from, and the caller — which already read
+ * that entry — moves it across.
  *
  * Nothing here reaches a network or a clock (rule R1).
  *

@@ -44,7 +44,6 @@ import {
   rememberCreationHandoff,
 } from "~/zerops/creationHandoffStorage";
 import { browserZeropsStorage } from "~/zerops/storage";
-import { randomUUID } from "~/lib/utils";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import {
   useZeropsCandidates,
@@ -56,10 +55,6 @@ import {
   useZeropsGroupReach,
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
-import {
-  fetchMateGiteaCredential,
-  useZeropsGiteaCredential,
-} from "~/zerops/useZeropsGiteaCredential";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
@@ -83,7 +78,6 @@ import {
   generateZeropsGroupId,
   GROUP_BEING_SET_UP_LINE,
   hasMate,
-  isZcpService,
   planEnvironmentCreation,
   planGroupMembership,
   pullRequestRow,
@@ -1367,12 +1361,9 @@ function ZeropsProjectsContent() {
     [activeOrganization?.id, inventory],
   );
   const giteaProjectId = accountGitea?.projectId;
-  const giteaEndpoints = useMemo(() => {
-    const state = accountGitea?.state;
-    return state?.url === undefined || state.brokerUrl === undefined
-      ? undefined
-      : { giteaOrigin: state.url, brokerOrigin: state.brokerUrl };
-  }, [accountGitea]);
+  // Read exactly as the account's Gitea project states it: an account on a
+  // devel region or behind a custom domain is read, never guessed.
+  const giteaOrigin = accountGitea?.state.url;
   // The registry — which groups exist, and what each one's Gitea org is called
   // (guide 4.1). One project read, on the one screen that sees the account.
   const registryState = useZeropsRegistry({
@@ -1384,7 +1375,7 @@ function ZeropsProjectsContent() {
   // sibling's export, which carried service shapes without their build setup
   // and produced environments that could not build.
   const groupRecipe = useZeropsGroupRecipe({
-    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    giteaOrigin,
     slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
     tier:
       creationRequest?.role === "prod"
@@ -1398,7 +1389,7 @@ function ZeropsProjectsContent() {
   // The registry says which groups were asked for; `GET /orgs/{slug}` says
   // which the broker has actually made (guide 4.5).
   const giteaOrganizations = useZeropsGroupOrganizations({
-    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    giteaOrigin,
     slugs: registryState.registry.groups.map((group) => group.slug),
     enabled: status === "signed-in",
   });
@@ -1431,7 +1422,7 @@ function ZeropsProjectsContent() {
   const readDeployedVersion = useZeropsDeployedVersionReader();
   const groupDeploys = useZeropsGroupDeploys({
     groups: deployGroups,
-    giteaOrigin: giteaEndpoints?.giteaOrigin,
+    giteaOrigin,
     readVersion: readDeployedVersion,
     enabled: status === "signed-in",
   });
@@ -1602,26 +1593,6 @@ function ZeropsProjectsContent() {
             runZeropsCommand(
               runtime.commands.importProject(organizationRef(activeOrganization.id), yaml),
             ),
-          // Tolerant by design: a Mate that exists and runs is not a failed
-          // creation because its account's Gitea is not up yet. Whatever this
-          // answers, the reconcile above asks again on the next read.
-          fetchGiteaCredential: async ({ projectId }) => {
-            const outcome = inventoryRef.current.services.get(projectId);
-            const serviceId =
-              outcome?.status === "resolved"
-                ? outcome.services.find((service) => isZcpService(service))?.id
-                : undefined;
-            if (serviceId === undefined) return { kind: "waiting-for-gitea" as const };
-            const current = await client.readMateGiteaEnv(serviceId).catch(() => undefined);
-            if (current === undefined) return { kind: "waiting-for-gitea" as const };
-            return fetchMateGiteaCredential({
-              client,
-              clientId: activeOrganization.id,
-              endpoints: giteaEndpoints,
-              mate: { projectId, serviceId, current },
-              nonce: randomUUID(),
-            });
-          },
           readObservedServices: async (projectId) => {
             const outcome = inventoryRef.current.services.get(projectId);
             return outcome?.status === "resolved"
@@ -1684,7 +1655,7 @@ function ZeropsProjectsContent() {
       if (role === "stage" || role === "prod") {
         const written = await addGroupEnvironment({
           client,
-          gitea: giteaEndpoints === undefined ? null : giteaClientFor(giteaEndpoints.giteaOrigin),
+          gitea: giteaOrigin === undefined ? null : giteaClientFor(giteaOrigin),
           clientId: activeOrganization.id,
           giteaProjectId,
           registry: registryState.registry,
@@ -1733,7 +1704,7 @@ function ZeropsProjectsContent() {
       setCreatingIn,
       runtime.commands,
       client,
-      giteaEndpoints,
+      giteaOrigin,
       giteaProjectId,
       registryState,
     ],
@@ -1789,27 +1760,6 @@ function ZeropsProjectsContent() {
   useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
     enabled: status === "signed-in",
-  });
-
-  // And every Mate's Gitea access (guide 1.5). Both endpoints come from the
-  // account's own Gitea project, read exactly as its URL is — an account on a
-  // devel region or behind a custom domain is read, never guessed. No Gitea,
-  // no broker, no call.
-  const giteaMates = useMemo(
-    () =>
-      candidates
-        .filter((candidate) => hasMate(candidate) && !isZeropsToolCandidate(candidate))
-        .map((candidate) => ({
-          projectId: candidate.project.id,
-          serviceId: candidate.service?.id,
-        })),
-    [candidates],
-  );
-  useZeropsGiteaCredential({
-    clientId: activeOrganization?.id,
-    endpoints: giteaEndpoints,
-    mates: giteaMates,
-    enabled: status === "signed-in" && !isLoading,
   });
 
   useEffect(() => {

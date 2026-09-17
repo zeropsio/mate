@@ -69,7 +69,7 @@ function status(context: string, state: GiteaCommitStatus["state"]): GiteaCommit
   return { context, state };
 }
 
-const EVIDENCE = { provisioned: true, remoteReachable: true } as const;
+const EVIDENCE = { remoteReachable: true } as const;
 
 const block = (
   checkoutState: GitCheckoutState,
@@ -245,31 +245,21 @@ describe("every state of a block", () => {
   });
 });
 
-describe("the facts that have to be proved", () => {
+describe("the fact that has to be proved", () => {
   it.each([
     {
       name: "nothing asked yet says nothing",
-      evidence: { provisioned: undefined, remoteReachable: undefined },
+      evidence: { remoteReachable: undefined },
       expected: "",
     },
     {
-      name: "a Mate with no bot token",
-      evidence: { provisioned: false, remoteReachable: undefined },
-      expected: "This Mate has no Gitea access yet.",
-    },
-    {
       name: "a remote that did not answer",
-      evidence: { provisioned: true, remoteReachable: false },
+      evidence: { remoteReachable: false },
       expected: "Its remote did not answer.",
     },
     {
-      name: "both wrong — the one a person fixes first",
-      evidence: { provisioned: false, remoteReachable: false },
-      expected: "This Mate has no Gitea access yet.",
-    },
-    {
-      name: "both proved fine, which is still not a claim",
-      evidence: { provisioned: true, remoteReachable: true },
+      name: "a remote proved fine, which is still not a claim",
+      evidence: { remoteReachable: true },
       expected: "",
     },
   ])("says, for $name", ({ evidence, expected }) => {
@@ -279,7 +269,6 @@ describe("the facts that have to be proved", () => {
   it("says what git said, when git said anything", () => {
     expect(
       gitTrouble({
-        provisioned: true,
         remoteReachable: false,
         remoteDetail: "remote: Gitea: user does not have permission",
       }),
@@ -289,7 +278,6 @@ describe("the facts that have to be proved", () => {
   it("caps git's line where the probe caps it", () => {
     expect(
       gitTrouble({
-        provisioned: true,
         remoteReachable: false,
         remoteDetail: `remote: ${"x".repeat(500)}`,
       }),
@@ -299,7 +287,6 @@ describe("the facts that have to be proved", () => {
 
 describe("a setup proved broken offers no verb that would fail", () => {
   const evidence = (overrides: Partial<GitBlockEvidence> = {}): GitBlockEvidence => ({
-    provisioned: true,
     remoteReachable: true,
     ...overrides,
   });
@@ -338,10 +325,6 @@ describe("a setup proved broken offers no verb that would fail", () => {
 
   it.each([
     {
-      name: "no Gitea access",
-      broken: evidence({ provisioned: false }),
-    },
-    {
       name: "a remote that did not answer",
       broken: evidence({ remoteReachable: false }),
     },
@@ -351,10 +334,6 @@ describe("a setup proved broken offers no verb that would fail", () => {
   });
 
   it.each([
-    {
-      name: "no Gitea access",
-      broken: evidence({ provisioned: false }),
-    },
     {
       name: "a remote that did not answer",
       broken: evidence({ remoteReachable: false }),

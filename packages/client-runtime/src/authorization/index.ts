@@ -8,11 +8,7 @@ export * as TokenStore from "./tokenStore.ts";
 export {
   completeGiteaSignIn,
   MateCredentialError,
-  requestMateCredential,
   type CompleteGiteaSignInInput,
-  type MateCredentialAnswer,
-  type MateCredentialMode,
-  type RequestMateCredentialInput,
 } from "./giteaBroker.ts";
 export {
   DOOR_THROWAWAY_PREFIX,
