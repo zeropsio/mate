@@ -84,3 +84,11 @@ included) and their personal tokens, and what a running Mate does when its key d
 **How to answer** With an account that can be re-invited (its owner clicks the e-mail): have it
 create a Mate-shaped project and token, remove it with `force`, read the org's token list and the
 project's `userRoles`, and call the API with the token; then re-invite it.
+
+---
+
+### Q-17 · Does a person the broker created sign in to Gitea's own pages as the same account?
+
+**Blocks** Nothing in the product — the app gets the person's token from the broker (D21) and never sends them to Gitea's pages; it decides whether a person who opens a repository URL in Gitea's UI and clicks _Sign in with Zerops_ lands on their account or on an "account exists" error (`ACCOUNT_LINKING=disabled`).
+**Why unclear** The broker creates the account bound to the OIDC source with `login_name` = the Zerops user id (measured on the lab, 2026-09-17). Gitea's OAuth2 callback is expected to look an account up by `(login_source, login_name)` before it registers or links one, which would make the two the same account; that lookup is read from Gitea's source, not measured.
+**How to answer** On a live run, open the Gitea URL in a browser as a person the app has already signed in (their account exists, made by the broker), click _Sign in with Zerops_, and see whether the session lands on `u-{id}`. One row in `verified.md` either way; if it errors, the recipe moves to `ACCOUNT_LINKING=auto` (safe: the broker is the only provider and derives username and e-mail from the member list).
