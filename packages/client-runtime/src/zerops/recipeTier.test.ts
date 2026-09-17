@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ENVIRONMENTS_DOCUMENT_PATH, importReadyTier, RECIPE_TIER_PATHS } from "./recipeTier.ts";
+import {
+  ENVIRONMENTS_DOCUMENT_PATH,
+  RECIPE_TIER_PATHS,
+  importReadyTier,
+  recipeProjectImportYaml,
+} from "./recipeTier.ts";
 
 const TIER = `#yamlPreprocessor=on
 services:
@@ -176,5 +181,36 @@ services:
     expect(ready?.yaml).not.toContain("buildFromGit");
     expect(ready?.yaml).not.toContain("zeropsSetup");
     expect(ready?.yaml).toContain("    - hostname: tododb\n      priority: 10");
+  });
+});
+
+describe("recipeProjectImportYaml on a four-space project block", () => {
+  // zcp's tiers indent by four; the rewrite wrote a two-space name and kept
+  // the four-space one, and the platform refused the document (Dara's stage
+  // tier, 2026-09-17).
+  it("replaces the name at the block's own indentation and keeps the rest of the block", () => {
+    const doc = recipeProjectImportYaml(
+      `project:
+    name: Imperial Titan - dev stage
+    envVariables:
+        APP_KEY: <@generateRandomString(<32>)>
+services:
+    - hostname: db
+      type: postgresql:single@18
+`,
+      { name: "Imperial Titan - stage", tagList: ["mate:g:x", "mate:role:stage"] },
+    );
+    expect(doc).toBe(`project:
+    name: Imperial Titan - stage
+    tags:
+      - mate:g:x
+      - mate:role:stage
+    envVariables:
+        APP_KEY: <@generateRandomString(<32>)>
+services:
+    - hostname: db
+      type: postgresql:single@18
+`);
+    expect(doc.match(/^\s+name:/gmu)).toHaveLength(1);
   });
 });

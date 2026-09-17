@@ -286,11 +286,16 @@ export function recipeProjectImportYaml(
 ): string {
   const lines = yaml.split("\n");
   const block = findProjectBlock(lines);
-  const tagLines = (project.tagList ?? []).map((tag) => `    - ${tag}`);
+  // The block's own indentation, so a four-space recipe (zcp's) keeps one
+  // mapping: a two-space `name` beside a four-space `envVariables` is two
+  // indentations in one block, which is no YAML at all (Dara's stage tier,
+  // 2026-09-17: the platform refused the import).
+  const indent = block === null ? "  " : blockIndent(lines, block);
+  const tagLines = (project.tagList ?? []).map((tag) => `${indent}  - ${tag}`);
   const header = [
     "project:",
-    `  name: ${project.name}`,
-    ...(tagLines.length > 0 ? ["  tags:", ...tagLines] : []),
+    `${indent}name: ${project.name}`,
+    ...(tagLines.length > 0 ? [`${indent}tags:`, ...tagLines] : []),
   ];
 
   // No project block at all — a services-only document. Give it one, after
@@ -355,5 +360,19 @@ function findProjectBlock(
 }
 
 function isBlockKey(line: string, key: string): boolean {
-  return new RegExp(`^\\s{1,2}${key}:`).test(line);
+  return new RegExp(`^\\s+${key}:`).test(line);
+}
+
+/** The indentation the block's keys sit at — two spaces when it has none. */
+function blockIndent(
+  lines: ReadonlyArray<string>,
+  block: { readonly start: number; readonly end: number },
+): string {
+  for (let index = block.start + 1; index < block.end; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.trim().length === 0 || line.trim().startsWith("#")) continue;
+    const width = line.length - line.trimStart().length;
+    if (width > 0) return " ".repeat(width);
+  }
+  return "  ";
 }
