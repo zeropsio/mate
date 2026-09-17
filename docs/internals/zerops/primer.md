@@ -244,8 +244,11 @@ In the order the owner ranked them, then the rest:
    2026-09-17: `generateThreadTitle: Codex CLI command failed … 401 Unauthorized` on a Mate where only
    Claude Code is authorized; harmless, the title falls back. Fix: the title generator follows the
    signed-in agent, or is skipped.
-4. **A broker-made person on Gitea's own pages** (Q-17): their _Sign in with Zerops_ is expected to
-   land on the account the broker made, and is unmeasured; the app itself never sends them there.
+4. **A broker-made person on Gitea's own pages** (Q-17): measured 2026-09-17 — Gitea answered 500
+   ("user already exists": its callback looks for an external-login row, not a `login_name`, and
+   `ACCOUNT_LINKING = disabled` refused to link). Fixed in gitea-mate v3.7 (`auto`); a Gitea made
+   before it takes a redeploy of `web` (`--setup gitea`). The app's own links do send people there
+   (a pull request's page, _Review_), which is a design question of its own (§7, 27).
 5. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
    page as one composed flow: the real Mate mark, the sidebar hidden on an empty account, editorial
    type and spacing, one motion moment, verified at 1786 and 1280 in both themes. The 2026-09-16
@@ -332,3 +335,13 @@ In the order the owner ranked them, then the rest:
     `launch-production` — zcp's non-Gitea path (Fen, 2026-09-17). Both the hardening person's.
 26. **A row-menu verb can miss its first click** — _Publish app_ on the stage row did nothing at
     17:57:33Z and published at 17:59:47Z (the audit browser; unmeasured whether a person's click can).
+27. **The Git tab is the project's, not the Mate's** (the owner, 2026-09-17: "shouldn't it be git
+    for this Mate and have project git somewhere else … a list of open PRs of each Mate between
+    mates and the stage/prod"). Today one right-panel tab carries the Mate's checkouts and the
+    group's environments, releases and recipe changes. The shape asked for: the Mate's tab keeps
+    its own branch and pull request; the project's flow — each Mate's open pull request, the
+    stage, the production, the release — lives in the sidebar under the project.
+28. **Three faults found by the owner on the Git tab after the run** — the release word "Checking"
+    (the status field), the environment rows' statuses read from the runtime's name, the tab
+    re-reading the group repo 700 times a minute — fixed in `6790efee0` and `2c9f0bc79` (ledger,
+    _The owner's own poking after the run_).
