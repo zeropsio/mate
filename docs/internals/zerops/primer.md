@@ -99,7 +99,7 @@ driven end to end_, _The backbone's first live run_, _A real Mate through the ba
    (D21, 0.11.6; a refusal said in Gitea's words, 0.11.8).
 5. **zcp** reads the variables from the live env store, gets each dev pair a repository from the
    broker, pushes the pair's branch, opens its pull request, and proposes the recipe (three tiers)
-   to the group repo as a pull request from its fork.
+   to the group repo as a pull request from its fork, which the broker merges on its next pass (D23).
 6. **Add stage**: a project from the Stage tier, `environments.yaml` declared, the broker's token
    widened; a merge into `main` deploys through the webhook in 15 s and serves in under three
    minutes; a workflow's deploy through `actions/deploy@v1` with the job's token, the group's runner
@@ -211,33 +211,37 @@ In the order the owner ranked them, then the rest:
    conversation at once. Fixed in 0.11.9: the inventory is re-read every twenty seconds while a
    creation is on its way (`creationRefresh.ts`); unmeasured until the next creation lands without
    a reload.
-3. **A broker-made person on Gitea's own pages** (Q-17): their _Sign in with Zerops_ is expected to
+3. **The Mate server titles threads with Codex whatever agent is signed in** — Juno's log,
+   2026-09-17: `generateThreadTitle: Codex CLI command failed … 401 Unauthorized` on a Mate where only
+   Claude Code is authorized; harmless, the title falls back. Fix: the title generator follows the
+   signed-in agent, or is skipped.
+4. **A broker-made person on Gitea's own pages** (Q-17): their _Sign in with Zerops_ is expected to
    land on the account the broker made, and is unmeasured; the app itself never sends them there.
-4. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
+5. **The onboarding design pass** — the empty state, the _New project_ form and the first-minutes
    page as one composed flow: the real Mate mark, the sidebar hidden on an empty account, editorial
    type and spacing, one motion moment, verified at 1786 and 1280 in both themes. The 2026-09-16
    rebuild removed the noise and added no design (journal 1b, 2b, 5b).
-5. **Typing while the Mate boots** — the conversation route cannot open without a server connection.
-6. **A placeholder card from the creation hand-off**, so the page never paints the empty state
+6. **Typing while the Mate boots** — the conversation route cannot open without a server connection.
+7. **A placeholder card from the creation hand-off**, so the page never paints the empty state
    between _Create_ and the inventory's answer; done in part (no first-run screen while a creation
    is pending).
-7. **A restart the app did not start reads as "not connected"** — a release rollout looks like an
+8. **A restart the app did not start reads as "not connected"** — a release rollout looks like an
    outage; the platform's service status could name it (journal 10).
-8. **A reconcile that re-grants a registered Mate the broker cannot reach** — a grant that failed
+9. **A reconcile that re-grants a registered Mate the broker cannot reach** — a grant that failed
    after the registry write has no retry in the app; the loop reports it every pass.
-9. **The bot's full name** is the project's, not the Mate's.
-10. **zcp refreshes its release manifest on boot** when the cache predates the process; today a
+10. **The bot's full name** is the project's, not the Mate's.
+11. **zcp refreshes its release manifest on boot** when the cache predates the process; today a
     restart within the hour keeps the old Mate build.
-11. **Joining from the recipe** (2.4) and a second Mate proven live (4.3).
-12. **A release and a rollback run live** (5.5, 5.6), production included.
-13. **The app's leaver flow** (1.4): Mate keys the leaver minted replaced in order, the leaver's
+12. **Joining from the recipe** (2.4) and a second Mate proven live (4.3).
+13. **A release and a rollback run live** (5.5, 5.6), production included.
+14. **The app's leaver flow** (1.4): Mate keys the leaver minted replaced in order, the leaver's
     tokens deleted, `mate:leaving` cleared; Q-16 open.
-14. **The runner's cross-org proof** (1.6) and whether a stopped service is charged (a platform
+15. **The runner's cross-org proof** (1.6) and whether a stopped service is charged (a platform
     question).
-15. **The Gitea restore** (1.1), written and run once on a probe.
-16. **Adoption** (Phase 6); **_Set up Mate_**, delegated launch and the `prodCd` track removed
+16. **The Gitea restore** (1.1), written and run once on a probe.
+17. **Adoption** (Phase 6); **_Set up Mate_**, delegated launch and the `prodCd` track removed
     (Phase 7); the demo account migrated.
-17. **Platform:** `project.create` fails with `internalServerError` after answering `200`, two of
+18. **Platform:** `project.create` fails with `internalServerError` after answering `200`, two of
     five creations on 2026-09-16/17 (process ids in the ledger); the client and the drivers read the
     verdict and retry or show it.
 
