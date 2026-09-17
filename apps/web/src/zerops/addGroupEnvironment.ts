@@ -135,13 +135,20 @@ export async function addGroupEnvironment(input: {
       "main",
     );
     const document = current?.content ?? "";
+    const declared = readGroupEnvironments(document);
+    // The same write run twice — a retried creation, or the projects page
+    // finishing one a reload cut short (2026-09-17) — declares nothing twice.
+    if (declared.some((entry) => entry.project === input.environment.project)) {
+      done.push("environments-document");
+      return { done, failed: undefined, pullRequest: undefined };
+    }
     // Derived against what the document already declares, so a second stage is
     // `acme-crm-stage-2` rather than a refusal the person cannot act on.
     const environment: GroupEnvironment = {
       name: deriveEnvironmentName(
         input.environment.displayName,
         input.environment.tier,
-        readGroupEnvironments(document).map((entry) => entry.name),
+        declared.map((entry) => entry.name),
       ),
       tier: input.environment.tier,
       project: input.environment.project,

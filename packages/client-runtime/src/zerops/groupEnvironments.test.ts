@@ -1,3 +1,4 @@
+import { parseZeropsRegistry } from "./groupRegistry.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,12 +7,13 @@ import {
   environmentBranchName,
   environmentCommitMessage,
   findBrokerToken,
+  type GroupEnvironment,
+  halfMadeGroupEnvironments,
   planBrokerProjectGrant,
   planEnvironmentWrite,
   readGroupEnvironments,
   withBrokerProjectGrant,
   withGroupEnvironment,
-  type GroupEnvironment,
 } from "./groupEnvironments.ts";
 
 const ONE_STAGE = `version: 1
@@ -363,5 +365,44 @@ describe("deriveEnvironmentName", () => {
     expect(deriveEnvironmentName("Acme - stage", "stage", ["acme-stage", "acme-stage-2"])).toBe(
       "acme-stage-3",
     );
+  });
+});
+
+describe("halfMadeGroupEnvironments", () => {
+  const registry = parseZeropsRegistry([
+    "mate:gn:g-1:acme",
+    "mate:gm:g-1:p-mate:mate",
+    "mate:gm:g-1:p-stage:stage",
+  ]);
+  const projects = [
+    { id: "p-mate", name: "Acme - dev", tagList: ["mate:g:g-1", "mate:role:dev", "mate"] },
+    { id: "p-stage", name: "Acme - stage", tagList: ["mate:g:g-1", "mate:role:stage"] },
+    { id: "p-prod", name: "Acme - production", tagList: ["mate:g:g-1", "mate:role:prod"] },
+    { id: "p-loose", name: "Loose", tagList: ["mate:role:stage"] },
+  ];
+
+  it("names a production the registry and the document do not know, and nothing else", () => {
+    // The reload of 2026-09-17: the production ran, the page kept asking for it.
+    const declared = new Map([["g-1", new Set(["p-stage"])]]);
+    expect(halfMadeGroupEnvironments({ projects, registry, declared })).toEqual([
+      { groupId: "g-1", projectId: "p-prod", displayName: "Acme - production", tier: "production" },
+    ]);
+  });
+
+  it("names a stage registered but not declared", () => {
+    expect(halfMadeGroupEnvironments({ projects, registry, declared: new Map() })).toEqual([
+      { groupId: "g-1", projectId: "p-stage", displayName: "Acme - stage", tier: "stage" },
+      { groupId: "g-1", projectId: "p-prod", displayName: "Acme - production", tier: "production" },
+    ]);
+  });
+
+  it("leaves a group the registry does not know alone", () => {
+    const declared = new Map([["g-1", new Set(["p-stage", "p-prod"])]]);
+    const registered = parseZeropsRegistry([
+      "mate:gn:g-1:acme",
+      "mate:gm:g-1:p-stage:stage",
+      "mate:gm:g-1:p-prod:production",
+    ]);
+    expect(halfMadeGroupEnvironments({ projects, registry: registered, declared })).toEqual([]);
   });
 });

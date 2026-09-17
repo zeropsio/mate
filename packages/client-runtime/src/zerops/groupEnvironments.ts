@@ -37,6 +37,8 @@
  * @module groupEnvironments
  */
 
+import type { ZeropsRegistry } from "./groupRegistry.ts";
+import { readZeropsGroupTags } from "./groups.ts";
 import type { ZeropsProjectGrant } from "./groupReach.ts";
 
 /** What a group environment is: a stage, or the one production. */
@@ -393,4 +395,49 @@ export function planBrokerProjectGrant<Token extends BrokerTokenLike>(
   // An identical list is the same array back (`withBrokerProjectGrant`).
   if (write.grants === broker.projects) return { kind: "held", broker };
   return { kind: "write", broker, projects: write.grants };
+}
+
+/**
+ * A stage or a production the account holds that the group does not know in
+ * full: not in the registry as that kind, or not declared in
+ * `environments.yaml`. The three writes that follow a creation's project live
+ * in the page that made it, and a reload in that minute lost them — the
+ * project ran, the page kept asking for the tier it already had (2026-09-17).
+ * The projects page finishes these on its next read.
+ */
+export interface HalfMadeGroupEnvironment {
+  readonly groupId: string;
+  readonly projectId: string;
+  /** What the person called the project — the declared name derives from it. */
+  readonly displayName: string;
+  readonly tier: GroupEnvironmentTier;
+}
+
+export function halfMadeGroupEnvironments(input: {
+  readonly projects: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly tagList?: ReadonlyArray<string> | undefined;
+  }>;
+  readonly registry: ZeropsRegistry;
+  /** Per group, the projects its `environments.yaml` declares. */
+  readonly declared: ReadonlyMap<string, ReadonlySet<string>>;
+}): ReadonlyArray<HalfMadeGroupEnvironment> {
+  const out: Array<HalfMadeGroupEnvironment> = [];
+  for (const project of input.projects) {
+    const tags = readZeropsGroupTags(project.tagList);
+    if (tags.groupId === undefined) continue;
+    const tier: GroupEnvironmentTier | undefined =
+      tags.role === "stage" ? "stage" : tags.role === "prod" ? "production" : undefined;
+    if (tier === undefined) continue;
+    const group = input.registry.groups.find((entry) => entry.groupId === tags.groupId);
+    if (group === undefined) continue;
+    const registered = group.projects.some(
+      (entry) => entry.projectId === project.id && entry.kind === tier,
+    );
+    const declared = input.declared.get(tags.groupId)?.has(project.id) ?? false;
+    if (registered && declared) continue;
+    out.push({ groupId: tags.groupId, projectId: project.id, displayName: project.name, tier });
+  }
+  return out;
 }

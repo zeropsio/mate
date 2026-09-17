@@ -357,6 +357,8 @@ export {
   type MateRegistration,
 } from "./groupCreation.ts";
 export {
+  halfMadeGroupEnvironments,
+  type HalfMadeGroupEnvironment,
   BROKER_TOKEN_NAME,
   DEFAULT_STAGE_SOURCES,
   deriveEnvironmentName,

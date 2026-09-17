@@ -224,3 +224,26 @@ describe("addGroupEnvironment", () => {
     expect(outcome.failed?.step).toBe("environments-document");
   });
 });
+
+describe("a project already declared", () => {
+  it("declares nothing twice — the write run again is a no-op past the registry and the grant", async () => {
+    const gitea = giteaFake({
+      readFile: vi.fn().mockResolvedValue({
+        sha: "abc",
+        content: `version: 1
+environments:
+  acme-stage:
+    tier: stage
+    project: p-stage
+    sources: [main]
+    deploy: on-push
+`,
+      }),
+    });
+    const outcome = await addGroupEnvironment(base(apiFake(), gitea));
+    expect(outcome.failed).toBeUndefined();
+    expect(outcome.done).toEqual(["registry", "broker-grant", "environments-document"]);
+    expect(gitea.changeFiles).not.toHaveBeenCalled();
+    expect(gitea.createPullRequest).not.toHaveBeenCalled();
+  });
+});

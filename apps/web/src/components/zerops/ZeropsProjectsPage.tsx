@@ -67,6 +67,7 @@ import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  halfMadeGroupEnvironments,
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
@@ -122,6 +123,7 @@ import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateProject } from "~/zerops/brokerGrant";
 import { findAccountGitea } from "~/zerops/giteaProject";
 import { giteaClientFor, useGiteaSession } from "~/zerops/giteaSession";
+import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useZeropsGroupOrganizations } from "~/zerops/useZeropsGroupOrganizations";
 import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -1789,6 +1791,40 @@ function ZeropsProjectsContent() {
         })),
       [groupTree.groups],
     ),
+  });
+
+  // A stage or a production whose creation lost its last writes — the
+  // registry, the broker's grant, the declaration — is finished here, off the
+  // same list, once no creation is on its way in this tab
+  // (`useZeropsGroupEnvironmentReconcile`).
+  const declaredByGroup = useMemo(
+    () =>
+      new Map(
+        [...groupDeploys].map(([groupId, state]) => [
+          groupId,
+          new Set(state.environments.map((entry) => entry.projectId)),
+        ]),
+      ),
+    [groupDeploys],
+  );
+  const halfMade = useMemo(
+    () =>
+      halfMadeGroupEnvironments({
+        projects: candidates.map((candidate) => candidate.project),
+        registry: registryState.registry,
+        declared: declaredByGroup,
+      }),
+    [candidates, declaredByGroup, registryState.registry],
+  );
+  useZeropsGroupEnvironmentReconcile({
+    enabled: status === "signed-in" && giteaSignedIn && !isLoading && !creationRunning,
+    client,
+    clientId: activeOrganization?.id,
+    giteaOrigin,
+    giteaProjectId,
+    registry: registryState.registry,
+    refreshRegistry: registryState.refresh,
+    halfMade,
   });
 
   // The throwaways a crashed tab left on the account. Nothing a person did
