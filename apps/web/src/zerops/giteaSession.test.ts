@@ -112,6 +112,32 @@ describe("ensureGiteaSession", () => {
     expect(hasGiteaSession(where.giteaOrigin)).toBe(false);
   });
 
+  it("says what Gitea refused, in Gitea's words, and does not retry it", async () => {
+    // 424 from the broker: Gitea said no (the owner's run of 2026-09-17, a
+    // login source that had not been added). A 502 would have been the
+    // platform's edge page and read as "still setting up".
+    const where = origins();
+    const { platform } = recording();
+    const { fetch } = answering({
+      status: 424,
+      body: {
+        error: "gitea_refused",
+        message: "Gitea refused: login source does not exist [id: 1]",
+      },
+    });
+    const failure = await ensureGiteaSession({
+      ...where,
+      clientId: "org-1",
+      platform,
+      fetch,
+    }).catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(GiteaSignInError);
+    expect((failure as GiteaSignInError).pending).toBe(false);
+    expect((failure as GiteaSignInError).message).toBe(
+      "Gitea refused: login source does not exist [id: 1]",
+    );
+  });
+
   it("names a refusal in the person's terms and does not retry it by itself", async () => {
     const where = origins();
     const { platform } = recording();

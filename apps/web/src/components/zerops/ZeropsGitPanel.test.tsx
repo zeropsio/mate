@@ -166,6 +166,19 @@ describe("ZeropsGitPanel", () => {
     expect(html).not.toContain('data-zerops-git-section="Releases"');
   });
 
+  it("says why the sign-in was refused, in place of the sign-in line", () => {
+    // The owner's run of 2026-09-17: Gitea's login source had not been added,
+    // and the tab said "Signing you in…" for a quarter of an hour.
+    const html = render({
+      model: model({
+        signedIn: false,
+        signInTrouble: "Gitea refused: login source does not exist [id: 1]",
+      }),
+    });
+    expect(html).toContain("login source does not exist");
+    expect(html).not.toContain("Signing you in to Gitea");
+  });
+
   it("lists the recipe changes waiting on somebody", () => {
     const html = render({ onOpenRecipeChange: () => {} });
     expect(html).toContain("Add a worker");

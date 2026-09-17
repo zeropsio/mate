@@ -89,8 +89,10 @@ export interface ZeropsGitTabProps {
   /** Whether this Mate is the viewer's own (D11). */
   readonly isOwner: boolean;
   /** The group half of the panel, which the caller assembles. */
-  readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn">;
+  readonly group: Omit<ZeropsGitPanelModel, "blocks" | "signedIn" | "signInTrouble">;
   readonly signedIn: boolean;
+  /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
+  readonly signInTrouble?: string | undefined;
   readonly onOpenPullRequest?: ((block: GitBlock) => void) | undefined;
   readonly onCreatePullRequest?: ((block: GitBlock) => void) | undefined;
   readonly onMergePullRequest?: ((block: GitBlock) => void) | undefined;
@@ -220,7 +222,12 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             />
           ))}
       <ZeropsGitPanel
-        model={{ ...props.group, blocks, signedIn: props.signedIn }}
+        model={{
+          ...props.group,
+          blocks,
+          signedIn: props.signedIn,
+          signInTrouble: props.signInTrouble,
+        }}
         renderBlockAction={renderBlockAction}
         {...(props.onOpenPullRequest === undefined
           ? {}

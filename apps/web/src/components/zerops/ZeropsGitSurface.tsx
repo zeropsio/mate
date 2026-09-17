@@ -62,6 +62,8 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   >(undefined);
   const [generation, setGeneration] = useState(0);
   const [trouble, setTrouble] = useState<string | null>(null);
+  /** A refusal of the Gitea sign-in, said once where the sign-in line was. */
+  const [signInTrouble, setSignInTrouble] = useState<string | null>(null);
 
   useEffect(() => {
     if (environmentId === undefined) return;
@@ -116,7 +118,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         platform: zeropsThrowawayPlatform(zeropsClient),
       })
         .then(() => {
-          if (!cancelled) setTrouble(null);
+          if (!cancelled) setSignInTrouble(null);
         })
         .catch((cause: unknown) => {
           if (cancelled) return;
@@ -125,7 +127,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
             timer = setTimeout(attempt, GITEA_RETRY_MS);
             return;
           }
-          setTrouble(failure.message);
+          setSignInTrouble(failure.message);
         });
     };
     attempt();
@@ -326,6 +328,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         onRollBack={onRollBack}
         owner={owner}
         signedIn={signedIn}
+        signInTrouble={signInTrouble ?? undefined}
         threadRef={threadRef}
       />
     </div>

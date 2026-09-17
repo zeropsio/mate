@@ -66,6 +66,13 @@ export interface ZeropsGitReleaseOffer {
 export interface ZeropsGitPanelModel {
   /** Whether this tab holds a Gitea session; without one only the checkout half can speak. */
   readonly signedIn: boolean;
+  /**
+   * Why the sign-in did not go through, when the broker or Gitea refused it
+   * (a login source that does not exist, an account Gitea will not make).
+   * Shown in place of "Signing you in to Gitea…"; a Gitea still setting up
+   * is not a refusal and keeps the line.
+   */
+  readonly signInTrouble?: string | undefined;
   readonly blocks: ReadonlyArray<GitBlock>;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly releases: ReadonlyArray<ZeropsGitRelease>;
@@ -180,7 +187,16 @@ export function ZeropsGitPanel({
 
         {model.signedIn ? null : (
           <Section label="The project">
-            <span className="text-xs text-muted-foreground">Signing you in to Gitea…</span>
+            {model.signInTrouble === undefined ? (
+              <span className="text-xs text-muted-foreground">Signing you in to Gitea…</span>
+            ) : (
+              <span
+                className="text-xs text-[var(--zerops-status-failed)]"
+                data-zerops-surface="git-signin-trouble"
+              >
+                {model.signInTrouble}
+              </span>
+            )}
           </Section>
         )}
 
