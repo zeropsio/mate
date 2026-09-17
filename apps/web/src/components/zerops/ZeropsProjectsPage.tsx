@@ -1644,6 +1644,27 @@ function ZeropsProjectsContent() {
 
       if (!isCurrent()) return;
 
+      // What this environment is for, said once, where the Mate that has to do
+      // it will read it (`creationHandoff.ts`). Written against the project
+      // because that is all a creation knows; the connect moves it onto the
+      // environment id. Written as soon as the project exists: a Mate whose
+      // creation failed a step later still opens on its own job, not on the
+      // generic opening line (Fen, 2026-09-17).
+      if (outcome.projectId !== undefined) {
+        rememberCreationHandoff(outcome.projectId, {
+          environmentName: name,
+          groupName: group.name,
+          role,
+          source:
+            choice.recipe.kind === "tier"
+              ? // Imported `startWithoutCode`: the services that build from a
+                // repository exist and run nothing until their first deploy. A
+                // managed service needs none, so it is not named.
+                { kind: "tier", services: Object.keys(choice.recipe.sources) }
+              : { kind: "none" },
+        });
+      }
+
       // A Mate an owner or an admin makes is registered as soon as its project
       // exists, the way *New project* registers the first — a creation that
       // failed past that point included (Fen, 2026-09-17: a step after the
@@ -1686,23 +1707,6 @@ function ZeropsProjectsContent() {
         );
         return;
       }
-
-      // What this environment is for, said once, where the Mate that has to do
-      // it will read it (`creationHandoff.ts`). Written against the project
-      // because that is all a creation knows; the connect moves it onto the
-      // environment id.
-      rememberCreationHandoff(outcome.projectId, {
-        environmentName: name,
-        groupName: group.name,
-        role,
-        source:
-          choice.recipe.kind === "tier"
-            ? // Imported `startWithoutCode`: the services that build from a
-              // repository exist and run nothing until their first deploy. A
-              // managed service needs none, so it is not named.
-              { kind: "tier", services: Object.keys(choice.recipe.sources) }
-            : { kind: "none" },
-      });
 
       // A stage or a production is a **group environment**: it goes in the
       // registry, the broker's token has to reach it, and its sources have to
