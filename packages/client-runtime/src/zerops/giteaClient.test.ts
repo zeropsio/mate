@@ -220,13 +220,17 @@ describe("GiteaClient request shapes", () => {
 
   it("reads commit statuses, runs, jobs, a rerun and logs", async () => {
     const { client, calls } = fake([
-      { body: [{ context: "mate/deploy/stage/api", state: "success" }] },
+      // Gitea sends a status's state under `status` (the owner's Git tab,
+      // 2026-09-17: read as `state`, an approved release said "Checking").
+      { body: [{ context: "mate/deploy/stage/api", status: "success" }] },
       { body: { workflow_runs: [{ id: 7 }] } },
       { body: { jobs: [{ id: 9, run_id: 7 }] } },
       { status: 200, body: {} },
       { text: "step 1\nstep 2\n" },
     ]);
-    expect(await client.listCommitStatuses("acme", "api", "abc")).toHaveLength(1);
+    expect(await client.listCommitStatuses("acme", "api", "abc")).toEqual([
+      { context: "mate/deploy/stage/api", state: "success" },
+    ]);
     expect(await client.listActionRuns("acme", "api", { branch: "main", limit: 5 })).toEqual([
       { id: 7 },
     ]);

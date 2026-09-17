@@ -125,6 +125,22 @@ export interface GiteaCommitStatus {
   readonly created_at?: string | undefined;
 }
 
+/**
+ * A commit status as Gitea sends it: the state travels under `status`, not
+ * `state`. Read as `state` here, every release read as "Checking" and every
+ * check as none (the owner's Git tab, 2026-09-17, on a release the broker had
+ * approved an hour before).
+ */
+interface GiteaCommitStatusWire extends Omit<GiteaCommitStatus, "state"> {
+  readonly status?: GiteaCommitStatus["state"] | undefined;
+  readonly state?: GiteaCommitStatus["state"] | undefined;
+}
+
+function commitStatusFromWire(wire: GiteaCommitStatusWire): GiteaCommitStatus {
+  const { status, state, ...rest } = wire;
+  return { ...rest, state: state ?? status ?? "pending" };
+}
+
 export interface GiteaActionRun {
   readonly id: number;
   readonly status?: string | undefined;
@@ -445,11 +461,13 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         "list the tags",
       ),
 
-    listCommitStatuses: (owner, repo, sha) =>
-      json<ReadonlyArray<GiteaCommitStatus>>(
-        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/commits/${enc(sha)}/statuses` },
-        "list the commit statuses",
-      ),
+    listCommitStatuses: async (owner, repo, sha) =>
+      (
+        await json<ReadonlyArray<GiteaCommitStatusWire>>(
+          { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/commits/${enc(sha)}/statuses` },
+          "list the commit statuses",
+        )
+      ).map(commitStatusFromWire),
 
     listActionRuns: (owner, repo, listOptions) =>
       json<{ readonly workflow_runs?: ReadonlyArray<GiteaActionRun> }>(
