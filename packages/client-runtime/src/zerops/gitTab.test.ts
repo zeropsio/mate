@@ -416,3 +416,28 @@ describe("gitCheckoutHostnames", () => {
     ).toEqual(["backstage", "cachedev"]);
   });
 });
+
+describe("gitBlock base branch", () => {
+  // The Git tab's "Open pull request" opens it onto this branch (2026-09-17:
+  // the verb was wired to nothing, and the click did nothing).
+  it("carries the repository's default branch, main until Gitea says", () => {
+    const withRepository = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
+      forge: {
+        repository: { ...REPOSITORY, default_branch: "trunk" },
+        pullRequest: undefined,
+        checks: [],
+      },
+      declarations: DECLARATIONS,
+      evidence: { remoteReachable: true },
+    });
+    expect(withRepository.baseBranch).toBe("trunk");
+    const unknown = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
+      forge: { repository: undefined, pullRequest: undefined, checks: [] },
+      declarations: DECLARATIONS,
+      evidence: { remoteReachable: true },
+    });
+    expect(unknown.baseBranch).toBe("main");
+  });
+});

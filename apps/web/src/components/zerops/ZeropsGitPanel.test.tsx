@@ -7,6 +7,7 @@ import { ZeropsGitPanel, type ZeropsGitPanelModel } from "./ZeropsGitPanel";
 const BLOCK: GitBlock = {
   repository: "api",
   branch: "feature/invoices",
+  baseBranch: "main",
   headLine: "api · feature/invoices ↑3 ↓0",
   state: "in-review",
   checks: "passing",

@@ -8,6 +8,7 @@ function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
   return {
     repository: "api",
     branch: "feature/invoices",
+    baseBranch: "main",
     headLine: "api · feature/invoices ↑3 ↓0 · 2 files changed",
     state: "in-review",
     checks: "passing",

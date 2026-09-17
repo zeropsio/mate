@@ -95,8 +95,10 @@ export interface ZeropsGitTabProps {
   /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
   readonly signInTrouble?: string | undefined;
   readonly onOpenPullRequest?: ((block: GitBlock) => void) | undefined;
-  readonly onCreatePullRequest?: ((block: GitBlock) => void) | undefined;
-  readonly onMergePullRequest?: ((block: GitBlock) => void) | undefined;
+  /** Opens the pull request in Gitea as the person; the forge is read again once it settles. */
+  readonly onCreatePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
+  /** Merges it in Gitea as the person; the forge is read again once it settles. */
+  readonly onMergePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
   readonly onRelease?: (() => void) | undefined;
   readonly onRollBack?: ZeropsGitPanelProps["onRollBack"];
   readonly onOpenRecipeChange?: ZeropsGitPanelProps["onOpenRecipeChange"];
@@ -189,17 +191,22 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const renderBlockAction = (block: GitBlock) => {
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
-    const run = () => {
+    // The forge is read again once the verb has settled, not when it was
+    // pressed: a read racing the request it asks about would show the row as
+    // it was (2026-09-17, the request opened and the row kept offering it).
+    const settled = () => {
       setGeneration((current) => current + 1);
+    };
+    const run = () => {
       switch (action.kind) {
         case "update-from-main":
-          void pull.run();
+          void pull.run().finally(settled);
           return;
         case "open-pull-request":
-          props.onCreatePullRequest?.(block);
+          void Promise.resolve(props.onCreatePullRequest?.(block)).finally(settled);
           return;
         case "merge":
-          props.onMergePullRequest?.(block);
+          void Promise.resolve(props.onMergePullRequest?.(block)).finally(settled);
           return;
         case "push":
           // Pushing is the agent's: the tab says what is unpushed and the

@@ -25,6 +25,7 @@ import {
   type GitBlock,
 } from "@t3tools/client-runtime/zerops";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -220,6 +221,49 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     [giteaOrigin, owner],
   );
 
+  /**
+   * The two verbs that run in Gitea as the person (D21), where Gitea's own
+   * permissions are the gate: a pull request from the Mate's branch onto the
+   * repository's default branch, and its merge. Until 2026-09-17 neither was
+   * wired, and the tab's click did nothing.
+   */
+  const onCreatePullRequest = useCallback(
+    async (block: GitBlock) => {
+      if (giteaOrigin === undefined || owner === undefined) return;
+      const client = giteaClientFor(giteaOrigin);
+      if (client === null) return;
+      try {
+        await client.createPullRequest(owner, block.repository, {
+          head: block.branch,
+          base: block.baseBranch,
+          title: `${block.repository}: ${block.branch}`,
+        });
+        setTrouble(null);
+      } catch (cause) {
+        setTrouble(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
+      }
+    },
+    [giteaOrigin, owner],
+  );
+
+  const onMergePullRequest = useCallback(
+    async (block: GitBlock) => {
+      if (giteaOrigin === undefined || owner === undefined || block.pullRequestNumber === undefined)
+        return;
+      const client = giteaClientFor(giteaOrigin);
+      if (client === null) return;
+      try {
+        await client.mergePullRequest(owner, block.repository, block.pullRequestNumber, {
+          style: "merge",
+        });
+        setTrouble(null);
+      } catch (cause) {
+        setTrouble(`Gitea would not merge it: ${zeropsErrorMessage(cause)}`);
+      }
+    },
+    [giteaOrigin, owner],
+  );
+
   const onRelease = useCallback(() => {
     const entries = releaseEntriesFromStage(deployedCommits.stage);
     if (entries.length === 0) return;
@@ -277,6 +321,8 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
           release,
         }}
         isOwner={isOwner}
+        onCreatePullRequest={onCreatePullRequest}
+        onMergePullRequest={onMergePullRequest}
         onOpenPullRequest={(block: GitBlock) => openInGitea(block.pullRequestUrl)}
         onOpenRecipeChange={(change) => openInGitea(change.url)}
         onRelease={onRelease}

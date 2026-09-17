@@ -126,6 +126,8 @@ export interface GitBlock {
   readonly checkWord: string | undefined;
   readonly pullRequestNumber: number | undefined;
   readonly pullRequestUrl: string | undefined;
+  /** The branch a pull request from `branch` targets — the repository's default, `main` until Gitea says. */
+  readonly baseBranch: string;
   /** `stage picks it up on merge`, or empty when nothing would. */
   readonly destination: string;
   readonly action: GitBlockAction | undefined;
@@ -299,6 +301,7 @@ export function gitBlock(input: {
     checkWord: checkWord(tone),
     pullRequestNumber: forge.pullRequest?.number,
     pullRequestUrl: forge.pullRequest?.html_url,
+    baseBranch: forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH,
     destination: picksUp,
     action:
       action !== undefined && trouble.length > 0 && runsInTheContainer(action) ? undefined : action,
