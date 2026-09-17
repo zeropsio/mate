@@ -142,6 +142,31 @@ describe("validateCreationForm, on an environment with no agent", () => {
 });
 
 describe("proposedEnvironmentName", () => {
+  it("names a Mate after its bot, not its role", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Todo",
+        roleLabel: "dev",
+        botName: "Fen",
+        taken: ["Todo - dev", "Todo - Vera"],
+      }),
+    ).toBe("Todo - Fen");
+  });
+
+  it("numbers a Mate whose bot's name is taken, and falls back to the role for a blank bot", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Todo",
+        roleLabel: "dev",
+        botName: "Fen",
+        taken: ["todo - fen"],
+      }),
+    ).toBe("Todo - Fen 2");
+    expect(
+      proposedEnvironmentName({ groupName: "Todo", roleLabel: "dev", botName: "  ", taken: [] }),
+    ).toBe("Todo - dev");
+  });
+
   it("names the environment after its role while that name is free", () => {
     expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "dev", taken: [] })).toBe(
       "Shortlink - dev",

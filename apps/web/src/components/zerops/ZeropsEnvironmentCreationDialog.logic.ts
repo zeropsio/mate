@@ -126,16 +126,21 @@ export function hasCreationErrors(errors: CreationFormErrors): boolean {
 }
 
 /**
- * What to call a new environment: its role, and a number once the plain name
- * is taken. A group holds N Mates, so `<Group> - dev` is free only for the
- * first of them — proposing it again would hand two environments one name.
+ * What to call a new environment: a Mate after its bot — `Todo - Fen`, the
+ * name the person will say — and a stage or a production after its role;
+ * numbered once the plain name is taken, since a group holds N Mates and two
+ * environments must not share one name (the owner, 2026-09-17, on
+ * "Todo - dev 2": "why is it called that and not Todo - Fen?").
  */
 export function proposedEnvironmentName(input: {
   readonly groupName: string;
   readonly roleLabel: string;
+  /** The Mate's bot, when the environment runs one; it names the Mate. */
+  readonly botName?: string | undefined;
   readonly taken: ReadonlyArray<string>;
 }): string {
-  const base = `${input.groupName} - ${input.roleLabel}`;
+  const who = input.botName?.trim() ? input.botName.trim() : input.roleLabel;
+  const base = `${input.groupName} - ${who}`;
   const taken = new Set(input.taken.map((name) => name.trim().toLowerCase()));
   if (!taken.has(base.toLowerCase())) return base;
   for (let suffix = 2; ; suffix += 1) {

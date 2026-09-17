@@ -2393,8 +2393,18 @@ function ZeropsProjectsContent() {
             groupName: requestedGroup.group.name,
             roleLabel:
               environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+            botName: creationRequest.role === "dev" ? creationRequest.botName : undefined,
             taken: requestedGroup.environments.map(({ item }) => item.project.name),
           })}
+          proposeName={(botName) =>
+            proposedEnvironmentName({
+              groupName: requestedGroup.group.name,
+              roleLabel:
+                environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
+              botName: creationRequest.role === "dev" ? botName : undefined,
+              taken: requestedGroup.environments.map(({ item }) => item.project.name),
+            })
+          }
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}
           key={`${creationRequest.groupId}:${creationRequest.role}`}

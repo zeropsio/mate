@@ -213,9 +213,9 @@ export async function submitZeropsNewProject(input: {
     const created = await input.createProject({
       clientId: input.clientId,
       // The group has no project of its own; what is created here is its first
-      // dev environment, and it carries the role in its name the way every
-      // environment added afterwards does.
-      name: `${groupName} - dev`,
+      // Mate, named after its bot the way every Mate added afterwards is —
+      // "Todo - Vera", the name the person will say.
+      name: `${groupName} - ${input.botName}`,
       ...(input.locationId ? { location: input.locationId } : {}),
       agents: input.agents,
       group: { groupId: input.groupId, role: "dev", label: groupName },
@@ -433,6 +433,7 @@ function ZeropsNewProjectContent() {
         : { projectId: gitea.projectId, registry };
     setCreating(true);
     setCreateError(null);
+    const botName = generateBotName([], (bytes) => crypto.getRandomValues(bytes));
     void submitZeropsNewProject({
       gitea: home,
       // The first project brings Git hosting along: the same stand-up the
@@ -480,14 +481,14 @@ function ZeropsNewProjectContent() {
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
       groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
-      botName: generateBotName([], (bytes) => crypto.getRandomValues(bytes)),
+      botName,
       onCreated: (projectId) => {
         // What this project is, written down while its id is in hand: the
         // projects page reads it to resume the creation, and the Mate opens
         // on its own onboarding line — nothing typed here is sent for the
         // person.
         rememberCreationHandoff(projectId, {
-          environmentName: `${name.trim()} - dev`,
+          environmentName: `${name.trim()} - ${botName}`,
           groupName: name.trim(),
           role: "dev",
           source: { kind: "none" },

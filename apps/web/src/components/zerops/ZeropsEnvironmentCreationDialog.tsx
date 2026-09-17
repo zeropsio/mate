@@ -49,6 +49,12 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly role: ZeropsEnvironmentRole;
   readonly defaultName: string;
   readonly defaultBotName: string;
+  /**
+   * The name to propose for a bot's name, while the person has not named the
+   * environment by hand: a Mate is named after its bot, so renaming Fen to
+   * Ada renames "Todo - Fen" to "Todo - Ada" until the name field is touched.
+   */
+  readonly proposeName?: ((botName: string) => string) | undefined;
   readonly defaultWithAgent: boolean;
   readonly takenBotNames: ReadonlyArray<string>;
   /** The tier read from the group repo's `main`, when one is merged. */
@@ -67,6 +73,7 @@ export function ZeropsEnvironmentCreationForm({
   role,
   defaultName,
   defaultBotName,
+  proposeName,
   defaultWithAgent,
   takenBotNames,
   tier,
@@ -82,6 +89,7 @@ export function ZeropsEnvironmentCreationForm({
     [roleLabel, tier, tierServices],
   );
   const [name, setName] = useState(defaultName);
+  const [nameTouched, setNameTouched] = useState(false);
   const [withAgent, setWithAgent] = useState(defaultWithAgent);
   const [botName, setBotName] = useState(defaultBotName);
   // The best option on offer is the default, and it improves the moment the
@@ -121,6 +129,7 @@ export function ZeropsEnvironmentCreationForm({
           id={`${id}-name`}
           onChange={(event) => {
             setName(event.target.value);
+            setNameTouched(true);
           }}
           value={name}
         />
@@ -149,6 +158,9 @@ export function ZeropsEnvironmentCreationForm({
               id={`${id}-bot`}
               onChange={(event) => {
                 setBotName(event.target.value);
+                if (!nameTouched && proposeName !== undefined) {
+                  setName(proposeName(event.target.value.replace(/\s+/g, " ").trim()));
+                }
               }}
               value={botName}
             />

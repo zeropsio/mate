@@ -125,8 +125,8 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      // A project is a group; what is created in it is its first dev environment.
-      name: "zerops-mate - dev",
+      // A project is a group; what is created in it is its first Mate, named after its bot.
+      name: "zerops-mate - Nia",
       agents: ["claude-code", "codex"],
       group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
       botName: "Nia",
@@ -230,7 +230,7 @@ describe("submitZeropsNewProject", () => {
 
     expect(createProject).toHaveBeenCalledWith({
       clientId: "client-1",
-      name: "zerops-mate - dev",
+      name: "zerops-mate - Nia",
       location: "prg1",
       agents: ["claude-code"],
       group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },

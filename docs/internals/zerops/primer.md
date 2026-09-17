@@ -39,7 +39,7 @@ Zerops org (the owner)
 │   ├── broker — gitea-mate: the registry, the rights loop, OIDC, deploys
 │   └── runner{group} — one per group, imported on its first workflow, asleep when idle
 └── Imperial Titan — a group: registry tags on the Gitea project, no project of its own
-    ├── Imperial Titan - dev — a Mate: zcp, the Mate server, the agent; its dev/stage pairs
+    ├── Imperial Titan - Fen — a Mate, named after its bot: zcp, the Mate server, the agent; its dev/stage pairs
     ├── stage — Add stage: a project from the recipe's Stage tier, follows main
     └── production — Add production: from the Production tier, code only by release
 
@@ -258,7 +258,8 @@ In the order the owner ranked them, then the rest:
    outage; the platform's service status could name it (journal 10).
 9. **A reconcile that re-grants a registered Mate the broker cannot reach** — a grant that failed
    after the registry write has no retry in the app; the loop reports it every pass.
-10. **The bot's full name** is the project's, not the Mate's.
+10. **The bot's full name** is the project's — `Todo - Fen` since a Mate is named after its bot
+    (2026-09-17), which reads right by accident of the naming rather than by design.
 11. **zcp refreshes its release manifest on boot** when the cache predates the process; today a
     restart within the hour keeps the old Mate build.
 12. **Joining from the recipe** (2.4) and a second Mate proven live (4.3) — done 2026-09-17 evening
