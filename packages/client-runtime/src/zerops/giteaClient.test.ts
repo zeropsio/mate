@@ -204,6 +204,35 @@ describe("GiteaClient request shapes", () => {
     expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls?state=open`);
   });
 
+  it("lists an org's repositories page by page, until a page comes back short", async () => {
+    const full = Array.from({ length: 50 }, (_, index) => ({ id: index, name: `r${index}` }));
+    const { client, calls } = fake([{ body: full }, { body: [{ id: 50, name: "r50" }] }]);
+    const repositories = await client.listOrganizationRepositories("acme");
+    expect(repositories).toHaveLength(51);
+    expect(calls.map((call) => call.url)).toEqual([
+      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=1`,
+      `${ORIGIN}/api/v1/orgs/acme/repos?limit=50&page=2`,
+    ]);
+  });
+
+  it("lists the repositories this person has access to", async () => {
+    const { client, calls } = fake([{ body: [] }]);
+    expect(await client.listUserRepositories()).toEqual([]);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/user/repos?limit=50&page=1`);
+  });
+
+  it("searches the open pull requests across everything the person can see", async () => {
+    const { client, calls } = fake([{ body: [] }, { body: [] }]);
+    await client.searchPullRequests();
+    await client.searchPullRequests({ owner: "acme", state: "all" });
+    expect(calls[0]?.url).toBe(
+      `${ORIGIN}/api/v1/repos/issues/search?type=pulls&state=open&limit=50&page=1`,
+    );
+    expect(calls[1]?.url).toBe(
+      `${ORIGIN}/api/v1/repos/issues/search?type=pulls&state=all&owner=acme&limit=50&page=1`,
+    );
+  });
+
   it("creates a tag on a commit", async () => {
     const { client, calls } = fake([{ status: 201, body: {} }]);
     await client.createTag("acme", "group", { tag: "v1.2.0", target: "abc", message: "api abc" });

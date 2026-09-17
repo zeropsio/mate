@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { ZeropsEnvironmentLifetime } from "./zerops/ZeropsEnvironmentLifetime";
+import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
@@ -49,8 +50,10 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
       ) : (
         <ZeropsAccountDataBoundary>
           <ZeropsEnvironmentLifetime>
-            <RouterProvider router={router} />
-            <ZeropsProductHosts status={status} />
+            <ZeropsProjectFlowProvider>
+              <RouterProvider router={router} />
+              <ZeropsProductHosts status={status} />
+            </ZeropsProjectFlowProvider>
           </ZeropsEnvironmentLifetime>
         </ZeropsAccountDataBoundary>
       )}

@@ -22,7 +22,7 @@ import { cn } from "~/lib/utils";
 import { StatusDot } from "./primitives";
 
 /** The checks' tone as a dot's; `undefined` where no check ran and no dot belongs. */
-export function checkDotTone(block: GitBlock): ServiceStatusToneId | undefined {
+export function checkDotTone(block: Pick<GitBlock, "checks">): ServiceStatusToneId | undefined {
   switch (block.checks) {
     case "passing":
       return "ok";

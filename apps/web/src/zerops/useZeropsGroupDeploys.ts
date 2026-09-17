@@ -68,6 +68,8 @@ export interface ZeropsDeployGroup {
 
 /** What the group repo answers about one group. */
 export interface ZeropsGroupDeployState {
+  /** `environments.yaml` as read — what each environment follows. */
+  readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
   /** The recipe changes waiting on somebody — the group repo's open pulls. */
   readonly pullRequests: ReadonlyArray<GiteaPullRequest>;
@@ -206,6 +208,7 @@ export function useZeropsGroupDeploys(input: {
         }
 
         deploys.set(group.groupId, {
+          declarations,
           pullRequests,
           missing,
           environments: buildGroupEnvironmentRowInputs({

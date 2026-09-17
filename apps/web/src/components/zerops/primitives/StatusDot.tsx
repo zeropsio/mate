@@ -25,14 +25,29 @@ type StatusDotProps = Omit<
    * sentence rather than scanned as a label.
    */
   readonly sentence?: boolean;
+  /**
+   * The dot alone, the word kept as its name for assistive technology: for a
+   * menu row too narrow for a word, where the state is still the dot's to
+   * show. The caller puts the word in a tooltip, never in a native title.
+   */
+  readonly dotOnly?: boolean;
 };
 
-function StatusDot({ className, label, pulse, sentence = false, tone, ...props }: StatusDotProps) {
+function StatusDot({
+  className,
+  label,
+  pulse,
+  sentence = false,
+  dotOnly = false,
+  tone,
+  ...props
+}: StatusDotProps) {
   const shouldPulse = pulse ?? tone === "busy";
 
   return (
     <span
       {...props}
+      {...(dotOnly ? { "aria-label": label, role: "img" } : {})}
       className={cn("inline-flex min-w-0 items-center gap-1.5", className)}
       data-zerops-primitive="status-dot"
       data-zerops-status-tone={tone}
@@ -45,7 +60,7 @@ function StatusDot({ className, label, pulse, sentence = false, tone, ...props }
           shouldPulse && "animate-status-pulse motion-reduce:animate-none",
         )}
       />
-      {sentence ? (
+      {dotOnly ? null : sentence ? (
         <span className="min-w-0 truncate">{label}</span>
       ) : (
         <MicroLabel>{label}</MicroLabel>

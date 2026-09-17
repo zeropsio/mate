@@ -332,6 +332,7 @@ export {
   type GiteaCommitStatus,
   type GiteaFile,
   type GiteaFileChange,
+  type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaPullRequest,
   type GiteaRepository,
@@ -339,6 +340,30 @@ export {
   type GiteaTag,
   type GiteaUser,
 } from "./giteaClient.ts";
+export {
+  flowPullRequest,
+  GROUP_REPOSITORY,
+  mateBotLogin,
+  mateProjectOfBranch,
+  mateProjectOfLogin,
+  pullRequestLineWith,
+  pullRequestsByMate,
+  pullRequestsFolded,
+  releaseRow,
+  sidebarPullRequestTitle,
+  type FlowPullRequest,
+  type FlowPullRequestKind,
+  type FlowRelease,
+  type FlowReleaseRow,
+} from "./projectFlow.ts";
+export {
+  giteaOverview,
+  giteaPullRequestLine,
+  giteaRepositoryLine,
+  type GiteaOverviewOwner,
+  type GiteaOverviewPullRequest,
+  type GiteaOverviewRepository,
+} from "./giteaOverview.ts";
 export {
   canWriteRegistry,
   onlyTheseCanAddAProject,

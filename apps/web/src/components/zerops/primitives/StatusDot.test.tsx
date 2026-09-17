@@ -24,6 +24,15 @@ describe("StatusDot", () => {
     expect(html.endsWith(`>${label}</span></span>`)).toBe(true);
   });
 
+  it("can be the dot alone, the word kept as its name and never as a native title", () => {
+    const html = renderToStaticMarkup(<StatusDot dotOnly label="Deployed" tone="ok" />);
+    expect(html).toContain('aria-label="Deployed"');
+    expect(html).not.toContain("title=");
+    expect(html).toContain('role="img"');
+    expect(html).not.toContain(">Deployed</span>");
+    expect(html).toContain('data-zerops-status-tone="ok"');
+  });
+
   it("can set the phrase as a sentence instead of a label", () => {
     const html = renderToStaticMarkup(
       <StatusDot label="Setting up infrastructure" sentence tone="busy" />,

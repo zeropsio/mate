@@ -61,8 +61,40 @@ export interface GiteaRepository {
   readonly default_branch: string;
   readonly private?: boolean | undefined;
   readonly clone_url?: string | undefined;
+  readonly html_url?: string | undefined;
+  readonly owner?: { readonly login?: string | undefined } | undefined;
+  readonly description?: string | undefined;
+  readonly updated_at?: string | undefined;
   /** The probe guide 4.5 insists on: what *this person* may do here. */
   readonly permissions?: GiteaRepositoryPermissions | undefined;
+}
+
+/**
+ * One hit of `GET /repos/issues/search` — an issue or a pull request across
+ * every repository the person can see, with the repository named on it. Not
+ * a `GiteaPullRequest`: the search carries neither the head nor whether it
+ * merges, which is why the overview lists and links, and a project's flow
+ * reads each repository's own pull requests.
+ */
+export interface GiteaIssueSearchHit {
+  readonly number: number;
+  readonly title: string;
+  readonly state: string;
+  readonly html_url?: string | undefined;
+  readonly user?: { readonly login?: string | undefined } | undefined;
+  readonly updated_at?: string | undefined;
+  readonly repository?:
+    | {
+        readonly id?: number | undefined;
+        readonly name?: string | undefined;
+        readonly owner?: string | undefined;
+        readonly full_name?: string | undefined;
+      }
+    | undefined;
+  readonly pull_request?:
+    | { readonly merged?: boolean | undefined; readonly draft?: boolean | undefined }
+    | null
+    | undefined;
 }
 
 export interface GiteaBranch {
@@ -191,6 +223,19 @@ export interface GiteaClient {
   getOrganization(slug: string): Promise<GiteaOrganization | undefined>;
 
   getRepository(owner: string, repo: string): Promise<GiteaRepository | undefined>;
+  /** Every repository of an org, page by page — the group's own and its services'. */
+  listOrganizationRepositories(org: string): Promise<ReadonlyArray<GiteaRepository>>;
+  /** Every repository this person has access to, page by page. */
+  listUserRepositories(): Promise<ReadonlyArray<GiteaRepository>>;
+  /**
+   * The pull requests across every repository the person can see, page by
+   * page — open ones unless told otherwise, one org's when `owner` is given.
+   */
+  searchPullRequests(
+    options?:
+      | { readonly state?: "open" | "closed" | "all"; readonly owner?: string | undefined }
+      | undefined,
+  ): Promise<ReadonlyArray<GiteaIssueSearchHit>>;
   listBranches(owner: string, repo: string): Promise<ReadonlyArray<GiteaBranch>>;
   /** `undefined` when the branch is not there — a group repo with no `main` yet. */
   getBranch(owner: string, repo: string, branch: string): Promise<GiteaBranch | undefined>;
@@ -271,6 +316,10 @@ export interface GiteaClient {
 }
 
 const API_PREFIX = "/api/v1";
+/** Gitea's default page cap; a page this long may have a next one. */
+const PAGE_SIZE = 50;
+/** More pages than any account here has repositories for; a stop, not a target. */
+const MAX_PAGES = 40;
 
 export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
   const base = `${options.origin.trim().replace(/\/+$/u, "")}${API_PREFIX}`;
@@ -338,6 +387,27 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
     if (!response.ok) await fail(response, what);
   }
 
+  /**
+   * Every page of a list, in order, until one comes back short. Gitea caps a
+   * page at its own maximum (50 by default) whatever `limit` asks for, so a
+   * page shorter than the one asked for is the last one.
+   */
+  async function paged<T>(
+    input: Parameters<typeof send>[0],
+    what: string,
+  ): Promise<ReadonlyArray<T>> {
+    const items: Array<T> = [];
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const answer = await json<ReadonlyArray<T>>(
+        { ...input, query: { ...input.query, limit: PAGE_SIZE, page } },
+        what,
+      );
+      items.push(...answer);
+      if (answer.length < PAGE_SIZE) break;
+    }
+    return items;
+  }
+
   return {
     origin: options.origin,
     request: (input) => json(input, `answer ${input.method} ${input.path}`),
@@ -351,6 +421,29 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       optional<GiteaRepository>(
         { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}` },
         "read the repository",
+      ),
+
+    listOrganizationRepositories: (org) =>
+      paged<GiteaRepository>(
+        { method: "GET", path: `/orgs/${enc(org)}/repos` },
+        "list the org's repositories",
+      ),
+
+    listUserRepositories: () =>
+      paged<GiteaRepository>({ method: "GET", path: "/user/repos" }, "list your repositories"),
+
+    searchPullRequests: (searchOptions) =>
+      paged<GiteaIssueSearchHit>(
+        {
+          method: "GET",
+          path: "/repos/issues/search",
+          query: {
+            type: "pulls",
+            state: searchOptions?.state ?? "open",
+            owner: searchOptions?.owner,
+          },
+        },
+        "search the pull requests",
       ),
 
     listBranches: (owner, repo) =>
