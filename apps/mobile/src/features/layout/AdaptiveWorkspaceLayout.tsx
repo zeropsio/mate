@@ -446,6 +446,21 @@ function AdaptiveWorkspaceLayoutContent(
     });
   }, [navigation]);
 
+  const handleNewThreadOnBranch = useCallback(
+    (thread: EnvironmentThreadShell) => {
+      navigation.navigate("NewTaskSheet", {
+        screen: "NewTaskDraft",
+        params: {
+          environmentId: String(thread.environmentId),
+          projectId: String(thread.projectId),
+          branch: thread.branch,
+          worktreePath: thread.worktreePath,
+        },
+      });
+    },
+    [navigation],
+  );
+
   const renderedSidebarWidth = useSharedValue(
     panes.primarySidebarVisible ? (layout.listPaneWidth ?? 0) : 0,
   );
@@ -525,6 +540,7 @@ function AdaptiveWorkspaceLayoutContent(
                     selectedThreadKey={selectedThreadKey}
                     onOpenSettings={handleOpenSettings}
                     onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
+                    onNewThreadOnBranch={handleNewThreadOnBranch}
                     onSelectThread={handleSelectThread}
                     onSearchQueryChange={setPrimarySidebarSearchQuery}
                     searchQuery={primarySidebarSearchQuery}

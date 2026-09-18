@@ -205,6 +205,17 @@ export function HomeRouteScreen() {
           onSelectThread={handleSelectThread}
           onSelectPendingTask={openPendingTask}
           onDeletePendingTask={confirmDeletePendingTask}
+          onNewThreadOnBranch={(thread) => {
+            navigation.navigate("NewTaskSheet", {
+              screen: "NewTaskDraft",
+              params: {
+                environmentId: String(thread.environmentId),
+                projectId: String(thread.projectId),
+                branch: thread.branch,
+                worktreePath: thread.worktreePath,
+              },
+            });
+          }}
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
           pendingTasks={pendingTasks}
           projectGroupingMode={listOptions.projectGroupingMode}
