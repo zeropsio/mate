@@ -314,6 +314,15 @@ const config: ExpoConfig = {
       },
     ],
     [
+      "expo-audio",
+      {
+        microphonePermission: "Allow Zerops Mate to use your microphone for voice input.",
+        recordAudioAndroid: false,
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
+      },
+    ],
+    [
       "expo-camera",
       {
         cameraPermission:
