@@ -54,6 +54,13 @@ export function useZeropsGroupEnvironmentReconcile(input: {
   // does.
   const latest = useRef(halfMade);
   latest.current = halfMade;
+  // What this tab has already run a repair for. An entry is put in before its
+  // repair starts, so two effects cannot run the same one, and taken out again
+  // if the effect is torn down before that entry's turn — otherwise a page with
+  // two half-made environments repaired the first, was remounted, and never
+  // looked at the second again (measured 2026-09-18: the test org's stage kept
+  // its missing deploy token through reload after reload while its production
+  // got one).
   const attempted = useRef(new Set<string>());
   const key = halfMade
     .map((entry) => `${entry.groupId}:${entry.projectId}:${entry.tier}`)
@@ -66,9 +73,13 @@ export function useZeropsGroupEnvironmentReconcile(input: {
     if (pending.length === 0) return;
     for (const entry of pending) attempted.current.add(entry.projectId);
     const controller = new AbortController();
+    /** Gives back every entry this run will not reach, so the next one does. */
+    const release = (from: number) => {
+      for (const entry of pending.slice(from)) attempted.current.delete(entry.projectId);
+    };
     void (async () => {
-      for (const entry of pending) {
-        if (controller.signal.aborted) return;
+      for (const [index, entry] of pending.entries()) {
+        if (controller.signal.aborted) return release(index);
         const outcome = await addGroupEnvironment({
           client,
           gitea: giteaClientFor(giteaOrigin),
@@ -84,8 +95,10 @@ export function useZeropsGroupEnvironmentReconcile(input: {
           },
           signal: controller.signal,
         }).catch((): AddGroupEnvironmentOutcome | undefined => undefined);
-        if (outcome !== undefined && !controller.signal.aborted)
-          onOutcome.current?.(entry, outcome);
+        // An abort during the repair leaves it unfinished, so this entry is
+        // given back too: the next effect is what tries it again.
+        if (controller.signal.aborted) return release(index);
+        if (outcome !== undefined) onOutcome.current?.(entry, outcome);
       }
       if (!controller.signal.aborted) refresh.current();
     })();

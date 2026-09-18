@@ -659,6 +659,68 @@ describe("ZeropsApiClient project reads", () => {
   });
 });
 
+/**
+ * Which key a list comes back under is the platform's to say, and it is not one
+ * key. Measured against the live API on 2026-09-18, as the org's owner: a
+ * project's services and an org's members each answered under a name this
+ * client did not read, so both came back empty and said nothing about it — the
+ * deploy token of every environment (D27) waited on a broker the page could not
+ * see. The server half already knew (`ZeropsThrowawayIdentity.ts`).
+ */
+describe("the key a list answers under", () => {
+  const SERVICE = { id: "svc-broker", name: "broker", status: "ACTIVE" };
+  const MEMBER = { id: "cu-1", userId: "u-1", roleCode: "OWNER", user: { fullName: "Ada" } };
+
+  it.each([
+    { name: "`list`, which is what it answers", body: { list: [SERVICE] } },
+    { name: "`items`, in case it ever does", body: { items: [SERVICE] } },
+    { name: "neither, which is an empty project", body: { count: 0 }, empty: true },
+  ])("reads a project's services under $name", async ({ body, empty }) => {
+    const stub = recordingFetch(() => jsonResponse(200, body));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const services = await client.listProjectServices("prj-1");
+
+    expect(services.map((service) => service.name)).toEqual(empty === true ? [] : ["broker"]);
+    expect(stub.requests[0]?.url).toBe(
+      `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/prj-1/service-stack?limit=500`,
+    );
+  });
+
+  it.each([
+    { name: "`clientUserList`, which is what it answers", body: { clientUserList: [MEMBER] } },
+    { name: "`items`", body: { items: [MEMBER] } },
+    { name: "`list`", body: { list: [MEMBER] } },
+  ])("reads an organization's members under $name", async ({ body }) => {
+    const stub = recordingFetch(() => jsonResponse(200, body));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    expect((await client.listOrganizationMembers("org-1")).map((row) => row.id)).toEqual(["cu-1"]);
+  });
+
+  it.each(["total", "totalCount"])(
+    "takes the project count from %s, so a short page is a failure and not an end",
+    async (key) => {
+      const page = (offset: number) =>
+        jsonResponse(200, {
+          list: [{ id: `p${offset}`, name: "one", status: "ACTIVE", clientId: "org-1" }],
+          [key]: 3,
+        });
+      let offset = 0;
+      const stub = recordingFetch(() => page((offset += 1)));
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+
+      // Three pages of one, against a total of three: the count is read, so the
+      // reader keeps going rather than stopping at the first short page.
+      expect(await client.listClientProjects("org-1")).toHaveLength(3);
+      expect(stub.requests).toHaveLength(3);
+    },
+  );
+});
+
 describe("ZeropsApiClient.fetchProjectLogAccess", () => {
   it("reads the project's signed log-backend URL, stripping a leading GET", async () => {
     const stub = recordingFetch(() =>

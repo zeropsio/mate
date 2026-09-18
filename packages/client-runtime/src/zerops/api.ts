@@ -957,9 +957,13 @@ export class ZeropsApiClient {
       if (options.statuses?.length) query.set("statuses", options.statuses.join(","));
       const response = await this.#request<{
         readonly list?: ReadonlyArray<ZeropsProject>;
+        // `total` is what it answers (measured 2026-09-18); without it the
+        // reader had no count to check a page against, so a page the platform
+        // cut short read as the end of the account rather than as a failure.
+        readonly total?: number;
         readonly totalCount?: number;
       }>(`/client/${clientId}/project?${query.toString()}`);
-      return { items: response.list, total: response.totalCount };
+      return { items: response.list, total: response.total ?? response.totalCount };
     });
   }
 
@@ -1929,11 +1933,14 @@ export class ZeropsApiClient {
     clientId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsOrganizationMember>> {
+    // `clientUserList`, not `items` — the member list is its own shape
+    // (measured 2026-09-18; `ZeropsThrowawayIdentity.ts` says the same).
     const body = await this.#request<{
+      readonly clientUserList?: ReadonlyArray<ZeropsOrganizationMember>;
       readonly items?: ReadonlyArray<ZeropsOrganizationMember>;
       readonly list?: ReadonlyArray<ZeropsOrganizationMember>;
     }>(`/client/${clientId}/user/list?limit=100`, { signal: signal ?? null });
-    return body.items ?? body.list ?? [];
+    return body.clientUserList ?? body.items ?? body.list ?? [];
   }
 
   /**
@@ -2035,17 +2042,26 @@ export class ZeropsApiClient {
     return response.items?.[0]?.envList ?? [];
   }
 
-  /** `GET /project/{id}/service-stack` — the project's own services. */
+  /**
+   * `GET /project/{id}/service-stack` — the project's own services.
+   *
+   * Answered under `list`, not the `items` the search endpoints use (measured
+   * 2026-09-18): reading only `items` made every project look empty, and the
+   * page could not find the broker to keep an environment's deploy token on.
+   */
   async listProjectServices(
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsService>> {
-    const response = await this.#request<{ readonly items?: ReadonlyArray<ZeropsService> }>(
+    const response = await this.#request<{
+      readonly list?: ReadonlyArray<ZeropsService>;
+      readonly items?: ReadonlyArray<ZeropsService>;
+    }>(
       `/project/${projectId}/service-stack?limit=500`,
       { signal: signal ?? null },
       { operationKind: "read" },
     );
-    return response.items ?? [];
+    return response.list ?? response.items ?? [];
   }
 
   /**
