@@ -527,7 +527,11 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           method: "POST",
           path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${index}/merge`,
           body: {
-            Do: input?.style ?? "merge",
+            // Squash, because a pull request here is one task: its title is
+            // what the person asked for, its commits are the agent's working
+            // steps, and `main` reads as the list of tasks delivered rather
+            // than as the inside of each one (the owner, 2026-09-18).
+            Do: input?.style ?? "squash",
             ...(input?.title === undefined ? {} : { MergeTitleField: input.title }),
           },
         },

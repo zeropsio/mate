@@ -202,7 +202,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
         async () => {
           try {
-            await client.mergePullRequest(slug, pull.repository, pull.number, { style: "merge" });
+            await client.mergePullRequest(slug, pull.repository, pull.number);
             setTrouble(null);
           } catch (cause) {
             setTrouble(`Gitea would not merge it: ${zeropsErrorMessage(cause)}`);

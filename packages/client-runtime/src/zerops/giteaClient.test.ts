@@ -178,6 +178,12 @@ describe("GiteaClient request shapes", () => {
     });
   });
 
+  it("squashes by default, so `main` is one commit per task", async () => {
+    const { client, calls } = fake([{ body: {} }]);
+    await client.mergePullRequest("acme", "appdev", 3);
+    expect(calls[0]?.body).toEqual({ Do: "squash" });
+  });
+
   it("opens a pull request and merges one by its number", async () => {
     const { client, calls } = fake([
       { body: { number: 12, title: "t", state: "open" } },
@@ -195,7 +201,7 @@ describe("GiteaClient request shapes", () => {
       title: "Add the stage environment",
     });
     expect(calls[1]?.url).toBe(`${ORIGIN}/api/v1/repos/acme/group/pulls/12/merge`);
-    expect(calls[1]?.body).toEqual({ Do: "merge" });
+    expect(calls[1]?.body).toEqual({ Do: "squash" });
   });
 
   it("lists open pull requests by default", async () => {
