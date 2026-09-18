@@ -38,6 +38,10 @@ export default defineConfig({
     ignorePatterns: [
       ".reference",
       ".repos/**",
+      // Throwaway agent worktrees hold a whole second copy of the repository,
+      // their own `.repos` included. CI checks out a clean tree and never sees
+      // them; a repo-wide run here walked into them and died before analysis.
+      ".claude/worktrees/**",
       ".alchemy",
       "dist",
       "dist-electron",
@@ -74,6 +78,7 @@ export default defineConfig({
     ignorePatterns: [
       ".repos",
       ".repos/**",
+      ".claude/worktrees/**",
       "dist",
       "dist-electron",
       "node_modules",
