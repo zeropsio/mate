@@ -112,6 +112,46 @@
     "expires": "never"
   },
   {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
     "path": "apps/mobile/src/features/archive/ArchivedThreadsScreen.tsx",
     "kind": "ImportSpecifier",
     "fingerprint": "useUniwindTheme",
@@ -1262,6 +1302,46 @@
     "owner": "karel",
     "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
     "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/JetBrainsIcons.tsx",

@@ -225,6 +225,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "source-control",
     title: "Source control",
     to: "/settings/source-control",
+    searchTerms: ["github gitlab forgejo gitea tea fj codeberg bitbucket azure devops"],
   },
   {
     id: "remote-environments",

@@ -9,6 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { TestClock } from "effect/testing";
+import { SourceControlProviderError } from "@t3tools/contracts";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as RepositoryIdentityResolver from "./RepositoryIdentityResolver.ts";
@@ -75,6 +76,70 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
         ["-C", "/repo", "remote", "-v"],
       ]);
     }).pipe(Effect.provide(resolverLayer));
+  });
+
+  it.effect("refines a Forgejo identity once and keeps the plain one when refinement fails", () => {
+    let refinements = 0;
+    let refinementFails = false;
+    const processRunner = Layer.succeed(ProcessRunner.ProcessRunner, {
+      run: (input) =>
+        Effect.sync(() => ({
+          stdout: input.args.includes("rev-parse")
+            ? "/repo\n"
+            : "origin\tgit@ssh.forge.test:team/repo.git (fetch)\n",
+          stderr: "",
+          code: ChildProcessSpawner.ExitCode(0),
+          timedOut: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+          stdoutInvalidUtf8: false,
+          stderrInvalidUtf8: false,
+        })),
+    });
+    const resolverLayer = Layer.effect(
+      RepositoryIdentityResolver.RepositoryIdentityResolver,
+      RepositoryIdentityResolver.make({
+        refine: (identity) => {
+          refinements++;
+          if (refinementFails)
+            return Effect.fail(
+              new SourceControlProviderError({
+                provider: "forgejo",
+                operation: "detectProvider",
+                cwd: "/repo",
+                detail: "account unavailable",
+              }),
+            );
+          return Effect.succeed({
+            ...identity,
+            provider: "forgejo",
+            webUrl: "http://forge.test:3000/git/team/repo",
+          });
+        },
+      }),
+    ).pipe(Layer.provide(processRunner));
+
+    return Effect.gen(function* () {
+      const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      const forgejo = yield* resolver.resolve("/repo");
+      expect(forgejo?.provider).toBe("forgejo");
+      expect(forgejo?.webUrl).toBe("http://forge.test:3000/git/team/repo");
+      expect(forgejo?.canonicalKey).toBe("ssh.forge.test/team/repo");
+      expect(yield* resolver.resolve("/repo")).toEqual(forgejo);
+      expect(refinements).toBe(1);
+    })
+      .pipe(Effect.provide(resolverLayer))
+      .pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            refinementFails = true;
+            const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+            const plain = yield* resolver.resolve("/repo");
+            expect(plain?.webUrl).toBeUndefined();
+            expect(plain?.canonicalKey).toBe("ssh.forge.test/team/repo");
+          }).pipe(Effect.provide(resolverLayer)),
+        ),
+      );
   });
 
   it.effect("retries Git root discovery after a failed lookup", () => {
