@@ -122,6 +122,10 @@ Project skills should use `.agents/skills`. T3 Code also discovers `.gemini/skil
 `.agent/skills` location. When multiple locations define the same skill name, `.gemini/skills`
 takes precedence, followed by `.agents/skills` and then `.agent/skills`.
 
+Skills for every project go in `~/.gemini/config/skills` or `~/.gemini/antigravity-cli/skills`.
+Antigravity does not read `~/.agents/skills`, so a skill there only appears when the project
+itself is your home directory.
+
 Antigravity reads and edits workspace files through T3 Code. Each write shows up as a file
 change approval with the content, so **Supervised** and **Auto-accept edits** behave the same way
 they do for other providers. Attach images, PDFs, text files, or audio clips to a message and
