@@ -20,8 +20,8 @@ export { createMobileThemeVariables, MOBILE_THEME_VARIABLE_NAMES, themeColorToNa
 export type { MobileThemeVariable, MobileThemeVariables };
 
 export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
-export const MOBILE_THEME_IDS = SHARED_MOBILE_THEME_IDS;
-export type MobileThemeId = SharedMobileThemeId;
+export const MOBILE_THEME_IDS = [...SHARED_MOBILE_THEME_IDS, "material-you"] as const;
+export type MobileThemeId = SharedMobileThemeId | "material-you";
 export type MobileThemeAppearance = ThemeAppearance;
 export type MobileThemeMode = MobileThemeAppearance | "system";
 export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeId>>;
@@ -29,7 +29,22 @@ export type MobileThemeIds = Readonly<Record<MobileThemeAppearance, MobileThemeI
 export const MOBILE_THEME_OPTIONS: ReadonlyArray<{
   readonly id: MobileThemeId;
   readonly label: string;
-}> = BUILT_IN_THEMES.map((theme) => ({ id: theme.id as MobileThemeId, label: theme.label }));
+}> = [
+  ...BUILT_IN_THEMES.slice(0, 1).map((theme) => ({
+    id: theme.id as MobileThemeId,
+    label: theme.label,
+  })),
+  { id: "material-you", label: "Material You" },
+  ...BUILT_IN_THEMES.slice(1).map((theme) => ({
+    id: theme.id as MobileThemeId,
+    label: theme.label,
+  })),
+];
+
+/** Material You draws the wallpaper over the default palette, so it resolves to that base. */
+export function mobileThemeBaseId(themeId: MobileThemeId): BuiltInThemeId {
+  return themeId === "material-you" ? DEFAULT_MOBILE_THEME_ID : themeId;
+}
 
 export function normalizeMobileThemeId(value: unknown): MobileThemeId {
   return typeof value === "string" && (MOBILE_THEME_IDS as readonly string[]).includes(value)
@@ -111,7 +126,8 @@ export function getMobileThemePreviewColors(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): ThemePreviewColors {
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
+  const baseId = mobileThemeBaseId(themeId);
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? BUILT_IN_THEMES[0];
   const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
   return {
     canvas: themeColorToNativeColor(colors.canvas),

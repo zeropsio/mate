@@ -52,8 +52,13 @@ function compositeOver(overlay: string, background: string): string {
 describe("mobile themes", () => {
   it("uses Zerops as the default without duplicating the option", () => {
     expect(DEFAULT_MOBILE_THEME_ID).toBe("zerops");
-    expect(MOBILE_THEME_IDS).toEqual(BUILT_IN_THEME_IDS);
-    expect(MOBILE_THEME_OPTIONS.map((option) => option.id)).toEqual(BUILT_IN_THEME_IDS);
+    // Material You is the one non-built-in option: the wallpaper over the default palette.
+    expect(MOBILE_THEME_IDS).toEqual([...BUILT_IN_THEME_IDS, "material-you"]);
+    expect(MOBILE_THEME_OPTIONS.map((option) => option.id)).toEqual([
+      BUILT_IN_THEME_IDS[0],
+      "material-you",
+      ...BUILT_IN_THEME_IDS.slice(1),
+    ]);
     expect(new Set(MOBILE_THEME_OPTIONS.map((option) => option.id)).size).toBe(
       MOBILE_THEME_OPTIONS.length,
     );

@@ -4,6 +4,7 @@ import {
   type MobileThemeAppearance,
   type MobileThemeId,
   type MobileThemeMode,
+  mobileThemeBaseId,
 } from "./mobileTheme";
 
 export type MobileUniwindThemeName = `${BuiltInThemeId}-${MobileThemeAppearance}`;
@@ -39,7 +40,7 @@ export function getMobileUniwindThemeName(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileUniwindThemeName {
-  return `${themeId}-${appearance}`;
+  return `${mobileThemeBaseId(themeId)}-${appearance}`;
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
   getMobileThemeVariables,
+  mobileThemeBaseId,
   type MobileThemeAppearance,
   type MobileThemeId,
   type MobileThemeVariables,
@@ -14,5 +15,5 @@ export function getMobileThemeRuntimeVariables(
   themeId: MobileThemeId,
   appearance: MobileThemeAppearance,
 ): MobileThemeVariables {
-  return getMobileThemeVariables(themeId, appearance);
+  return getMobileThemeVariables(mobileThemeBaseId(themeId), appearance);
 }

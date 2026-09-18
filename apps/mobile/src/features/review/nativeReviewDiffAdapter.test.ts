@@ -4,6 +4,7 @@ import {
   MOBILE_THEME_IDS,
   type MobileThemeAppearance,
   type MobileThemeId,
+  mobileThemeBaseId,
 } from "../../lib/mobileTheme";
 
 import {
@@ -64,7 +65,7 @@ function filesPatch(paths: ReadonlyArray<string>) {
 }
 
 function appTheme(themeId: MobileThemeId, appearance: MobileThemeAppearance) {
-  return getMobileThemeVariables(themeId, appearance);
+  return getMobileThemeVariables(mobileThemeBaseId(themeId), appearance);
 }
 
 describe("getCachedNativeReviewDiffData", () => {

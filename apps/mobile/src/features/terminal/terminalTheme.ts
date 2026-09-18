@@ -4,6 +4,7 @@ import {
   getMobileThemeVariables,
   themeColorToNativeColor,
   type MobileThemeId,
+  mobileThemeBaseId,
 } from "../../lib/mobileTheme";
 
 export type TerminalAppearanceScheme = "light" | "dark";
@@ -83,9 +84,10 @@ export function getMobileTerminalTheme(
   scheme: TerminalAppearanceScheme,
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
+  const baseId = mobileThemeBaseId(themeId);
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? BUILT_IN_THEMES[0];
   const palette = getThemeColorsForAppearance(theme, scheme) ?? theme.colors;
-  const colors = getMobileThemeVariables(themeId, scheme);
+  const colors = getMobileThemeVariables(baseId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);
   return {
     ...base,
