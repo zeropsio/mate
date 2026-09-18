@@ -55,6 +55,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.subscribeZeropsDataConsole
   | typeof WS_METHODS.subscribeVcsStatus
+  | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach;
 
 export type EnvironmentStreamCommandRpcTag =

@@ -100,6 +100,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       send the call and offer the Data surface as unsupported under version
       skew. */
   dataConsole: Schema.optionalKey(Schema.Boolean),
+  /** Server runs repository clones for new projects in the background and
+      streams their progress (`projectClone.*`, `subscribeProjectClones`).
+      Absent on older servers, where clients must clone with the blocking
+      `sourceControl.cloneRepository` call instead. */
+  projectCloneTracking: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

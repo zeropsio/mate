@@ -68,6 +68,12 @@ Run a quick **Rescan** after setting up a new machine or changing credentials.
 
 ## Getting Started
 
+Use **Add Project** in the command palette (`Cmd/Ctrl+K`) to clone a repository. Choose a hosting
+provider or paste a Git URL, then choose where to save it. The project opens right away while the
+clone runs in the background: you can write your first prompt, and sending waits until the files
+are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the
+toast or from the banner above the composer.
+
 ### For GitHub (Recommended for most users)
 
 1. Install the GitHub CLI (version 2.81.0 or newer) on the machine running T3 Code:

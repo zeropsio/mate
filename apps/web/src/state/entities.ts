@@ -236,6 +236,31 @@ export function readProject(ref: ScopedProjectRef): EnvironmentProject | null {
   return appAtomRegistry.get(environmentProjects.projectAtom(ref));
 }
 
+/** Resolves once the project shows up in the shell stream, or rejects after the timeout. */
+export function waitForProject(
+  ref: ScopedProjectRef,
+  timeoutMs = 10_000,
+): Promise<EnvironmentProject> {
+  const current = readProject(ref);
+  if (current !== null) return Promise.resolve(current);
+
+  return new Promise((resolve, reject) => {
+    let unsubscribe: (() => void) | null = null;
+    const timeout = setTimeout(() => {
+      unsubscribe?.();
+      reject(new Error("The project did not appear."));
+    }, timeoutMs);
+    const finish = (project: EnvironmentProject | null) => {
+      if (project === null) return;
+      clearTimeout(timeout);
+      unsubscribe?.();
+      resolve(project);
+    };
+    unsubscribe = appAtomRegistry.subscribe(environmentProjects.projectAtom(ref), finish);
+    finish(readProject(ref));
+  });
+}
+
 export function readThreadShell(ref: ScopedThreadRef): EnvironmentThreadShell | null {
   return appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
 }

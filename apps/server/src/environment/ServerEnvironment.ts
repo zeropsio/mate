@@ -102,6 +102,7 @@ export const makeServerEnvironmentCapabilities = (
     threadActiveReorder: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
+    projectCloneTracking: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
     ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),

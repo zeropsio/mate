@@ -39,15 +39,16 @@ const makeRepositoryIdentityResolverTestLayer = (options: {
   ).pipe(Layer.provide(ProcessRunner.layer));
 
 it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
-  it.effect("reuses the cached Git root for repeated workspace lookups", () => {
+  it.effect("refreshes the Git root only when requested", () => {
     const calls: Array<ReadonlyArray<string>> = [];
+    let rootPath = "/repo";
     const processRunner = Layer.succeed(ProcessRunner.ProcessRunner, {
       run: (input) =>
         Effect.sync(() => {
           calls.push(input.args);
           return {
             stdout: input.args.includes("rev-parse")
-              ? "/repo\n"
+              ? `${rootPath}\n`
               : "origin\tgit@github.com:T3Tools/t3code.git (fetch)\n",
             stderr: "",
             code: ChildProcessSpawner.ExitCode(0),
@@ -67,6 +68,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     return Effect.gen(function* () {
       const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const first = yield* resolver.resolve("/repo/packages/web");
+      rootPath = "/repo/packages/web";
       const second = yield* resolver.resolve("/repo/packages/web");
 
       expect(first?.canonicalKey).toBe("github.com/t3tools/t3code");
@@ -74,6 +76,14 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       expect(calls).toEqual([
         ["-C", "/repo/packages/web", "rev-parse", "--show-toplevel"],
         ["-C", "/repo", "remote", "-v"],
+      ]);
+
+      const refreshed = yield* resolver.resolve("/repo/packages/web", { refresh: true });
+      expect(refreshed?.rootPath).toBe("/repo/packages/web");
+      expect(yield* resolver.resolve("/repo/packages/web")).toEqual(refreshed);
+      expect(calls.slice(2)).toEqual([
+        ["-C", "/repo/packages/web", "rev-parse", "--show-toplevel"],
+        ["-C", "/repo/packages/web", "remote", "-v"],
       ]);
     }).pipe(Effect.provide(resolverLayer));
   });

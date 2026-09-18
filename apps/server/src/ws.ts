@@ -7,8 +7,10 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -118,6 +120,8 @@ import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
+import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
+import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -584,6 +588,17 @@ const makeWsRpcLayer = (
         return true;
       });
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+      const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
+      const repositoryIdentityResolver =
+        yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
+      // Clone hooks run on the tracker's fiber, outside any RPC, so the
+      // normalizer's services are captured here rather than inherited.
+      const normalizerContext = yield* Effect.context<
+        | FileSystem.FileSystem
+        | Path.Path
+        | ServerConfig.ServerConfig
+        | WorkspacePaths.WorkspacePaths
+      >();
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
@@ -1387,6 +1402,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
+              yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);
               const normalizedCommand = yield* normalizeDispatchCommand(command);
               // Archive and settle both mean "done with this thread", so a
               // live provider session must not keep running background work
@@ -1424,6 +1440,10 @@ const makeWsRpcLayer = (
                 Effect.tapError(() => cleanupFailedUploadedAttachments(command, normalizedCommand)),
               );
               yield* recordClientCommandAnalytics(normalizedCommand);
+              yield* ProjectCloneTracker.discardCloneForDeletedProject(
+                projectCloneTracker,
+                normalizedCommand,
+              );
               if (parkingCommand) {
                 const parkingKind = parkingCommand.type === "thread.archive" ? "archive" : "settle";
                 if (shouldStopSessionAfterCommand) {
@@ -2241,6 +2261,65 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "source-control",
             },
           ),
+        [WS_METHODS.projectCloneStart]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectCloneStart,
+            projectCloneTracker.start(input, {
+              createProject: (project) =>
+                Effect.gen(function* () {
+                  const normalizedCommand = yield* normalizeDispatchCommand({
+                    type: "project.create",
+                    commandId: yield* serverCommandId("project-clone-create"),
+                    projectId: project.projectId,
+                    title: project.title,
+                    workspaceRoot: project.workspaceRoot,
+                    createWorkspaceRootIfMissing: true,
+                    createdAt: project.createdAt,
+                  });
+                  yield* dispatchNormalizedCommand(normalizedCommand);
+                  yield* recordClientCommandAnalytics(normalizedCommand);
+                }).pipe(Effect.provideContext(normalizerContext)),
+              onCloned: (project) =>
+                // The project was created against an empty directory, so its
+                // cached identity is "not a repository" until this refresh.
+                // Re-emitting the project shell carries the new identity to
+                // every client without a round trip.
+                repositoryIdentityResolver.resolve(project.workspaceRoot, { refresh: true }).pipe(
+                  Effect.andThen(
+                    Effect.gen(function* () {
+                      const command = yield* normalizeDispatchCommand({
+                        type: "project.meta.update",
+                        commandId: yield* serverCommandId("project-clone-done"),
+                        projectId: project.projectId,
+                      });
+                      yield* dispatchNormalizedCommand(command);
+                    }),
+                  ),
+                  Effect.andThen(refreshGitStatus(project.workspaceRoot)),
+                  Effect.ignoreCause({ log: true }),
+                  Effect.provideContext(normalizerContext),
+                ),
+            }),
+            { "rpc.aggregate": "source-control" },
+          ),
+        [WS_METHODS.projectCloneCancel]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectCloneCancel,
+            projectCloneTracker
+              .cancel(input.projectId)
+              .pipe(Effect.map((applied) => ({ applied }))),
+            { "rpc.aggregate": "source-control" },
+          ),
+        [WS_METHODS.projectCloneRetry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectCloneRetry,
+            projectCloneTracker.retry(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
+            { "rpc.aggregate": "source-control" },
+          ),
+        [WS_METHODS.subscribeProjectClones]: () =>
+          observeRpcStream(WS_METHODS.subscribeProjectClones, projectCloneTracker.stream, {
+            "rpc.aggregate": "source-control",
+          }),
         [WS_METHODS.sourceControlPublishRepository]: (input) =>
           observeRpcEffect(
             WS_METHODS.sourceControlPublishRepository,

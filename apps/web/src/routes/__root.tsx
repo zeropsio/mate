@@ -24,6 +24,7 @@ import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
+import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -179,6 +180,7 @@ function SignedInRootRouteView() {
         <ThreadNotificationCoordinator />
         <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />
+        <ProjectCloneToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         <ZeropsIdentityRepair />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
