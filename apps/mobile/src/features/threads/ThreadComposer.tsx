@@ -29,9 +29,7 @@ import {
 } from "../../state/composer-attachment-uploads";
 import Animated, {
   FadeIn,
-  FadeInDown,
   FadeOut,
-  FadeOutDown,
   LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
@@ -264,12 +262,7 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
 }) {
   const isReconnecting = props.status.kind === "reconnecting";
   return (
-    <Animated.View
-      className="absolute inset-x-0 bottom-full items-center pb-2"
-      entering={FadeInDown.duration(180)}
-      exiting={FadeOutDown.duration(140)}
-      pointerEvents="box-none"
-    >
+    <View className="absolute inset-x-0 bottom-full items-center pb-2" pointerEvents="box-none">
       <Pressable
         accessibilityRole="button"
         onPress={props.onPress}
@@ -287,7 +280,7 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
           {props.status.label}
         </Text>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 });
 
@@ -839,16 +832,6 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
             </ComposerDictationToolbar>
           </Animated.View>
         </ComposerSurface>
-
-        {/* Queue count */}
-        {props.queueCount > 0 ? (
-          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
-            <Text className="pt-2 text-xs text-foreground-muted">
-              {props.queueCount} queued message{props.queueCount === 1 ? "" : "s"} will send
-              automatically.
-            </Text>
-          </Animated.View>
-        ) : null}
       </Animated.View>
 
       <VideoPreviewModal source={previewVideo} onRequestClose={closePreview} />
