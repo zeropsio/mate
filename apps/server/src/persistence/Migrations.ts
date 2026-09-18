@@ -61,6 +61,7 @@ import Migration0045 from "./Migrations/045_ProjectionThreadsLatestMessagePrevie
 import Migration0046 from "./Migrations/046_ProjectionThreadsLatestUserMessagePreview.ts";
 import Migration0047 from "./Migrations/047_ProjectionCheckpointHistory.ts";
 import Migration0049 from "./Migrations/049_ClearAutomaticProjectModelDefaults.ts";
+import Migration0050 from "./Migrations/050_ProjectionThreadsActiveOrderKey.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -124,6 +125,7 @@ export const migrationEntries = [
   [47, "ProjectionCheckpointHistory", Migration0047],
   [48, "WorkspaceCaptureJournal", Migration0048],
   [49, "ClearAutomaticProjectModelDefaults", Migration0049],
+  [50, "ProjectionThreadsActiveOrderKey", Migration0050],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

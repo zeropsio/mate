@@ -99,6 +99,7 @@ export const makeServerEnvironmentCapabilities = (
     usagePriceOverrides: true,
     threadPinning: true,
     threadPinReorder: true,
+    threadActiveReorder: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
