@@ -1,4 +1,8 @@
-import { makeLocalFileTracer, makeTraceSink } from "@t3tools/shared/observability";
+import {
+  makeLocalFileTracer,
+  makeTraceSink,
+  otlpSerializationLayer,
+} from "@t3tools/shared/observability";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -7,7 +11,7 @@ import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Tracer from "effect/Tracer";
-import { OtlpExporter, OtlpSerialization, OtlpTracer } from "effect/unstable/observability";
+import { OtlpExporter, OtlpTracer } from "effect/unstable/observability";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
@@ -102,7 +106,7 @@ const tracerLayer = Layer.unwrap(
               "service.mode": environment.isDevelopment ? "development" : "packaged",
             },
           },
-        });
+        }).pipe(Effect.provide(otlpSerializationLayer(environment.otlpProtocol)));
     const tracer = yield* makeLocalFileTracer({
       filePath: tracePath,
       maxBytes: DESKTOP_LOG_FILE_MAX_BYTES,
@@ -114,7 +118,7 @@ const tracerLayer = Layer.unwrap(
 
     return Layer.succeed(Tracer.Tracer, tracer);
   }),
-).pipe(Layer.provide(OtlpExporter.layerFlusher), Layer.provideMerge(OtlpSerialization.layerJson));
+).pipe(Layer.provide(OtlpExporter.layerFlusher));
 
 export const layer = Layer.mergeAll(
   desktopLoggerLayer,
