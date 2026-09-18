@@ -243,14 +243,6 @@ function terminalColumnOffset(row: GhosttySnapshot["rowData"][number], column: n
   return offset;
 }
 
-export function terminalLinkAtPosition(
-  rows: GhosttySnapshot["rowData"],
-  rowIndex: number,
-  column: number,
-): string | null {
-  return terminalLinkAtPositionWithRange(rows, rowIndex, column)?.text ?? null;
-}
-
 export interface TerminalLinkWithRange {
   readonly text: string;
   readonly range: GhosttyCellRange;
@@ -322,10 +314,6 @@ export function terminalLinkAtPositionWithRange(
     }
   }
   return null;
-}
-
-export function terminalLinkAtColumn(row: GhosttySnapshot["rowData"][number], column: number) {
-  return terminalLinkAtPosition([row], 0, column);
 }
 
 export function isTerminalCopyShortcut(
