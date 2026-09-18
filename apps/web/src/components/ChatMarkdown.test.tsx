@@ -382,3 +382,13 @@ describe("ChatMarkdown Windows file links", () => {
     expect(html).not.toContain("chat-markdown-file-link");
   });
 });
+
+describe("ChatMarkdown brand link icons", () => {
+  it("draws the GitHub mark for github.com links instead of fetching a favicon", () => {
+    const markup = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="[PR](https://github.com/zeropsio/mate/pull/1)" />,
+    );
+    expect(markup).not.toContain("google.com/s2/favicons");
+    expect(markup).toContain("<svg");
+  });
+});
