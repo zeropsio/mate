@@ -12,6 +12,7 @@ import { assert, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
@@ -429,9 +430,8 @@ const runBootstrap = (input: {
           input.defaultModelSelection === undefined
             ? {}
             : { defaultModelSelection: input.defaultModelSelection },
-        ),
+        ).pipe(Layer.provideMerge(NodeServices.layer)),
       ),
-      Effect.provide(NodeServices.layer),
     );
     return yield* Ref.get(dispatched);
   });
