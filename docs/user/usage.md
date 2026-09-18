@@ -11,8 +11,8 @@ completed-turn record will not appear.
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
 Code, per connected environment: the session and weekly windows, plus a per-model weekly window
 such as Fable when your plan has one. Each window is a bar from the moment it opened to its reset,
-filled by the share of quota spent; a thin line marks how far into the window you are, which is
-also where even spending would have put the fill, and the icon beside the label says whether you
+filled by the share of quota left; a thin line marks how much of the window is left, which is
+also where even spending would keep the fill, and the icon beside the label says whether you
 are ahead of, on, or under that pace. Hover a bar for the exact reset time. Limits refresh on the
 provider health-check interval and update live while a turn runs. API-key accounts have no
 subscription windows and say so; that includes a Claude Code that reaches Anthropic through a proxy
