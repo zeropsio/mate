@@ -19,6 +19,7 @@ import {
   ProviderRespondToUserInputInput,
   RuntimeRequestId,
   ProviderSendTurnInput,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ProviderSessionStartInput,
   ProviderStopSessionInput,
   ProviderUploadFeedbackInput,
@@ -853,16 +854,25 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     // can dereference the actual file. All attachments then go to the adapter,
     // and each adapter decides what its provider ingests natively: OpenCode
     // sends generic files as file parts, the others send images only and rely
-    // on the path line for everything else. Unresolvable ids are skipped here
-    // and surface as adapter errors when the file is read.
+    // on the path line for everything else. Folded clipboard text remains
+    // path-only everywhere: eagerly embedding it would spend the same context
+    // the client deliberately preserved by folding it. Unresolvable ids are
+    // skipped here and surface as adapter errors when the file is read.
     const attachmentPathLines = attachments.flatMap((attachment) => {
       const attachmentPath = resolveAttachmentPath({
         attachmentsDir: serverConfig.attachmentsDir,
         attachment,
       });
-      return attachmentPath === null
-        ? []
-        : [`[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`];
+      if (attachmentPath === null) return [];
+      const isPastedText =
+        attachment.type === "file" &&
+        "source" in attachment &&
+        attachment.source?._tag === "pasted-text";
+      return [
+        isPastedText
+          ? `[Pasted text "${attachment.name}" is saved at: ${attachmentPath}. Inspect it as needed.]`
+          : `[Attached ${attachment.type} "${attachment.name}" is saved at: ${attachmentPath}]`,
+      ];
     });
     const inputTextWithAttachmentPaths =
       attachmentPathLines.length === 0
@@ -870,6 +880,21 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         : [parsed.input, attachmentPathLines.join("\n")]
             .filter((part): part is string => typeof part === "string" && part.length > 0)
             .join("\n\n");
+    if (
+      inputTextWithAttachmentPaths !== undefined &&
+      inputTextWithAttachmentPaths.length > PROVIDER_SEND_TURN_MAX_INPUT_CHARS &&
+      attachments.some(
+        (attachment) =>
+          attachment.type === "file" &&
+          "source" in attachment &&
+          attachment.source?._tag === "pasted-text",
+      )
+    ) {
+      return yield* toValidationError(
+        "ProviderService.sendTurn",
+        `Input plus pasted-text attachment context exceeds the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS} character limit`,
+      );
+    }
 
     const input = {
       ...parsed,
