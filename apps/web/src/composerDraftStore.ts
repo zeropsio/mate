@@ -2586,18 +2586,22 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return;
           }
           set((state) => {
-            const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
-            // The composer writes the prompt it already holds — on a keystroke
-            // that changes nothing, and on every render that syncs the editor.
-            // Handing back a fresh draft for those wakes the subscribers, which
-            // write again, and React throws "Maximum update depth exceeded".
-            if (existing.prompt === prompt && state.draftsByThreadKey[threadKey] !== undefined) {
-              return state;
-            }
+            const current = state.draftsByThreadKey[threadKey];
+            const existing = current ?? createEmptyThreadDraft();
             const nextDraft: ComposerThreadDraftState = {
               ...existing,
               prompt,
             };
+            // The composer writes the prompt it already holds — on a keystroke
+            // that changes nothing, on every render that syncs the editor, and
+            // on the empty write after a send, when the draft is already gone.
+            // Handing back a fresh map for those wakes the subscribers, which
+            // write again, and React throws "Maximum update depth exceeded".
+            // A draft that stays where it is, or stays away, is no write.
+            const draftStays = !shouldRemoveDraft(nextDraft);
+            if (existing.prompt === prompt && draftStays === (current !== undefined)) {
+              return state;
+            }
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
               delete nextDraftsByThreadKey[threadKey];

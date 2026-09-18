@@ -382,6 +382,22 @@ describe("composerDraftStore setPrompt", () => {
     );
   });
 
+  // The composer clears itself after a send and then syncs the editor, which
+  // writes the empty prompt again onto a draft that is already gone.
+  it("hands back the same state when an absent draft is written empty", () => {
+    const store = useComposerDraftStore.getState();
+    const before = useComposerDraftStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = useComposerDraftStore.subscribe(listener);
+
+    store.setPrompt(threadRef, "");
+
+    const after = useComposerDraftStore.getState();
+    unsubscribe();
+    expect(listener).not.toHaveBeenCalled();
+    expect(after.draftsByThreadKey).toBe(before.draftsByThreadKey);
+  });
+
   it("still removes a draft the empty prompt leaves with nothing in it", () => {
     const store = useComposerDraftStore.getState();
     store.setPrompt(threadRef, "deploy the stage");
