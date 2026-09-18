@@ -472,13 +472,19 @@ In the order the owner ranked them, then the rest:
     could never stop saying it was setting up (`1cd211436`), and adding a Mate to an existing group
     failed twice at "Closing the project's shared variables" — a project search with no `clientId`
     (`51d7697c4`) and a create planned against an index that trails the write (`36e81e7ef`). Open
-    for the app: the composer still loops React on typing (the Lexical controlled-value round trip,
-    `ComposerPromptEditor.tsx`, not the store write closed in `3dfdc3d7d`); a Mate restart can drop
+    for the app: a Mate restart can drop
     the projects page to "Could not load your Zerops projects" and pin a renderer at ~106 % CPU; a
     half-created Mate leaves a project the app can neither finish nor delete; _Update_ installs and
     then says nothing about the restart its version needs; a new Mate opens on a model the account
     may have no credits for, said only inside the conversation; and production's public route
-    trails its release by ~2 min. **The owner's calls from the run**, for the spec: the golden path
+    trails its release by ~2 min. The composer's loop is closed at its cause (2026-09-19,
+    `0a3a462f9`): the controlled write's echo was suppressed by a flag lowered in a microtask, and a
+    keystroke carried by the same Lexical commit was swallowed with it, leaving the screen and the
+    editor holding different text and rewriting each other. The write now records what the editor
+    actually holds, read back inside the same update, so silence is a comparison rather than a
+    moment. Not yet re-measured live — a typing burst pinned a renderer at 101 % CPU before the fix,
+    and the signed-in audit browser was lost with its temporary profile. **The owner's calls from
+    the run**, for the spec: the golden path
     must not be escapable by wording (one clause, "on dev", left the work in a container,
     unsupervised and undelivered); a new Mate should fetch and run its code itself rather than ask
     the person to send the bootstrap message; deploying dev to dev makes no sense now that git is
