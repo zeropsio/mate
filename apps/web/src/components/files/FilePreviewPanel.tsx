@@ -29,7 +29,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { buildFileReviewComment } from "~/reviewCommentContext";
 import { usePrimaryEnvironmentId } from "~/state/environments";
-import { useAtomCommand } from "~/state/use-atom-command";
 
 import FileBrowserPanel from "./FileBrowserPanel";
 import {
