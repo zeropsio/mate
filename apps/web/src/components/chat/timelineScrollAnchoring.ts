@@ -1,3 +1,7 @@
+import type { TurnId } from "@t3tools/contracts";
+
+import { onAccountLifetimeClose } from "../../zerops/accountLifetime";
+
 export type TimelineScrollMode = "following-end" | "anchoring-new-turn" | "free-scrolling";
 
 export interface TimelineListMeasurementState {
@@ -90,5 +94,69 @@ export function getAnchoredTurnMetrics({
     overflowsUsableViewport: turnHeight > usableViewportHeight,
     targetScrollToRevealEnd,
     scrollDeltaToRevealEnd,
+  };
+}
+
+export interface RememberedTimelinePosition {
+  readonly rowId: string;
+  readonly offsetWithinRow: number;
+  readonly scrollOffset: number;
+  readonly atEnd: boolean;
+  readonly disclosures?: {
+    readonly turns: ReadonlySet<TurnId>;
+    readonly workGroups: ReadonlySet<string>;
+    readonly spawnEntries: ReadonlySet<string>;
+  };
+}
+
+// Scoped thread keys keep separate environments independent. Bound the session cache.
+const rememberedTimelinePositions = new Map<string, RememberedTimelinePosition>();
+// A reading position is account state: it goes with the account.
+onAccountLifetimeClose(() => rememberedTimelinePositions.clear());
+
+export function readTimelinePosition(threadKey: string) {
+  return rememberedTimelinePositions.get(threadKey);
+}
+
+export function rememberTimelinePosition(threadKey: string, position: RememberedTimelinePosition) {
+  rememberedTimelinePositions.delete(threadKey);
+  rememberedTimelinePositions.set(threadKey, position);
+  if (rememberedTimelinePositions.size > 100) {
+    const oldest = rememberedTimelinePositions.keys().next().value;
+    if (oldest !== undefined) rememberedTimelinePositions.delete(oldest);
+  }
+}
+
+/** The row at the current offset; a virtualizer's cached visible range can lag a fling. */
+export function resolveTimelineScrollAnchor(state: {
+  readonly data: ReadonlyArray<{ readonly id: string }>;
+  readonly scroll: number;
+  readonly positionAtIndex: (index: number) => number | undefined;
+}) {
+  if (state.data.length === 0 || !Number.isFinite(state.scroll)) return undefined;
+  const scrollOffset = Math.max(0, state.scroll);
+  let low = 0;
+  let high = state.data.length - 1;
+  let index = 0;
+  let rowTop = state.positionAtIndex(0);
+  if (rowTop === undefined || !Number.isFinite(rowTop)) return undefined;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const top = state.positionAtIndex(middle);
+    if (top === undefined || !Number.isFinite(top)) return undefined;
+    if (top <= scrollOffset) {
+      index = middle;
+      rowTop = top;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  return {
+    rowId: state.data[index]!.id,
+    offsetWithinRow: Math.max(0, scrollOffset - rowTop),
+    scrollOffset,
   };
 }
