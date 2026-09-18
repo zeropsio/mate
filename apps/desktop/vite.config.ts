@@ -47,4 +47,9 @@ export default defineConfig({
       entry: ["src/preload.ts"],
     },
   ],
+  test: {
+    // The Windows lane runs workspace suites concurrently; filesystem-heavy
+    // desktop integration tests can exceed Vitest's 5 second default there.
+    testTimeout: 15_000,
+  },
 });
