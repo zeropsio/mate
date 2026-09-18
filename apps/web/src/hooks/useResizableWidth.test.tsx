@@ -6,9 +6,16 @@ import { useResizableWidth } from "./useResizableWidth";
 
 // The fork's local storage is account-scoped; observe the persisted width at
 // the storage helper instead of the raw browser store.
-const { setItem } = vi.hoisted(() => ({ setItem: vi.fn() }));
+const { savedWidths, setItem } = vi.hoisted(() => {
+  const savedWidths = new Map<string, string>();
+  return {
+    savedWidths,
+    setItem: vi.fn((key: string, value: string) => savedWidths.set(key, value)),
+  };
+});
 vi.mock("./useLocalStorage", () => ({
-  getLocalStorageItem: () => null,
+  getLocalStorageItem: (key: string) =>
+    savedWidths.has(key) ? Number(savedWidths.get(key)) : null,
   setLocalStorageItem: (key: string, value: unknown) => setItem(key, String(value)),
 }));
 
@@ -47,9 +54,17 @@ function pointer(clientX = 100) {
   } as unknown as PointerEvent<HTMLElement>;
 }
 
-function Panel({ edge = "left", maxWidth = 800 }: { edge?: "left" | "right"; maxWidth?: number }) {
+function Panel({
+  edge = "left",
+  maxWidth = 800,
+  storageKey = "test-panel-width",
+}: {
+  edge?: "left" | "right";
+  maxWidth?: number;
+  storageKey?: string;
+}) {
   const resize = useResizableWidth({
-    storageKey: "test-panel-width",
+    storageKey,
     defaultWidth: 400,
     minWidth: 200,
     maxWidth,
@@ -62,6 +77,7 @@ function Panel({ edge = "left", maxWidth = 800 }: { edge?: "left" | "right"; max
 }
 
 beforeEach(async () => {
+  savedWidths.clear();
   captured = false;
   frame = undefined;
   style.cursor = "";
@@ -186,5 +202,54 @@ describe("panel resize cleanup", () => {
     expect(setItem).toHaveBeenCalledExactlyOnceWith("test-panel-width", "450");
     expect(style.cursor).toBe("");
     expect(captured).toBe(false);
+  });
+});
+
+describe("panel width storage changes", () => {
+  it("restores separate thread widths without remounting and retains them after reload", async () => {
+    await act(() => {
+      result.handlers.onPointerDown(pointer());
+      result.handlers.onPointerMove(pointer(50));
+      result.handlers.onPointerUp(pointer(50));
+    });
+    expect(result.width).toBe(450);
+    await act(() => renderer.update(<Panel storageKey="thread-b" />));
+    expect(result.width).toBe(400);
+    await act(() => {
+      result.handlers.onPointerDown(pointer());
+      result.handlers.onPointerMove(pointer(-100));
+      result.handlers.onPointerUp(pointer(-100));
+    });
+    expect(result.width).toBe(600);
+    await act(() => renderer.update(<Panel />));
+    expect(result.width).toBe(450);
+    await act(() => renderer.unmount());
+    await act(() => {
+      renderer = create(<Panel storageKey="thread-b" />);
+    });
+    expect(result.width).toBe(600);
+  });
+
+  it("cancels an unfinished drag on a thread switch without saving it to either thread", async () => {
+    savedWidths.set("thread-b", "650");
+    await act(() => {
+      result.handlers.onPointerDown(pointer());
+      result.handlers.onPointerMove(pointer(50));
+    });
+    await act(() => frame?.(0));
+    expect(result.width).toBe(450);
+    await act(() => result.handlers.onPointerMove(pointer(25)));
+    await act(() => renderer.update(<Panel storageKey="thread-b" />));
+    expect(result.width).toBe(650);
+    expect(captured).toBe(false);
+    expect(style.cursor).toBe("");
+    await act(() => {
+      frame?.(0);
+      result.handlers.onPointerUp(pointer(25));
+    });
+    expect(result.width).toBe(650);
+    expect(setItem).not.toHaveBeenCalled();
+    await act(() => renderer.update(<Panel />));
+    expect(result.width).toBe(400);
   });
 });
