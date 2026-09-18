@@ -10,29 +10,8 @@ import { themeColorToNativeColor } from "../../lib/mobileTheme";
 import {
   buildGhosttyThemeConfig,
   getMobileTerminalTheme,
-  getPierreTerminalTheme,
   type TerminalAppearanceScheme,
 } from "./terminalTheme";
-
-describe("getPierreTerminalTheme", () => {
-  it("returns the Pierre light terminal palette", () => {
-    expect(getPierreTerminalTheme("light")).toMatchObject({
-      background: "#f2f2f7",
-      foreground: "#6C6C71",
-      cursorForeground: "#009fff",
-      cursorBackground: "#f2f2f7",
-    });
-  });
-
-  it("returns the Pierre dark terminal palette", () => {
-    expect(getPierreTerminalTheme("dark")).toMatchObject({
-      background: "#0a0a0a",
-      foreground: "#adadb1",
-      cursorForeground: "#009fff",
-      cursorBackground: "#0a0a0a",
-    });
-  });
-});
 
 describe("getMobileTerminalTheme", () => {
   it("applies the Zerops terminal roles without replacing ANSI status colors", () => {
@@ -43,7 +22,16 @@ describe("getMobileTerminalTheme", () => {
       expect(terminal.background).toBe(themeColorToNativeColor(colors.terminalBackground));
       expect(terminal.foreground).toBe(themeColorToNativeColor(colors.terminalForeground));
       expect(terminal.cursorForeground).toBe(themeColorToNativeColor(colors.terminalCursor));
-      expect(terminal.palette).toEqual(getPierreTerminalTheme(scheme).palette);
+      expect(terminal.cursorBackground).toBe(terminal.background);
+    }
+  });
+
+  it("keeps the Pierre ANSI palette under every theme", () => {
+    const dark = getMobileTerminalTheme("zerops", "dark");
+    expect(dark.palette[0]).toBe("#141415");
+    expect(dark.palette[15]).toBe("#c6c6c8");
+    for (const themeId of ["t3-chat", "grove", "ocean", "ember", "iris"] as const) {
+      expect(getMobileTerminalTheme(themeId, "dark").palette).toEqual(dark.palette);
     }
   });
 
@@ -69,11 +57,12 @@ describe("getMobileTerminalTheme", () => {
 
 describe("buildGhosttyThemeConfig", () => {
   it("serializes theme colors into a ghostty config file", () => {
-    const config = buildGhosttyThemeConfig(getPierreTerminalTheme("dark"));
+    const terminal = getMobileTerminalTheme("zerops", "dark");
+    const config = buildGhosttyThemeConfig(terminal);
 
-    expect(config).toContain("background = #0a0a0a");
-    expect(config).toContain("foreground = #adadb1");
-    expect(config).toContain("cursor-color = #009fff");
+    expect(config).toContain(`background = ${terminal.background}`);
+    expect(config).toContain(`foreground = ${terminal.foreground}`);
+    expect(config).toContain(`cursor-color = ${terminal.cursorForeground}`);
     expect(config).toContain("palette = 0=#141415");
     expect(config).toContain("palette = 15=#c6c6c8");
     expect(config.endsWith("\n")).toBe(true);
