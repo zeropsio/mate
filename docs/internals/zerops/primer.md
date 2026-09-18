@@ -455,10 +455,13 @@ In the order the owner ranked them, then the rest:
     the tasks it carries, a roll back, a release after it, and a second task on a Mate whose first
     had landed — each live, in 58–73 s from click to serving. Two faults in the app, both fixed on
     `main`: the Mate's banner stayed after its merge (`d3ca1902e`), and the pull after a merge never
-    ran (`3a9b48bba`, removed). Open for the app: a new release row moves the list under the pointer,
+    ran (`3a9b48bba`, removed); the banner fix is measured live on the hosted app (#9, 13:09Z). Open for
+    the app: after a merge the verb reads _Merge_ again for about a second before the row goes (the
+    pending key ends before the re-read lands); a new release row moves the list under the pointer,
     so a second click lands on the next release's _Roll back to this_; and after a roll back, the
     release it left reads _Roll back to this_ though it is newer than what runs. Everything zcp's is
     in the hand-off, `../zcp/plans/zcp-hardening-handoff-2026-09-18.md`: running Mates keep their zcp
     until a restart, the Mate's branch takes `main` only at a delivery, a wired stage deploy is
     recorded dirty by construction, the recipe is not re-proposed on a setup change, the agents'
-    words about their own tools.
+    words about their own tools, and agents doing the delivery's merge by hand (Fen merges, Vera
+    rebuilt and force-pushed its branch).
