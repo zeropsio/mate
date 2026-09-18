@@ -60,6 +60,13 @@ Install and authenticate each provider CLI on the standalone server machine, not
 running the browser. See [Codex](./providers-codex.md) and [Claude](./providers-claude.md) for
 provider-specific setup.
 
+When a provider CLI is behind its latest release, its provider card shows the
+available version. **Update now** appears only when Zerops Mate can tell which
+installer owns the CLI (its own update command, Homebrew, or a global npm, pnpm,
+bun, or Vite+ install) and runs that installer. Otherwise update the CLI the same
+way you installed it. Homebrew installs compare against the version Homebrew
+offers, which can trail the npm release by a few hours.
+
 ## Desktop and Mobile
 
 This fork does not publish desktop or mobile clients. The `winget`, Homebrew, and AUR packages for
