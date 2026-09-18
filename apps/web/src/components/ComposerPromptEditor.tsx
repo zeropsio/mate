@@ -871,16 +871,58 @@ function collectTerminalContextIds(node: LexicalNode): string[] {
   return [];
 }
 
+export interface ComposerEditorSnapshot {
+  readonly value: string;
+  readonly cursor: number;
+  readonly expandedCursor: number;
+  readonly terminalContextIds: ReadonlyArray<string>;
+}
+
+/**
+ * What the editor holds, in the screen's terms, read from whichever editor
+ * state is active — the committed one, or the one an update is still writing.
+ *
+ * One reader for every caller — the change listener, the handle, and the
+ * controlled write that records what it produced — so "what the editor holds"
+ * is never two slightly different answers. The previous snapshot supplies the
+ * fallbacks: a selection Lexical cannot place keeps the offset it had.
+ */
+function $readComposerEditorSnapshot(previous: ComposerEditorSnapshot): ComposerEditorSnapshot {
+  const value = $getRoot().getTextContent();
+  return {
+    value,
+    cursor: clampCollapsedComposerCursor(
+      value,
+      $readSelectionOffsetFromEditorState(clampCollapsedComposerCursor(value, previous.cursor)),
+    ),
+    expandedCursor: clampExpandedCursor(
+      value,
+      $readExpandedSelectionOffsetFromEditorState(
+        clampExpandedCursor(value, previous.expandedCursor),
+      ),
+    ),
+    terminalContextIds: collectTerminalContextIds($getRoot()),
+  };
+}
+
+function composerSnapshotsAgree(
+  one: ComposerEditorSnapshot,
+  other: ComposerEditorSnapshot,
+): boolean {
+  return (
+    one.value === other.value &&
+    one.cursor === other.cursor &&
+    one.expandedCursor === other.expandedCursor &&
+    one.terminalContextIds.length === other.terminalContextIds.length &&
+    one.terminalContextIds.every((id, index) => id === other.terminalContextIds[index])
+  );
+}
+
 export interface ComposerPromptEditorHandle {
   focus: () => void;
   focusAt: (cursor: number) => void;
   focusAtEnd: () => void;
-  readSnapshot: () => {
-    value: string;
-    cursor: number;
-    expandedCursor: number;
-    terminalContextIds: string[];
-  };
+  readSnapshot: () => ComposerEditorSnapshot;
   /**
    * True when a collapsed caret sits on the first ("start") or last ("end")
    * visual line, counting soft wraps. Prompt history only claims ArrowUp and
@@ -1621,13 +1663,17 @@ function ComposerPromptEditorInner({
   const skillsSignature = skillSignature(skills);
   const skillsSignatureRef = useRef(skillsSignature);
   const skillMetadataRef = useRef(skillMetadataByName(skills));
-  const snapshotRef = useRef({
+  // The contexts the sync below writes into the editor. Held in a ref because
+  // the screen builds this list fresh on every render — a thread with no
+  // contexts hands a new empty array each time — and keying the sync to the
+  // identity would run it, and touch the editor, for every render of the chat.
+  const terminalContextsRef = useRef(terminalContexts);
+  const snapshotRef = useRef<ComposerEditorSnapshot>({
     value,
     cursor: initialCursor,
     expandedCursor: expandCollapsedComposerCursor(value, initialCursor),
     terminalContextIds: terminalContexts.map((context) => context.id),
   });
-  const isApplyingControlledUpdateRef = useRef(false);
   const terminalContextActions = useMemo(
     () => ({ onRemoveTerminalContext }),
     [onRemoveTerminalContext],
@@ -1639,7 +1685,8 @@ function ComposerPromptEditorInner({
 
   useLayoutEffect(() => {
     skillMetadataRef.current = skillMetadataByName(skills);
-  }, [skills]);
+    terminalContextsRef.current = terminalContexts;
+  }, [skills, terminalContexts]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -1659,11 +1706,12 @@ function ComposerPromptEditorInner({
       return;
     }
 
+    const contexts = terminalContextsRef.current;
     snapshotRef.current = {
       value,
       cursor: normalizedCursor,
       expandedCursor: expandCollapsedComposerCursor(value, normalizedCursor),
-      terminalContextIds: terminalContexts.map((context) => context.id),
+      terminalContextIds: contexts.map((context) => context.id),
     };
     terminalContextsSignatureRef.current = terminalContextsSignature;
     skillsSignatureRef.current = skillsSignature;
@@ -1674,21 +1722,26 @@ function ComposerPromptEditorInner({
       return;
     }
 
-    isApplyingControlledUpdateRef.current = true;
     editor.update(() => {
       const shouldRewriteEditorState =
         previousSnapshot.value !== value || contextsChanged || skillsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, terminalContexts, skillMetadataRef.current);
+        $setComposerEditorPrompt(value, contexts, skillMetadataRef.current);
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
       }
+      // Record what the editor holds now, not what it was asked to hold. This
+      // write comes back through the change listener as if someone had typed
+      // it, and the listener stays quiet only for a report that matches the
+      // snapshot: matching on the truth is what makes the echo silent whenever
+      // its commit lands, and leaves a keystroke carried by the same commit
+      // loud. A window of time that guessed at the same thing swallowed that
+      // keystroke, and the screen and the editor then rewrote each other
+      // (`verified.md`, 2026-09-18).
+      snapshotRef.current = $readComposerEditorSnapshot(snapshotRef.current);
     });
-    queueMicrotask(() => {
-      isApplyingControlledUpdateRef.current = false;
-    });
-  }, [cursor, editor, skillsSignature, terminalContexts, terminalContextsSignature, value]);
+  }, [cursor, editor, skillsSignature, terminalContextsSignature, value]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1698,53 +1751,20 @@ function ComposerPromptEditorInner({
       rootElement.focus({ preventScroll: true });
       editor.update(() => {
         $setSelectionAtComposerOffset(boundedCursor);
+        snapshotRef.current = $readComposerEditorSnapshot(snapshotRef.current);
       });
-      snapshotRef.current = {
-        value: snapshotRef.current.value,
-        cursor: boundedCursor,
-        expandedCursor: expandCollapsedComposerCursor(snapshotRef.current.value, boundedCursor),
-        terminalContextIds: snapshotRef.current.terminalContextIds,
-      };
-      onChangeRef.current(
-        snapshotRef.current.value,
-        boundedCursor,
-        snapshotRef.current.expandedCursor,
-        false,
-        snapshotRef.current.terminalContextIds,
-      );
+      const snapshot = snapshotRef.current;
+      onChangeRef.current(snapshot.value, snapshot.cursor, snapshot.expandedCursor, false, [
+        ...snapshot.terminalContextIds,
+      ]);
     },
     [editor],
   );
 
-  const readSnapshot = useCallback((): {
-    value: string;
-    cursor: number;
-    expandedCursor: number;
-    terminalContextIds: string[];
-  } => {
+  const readSnapshot = useCallback((): ComposerEditorSnapshot => {
     let snapshot = snapshotRef.current;
     editor.getEditorState().read(() => {
-      const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
-      const nextCursor = clampCollapsedComposerCursor(
-        nextValue,
-        $readSelectionOffsetFromEditorState(fallbackCursor),
-      );
-      const fallbackExpandedCursor = clampExpandedCursor(
-        nextValue,
-        snapshotRef.current.expandedCursor,
-      );
-      const nextExpandedCursor = clampExpandedCursor(
-        nextValue,
-        $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
-      );
-      const terminalContextIds = collectTerminalContextIds($getRoot());
-      snapshot = {
-        value: nextValue,
-        cursor: nextCursor,
-        expandedCursor: nextExpandedCursor,
-        terminalContextIds,
-      };
+      snapshot = $readComposerEditorSnapshot(snapshotRef.current);
     });
     snapshotRef.current = snapshot;
     return snapshot;
@@ -1802,49 +1822,23 @@ function ComposerPromptEditorInner({
 
   const handleEditorChange = useCallback((editorState: EditorState) => {
     editorState.read(() => {
-      const nextValue = $getRoot().getTextContent();
-      const fallbackCursor = clampCollapsedComposerCursor(nextValue, snapshotRef.current.cursor);
-      const nextCursor = clampCollapsedComposerCursor(
-        nextValue,
-        $readSelectionOffsetFromEditorState(fallbackCursor),
-      );
-      const fallbackExpandedCursor = clampExpandedCursor(
-        nextValue,
-        snapshotRef.current.expandedCursor,
-      );
-      const nextExpandedCursor = clampExpandedCursor(
-        nextValue,
-        $readExpandedSelectionOffsetFromEditorState(fallbackExpandedCursor),
-      );
-      const terminalContextIds = collectTerminalContextIds($getRoot());
       const previousSnapshot = snapshotRef.current;
-      if (
-        previousSnapshot.value === nextValue &&
-        previousSnapshot.cursor === nextCursor &&
-        previousSnapshot.expandedCursor === nextExpandedCursor &&
-        previousSnapshot.terminalContextIds.length === terminalContextIds.length &&
-        previousSnapshot.terminalContextIds.every((id, index) => id === terminalContextIds[index])
-      ) {
+      const snapshot = $readComposerEditorSnapshot(previousSnapshot);
+      // Nothing the screen does not already know — which is every echo of its
+      // own writes, and every update that moved no text and no caret.
+      if (composerSnapshotsAgree(previousSnapshot, snapshot)) {
         return;
       }
-      if (isApplyingControlledUpdateRef.current) {
-        return;
-      }
-      snapshotRef.current = {
-        value: nextValue,
-        cursor: nextCursor,
-        expandedCursor: nextExpandedCursor,
-        terminalContextIds,
-      };
+      snapshotRef.current = snapshot;
       const cursorAdjacentToMention =
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "left") ||
-        isCollapsedCursorAdjacentToInlineToken(nextValue, nextCursor, "right");
+        isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "left") ||
+        isCollapsedCursorAdjacentToInlineToken(snapshot.value, snapshot.cursor, "right");
       onChangeRef.current(
-        nextValue,
-        nextCursor,
-        nextExpandedCursor,
+        snapshot.value,
+        snapshot.cursor,
+        snapshot.expandedCursor,
         cursorAdjacentToMention,
-        terminalContextIds,
+        [...snapshot.terminalContextIds],
       );
     });
   }, []);
