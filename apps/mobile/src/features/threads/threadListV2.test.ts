@@ -31,6 +31,7 @@ vi.mock("../../components/ProjectFavicon", () => ({ ProjectFavicon: "ProjectFavi
 vi.mock("../../components/ProviderIcon", () => ({ ProviderIcon: "ProviderIcon" }));
 vi.mock("../../components/RowPressable", () => ({ RowPressable: "RowPressable" }));
 vi.mock("../../lib/openExternalUrl", () => ({ tryOpenExternalUrl }));
+vi.mock("../../lib/copyTextWithHaptic", () => ({ copyTextWithHaptic: vi.fn() }));
 vi.mock("../../lib/useUniwindTheme", () => ({
   useUniwindTheme: () => ({
     "--color-drawer": "drawer",
