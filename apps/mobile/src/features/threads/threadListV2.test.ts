@@ -29,6 +29,7 @@ vi.mock("../../components/AppText", () => ({ AppText: "Text" }));
 vi.mock("../../components/ControlPill", () => ({ ControlPillMenu: "ControlPillMenu" }));
 vi.mock("../../components/ProjectFavicon", () => ({ ProjectFavicon: "ProjectFavicon" }));
 vi.mock("../../components/ProviderIcon", () => ({ ProviderIcon: "ProviderIcon" }));
+vi.mock("../../components/RowPressable", () => ({ RowPressable: "RowPressable" }));
 vi.mock("../../lib/openExternalUrl", () => ({ tryOpenExternalUrl }));
 vi.mock("../../lib/useUniwindTheme", () => ({
   useUniwindTheme: () => ({
@@ -46,6 +47,7 @@ vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
 vi.mock("./thread-search-match", () => ({ ThreadSearchMatchExcerpt: "ThreadSearchMatchExcerpt" }));
 
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
+import { threadJumpTarget } from "../keyboard/threadKeyboardShortcuts";
 import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
@@ -1170,5 +1172,8 @@ describe("buildThreadListV2ListItems", () => {
       "v2-settled-shelf",
       "v2-thread",
     ]);
+    expect(threadJumpTarget(items, "thread.jump.1")?.id).toBe("active");
+    expect(threadJumpTarget(items, "thread.jump.2")?.id).toBe("settled");
+    expect(threadJumpTarget(items, "thread.jump.3")).toBeNull();
   });
 });

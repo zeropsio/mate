@@ -42,6 +42,11 @@ private struct ComposerChipStyle {
   let textColor: UIColor
 }
 
+private enum ComposerEnterBehavior: String {
+  case send
+  case newline
+}
+
 private final class ComposerTextAttachment: NSTextAttachment {
   let source: String
 
@@ -75,9 +80,11 @@ private final class ComposerTextView: UITextView {
   var onAttributedMutation: (() -> Void)?
   var onSubmit: (() -> Void)?
   var isReadOnly = false
+  var enterBehavior: ComposerEnterBehavior = .send
 
   override var keyCommands: [UIKeyCommand]? {
     var commands = super.keyCommands ?? []
+    guard !isReadOnly, markedTextRange == nil else { return commands }
     let submit = UIKeyCommand(
       input: "\r",
       modifierFlags: .command,
@@ -86,14 +93,42 @@ private final class ComposerTextView: UITextView {
     submit.discoverabilityTitle = "Send Message"
     submit.wantsPriorityOverSystemBehavior = true
     commands.append(submit)
+    if enterBehavior == .send {
+      let submitOnReturn = UIKeyCommand(
+        input: "\r",
+        modifierFlags: [],
+        action: #selector(submitMessage(_:))
+      )
+      submitOnReturn.discoverabilityTitle = "Send Message"
+      submitOnReturn.wantsPriorityOverSystemBehavior = true
+      commands.append(submitOnReturn)
+
+      let newline = UIKeyCommand(
+        input: "\r",
+        modifierFlags: .shift,
+        action: #selector(insertNewline(_:))
+      )
+      newline.discoverabilityTitle = "New Line"
+      newline.wantsPriorityOverSystemBehavior = true
+      commands.append(newline)
+    }
     return commands
   }
 
   @objc private func submitMessage(_ sender: UIKeyCommand) {
+    guard !isReadOnly, markedTextRange == nil else { return }
     onSubmit?()
   }
 
+  @objc private func insertNewline(_ sender: UIKeyCommand) {
+    guard !isReadOnly, markedTextRange == nil else { return }
+    insertText("\n")
+  }
+
   override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+    if action == #selector(submitMessage(_:)) || action == #selector(insertNewline(_:)) {
+      return isEditable && !isReadOnly && markedTextRange == nil
+    }
     if isReadOnly && Self.readOnlyActions.contains(NSStringFromSelector(action)) {
       return false
     }
@@ -497,6 +532,10 @@ public final class T3ComposerEditorView: ExpoView, UITextViewDelegate, UITextDro
 
   func setSpellCheck(_ spellCheck: Bool) {
     textView.spellCheckingType = spellCheck ? .yes : .no
+  }
+
+  func setEnterBehavior(_ behavior: String) {
+    textView.enterBehavior = ComposerEnterBehavior(rawValue: behavior) ?? .send
   }
 
   func focusEditor() {
