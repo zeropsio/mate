@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
@@ -252,13 +253,17 @@ const restoreArgs = (config: typeof onZerops) =>
     const shape = yield* GitVcsDriver.makeVcsDriverShape().pipe(
       Effect.provide(recordingVcsProcess(recorded)),
     );
+    // A real directory: the restore recreates its workspace on disk after git
+    // runs, and the recording executor never creates one.
+    const fileSystem = yield* FileSystem.FileSystem;
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "zerops-policy-restore-" });
     yield* shape.checkpoints.restoreCheckpoint({
-      cwd: "/var/www/kanbandev",
+      cwd,
       checkpointRef: "refs/t3/checkpoints/x/turn/1" as never,
       fallbackToHead: false,
     });
     return yield* Ref.get(recorded);
-  }).pipe(Effect.provide(config));
+  }).pipe(Effect.scoped, Effect.provide(config));
 
 it.layer(NodeServices.layer)("restoring a checkpoint", (it) => {
   it.effect("leaves what the running application wrote on Zerops", () =>
