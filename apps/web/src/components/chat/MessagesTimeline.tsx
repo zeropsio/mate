@@ -54,7 +54,12 @@ import {
   workEntrySignalsSevereFailure,
   workLogEntryIsToolLike,
 } from "../../session-logic";
-import { type ChatImageAttachment, isImageAttachment, type TurnDiffSummary } from "../../types";
+import {
+  type ChatImageAttachment,
+  type ChatMessage,
+  isImageAttachment,
+  type TurnDiffSummary,
+} from "../../types";
 import {
   getRenderablePatch,
   resolveDiffThemeName,
@@ -115,6 +120,8 @@ import {
   shouldPreserveAssistantLineBreaks,
   toolGroupAction,
   workEntryIsVisibleInGroup,
+  omitSupersededLifecycleMarkers,
+  summarizeToolGroup,
   type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
   TIMELINE_MINIMAP_MIN_ITEMS,
@@ -171,7 +178,8 @@ interface TimelineRowSharedState {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
-  onToggleReasoning: (messageId: string, expanded: boolean) => void;
+  /** `anchorKey` is the timeline row that holds the block; a standalone block is its own row. */
+  onToggleReasoning: (messageId: string, expanded: boolean, anchorKey?: string) => void;
   expandedReasoningMessageIds: ReadonlySet<string>;
   onToggleSpawnRow: (entryId: string, expanded: boolean) => void;
   agentPanelModel: AgentPanelModel;
@@ -423,10 +431,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ReadonlySet<string>
   >(new Set());
   const onToggleReasoning = useCallback(
-    (messageId: string, expanded: boolean) => {
-      // The anchor is the timeline row id, which for a message row is the
-      // message id, so the list keeps its place while the block opens.
-      suspendEndScrollMaintenanceForDisclosure(messageId);
+    (messageId: string, expanded: boolean, anchorKey: string = messageId) => {
+      // The anchor is the timeline row id (the message id for a standalone
+      // block, the activity row inside a group), so the list keeps its place.
+      suspendEndScrollMaintenanceForDisclosure(anchorKey);
       setExpandedReasoningMessageIds((current) => {
         if (current.has(messageId) === expanded) return current;
         const next = new Set(current);
@@ -1262,6 +1270,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
+                  row.kind === "activity-group" ||
                   row.kind === "turn-plan" ||
                   row.kind === "operation" ||
                   row.kind === "generic-call"
@@ -1281,6 +1290,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         />
       ) : null}
       {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
+      {row.kind === "activity-group" ? <ActivityGroupTimelineRow row={row} /> : null}
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
@@ -2108,6 +2118,176 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   );
 }
 
+/**
+ * Thinking and the tool calls around it, as one line. While the turn runs the
+ * line names the running tool, or "Thinking" between calls; once settled it
+ * summarizes the calls, or reads "Thought" when there were none. Expanding it
+ * lists the calls and the thinking in order.
+ */
+function ActivityGroupTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "activity-group" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const visibleWork = (entries: ReadonlyArray<(typeof row.entries)[number]>) =>
+    omitSupersededLifecycleMarkers(
+      entries.flatMap((entry) =>
+        entry.kind === "work" && workEntryIsVisibleInGroup(entry.entry, row.active)
+          ? [entry.entry]
+          : [],
+      ),
+      (entry) => entry,
+    );
+  const work = visibleWork(row.entries);
+  const thoughtCount = row.entries.filter((entry) => entry.kind === "message").length;
+  const lastThoughtIndex = row.entries.findLastIndex((entry) => entry.kind === "message");
+  const trailingWork = visibleWork(row.entries.slice(lastThoughtIndex + 1));
+  const liveWork =
+    trailingWork.findLast((entry) => entry.toolLifecycleStatus === "inProgress") ??
+    trailingWork.at(-1);
+  const iconWork = row.active ? liveWork : work.at(-1);
+  const failed = iconWork !== undefined && workEntryDisplayIndicatesToolFailure(iconWork);
+  const label = row.active
+    ? liveWork
+      ? liveWorkEntryLabel(liveWork, ctx.workspaceRoot)
+      : "Thinking"
+    : work.length > 0
+      ? summarizeToolGroup(work)
+      : `Thought${thoughtCount > 1 ? ` (×${thoughtCount})` : ""}`;
+  const details: ReactNode[] = [];
+  if (row.expanded) {
+    for (let index = 0; index < row.entries.length; index += 1) {
+      const entry = row.entries[index]!;
+      if (entry.kind === "work") {
+        const entries = [entry.entry];
+        while (row.entries[index + 1]?.kind === "work") {
+          const next = row.entries[++index]!;
+          if (next.kind === "work") entries.push(next.entry);
+        }
+        details.push(
+          <WorkGroupSection
+            key={entry.id}
+            groupedEntries={omitSupersededLifecycleMarkers(entries, (workEntry) => workEntry)}
+            isExpandedToolGroupEntry
+          />,
+        );
+      } else {
+        const messages = [entry.message];
+        while (row.entries[index + 1]?.kind === "message") {
+          const next = row.entries[++index]!;
+          if (next.kind === "message") messages.push(next.message);
+        }
+        details.push(
+          <ReasoningTraceBlock
+            key={entry.id}
+            anchorKey={row.id}
+            messages={messages}
+            live={row.active && index === row.entries.length - 1}
+            showHeader={work.length > 0}
+          />,
+        );
+      }
+    }
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        aria-label={failed ? `${label}, tool call failed` : undefined}
+        aria-expanded={row.expanded}
+        onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      >
+        <LiveActivityRow
+          label={label}
+          iconName={iconWork ? workEntryIconName(iconWork) : "brain"}
+          failed={failed}
+        />
+      </button>
+      {row.expanded ? <div className="mt-2">{details}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * Thinking inside an activity row. Beside tool calls it has its own
+ * disclosure, whose collapsed header previews the first line; a row that
+ * already reads "Thought" (no visible tool) shows the text directly.
+ */
+function ReasoningTraceBlock({
+  anchorKey,
+  messages,
+  live,
+  showHeader,
+}: {
+  anchorKey: string;
+  messages: ReadonlyArray<ChatMessage>;
+  live: boolean;
+  showHeader: boolean;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { isWorking, latestTurnId } = use(TimelineRowActivityCtx);
+  const first = messages[0]!;
+  const expanded = !showHeader || ctx.expandedReasoningMessageIds.has(first.id);
+  // Only the live turn may claim to still be thinking: a block stranded by a
+  // crashed provider keeps its streaming flag forever.
+  const streaming =
+    live &&
+    messages.some((message) => message.streaming) &&
+    isWorking &&
+    first.turnId !== null &&
+    first.turnId === latestTurnId;
+  if (messages.every((message) => message.text.trim().length === 0) && !streaming) {
+    return null;
+  }
+  const label = streaming ? "Thinking" : "Thought";
+  const collapsedPreview = messages.find((message) => message.text.trim().length > 0)?.text.trim();
+  const headerText = expanded ? label : (collapsedPreview ?? label);
+  return (
+    <div className="flex flex-col">
+      {showHeader ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => ctx.onToggleReasoning(first.id, !expanded, anchorKey)}
+          className="flex min-h-6 cursor-pointer select-none items-center gap-1.5 rounded-md px-0.5 text-start text-sm leading-relaxed transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+            <BrainIcon aria-hidden className="block size-4 shrink-0 stroke-[1.8] opacity-70" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-secondary-label">{headerText}</span>
+          <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+            <ChevronRightIcon
+              className={cn(
+                "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
+                expanded && "rotate-90",
+              )}
+            />
+          </span>
+        </button>
+      ) : null}
+      {expanded ? (
+        <div className="ms-7 flex max-h-96 flex-col gap-3 overflow-auto px-0.5 py-1 select-text">
+          {messages.map((message) => (
+            <ChatMarkdown
+              key={message.id}
+              className="text-foreground"
+              text={message.text}
+              cwd={ctx.markdownCwd}
+              threadRef={ctx.threadRef ?? undefined}
+              isStreaming={streaming && message.streaming}
+              lineBreaks
+              skills={ctx.skills}
+              headingLevelOffset={MESSAGE_HEADING_LEVEL}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function toolGroupSummaryIconName(
   kind: Extract<TimelineRow, { kind: "work-toggle" }>["summaryKind"],
 ): WorkEntryIconName {
@@ -2663,6 +2843,7 @@ function formatWorkingTimerNow(startIso: string): string {
 
 type WorkEntryIconName =
   | "bot"
+  | "brain"
   | "check"
   | "circle-alert"
   | "eye"
@@ -2680,6 +2861,8 @@ function WorkEntryIconSvg({ name, className }: { name: WorkEntryIconName; classN
   switch (name) {
     case "bot":
       return <BotIcon className={className} aria-hidden />;
+    case "brain":
+      return <BrainIcon className={className} aria-hidden />;
     case "check":
       return <CheckIcon className={className} aria-hidden />;
     case "circle-alert":

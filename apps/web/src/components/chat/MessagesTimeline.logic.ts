@@ -210,7 +210,35 @@ export type TimelineLatestTurn = Pick<
   "turnId" | "state" | "startedAt" | "completedAt"
 >;
 
+/**
+ * Thinking and the tool calls around it, as one row that tracks the latest
+ * activity. A failed tool call stays inside; an error, a question answer, a
+ * compaction or a subagent batch ends the run.
+ */
+export type ActivityEntry = Extract<TimelineEntry, { kind: "message" | "work" }>;
+
+function isActivityEntry(entry: TimelineEntry): entry is ActivityEntry {
+  return entry.kind === "message"
+    ? entry.message.role === "reasoning"
+    : entry.kind === "work" &&
+        entry.entry.agentSpawn === undefined &&
+        entry.entry.questionAnswer === undefined &&
+        entry.entry.sourceActivityKind !== "context-compaction" &&
+        entry.entry.tone !== "error";
+}
+
 export type MessagesTimelineRow =
+  | {
+      kind: "activity-group";
+      id: string;
+      createdAt: string;
+      turnId: TurnId;
+      groupId: string;
+      entries: ActivityEntry[];
+      expanded: boolean;
+      /** The live tail of the running turn: its label follows the latest activity. */
+      active: boolean;
+    }
   | {
       kind: "work";
       id: string;
@@ -423,7 +451,7 @@ export function summarizeToolGroup(entries: ReadonlyArray<WorkLogEntry>): string
   return `${sentenceLabels.slice(0, -1).join(", ")}, and ${sentenceLabels.at(-1)}`;
 }
 
-function omitSupersededLifecycleMarkers<T>(
+export function omitSupersededLifecycleMarkers<T>(
   entries: readonly T[],
   workEntryFor: (entry: T) => WorkLogEntry,
 ): T[] {
@@ -892,6 +920,53 @@ export function deriveMessagesTimelineRows(input: {
     input.isWorking &&
     index >= activeTurnHeaderIndex &&
     (unsettledTurnId === null || timelineEntryTurnId(entry) === unsettledTurnId);
+  // Runs of thinking and tool calls in one turn become a single activity row,
+  // so a provider that thinks between every tool call does not stack "Thought"
+  // rows between the calls. A run without thinking stays ordinary tool work.
+  const activityGroupsByStart = new Map<
+    TimelineEntry,
+    { entries: ActivityEntry[]; end: number; turnId: TurnId; active: boolean }
+  >();
+  const activityGroupEntries = new Set<TimelineEntry>();
+  for (let index = 0; index < timelineEntries.length;) {
+    const entry = timelineEntries[index]!;
+    const turnId = timelineEntryTurnId(entry);
+    if (turnId === null || !isActivityEntry(entry) || collapsedEntries.has(entry)) {
+      index += 1;
+      continue;
+    }
+    const entries: ActivityEntry[] = [entry];
+    let cursor = index + 1;
+    while (cursor < timelineEntries.length) {
+      const next = timelineEntries[cursor]!;
+      if (
+        !isActivityEntry(next) ||
+        timelineEntryTurnId(next) !== turnId ||
+        collapsedEntries.has(next) ||
+        foldsByAnchorEntry.has(next) ||
+        (input.isWorking && cursor === activeTurnHeaderIndex)
+      ) {
+        break;
+      }
+      entries.push(next);
+      cursor += 1;
+    }
+    if (entries.some((candidate) => candidate.kind === "message")) {
+      const lastWork = entries.findLast(
+        (candidate): candidate is Extract<ActivityEntry, { kind: "work" }> =>
+          candidate.kind === "work" && workEntryIsVisibleInGroup(candidate.entry, true),
+      );
+      const active =
+        input.isWorking &&
+        turnId === unsettledTurnId &&
+        cursor === timelineEntries.length &&
+        !(lastWork && workEntryDisplayIndicatesToolFailure(lastWork.entry));
+      activityGroupsByStart.set(entry, { entries, end: cursor, turnId, active });
+      for (const member of entries) activityGroupEntries.add(member);
+    }
+    index = cursor;
+  }
+  const hasActiveActivityGroup = [...activityGroupsByStart.values()].some((group) => group.active);
   const workEntryIsInActiveRun = (entry: WorkLogEntry) =>
     input.isWorking &&
     unsettledTurnId !== null &&
@@ -926,6 +1001,7 @@ export function deriveMessagesTimelineRows(input: {
     if (
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
+      activityGroupEntries.has(entry) ||
       entry.entry.agentSpawn !== undefined ||
       entry.entry.questionAnswer !== undefined ||
       entry.entry.sourceActivityKind === "context-compaction" ||
@@ -964,7 +1040,9 @@ export function deriveMessagesTimelineRows(input: {
       kind: "working",
       id: "working-indicator-row",
       createdAt: input.activeTurnStartedAt,
-      showThinking: activeWorkRow === null && !activeTurnHasVisibleContent,
+      // A live activity row already says "Thinking" or names the running tool.
+      showThinking:
+        activeWorkRow === null && !activeTurnHasVisibleContent && !hasActiveActivityGroup,
     });
   };
   const appendActiveWorkRows = () => {
@@ -1010,6 +1088,26 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (collapsedEntries.has(timelineEntry)) {
+      continue;
+    }
+
+    const activityGroup = activityGroupsByStart.get(timelineEntry);
+    if (activityGroup) {
+      const groupId =
+        timelineEntry.kind === "work"
+          ? workGroupId(timelineEntry.id, timelineEntry.entry)
+          : `activity-group:${timelineEntry.id}`;
+      nextRows.push({
+        kind: "activity-group",
+        id: groupId,
+        createdAt: timelineEntry.createdAt,
+        turnId: activityGroup.turnId,
+        groupId,
+        entries: activityGroup.entries,
+        expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
+        active: activityGroup.active,
+      });
+      index = activityGroup.end - 1;
       continue;
     }
 
@@ -1397,6 +1495,17 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
   if (a.kind !== b.kind || a.id !== b.id) return false;
 
   switch (a.kind) {
+    case "activity-group": {
+      const group = b as typeof a;
+      return (
+        a.active === group.active &&
+        a.expanded === group.expanded &&
+        a.groupId === group.groupId &&
+        a.entries.length === group.entries.length &&
+        a.entries.every((entry, index) => entry === group.entries[index])
+      );
+    }
+
     case "working":
       return (
         a.createdAt === (b as typeof a).createdAt && a.showThinking === (b as typeof a).showThinking
