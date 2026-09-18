@@ -2022,6 +2022,7 @@ export class ZeropsApiClient {
    * index trails the write path, so this is re-read rather than remembered.
    */
   async readProjectEnv(
+    clientId: string,
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ProjectEnvEntry>> {
@@ -2034,7 +2035,13 @@ export class ZeropsApiClient {
         signal: signal ?? null,
         body: JSON.stringify({
           limit: 1,
-          search: [{ name: "id", operator: "eq", value: projectId }],
+          // The organization scopes every project search: an id on its own is
+          // `400 invalidUserInput` — "clientId not defined" — which failed the
+          // isolation step of a second Mate's creation (measured 2026-09-18).
+          search: [
+            { name: "id", operator: "eq", value: projectId },
+            { name: "clientId", operator: "eq", value: clientId },
+          ],
         }),
       },
       { operationKind: "read" },
@@ -2074,13 +2081,14 @@ export class ZeropsApiClient {
    * through it: the plan is then empty and nothing, restarts included, runs.
    */
   async isolateProjectEnvironment(
+    clientId: string,
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<void> {
     const generation = this.#generation;
     const [envList, services] = await Promise.all([
-      this.readProjectEnv(projectId, signal),
+      this.readProjectEnv(clientId, projectId, signal),
       this.listProjectServices(projectId, signal),
     ]);
     const own = services.filter((service) => service.isSystem !== true);
@@ -2151,7 +2159,7 @@ export class ZeropsApiClient {
           break;
         }
         case "reread-project-env":
-          fresh = await this.readProjectEnv(projectId, signal);
+          fresh = await this.readProjectEnv(clientId, projectId, signal);
           break;
         case "delete-project-env": {
           const entry = fresh.find((candidate) => candidate.key === step.key);

@@ -1287,6 +1287,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       case "isolate-project-env":
         return executeApi(context, (signal) =>
           options.client.isolateProjectEnvironment(
+            command.project.organization.organizationId,
             command.project.projectId,
             signal,
             context.beforeProjectWrite,

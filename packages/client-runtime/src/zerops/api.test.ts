@@ -462,6 +462,28 @@ describe("ZeropsApiClient project reads", () => {
     });
   });
 
+  it("scopes the project-variable read to the organization, which the platform requires", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { items: [{ envList: [{ id: "e1", key: "K", content: "v" }] }] }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const entries = await client.readProjectEnv("org-1", "project-1");
+
+    expect(entries.map((entry) => entry.id)).toEqual(["e1"]);
+    // Without the `clientId` term the platform answers
+    // `400 invalidUserInput` — "clientId not defined" — and the whole
+    // isolation step of a Mate's creation fails (measured 2026-09-18).
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
+      limit: 1,
+      search: [
+        { name: "id", operator: "eq", value: "project-1" },
+        { name: "clientId", operator: "eq", value: "org-1" },
+      ],
+    });
+  });
+
   it("does not hide a non-permission failure behind the project search fallback", async () => {
     const stub = recordingFetch(() => jsonResponse(503, { error: { code: "unavailable" } }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
