@@ -14,7 +14,8 @@ export const QUIT_DOUBLE_TAP_MS = 500;
 // release: macOS suppresses a letter keyUp while the command key is down, so a
 // tap release can go completely unseen and a release-based timer would quit
 // anyway. Once held, quitting waits for Q keyUp or a quiet grace period after
-// modifier keyUp so repeats cannot reach the next app. Keyboards with
+// the last Q repeat or modifier keyUp, so repeats cannot reach the next app and
+// a dropped Q keyUp cannot strand the quit. Keyboards with
 // auto-repeat disabled fall back to the application menu Quit action.
 export const QUIT_HOLD_RELEASE_GRACE_MS = 600;
 
@@ -78,6 +79,11 @@ export function makeQuitHoldHandler(
     options.quit();
   };
 
+  const quitAfterQuietPeriod = () => {
+    clearWatchdog();
+    watchdog = setTimeout(quitNow, QUIT_HOLD_RELEASE_GRACE_MS);
+  };
+
   return (event, input) => {
     const key = input.key.toLowerCase();
     if (input.type === "keyUp") {
@@ -89,7 +95,7 @@ export function makeQuitHoldHandler(
         if (!quitOnRelease) {
           release();
         } else {
-          watchdog = setTimeout(quitNow, QUIT_HOLD_RELEASE_GRACE_MS);
+          quitAfterQuietPeriod();
         }
       }
       return;
@@ -98,7 +104,9 @@ export function makeQuitHoldHandler(
 
     if (quitOnRelease && input.isAutoRepeat && key === "q") {
       event.preventDefault();
-      clearWatchdog();
+      // A Q keydown proves the key is still down whether or not the modifier
+      // is still held, so it only pushes the quiet period back.
+      quitAfterQuietPeriod();
       return;
     }
 
