@@ -101,7 +101,8 @@ describe("ComposerTasksBadge", () => {
     expect(markup).toContain('role="list"');
     expect(markup).toContain("Inspect the composer");
     expect(markup).toContain('data-composer-task-duration="true"');
-    expect(markup).toContain("ml-auto w-10");
+    expect(markup).toContain("ml-auto w-12");
+    expect(markup).toContain('<span class="sr-only">Running: </span>');
     expect(markup).toContain("4.0s");
     expect(markup).toContain("now");
     expect(markup).toContain("Attach task progress");

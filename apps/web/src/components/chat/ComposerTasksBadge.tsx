@@ -1,4 +1,4 @@
-import { ListTodoIcon, XIcon } from "lucide-react";
+import { CheckIcon, CircleDotIcon, CircleIcon, ListTodoIcon, XIcon } from "lucide-react";
 import { memo } from "react";
 
 import { formatDuration } from "../../session-logic";
@@ -16,6 +16,12 @@ export interface ComposerTaskStep {
   readonly step: string;
   readonly status: "pending" | "inProgress" | "completed";
 }
+
+const taskStatusLabels = {
+  pending: "Pending",
+  inProgress: "Running",
+  completed: "Completed",
+} satisfies Record<ComposerTaskStep["status"], string>;
 
 function keyedTaskSteps(steps: readonly ComposerTaskStep[]) {
   const occurrences = new Map<string, number>();
@@ -202,11 +208,11 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
       </div>
       <div className="space-y-px px-3 pb-4 sm:px-4" role="list">
         {keyedTaskSteps(steps).map(({ key, step }) => (
-          <div key={key} className="flex items-baseline gap-2 text-xs leading-5" role="listitem">
+          <div key={key} className="flex items-start gap-2 text-xs leading-5" role="listitem">
             <span
               aria-hidden
               className={cn(
-                "w-3 shrink-0 text-center font-mono text-[10px]",
+                "flex h-5 w-3 shrink-0 items-center justify-center [&>svg]:size-3",
                 step.status === "completed"
                   ? "text-success"
                   : step.status === "inProgress"
@@ -214,11 +220,17 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
                     : "text-muted-foreground/40",
               )}
             >
-              {step.status === "completed" ? "✓" : step.status === "inProgress" ? "●" : "○"}
+              {step.status === "completed" ? (
+                <CheckIcon />
+              ) : step.status === "inProgress" ? (
+                <CircleDotIcon />
+              ) : (
+                <CircleIcon />
+              )}
             </span>
             <span
               className={cn(
-                "min-w-0 flex-1",
+                "min-w-0 flex-1 wrap-anywhere",
                 step.status === "completed"
                   ? "text-muted-foreground/55"
                   : step.status === "inProgress"
@@ -226,10 +238,11 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
                     : "text-muted-foreground/70",
               )}
             >
+              <span className="sr-only">{taskStatusLabels[step.status]}: </span>
               {step.step}
             </span>
             <span
-              className="ml-auto w-10 shrink-0 text-right text-[10px] text-muted-foreground/45 tabular-nums"
+              className="ml-auto w-12 shrink-0 text-right text-[10px] text-muted-foreground/45 tabular-nums"
               data-composer-task-duration="true"
             >
               {step.durationMs !== undefined
