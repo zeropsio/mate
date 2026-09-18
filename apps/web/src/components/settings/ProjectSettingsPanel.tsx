@@ -12,6 +12,7 @@ import {
   deriveProjectGroupingOverrideKey,
   selectProjectGroupingSettings,
 } from "../../logicalProject";
+import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import type {
   ContextMenuItem,
   ModelSelection,
@@ -23,6 +24,7 @@ import type {
 import { resolveEnvModeLabel } from "../BranchToolbar.logic";
 import { createModelSelection } from "@t3tools/shared/model";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
 import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
@@ -296,6 +298,9 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   const threads = useThreadShells();
   const serverConfigs = useServerConfigs();
   const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
+  const updateServerSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
   const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
@@ -471,7 +476,16 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     serverEnvironment.configValueAtom(selectedCheckout.environmentId),
   );
   const keybindings = selectedServerConfig?.keybindings ?? DEFAULT_RESOLVED_KEYBINDINGS;
-  const scripts = selectedCheckout.scripts;
+  // Actions live in the checkout environment's settings once edited there, so
+  // read the resolved list the rest of the app runs.
+  const scripts = useMemo(
+    () =>
+      resolveProjectScripts(
+        selectedServerConfig?.settings ?? DEFAULT_SERVER_SETTINGS,
+        selectedCheckout,
+      ),
+    [selectedCheckout, selectedServerConfig?.settings],
+  );
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
   // Script writes replace the whole array, so two overlapping writes computed
   // from the same snapshot would drop each other's changes. One at a time.
@@ -517,9 +531,11 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         // removed from the keybindings config afterwards.
         const previousKeybinding = keybindingValueForCommand(keybindings, keybindingCommand);
         const updateResult = mapAtomCommandResult(
-          await updateProject({
+          await updateServerSettings({
             environmentId: selectedCheckout.environmentId,
-            input: { projectId: selectedCheckout.id, scripts: nextScripts },
+            input: {
+              patch: { projectScriptOverrides: { [selectedCheckout.id]: nextScripts } },
+            },
           }),
           () => undefined,
         );

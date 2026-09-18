@@ -236,6 +236,15 @@ const awaitDecidableProviders = (registry: ProviderRegistry.ProviderRegistry["Se
   });
 
 export const resolveAutoBootstrapDefaultModelSelection = Effect.gen(function* () {
+  // The machine-wide default model from settings wins over every derived default.
+  const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+  if (Option.isSome(serverSettings)) {
+    const settings = yield* serverSettings.value.getSettings.pipe(Effect.option);
+    if (Option.isSome(settings) && settings.value.defaultModelSelection !== null) {
+      return settings.value.defaultModelSelection;
+    }
+  }
+
   const serverConfig = yield* ServerConfig.ServerConfig;
   if (!isZeropsEnvironment(serverConfig)) {
     return getAutoBootstrapDefaultModelSelection();

@@ -206,6 +206,20 @@ export function applyServerSettingsPatch(
     ...(patch.providerInstances !== undefined
       ? { providerInstances: patch.providerInstances }
       : {}),
+    ...(patch.defaultModelSelection !== undefined
+      ? { defaultModelSelection: patch.defaultModelSelection }
+      : {}),
+    ...(patch.defaultProjectScripts !== undefined
+      ? { defaultProjectScripts: patch.defaultProjectScripts }
+      : {}),
+    ...(patch.projectScriptOverrides !== undefined
+      ? {
+          projectScriptOverrides: {
+            ...current.projectScriptOverrides,
+            ...patch.projectScriptOverrides,
+          },
+        }
+      : {}),
     ...(usageLimitSourcesPatch !== undefined
       ? {
           usageLimitSources: mergeUsageLimitSources(

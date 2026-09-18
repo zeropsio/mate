@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_MODEL,
+  type ModelSelection,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -24,6 +25,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as ServerSettings from "./serverSettings.ts";
 import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 
 it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
@@ -388,6 +390,7 @@ const runBootstrap = (input: {
   /** Overrides `providers` when the registry must answer differently per call. */
   readonly getProviders?: Effect.Effect<ReadonlyArray<ServerProvider>>;
   readonly existingProject?: Option.Option<{ readonly defaultModelSelection: unknown }>;
+  readonly defaultModelSelection?: ModelSelection | null;
 }) =>
   Effect.gen(function* () {
     const dispatched = yield* Ref.make<ReadonlyArray<Record<string, unknown>>>([]);
@@ -417,10 +420,36 @@ const runBootstrap = (input: {
       Effect.provideService(ProviderRegistry.ProviderRegistry, {
         getProviders: input.getProviders ?? Effect.succeed(input.providers ?? []),
       } as never),
+      Effect.provide(
+        ServerSettings.layerTest(
+          input.defaultModelSelection === undefined
+            ? {}
+            : { defaultModelSelection: input.defaultModelSelection },
+        ),
+      ),
       Effect.provide(NodeServices.layer),
     );
     return yield* Ref.get(dispatched);
   });
+
+it.effect.each([true, false])(
+  "auto-bootstrap prefers the machine default model from settings (zerops: %s)",
+  (zerops) =>
+    Effect.gen(function* () {
+      const machineDefault = {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5.4",
+      };
+      const dispatched = yield* runBootstrap({
+        zerops,
+        providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
+        defaultModelSelection: machineDefault,
+      });
+
+      assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, machineDefault);
+      assert.deepStrictEqual(dispatched[1]?.modelSelection, machineDefault);
+    }),
+);
 
 it.effect(
   "auto-bootstrap on Zerops opens the first thread on the authenticated provider, not Codex",

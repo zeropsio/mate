@@ -424,7 +424,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   );
   const projectDefaultModelSelection = resolveDefaultableModelSelection(
     selectedEnvironmentServerConfig,
-    selectedProject?.defaultModelSelection ?? null,
+    selectedProject?.defaultModelSelection ??
+      selectedEnvironmentServerConfig?.settings.defaultModelSelection ??
+      null,
   );
   const modelOptions = useMemo(
     () =>
