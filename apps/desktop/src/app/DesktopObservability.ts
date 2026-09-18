@@ -94,6 +94,7 @@ const tracerLayer = Layer.unwrap(
       : yield* OtlpTracer.make({
           url: otlpTracesUrl.value,
           exportInterval: `${environment.otlpExportIntervalMs} millis`,
+          headers: Option.getOrUndefined(environment.otlpHeaders),
           resource: {
             serviceName: "desktop",
             attributes: {
