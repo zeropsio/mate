@@ -1366,6 +1366,35 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("sees a same-size edit made in the second the index was written", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const racySecond = 1_700_000_000;
+        yield* writeTextFile(cwd, "racy.txt", "before\n");
+        NodeFS.utimesSync(`${cwd}/racy.txt`, racySecond, racySecond);
+        yield* git(cwd, ["add", "racy.txt"]);
+        yield* git(cwd, ["commit", "-m", "add racy file"]);
+        // The untracked file routes the working-tree preview through a
+        // temporary index copy.
+        yield* writeTextFile(cwd, "untracked.txt", "new\n");
+        yield* writeTextFile(cwd, "racy.txt", "after!\n");
+        NodeFS.utimesSync(`${cwd}/racy.txt`, racySecond, racySecond);
+        NodeFS.utimesSync(`${cwd}/.git/index`, racySecond, racySecond);
+
+        const preview = yield* driver.getReviewDiffPreview({ cwd, baseRef: initialBranch });
+        const dirty = preview.sources.find((source) => source.kind === "working-tree")!;
+        assert.include(dirty.diff, "+after!");
+        assert.deepInclude(dirty.files ?? [], {
+          path: "racy.txt",
+          previousPath: null,
+          additions: 1,
+          deletions: 1,
+        });
+      }),
+    );
+
     it.effect("preserves renames, unusual paths, modes, and binary statistics", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

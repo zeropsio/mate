@@ -2287,7 +2287,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       prefix: `t3code-review-index-${process.pid}-`,
     });
     const indexExists = yield* fileSystem.exists(indexPath);
-    if (indexExists) yield* fileSystem.copyFile(indexPath, tempIndexPath);
+    if (indexExists) {
+      yield* fileSystem.copyFile(indexPath, tempIndexPath);
+      // Git decides which entries are racily clean by comparing them with the
+      // index file's own mtime. A fresh copy would make a same-size edit from
+      // the same second look clean, so the copy keeps the original's mtime.
+      const indexMtime = Option.getOrUndefined((yield* fileSystem.stat(indexPath)).mtime);
+      if (indexMtime !== undefined) {
+        yield* fileSystem.utimes(tempIndexPath, indexMtime, indexMtime);
+      }
+    }
     const env = { GIT_INDEX_FILE: tempIndexPath } satisfies NodeJS.ProcessEnv;
     const tempIndexConfig = [
       "-c",
