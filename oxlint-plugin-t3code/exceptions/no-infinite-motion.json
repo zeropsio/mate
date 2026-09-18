@@ -122,7 +122,7 @@
   {
     "path": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
     "kind": "Literal",
-    "fingerprint": "\"size-3.5 animate-spin\"",
+    "fingerprint": "\"size-3.5 shrink-0 animate-spin\"",
     "owner": "karel",
     "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
     "expires": "never"
