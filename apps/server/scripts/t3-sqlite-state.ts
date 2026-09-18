@@ -246,7 +246,7 @@ export const runSqliteState = Effect.fn("runSqliteState")(function* (
   );
 });
 
-export const t3SqliteStateCommand = Command.make(
+const t3SqliteStateCommand = Command.make(
   "t3-sqlite-state",
   {
     operation: Argument.Literals("operation", SqliteStateOperation.literals).pipe(
