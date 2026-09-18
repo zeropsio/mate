@@ -50,13 +50,13 @@ Gitea org imperial-titan
 
 ## 2. The parts and where they live
 
-| Part                           | Repository, path                                                                                                                                            | Released as                                                                                                                                                  | Does                                                                                                                                                                                                      |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The app — web, desktop, mobile | this repo (`zeropsio/mate`): `apps/web/src/zerops`, `apps/web/src/components/zerops`, `packages/client-runtime/src/zerops`                                  | mate **0.11.16**                                                                                                                                             | sign-in, the projects page, _New project_, the registry, throwaways, Gitea as the person, _Add Mate_, _Add stage_, _Add production_, _Release_, the Git tab, the project's flow (D26), the Gitea overview |
-| The Mate server                | `apps/server/src/zerops`                                                                                                                                    | mate 0.11.14 (the turn-end refresh of every checkout, 0.11.12; otherwise unchanged since 0.11.5), installed into every Mate by zcp from the release manifest | the door (`zerops-throwaway`), the membership watch, the agent-signer gate, the checkout side of the Git tab                                                                                              |
-| The role function              | `packages/shared/src/zeropsRoles.ts` and `gitea-mate/internal/roles`; `zeropsRoles.fixtures.json` byte-identical in both                                    | with each                                                                                                                                                    | one rule for the list, the door and the broker                                                                                                                                                            |
-| zcp                            | `../zcp`                                                                                                                                                    | zcp **v9.179.2** (a Mate boots the latest release; a running one keeps its build — `update.Once` caches a day)                                               | in every Mate: the three Gitea variables from the live env store, a repository per dev pair, the pull request, the recipe pull request, the `.gitea` workflow, Gitea as a forge kind                      |
-| The broker; Gitea on Zerops    | `../gitea-mate` (`zeropsio/gitea-mate`): `cmd/broker`, `gitea/` (app.ini, init scripts), `import/` (what the app sends, a group's runner), `actions/deploy` | gitea-mate **v3.6**; the import builds both code services from `main`, so a push to `main` is the release and a tag is a marker                              | the registry, the rights loop, Mate access, a person's Gitea token, OIDC, deploys, the runner pool                                                                                                        |
+| Part                           | Repository, path                                                                                                                                            | Released as                                                                                                                                                        | Does                                                                                                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The app — web, desktop, mobile | this repo (`zeropsio/mate`): `apps/web/src/zerops`, `apps/web/src/components/zerops`, `packages/client-runtime/src/zerops`                                  | mate **0.11.16**; `main` carries the seven fixes of 2026-09-18, unreleased                                                                                         | sign-in, the projects page, _New project_, the registry, throwaways, Gitea as the person, _Add Mate_, _Add stage_, _Add production_, _Release_, the Git tab, the project's flow (D26), the Gitea overview |
+| The Mate server                | `apps/server/src/zerops`                                                                                                                                    | mate 0.11.14 (the turn-end refresh of every checkout, 0.11.12; otherwise unchanged since 0.11.5), installed into every Mate by zcp from the release manifest       | the door (`zerops-throwaway`), the membership watch, the agent-signer gate, the checkout side of the Git tab                                                                                              |
+| The role function              | `packages/shared/src/zeropsRoles.ts` and `gitea-mate/internal/roles`; `zeropsRoles.fixtures.json` byte-identical in both                                    | with each                                                                                                                                                          | one rule for the list, the door and the broker                                                                                                                                                            |
+| zcp                            | `../zcp`                                                                                                                                                    | zcp **v9.179.2**; `main` carries two fixes of 2026-09-18, unreleased (a Mate boots the latest release; a running one keeps its build — `update.Once` caches a day) | in every Mate: the three Gitea variables from the live env store, a repository per dev pair, the pull request, the recipe pull request, the `.gitea` workflow, Gitea as a forge kind                      |
+| The broker; Gitea on Zerops    | `../gitea-mate` (`zeropsio/gitea-mate`): `cmd/broker`, `gitea/` (app.ini, init scripts), `import/` (what the app sends, a group's runner), `actions/deploy` | gitea-mate **v3.6**; the import builds both code services from `main`, so a push to `main` is the release and a tag is a marker                                    | the registry, the rights loop, Mate access, a person's Gitea token, OIDC, deploys, the runner pool                                                                                                        |
 
 The app carries a byte-identical copy of `gitea-mate/import/gitea-project.yaml`
 (`packages/client-runtime/src/zerops/giteaProjectImport.yaml`, asserted equal by `giteaRecipe.test.ts`
@@ -253,7 +253,10 @@ In the order the owner ranked them, then the rest:
 3. **The Mate server titles threads with Codex whatever agent is signed in** — Juno's log,
    2026-09-17: `generateThreadTitle: Codex CLI command failed … 401 Unauthorized` on a Mate where only
    Claude Code is authorized; harmless, the title falls back. Fix: the title generator follows the
-   signed-in agent, or is skipped.
+   signed-in agent, or is skipped. Fixed on `main`
+   (`19cc24539`, 2026-09-18): a thread is titled by its own provider when that one is enabled, on the
+   provider's title model (`textGenerationSelectionForThread`); it reaches a Mate through the next
+   release. Unmeasured live.
 4. **A broker-made person on Gitea's own pages** (Q-17): measured 2026-09-17 — Gitea answered 500
    ("user already exists": its callback looks for an external-login row, not a `login_name`, and
    `ACCOUNT_LINKING = disabled` refused to link). Fixed in gitea-mate v3.7 (`auto`) and measured
@@ -275,7 +278,8 @@ In the order the owner ranked them, then the rest:
 10. **The bot's full name** is the project's — `Todo - Fen` since a Mate is named after its bot
     (2026-09-17), which reads right by accident of the naming rather than by design.
 11. **zcp refreshes its release manifest on boot** when the cache predates the process; today a
-    restart within the hour keeps the old Mate build.
+    restart within the hour keeps the old Mate build. Fixed in zcp `5ba68b30` (2026-09-18, on `main`, unreleased): the boot's install
+    step asks for a refresh, and keeps the cached manifest when the fetch fails.
 12. **Joining from the recipe** (2.4) and a second Mate proven live (4.3) — done 2026-09-17 evening
     (ledger, _The whole chain through the UI_).
 13. **A rollback run live** (5.6); the release ran twice (5.5).
@@ -298,7 +302,9 @@ In the order the owner ranked them, then the rest:
 20. **A refused import says "Zerops request result is uncertain"** — every failure of `import-project`
     is mapped to that sentence (`uncertainCommandError`), so a plain `400` on a bad document (the
     two-name project block of 2026-09-17) reads as a maybe. Fix: keep the platform's words for a
-    refusal the platform clearly gave, and "uncertain" for a request whose outcome is unknown.
+    refusal the platform clearly gave, and "uncertain" for a request whose outcome is unknown. Fixed on `main` (`71fd3a22c`, 2026-09-18): a `400` is the adapter's `rejected`
+    kind, not retryable, and reads "Zerops refused the request: …" with the platform's validation
+    words — the one kind whose message is forwarded; every other kind keeps its fixed sentence.
 21. **A push to `main` with no environment following it fails the service repo's workflow** — zcp's
     `.gitea/workflows/zerops.yml` runs the deploy action on every push to `main`; with no stage
     declared yet the job fails after 4 s and the Git tab counts a red check on `main` (journal 22, for
@@ -369,8 +375,19 @@ In the order the owner ranked them, then the rest:
     and a run; bot logins (`mate-{id}`) show in the UI where a Mate's name belongs; the Codex
     _ACTION REQUIRED_ card stays after Claude Code is signed in; a failed creation says a generic
     sentence; the stage's row menu offers Mate verbs; and copy leaks the platform's words
-    ("startWithoutCode") into rows. None fixed; each is a slice of its own.
+    ("startWithoutCode") into rows. Fixed on `main`, 2026-09-18, each unmeasured live (the audit browser's session had ended): _Merge_,
+    _Release_, _Roll back_ and the Git tab's verbs say they are running where they were pressed and
+    take no second click (`62cf00fe9`); the creation dialog says Mate (_Add Mate to Todo_, _New Mate_,
+    `fafe8a27d`); the Gitea overview names a Mate's pull request after the Mate (`44077f9a2`); once
+    one agent is signed in the other's row is an offer, not _Action required_ (`7e0708edd`); a stage's
+    and a production's menu carries no Mate verb (`2769e98a7`); a request the platform refused says
+    so in its words (`71fd3a22c`). Still open, each a slice of its own: _Release_ with no dialog
+    naming what moves, a stage with no URL until _Publish app_, the prefilled composer, the links out
+    to Gitea's pages, the platform's words in rows.
 30. **zcp titles a Mate's pull request "Mate: appdev"** (2026-09-17 22:21Z, both rows of the
     timeline read the same words). The commit is in the work session's words (D25) and the pull
     request's title should be too — the task is what a person scans the list for. zcp
-    `openGiteaPairPullRequest`; a zcp release.
+    `openGiteaPairPullRequest`; a zcp release. Fixed in zcp `8e0c665c`
+    (2026-09-18, on `main`, unreleased): the title is the work session's first line, the one the
+    delivery commits under, cut at 120 characters; "Mate: appdev" only when no session is open. A
+    request already open keeps its title.
