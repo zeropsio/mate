@@ -45,6 +45,7 @@ import React, {
 } from "react";
 import type { Components, Options as ReactMarkdownOptions } from "react-markdown";
 import ReactMarkdown from "react-markdown";
+import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { defaultUrlTransform } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -2123,6 +2124,14 @@ function ChatMarkdown({
     text,
     ...props,
   });
+  const incrementalParsing = props.isStreaming === true && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
+  const remarkPlugins = useMemo(
+    () => [
+      ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
+    ],
+    [incrementalParsing, lineBreaks],
+  );
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
   // Keep that behavior explicit because literal mode depends on escaping the
@@ -2137,9 +2146,7 @@ function ChatMarkdown({
     >
       <ChatMarkdownRendererContext value={componentState}>
         <ReactMarkdown
-          remarkPlugins={
-            lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS
-          }
+          remarkPlugins={remarkPlugins}
           rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
           skipHtml={false}
           components={CHAT_MARKDOWN_COMPONENTS}
