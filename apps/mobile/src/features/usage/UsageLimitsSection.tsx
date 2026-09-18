@@ -73,20 +73,29 @@ function WindowBar(props: { readonly window: ServerProviderUsageWindow; readonly
   );
 }
 
-function AccountLimits(props: {
+export function AccountLimits(props: {
   readonly label: string;
   readonly instanceLabel: string;
   readonly detail: string | undefined;
   readonly limits: ServerProvider["usageLimits"];
   readonly now: number;
   readonly first: boolean;
+  /** Tighter padding for the composer card. */
+  readonly dense?: boolean;
+  /** Sits at the end of the heading row, such as a close control. */
+  readonly trailing?: ReactNode;
   readonly footer?: ReactNode;
 }) {
-  const { limits, now } = props;
+  const { limits, now, dense = false } = props;
   if (!limits) return null;
   const notice = limitsNotice(limits);
+  const padding = dense ? "px-4 py-3" : "p-4";
   return (
-    <View className={props.first ? "gap-3 p-4" : "gap-3 border-t border-border-subtle p-4"}>
+    <View
+      className={
+        props.first ? `gap-3 ${padding}` : `gap-3 border-t border-border-subtle ${padding}`
+      }
+    >
       <View className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1">
         <Text className="text-lg text-foreground">{props.label}</Text>
         {props.instanceLabel !== props.label ? (
@@ -95,6 +104,7 @@ function AccountLimits(props: {
         {props.detail ? (
           <Text className="shrink text-sm text-foreground-muted">· {props.detail}</Text>
         ) : null}
+        {props.trailing ? <View className="ms-auto">{props.trailing}</View> : null}
       </View>
       {notice ? (
         <Text className="text-sm text-foreground-muted">{notice}</Text>
@@ -118,13 +128,15 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
  * credit the provider granted the user, so it goes through the native
  * confirm alert rather than firing on a bare tap.
  */
-function ResetCredits(props: {
+export function ResetCredits(props: {
   readonly environmentId: EnvironmentId;
   readonly instanceId: ProviderInstanceId;
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
+  /** A smaller pill for the composer card. */
+  readonly dense?: boolean;
 }) {
-  const { environmentId, instanceId, credits, now } = props;
+  const { environmentId, instanceId, credits, now, dense = false } = props;
   const consume = useAtomCommand(serverEnvironment.consumeResetCredit, {
     reportFailure: false,
   });
@@ -178,9 +190,19 @@ function ResetCredits(props: {
           accessibilityState={{ disabled: busy }}
           disabled={busy}
           onPress={confirm}
-          className="self-start rounded-full bg-subtle-strong px-3 py-1.5"
+          className={
+            dense
+              ? "self-start rounded-full bg-subtle-strong px-2.5 py-1"
+              : "self-start rounded-full bg-subtle-strong px-3 py-1.5"
+          }
         >
-          <Text className="text-sm font-t3-medium text-foreground">
+          <Text
+            className={
+              dense
+                ? "text-xs font-t3-medium text-foreground"
+                : "text-sm font-t3-medium text-foreground"
+            }
+          >
             {busy ? "Using credit…" : "Use a reset credit"}
           </Text>
         </Pressable>

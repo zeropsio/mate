@@ -54,6 +54,8 @@ export interface RpcSession {
 
 export interface RpcSessionOptions {
   readonly usageLimitSources?: boolean;
+  /** This client answers /usage-limits itself, so the server may advertise it. */
+  readonly usageLimitsCommand?: boolean;
 }
 
 export class RpcSessionFactory extends Context.Service<
@@ -134,8 +136,10 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   options: RpcSessionOptions = {},
 ) {
   const webSocketConstructor = yield* Socket.WebSocketConstructor;
-  const serverConfigInput: ServerConfigSubscriptionInput =
-    options.usageLimitSources === true ? { usageLimitSources: true } : {};
+  const serverConfigInput: ServerConfigSubscriptionInput = {
+    ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
+    ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+  };
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {
     yield* Effect.annotateCurrentSpan({

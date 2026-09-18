@@ -50,6 +50,7 @@ const cachedConfigSnapshotEvent = (config: ServerConfig): ServerConfigStreamEven
 
 export interface ServerConfigSubscriptionOptions {
   readonly usageLimitSources?: boolean;
+  readonly usageLimitsCommand?: boolean;
 }
 
 /**
@@ -119,6 +120,7 @@ export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConf
 
     yield* subscribe(WS_METHODS.subscribeServerConfig, {
       ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
+      ...(subscription.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
     }).pipe(
       Stream.runForEach((event) =>
         Effect.gen(function* () {
@@ -211,6 +213,7 @@ export function createServerEnvironmentAtoms<R, E>(
     ) => Atom.Atom<ServerConfig | null>;
     /** Whether this surface renders quota from configured usage-limit sources. */
     readonly usageLimitSources?: boolean;
+    readonly usageLimitsCommand?: boolean;
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
@@ -223,6 +226,7 @@ export function createServerEnvironmentAtoms<R, E>(
       .atom(
         serverConfigStateChanges(environmentId, {
           ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
+          ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
         }),
       )
       .pipe(

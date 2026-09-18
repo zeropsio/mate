@@ -33,6 +33,7 @@ import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStri
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
+import { hasProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { ComposerSurface } from "./ThreadComposer";
 import {
   useThreadSettingsSheetPresentation,
@@ -697,6 +698,29 @@ export function NewTaskDraftScreen(props: {
       Alert.alert(
         "Antigravity model unavailable",
         "Open model settings to finish setup or choose another model.",
+      );
+      return;
+    }
+    // The client's own limits command is answered by the thread composer; a new
+    // task would send it to the agent. A provider's same-named command, or a
+    // prompt carrying attachments, goes through as usual.
+    const selectedProviderStatus =
+      selectedEnvironmentServerConfig?.providers.find(
+        (provider) => provider.instanceId === modelSelection.instanceId,
+      ) ?? null;
+    if (
+      selectedProviderStatus !== null &&
+      hasProviderUsageLimits(
+        selectedProviderStatus.driver,
+        selectedEnvironmentServerConfig?.providers ?? [],
+        selectedEnvironmentServerConfig?.usageLimitSources ?? [],
+      ) &&
+      isUsageLimitsCommand(initialMessageText) &&
+      draft.attachments.length === 0
+    ) {
+      Alert.alert(
+        "Usage limits",
+        "Send /usage-limits inside a thread, or open Settings → Usage → Limits.",
       );
       return;
     }
