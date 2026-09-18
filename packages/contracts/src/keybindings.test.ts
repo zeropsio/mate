@@ -114,6 +114,12 @@ it.effect("parses keybinding rules", () =>
       when: "!terminalFocus",
     });
     assert.strictEqual(parsedThreadSettle.command, "thread.settle");
+
+    const parsedThreadStop = yield* decode(KeybindingRule, {
+      key: "mod+escape",
+      command: "thread.stop",
+    });
+    assert.strictEqual(parsedThreadStop.command, "thread.stop");
   }),
 );
 

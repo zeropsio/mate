@@ -357,6 +357,7 @@ import {
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
+  buildRunningThreadTurnInterruptInput,
   buildThreadTurnInterruptInput,
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
@@ -2954,6 +2955,38 @@ export default function ChatView(props: ChatViewProps) {
     [activeServerThread, draftId, routeThreadKey, routeThreadRef],
   );
 
+  const interruptContextRef = useRef({ activeThread, phase, setThreadError });
+  interruptContextRef.current = { activeThread, phase, setThreadError };
+  // Assigned once the composer queue helpers exist further down.
+  const restoreQueuedMessagesRef = useRef<(messages: ReadonlyArray<QueuedComposerMessage>) => void>(
+    () => {},
+  );
+  const onInterrupt = useCallback(async () => {
+    const { activeThread, phase, setThreadError } = interruptContextRef.current;
+    const input = buildRunningThreadTurnInterruptInput(activeThread, phase);
+    if (!input || !activeThread) return;
+    // Stop also cancels the queue: the messages return to the composer instead
+    // of starting a new turn the moment the interrupted one settles.
+    restoreQueuedMessagesRef.current(
+      useQueuedMessageStore
+        .getState()
+        .drain(scopedThreadKey(scopeThreadRef(activeThread.environmentId, activeThread.id))),
+    );
+    const result = await interruptThreadTurn({
+      environmentId: activeThread.environmentId,
+      input,
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
+      );
+    }
+  }, [interruptThreadTurn]);
+  const canInterruptRunningThread =
+    buildRunningThreadTurnInterruptInput(activeThread, phase) !== null;
+
   const focusComposer = useCallback(() => {
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
@@ -5336,6 +5369,16 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "thread.stop") {
+        // An unavailable command should not shadow contextual shortcuts such as Escape to close a dialog.
+        if (!canInterruptRunningThread) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        void onInterrupt();
+        return;
+      }
+
       const scriptId = projectScriptIdFromCommand(command);
       if (!scriptId || !activeProject) return;
       const script = activeProjectScripts.find((entry) => entry.id === scriptId);
@@ -5354,6 +5397,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadRef,
     activeThreadPinned,
     activeThreadSettled,
+    canInterruptRunningThread,
     terminalUiState.terminalOpen,
     terminalUiState.activeTerminalId,
     activeThreadId,
@@ -5367,6 +5411,7 @@ export default function ChatView(props: ChatViewProps) {
     keybindings,
     handleUnsettleActiveThread,
     isServerThread,
+    onInterrupt,
     onToggleDiff,
     pinThread,
     settleThread,
@@ -5549,6 +5594,7 @@ export default function ChatView(props: ChatViewProps) {
   const queuedMessages = useQueuedMessages(activeThreadKey ?? "");
   // Puts queued messages back into the composer, e.g. after Stop or a Cancel.
   // Prompts join with blank lines; attachments and contexts are added.
+  restoreQueuedMessagesRef.current = (messages) => restoreQueuedMessagesToComposer(messages);
   const restoreQueuedMessagesToComposer = (messages: ReadonlyArray<QueuedComposerMessage>) => {
     if (messages.length === 0) return;
     const prompts = [promptRef.current, ...messages.map((message) => message.prompt)]
@@ -6417,28 +6463,6 @@ export default function ChatView(props: ChatViewProps) {
       return true;
     },
   });
-
-  const onInterrupt = async () => {
-    if (!activeThread) return;
-    // Stop also cancels the queue: the messages return to the composer instead
-    // of starting a new turn the moment the interrupted one settles.
-    restoreQueuedMessagesToComposer(
-      useQueuedMessageStore
-        .getState()
-        .drain(scopedThreadKey(scopeThreadRef(activeThread.environmentId, activeThread.id))),
-    );
-    const result = await interruptThreadTurn({
-      environmentId,
-      input: buildThreadTurnInterruptInput(activeThread),
-    });
-    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-      const error = squashAtomCommandFailure(result);
-      setThreadError(
-        activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
-      );
-    }
-  };
 
   const onRespondToApproval = useCallback(
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {

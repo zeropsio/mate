@@ -67,6 +67,9 @@ characters and uses SQLite's ASCII case-insensitive matching.
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.
 
+`thread.stop` interrupts the running turn in the focused thread. It has no default shortcut; assign
+one in **Settings** → **Keybindings**.
+
 Note that `chat.new` and `chat.newLocal` both create a thread through the same path. A new thread
 inherits the project you were in, along with model and mode selections. Branch, worktree, and
 environment mode always come from your configured defaults, not from the thread you were looking
