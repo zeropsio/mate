@@ -178,9 +178,8 @@ Google controls account eligibility, models, and usage limits. T3 Code does not 
 paid-plan tier or remaining subscription quota. See Google's [Antigravity plans][plans] and
 [personal Google sign-in guide][google-setup].
 
-After an environment restarts, Google sign-in can show as not checked until an authenticated
-session succeeds. You can continue an existing thread. Antigravity checks saved Google sign-in
-when the session starts. An unchecked status does not require signing in again.
+A server restart keeps your Google sign-in. The provider shows the saved account until a session,
+a refresh, or a sign-out reports something new.
 
 To check account access and reload models on web or desktop, open **Settings** > **Providers**
 and select the circular arrow beside **Checked** at the top of the page. Its tooltip says
