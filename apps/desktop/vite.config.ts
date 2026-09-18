@@ -41,6 +41,7 @@ export default defineConfig({
       dts: false,
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
+      outputOptions: { codeSplitting: false },
       entry: ["src/main.ts"],
       clean: true,
       deps: {
