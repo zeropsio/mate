@@ -782,6 +782,7 @@ const devRunnerCli = Command.make("dev-runner", {
   ),
   browser: Flag.Boolean("browser").pipe(
     Flag.withDescription("Open a browser automatically (disabled by default for web dev)."),
+    Flag.withDefault(false),
   ),
   autoBootstrapProjectFromCwd: Flag.Boolean("auto-bootstrap-project-from-cwd").pipe(
     Flag.withDescription(
