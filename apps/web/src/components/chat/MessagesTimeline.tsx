@@ -104,7 +104,6 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
-import { useAssetUrls } from "../../assets/assetUrls";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMates } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
