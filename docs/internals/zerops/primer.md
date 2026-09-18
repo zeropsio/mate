@@ -311,7 +311,11 @@ In the order the owner ranked them, then the rest:
     the hardening person: the action could end cleanly on "no environment"). A second cause, the
     workflow naming the dev half (`service: appdev`) where the stage runs `app`, is fixed in zcp
     v9.179.1; a repository whose workflow a v9.178.0 Mate wrote keeps the old name until a Mate on the
-    fix rewrites it (Kai's `todo/appdev`).
+    fix rewrites it (Kai's `todo/appdev`). Sized 2026-09-18 and left: every workflow zcp writes pins
+    `zeropsio/gitea-mate/actions/deploy@v1`, a tag fixed at `f248c79`, so an action that ends cleanly on
+    the broker's "no environment of that tier yet" reaches a repository only by moving that tag or by
+    zcp writing a newer pin — a contract change across gitea-mate, zcp and every existing repository,
+    not a one-commit fix.
 22. **zcp after an expansion** — the recipe was not re-proposed when `zerops.yaml`'s setups changed
     (spec 2.2 "kept current"), and the expansion dropped the pair's Gitea record so `group-recipe`
     refused with "no pair has its Gitea repository yet". The record is kept since zcp `f04dcc77`
