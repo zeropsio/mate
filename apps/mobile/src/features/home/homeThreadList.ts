@@ -97,10 +97,8 @@ export function sortHomeProjectScopes(input: {
   }
   for (const pendingTask of input.pendingTasks) {
     recordActivity(
-      scopeKeyByProjectRef.get(
-        scopedProjectKey(pendingTask.message.environmentId, pendingTask.creation.projectId),
-      ),
-      Date.parse(pendingTask.message.createdAt),
+      scopeKeyByProjectRef.get(scopedProjectKey(pendingTask.environmentId, pendingTask.projectId)),
+      Date.parse(pendingTask.createdAt),
     );
   }
 
