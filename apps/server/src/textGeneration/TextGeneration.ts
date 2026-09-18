@@ -6,7 +6,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import { resolveThreadTitleLinks } from "./ThreadTitleLinks.ts";
+import * as ThreadTitleLinks from "./ThreadTitleLinks.ts";
 import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "grok" | "opencode";
@@ -157,7 +157,7 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const linkedContext =
               input.linkedContext ??
-              (yield* resolveThreadTitleLinks(input).pipe(
+              (yield* ThreadTitleLinks.resolveThreadTitleLinks(input).pipe(
                 Effect.provideService(
                   SourceControlProviderRegistry.SourceControlProviderRegistry,
                   sourceControl,
