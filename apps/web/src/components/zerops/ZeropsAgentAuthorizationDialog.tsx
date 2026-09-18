@@ -358,6 +358,7 @@ function AgentAuthorizationTerminal({
       terminalLabel={`${ZEROPS_AGENT_NAMES[agent.agentId]} authorization`}
       threadId={threadRef.threadId}
       threadRef={threadRef}
+      visible
     />
   );
 }
