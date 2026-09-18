@@ -21,6 +21,7 @@ import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
+import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
@@ -179,6 +180,7 @@ function SignedInRootRouteView() {
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <ThreadNotificationCoordinator />
         <ConfirmDialogHost />
+        <CustomSnoozeDialogHost />
         <SlowRpcRequestToastCoordinator />
         <ProjectCloneToastCoordinator />
         <HostedStaticEnvironmentBootstrap />

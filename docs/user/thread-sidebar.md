@@ -29,3 +29,9 @@ be selected again. The option is hidden when the connected environment needs a s
 
 Manually settling an idle thread dismisses unanswered async questions without sending an answer or
 restarting the agent. Approvals and native questions still need a response first.
+
+## Snooze until later
+
+Choose **Snooze → Custom…** from a thread's menu to pick a date and time in your
+local time zone, or a duration in minutes, hours, or days. Durations start when
+you confirm; one day means 24 hours. Choose **Wake thread** to bring a thread back early.
