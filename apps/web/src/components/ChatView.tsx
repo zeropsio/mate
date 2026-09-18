@@ -114,6 +114,7 @@ import {
   findLatestProposedPlan,
   deriveWorkLogEntries,
   hasActionableProposedPlan,
+  selectHandoffImageResources,
   type TimelineEntriesProjection,
 } from "../session-logic";
 import { deriveZeropsThreadModel } from "../state/zerops";
@@ -2516,33 +2517,20 @@ export default function ChatView(props: ChatViewProps) {
   const serverMessages = activeThread?.messages;
   const [projectServerMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
   const [projectHandoffMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
-  const serverAttachmentIds = useMemo(() => {
-    const attachmentIds = new Set<string>();
-    for (const message of serverMessages ?? []) {
-      for (const attachment of message.attachments ?? []) {
-        attachmentIds.add(attachment.id);
-      }
-    }
-    return [...attachmentIds];
-  }, [serverMessages]);
   const serverAttachmentResources = useMemo(
-    () =>
-      serverAttachmentIds.map((attachmentId) => ({
-        _tag: "attachment" as const,
-        attachmentId,
-      })),
-    [serverAttachmentIds],
+    () => selectHandoffImageResources(serverMessages, attachmentPreviewHandoffByMessageId),
+    [serverMessages, attachmentPreviewHandoffByMessageId],
   );
   const serverAttachmentUrls = useAssetUrls(environmentId, serverAttachmentResources);
   const serverAttachmentUrlById = useMemo(
     () =>
       new Map(
-        serverAttachmentIds.flatMap((attachmentId, index) => {
+        serverAttachmentResources.flatMap((resource, index) => {
           const url = serverAttachmentUrls[index];
-          return url ? [[attachmentId, url] as const] : [];
+          return url ? [[resource.attachmentId, url] as const] : [];
         }),
       ),
-    [serverAttachmentIds, serverAttachmentUrls],
+    [serverAttachmentResources, serverAttachmentUrls],
   );
   const displayServerMessages = useMemo<ReadonlyArray<ChatMessage>>(() => {
     if (!serverMessages) return [];

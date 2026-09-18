@@ -34,7 +34,9 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
+  createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
+  selectMessageImageResources,
   workEntryDisplayIndicatesToolFailure,
   workEntrySignalsSevereFailure,
   workLogEntryIsToolLike,
@@ -68,6 +70,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useAssetUrls } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
@@ -1056,7 +1059,22 @@ function ContextCompactionTimelineRow({
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  const userImages = (row.message.attachments ?? []).filter(isImageAttachment);
+  const resources = useMemo(
+    () => selectMessageImageResources(row.message.attachments),
+    [row.message.attachments],
+  );
+  const previewUrls = useAssetUrls(ctx.activeThreadEnvironmentId, resources);
+  const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
+  const messageWithPreviews = useMemo(() => {
+    const urlsById = new Map(
+      resources.flatMap((resource, index) => {
+        const url = previewUrls[index];
+        return url ? [[resource.attachmentId, url] as const] : [];
+      }),
+    );
+    return projectPreviews(row.message, (attachment) => urlsById.get(attachment.id));
+  }, [previewUrls, projectPreviews, resources, row.message]);
+  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
   const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
   const terminalContexts = displayedUserMessage.contexts;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
