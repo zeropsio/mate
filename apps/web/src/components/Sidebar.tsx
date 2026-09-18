@@ -855,13 +855,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const isWoke = status === "woke";
   // Background work always recedes when it is not selected: an unread parent
   // completion must not pull a still-working thread back into the foreground.
-  // Ready and action-required rows keep their unread and wake prominence.
+  // Ready and approval rows keep their unread and wake prominence; a thread
+  // waiting on the user's input never recedes.
   const isBackgroundWork =
     status === "connecting" || status === "working" || status === "monitoring";
-  const awaitsHuman = status === "idle" || status === "approval" || status === "input";
-  const isInFlight = isBackgroundWork || status === "approval" || status === "input";
+  const awaitsHuman = status === "idle" || status === "approval";
   const shouldRecede =
-    !props.isActive && !isSelected && (isBackgroundWork || (awaitsHuman && !isUnread && !isWoke));
+    !props.isActive &&
+    !isSelected &&
+    status !== "input" &&
+    (isBackgroundWork || (awaitsHuman && !isUnread && !isWoke));
   const topStatus = threadStatusRowPresentation(resolvedStatus, props.isActive);
   const isWokeStatus = topStatus?.icon === "woke";
 
@@ -1077,10 +1080,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         : shouldRecede
           ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    isInFlight &&
-      !props.isActive &&
-      !isSelected &&
-      "opacity-70 transition-opacity hover:opacity-100",
   );
   const rowLayout = resolveThreadRowLayoutPresentation(variant);
 
@@ -1107,7 +1106,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               rowLayout.titleClassName,
               shouldRecede
                 ? "text-secondary-label"
-                : isUnread || isWoke
+                : isUnread || isWoke || status === "input"
                   ? "text-foreground"
                   : status === "failed"
                     ? "text-foreground/95"
@@ -1118,7 +1117,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               "group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
               shouldRecede
                 ? "text-secondary-label/70"
-                : props.isActive || isWoke
+                : props.isActive || isWoke || status === "input"
                   ? "text-foreground"
                   : isUnread
                     ? "text-muted-foreground"
