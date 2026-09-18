@@ -109,6 +109,13 @@ platform release, not a string sweep.
 State kept: one `intake.md` (§ next to this file) with the **last-reviewed upstream SHA**, the
 decisions taken, and the open security candidates. No per-commit skip bookkeeping.
 
+Standing exclusions, so no intake re-argues them: **upstream's user guides** (the product's are the
+Mate's, and they live with Zerops), **Knip** (unconfigured against this tree it calls 199 files
+unused; dead surfaces are `check-guard-exceptions.ts` and `surface-manifest.test.ts` against
+`surfaces.json`, and the Import zone is `imported.lock`'s), **bot configuration** (no bot reviews
+this fork) and **upstream's release pipeline** (zcp owns the binary). Name any of them in a row only
+when the reason changes.
+
 Trigger: the drift watch (§7) or a monthly tick, whichever comes first. Steps (agent tasks):
 
 1. **Triage**: `git log <last-reviewed>..upstream/main` → three lists only: (a) **every** commit
