@@ -204,7 +204,7 @@ index ce1fe00001c9e5aee6c6ea8bb2d4757d4586d002..3ccf6f16067152dfcb0c143371e2ec6a
       * Number of columns to render items in.
       * @default 1
 diff --git a/react-native.js b/react-native.js
-index b3c5a306b293f797a8b338adfca3060c0f6db22b..e1b60a8dff395f23511b8425410c00d63126c215 100644
+index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7125b956a 100644
 --- a/react-native.js
 +++ b/react-native.js
 @@ -954,7 +954,7 @@ function setInitialRenderState(ctx, {
@@ -478,7 +478,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..e1b60a8dff395f23511b8425410c00d6
 -    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && peek$(ctx, "isAtEnd");
 +    const endTargetDistanceFromEnd = getContentSize(ctx) - state.scroll - state.scrollLength - getContentInsetEnd(ctx);
 +    const isNearEndForInsetList = getContentInsetStartAdjustment(ctx) > 0 && Number.isFinite(endTargetDistanceFromEnd) && endTargetDistanceFromEnd <= state.scrollLength * 0.5;
-+    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && (peek$(ctx, "isAtEnd") || isNearEndForInsetList);
++    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && (peek$(ctx, "isAtEnd") || !state.didUserDrag && isNearEndForInsetList);
      if (!shouldKeepEndTargetAlive) {
        if (shouldPreserveInitialScrollForFooterLayout(initialScroll)) {
          clearPendingInitialScrollFooterLayout(ctx, {
@@ -573,7 +573,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..e1b60a8dff395f23511b8425410c00d6
        recycleItems,
        refreshControl: refreshControlElement ? stylePaddingTopState > 0 ? React2__namespace.cloneElement(refreshControlElement, {
 diff --git a/react-native.mjs b/react-native.mjs
-index 40e87cda8c9bc79a889e5542f29af429a24b24d4..9888e02c35e415fa38324a330da0a5fc407b0c7f 100644
+index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fcef546f3bf 100644
 --- a/react-native.mjs
 +++ b/react-native.mjs
 @@ -933,7 +933,7 @@ function setInitialRenderState(ctx, {
@@ -847,7 +847,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..9888e02c35e415fa38324a330da0a5fc
 -    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && peek$(ctx, "isAtEnd");
 +    const endTargetDistanceFromEnd = getContentSize(ctx) - state.scroll - state.scrollLength - getContentInsetEnd(ctx);
 +    const isNearEndForInsetList = getContentInsetStartAdjustment(ctx) > 0 && Number.isFinite(endTargetDistanceFromEnd) && endTargetDistanceFromEnd <= state.scrollLength * 0.5;
-+    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && (peek$(ctx, "isAtEnd") || isNearEndForInsetList);
++    const shouldKeepEndTargetAlive = isRetargetableBottomAlignedInitialScrollTarget(initialScroll) && (peek$(ctx, "isAtEnd") || !state.didUserDrag && isNearEndForInsetList);
      if (!shouldKeepEndTargetAlive) {
        if (shouldPreserveInitialScrollForFooterLayout(initialScroll)) {
          clearPendingInitialScrollFooterLayout(ctx, {
