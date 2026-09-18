@@ -9,6 +9,7 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
 | 0   | 2026-08-29 | `f94a0d646` (`upstream-base-2026-08-28`, freeze SHA — `imported.lock`)                                                                              | `2.1.251` (Claude Code) | `0.3.250`        | `0.150.1` on the rig, **not logged in** | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | claude: `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope`; codex: `multi-agent-wire`; cursor/grok/opencode: `hello-baseline`                                                                                                                                    | claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)                | See below |
 | 1   | 2026-09-02 | `827345a07` (`upstream/main`; imported zone re-imported, `imported.lock` regenerated) — 28 ports, see `intake.md`                                   | `2.1.251` (Claude Code) | `0.3.250`        | `0.150.1` on the rig, **not logged in** | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | unchanged from row 0: claude `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope`; codex `multi-agent-wire`; cursor/grok/opencode `hello-baseline`                                                                                                                 | claude 4, codex 1, cursor 1, grok 1, opencode 1 (8 total)                | See below |
 | 2   | 2026-09-05 | `c8f77e0d4` (`upstream/main`; imported zone re-imported, `imported.lock` regenerated) — 47 ports + 8 recovered from row 1's window, see `intake.md` | `2.1.251` (Claude Code) | `0.3.260`        | `0.150.1` on the rig, **not logged in** | `4.0.0-beta.103` (`pnpm-workspace.yaml` catalog) | claude `plain-text-turn`, `turn-abort-error`, `user-input-requested`, `zerops-workflow-envelope` (goldens regenerated, see notes); codex `multi-agent-wire`; cursor/grok `hello-baseline` (goldens regenerated, additive); opencode `hello-baseline`; **antigravity `hello-baseline` (new, synthetic)** | claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total) | See below |
+| 3   | 2026-09-18 | `9ea9c3d5d` (`upstream/main`; imported zone re-imported in `2a26e8e76`) — provider slice: 75 ports, 12 skipped, see the intake report               | `2.1.251` (Claude Code) | `0.3.260`        | `0.150.1` on the rig, **not logged in** | `4.0.0-rc.115` (`pnpm-workspace.yaml` catalog)   | unchanged from row 2; cursor `hello-baseline` golden regenerated (order only, see notes)                                                                                                                                                                                                                | claude 4, codex 1, cursor 1, grok 1, opencode 1, antigravity 1 (9 total) | See below |
 
 ## Row 0 notes
 
@@ -81,3 +82,25 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   in its finalizer. Test-double fix only; the adapter is byte-identical to upstream there.
 - **`560afffde` (SDK 0.3.260) moved no golden**; the `terminal_reason`/529 classification it adds is
   not exercised by the four recorded turns.
+
+## Row 3 notes
+
+- **Provider slice only.** This row covers the provider-zone commits of the 2026-09-18 intake
+  (`apps/server/src/provider/**`, provider contracts, `codexModelOptions.ts`). The other slices of
+  the same intake add their own notes. No fixture was re-recorded; every `.jsonl`/`.meta.json` is
+  byte-identical to row 2, so the CLI/SDK/Codex columns carry row 0's provenance. The Effect column
+  is the catalog version the import commit moved to.
+- **The Cursor golden moved on `6134b90ff`** (Cursor transport errors), and only in order:
+  `item.completed` for the assistant message now arrives before `turn.completed` (it was after).
+  Both events and their payloads are unchanged.
+- **The Claude goldens did not move on `052c7ae53`** (thinking traces), although the adapter now
+  asks for summarized thinking and emits `content.delta` with `streamKind: "reasoning_summary_text"`.
+  None of the four recorded turns has a thinking block. The first thinking-bearing recording will
+  show those deltas; `reasoning_summary_text` is an existing stream kind, so the event union is
+  unchanged.
+- **The SPI stays at 2.3.** `b7d6e6502` adds `tool.denied` to the runtime event-type literal list,
+  but the `ProviderRuntimeToolDeniedEvent` member was already in the union, so no member changes.
+  The new `reasoning` message role and its commands are orchestration contracts and are not part of
+  `ProviderRuntimeEventV2`.
+- **`usage/cliproxyUsageLimits.ts` is gone** (`0a89364f1`); `usage/cliproxyApi.ts` replaces it.
+  `spi.md` §6 names the new consumer of `usageLimitsSupport.ts`.
