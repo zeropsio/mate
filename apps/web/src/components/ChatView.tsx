@@ -4874,6 +4874,7 @@ function ChatViewContent(props: ChatViewProps) {
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
     localCheckoutBranchMismatch,
+    mateReviewBannerItem,
     parkedThreadBannerItem,
     resumeCompactionBannerItem,
     showBranchMismatchBanner,
