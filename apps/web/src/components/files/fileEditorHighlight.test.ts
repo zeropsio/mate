@@ -227,8 +227,14 @@ describe("editable file highlighting", () => {
     expect(pool.getFileResultCache(file)).toBeDefined();
   });
 
+  // Each case here edits a 7,000-line document and drives the worker pool
+  // through a full highlight; on CI hardware they run 5-17 s against this
+  // package's 15 s budget, and the 1-edit case timed out there while the
+  // 60-edit one landed at 15.4 s (2026-09-18). The work is genuinely that
+  // heavy, so the budget is the thing that was wrong.
   it.each([1, 60])(
     "ignores a dispatched highlight after %i Enter edits and highlights the new version",
+    { timeout: 45_000 },
     async (count) => {
       const oldResponse = await nextResponse();
       for (let index = 0; index < count; index += 1) append("\n");
@@ -244,7 +250,7 @@ describe("editable file highlighting", () => {
     },
   );
 
-  it("does not replace a same-line edit with stale tokens", async () => {
+  it("does not replace a same-line edit with stale tokens", { timeout: 45_000 }, async () => {
     const oldResponse = await nextResponse();
     append(" EDITED_MARKER");
     oldResponse.deliver();
@@ -254,7 +260,7 @@ describe("editable file highlighting", () => {
     expect(renderContents()).toContain("EDITED_MARKER");
   });
 
-  it("keeps undo edits after an older highlight arrives", async () => {
+  it("keeps undo edits after an older highlight arrives", { timeout: 45_000 }, async () => {
     const oldResponse = await nextResponse();
     append("\nexport const RETAINED_MARKER = 1;");
     append("\nexport const UNDONE_MARKER = 2;");
@@ -284,16 +290,20 @@ describe("editable file highlighting", () => {
     expect(renderer.renderFullHTML(firstLines!)).toContain('style="color:');
   });
 
-  it("reopens the edited file with the same cache key while an old response is pending", async () => {
-    const oldResponse = await nextResponse();
-    append("\nexport const REOPENED_MARKER = 1;");
-    renderer.cleanUp();
-    renderer = new FileRenderer(options, () => {}, pool);
-    file = { ...file };
-    expect(renderContents()).toContain("REOPENED_MARKER");
-    oldResponse.deliver();
-    (await nextResponse()).deliver();
-    expect(renderContents()).toContain("REOPENED_MARKER");
-    expect(renderContents()).toContain('style="color:');
-  });
+  it(
+    "reopens the edited file with the same cache key while an old response is pending",
+    { timeout: 45_000 },
+    async () => {
+      const oldResponse = await nextResponse();
+      append("\nexport const REOPENED_MARKER = 1;");
+      renderer.cleanUp();
+      renderer = new FileRenderer(options, () => {}, pool);
+      file = { ...file };
+      expect(renderContents()).toContain("REOPENED_MARKER");
+      oldResponse.deliver();
+      (await nextResponse()).deliver();
+      expect(renderContents()).toContain("REOPENED_MARKER");
+      expect(renderContents()).toContain('style="color:');
+    },
+  );
 });
