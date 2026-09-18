@@ -1,3 +1,4 @@
+import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type AssetCreateUrlInput,
@@ -103,6 +104,78 @@ export function resolveDraftHeroState(input: {
     !input.isWorking &&
     !input.draftHeroDockRequested
   );
+}
+
+/**
+ * Keep a thread's own last painted timeline for its next open. Remounting the
+ * list with an empty first paint punches a hole through the chat pane — white
+ * in light mode — while the thread detail reloads, even when the destination
+ * was on screen moments ago.
+ *
+ * A thread only ever paints its own snapshot: showing another conversation
+ * while the next one loads would paint something the reload takes back.
+ * Stored at module scope because ChatView remounts when the thread route
+ * changes; the account lifetime clears it.
+ */
+export type HeldThreadTimeline<T extends readonly unknown[]> = {
+  threadKey: string | null;
+  entries: T;
+};
+
+const MAX_REMEMBERED_THREAD_TIMELINES = 16;
+
+let rememberedThreadTimelines = new Map<string, HeldThreadTimeline<readonly unknown[]>>();
+let rememberedThreadTimelineOrder: string[] = [];
+
+export function rememberReadyThreadTimeline<T extends readonly unknown[]>(
+  held: HeldThreadTimeline<T>,
+): void {
+  if (held.threadKey === null || held.entries.length === 0) {
+    return;
+  }
+  rememberedThreadTimelines.set(held.threadKey, held);
+  rememberedThreadTimelineOrder = [
+    ...rememberedThreadTimelineOrder.filter((key) => key !== held.threadKey),
+    held.threadKey,
+  ];
+  while (rememberedThreadTimelineOrder.length > MAX_REMEMBERED_THREAD_TIMELINES) {
+    const evicted = rememberedThreadTimelineOrder.shift();
+    if (evicted !== undefined) {
+      rememberedThreadTimelines.delete(evicted);
+    }
+  }
+}
+
+export function peekRememberedThreadTimeline<T extends readonly unknown[]>(
+  threadKey: string | null,
+): T | null {
+  if (threadKey === null) {
+    return null;
+  }
+  return (rememberedThreadTimelines.get(threadKey)?.entries as T | undefined) ?? null;
+}
+
+export function resetHeldThreadTimeline(): void {
+  rememberedThreadTimelines = new Map();
+  rememberedThreadTimelineOrder = [];
+}
+onAccountLifetimeClose(resetHeldThreadTimeline);
+
+export function resolveThreadSwitchTimeline<T extends readonly unknown[]>(input: {
+  loading: boolean;
+  activeThreadKey: string | null;
+  nextEntries: T;
+  rememberedForActive?: T | null;
+}): { entries: T } {
+  if (input.nextEntries.length > 0) {
+    return { entries: input.nextEntries };
+  }
+  const rememberedForActive =
+    input.rememberedForActive ?? peekRememberedThreadTimeline<T>(input.activeThreadKey);
+  if (input.loading && rememberedForActive !== null && rememberedForActive.length > 0) {
+    return { entries: rememberedForActive };
+  }
+  return { entries: input.nextEntries };
 }
 
 export function resolveDraftPromotionNavigationTarget(input: {
@@ -408,6 +481,17 @@ export function revokeUserMessagePreviewUrls(message: ChatMessage): void {
     }
     revokeBlobPreviewUrl(attachment.previewUrl);
   }
+}
+
+export function timelineHasEphemeralPreviewUrls(
+  entries: ReadonlyArray<Pick<TimelineEntry, "kind"> & { message?: ChatMessage }>,
+): boolean {
+  return entries.some(
+    (entry) =>
+      entry.kind === "message" &&
+      entry.message !== undefined &&
+      collectUserMessageBlobPreviewUrls(entry.message).length > 0,
+  );
 }
 
 export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[] {
