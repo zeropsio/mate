@@ -46,9 +46,7 @@
     "sync:repos": "node scripts/sync-reference-repos.ts"
   },
   "devDependencies": {
-    "@babel/plugin-transform-react-jsx": "7.28.6",
     "@effect/tsgo": "catalog:",
-    "@oxlint/plugins": "^1.63.0",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
