@@ -3330,22 +3330,6 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": "@utility live-activity-focus{-webkit-mask-image:linear-gradient( to right, transparent 0, rgb(0 0 0 / 12%) 0.675rem, rgb(0 0 0 / 55%) 1.575rem, black 2.25rem, rgb(0 0 0 / 55%) 2.925rem, rgb(0 0 0 / 12%) 3.825rem, transparent var(--live-activity-focus-width), transparent 100% )}",
-    "owner": "karel",
-    "reason": "mask geometry / alpha ramp, not a colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@utility live-activity-focus{mask-image:linear-gradient( to right, transparent 0, rgb(0 0 0 / 12%) 0.675rem, rgb(0 0 0 / 55%) 1.575rem, black 2.25rem, rgb(0 0 0 / 55%) 2.925rem, rgb(0 0 0 / 12%) 3.825rem, transparent var(--live-activity-focus-width), transparent 100% )}",
-    "owner": "karel",
-    "reason": "mask geometry / alpha ramp, not a colour",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
     "fingerprint": "@utility topbar-scroll-fade{-webkit-mask-image:linear-gradient( to bottom, transparent 0%, rgb(0 0 0 / 10%) 10%, rgb(0 0 0 / 30%) 24%, rgb(0 0 0 / 58%) 42%, rgb(0 0 0 / 82%) 62%, rgb(0 0 0 / 96%) 82%, black 100% ), linear-gradient(black, black), linear-gradient(black, black)}",
     "owner": "karel",
     "reason": "mask geometry / alpha ramp, not a colour",

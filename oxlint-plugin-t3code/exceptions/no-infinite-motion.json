@@ -166,21 +166,5 @@
     "owner": "karel",
     "reason": "The skeleton loading sweep uses continuous compositor motion",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@utility live-activity-focus-counter{animation:live-activity-focus-counter 2.2s linear infinite}",
-    "owner": "karel",
-    "reason": "The live activity focus counter uses a continuous loading sweep",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "@utility live-activity-focus{animation:live-activity-focus 2.2s linear infinite}",
-    "owner": "karel",
-    "reason": "The live activity focus mask uses a continuous loading sweep",
-    "expires": "never"
   }
 ]
