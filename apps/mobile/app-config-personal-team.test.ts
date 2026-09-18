@@ -14,6 +14,10 @@ describe("iOS personal-team configuration", () => {
     expect(config).toContain("T3CODE_IOS_PERSONAL_TEAM_ID");
     expect(config).toContain("enabled: !isIosPersonalTeamBuild");
     expect(config).toContain("{ appleTeamId: personalTeamId }");
+    // The Keychain group follows the bundle ID actually signed, personal team included.
+    expect(config).toContain(
+      '"keychain-access-groups": [`$(AppIdentifierPrefix)${iosBundleIdentifier}`]',
+    );
     expect(config.indexOf(personalPlugin)).toBeLessThan(config.indexOf('"expo-asset"'));
   });
 
