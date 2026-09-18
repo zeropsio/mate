@@ -72,6 +72,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
+    id: "diff-color-scheme",
+    title: "Diff colors",
+    to: "/settings/appearance",
+    searchTerms: ["red green blue orange additions deletions changes counts palette colorblind"],
+  },
+  {
     id: "interface-font",
     title: "Interface font",
     to: "/settings/appearance",

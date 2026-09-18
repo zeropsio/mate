@@ -18,6 +18,7 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   dismissedProviderUpdateNotificationKeys: [],
+  diffColorScheme: "red-green",
   diffIgnoreWhitespace: true,
   favorites: [],
   fontFamilyCode: "",

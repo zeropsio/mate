@@ -2578,22 +2578,6 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
-    "fingerprint": "\"text-emerald-600 dark:text-emerald-400\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-red-600 dark:text-red-400\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
     "fingerprint": "\"text-xs font-medium text-blue-600 dark:text-blue-400\"",
     "owner": "karel",
     "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
