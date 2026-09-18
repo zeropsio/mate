@@ -10,11 +10,7 @@ import { HttpClient } from "effect/unstable/http";
 import { MobilePreferencesStore } from "../../persistence/mobile-preferences";
 import { MobileStorage } from "../../persistence/mobile-storage";
 
-import {
-  linkEnvironmentToCloud,
-  linkEnvironmentToCloudWithPreference,
-  normalizeRelayBaseUrl,
-} from "./linkEnvironment";
+import { linkEnvironmentToCloud, linkEnvironmentToCloudWithPreference } from "./linkEnvironment";
 
 vi.mock("expo-constants", () => ({
   default: {
@@ -159,13 +155,6 @@ describe("mobile cloud link environment client", () => {
     vi.restoreAllMocks();
     createProofMock.mockClear();
     loadPreferences.mockClear();
-  });
-
-  it("normalizes configured relay base URLs before building DPoP-bound requests", () => {
-    expect(normalizeRelayBaseUrl(" https://relay.example.test/// ")).toBe(
-      "https://relay.example.test",
-    );
-    expect(normalizeRelayBaseUrl("   ")).toBeNull();
   });
 
   it.effect(
