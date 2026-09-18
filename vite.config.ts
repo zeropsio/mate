@@ -16,6 +16,11 @@ export default defineConfig({
       "**/dist/**",
       "**/dist-electron/**",
       "**/.{idea,git,cache,output,temp}/**",
+      // Agents work in throwaway worktrees under `.claude/worktrees`. They
+      // hold a whole second copy of this repository and no `node_modules`,
+      // so a run from the root collected each test twice and failed the copy
+      // on an import it could not resolve.
+      "**/.claude/worktrees/**",
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,
