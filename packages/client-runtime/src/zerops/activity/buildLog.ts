@@ -242,7 +242,7 @@ export function mergeBoundedBuildLogLines(
   let retainedBytes = 0;
   let droppedLines = 0;
   let droppedBytes = 0;
-  const ordered = retain === "newest" ? merged.toReversed() : merged;
+  const ordered = retain === "newest" ? [...merged].reverse() : merged;
 
   for (const line of ordered) {
     const bytes = buildLogLineBytes(line);
@@ -255,7 +255,7 @@ export function mergeBoundedBuildLogLines(
     retainedBytes += bytes;
   }
 
-  const resultLines = retain === "newest" ? retained.toReversed() : retained;
+  const resultLines = retain === "newest" ? [...retained].reverse() : retained;
   const retainedIds = new Set(resultLines.map(({ id }) => id));
   const retainedIndexes = merged.flatMap((line, index) =>
     retainedIds.has(line.id) ? [index] : [],

@@ -570,7 +570,7 @@ export type QueryMemberRef<Descriptor extends EntityQueryDescriptor> =
       : ProcessRef;
 
 const canonicalStringSet = (values: ReadonlyArray<string>): string =>
-  JSON.stringify([...new Set(values)].toSorted());
+  JSON.stringify([...new Set(values)].sort());
 
 export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
   switch (descriptor.kind) {

@@ -507,7 +507,7 @@ export function buildZeropsServiceMap(
       // — `db` < `db2` < `db10`), tiebroken by `serviceId` so two services
       // can never tie. A folded stage row carries no order of its own — it
       // rides along nested under its dev partner.
-      .toSorted(
+      .sort(
         (left, right) =>
           Number(isZcpServiceType(right.type)) - Number(isZcpServiceType(left.type)) ||
           compareZeropsHostnames(left.hostname, right.hostname) ||

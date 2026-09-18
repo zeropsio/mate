@@ -1141,7 +1141,7 @@ function trimCompletedReads(state: ZeropsDataState, policy: ZeropsDataPolicy): Z
   );
   const excess = completedEntries.length - policy.retainedCompletedReadsPerAccount;
   if (excess <= 0) return state;
-  const completed = completedEntries.toSorted(
+  const completed = [...completedEntries].sort(
     ([leftKey, left], [rightKey, right]) =>
       Number(left.completedAtReceiptOrdinal) - Number(right.completedAtReceiptOrdinal) ||
       String(leftKey).localeCompare(String(rightKey)),
@@ -1169,7 +1169,7 @@ function trimTerminalCommands(state: ZeropsDataState, policy: ZeropsDataPolicy):
   const retainedTotal = Math.max(pendingCount, policy.retainedCommandAttemptsPerAccount - 1);
   const excess = state.commands.size - retainedTotal;
   if (excess <= 0) return state;
-  const terminal = terminalEntries.toSorted(
+  const terminal = [...terminalEntries].sort(
     ([leftKey, left], [rightKey, right]) =>
       Number(left.startedAtReceiptOrdinal) - Number(right.startedAtReceiptOrdinal) ||
       left.requestedAtMs - right.requestedAtMs ||
@@ -1300,7 +1300,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
   };
 
   if (state.inventory.projects.size > policy.retainedProjectsPerAccount) {
-    const projects = [...state.inventory.projects.entries()].toSorted(
+    const projects = [...state.inventory.projects.entries()].sort(
       ([leftKey, left], [rightKey, right]) =>
         projectReceiptOrdinal(left) - projectReceiptOrdinal(right) ||
         String(leftKey).localeCompare(String(rightKey)),
@@ -1315,7 +1315,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
   }
 
   if (state.inventory.services.size > policy.retainedServicesPerAccount) {
-    const services = [...state.inventory.services.entries()].toSorted(
+    const services = [...state.inventory.services.entries()].sort(
       ([leftKey, left], [rightKey, right]) =>
         serviceReceiptOrdinal(left) - serviceReceiptOrdinal(right) ||
         String(leftKey).localeCompare(String(rightKey)),
@@ -1343,7 +1343,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
     terminalEntries.length > policy.retainedTerminalProcessesPerProject ||
     terminalEntries.length > policy.retainedTerminalProcessesPerAccount
   ) {
-    const terminal = terminalEntries.toSorted(processOrder);
+    const terminal = [...terminalEntries].sort(processOrder);
     const terminalByProject = new Map<string, typeof terminal>();
     for (const entry of terminal) {
       const projectKey = projectKeyOf(entry[1].ref.project);
@@ -1380,7 +1380,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
     ([, record]) => !isTerminalProcess(record),
   );
   if (nonterminalEntries.length > policy.retainedNonTerminalProcessesPerAccount) {
-    const nonterminal = nonterminalEntries.toSorted(processOrder);
+    const nonterminal = [...nonterminalEntries].sort(processOrder);
     addNotice("nonterminal-process-budget", {
       kind: "entity",
       entity: "process",
@@ -1402,7 +1402,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
           receiptOrdinal: value.stamp.receiptOrdinal,
         })),
       )
-      .toSorted(
+      .sort(
         (left, right) =>
           Number(left.receiptOrdinal) - Number(right.receiptOrdinal) ||
           String(left.key).localeCompare(String(right.key)),
@@ -1422,7 +1422,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
 
   for (const [seriesKey, series] of state.observability.history) {
     if (series.buckets.size <= policy.retainedHistoryBucketsPerSeries) continue;
-    const buckets = [...series.buckets.entries()].toSorted(
+    const buckets = [...series.buckets.entries()].sort(
       ([leftKey, left], [rightKey, right]) =>
         left.key.from.localeCompare(right.key.from) ||
         left.key.till.localeCompare(right.key.till) ||
@@ -1442,7 +1442,7 @@ function scheduleRetention(state: ZeropsDataState, policy: ZeropsDataPolicy): Ze
     ...state.activity.queries.entries(),
   ]) {
     if (value.membershipOperations.size <= policy.membershipMarkersPerQuery) continue;
-    const operations = [...value.membershipOperations.entries()].toSorted(
+    const operations = [...value.membershipOperations.entries()].sort(
       ([leftKey, left], [rightKey, right]) =>
         Number(left.receiptOrdinal) - Number(right.receiptOrdinal) ||
         String(leftKey).localeCompare(String(rightKey)),
