@@ -16,7 +16,7 @@ import type {
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 
-import { scopedProjectKey } from "../../lib/scopedEntities";
+import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 
 export type HomeProjectSortOrder = Exclude<SidebarProjectSortOrder, "manual">;

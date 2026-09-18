@@ -33,6 +33,7 @@ import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
+import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
@@ -143,6 +144,7 @@ function ThreadNavigationSidebarPane(
     !AsyncResult.isSuccess(preferencesResult) ||
     preferencesResult.value.autoSettleOnMerge !== false;
   const pendingTasks = usePendingNewTasks();
+  const queuedThreadKeys = useQueuedThreadKeys();
   const { openPendingTask, confirmDeletePendingTask } = usePendingTaskListActions();
   const environments = useMemo(
     () =>
@@ -400,6 +402,7 @@ function ThreadNavigationSidebarPane(
         autoSettleOnMerge,
         settlementEnvironmentIds,
         snoozeEnvironmentIds,
+        queuedThreadKeys,
         settledLimit: settledVisibleCount,
         now: `${nowMinute}:00.000Z`,
         snoozeNow: new Date().toISOString(),
@@ -410,6 +413,7 @@ function ThreadNavigationSidebarPane(
     [
       changeRequestByKey,
       autoSettleOnMerge,
+      queuedThreadKeys,
       nowMinute,
       snoozeWakeTick,
       snoozedShelfExpanded,
@@ -700,6 +704,7 @@ function ThreadNavigationSidebarPane(
             <ThreadListV2Row
               thread={thread}
               variant={item.item.variant}
+              hasQueuedMessages={queuedThreadKeys.has(`${thread.environmentId}:${thread.id}`)}
               snoozed={item.item.snoozed}
               pinned={item.item.pinned}
               snoozePresetMinute={nowMinute}
@@ -816,6 +821,7 @@ function ThreadNavigationSidebarPane(
       projectByKey,
       projectCwdByKey,
       projectTitleByProjectKey,
+      queuedThreadKeys,
       regenerateThreadTitle,
       props.searchQuery,
       props.selectedThreadKey,

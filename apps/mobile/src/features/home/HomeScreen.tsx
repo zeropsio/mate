@@ -26,6 +26,7 @@ import { mobilePreferencesAtom } from "../../state/preferences";
 import { useThreadSearch } from "../../state/queries";
 import { environmentServerConfigsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
+import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
@@ -174,6 +175,7 @@ function HomeTopContentSpacer() {
 
 export function HomeScreen(props: HomeScreenProps) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const queuedThreadKeys = useQueuedThreadKeys();
   const autoSettleOnMerge =
     !AsyncResult.isSuccess(preferencesResult) ||
     preferencesResult.value.autoSettleOnMerge !== false;
@@ -501,6 +503,7 @@ export function HomeScreen(props: HomeScreenProps) {
         autoSettleOnMerge,
         settlementEnvironmentIds,
         snoozeEnvironmentIds,
+        queuedThreadKeys,
         settledLimit: settledVisibleCount,
         now: `${nowMinute}:00.000Z`,
         snoozeNow: new Date().toISOString(),
@@ -511,6 +514,7 @@ export function HomeScreen(props: HomeScreenProps) {
     [
       changeRequestByKey,
       autoSettleOnMerge,
+      queuedThreadKeys,
       nowMinute,
       snoozeWakeTick,
       snoozedShelfExpanded,
@@ -629,6 +633,7 @@ export function HomeScreen(props: HomeScreenProps) {
         <ThreadListV2Row
           thread={thread}
           variant={item.item.variant}
+          hasQueuedMessages={queuedThreadKeys.has(`${thread.environmentId}:${thread.id}`)}
           snoozed={item.item.snoozed}
           pinned={item.item.pinned}
           snoozePresetMinute={nowMinute}
@@ -709,6 +714,7 @@ export function HomeScreen(props: HomeScreenProps) {
       pinReorderEnvironmentIds,
       projectByKey,
       projectCwdByKey,
+      queuedThreadKeys,
       props.onArchiveThread,
       props.onDeletePendingTask,
       props.onSelectPendingTask,

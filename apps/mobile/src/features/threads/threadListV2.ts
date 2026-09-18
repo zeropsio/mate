@@ -345,6 +345,10 @@ export function buildThreadListV2Items(input: {
   /** The selected thread remains visible on an otherwise collapsed shelf so
       a split-view detail can never lose its navigation row. */
   readonly selectedThreadKey?: string | null;
+  /** Thread keys (`environmentId:threadId`) with a message waiting in the
+      outbox. Such a thread has work the user is waiting on, so it stays in
+      the active block even when the server has settled it. */
+  readonly queuedThreadKeys?: ReadonlySet<string>;
 }): ThreadListV2Layout {
   const now = input.now ?? new Date().toISOString();
   const snoozeNow = input.snoozeNow ?? now;
@@ -397,8 +401,11 @@ export function buildThreadListV2Items(input: {
       }
       continue;
     }
+    const hasQueuedMessages =
+      input.queuedThreadKeys?.has(`${thread.environmentId}:${thread.id}`) === true;
     if (
       supportsSettlement &&
+      !hasQueuedMessages &&
       effectiveSettled(thread, {
         now,
         autoSettleAfterDays,
