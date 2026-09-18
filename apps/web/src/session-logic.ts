@@ -1,6 +1,7 @@
 import * as Option from "effect/Option";
 import * as Arr from "effect/Array";
 import * as Schema from "effect/Schema";
+import { shallow } from "zustand/vanilla/shallow";
 import { isBackgroundTaskActivity } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   commandDetailRepeatsCommand,
@@ -32,6 +33,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 
 import type {
+  ChatAttachment,
   ChatMessage,
   ProposedPlan,
   SessionPhase,
@@ -1954,6 +1956,245 @@ function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
   };
 }
 
+function timelineEntryFromMessage(message: ChatMessage): TimelineEntry {
+  return {
+    id: message.id,
+    kind: "message",
+    createdAt: message.createdAt,
+    message,
+  };
+}
+
+function timelineEntryFromProposedPlan(proposedPlan: ProposedPlan): TimelineEntry {
+  return {
+    id: proposedPlan.id,
+    kind: "proposed-plan",
+    createdAt: proposedPlan.createdAt,
+    proposedPlan,
+  };
+}
+
+function timelineEntryFromTurnPlan(turnPlan: TurnPlanEntry): TimelineEntry {
+  return {
+    id: turnPlan.id,
+    kind: "turn-plan",
+    createdAt: turnPlan.createdAt,
+    turnPlan,
+  };
+}
+
+function timelineEntryFromWork(workEntry: WorkLogEntry): TimelineEntry {
+  return {
+    id: workEntry.id,
+    kind: "work",
+    createdAt: workEntry.createdAt,
+    entry: workEntry,
+  };
+}
+
+function timelineEntryFromZerops(entry: ZeropsTimelineEntry): TimelineEntry {
+  return entry.kind === "operation"
+    ? {
+        id: `zerops:${entry.key}`,
+        kind: "operation",
+        createdAt: entry.anchorAt,
+        operation: entry.operation,
+      }
+    : {
+        id: `zerops:${entry.key}`,
+        kind: "generic-call",
+        createdAt: entry.anchorAt,
+        entry: zeropsCallToWorkLogEntry(entry.call),
+      };
+}
+
+/** A total order, so merging two sorted runs equals sorting their union. */
+function compareTimelineEntries(left: TimelineEntry, right: TimelineEntry): number {
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+}
+
+function hasExactArrayPrefix<T>(previous: ReadonlyArray<T>, next: ReadonlyArray<T>): boolean {
+  if (previous === next) return true;
+  if (next.length < previous.length) return false;
+  for (let index = 0; index < previous.length; index += 1) {
+    if (previous[index] !== next[index]) return false;
+  }
+  return true;
+}
+
+function hasSameArrayItems<T>(previous: ReadonlyArray<T>, next: ReadonlyArray<T>): boolean {
+  return previous.length === next.length && hasExactArrayPrefix(previous, next);
+}
+
+function mergeTimelineEntrySuffix(
+  previous: ReadonlyArray<TimelineEntry>,
+  suffix: ReadonlyArray<TimelineEntry>,
+): TimelineEntry[] {
+  if (suffix.length === 0) return [...previous];
+  const previousLast = previous.at(-1);
+  if (previousLast === undefined || compareTimelineEntries(previousLast, suffix[0]!) <= 0) {
+    return [...previous, ...suffix];
+  }
+  const merged: TimelineEntry[] = [];
+  let previousIndex = 0;
+  let suffixIndex = 0;
+  while (previousIndex < previous.length || suffixIndex < suffix.length) {
+    const previousEntry = previous[previousIndex];
+    const suffixEntry = suffix[suffixIndex];
+    if (
+      previousEntry !== undefined &&
+      (suffixEntry === undefined || compareTimelineEntries(previousEntry, suffixEntry) <= 0)
+    ) {
+      merged.push(previousEntry);
+      previousIndex += 1;
+    } else if (suffixEntry !== undefined) {
+      merged.push(suffixEntry);
+      suffixIndex += 1;
+    }
+  }
+  return merged;
+}
+
+export interface TimelineEntriesProjection {
+  readonly messages: ReadonlyArray<ChatMessage>;
+  readonly proposedPlans: ReadonlyArray<ProposedPlan>;
+  readonly turnPlans: ReadonlyArray<TurnPlanEntry>;
+  readonly workEntries: ReadonlyArray<WorkLogEntry>;
+  readonly zeropsEntries: ReadonlyArray<ZeropsTimelineEntry>;
+  readonly entries: TimelineEntry[];
+}
+
+/** Own one mapper per preview stage. Immutable messages retain unchanged preview objects. */
+export function createMessageAttachmentPreviewProjector() {
+  const attachmentsBySource = new WeakMap<
+    ReadonlyArray<ChatAttachment>,
+    ReadonlyArray<ChatAttachment>
+  >();
+  const messagesBySource = new WeakMap<ChatMessage, ChatMessage>();
+  return (
+    message: ChatMessage,
+    previewUrlFor: (attachment: ChatAttachment) => string | undefined,
+  ): ChatMessage => {
+    const source = message.attachments;
+    if (!source || source.length === 0) return message;
+    const previous = attachmentsBySource.get(source) ?? source;
+    let changed: ChatAttachment[] | undefined;
+    let hasOverrides = false;
+    for (const [index, attachment] of source.entries()) {
+      const previewUrl = previewUrlFor(attachment);
+      const sourceUrl = "previewUrl" in attachment ? attachment.previewUrl : undefined;
+      const previousAttachment = previous[index]!;
+      const previousUrl =
+        "previewUrl" in previousAttachment ? previousAttachment.previewUrl : undefined;
+      const next =
+        !previewUrl || previewUrl === sourceUrl
+          ? attachment
+          : previewUrl === previousUrl
+            ? previousAttachment
+            : { ...attachment, previewUrl };
+      hasOverrides ||= next !== attachment;
+      if (next !== previousAttachment) {
+        changed ??= previous.slice();
+        changed[index] = next;
+      }
+    }
+    const attachments = hasOverrides ? (changed ?? previous) : source;
+    attachmentsBySource.set(source, attachments);
+    if (attachments === source) {
+      messagesBySource.delete(message);
+      return message;
+    }
+    const previousMessage = messagesBySource.get(message);
+    if (previousMessage?.attachments === attachments) return previousMessage;
+    const result = { ...message, attachments };
+    messagesBySource.set(message, result);
+    return result;
+  };
+}
+
+/** Text and update time do not change a streaming assistant message's timeline structure. */
+export function isStreamingMessageTextUpdate(previous: ChatMessage, next: ChatMessage): boolean {
+  if (
+    previous.role !== "assistant" ||
+    next.role !== "assistant" ||
+    !previous.streaming ||
+    !next.streaming
+  ) {
+    return false;
+  }
+  const { text: _previousText, updatedAt: _previousUpdatedAt, ...previousMetadata } = previous;
+  const { text: _nextText, updatedAt: _nextUpdatedAt, ...nextMetadata } = next;
+  return shallow(previousMetadata, nextMetadata);
+}
+
+function replaceStreamingTimelineMessages(
+  messages: ReadonlyArray<ChatMessage>,
+  previous: TimelineEntriesProjection,
+): TimelineEntry[] | null {
+  if (messages.length !== previous.messages.length) return null;
+  const replacements = new Map<ChatMessage, ChatMessage>();
+  for (const [index, message] of messages.entries()) {
+    const previousMessage = previous.messages[index]!;
+    if (message === previousMessage) continue;
+    if (!isStreamingMessageTextUpdate(previousMessage, message)) return null;
+    replacements.set(previousMessage, message);
+  }
+  if (replacements.size === 0) return previous.entries;
+  return previous.entries.map((entry) => {
+    const replacement = entry.kind === "message" ? replacements.get(entry.message) : undefined;
+    return replacement ? timelineEntryFromMessage(replacement) : entry;
+  });
+}
+
+/** Reuse ordered entries across immutable stream updates. Other changes keep the full sort. */
+export function deriveTimelineEntriesWithState(
+  messages: ReadonlyArray<ChatMessage>,
+  proposedPlans: ReadonlyArray<ProposedPlan>,
+  workEntries: ReadonlyArray<WorkLogEntry>,
+  previous: TimelineEntriesProjection | null = null,
+  turnPlans: ReadonlyArray<TurnPlanEntry> = [],
+  zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
+): TimelineEntriesProjection {
+  const sources = { messages, proposedPlans, turnPlans, workEntries, zeropsEntries };
+  if (
+    previous !== null &&
+    hasSameArrayItems(previous.proposedPlans, proposedPlans) &&
+    hasSameArrayItems(previous.turnPlans, turnPlans) &&
+    hasSameArrayItems(previous.workEntries, workEntries) &&
+    hasSameArrayItems(previous.zeropsEntries, zeropsEntries)
+  ) {
+    const entries = replaceStreamingTimelineMessages(messages, previous);
+    if (entries !== null) return { ...sources, entries };
+  }
+  if (
+    previous !== null &&
+    hasExactArrayPrefix(previous.messages, messages) &&
+    hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
+    hasExactArrayPrefix(previous.turnPlans, turnPlans) &&
+    hasExactArrayPrefix(previous.workEntries, workEntries) &&
+    hasExactArrayPrefix(previous.zeropsEntries, zeropsEntries)
+  ) {
+    const suffix = [
+      ...messages.slice(previous.messages.length).map(timelineEntryFromMessage),
+      ...proposedPlans.slice(previous.proposedPlans.length).map(timelineEntryFromProposedPlan),
+      ...turnPlans.slice(previous.turnPlans.length).map(timelineEntryFromTurnPlan),
+      ...workEntries.slice(previous.workEntries.length).map(timelineEntryFromWork),
+      ...zeropsEntries.slice(previous.zeropsEntries.length).map(timelineEntryFromZerops),
+    ].toSorted(compareTimelineEntries);
+    return { ...sources, entries: mergeTimelineEntrySuffix(previous.entries, suffix) };
+  }
+  return {
+    ...sources,
+    entries: [
+      ...messages.map(timelineEntryFromMessage),
+      ...proposedPlans.map(timelineEntryFromProposedPlan),
+      ...turnPlans.map(timelineEntryFromTurnPlan),
+      ...workEntries.map(timelineEntryFromWork),
+      ...zeropsEntries.map(timelineEntryFromZerops),
+    ].toSorted(compareTimelineEntries),
+  };
+}
+
 export function deriveTimelineEntries(
   messages: ReadonlyArray<ChatMessage>,
   proposedPlans: ReadonlyArray<ProposedPlan>,
@@ -1961,52 +2202,14 @@ export function deriveTimelineEntries(
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
   zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
 ): TimelineEntry[] {
-  const messageRows: TimelineEntry[] = messages.map((message) => ({
-    id: message.id,
-    kind: "message",
-    createdAt: message.createdAt,
-    message,
-  }));
-  const proposedPlanRows: TimelineEntry[] = proposedPlans.map((proposedPlan) => ({
-    id: proposedPlan.id,
-    kind: "proposed-plan",
-    createdAt: proposedPlan.createdAt,
-    proposedPlan,
-  }));
-  const turnPlanRows: TimelineEntry[] = turnPlans.map((turnPlan) => ({
-    id: turnPlan.id,
-    kind: "turn-plan",
-    createdAt: turnPlan.createdAt,
-    turnPlan,
-  }));
-  const workRows: TimelineEntry[] = workEntries.map((entry) => ({
-    id: entry.id,
-    kind: "work",
-    createdAt: entry.createdAt,
-    entry,
-  }));
-  const zeropsRows: TimelineEntry[] = zeropsEntries.map((entry) =>
-    entry.kind === "operation"
-      ? {
-          id: `zerops:${entry.key}`,
-          kind: "operation",
-          createdAt: entry.anchorAt,
-          operation: entry.operation,
-        }
-      : {
-          id: `zerops:${entry.key}`,
-          kind: "generic-call",
-          createdAt: entry.anchorAt,
-          entry: zeropsCallToWorkLogEntry(entry.call),
-        },
-  );
-  return [
-    ...messageRows,
-    ...proposedPlanRows,
-    ...turnPlanRows,
-    ...workRows,
-    ...zeropsRows,
-  ].toSorted((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  return deriveTimelineEntriesWithState(
+    messages,
+    proposedPlans,
+    workEntries,
+    null,
+    turnPlans,
+    zeropsEntries,
+  ).entries;
 }
 
 export function inferCheckpointTurnCountByTurnId(
