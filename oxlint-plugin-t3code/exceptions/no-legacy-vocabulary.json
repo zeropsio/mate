@@ -386,7 +386,7 @@
   {
     "path": "apps/web/src/hooks/useThreadActions.ts",
     "kind": "Literal",
-    "fingerprint": "\"Failed to remove orphaned worktree after thread deletion\"",
+    "fingerprint": "\"Worktree cleanup failed after thread deletion\"",
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
@@ -402,7 +402,7 @@
   {
     "path": "apps/web/src/hooks/useThreadActions.ts",
     "kind": "Literal",
-    "fingerprint": "\"Thread deleted, but worktree removal failed\"",
+    "fingerprint": "\"Failed to delete worktree\"",
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
@@ -410,7 +410,7 @@
   {
     "path": "apps/web/src/hooks/useThreadActions.ts",
     "kind": "Literal",
-    "fingerprint": "\"Unknown error removing worktree.\"",
+    "fingerprint": "\"Worktree deleted, but Git status refresh failed\"",
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"

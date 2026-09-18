@@ -674,23 +674,7 @@
   {
     "path": "apps/web/src/components/GitActionsControl.tsx",
     "kind": "Literal",
-    "fingerprint": "\"border-border bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground dark:border-transparent dark:bg-white/[0.035]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
     "fingerprint": "\"border-border bg-muted/40 dark:border-transparent dark:bg-white/[0.025]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"border-primary bg-background ring-2 ring-primary/35 text-foreground dark:border-transparent dark:bg-primary/10 dark:ring-1 dark:ring-primary/30\"",
     "owner": "karel",
     "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
     "expires": "F4"
