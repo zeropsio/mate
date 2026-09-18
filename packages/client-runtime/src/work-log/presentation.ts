@@ -483,7 +483,8 @@ export function omitSupersededLifecycleMarkers<T>(
     }
   }
 
-  return reversedEntries.toReversed();
+  // In place, not `.toReversed()`: Hermes has no ES2023 array methods.
+  return reversedEntries.reverse();
 }
 
 export function toolGroupSummaryKind(
