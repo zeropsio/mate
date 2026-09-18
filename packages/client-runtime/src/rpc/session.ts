@@ -52,7 +52,9 @@ export interface RpcSession {
   readonly closed: Effect.Effect<never, ConnectionAttemptError>;
 }
 
-export interface RpcSessionOptions {}
+export interface RpcSessionOptions {
+  readonly usageLimitSources?: boolean;
+}
 
 export class RpcSessionFactory extends Context.Service<
   RpcSessionFactory,
@@ -77,10 +79,15 @@ type ServerConfigSubscription = Stream.Stream<
 type ServerConfigSubscriptionInput = Parameters<
   WsRpcProtocolClient[typeof WS_METHODS.subscribeServerConfig]
 >[0];
+type UsageLimitSourcesUpdatedEvent = Extract<
+  ServerConfigStreamEvent,
+  { readonly type: "usageLimitSourcesUpdated" }
+>;
 
 interface ServerConfigReplayState {
   readonly projection: ServerConfigProjection;
   readonly revision: number;
+  readonly sourcesEvent: UsageLimitSourcesUpdatedEvent | undefined;
 }
 
 interface BufferedServerConfigEvent {
@@ -97,7 +104,7 @@ function serverConfigReplayEvents(
     type: "snapshot" as const,
     config: withoutUsageLimitSources(state.projection.config),
   };
-  return [snapshot];
+  return state.sourcesEvent === undefined ? [snapshot] : [snapshot, state.sourcesEvent];
 }
 
 function mapSessionRpcError(
@@ -124,10 +131,11 @@ function mapSessionRpcError(
 }
 
 export const make = Effect.fn("RpcSessionFactory.make")(function* (
-  _options: RpcSessionOptions = {},
+  options: RpcSessionOptions = {},
 ) {
   const webSocketConstructor = yield* Socket.WebSocketConstructor;
-  const serverConfigInput: ServerConfigSubscriptionInput = {};
+  const serverConfigInput: ServerConfigSubscriptionInput =
+    options.usageLimitSources === true ? { usageLimitSources: true } : {};
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {
     yield* Effect.annotateCurrentSpan({
@@ -203,6 +211,13 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
                 onNone: () => 1,
                 onSome: (state) => state.revision + 1,
               }),
+              sourcesEvent:
+                event.type === "usageLimitSourcesUpdated"
+                  ? event
+                  : event.type === "snapshot" &&
+                      event.config.environment.capabilities.usageLimitSources !== true
+                    ? undefined
+                    : Option.getOrUndefined(current)?.sourcesEvent,
             } satisfies ServerConfigReplayState;
             return [
               Option.some({ event, replay: next, revision: next.revision }),

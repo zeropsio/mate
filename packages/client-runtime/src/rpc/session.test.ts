@@ -8,13 +8,17 @@ import {
   ServerConfigStreamEvent,
   type ServerConfigStreamEvent as ServerConfigStreamEventType,
   WS_METHODS,
+  UsageLimitSourceId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -26,6 +30,7 @@ import {
   type PreparedConnection,
 } from "../connection/model.ts";
 import * as RpcSession from "./session.ts";
+import { applyServerConfigProjection } from "../state/serverConfigProjection.ts";
 
 type SocketEventType = "open" | "message" | "close" | "error";
 type SocketEvent = {
@@ -153,6 +158,42 @@ const encodeServerConfig = Schema.encodeSync(ServerConfig);
 const encodeServerConfigStreamEvent = Schema.encodeSync(ServerConfigStreamEvent);
 const encodeDefect = Schema.encodeSync(Schema.Defect());
 const ENCODED_SERVER_CONFIG = encodeServerConfig(SERVER_CONFIG);
+const SOURCE_SERVER_CONFIG: ServerConfigType = {
+  ...SERVER_CONFIG,
+  environment: {
+    ...SERVER_CONFIG.environment,
+    capabilities: { ...SERVER_CONFIG.environment.capabilities, usageLimitSources: true },
+  },
+};
+const SOURCE_EVENT: ServerConfigStreamEventType = {
+  version: 1,
+  type: "usageLimitSourcesUpdated",
+  payload: {
+    sources: [
+      {
+        id: UsageLimitSourceId.make("proxy"),
+        kind: "cliproxy",
+        label: "Proxy",
+        checkedAt: "2026-09-04T00:00:00Z",
+        accounts: [],
+      },
+    ],
+  },
+};
+
+const publishConfigEvents = Effect.fn("TestRpcSessionFactory.publishConfigEvents")(function* (
+  socket: TestWebSocket,
+  events: ReadonlyArray<ServerConfigStreamEventType>,
+) {
+  const request = yield* awaitRequest(socket);
+  socket.serverMessage(
+    encodeJson({
+      _tag: "Chunk",
+      requestId: request.id,
+      values: events.map((event) => encodeServerConfigStreamEvent(event)),
+    }),
+  );
+});
 const LEGACY_SERVER_CONFIG = {
   ...ENCODED_SERVER_CONFIG,
   environment: {
@@ -365,6 +406,124 @@ describe("RpcSessionFactory", () => {
         });
       }),
     ),
+  );
+
+  for (const options of [{ usageLimitSources: true }]) {
+    it.effect(
+      `shares only a config subscription with the same opt-ins: ${JSON.stringify(options)}`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { factory, sockets } = yield* makeFactory(options);
+            const session = yield* factory.connect(PREPARED);
+            const readyFiber = yield* Effect.forkChild(session.ready);
+            const socket = yield* awaitSocket(sockets);
+            socket.open();
+            yield* completeInitialConfig(socket, ENCODED_SERVER_CONFIG, options);
+            yield* Fiber.join(readyFiber);
+
+            const shared = yield* session.subscribeServerConfig(options).pipe(Stream.runHead);
+            expect(shared).toMatchObject({ _tag: "Some", value: { type: "snapshot" } });
+            expect(
+              socket.sent.map((message) => decodeJson(message)).filter(isRpcRequest),
+            ).toHaveLength(1);
+
+            const fallbackFiber = yield* session
+              .subscribeServerConfig({})
+              .pipe(Stream.runHead, Effect.forkChild);
+            const fallbackRequest = yield* awaitRequest(socket, 1);
+            expect(fallbackRequest).toMatchObject({
+              tag: WS_METHODS.subscribeServerConfig,
+              payload: {},
+            });
+            socket.serverMessage(
+              encodeJson({
+                _tag: "Chunk",
+                requestId: fallbackRequest.id,
+                values: [
+                  {
+                    version: 1,
+                    type: "snapshot",
+                    config: ENCODED_SERVER_CONFIG,
+                  },
+                ],
+              }),
+            );
+            expect(yield* Fiber.join(fallbackFiber)).toMatchObject({
+              _tag: "Some",
+              value: { type: "snapshot" },
+            });
+          }),
+        ),
+    );
+  }
+
+  it.effect.each([{ usageLimitSources: true }])(
+    "replays usage sources, removal, and capability downgrade with %j",
+    (options) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { factory, sockets } = yield* makeFactory(options);
+          const session = yield* factory.connect(PREPARED);
+          const ready = yield* Effect.forkChild(session.ready);
+          const socket = yield* awaitSocket(sockets);
+          socket.open();
+          yield* completeInitialConfig(socket, encodeServerConfig(SOURCE_SERVER_CONFIG), options);
+          yield* Fiber.join(ready);
+          const observed = yield* Queue.unbounded<ServerConfigStreamEventType>();
+          yield* session.subscribeServerConfig(options).pipe(
+            Stream.runForEach((event) => Queue.offer(observed, event)),
+            Effect.forkChild,
+          );
+          expect((yield* Queue.take(observed)).type).toBe("snapshot");
+          const events: ServerConfigStreamEventType[] = [
+            SOURCE_EVENT,
+            { version: 1, type: "usageLimitSourcesUpdated", payload: { sources: [] } },
+            SOURCE_EVENT,
+            { version: 1, type: "snapshot", config: SERVER_CONFIG },
+          ];
+          for (const event of events) {
+            yield* publishConfigEvents(socket, [event]);
+            expect(yield* Queue.take(observed)).toEqual(event);
+            const started = yield* Deferred.make<void>();
+            const replay = yield* session.subscribeServerConfig(options).pipe(
+              Stream.tap(() => Deferred.succeed(started, undefined)),
+              Stream.takeUntil((item) => item.type === "keybindingsUpdated"),
+              Stream.runCollect,
+              Effect.forkChild,
+            );
+            yield* Deferred.await(started);
+            // A live end marker makes a missing or stale replay event fail without a timeout.
+            const marker: ServerConfigStreamEventType = {
+              version: 1,
+              type: "keybindingsUpdated",
+              payload: { keybindings: [], issues: [] },
+            };
+            yield* publishConfigEvents(socket, [marker]);
+            expect(yield* Queue.take(observed)).toEqual(marker);
+            const replayed = Array.from(yield* Fiber.join(replay));
+            expect(replayed.slice(1)).toEqual([
+              ...(event.type === "snapshot" ? [] : [event]),
+              marker,
+            ]);
+            let projection = applyServerConfigProjection(Option.none(), {
+              version: 1,
+              type: "snapshot",
+              config: SOURCE_SERVER_CONFIG,
+            });
+            projection = applyServerConfigProjection(projection, SOURCE_EVENT);
+            for (const item of replayed) projection = applyServerConfigProjection(projection, item);
+            expect(Option.getOrThrow(projection).config.usageLimitSources).toEqual(
+              event.type === "usageLimitSourcesUpdated" && event.payload.sources.length > 0
+                ? event.payload.sources
+                : undefined,
+            );
+          }
+          expect(
+            socket.sent.map((message) => decodeJson(message)).filter(isRpcRequest),
+          ).toHaveLength(1);
+        }),
+      ),
   );
 
   it.effect("closes the session when the config source dies", () =>
