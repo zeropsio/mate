@@ -90,6 +90,7 @@ it.effect("launchStartupHeartbeat does not block the caller while counts are loa
       yield* ServerRuntimeStartup.launchStartupHeartbeat.pipe(
         Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
           getUserInputActivity: () => Effect.die("unused"),
+          getTurnStartMessage: () => Effect.die("unused"),
           getCommandReadModel: () => Effect.die("unused"),
           getSnapshot: () => Effect.die("unused"),
           getShellSnapshot: () => Effect.die("unused"),
@@ -151,6 +152,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
       } as never),
       Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
         getUserInputActivity: () => Effect.die("unused"),
+        getTurnStartMessage: () => Effect.die("unused"),
         getCommandReadModel: () => Effect.die("unused"),
         getSnapshot: () => Effect.die("unused"),
         getShellSnapshot: () => Effect.die("unused"),
@@ -227,6 +229,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when 
         getThreadCheckpointContext: () => Effect.succeed(Option.none()),
         getFullThreadDiffContext: () => Effect.succeed(Option.none()),
         getThreadRuntimeContext: () => Effect.die("unused"),
+        getTurnStartMessage: () => Effect.die("unused"),
         getThreadShellById: () => Effect.die("unused"),
         getThreadDetailById: () => Effect.die("unused"),
         getThreadDetailSnapshot: () => Effect.die("unused"),
@@ -284,6 +287,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
         getThreadCheckpointContext: () => Effect.succeed(Option.none()),
         getFullThreadDiffContext: () => Effect.succeed(Option.none()),
         getThreadRuntimeContext: () => Effect.die("unused"),
+        getTurnStartMessage: () => Effect.die("unused"),
         getThreadShellById: () => Effect.die("unused"),
         getThreadDetailById: () => Effect.die("unused"),
         getThreadDetailSnapshot: () => Effect.die("unused"),
