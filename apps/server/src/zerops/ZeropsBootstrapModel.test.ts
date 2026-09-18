@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_MODEL,
+  DEFAULT_MODEL_BY_PROVIDER,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -42,7 +43,7 @@ const readyClaude = provider({
   driver: CLAUDE,
   models: [
     { slug: "claude-opus-5", name: "Opus 5", isCustom: false, capabilities: null },
-    { slug: "claude-sonnet-5", name: "Sonnet 5", isCustom: false, capabilities: null },
+    { slug: "claude-fable-5-1", name: "Fable 5.1", isCustom: false, capabilities: null },
   ],
 });
 
@@ -94,7 +95,7 @@ describe("isBootstrapReadyProvider", () => {
 
 describe("resolveBootstrapModelSlug", () => {
   it("prefers the manifest default when the provider actually offers it", () => {
-    assert.equal(resolveBootstrapModelSlug(readyClaude), "claude-sonnet-5");
+    assert.equal(resolveBootstrapModelSlug(readyClaude), DEFAULT_MODEL_BY_PROVIDER[CLAUDE]);
     assert.equal(resolveBootstrapModelSlug(readyCodex), DEFAULT_MODEL);
   });
 
@@ -147,7 +148,7 @@ describe("resolveZeropsBootstrapModelSelection", () => {
       resolveZeropsBootstrapModelSelection([unauthenticatedCodex, readyClaude]),
       {
         instanceId: ProviderInstanceId.make("claudeAgent"),
-        model: "claude-sonnet-5",
+        model: DEFAULT_MODEL_BY_PROVIDER[CLAUDE]!,
       },
     );
   });
