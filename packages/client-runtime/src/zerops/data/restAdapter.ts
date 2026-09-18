@@ -144,10 +144,12 @@ function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError
                 ? "network"
                 : cause.kind === "uncertain"
                   ? "uncertain"
-                  : fallback;
+                  : cause.kind === "invalid-input"
+                    ? "rejected"
+                    : fallback;
     return adapterError(
       kind,
-      fixedApiErrorMessage(kind),
+      kind === "rejected" ? refusedMessage(cause.detail) : fixedApiErrorMessage(kind),
       !["forbidden", "not-found", "rejected"].includes(kind),
     );
   }
@@ -160,6 +162,16 @@ function errorFrom(cause: unknown, fallback: AdapterError["kind"]): AdapterError
  * layer has not reviewed for exposure. Each adapter error kind gets a fixed,
  * reviewed sentence instead; the kind itself still distinguishes causes.
  */
+/**
+ * The one exception: a refusal the platform clearly gave — `400`, with its
+ * own validation words — is forwarded as it came. It describes the person's
+ * own request and is what they need to fix it; a fixed sentence left a
+ * two-name project block reading as "uncertain" (the rehearsal, 2026-09-17).
+ */
+function refusedMessage(detail: string | null): string {
+  return detail === null ? "Zerops refused the request." : `Zerops refused the request: ${detail}`;
+}
+
 function fixedApiErrorMessage(kind: AdapterError["kind"]): string {
   switch (kind) {
     case "unauthorized":

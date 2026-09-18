@@ -1514,6 +1514,39 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  it.effect("keeps the platform's own words for a refusal it clearly gave, as no maybe", () =>
+    Effect.gen(function* () {
+      const client = clientFor(
+        () =>
+          new Response(
+            JSON.stringify({ code: "invalidUserInput", message: "project name must be unique" }),
+            { status: 400 },
+          ),
+      );
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+
+      const exit = yield* adapter
+        .execute(
+          { kind: "import-project", organization, yaml: "project: {}", ...commandBase },
+          context(),
+        )
+        .pipe(Effect.result);
+
+      expect(exit).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          kind: "rejected",
+          retryable: false,
+          message: "Zerops refused the request: project name must be unique",
+        },
+      });
+    }),
+  );
+
   it.effect(
     "cancels an already-aborted command instead of reporting it as uncertain or timed out",
     () =>

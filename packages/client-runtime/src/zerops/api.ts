@@ -465,18 +465,22 @@ export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
   readonly status: number | null;
   readonly code: string | null;
+  /** What the platform itself said, when it said anything; `null` for a status alone. */
+  readonly detail: string | null;
 
   constructor(
     message: string,
     kind: ZeropsApiErrorKind,
     status: number | null = null,
     code: string | null = null,
+    detail: string | null = null,
   ) {
     super(message);
     this.name = "ZeropsApiError";
     this.kind = kind;
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -609,7 +613,7 @@ async function apiErrorFromResponse(response: Response): Promise<ZeropsApiError>
       : kind === "forbidden"
         ? "This Zerops account is not allowed to do that."
         : (backendMessage ?? `Zerops API request failed (${response.status}).`);
-  return new ZeropsApiError(message, kind, response.status, code);
+  return new ZeropsApiError(message, kind, response.status, code, backendMessage ?? null);
 }
 
 export interface ZeropsApiClientOptions {
