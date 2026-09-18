@@ -3769,7 +3769,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     </Button>
                   ) : (
                     <ProviderModelPicker
-                      compact={isComposerFooterCompact}
+                      isComposerOwned
                       disabled={providerCatalogPending}
                       activeInstanceId={
                         providerCatalogPending
