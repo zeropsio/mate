@@ -601,7 +601,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       previous: ThreadMessagePreview | null,
       payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
     ) {
-      if (payload.streaming || payload.role === "system") {
+      // A thinking trace is not a message anyone said; it never becomes the preview.
+      if (payload.streaming || payload.role === "system" || payload.role === "reasoning") {
         return previous;
       }
       const next =

@@ -488,6 +488,8 @@ export const ServerConfig = Schema.Struct({
    * fields to servers that don't advertise this.
    */
   threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
+  /** Whether thread reads accept the reasoningMessages opt-in. */
+  reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /**
    * Quota reported by configured `usageLimitSources`. Never sent in a config
    * snapshot: the source stream emits the current set on subscribe, and it

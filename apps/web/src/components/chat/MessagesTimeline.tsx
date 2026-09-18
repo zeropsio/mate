@@ -47,6 +47,7 @@ import {
 import ChatMarkdown from "../ChatMarkdown";
 import {
   BotIcon,
+  BrainIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -143,6 +144,8 @@ interface TimelineRowSharedState {
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
+  onToggleReasoning: (messageId: string, expanded: boolean) => void;
+  expandedReasoningMessageIds: ReadonlySet<string>;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
 }
@@ -360,6 +363,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [suspendEndScrollMaintenanceForDisclosure],
   );
+  const [expandedReasoningMessageIds, setExpandedReasoningMessageIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
+  const onToggleReasoning = useCallback(
+    (messageId: string, expanded: boolean) => {
+      // The anchor is the timeline row id, which for a message row is the
+      // message id, so the list keeps its place while the block opens.
+      suspendEndScrollMaintenanceForDisclosure(messageId);
+      setExpandedReasoningMessageIds((current) => {
+        if (current.has(messageId) === expanded) return current;
+        const next = new Set(current);
+        if (expanded) next.add(messageId);
+        else next.delete(messageId);
+        return next;
+      });
+    },
+    [suspendEndScrollMaintenanceForDisclosure],
+  );
   const onToggleWorkGroup = useCallback(
     (groupId: string, anchorKey: string) => {
       suspendEndScrollMaintenanceForDisclosure(anchorKey);
@@ -527,6 +548,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
+      onToggleReasoning,
+      expandedReasoningMessageIds,
       agentPanelModel,
       onOpenAgents,
     }),
@@ -543,6 +566,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
+      onToggleReasoning,
+      expandedReasoningMessageIds,
       agentPanelModel,
       onOpenAgents,
     ],
@@ -950,6 +975,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
               : (row.kind === "message" &&
                     row.message.role === "assistant" &&
                     !row.showAssistantMeta) ||
+                  (row.kind === "message" && row.message.role === "reasoning") ||
                   row.kind === "work" ||
                   row.kind === "work-live" ||
                   row.kind === "work-toggle" ||
@@ -978,6 +1004,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
+      ) : null}
+      {row.kind === "message" && row.message.role === "reasoning" ? (
+        <ReasoningTimelineRow row={row} />
       ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "turn-plan" ? <TurnPlanTimelineRow row={row} /> : null}
@@ -1125,6 +1154,78 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
     </div>
   );
 }
+
+/**
+ * A provider's thinking trace. Collapsed by default: reasoning is context for
+ * the answer, not the answer. The open/closed flag lives on the list so it
+ * survives row recycling in the virtualizer.
+ */
+const ReasoningTimelineRow = memo(function ReasoningTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "message" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { isWorking, latestTurnId } = use(TimelineRowActivityCtx);
+  const { message } = row;
+  // A block left open by a crashed provider or a restarted server never gets
+  // its completion. Only the live turn may claim to still be thinking.
+  const streaming =
+    Boolean(message.streaming) &&
+    isWorking &&
+    message.turnId !== null &&
+    message.turnId === latestTurnId;
+  const expanded = ctx.expandedReasoningMessageIds.has(message.id);
+  const { onToggleReasoning } = ctx;
+  const toggle = useCallback(() => {
+    onToggleReasoning(message.id, !expanded);
+  }, [expanded, message.id, onToggleReasoning]);
+  const label = streaming ? "Thinking" : "Thought";
+
+  if (message.text.trim().length === 0 && !streaming) {
+    return null;
+  }
+
+  return (
+    <div className={cn("flex flex-col", expanded && "mb-1")}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={toggle}
+        className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-0.5 py-0.5 text-start transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      >
+        <span className="flex size-6 shrink-0 items-center justify-center text-icon-muted">
+          <BrainIcon aria-hidden className="block size-4 shrink-0 stroke-[1.8] opacity-70" />
+        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-secondary-label text-sm leading-relaxed">
+            {label}
+          </span>
+          <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+            <ChevronRightIcon
+              className={cn(
+                "size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200",
+                expanded && "rotate-90",
+              )}
+            />
+          </span>
+        </span>
+      </button>
+      {expanded ? (
+        <div className="mt-1 ms-7 max-h-96 overflow-auto rounded-md bg-muted/40 px-3 py-2 text-secondary-label select-text">
+          <ChatMarkdown
+            text={message.text}
+            cwd={ctx.markdownCwd}
+            threadRef={ctx.threadRef ?? undefined}
+            isStreaming={streaming}
+            lineBreaks
+            skills={ctx.skills}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+});
 
 function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);

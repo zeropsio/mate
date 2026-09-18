@@ -93,6 +93,7 @@ import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons
 import { resolveMarkdownLinkPresentation } from "@t3tools/mobile-markdown-text/links";
 import {
   deriveThreadFeedPresentation,
+  deriveUnsettledTurnId,
   isContextCompactionActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
@@ -104,6 +105,7 @@ import {
 } from "./thread-feed-live-follow";
 import {
   collapsedWorkLogHeight,
+  ThreadReasoningRow,
   ThreadWorkGroupToggle,
   ThreadWorkLog,
   WORK_GROUP_TOGGLE_HEIGHT,
@@ -966,8 +968,11 @@ function renderFeedEntry(
   props: Pick<ThreadFeedProps, "environmentId" | "skills"> & {
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
+    readonly expandedReasoningMessageIds: ReadonlySet<string>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
     readonly unsettledTurnId: TurnId | null;
+    readonly isWorking: boolean;
+    readonly onToggleReasoning: (messageId: string) => void;
     readonly onCopyWorkRow: (rowId: string, value: string) => void;
     readonly onToggleWorkGroup: (groupId: string) => void;
     readonly onToggleWorkRow: (rowId: string) => void;
@@ -1049,6 +1054,47 @@ function renderFeedEntry(
 
   if (entry.type === "message") {
     const { message } = entry;
+    if (message.role === "reasoning") {
+      // Only the live turn may claim to still be thinking, and only while the
+      // thread is actually working: a block left open by a crashed provider
+      // must not read "Thinking" on a turn that settled long ago. Same test as
+      // web.
+      const liveReasoning =
+        Boolean(message.streaming) &&
+        props.isWorking &&
+        message.turnId !== null &&
+        message.turnId === props.unsettledTurnId;
+      if (message.text.trim().length === 0 && !liveReasoning) {
+        return null;
+      }
+      return (
+        <ThreadReasoningRow
+          iconSubtleColor={iconSubtleColor}
+          expanded={props.expandedReasoningMessageIds.has(message.id)}
+          label={liveReasoning ? "Thinking" : "Thought"}
+          onToggle={() => props.onToggleReasoning(message.id)}
+        >
+          {hasNativeSelectableMarkdownText() ? (
+            <SelectableMarkdownText
+              markdown={message.text}
+              skills={props.skills}
+              textStyle={markdownStyles.assistant.nativeTextStyle}
+              onLinkPress={props.onMarkdownLinkPress}
+              renderImage={props.renderMarkdownImage}
+            />
+          ) : (
+            <Markdown
+              options={{ gfm: true }}
+              renderers={markdownStyles.assistant.renderers}
+              styles={markdownStyles.assistant.styles}
+              theme={markdownStyles.assistant.theme}
+            >
+              {message.text}
+            </Markdown>
+          )}
+        </ThreadReasoningRow>
+      );
+    }
     const isUser = message.role === "user";
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
@@ -1549,13 +1595,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     readonly expandedWorkGroups: Record<string, boolean>;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly expandedTurnIds: ReadonlySet<TurnId>;
+    readonly expandedReasoningMessageIds: ReadonlySet<string>;
   }>({
     copiedRowId: null,
     expandedWorkGroups: {},
     expandedWorkRows: {},
     expandedTurnIds: new Set(),
+    expandedReasoningMessageIds: new Set(),
   });
-  const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds } = interactionState;
+  const {
+    copiedRowId,
+    expandedWorkGroups,
+    expandedWorkRows,
+    expandedTurnIds,
+    expandedReasoningMessageIds,
+  } = interactionState;
   const [expandedImage, setExpandedImage] = useState<{
     uri: string;
     headers?: Record<string, string>;
@@ -1657,6 +1711,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     () => ({
       copiedRowId,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       iconSubtleColor,
       markdownStyles,
       reviewCommentColors,
@@ -1666,6 +1721,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     [
       copiedRowId,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       iconSubtleColor,
       markdownStyles,
       reviewCommentColors,
@@ -1850,11 +1906,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
     return new Set(terminalIdsByTurn.values());
   }, [props.feed]);
-  const unsettledTurnId =
-    props.latestTurn &&
-    (props.latestTurn.completedAt === null || props.latestTurn.state === "running")
-      ? props.latestTurn.turnId
-      : null;
+  // One definition of "still live", shared with the fold derivation: two
+  // copies of this test are what let a row and the fold beside it disagree.
+  const unsettledTurnId = deriveUnsettledTurnId(props.latestTurn ?? null);
 
   useEffect(() => {
     const previous = previousLatestTurnRef.current;
@@ -1990,6 +2044,24 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     [suspendEndScrollMaintenanceForDisclosure],
   );
 
+  const onToggleReasoning = useCallback(
+    (messageId: string) => {
+      // The anchor must be the feed row id, which for a message row is the
+      // message id, or position restoration is skipped for every row.
+      suspendEndScrollMaintenanceForDisclosure(messageId);
+      setInteractionState((current) => {
+        const next = new Set(current.expandedReasoningMessageIds);
+        if (next.has(messageId)) {
+          next.delete(messageId);
+        } else {
+          next.add(messageId);
+        }
+        return { ...current, expandedReasoningMessageIds: next };
+      });
+    },
+    [suspendEndScrollMaintenanceForDisclosure],
+  );
+
   const onPressImage = useCallback((uri: string, headers?: Record<string, string>) => {
     setExpandedImage({ uri, headers });
   }, []);
@@ -2007,6 +2079,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const getFixedItemSize = useCallback(
     (entry: ThreadFeedEntry) => {
       switch (entry.type) {
+        case "message":
+          // A collapsed reasoning row is the same chrome as a work toggle.
+          return entry.message.role === "reasoning" &&
+            entry.message.text.trim().length > 0 &&
+            !expandedReasoningMessageIds.has(entry.message.id)
+            ? WORK_GROUP_TOGGLE_HEIGHT
+            : undefined;
         case "turn-fold":
           return TURN_FOLD_HEIGHT;
         case "work-toggle":
@@ -2026,7 +2105,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           return undefined;
       }
     },
-    [expandedWorkRows, workingRowHeight, appearance.baseFontSize],
+    [expandedReasoningMessageIds, expandedWorkRows, workingRowHeight, appearance.baseFontSize],
   );
 
   const renderItem = useCallback(
@@ -2035,8 +2114,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         environmentId: props.environmentId,
         copiedRowId,
         expandedWorkRows,
+        expandedReasoningMessageIds,
         terminalAssistantMessageIds,
         unsettledTurnId,
+        isWorking: props.activeWorkStartedAt !== null,
+        onToggleReasoning,
         onCopyWorkRow,
         onToggleWorkGroup,
         onToggleWorkRow,
@@ -2055,8 +2137,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     [
       copiedRowId,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       terminalAssistantMessageIds,
       unsettledTurnId,
+      props.activeWorkStartedAt,
+      onToggleReasoning,
       iconSubtleColor,
       userBubbleColor,
       markdownStyles,

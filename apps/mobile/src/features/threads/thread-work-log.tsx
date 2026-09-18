@@ -269,6 +269,68 @@ export function ThreadWorkLog(props: {
   );
 }
 
+/**
+ * A provider's thinking trace. Collapsed by default: reasoning is context for
+ * the answer, not the answer. `expanded` lives on the feed so it survives row
+ * recycling; `children` is the trace body and only mounts while open. The
+ * collapsed row is the same chrome as a work toggle, so the feed can size it
+ * before it renders.
+ */
+export function ThreadReasoningRow(props: {
+  readonly iconSubtleColor: import("react-native").ColorValue;
+  readonly expanded: boolean;
+  readonly label: string;
+  readonly onToggle: () => void;
+  readonly children: import("react").ReactNode;
+}) {
+  return (
+    <View className="-mx-1 mb-1 px-1 py-0">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: props.expanded }}
+        accessibilityLabel={props.label}
+        accessibilityHint={`Double tap to ${props.expanded ? "hide" : "show"} the thinking trace.`}
+        hitSlop={4}
+        onPress={() => {
+          triggerDisclosureFeedback();
+          props.onToggle();
+        }}
+        className="min-h-8 flex-row items-center gap-1.5 rounded-md px-0.5 py-0 active:bg-subtle"
+      >
+        <View className="h-[18px] w-5 items-center justify-center">
+          <SymbolView
+            name={{ ios: "brain", android: "psychology" }}
+            size={13}
+            tintColor={props.iconSubtleColor}
+            type="monochrome"
+          />
+        </View>
+        <Text className="min-w-0 flex-1 text-sm text-foreground-muted" numberOfLines={1}>
+          {props.label}
+        </Text>
+        <SymbolView
+          name={props.expanded ? "chevron.down" : "chevron.right"}
+          size={11}
+          tintColor={props.iconSubtleColor}
+          type="monochrome"
+        />
+      </Pressable>
+      {props.expanded ? (
+        <View className="mb-1.5 ml-7 mt-1 rounded-xl bg-subtle px-3 py-2">
+          <ScrollView
+            nestedScrollEnabled
+            directionalLockEnabled
+            showsVerticalScrollIndicator
+            className="max-h-80"
+          >
+            {props.children}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function ThreadWorkGroupToggle(props: {
   readonly expanded: boolean;
   readonly hiddenCount: number;
