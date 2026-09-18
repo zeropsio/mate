@@ -31,7 +31,7 @@ import { AppText as Text } from "../../components/AppText";
 import { ZeropsMark } from "../../components/ZeropsMark";
 import { cn } from "../../lib/cn";
 import { THREAD_WORK_ROW_MIN_HEIGHT, type deriveThreadWorkLogSizing } from "../../lib/layout";
-import type { ThreadFeedActivity } from "../../lib/threadActivity";
+import { type ThreadFeedActivity, workEntryRowLabel } from "../../lib/threadActivity";
 import {
   resolveThreadWorkGroupInitialScroll,
   shouldFollowThreadWorkGroupAppend,
@@ -280,21 +280,6 @@ export function ShimmeringWorkContent(props: {
       ) : null}
     </View>
   );
-}
-
-function stripShellWrapper(value: string): string {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^\/bin\/zsh -lc ['"]?([\s\S]*?)['"]?$/);
-  return (match?.[1] ?? trimmed).trim();
-}
-
-function compactActivityDetail(detail: string | null): string | null {
-  if (!detail) {
-    return null;
-  }
-
-  const cleaned = stripShellWrapper(detail).replace(/\s+/g, " ").trim();
-  return cleaned.length > 0 ? cleaned : null;
 }
 
 function workRowSymbolName(icon: ThreadFeedActivity["icon"]): AppSymbolName {
@@ -662,8 +647,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
   const fullDetail = expanded ? row.getFullDetail() : null;
   const viewedImagePath = workEntryViewedImagePath(row.workEntry);
   const toolPresentation = resolveWorkEntryToolPresentation(row.workEntry);
-  const previewText =
-    toolPresentation?.displayName ?? compactActivityDetail(row.detail) ?? row.summary;
+  const previewText = workEntryRowLabel(row.workEntry);
   const displayText =
     !toolPresentation && expanded && row.workEntry.command?.trim() ? "Command" : previewText;
   const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
