@@ -240,3 +240,11 @@ If the preset needs different Claude files, give it a different `CLAUDE_CONFIG_D
 different API keys, base URLs, or router settings, use Environment variables.
 
 Do not put environment variable assignments in `Launch arguments`.
+
+## Usage limits
+
+If your Claude subscription runs out of usage mid-turn, the thread shows which
+limit was reached and the remaining wait when Claude provides a reset time.
+Claude Code holds the turn until that window reopens, so it can keep showing as
+working. Wait for the reset, or stop the turn and continue later. The warning's
+timestamp shows when the displayed wait started.
