@@ -8,6 +8,12 @@ separate from the raw token cost shown here.
 Grok Build totals come from persisted session updates. Interactive turns that never wrote a
 completed-turn record will not appear.
 
+Usage includes each configured account's history, including disabled accounts. Custom homes follow
+the account's home setting or its `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, or `GROK_HOME` environment
+variable. Use absolute paths or `~/` paths in the account's environment settings; relative
+environment paths depend on each project's working directory and cannot be reliably discovered
+by Usage. Accounts sharing a history directory count once.
+
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
 Code, per connected environment: the session and weekly windows, plus a per-model weekly window
 such as Fable when your plan has one. Each window is a bar from the moment it opened to its reset,

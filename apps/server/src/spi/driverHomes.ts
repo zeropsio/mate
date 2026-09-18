@@ -6,7 +6,7 @@
  * knowledge that belongs to the ported drivers
  * (`provider/Drivers/ClaudeHome.ts`, `provider/Drivers/CodexHomeLayout.ts`).
  *
- * This module is the ONE place that imports those two files. A port that
+ * This module is the ONE place that imports those driver files. A port that
  * renames/removes a field this module reads (or changes what
  * `makeClaudeEnvironment` does to the environment) fails `driverHomes.test.ts`,
  * not a random call site in `textGeneration/` or `usage/`.
@@ -18,12 +18,13 @@
  *
  * @module driverHomes
  */
-import type { ClaudeSettings, CodexSettings } from "@t3tools/contracts";
+import type { ClaudeSettings, CodexSettings, ProviderInstanceConfig } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
 import type * as Path from "effect/Path";
 
 import { makeClaudeEnvironment, resolveClaudeHomePath } from "../provider/Drivers/ClaudeHome.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
+import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 
 /**
  * The resolved location of a Codex "home" (config/session/auth directory)
@@ -65,4 +66,16 @@ export function codexHomeLayout(
   config: CodexSettings,
 ): Effect.Effect<CodexHomeLayout, never, Path.Path> {
   return resolveCodexHomeLayout(config);
+}
+
+/**
+ * The environment a provider instance's CLI runs with: the host environment
+ * with the instance's own variables (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, ...)
+ * laid over it, last value winning.
+ */
+export function providerInstanceEnvironment(
+  environment: ProviderInstanceConfig["environment"],
+  baseEnv?: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  return mergeProviderInstanceEnvironment(environment, baseEnv);
 }
