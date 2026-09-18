@@ -28,6 +28,7 @@ export interface RecipeOption {
  * says why rather than leaving a list of one that reads like a stub.
  */
 export function recipeOptions(input: {
+  /** The word for what is being added, as the dialog says it: "Mate", "stage", "production". */
   readonly roleLabel: string;
   /** The tier read from the group repo, when there is one merged. */
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
@@ -38,7 +39,7 @@ export function recipeOptions(input: {
   if (input.tier !== undefined) {
     options.push({
       id: "tier",
-      label: `The project's ${input.roleLabel.toLowerCase()} recipe`,
+      label: `The project's ${input.roleLabel} recipe`,
       // Every service arrives empty: the platform cannot clone a private
       // repository, so the tier is imported `startWithoutCode` and the first
       // deploy fills them.

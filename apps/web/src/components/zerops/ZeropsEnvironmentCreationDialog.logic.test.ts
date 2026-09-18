@@ -19,7 +19,7 @@ const TIER = {
 describe("recipeOptions", () => {
   it("offers the project's recipe first, then nothing yet", () => {
     const options = recipeOptions({
-      roleLabel: "Stage",
+      roleLabel: "stage",
       tier: TIER,
       services: ["app", "db"],
     });
@@ -34,12 +34,12 @@ describe("recipeOptions", () => {
    * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
   it("says the services arrive without code", () => {
-    const options = recipeOptions({ roleLabel: "Stage", tier: TIER, services: ["app", "db"] });
+    const options = recipeOptions({ roleLabel: "stage", tier: TIER, services: ["app", "db"] });
     expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
   });
 
   it("explains a project with no recipe rather than showing a lone option", () => {
-    const options = recipeOptions({ roleLabel: "Dev", tier: undefined, services: [] });
+    const options = recipeOptions({ roleLabel: "Mate", tier: undefined, services: [] });
     expect(options.map((option) => option.id)).toEqual(["none"]);
     expect(options[0]?.detail).toBe(
       "This project has no recipe on main yet. The agent sets the application up.",
@@ -47,14 +47,14 @@ describe("recipeOptions", () => {
   });
 
   it("still names the recipe when the tier declares no services", () => {
-    const options = recipeOptions({ roleLabel: "Dev", tier: TIER, services: [] });
+    const options = recipeOptions({ roleLabel: "Mate", tier: TIER, services: [] });
     expect(options[0]?.detail).toBe("From the project's repository, on main.");
   });
 });
 
 describe("validateCreationForm", () => {
   const options: ReadonlyArray<RecipeOption> = recipeOptions({
-    roleLabel: "Stage",
+    roleLabel: "stage",
     tier: TIER,
     services: ["app"],
   });

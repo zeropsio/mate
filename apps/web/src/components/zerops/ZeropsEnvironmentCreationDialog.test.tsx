@@ -35,6 +35,13 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).toContain("Add stage to Acme Docs");
   });
 
+  it("calls a dev environment a Mate, as the product does", () => {
+    const html = render({ role: "dev", defaultName: "Acme Docs - Otto" });
+    expect(html).toContain("Add Mate to Acme Docs");
+    expect(html).toContain("The project&#x27;s Mate recipe");
+    expect(html).not.toContain("dev ");
+  });
+
   it("offers the project's own recipe, and nothing yet", () => {
     const html = render();
     expect(html).toContain("The project&#x27;s stage recipe");

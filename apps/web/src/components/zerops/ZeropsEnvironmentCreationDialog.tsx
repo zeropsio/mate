@@ -83,10 +83,10 @@ export function ZeropsEnvironmentCreationForm({
   onCreate,
 }: ZeropsEnvironmentCreationFormProps) {
   const id = useId();
-  const roleLabel = environmentRoleLabel(role) ?? role;
+  const what = environmentWord(role);
   const options = useMemo(
-    () => recipeOptions({ roleLabel, tier, services: tierServices }),
-    [roleLabel, tier, tierServices],
+    () => recipeOptions({ roleLabel: what, tier, services: tierServices }),
+    [what, tier, tierServices],
   );
   const [name, setName] = useState(defaultName);
   const [nameTouched, setNameTouched] = useState(false);
@@ -217,11 +217,20 @@ export function ZeropsEnvironmentCreationForm({
           Cancel
         </Button>
         <Button type="submit">
-          Add {roleLabel.toLowerCase()} to {groupName}
+          Add {what} to {groupName}
         </Button>
       </DialogFooter>
     </form>
   );
+}
+
+/**
+ * What the dialog calls the thing it adds: a dev environment is a Mate — the
+ * product's word everywhere else (the audit run, 2026-09-17: "Add dev to
+ * Todo") — and the others go by their role.
+ */
+function environmentWord(role: ZeropsEnvironmentRole): string {
+  return role === "dev" ? "Mate" : (environmentRoleLabel(role) ?? role).toLowerCase();
 }
 
 /**
@@ -255,14 +264,14 @@ export function ZeropsEnvironmentCreationDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const roleLabel = environmentRoleLabel(form.role) ?? form.role;
+  const what = environmentWord(form.role);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup className="max-w-lg">
         <DialogHeader>
           {/* The title names the thing, the button names what happens to it.
               Carrying one string in both said nothing twice. */}
-          <DialogTitle>New {roleLabel.toLowerCase()} environment</DialogTitle>
+          <DialogTitle>{form.role === "dev" ? "New Mate" : `New ${what} environment`}</DialogTitle>
           <DialogDescription>
             A new Zerops project in {form.groupName}. It takes a couple of minutes to come up.
           </DialogDescription>
