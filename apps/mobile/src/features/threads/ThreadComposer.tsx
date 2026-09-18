@@ -6,32 +6,11 @@ import type {
   ProviderInteractionMode,
   RuntimeMode,
   ServerConfig as T3ServerConfig,
-  UsageLimitsReport,
 } from "@t3tools/contracts";
-import {
-  collectProviderUsageLimits,
-  hasProviderUsageLimits,
-  isUsageLimitsCommand,
-  USAGE_LIMITS_COMMAND,
-} from "@t3tools/shared/usageLimits";
-import {
-  detectComposerTrigger,
-  replaceTextRange,
-  serializeComposerFileLink,
-  type ComposerTrigger,
-} from "@t3tools/shared/composerTrigger";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  Pressable,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { ActivityIndicator, Image, Platform, Pressable, View, type ViewStyle } from "react-native";
 import ImageViewing from "react-native-image-viewing";
 import Animated, {
   FadeIn,
@@ -47,11 +26,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
 import { GlassSurface } from "../../components/GlassSurface";
-import {
-  ComposerEditor,
-  type ComposerEditorHandle,
-  type ComposerEditorSelection,
-} from "../../components/ComposerEditor";
+import { ComposerEditor, type ComposerEditorHandle } from "../../components/ComposerEditor";
 import {
   ComposerInlineControl,
   ComposerToolbarButton,
@@ -68,15 +43,9 @@ import {
 } from "../../lib/modelOptions";
 import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
 import type { RemoteClientConnectionState } from "../../lib/connection";
-import {
-  insertRankedSearchResult,
-  normalizeSearchQuery,
-  scoreQueryMatch,
-} from "@t3tools/shared/searchRanking";
 import { resolveProviderOptionDescriptors } from "../../lib/providerOptions";
-import { useComposerPathSearch } from "../../state/use-composer-path-search";
-import { ComposerCommandPopover, type ComposerCommandItem } from "./ComposerCommandPopover";
-import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
+import { ComposerCommandPopover } from "./ComposerCommandPopover";
+import { useComposerCommandMenu } from "./use-composer-command-menu";
 import {
   type ExistingThreadSettingsRouteSession,
   useExistingThreadSettingsRoutePresentation,
@@ -125,8 +94,6 @@ export interface ThreadComposerProps {
   readonly onRemoveDraftImage: (imageId: string) => void;
   readonly onStopThread: () => void;
   readonly onSendMessage: () => Promise<MessageId | null>;
-  /** `/usage-limits` resolves locally; the host decides where the report shows. Null clears it. */
-  readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly onUpdateModelSelection: (modelSelection: ModelSelection) => void;
   readonly onUpdateRuntimeMode: (runtimeMode: RuntimeMode) => void;
   readonly onUpdateInteractionMode: (interactionMode: ProviderInteractionMode) => void;
@@ -352,233 +319,19 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       ) ?? null
     );
   }, [props.serverConfig, props.selectedThread.modelSelection.instanceId]);
-  const { onShowUsageLimits } = props;
-  // The client owns /usage-limits only where Limits has data for the selected
-  // provider; elsewhere the name stays the provider's own and is sent through untouched.
-  const usageLimitsOffered =
-    selectedProviderStatus !== null &&
-    hasProviderUsageLimits(
-      selectedProviderStatus.driver,
-      props.serverConfig?.providers ?? [],
-      props.serverConfig?.usageLimitSources ?? [],
-    );
-  // Answered locally from the last Limits snapshot; the agent never sees it.
-  const openUsageLimits = useCallback(() => {
-    const report = collectProviderUsageLimits(
-      currentModelSelection.instanceId,
-      props.serverConfig?.providers ?? [],
-      props.serverConfig?.usageLimitSources ?? [],
-      Date.now(),
-    );
-    onShowUsageLimits(report);
-    if (!report) {
-      Alert.alert("Usage limits unavailable", "This provider does not currently report limits.");
-    }
-    return report !== null;
-  }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
 
-  // ── Trigger detection ────────────────────────────────────
-  const [composerSelection, setComposerSelection] = useState(() => ({
-    start: props.draftMessage.length,
-    end: props.draftMessage.length,
-  }));
-
-  const handleSelectionChange = useCallback((selection: ComposerEditorSelection) => {
-    setComposerSelection(selection);
-  }, []);
-  useEffect(() => {
-    const end = props.draftMessage.length;
-    setComposerSelection((selection) => {
-      const start = Math.min(selection.start, end);
-      const selectionEnd = Math.min(selection.end, end);
-      if (start === selection.start && selectionEnd === selection.end) {
-        return selection;
-      }
-      return { start, end: selectionEnd };
-    });
-  }, [props.draftMessage.length]);
-
-  const composerTrigger = useMemo<ComposerTrigger | null>(() => {
-    if (composerSelection.start !== composerSelection.end) {
-      return null;
-    }
-    return detectComposerTrigger(props.draftMessage, composerSelection.end);
-  }, [composerSelection, props.draftMessage]);
-  const pathSearch = useComposerPathSearch({
+  const composerMenu = useComposerCommandMenu({
+    draftMessage: props.draftMessage,
     environmentId: props.environmentId,
-    cwd: composerTrigger?.kind === "path" ? props.projectCwd : null,
-    query: composerTrigger?.kind === "path" ? composerTrigger.query : null,
+    projectCwd: props.projectCwd,
+    selectedProviderStatus,
+    hasThread: true,
+    onChangeDraftMessage: props.onChangeDraftMessage,
+    onUpdateInteractionMode: props.onUpdateInteractionMode,
   });
-
-  const composerMenuItems: ComposerCommandItem[] = useMemo(() => {
-    if (!composerTrigger) return [];
-
-    if (composerTrigger.kind === "slash-command") {
-      const q = composerTrigger.query.toLowerCase();
-      const allBuiltIn = [
-        {
-          id: "cmd:model",
-          type: "slash-command" as const,
-          command: "model",
-          label: "/model",
-          description: "Switch model",
-        },
-        {
-          id: "cmd:plan",
-          type: "slash-command" as const,
-          command: "plan",
-          label: "/plan",
-          description: "Switch to plan mode",
-        },
-        {
-          id: "cmd:default",
-          type: "slash-command" as const,
-          command: "default",
-          label: "/default",
-          description: "Switch to default mode",
-        },
-      ];
-      const builtIn = allBuiltIn.filter((item) => item.command.includes(q));
-
-      const providerCommands: ComposerCommandItem[] = [];
-      for (const cmd of selectedProviderStatus?.slashCommands ?? []) {
-        if (!cmd.name.toLowerCase().includes(q)) continue;
-        providerCommands.push({
-          id: `pcmd:${cmd.name}`,
-          type: "provider-slash-command" as const,
-          command: cmd,
-          label: `/${cmd.name}`,
-          description: cmd.description ?? "",
-        });
-      }
-
-      const skillItems = (selectedProviderStatus?.skills ?? [])
-        .filter((skill) => matchesSlashSkillQuery(skill, q))
-        .map((skill) => ({
-          id: `skill:${skill.name}`,
-          type: "skill" as const,
-          skill,
-          label: `skill:${skill.name}`,
-          description: skill.shortDescription ?? skill.description ?? "",
-        }));
-
-      return [...builtIn, ...providerCommands, ...skillItems];
-    }
-
-    if (composerTrigger.kind === "skill") {
-      const enabledSkills = (selectedProviderStatus?.skills ?? []).filter((s) => s.enabled);
-      const normalizedQuery = normalizeSearchQuery(composerTrigger.query, {
-        trimLeadingPattern: /^\p{Sc}+/u,
-      });
-
-      if (!normalizedQuery) {
-        return enabledSkills.slice(0, 20).map((skill) => ({
-          id: `skill:${skill.name}`,
-          type: "skill" as const,
-          skill,
-          label: skill.displayName ?? skill.name,
-          description: skill.shortDescription ?? skill.description ?? "",
-        }));
-      }
-
-      const ranked: Array<{
-        item: (typeof enabledSkills)[number];
-        score: number;
-        tieBreaker: string;
-      }> = [];
-      for (const skill of enabledSkills) {
-        const displayLabel = (skill.displayName ?? skill.name).toLowerCase();
-        const scores = [
-          scoreQueryMatch({
-            value: skill.name.toLowerCase(),
-            query: normalizedQuery,
-            exactBase: 0,
-            prefixBase: 2,
-            boundaryBase: 4,
-            includesBase: 6,
-            fuzzyBase: 100,
-            boundaryMarkers: ["-", "_", "/"],
-          }),
-          scoreQueryMatch({
-            value: displayLabel,
-            query: normalizedQuery,
-            exactBase: 1,
-            prefixBase: 3,
-            boundaryBase: 5,
-            includesBase: 7,
-            fuzzyBase: 110,
-          }),
-          scoreQueryMatch({
-            value: skill.shortDescription?.toLowerCase() ?? "",
-            query: normalizedQuery,
-            exactBase: 20,
-            prefixBase: 22,
-            boundaryBase: 24,
-            includesBase: 26,
-          }),
-          scoreQueryMatch({
-            value: skill.description?.toLowerCase() ?? "",
-            query: normalizedQuery,
-            exactBase: 30,
-            prefixBase: 32,
-            boundaryBase: 34,
-            includesBase: 36,
-          }),
-        ].filter((s): s is number => s !== null);
-
-        if (scores.length > 0) {
-          insertRankedSearchResult(
-            ranked,
-            {
-              item: skill,
-              score: Math.min(...scores),
-              tieBreaker: `${displayLabel}\u0000${skill.name}`,
-            },
-            20,
-          );
-        }
-      }
-
-      return ranked.map(({ item: skill }) => ({
-        id: `skill:${skill.name}`,
-        type: "skill" as const,
-        skill,
-        label: skill.displayName ?? skill.name,
-        description: skill.shortDescription ?? skill.description ?? "",
-      }));
-    }
-
-    if (composerTrigger.kind === "path") {
-      return pathSearch.entries.map((entry) => {
-        const parts = entry.path.split("/");
-        return {
-          id: `path:${entry.path}`,
-          type: "path" as const,
-          path: entry.path,
-          kind: entry.kind,
-          label: parts[parts.length - 1] ?? entry.path,
-          description: parts.length > 1 ? parts.slice(0, -1).join("/") : "",
-        };
-      });
-    }
-
-    return [];
-  }, [composerTrigger, pathSearch.entries, selectedProviderStatus]);
-
-  // ── Handle command selection ──────────────────────────────
-  const { onChangeDraftMessage, onUpdateInteractionMode, draftMessage, onSendMessage } = props;
+  const { onSendMessage } = props;
 
   const handleSend = useCallback(async () => {
-    // Typed out in full rather than picked from the menu. Attachments mean the
-    // user is sending a prompt, so those go through as usual.
-    if (
-      usageLimitsOffered &&
-      isUsageLimitsCommand(draftMessage) &&
-      props.draftAttachments.length === 0
-    ) {
-      if (openUsageLimits()) onChangeDraftMessage("");
-      return;
-    }
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
@@ -600,87 +353,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       inFlightThreadIdsRef.current.delete(threadKey);
     }
   }, [
-    draftMessage,
-    props.draftAttachments.length,
-    onChangeDraftMessage,
-    openUsageLimits,
-    usageLimitsOffered,
     onSendMessage,
     props.environmentId,
     props.environmentLabel,
     props.selectedThread.id,
     props.selectedThread.title,
   ]);
-  const handleCommandSelect = useCallback(
-    (item: ComposerCommandItem) => {
-      if (!composerTrigger) return;
-
-      if (
-        item.type === "slash-command" &&
-        (item.command === "plan" || item.command === "default")
-      ) {
-        const result = replaceTextRange(
-          draftMessage,
-          composerTrigger.rangeStart,
-          composerTrigger.rangeEnd,
-          "",
-        );
-        setComposerSelection({ start: result.cursor, end: result.cursor });
-        onChangeDraftMessage(result.text);
-        onUpdateInteractionMode(item.command);
-        return;
-      }
-
-      // Picking /usage-limits is the action itself; the draft keeps nothing of it.
-      // With attachments aboard the pick just inserts the text, so it sends as a prompt.
-      if (
-        item.type === "provider-slash-command" &&
-        item.command.name === USAGE_LIMITS_COMMAND.name &&
-        usageLimitsOffered &&
-        props.draftAttachments.length === 0
-      ) {
-        const cleared = replaceTextRange(
-          draftMessage,
-          composerTrigger.rangeStart,
-          composerTrigger.rangeEnd,
-          "",
-        );
-        setComposerSelection({ start: cleared.cursor, end: cleared.cursor });
-        onChangeDraftMessage(cleared.text);
-        openUsageLimits();
-        return;
-      }
-
-      let replacement = "";
-      if (item.type === "path") {
-        replacement = `${serializeComposerFileLink(item.path)} `;
-      } else if (item.type === "skill") {
-        replacement = `$${item.skill.name} `;
-      } else if (item.type === "slash-command") {
-        replacement = `/${item.command} `;
-      } else if (item.type === "provider-slash-command") {
-        replacement = `/${item.command.name} `;
-      }
-
-      const result = replaceTextRange(
-        draftMessage,
-        composerTrigger.rangeStart,
-        composerTrigger.rangeEnd,
-        replacement,
-      );
-      setComposerSelection({ start: result.cursor, end: result.cursor });
-      onChangeDraftMessage(result.text);
-    },
-    [
-      composerTrigger,
-      draftMessage,
-      onChangeDraftMessage,
-      onUpdateInteractionMode,
-      openUsageLimits,
-      props.draftAttachments.length,
-      usageLimitsOffered,
-    ],
-  );
 
   // ── Model menu ───────────────────────────────────────────
   const modelOptions = useMemo(
@@ -797,13 +475,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         layout={COMPOSER_LAYOUT_TRANSITION}
         style={{ maxWidth: props.contentMaxWidth }}
       >
-        {composerTrigger && composerMenuItems.length > 0 ? (
+        {composerMenu.trigger && composerMenu.items.length > 0 ? (
           <View className="absolute inset-x-0 bottom-full z-10 mb-2">
             <ComposerCommandPopover
-              items={composerMenuItems}
-              triggerKind={composerTrigger.kind}
-              isLoading={pathSearch.isPending}
-              onSelect={handleCommandSelect}
+              items={composerMenu.items}
+              triggerKind={composerMenu.trigger.kind}
+              isLoading={composerMenu.isLoading}
+              onSelect={composerMenu.onSelect}
             />
           </View>
         ) : null}
@@ -864,9 +542,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
               multiline
               value={props.draftMessage}
               skills={selectedProviderStatus?.skills ?? []}
-              selection={composerSelection}
+              selection={composerMenu.selection}
               onChangeText={props.onChangeDraftMessage}
-              onSelectionChange={handleSelectionChange}
+              onSelectionChange={composerMenu.onSelectionChange}
               onPasteImages={(uris) => void props.onNativePasteImages(uris)}
               placeholder={props.placeholder}
               onFocus={handleFocus}

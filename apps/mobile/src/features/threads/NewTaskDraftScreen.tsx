@@ -35,6 +35,8 @@ import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { hasProviderUsageLimits, isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { ComposerSurface } from "./ThreadComposer";
+import { ComposerCommandPopover } from "./ComposerCommandPopover";
+import { useComposerCommandMenu } from "./use-composer-command-menu";
 import {
   useThreadSettingsSheetPresentation,
   type NavigationWithFinishTransitioning,
@@ -223,6 +225,19 @@ export function NewTaskDraftScreen(props: {
   const isIncomingShareTransferPending = Boolean(
     incomingShare && cancelledIncomingShareId !== props.incomingShareId,
   );
+  const composerMenu = useComposerCommandMenu({
+    draftMessage: flow.prompt,
+    environmentId: selectedProject?.environmentId ?? null,
+    projectCwd:
+      (flow.workspaceMode === "worktree"
+        ? selectedProject?.workspaceRoot
+        : (flow.selectedWorktreePath ?? selectedProject?.workspaceRoot)) || null,
+    selectedProviderStatus: flow.selectedProviderStatus,
+    hasThread: false,
+    enabled: isComposerFocused && !isIncomingShareTransferPending,
+    onChangeDraftMessage: flow.setPrompt,
+    onUpdateInteractionMode: flow.planModeEnabled ? flow.setInteractionMode : undefined,
+  });
   usePreventRemove(
     (isIncomingShareTransferPending && !isProjectPickerReturnActive) || isCancellingShareImport,
     () => undefined,
@@ -874,8 +889,10 @@ export function NewTaskDraftScreen(props: {
       multiline
       scrollEnabled
       value={flow.prompt}
-      skills={flow.selectedProviderSkills}
+      skills={flow.selectedProviderStatus?.skills ?? []}
+      selection={composerMenu.selection}
       onChangeText={flow.setPrompt}
+      onSelectionChange={composerMenu.onSelectionChange}
       onFocus={() => setIsComposerFocused(true)}
       onBlur={() => setIsComposerFocused(false)}
       onPasteImages={(uris) => void handleNativePasteImages(uris)}
@@ -1014,6 +1031,16 @@ export function NewTaskDraftScreen(props: {
 
   const composerDock = (
     <View className="bg-sheet px-4 pt-1" style={{ paddingBottom: controlsBottomPadding }}>
+      {composerMenu.trigger && composerMenu.items.length > 0 ? (
+        <View className="mb-2">
+          <ComposerCommandPopover
+            items={composerMenu.items}
+            triggerKind={composerMenu.trigger.kind}
+            isLoading={composerMenu.isLoading}
+            onSelect={composerMenu.onSelect}
+          />
+        </View>
+      ) : null}
       <View className="pb-1">{workspaceControls}</View>
 
       {modelUnavailable ? (
