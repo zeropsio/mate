@@ -451,9 +451,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return { isOpen: true, activeSurfaceId: surface.id, surfaces };
           }),
         })),
-      openFile: (ref, relativePath, line) =>
+      openFile: (ref, requestedPath, line) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            // Workspace entry paths use '/', including on Windows. A folder link
+            // ends in one; the tree names the folder without it.
+            const relativePath = /^[A-Za-z]:\/+$/.test(requestedPath)
+              ? requestedPath
+              : requestedPath.replace(/\/+$/, "") || requestedPath;
             const withoutStandaloneExplorer = current.surfaces.filter(
               (surface) => surface.kind !== "files",
             );
