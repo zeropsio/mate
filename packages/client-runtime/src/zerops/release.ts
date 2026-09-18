@@ -21,6 +21,15 @@
  * A service whose two shas already match is not a change; the tag still lists
  * it, because a tag lists what production should run, not what is new.
  *
+ * ## A project with no stage (D28)
+ *
+ * A project may be a Mate and a production with nothing in between. There is
+ * no deployed commit to list then, and nothing to have verified one on: what
+ * is merged is what such a project releases, so the candidate is each
+ * repository's default branch. The person's merge is the review, the tag is
+ * still the approval, and the day the project declares a stage the candidate
+ * is what that stage runs again (`releaseBasis`).
+ *
  * ## Who may
  *
  * Two gates, and only one of them is real. Gitea's tag protection lets the
@@ -155,11 +164,22 @@ export function suggestReleaseTags(tags: ReadonlyArray<string>): {
   };
 }
 
+/**
+ * Where a release's commits come from: what the stage runs, or — for a project
+ * that declares no stage — what each repository's default branch holds.
+ */
+export type ReleaseBasis = "stage" | "main";
+
+/** `main` for a project with no stage between its Mates and its production. */
+export function releaseBasis(declarations: ReadonlyArray<{ readonly tier: string }>): ReleaseBasis {
+  return declarations.some((entry) => entry.tier === "stage") ? "stage" : "main";
+}
+
 /** One row of what *Release* shows before it is pressed. */
 export interface ReleaseComparison {
   readonly service: string;
-  /** The sha the stage runs, short; `undefined` when it runs nothing. */
-  readonly stage: string | undefined;
+  /** The sha that would be released, short; `undefined` when the basis has none. */
+  readonly candidate: string | undefined;
   /** The sha production runs, short; `undefined` when it runs nothing. */
   readonly production: string | undefined;
   /** Whether this release would move the service at all. */
@@ -167,38 +187,39 @@ export interface ReleaseComparison {
 }
 
 /**
- * Per service, what the stage runs against what production runs.
+ * Per service, what would be released against what production runs.
  *
- * Both sides come from the sha in a deployed version's name, so a service the
- * stage has never deployed to has no side to compare and cannot be released —
- * there is no commit to list, and a tag listing a guess is a tag the broker
- * deploys.
+ * With a stage both sides come from the sha in a deployed version's name, so a
+ * service the stage has never deployed to has no side to compare and cannot be
+ * released — there is no commit to list, and a tag listing a guess is a tag the
+ * broker deploys. With none, the candidate is the default branch's head.
  */
 export function compareForRelease(input: {
-  /** `{service: full sha}` from each environment's version names. */
-  readonly stage: ReadonlyMap<string, string>;
+  /** `{service: full sha}` that would be released (`ReleaseBasis`). */
+  readonly candidate: ReadonlyMap<string, string>;
+  /** `{service: full sha}` from production's version names. */
   readonly production: ReadonlyMap<string, string>;
 }): ReadonlyArray<ReleaseComparison> {
-  const services = [...new Set([...input.stage.keys(), ...input.production.keys()])].sort(
+  const services = [...new Set([...input.candidate.keys(), ...input.production.keys()])].sort(
     (left, right) => left.localeCompare(right, "en"),
   );
   return services.map((service) => {
-    const stage = input.stage.get(service);
+    const candidate = input.candidate.get(service);
     const production = input.production.get(service);
     return {
       service,
-      stage: stage === undefined ? undefined : stage.slice(0, 7),
+      candidate: candidate === undefined ? undefined : candidate.slice(0, 7),
       production: production === undefined ? undefined : production.slice(0, 7),
-      changed: stage !== undefined && stage !== production,
+      changed: candidate !== undefined && candidate !== production,
     };
   });
 }
 
-/** What a release would list: every service the stage has a commit for. */
-export function releaseEntriesFromStage(
-  stage: ReadonlyMap<string, string>,
+/** What a release would list: every service the basis has a commit for. */
+export function releaseEntries(
+  candidate: ReadonlyMap<string, string>,
 ): ReadonlyArray<ReleaseEntry> {
-  return [...stage.entries()]
+  return [...candidate.entries()]
     .filter(([, commit]) => FULL_SHA.test(commit))
     .map(([service, commit]) => ({ service, commit: commit.toLowerCase() }));
 }
@@ -217,6 +238,9 @@ export const RELEASE_NOTHING_TO_LIST = "The stage has not deployed anything to r
  * a release where *nothing* moved is not a release.
  */
 export const RELEASE_NOTHING_CHANGED = "Production already runs what the stage runs.";
+/** The same two, for a project with no stage — never a sentence about one it lacks. */
+export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
+export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
 
 /**
  * Whether to offer *Release* at all.
@@ -234,29 +258,43 @@ export function releaseGate(input: {
    * side is not known — then the gate says nothing about what would move.
    */
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
+  /** Where the entries come from; a stage unless the project has none. */
+  readonly basis?: ReleaseBasis | undefined;
 }): ReleaseGate {
+  const onMain = input.basis === "main";
   if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
-  if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_TO_LIST };
+  if (input.entries.length === 0) {
+    return { allowed: false, reason: onMain ? RELEASE_NOTHING_MERGED : RELEASE_NOTHING_TO_LIST };
+  }
   const comparison = input.comparison;
   if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
-    return { allowed: false, reason: RELEASE_NOTHING_CHANGED };
+    return {
+      allowed: false,
+      reason: onMain ? RELEASE_NOTHING_NEW_ON_MAIN : RELEASE_NOTHING_CHANGED,
+    };
   }
   return { allowed: true };
 }
 
 /**
- * What the button shows before it is pressed, from what the two environments
- * actually run.
+ * What the button shows before it is pressed, from what would be released and
+ * what production actually runs.
  *
- * The whole offer in one answer, so the tab holds no release logic of its own:
- * the comparison the person reads, the tag name that would be suggested, and
- * whether it is offered at all.
+ * The whole offer in one answer, so no surface holds release logic of its own:
+ * the comparison the person reads, the tag name that would be suggested,
+ * whether it is offered at all, and the entries the tag lists — the verb tags
+ * exactly what the offer showed.
  */
 export function releaseOffer(input: {
   readonly mayRelease: boolean;
-  /** `{service: full sha}` the stage runs (`groupDeploys.releaseDeploys`). */
-  readonly stage: ReadonlyMap<string, string>;
-  /** The same for production. */
+  readonly basis: ReleaseBasis;
+  /**
+   * `{service: full sha}` that would be released: what the stage runs
+   * (`groupDeploys.releaseDeploys`), or each repository's default branch for a
+   * project with no stage.
+   */
+  readonly candidate: ReadonlyMap<string, string>;
+  /** `{service: full sha}` production runs. */
   readonly production: ReadonlyMap<string, string>;
   /** Every `v*` tag on the group repo, so no name is suggested twice. */
   readonly tags: ReadonlyArray<string>;
@@ -264,13 +302,18 @@ export function releaseOffer(input: {
   readonly gate: ReleaseGate;
   readonly suggestion: string;
   readonly comparison: ReadonlyArray<ReleaseComparison>;
+  readonly entries: ReadonlyArray<ReleaseEntry>;
 } {
-  const entries = releaseEntriesFromStage(input.stage);
-  const comparison = compareForRelease({ stage: input.stage, production: input.production });
+  const entries = releaseEntries(input.candidate);
+  const comparison = compareForRelease({
+    candidate: input.candidate,
+    production: input.production,
+  });
   return {
-    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison }),
+    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison, basis: input.basis }),
     suggestion: suggestReleaseTags(input.tags).patch,
     comparison,
+    entries,
   };
 }
 

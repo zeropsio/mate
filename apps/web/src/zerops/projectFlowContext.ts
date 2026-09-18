@@ -15,6 +15,7 @@ import type {
   GroupEnvironmentRowInput,
   MissingEnvironmentRow,
   ReleaseComparison,
+  ReleaseEntry,
   ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
 import { createContext, useContext } from "react";
@@ -25,6 +26,8 @@ export interface ZeropsReleaseOffer {
   /** The next patch, suggested from the newest existing tag. */
   readonly suggestion: string;
   readonly comparison: ReadonlyArray<ReleaseComparison>;
+  /** What the tag would list — what the verb tags, so it matches what was shown. */
+  readonly entries: ReadonlyArray<ReleaseEntry>;
 }
 
 /** One project's flow: its environments, what is waiting, what was released. */

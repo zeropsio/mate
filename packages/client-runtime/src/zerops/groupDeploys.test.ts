@@ -8,6 +8,7 @@ import {
   deployWord,
   planDeployStatusReads,
   planDeployedVersionReads,
+  planMainHeadReads,
   releaseDeploys,
 } from "./groupDeploys.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -317,5 +318,36 @@ describe("what a release compares", () => {
       ),
     );
     expect(commits.stage.get("api")).toBe(OLD);
+  });
+});
+
+/**
+ * A project with a production and no stage releases what is merged (D28,
+ * `release.ts`), so the one read a stage spares it — each repository's default
+ * branch — is planned here, and only for such a project.
+ */
+describe("what a release from main has to read", () => {
+  const repositories = new Map([["api", "apidev"]]);
+
+  it("asks for the repository of every service the production runs", () => {
+    expect(planMainHeadReads({ declarations: [production], services, repositories })).toEqual([
+      { hostname: "api", repo: "apidev" },
+    ]);
+  });
+
+  it("asks under the hostname where the tier names no repository", () => {
+    expect(
+      planMainHeadReads({ declarations: [production], services, repositories: new Map() }),
+    ).toEqual([{ hostname: "api", repo: "api" }]);
+  });
+
+  it.each([
+    {
+      name: "a project with a stage, which releases what the stage runs",
+      declarations: [stage, production],
+    },
+    { name: "a project with no production to release to", declarations: [] },
+  ])("asks for nothing for $name", ({ declarations }) => {
+    expect(planMainHeadReads({ declarations, services, repositories })).toEqual([]);
   });
 });

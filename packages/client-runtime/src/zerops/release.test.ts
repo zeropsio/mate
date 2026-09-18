@@ -6,14 +6,17 @@ import {
   isReleaseTag,
   newestReleaseTag,
   readReleaseMessage,
-  releaseEntriesFromStage,
+  releaseEntries,
   releaseGate,
   releaseMessage,
+  releaseBasis,
   releaseOffer,
   releaseStatusContext,
   releaseVerdict,
   releaseWord,
   RELEASE_NOTHING_CHANGED,
+  RELEASE_NOTHING_MERGED,
+  RELEASE_NOTHING_NEW_ON_MAIN,
   RELEASE_NOTHING_TO_LIST,
   RELEASE_NOT_A_RELEASER,
   rollbackTo,
@@ -104,7 +107,7 @@ describe("what Release shows before it is pressed", () => {
   it("says, per service, what the stage runs against what production runs", () => {
     expect(
       compareForRelease({
-        stage: new Map([
+        candidate: new Map([
           ["api", API],
           ["web", WEB],
         ]),
@@ -114,20 +117,20 @@ describe("what Release shows before it is pressed", () => {
         ]),
       }),
     ).toEqual([
-      { service: "api", stage: "3f9c1b2", production: "1111111", changed: true },
-      { service: "web", stage: "77ab0e1", production: "77ab0e1", changed: false },
+      { service: "api", candidate: "3f9c1b2", production: "1111111", changed: true },
+      { service: "web", candidate: "77ab0e1", production: "77ab0e1", changed: false },
     ]);
   });
 
   it("names a service production has but the stage has not deployed to", () => {
-    expect(compareForRelease({ stage: new Map(), production: new Map([["api", API]]) })).toEqual([
-      { service: "api", stage: undefined, production: "3f9c1b2", changed: false },
-    ]);
+    expect(
+      compareForRelease({ candidate: new Map(), production: new Map([["api", API]]) }),
+    ).toEqual([{ service: "api", candidate: undefined, production: "3f9c1b2", changed: false }]);
   });
 
   it("lists every service the stage has a commit for, changed or not", () => {
     expect(
-      releaseEntriesFromStage(
+      releaseEntries(
         new Map([
           ["api", API],
           ["web", WEB],
@@ -137,7 +140,7 @@ describe("what Release shows before it is pressed", () => {
   });
 
   it("lists nothing for a version name that is not a commit", () => {
-    expect(releaseEntriesFromStage(new Map([["api", "hotfix"]]))).toEqual([]);
+    expect(releaseEntries(new Map([["api", "hotfix"]]))).toEqual([]);
   });
 });
 
@@ -176,7 +179,8 @@ describe("what Release offers, from what the environments run", () => {
   it("compares the stage against production, per service, and offers the next patch", () => {
     const offer = releaseOffer({
       mayRelease: true,
-      stage,
+      basis: "stage",
+      candidate: stage,
       production: new Map([
         ["api", OLD],
         ["web", WEB],
@@ -186,8 +190,8 @@ describe("what Release offers, from what the environments run", () => {
     expect(offer.gate.allowed).toBe(true);
     expect(offer.suggestion).toBe("v1.2.1");
     expect(offer.comparison).toEqual([
-      { service: "api", stage: "3f9c1b2", production: "1111111", changed: true },
-      { service: "web", stage: "77ab0e1", production: "77ab0e1", changed: false },
+      { service: "api", candidate: "3f9c1b2", production: "1111111", changed: true },
+      { service: "web", candidate: "77ab0e1", production: "77ab0e1", changed: false },
     ]);
   });
 
@@ -224,9 +228,97 @@ describe("what Release offers, from what the environments run", () => {
       reason: RELEASE_NOT_A_RELEASER,
     },
   ])("answers, for $name", ({ mayRelease, stage: stageCommits, production, allowed, reason }) => {
-    const gate = releaseOffer({ mayRelease, stage: stageCommits, production, tags: [] }).gate;
+    const gate = releaseOffer({
+      mayRelease,
+      basis: "stage",
+      candidate: stageCommits,
+      production,
+      tags: [],
+    }).gate;
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
+  });
+
+  it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
+    const offer = releaseOffer({
+      mayRelease: true,
+      basis: "stage",
+      candidate: new Map([
+        ["api", API.toUpperCase()],
+        ["web", "hotfix"],
+      ]),
+      production: new Map(),
+      tags: [],
+    });
+    expect(offer.entries).toEqual([{ service: "api", commit: API }]);
+  });
+});
+
+/**
+ * A project with a Mate and a production and nothing in between (the owner,
+ * 2026-09-18: "this time we can have just one mate and one prod"). With no
+ * stage there is no deployed commit to list, and the offer read "The stage has
+ * not deployed anything to release." for ever — about a stage the project does
+ * not have. What is merged is what such a project releases (D28).
+ */
+describe("a project with no stage releases what main holds", () => {
+  it.each([
+    { name: "a stage and a production", tiers: ["stage", "production"], basis: "stage" },
+    { name: "two stages", tiers: ["stage", "stage"], basis: "stage" },
+    { name: "a production alone", tiers: ["production"], basis: "main" },
+    { name: "nothing declared yet", tiers: [], basis: "main" },
+  ])("for $name the basis is $basis", ({ tiers, basis }) => {
+    expect(releaseBasis(tiers.map((tier) => ({ tier })))).toBe(basis);
+  });
+
+  const main = new Map([["app", API]]);
+
+  it.each([
+    {
+      name: "a production that has never deployed",
+      candidate: main,
+      production: new Map<string, string>(),
+      allowed: true,
+    },
+    {
+      name: "a production behind main",
+      candidate: main,
+      production: new Map([["app", OLD]]),
+      allowed: true,
+    },
+    {
+      name: "a production already running main",
+      candidate: main,
+      production: new Map(main),
+      allowed: false,
+      reason: RELEASE_NOTHING_NEW_ON_MAIN,
+    },
+    {
+      name: "repositories with nothing merged",
+      candidate: new Map<string, string>(),
+      production: new Map<string, string>(),
+      allowed: false,
+      reason: RELEASE_NOTHING_MERGED,
+    },
+  ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
+    const offer = releaseOffer({
+      mayRelease: true,
+      basis: "main",
+      candidate,
+      production,
+      tags: [],
+    });
+    expect(offer.gate.allowed).toBe(allowed);
+    if (!offer.gate.allowed) expect(offer.gate.reason).toBe(reason);
+    expect(offer.entries).toEqual(
+      [...candidate.entries()].map(([service, commit]) => ({ service, commit })),
+    );
+  });
+
+  it("never says a sentence about a stage", () => {
+    for (const reason of [RELEASE_NOTHING_MERGED, RELEASE_NOTHING_NEW_ON_MAIN]) {
+      expect(reason).not.toMatch(/stage/iu);
+    }
   });
 });
 

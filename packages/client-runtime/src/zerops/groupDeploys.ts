@@ -37,6 +37,7 @@
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import { releaseBasis } from "./release.ts";
 import {
   deployedCommit,
   environmentRow,
@@ -130,6 +131,43 @@ export function planDeployStatusReads(input: {
     reads.push(read);
   }
   return reads;
+}
+
+/** One default-branch read: the repository a production's service is built from. */
+export interface MainHeadRead {
+  /** The service's hostname in the production — what a release's entry is keyed by. */
+  readonly hostname: string;
+  readonly repo: string;
+}
+
+/**
+ * Which repositories' default branches a release has to read (D28, `release.ts`).
+ *
+ * None for a project with a stage: it releases what that stage runs, which the
+ * version reads already answered. A project with a production and nothing in
+ * between releases what is merged, so each service the production runs is
+ * asked for — at the repository its tier's `buildFromGit` names, the hostname
+ * when the tier does not say (`DeployStatusRead.repo`).
+ */
+export function planMainHeadReads(input: {
+  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly services: ReadonlyArray<GroupEnvironmentService>;
+  /** The repository's name in the org by hostname, from the tiers on `main`. */
+  readonly repositories: ReadonlyMap<string, string>;
+}): ReadonlyArray<MainHeadRead> {
+  if (releaseBasis(input.declarations) !== "main") return [];
+  const productions = new Set(
+    input.declarations.filter((entry) => entry.tier === "production").map((entry) => entry.project),
+  );
+  const reads = new Map<string, MainHeadRead>();
+  for (const service of input.services) {
+    if (!productions.has(service.projectId) || reads.has(service.hostname)) continue;
+    reads.set(service.hostname, {
+      hostname: service.hostname,
+      repo: input.repositories.get(service.hostname) ?? service.hostname,
+    });
+  }
+  return [...reads.values()];
 }
 
 /** What one environment's row is built from, before the row itself. */

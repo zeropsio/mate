@@ -26,6 +26,7 @@ import {
   missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
+  planMainHeadReads,
   readGroupEnvironments,
   RECIPE_TIER_PATHS,
   type GiteaCommitStatus,
@@ -75,6 +76,12 @@ export interface ZeropsGroupDeployState {
   readonly pullRequests: ReadonlyArray<GiteaPullRequest>;
   /** The tiers the recipe offers and the group has not added — the rows that ask. */
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
+  /**
+   * `{service hostname: full sha}` each repository's `main` holds — read only
+   * for a group with no stage, which releases what is merged (D28). Empty
+   * otherwise, where the stage's own deploys are the release's candidate.
+   */
+  readonly mainHeads: ReadonlyMap<string, string>;
 }
 
 export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
@@ -207,10 +214,28 @@ export function useZeropsGroupDeploys(input: {
           }
         }
 
+        // What a project with no stage releases: the head of each production
+        // service's repository (D28). One read per service, and only for such
+        // a project — a group with a stage never issues it.
+        const mainHeads = new Map<string, string>();
+        if (client !== null) {
+          for (const read of planMainHeadReads({
+            declarations,
+            services,
+            repositories: onMain.repositories,
+          })) {
+            const branch = await client.getBranch(group.slug, read.repo, "main").catch(() => null);
+            if (controller.signal.aborted) return;
+            const sha = branch?.commit?.id;
+            if (sha !== undefined && sha !== "") mainHeads.set(read.hostname, sha);
+          }
+        }
+
         deploys.set(group.groupId, {
           declarations,
           pullRequests,
           missing,
+          mainHeads,
           environments: buildGroupEnvironmentRowInputs({
             owner: group.slug,
             declarations,

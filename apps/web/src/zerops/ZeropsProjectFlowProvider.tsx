@@ -18,8 +18,8 @@ import {
   environmentRow,
   flowVerbKey,
   readZeropsGroupTags,
+  releaseBasis,
   releaseDeploys,
-  releaseEntriesFromStage,
   releaseMessage,
   releaseOffer,
   releaseRow,
@@ -126,10 +126,16 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const environmentInputs = deployed?.environments ?? [];
       const sides = releaseDeploys(environmentInputs);
       const tags = forge?.tags ?? [];
+      const declarations = deployed?.declarations ?? [];
+      // A project with no stage releases what is merged (D28): the candidate
+      // is each production repository's `main`, which the deploys hook reads
+      // only for such a project.
+      const basis = releaseBasis(declarations);
+      const candidate = basis === "main" ? (deployed?.mainHeads ?? new Map()) : sides.stage;
       next.set(group.groupId, {
         groupId: group.groupId,
         slug: group.slug,
-        declarations: deployed?.declarations ?? [],
+        declarations,
         environments: environmentInputs.map((entry) => environmentRow(entry)),
         environmentInputs,
         missing: deployed?.missing ?? [],
@@ -137,7 +143,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
         release: releaseOffer({
           mayRelease,
-          stage: sides.stage,
+          basis,
+          candidate,
           production: sides.production,
           tags,
         }),
@@ -268,7 +275,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     async (groupId: string) => {
       const flow = flows.get(groupId);
       if (flow === undefined) return;
-      const entries = releaseEntriesFromStage(releaseDeploys(flow.environmentInputs).stage);
+      // What the offer showed, not a second derivation of it: the two would
+      // differ for a project releasing what is merged (D28).
+      const entries = flow.release.entries;
       if (entries.length === 0) return;
       await run(flowVerbKey({ kind: "release", groupId }), () =>
         tagAs(
