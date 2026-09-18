@@ -166,3 +166,10 @@ Use a totally separate `CODEX_HOME path` only when you want a separate Codex wor
 
 That means separate sessions and less account switching inside old threads. Most dual-account users
 should use the shared-home plus shadow-home setup instead.
+
+## Codex says I hit a usage limit
+
+When Codex stops on a usage limit, the thread names the window that ran out and when it resets,
+when Codex reports them. Send the message again after the reset. On a workspace plan the message
+also says whether your workspace owner needs to add credits or raise the spend limit to continue
+sooner.
