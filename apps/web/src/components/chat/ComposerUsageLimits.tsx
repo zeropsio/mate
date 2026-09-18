@@ -59,6 +59,9 @@ function UsageLimitsBannerBody({
     <div className="max-h-48 overflow-y-auto">
       <div className="flex flex-col gap-2 pt-1 pb-1.5 pe-2">
         {report.accounts.map((account) => {
+          const resetCreditInput =
+            account.resetCreditInput ??
+            (account.instanceId ? { instanceId: account.instanceId } : undefined);
           const notice = limitsNotice(account.limits);
           return (
             <div key={account.id} className="flex min-w-0 flex-col gap-1">
@@ -77,10 +80,10 @@ function UsageLimitsBannerBody({
                   now={now}
                 />
               )}
-              {account.instanceId && account.limits.resetCredits ? (
+              {resetCreditInput && account.limits.resetCredits ? (
                 <ResetCredits
                   environmentId={environmentId}
-                  instanceId={account.instanceId}
+                  input={resetCreditInput}
                   credits={account.limits.resetCredits}
                   now={now}
                 />

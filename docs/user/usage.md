@@ -34,6 +34,9 @@ if the connected provider cannot report limits. Enter the hub's URL and manageme
 is stored on the server and never sent back to a client. Emails are blurred until clicked, as in
 provider settings.
 
+Hub accounts on Codex show banked reset credits; choose **Use a reset credit** on the account
+row to redeem one through the hub. No hub plugin is required.
+
 Use **Past 24h** for an hourly chart covering the exact rolling 24-hour period. The **7 days**,
 **30 days**, and **90 days** ranges use daily resolution. Cost and token toggles update both the
 headline and chart, and refreshing rescans every connected environment.

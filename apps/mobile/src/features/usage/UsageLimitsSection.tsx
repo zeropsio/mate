@@ -2,11 +2,12 @@ import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   ProviderConsumeResetCreditOutcome,
-  ProviderInstanceId,
+  ProviderConsumeResetCreditInput,
   ServerProvider,
   ServerProviderResetCredits,
   ServerProviderUsageWindow,
   UsageLimitSourceAccount,
+  UsageLimitSourceId,
 } from "@t3tools/contracts";
 import {
   collectLimitSources,
@@ -130,13 +131,13 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
  */
 export function ResetCredits(props: {
   readonly environmentId: EnvironmentId;
-  readonly instanceId: ProviderInstanceId;
+  readonly input: ProviderConsumeResetCreditInput;
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
   /** A smaller pill for the composer card. */
   readonly dense?: boolean;
 }) {
-  const { environmentId, instanceId, credits, now, dense = false } = props;
+  const { environmentId, input, credits, now, dense = false } = props;
   const consume = useAtomCommand(serverEnvironment.consumeResetCredit, {
     reportFailure: false,
   });
@@ -157,10 +158,10 @@ export function ResetCredits(props: {
   const redeem = async () => {
     setBusy(true);
     setStatus(null);
-    const result = await consume({ environmentId, input: { instanceId } });
+    const result = await consume({ environmentId, input });
     setBusy(false);
     if (result._tag === "Success") {
-      setStatus(OUTCOME_TEXT[result.value.outcome]);
+      setStatus(result.value.warning ?? OUTCOME_TEXT[result.value.outcome]);
       return;
     }
     setStatus(
@@ -232,7 +233,7 @@ function ProviderLimits(props: {
         credits ? (
           <ResetCredits
             environmentId={environmentId}
-            instanceId={provider.instanceId}
+            input={{ instanceId: provider.instanceId }}
             credits={credits}
             now={now}
           />
@@ -245,10 +246,12 @@ function ProviderLimits(props: {
 /** Emails stay off the phone screen; the plan and driver identify the row. */
 function SourceAccountLimits(props: {
   readonly account: UsageLimitSourceAccount;
+  readonly source: { readonly id: UsageLimitSourceId; readonly environmentId: EnvironmentId };
   readonly now: number;
   readonly first: boolean;
 }) {
-  const { account } = props;
+  const { account, source } = props;
+  const credits = account.usageLimits.resetCredits;
   return (
     <AccountLimits
       label={DRIVER_LABEL[account.driver] ?? String(account.driver)}
@@ -257,6 +260,16 @@ function SourceAccountLimits(props: {
       limits={account.usageLimits}
       now={props.now}
       first={props.first}
+      footer={
+        credits?.nextCreditId ? (
+          <ResetCredits
+            environmentId={source.environmentId}
+            input={{ sourceId: source.id, accountId: account.id, creditId: credits.nextCreditId }}
+            credits={credits}
+            now={props.now}
+          />
+        ) : undefined
+      }
     />
   );
 }
@@ -291,6 +304,7 @@ export function UsageLimitsSection() {
               <SourceAccountLimits
                 key={account.id}
                 account={account}
+                source={source}
                 now={now}
                 first={index === 0}
               />

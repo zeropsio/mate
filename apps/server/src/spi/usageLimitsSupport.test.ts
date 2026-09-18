@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { clampPercent, codexPlanLabel, makeUsageLimits } from "./usageLimitsSupport.ts";
+import {
+  claudeUsageResponseToLimits,
+  codexPlanLabel,
+  codexRateLimitsToLimits,
+  makeUnavailableUsageLimits,
+} from "./usageLimitsSupport.ts";
 
 /**
- * Pins the three re-exports `usageLimitsSupport.ts` carries out of the
- * ported zone (`provider/Layers/CodexProvider.ts`,
- * `provider/providerUsageLimits.ts`) for `apps/server/src/usage/
- * cliproxyUsageLimits.ts`. A port that renames, reshapes, or changes the
- * output of any of the three fails here, not at the cliproxy call site —
+ * Pins the re-exports `usageLimitsSupport.ts` carries out of the ported zone
+ * for `apps/server/src/usage/cliproxyApi.ts`. A port that renames, reshapes,
+ * or changes the output of any of them fails here, not at the hub call site —
  * see the doc comment on `usageLimitsSupport.ts`.
  */
 describe("usageLimitsSupport", () => {
@@ -42,70 +45,61 @@ describe("usageLimitsSupport", () => {
     );
   });
 
-  describe("clampPercent", () => {
-    it.each([
-      [-50, 0],
-      [-0.001, 0],
-      [0, 0],
-      [42.5, 42.5],
-      [100, 100],
-      [100.5, 100],
-      [1_000, 100],
-      [Number.NaN, 0],
-      [Number.POSITIVE_INFINITY, 0],
-      [Number.NEGATIVE_INFINITY, 0],
-    ])("clamps %s to %s", (value, expected) => {
-      expect(clampPercent(value)).toBe(expected);
+  describe("makeUnavailableUsageLimits", () => {
+    it("marks the limits unavailable with no windows", () => {
+      expect(
+        makeUnavailableUsageLimits({
+          checkedAt: "2026-09-05T12:00:00.000Z",
+          reason: "probeFailed",
+          message: "The hub could not read this account.",
+        }),
+      ).toEqual({
+        checkedAt: "2026-09-05T12:00:00.000Z",
+        windows: [],
+        unavailable: { reason: "probeFailed", message: "The hub could not read this account." },
+      });
     });
   });
 
-  describe("makeUsageLimits", () => {
-    const checkedAt = "2026-09-05T12:00:00.000Z";
-    const session = {
-      id: "five_hour",
-      kind: "session",
-      label: "Session",
-      usedPercent: 40,
-    } as const;
-    const weekly = {
-      id: "seven_day",
-      kind: "weekly",
-      label: "Weekly",
-      usedPercent: 20,
-    } as const;
-    const monthly = {
-      id: "thirty_day",
-      kind: "monthly",
-      label: "Monthly",
-      usedPercent: 10,
-    } as const;
-    const other = {
-      id: "credits",
-      kind: "other",
-      label: "Credits",
-      usedPercent: 5,
-    } as const;
-
-    it("carries checkedAt through unchanged", () => {
-      expect(makeUsageLimits({ checkedAt, windows: [session] }).checkedAt).toBe(checkedAt);
-    });
-
-    it("sorts windows by kind (session, weekly, monthly, other) regardless of input order", () => {
-      expect(
-        makeUsageLimits({ checkedAt, windows: [other, monthly, weekly, session] }).windows,
-      ).toEqual([session, weekly, monthly, other]);
-    });
-
-    it("breaks a tie within the same kind by id", () => {
-      const sessionB = { ...session, id: "z_session" };
-      expect(makeUsageLimits({ checkedAt, windows: [sessionB, session] }).windows).toEqual([
-        session,
-        sessionB,
+  describe("claudeUsageResponseToLimits", () => {
+    it("reads Claude's session and weekly utilization as windows", () => {
+      const { limits } = claudeUsageResponseToLimits({
+        checkedAt: "2026-09-05T12:00:00.000Z",
+        response: {
+          rate_limits_available: true,
+          rate_limits: {
+            five_hour: { utilization: 40, resets_at: "2026-09-05T15:00:00.000Z" },
+            seven_day: { utilization: 20, resets_at: "2026-09-10T12:00:00.000Z" },
+          },
+        } as never,
+      });
+      expect(limits.windows.map((window) => [window.kind, window.usedPercent])).toEqual([
+        ["session", 40],
+        ["weekly", 20],
       ]);
     });
 
-    it("returns an empty windows array for no windows", () => {
-      expect(makeUsageLimits({ checkedAt, windows: [] }).windows).toEqual([]);
+    it("reports unsupported when the response carries no rate limits", () => {
+      const { limits } = claudeUsageResponseToLimits({
+        checkedAt: "2026-09-05T12:00:00.000Z",
+        response: { rate_limits_available: false } as never,
+      });
+      expect(limits.unavailable?.reason).toBe("unsupported");
+    });
+  });
+
+  describe("codexRateLimitsToLimits", () => {
+    it("reads Codex's primary and secondary windows and banked reset credits", () => {
+      const limits = codexRateLimitsToLimits({
+        checkedAt: "2026-09-05T12:00:00.000Z",
+        snapshot: {
+          primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: 1_788_000_000 },
+          secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: 1_788_500_000 },
+        } as never,
+        resetCredits: { availableCount: 2, credits: [] } as never,
+      });
+      expect(limits.windows.map((window) => window.usedPercent)).toEqual([30, 10]);
+      expect(limits.resetCredits?.availableCount).toBe(2);
     });
   });
 });

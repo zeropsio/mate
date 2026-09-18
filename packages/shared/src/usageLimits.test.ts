@@ -334,6 +334,31 @@ describe("/usage-limits", () => {
     },
   ];
 
+  it("uses hub credit balances and redemption targets in the composer, including native duplicates", () => {
+    const hubs = sources.map((source) => ({
+      ...source,
+      accounts: source.accounts.map((account) => ({
+        ...account,
+        usageLimits: {
+          ...account.usageLimits,
+          resetCredits: { availableCount: 2, nextCreditId: `${account.id}-credit` },
+        },
+      })),
+    }));
+    const report = collectProviderUsageLimits(selected.instanceId, [selected], hubs, now);
+    expect(report?.accounts[0]?.limits.resetCredits?.availableCount).toBe(2);
+    expect(report?.accounts[0]?.resetCreditInput).toEqual({
+      sourceId: "hub",
+      accountId: "duplicate",
+      creditId: "duplicate-credit",
+    });
+    expect(report?.accounts.find((account) => account.id === "hub:oss")?.resetCreditInput).toEqual({
+      sourceId: "hub",
+      accountId: "oss",
+      creditId: "oss-credit",
+    });
+  });
+
   it("keeps accounts and custom instances separate, filtering by driver", () => {
     const report = collectProviderUsageLimits(
       selected.instanceId,

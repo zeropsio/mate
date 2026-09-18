@@ -1,7 +1,7 @@
 import {
   type EnvironmentId,
   type ProviderConsumeResetCreditOutcome,
-  ProviderInstanceId,
+  ProviderConsumeResetCreditInput,
   ServerProvider,
   ServerProviderResetCredits,
   ServerProviderUsageWindow,
@@ -279,7 +279,7 @@ function ProviderLimits({
       {limits.resetCredits ? (
         <ResetCredits
           environmentId={environmentId}
-          instanceId={provider.instanceId}
+          input={{ instanceId: provider.instanceId }}
           credits={limits.resetCredits}
           now={now}
         />
@@ -301,12 +301,12 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
  */
 export function ResetCredits({
   environmentId,
-  instanceId,
+  input,
   credits,
   now,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly instanceId: ProviderInstanceId;
+  readonly input: ProviderConsumeResetCreditInput;
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
 }) {
@@ -330,10 +330,10 @@ export function ResetCredits({
     setConfirming(false);
     setBusy(true);
     setStatus(null);
-    const result = await consume({ environmentId, input: { instanceId } });
+    const result = await consume({ environmentId, input });
     setBusy(false);
     if (result._tag === "Success") {
-      setStatus(OUTCOME_TEXT[result.value.outcome]);
+      setStatus(result.value.warning ?? OUTCOME_TEXT[result.value.outcome]);
       return;
     }
     setStatus(
@@ -375,12 +375,15 @@ export function ResetCredits({
 function SourceAccountLimits({
   account,
   sourceKind,
+  source,
   now,
 }: {
   readonly account: UsageLimitSourceAccount;
   readonly sourceKind: string;
+  readonly source: Pick<LimitsSource, "id" | "environmentId">;
   readonly now: number;
 }) {
+  const credits = account.usageLimits.resetCredits;
   const notice = limitsNotice(account.usageLimits);
   return (
     <section className="flex flex-col gap-3">
@@ -396,6 +399,14 @@ function SourceAccountLimits({
       ) : (
         <LimitWindows driver={account.driver} windows={account.usageLimits.windows} now={now} />
       )}
+      {credits?.nextCreditId ? (
+        <ResetCredits
+          environmentId={source.environmentId}
+          input={{ sourceId: source.id, accountId: account.id, creditId: credits.nextCreditId }}
+          credits={credits}
+          now={now}
+        />
+      ) : null}
     </section>
   );
 }
@@ -421,7 +432,13 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
         </span>
       ) : (
         source.accounts.map((account) => (
-          <SourceAccountLimits key={account.id} account={account} sourceKind={kind} now={now} />
+          <SourceAccountLimits
+            key={account.id}
+            account={account}
+            sourceKind={kind}
+            source={source}
+            now={now}
+          />
         ))
       )}
     </div>

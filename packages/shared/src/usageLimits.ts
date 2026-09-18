@@ -9,6 +9,7 @@ import {
   type EnvironmentId,
   type UsageLimitsReport,
   type ProviderInstanceId,
+  type ProviderConsumeResetCreditInput,
   type ServerProviderSlashCommand,
   isProviderAvailable,
   type ServerProvider,
@@ -318,16 +319,48 @@ export function collectProviderUsageLimits(
   const notices: string[] = [];
   for (const provider of native) {
     if (!provider.usageLimits) continue;
+    const key = accountKey(provider.driver, provider.auth.email);
+    const hubCredits = sources
+      .flatMap((source) => source.accounts.map((account) => ({ source, account })))
+      .filter(
+        ({ account }) =>
+          key !== null &&
+          accountKey(account.driver, account.email) === key &&
+          account.usageLimits.resetCredits &&
+          !limitsNotice(account.usageLimits),
+      )
+      .sort(
+        (a, b) =>
+          Date.parse(b.account.usageLimits.checkedAt) - Date.parse(a.account.usageLimits.checkedAt),
+      )[0];
+    const useHubCredits =
+      hubCredits &&
+      (!provider.usageLimits.resetCredits ||
+        Date.parse(hubCredits.account.usageLimits.checkedAt) >
+          Date.parse(provider.usageLimits.checkedAt));
+    const hubCreditId = useHubCredits
+      ? hubCredits.account.usageLimits.resetCredits?.nextCreditId
+      : undefined;
     accounts.push({
       id: provider.instanceId,
       driver: provider.driver,
       label: `${providerLimitsLabel(provider, () => undefined)} [${provider.instanceId}]`,
       ...(provider.auth.label ? { plan: provider.auth.label } : {}),
       instanceId: provider.instanceId,
+      resetCreditInput:
+        hubCreditId && hubCredits
+          ? {
+              sourceId: hubCredits.source.id,
+              accountId: hubCredits.account.id,
+              creditId: hubCreditId,
+            }
+          : { instanceId: provider.instanceId },
       ...(provider.displayName ? { displayName: provider.displayName } : {}),
       ...(provider.accentColor ? { accentColor: provider.accentColor } : {}),
       ...(provider.auth.email ? { email: provider.auth.email } : {}),
-      limits: provider.usageLimits,
+      limits: useHubCredits
+        ? { ...provider.usageLimits, resetCredits: hubCredits.account.usageLimits.resetCredits }
+        : provider.usageLimits,
     });
   }
   for (const source of sources) {
@@ -340,6 +373,15 @@ export function collectProviderUsageLimits(
         driver: account.driver,
         label: `${source.label} · ${account.id}`,
         sourceLabel: "CLI Proxy",
+        ...(account.usageLimits.resetCredits?.nextCreditId
+          ? {
+              resetCreditInput: {
+                sourceId: source.id,
+                accountId: account.id,
+                creditId: account.usageLimits.resetCredits.nextCreditId,
+              },
+            }
+          : {}),
         ...(account.plan ? { plan: account.plan } : {}),
         ...(account.email ? { email: account.email } : {}),
         limits: account.usageLimits,
