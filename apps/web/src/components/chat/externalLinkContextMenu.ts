@@ -25,7 +25,7 @@ const EXTERNAL_LINK_CONTEXT_MENU_ITEMS = [
   { id: "copy-link", label: "Copy Link" },
 ] as const satisfies readonly ContextMenuItem<ExternalLinkContextMenuAction>[];
 
-export function externalLinkContextMenuItems(options: {
+function externalLinkContextMenuItems(options: {
   readonly threadLinkAction?: "link-to-thread" | "unlink-from-thread" | undefined;
 }): readonly ContextMenuItem<ExternalLinkContextMenuAction>[] {
   const items = EXTERNAL_LINK_CONTEXT_MENU_ITEMS;
