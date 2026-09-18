@@ -56,7 +56,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [-webkit-app-region:no-drag]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] [-webkit-app-region:no-drag] sm:[--media-width:calc(92vw-96px)]"
       role="dialog"
       aria-modal="true"
       aria-label="Expanded image preview"
@@ -79,12 +79,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <ChevronLeftIcon className="size-5" />
         </Button>
       )}
-      <div className="relative isolate z-10 max-h-[92vh] max-w-[92vw]">
+      <div className="relative isolate z-10 max-h-[92vh] max-w-[var(--media-width)]">
         <Button
           type="button"
           size="icon-xs"
           variant="ghost"
-          className="absolute right-2 top-2"
+          className="absolute right-2 top-2 z-20"
           onClick={onClose}
           aria-label="Close image preview"
         >
@@ -94,7 +94,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <img
             src={item.src}
             alt={item.name}
-            className="max-h-[86vh] max-w-[92vw] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+            className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
             draggable={false}
           />
         ) : (
@@ -106,7 +106,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             onError={() => setFailedImageSrc(item.src)}
           />
         )}
-        <p className="mt-2 max-w-[92vw] truncate text-center text-xs text-muted-foreground/80">
+        <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
           {item.name}
           {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
         </p>
