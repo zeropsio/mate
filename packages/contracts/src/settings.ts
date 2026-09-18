@@ -111,9 +111,20 @@ const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 export const FontFamilyPreference = Schema.String.check(Schema.isMaxLength(200));
 export type FontFamilyPreference = typeof FontFamilyPreference.Type;
 
+export const NotificationMode = Schema.Literals([
+  "off",
+  "notifications",
+  "sound",
+  "notifications-and-sound",
+]);
+export type NotificationMode = typeof NotificationMode.Type;
+
 export const DiffColorScheme = Schema.Literals(["red-green", "blue-orange"]);
 
 export const ClientSettingsSchema = Schema.Struct({
+  notificationMode: NotificationMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("off" as const)),
+  ),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
@@ -994,6 +1005,7 @@ export const ServerSettingsPatch = Schema.Struct({
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
+  notificationMode: Schema.optionalKey(NotificationMode),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   confirmQuit: Schema.optionalKey(Schema.Boolean),

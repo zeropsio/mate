@@ -1,4 +1,5 @@
 import { ArchiveIcon, ArchiveX, ChevronRightIcon, LoaderIcon, SettingsIcon } from "lucide-react";
+import { NotificationSettings } from "./NotificationSettings";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -455,6 +456,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
+      ...(settings.notificationMode !== DEFAULT_UNIFIED_SETTINGS.notificationMode
+        ? ["Thread notifications"]
+        : []),
       ...(settings.sidebarProjectGroupingMode !==
       DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
         ? ["Project Grouping"]
@@ -534,6 +538,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarProjectGroupingMode,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
+      settings.notificationMode,
       settings.wordWrap,
       followSystem,
       theme,
@@ -607,6 +612,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
+      notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
@@ -1968,6 +1974,7 @@ export function GeneralSettingsPanel() {
           />
         ) : null}
 
+        <NotificationSettings />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."

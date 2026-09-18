@@ -13,6 +13,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopClientSettings from "./DesktopClientSettings.ts";
 
 const clientSettings: ClientSettings = {
+  notificationMode: "notifications-and-sound",
   appearanceContrast: 100,
   confirmQuit: true,
   confirmThreadArchive: true,

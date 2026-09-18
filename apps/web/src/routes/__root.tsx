@@ -23,6 +23,7 @@ import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
+import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -175,6 +176,7 @@ function SignedInRootRouteView() {
         <GlassAppearanceSync />
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
+        <ThreadNotificationCoordinator />
         <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
