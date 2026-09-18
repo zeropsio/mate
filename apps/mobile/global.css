@@ -17,6 +17,13 @@
       --color-card: #ffffff;
       --color-card-alt: #ffffff;
       --color-card-translucent: rgba(255, 255, 255, 0.8);
+      --color-thread-canvas: #ffffff;
+      --color-thread-selected: #ffffff;
+      --color-thread-selected-foreground: #1a1a1a;
+      --color-thread-selected-foreground-muted: #5f6a72;
+      --color-composer-panel: rgba(255, 255, 255, 0.88);
+      --color-composer-surface: rgba(255, 255, 255, 0.94);
+      --color-composer-border: rgba(224, 224, 224, 0.54);
       --color-foreground: #1a1a1a;
       --color-foreground-secondary: #5f6a72;
       --color-foreground-muted: #5f6a72;
@@ -88,6 +95,13 @@
       --color-card: #1b2220;
       --color-card-alt: #141918;
       --color-card-translucent: rgba(27, 34, 32, 0.8);
+      --color-thread-canvas: #141918;
+      --color-thread-selected: #1b2220;
+      --color-thread-selected-foreground: #e9eeec;
+      --color-thread-selected-foreground-muted: #9faea9;
+      --color-composer-panel: rgba(20, 25, 24, 0.92);
+      --color-composer-surface: rgba(27, 34, 32, 0.9);
+      --color-composer-border: rgba(38, 47, 45, 0.46);
       --color-foreground: #e9eeec;
       --color-foreground-secondary: #9faea9;
       --color-foreground-muted: #9faea9;

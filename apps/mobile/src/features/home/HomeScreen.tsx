@@ -16,6 +16,7 @@ import { ActivityIndicator, FlatList, Platform, Pressable, View } from "react-na
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { cn } from "../../lib/cn";
 import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
 import type { WorkspaceEnvironment, WorkspaceState } from "../../state/workspaceModel";
@@ -24,6 +25,7 @@ import { scopedProjectKey } from "../../lib/scopedEntities";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { useThreadSearch } from "../../state/queries";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { environmentServerConfigsAtom } from "../../state/server";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
@@ -175,6 +177,7 @@ function HomeTopContentSpacer() {
 /* ─── Main screen ────────────────────────────────────────────────────── */
 
 export function HomeScreen(props: HomeScreenProps) {
+  const { materialYouStyleLayoutActive } = useAppearancePreferences();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const queuedThreadKeys = useQueuedThreadKeys();
   const autoSettleOnMerge =
@@ -786,26 +789,31 @@ export function HomeScreen(props: HomeScreenProps) {
 
   if (!hasAnyThreads) {
     return (
-      <View
-        className="flex-1 items-center justify-center bg-screen px-8"
-        style={{
-          paddingBottom: Math.max(insets.bottom, 24) + iosBottomToolbarClearance,
-          paddingTop: NATIVE_LIQUID_GLASS_SUPPORTED ? insets.top + 72 : 0,
-        }}
-      >
-        <View className="w-full max-w-[430px]">
-          <EmptyState
-            title={emptyState.title}
-            detail={emptyState.detail}
-            actionLabel={!props.catalogState.hasReadyEnvironment ? "Add environment" : undefined}
-            onAction={!props.catalogState.hasReadyEnvironment ? props.onAddConnection : undefined}
-            variant="plain"
-          />
-          {emptyState.loading ? (
-            <View className="mt-4 items-center">
-              <ActivityIndicator colorClassName={"accent-icon-muted"} />
-            </View>
-          ) : null}
+      <View className={materialYouStyleLayoutActive ? "flex-1 bg-header" : "flex-1 bg-screen"}>
+        <View
+          className={cn(
+            "flex-1 items-center justify-center bg-screen px-8",
+            materialYouStyleLayoutActive && "overflow-hidden rounded-t-[28px]",
+          )}
+          style={{
+            paddingBottom: Math.max(insets.bottom, 24) + iosBottomToolbarClearance,
+            paddingTop: NATIVE_LIQUID_GLASS_SUPPORTED ? insets.top + 72 : 0,
+          }}
+        >
+          <View className="w-full max-w-[430px]">
+            <EmptyState
+              title={emptyState.title}
+              detail={emptyState.detail}
+              actionLabel={!props.catalogState.hasReadyEnvironment ? "Add environment" : undefined}
+              onAction={!props.catalogState.hasReadyEnvironment ? props.onAddConnection : undefined}
+              variant="plain"
+            />
+            {emptyState.loading ? (
+              <View className="mt-4 items-center">
+                <ActivityIndicator colorClassName={"accent-icon-muted"} />
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
     );
@@ -836,46 +844,54 @@ export function HomeScreen(props: HomeScreenProps) {
     );
 
   return (
-    <View className="flex-1 bg-screen">
-      <SwipeableScrollGateProvider enabled={swipeEnabled}>
-        <FlatList
-          data={threadListV2Items}
-          renderItem={renderV2Item}
-          keyExtractor={v2KeyExtractor}
-          extraData={v2ExtraData}
-          ListHeaderComponent={listHeader}
-          ListFooterComponent={
-            settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Show ${Math.min(threadListV2Layout.hiddenSettledCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
-                onPress={showMoreSettled}
-                className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-              >
-                <Text className="text-xs font-t3-medium text-foreground-muted">
-                  Show more ({threadListV2Layout.hiddenSettledCount} settled hidden)
-                </Text>
-              </Pressable>
-            ) : null
-          }
-          ListEmptyComponent={listEmpty}
-          style={{ flex: 1 }}
-          automaticallyAdjustsScrollIndicatorInsets={Platform.OS === "ios"}
-          contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
-          showsVerticalScrollIndicator={false}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          {...scrollGateHandlers}
-          scrollEventThrottle={16}
-          contentContainerStyle={{
-            paddingBottom:
-              Platform.OS === "ios"
-                ? Math.max(insets.bottom, 24) + 96 + iosBottomToolbarClearance
-                : Math.max(insets.bottom, 16) + 88,
-          }}
-        />
-      </SwipeableScrollGateProvider>
+    <View className={materialYouStyleLayoutActive ? "flex-1 bg-header" : "flex-1 bg-screen"}>
+      <View
+        className={
+          materialYouStyleLayoutActive
+            ? "flex-1 overflow-hidden rounded-t-[28px] bg-screen"
+            : "flex-1 bg-screen"
+        }
+      >
+        <SwipeableScrollGateProvider enabled={swipeEnabled}>
+          <FlatList
+            data={threadListV2Items}
+            renderItem={renderV2Item}
+            keyExtractor={v2KeyExtractor}
+            extraData={v2ExtraData}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={
+              settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${Math.min(threadListV2Layout.hiddenSettledCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+                  onPress={showMoreSettled}
+                  className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text className="text-xs font-t3-medium text-foreground-muted">
+                    Show more ({threadListV2Layout.hiddenSettledCount} settled hidden)
+                  </Text>
+                </Pressable>
+              ) : null
+            }
+            ListEmptyComponent={listEmpty}
+            style={{ flex: 1 }}
+            automaticallyAdjustsScrollIndicatorInsets={Platform.OS === "ios"}
+            contentInsetAdjustmentBehavior={Platform.OS === "ios" ? "automatic" : "never"}
+            showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            {...scrollGateHandlers}
+            scrollEventThrottle={16}
+            contentContainerStyle={{
+              paddingBottom:
+                Platform.OS === "ios"
+                  ? Math.max(insets.bottom, 24) + 96 + iosBottomToolbarClearance
+                  : Math.max(insets.bottom, 16) + 88,
+            }}
+          />
+        </SwipeableScrollGateProvider>
+      </View>
     </View>
   );
 }
