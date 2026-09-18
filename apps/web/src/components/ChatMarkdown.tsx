@@ -200,7 +200,7 @@ function findTaskListMarkerOffset(markdown: string, listItemStart: number): numb
  * get a wider `--list-gutter`. The width includes a negative marker's minus
  * sign.
  */
-export function orderedListGutterStyle(
+function orderedListGutterStyle(
   itemCount: number,
   start: unknown,
 ): { "--list-gutter": string } | undefined {
