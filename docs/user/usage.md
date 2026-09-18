@@ -24,6 +24,18 @@ closes when you dismiss it or send your next message. It uses the same snapshot 
 view, so it does not run the agent or refresh anything. The command is offered only for providers
 that appear on the **Limits** view.
 
+OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
+the environment. Limits cannot be reported for external OpenCode servers because their
+credentials belong to the remote server. Cursor reports its monthly allowance, including
+separate Auto and API usage, using a file-based CLI login or `CURSOR_AUTH_TOKEN`. Cursor's
+default macOS keychain login does not currently report limits. On macOS, use
+`AGENT_CLI_CREDENTIAL_STORE=file` when signing in and in the provider's environment to use a
+file-based login.
+
+Grok reports the remaining subscription allowance and reset time for its current billing period
+after signing in with `grok login`. Explicit `XAI_API_KEY` connections and custom authentication
+or endpoint configurations do not report subscription limits.
+
 If you pool accounts behind a CLIProxyAPI hub, open **Settings → Providers → Usage providers**
 and choose **Add hub**. Select the device that should connect to the hub; its accounts appear on
 the Limits view. Remove hubs from the same settings section. Each limits row shows its provider
