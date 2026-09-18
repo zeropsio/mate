@@ -1309,7 +1309,7 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  it("folds a settled subagent spawn row and keeps a live one outside the fold", () => {
+  it("keeps subagent spawn rows outside turn folds even after they settle", () => {
     const firstMessage: ChatMessage = {
       id: MessageId.make("assistant-first-entry"),
       role: "assistant",
@@ -1319,72 +1319,57 @@ describe("deriveMessagesTimelineRows", () => {
       updatedAt: "2026-01-01T00:00:02Z",
       streaming: false,
     };
-    const entriesWith = (agentSpawn: { workflowId: string | null; agentTaskIds: string[] }) =>
-      deriveTimelineEntries(
-        [
-          firstMessage,
-          {
-            ...firstMessage,
-            id: MessageId.make("assistant-final-entry"),
-            text: "Done.",
-            createdAt: "2026-01-01T00:00:05Z",
-            updatedAt: "2026-01-01T00:00:06Z",
-          },
-        ],
-        [],
-        [
-          {
-            id: "spawn-entry",
-            createdAt: "2026-01-01T00:00:03Z",
-            turnId: firstMessage.turnId,
-            label: "Ran 2 subagents",
-            tone: "tool",
-            agentSpawn,
-          },
-        ],
-      );
-    const direct = entriesWith({ workflowId: null, agentTaskIds: ["agent-a", "agent-b"] });
-    const workflow = entriesWith({ workflowId: "wf-1", agentTaskIds: ["wf-1", "agent-a"] });
-    const derive = (
-      timelineEntries: typeof direct,
-      liveAgentTaskIds: ReadonlySet<string> | undefined,
-      expandedSpawnEntryIds?: ReadonlySet<string>,
-      expandedTurnIds?: ReadonlySet<TurnId>,
-    ) =>
+    const timelineEntries = deriveTimelineEntries(
+      [
+        firstMessage,
+        {
+          ...firstMessage,
+          id: MessageId.make("assistant-final-entry"),
+          text: "Done.",
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+        },
+      ],
+      [],
+      [
+        {
+          id: "spawn-entry",
+          createdAt: "2026-01-01T00:00:03Z",
+          turnId: firstMessage.turnId,
+          label: "Ran 2 subagents",
+          tone: "tool",
+          agentSpawn: { workflowId: null, agentTaskIds: ["agent-a", "agent-b"] },
+        },
+        {
+          id: "read-entry",
+          createdAt: "2026-01-01T00:00:04Z",
+          turnId: firstMessage.turnId,
+          label: "Read file",
+          tone: "tool",
+          toolLifecycleStatus: "completed",
+        },
+      ],
+    );
+    const derive = (expandedTurnIds?: ReadonlySet<TurnId>) =>
       deriveMessagesTimelineRows({
         timelineEntries,
         isWorking: false,
         activeTurnStartedAt: null,
         turnDiffSummaries: [],
         supportsConversationRollback: false,
-        liveAgentTaskIds,
-        expandedSpawnEntryIds,
         ...(expandedTurnIds ? { expandedTurnIds } : {}),
       }).map((row) => row.id);
-    // Settled turns keep their first and terminal assistant messages visible.
-    const folded = ["assistant-first-entry", "turn-fold:turn-1", "assistant-final-entry"];
-    // A live spawn is the only foldable entry, so the turn has no fold at all.
-    const unfolded = ["assistant-first-entry", "spawn-entry", "assistant-final-entry"];
-    const opened = [
-      "assistant-first-entry",
-      "turn-fold:turn-1",
-      "spawn-entry",
-      "assistant-final-entry",
-    ];
 
-    expect(derive(direct, new Set())).toEqual(folded);
-    expect(derive(direct, new Set(["agent-b"]))).toEqual(unfolded);
-    // A workflow coordinator between phases keeps its batch out of the fold.
-    expect(derive(workflow, new Set(["wf-1"]))).toEqual(unfolded);
-    expect(derive(workflow, new Set())).toEqual(folded);
-    // No live set is known.
-    expect(derive(direct, undefined)).toEqual(unfolded);
-    // The user has it open: it stays visible under the collapsed fold and
-    // keeps its place when the fold is expanded.
-    expect(derive(direct, new Set(), new Set(["spawn-entry"]))).toEqual(opened);
-    expect(
-      derive(direct, new Set(), new Set(["spawn-entry"]), new Set(["turn-1" as TurnId])),
-    ).toEqual(opened);
+    expect(derive()).toEqual([
+      "assistant-first-entry",
+      "spawn-entry",
+      "turn-fold:turn-1",
+      "assistant-final-entry",
+    ]);
+    // Expanding the turn reveals the other work without duplicating the batch.
+    expect(derive(new Set(["turn-1" as TurnId])).filter((id) => id === "spawn-entry")).toEqual([
+      "spawn-entry",
+    ]);
   });
 
   it("only enables assistant copy for the terminal assistant message in a turn", () => {
