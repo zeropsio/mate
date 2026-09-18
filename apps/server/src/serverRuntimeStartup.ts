@@ -164,7 +164,7 @@ export const recordStartupHeartbeat = Effect.gen(function* () {
   });
 });
 
-export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
+export const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
   instanceId: ProviderInstanceId.make("codex"),
   model: DEFAULT_MODEL,
 });
@@ -227,7 +227,7 @@ const awaitDecidableProviders = (registry: ProviderRegistry.ProviderRegistry["Se
     }
   });
 
-export const resolveAutoBootstrapDefaultModelSelection = Effect.gen(function* () {
+export const resolveAutoBootstrapThreadModelSelection = Effect.gen(function* () {
   // The machine-wide default model from settings wins over every derived default.
   const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
   if (Option.isSome(serverSettings)) {
@@ -239,16 +239,16 @@ export const resolveAutoBootstrapDefaultModelSelection = Effect.gen(function* ()
 
   const serverConfig = yield* ServerConfig.ServerConfig;
   if (!isZeropsEnvironment(serverConfig)) {
-    return getAutoBootstrapDefaultModelSelection();
+    return getAutoBootstrapThreadModelSelection();
   }
 
   const registry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
   if (Option.isNone(registry)) {
-    return getAutoBootstrapDefaultModelSelection();
+    return getAutoBootstrapThreadModelSelection();
   }
 
   const providers = yield* awaitDecidableProviders(registry.value);
-  return resolveZeropsBootstrapModelSelection(providers) ?? getAutoBootstrapDefaultModelSelection();
+  return resolveZeropsBootstrapModelSelection(providers) ?? getAutoBootstrapThreadModelSelection();
 });
 
 export const resolveWelcomeBase = Effect.gen(function* () {
@@ -279,27 +279,26 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
         serverConfig.cwd,
       );
       let nextProjectId: ProjectId;
-      let nextProjectDefaultModelSelection: ModelSelection;
+      let nextThreadModelSelection: ModelSelection;
 
       if (Option.isNone(existingProject)) {
         const createdAt = DateTime.formatIso(yield* DateTime.now);
         nextProjectId = ProjectId.make(yield* randomUUID);
         const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
-        nextProjectDefaultModelSelection = yield* resolveAutoBootstrapDefaultModelSelection;
+        nextThreadModelSelection = yield* resolveAutoBootstrapThreadModelSelection;
         yield* orchestrationEngine.dispatch({
           type: "project.create",
           commandId: CommandId.make(yield* randomUUID),
           projectId: nextProjectId,
           title: bootstrapProjectTitle,
           workspaceRoot: serverConfig.cwd,
-          defaultModelSelection: nextProjectDefaultModelSelection,
           createdAt,
         });
       } else {
         nextProjectId = existingProject.value.id;
-        nextProjectDefaultModelSelection =
+        nextThreadModelSelection =
           existingProject.value.defaultModelSelection ??
-          (yield* resolveAutoBootstrapDefaultModelSelection);
+          (yield* resolveAutoBootstrapThreadModelSelection);
       }
 
       const existingThreadId =
@@ -313,7 +312,7 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
           threadId: createdThreadId,
           projectId: nextProjectId,
           title: "New thread",
-          modelSelection: nextProjectDefaultModelSelection,
+          modelSelection: nextThreadModelSelection,
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           runtimeMode: "full-access",
           branch: null,

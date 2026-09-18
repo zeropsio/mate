@@ -28,8 +28,8 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 
-it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
-  assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(), {
+it("uses the canonical Codex default for the auto-bootstrapped welcome thread", () => {
+  assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(), {
     instanceId: ProviderInstanceId.make("codex"),
     model: DEFAULT_MODEL,
   });
@@ -124,7 +124,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
               id: bootstrapProjectId,
               title: "Startup Project",
               workspaceRoot: "/tmp/startup-project",
-              defaultModelSelection: ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
+              defaultModelSelection: ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
               scripts: [],
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:00.000Z",
@@ -166,7 +166,13 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
 
 it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when missing", () =>
   Effect.gen(function* () {
-    const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
+    const dispatchCalls = yield* Ref.make<
+      ReadonlyArray<{
+        readonly type: string;
+        readonly defaultModelSelection?: unknown;
+        readonly modelSelection?: unknown;
+      }>
+    >([]);
     const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
       Effect.provideService(ServerConfig.ServerConfig, {
         cwd: "/tmp/startup-project",
@@ -198,7 +204,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when 
         readThreadEvents: () => Stream.empty,
         getThreadReplayStats: () => Effect.die("unused thread replay stats"),
         dispatch: (command) =>
-          Ref.update(dispatchCalls, (calls) => [...calls, command.type]).pipe(
+          Ref.update(dispatchCalls, (calls) => [...calls, command]).pipe(
             Effect.as({ sequence: 1 }),
           ),
         streamDomainEvents: Stream.empty,
@@ -210,7 +216,16 @@ it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when 
 
     assert.equal(typeof targets.bootstrapProjectId, "string");
     assert.equal(typeof targets.bootstrapThreadId, "string");
-    assert.deepStrictEqual(yield* Ref.get(dispatchCalls), ["project.create", "thread.create"]);
+    const commands = yield* Ref.get(dispatchCalls);
+    assert.deepStrictEqual(
+      commands.map((command) => command.type),
+      ["project.create", "thread.create"],
+    );
+    assert.equal("defaultModelSelection" in commands[0]!, false);
+    assert.deepStrictEqual(
+      commands[1]?.modelSelection,
+      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
+    );
   }),
 );
 
@@ -407,7 +422,8 @@ it.effect.each([true, false])(
         defaultModelSelection: machineDefault,
       });
 
-      assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, machineDefault);
+      // Projects no longer carry a create-time model default; the first thread does.
+      assert.isUndefined(dispatched[0]?.defaultModelSelection);
       assert.deepStrictEqual(dispatched[1]?.modelSelection, machineDefault);
     }),
 );
@@ -429,7 +445,7 @@ it.effect(
         dispatched.map((command) => command.type),
         ["project.create", "thread.create"],
       );
-      assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, expected);
+      assert.isUndefined(dispatched[0]?.defaultModelSelection);
       assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
     }),
 );
@@ -441,8 +457,8 @@ it.effect("auto-bootstrap outside a Zerops container keeps the upstream Codex de
       providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
     });
 
-    const expected = ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection();
-    assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, expected);
+    const expected = ServerRuntimeStartup.getAutoBootstrapThreadModelSelection();
+    assert.isUndefined(dispatched[0]?.defaultModelSelection);
     assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
   }),
 );
@@ -454,8 +470,8 @@ it.effect("auto-bootstrap on Zerops keeps the upstream default when no provider 
       providers: [UNAUTHENTICATED_CODEX],
     });
 
-    const expected = ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection();
-    assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, expected);
+    const expected = ServerRuntimeStartup.getAutoBootstrapThreadModelSelection();
+    assert.isUndefined(dispatched[0]?.defaultModelSelection);
     assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
   }),
 );
@@ -545,7 +561,7 @@ it.effect("auto-bootstrap on Zerops waits for the first provider probe before ch
       instanceId: ProviderInstanceId.make("claudeAgent"),
       model: "claude-sonnet-5",
     };
-    assert.deepStrictEqual(dispatched[0]?.defaultModelSelection, expected);
+    assert.isUndefined(dispatched[0]?.defaultModelSelection);
     assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
     assert.isAbove(yield* Ref.get(registry.calls), 1);
   }).pipe(Effect.provide(TestClock.layer())),
@@ -567,8 +583,8 @@ it.effect("auto-bootstrap does not wait once every provider has settled", () =>
     });
 
     assert.deepStrictEqual(
-      dispatched[0]?.defaultModelSelection,
-      ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
+      dispatched[1]?.modelSelection,
+      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
     );
     assert.equal(yield* Ref.get(registry.calls), 1);
   }).pipe(Effect.provide(TestClock.layer())),
@@ -591,8 +607,8 @@ it.effect("auto-bootstrap gives up on a provider whose probe never lands", () =>
     const dispatched = yield* Fiber.join(fiber);
 
     assert.deepStrictEqual(
-      dispatched[0]?.defaultModelSelection,
-      ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
+      dispatched[1]?.modelSelection,
+      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
     );
     // It gave up on the deadline, not on the first read.
     assert.isAbove(yield* Ref.get(registry.calls), 1);
@@ -613,8 +629,8 @@ it.effect("auto-bootstrap outside a Zerops container never reads the provider re
     });
 
     assert.deepStrictEqual(
-      dispatched[0]?.defaultModelSelection,
-      ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
+      dispatched[1]?.modelSelection,
+      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
     );
     assert.equal(yield* Ref.get(registry.calls), 0);
   }).pipe(Effect.provide(TestClock.layer())),
