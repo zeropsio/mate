@@ -465,3 +465,24 @@ In the order the owner ranked them, then the rest:
     recorded dirty by construction, the recipe is not re-proposed on a setup change, the agents'
     words about their own tools, and agents doing the delivery's merge by hand (Fen merges, Vera
     rebuilt and force-pushed its branch).
+33. **A group built from nothing, and what it cost** (2026-09-18, the ledger's _A group built from
+    nothing_): the chain runs end to end — project, Mate, app, request, merge, stage, a second Mate
+    on the same branch, merge, production, release — on mate 0.11.18, cut so the containers ran
+    `main` rather than the morning's release. Three faults in the app, fixed on `main`: a group card
+    could never stop saying it was setting up (`1cd211436`), and adding a Mate to an existing group
+    failed twice at "Closing the project's shared variables" — a project search with no `clientId`
+    (`51d7697c4`) and a create planned against an index that trails the write (`36e81e7ef`). Open
+    for the app: the composer still loops React on typing (the Lexical controlled-value round trip,
+    `ComposerPromptEditor.tsx`, not the store write closed in `3dfdc3d7d`); a Mate restart can drop
+    the projects page to "Could not load your Zerops projects" and pin a renderer at ~106 % CPU; a
+    half-created Mate leaves a project the app can neither finish nor delete; _Update_ installs and
+    then says nothing about the restart its version needs; a new Mate opens on a model the account
+    may have no credits for, said only inside the conversation; and production's public route
+    trails its release by ~2 min. **The owner's calls from the run**, for the spec: the golden path
+    must not be escapable by wording (one clause, "on dev", left the work in a container,
+    unsupervised and undelivered); a new Mate should fetch and run its code itself rather than ask
+    the person to send the bootstrap message; deploying dev to dev makes no sense now that git is
+    the code of record — it was a snapshot from before a remote existed, and it is what manufactures
+    the empty deliveries; and an empty delivery must never become a request (`links/appdev` #2 was
+    `zcp init`, zero files, merged by the owner; #3 re-offered it), nor keep its first session's
+    title once it holds a later change.
