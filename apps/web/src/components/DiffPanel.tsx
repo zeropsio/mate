@@ -119,7 +119,7 @@ export default function DiffPanel({
     fileKeys: EMPTY_COLLAPSED_DIFF_FILE_KEYS,
   }));
   const [codeViewRevision, setCodeViewRevision] = useState(0);
-  const codeViewRef = useRef<AnnotatableCodeViewHandle>(null);
+  const [codeView, setCodeView] = useState<AnnotatableCodeViewHandle | null>(null);
   const lastCompletedTurnRefreshRef = useRef<{
     readonly threadKey: string | null;
     readonly turnId: TurnId | null;
@@ -458,9 +458,9 @@ export default function DiffPanel({
     : null;
 
   useEffect(() => {
-    if (!selectedDiffFileKey) return;
-    codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
-  }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
+    if (!selectedDiffFileKey || !codeView?.getInstance()) return;
+    codeView.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
+  }, [codeView, codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -966,7 +966,7 @@ export default function DiffPanel({
               >
                 <AnnotatableCodeView
                   key={collapseScopeKey ?? reviewSectionId}
-                  viewerRef={codeViewRef}
+                  viewerRef={setCodeView}
                   codeViewKey={codeViewMountKey}
                   className="h-full min-h-0 overflow-auto"
                   files={codeViewFiles}

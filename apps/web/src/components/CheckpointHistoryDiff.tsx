@@ -88,7 +88,8 @@ function CheckpointRootDiff(
     expansion.selectionKey !== selectionKey && selectionMatchesRoot ? true : expansion.expanded;
   const [collapsedFiles, setCollapsedFiles] = useState<ReadonlySet<string>>(() => new Set());
   const sectionRef = useRef<HTMLElement>(null);
-  const viewerRef = useRef<AnnotatableCodeViewHandle>(null);
+  // Held as state: the viewer mounts once the diff worker pool is ready.
+  const [viewer, setViewer] = useState<AnnotatableCodeViewHandle | null>(null);
   const query = useCheckpointDiff(
     {
       environmentId: props.environmentId,
@@ -131,9 +132,9 @@ function CheckpointRootDiff(
   }, [selectionKey, selectionMatchesRoot, expanded]);
   useEffect(() => {
     const selected = files.find((file) => file.filePath === props.selectedFilePath);
-    if (selectionKey !== "0:" && selected)
-      viewerRef.current?.scrollTo({ type: "item", id: selected.fileKey, align: "start" });
-  }, [files, props.selectedFilePath, selectionKey]);
+    if (selectionKey !== "0:" && selected && viewer?.getInstance())
+      viewer.scrollTo({ type: "item", id: selected.fileKey, align: "start" });
+  }, [files, props.selectedFilePath, selectionKey, viewer]);
   return (
     <section
       ref={sectionRef}
@@ -188,7 +189,7 @@ function CheckpointRootDiff(
           )}
           {files.length > 0 && (
             <AnnotatableCodeView
-              viewerRef={viewerRef}
+              viewerRef={setViewer}
               codeViewKey={`${props.history.runId}:${entry.root.rootId}:${props.ignoreWhitespace}`}
               className="h-96 min-h-0 overflow-auto"
               files={files}
