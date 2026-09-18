@@ -306,7 +306,7 @@ export function startAttachmentUpload(input: {
   pumpUploads();
 }
 
-export function cancelAttachmentUpload(imageId: string): void {
+function cancelAttachmentUpload(imageId: string): void {
   const job = jobsByImageId.get(imageId);
   if (!job) {
     return;
