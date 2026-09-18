@@ -5,8 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
-// The token field name stays "Clerk"-flavored (readClerkToken,
-// waitForManagedRelayClerkToken, ...): it is a public shape shared with the
+// The token field name stays "Clerk"-flavored (readClerkToken, ...): it is a public shape shared with the
 // mobile and desktop clients (a sibling slice), so renaming it here without
 // updating every consumer would break them. The value it carries is the
 // signed-in user's Zerops access token, not a Clerk session token — Clerk is
@@ -142,49 +141,3 @@ export function managedRelayAccountChanges(
     Stream.drop(1),
   );
 }
-
-function readSessionClerkToken(
-  session: ManagedRelaySession,
-): Effect.Effect<string, ManagedRelaySessionError> {
-  return session.readClerkToken().pipe(
-    Effect.flatMap((token) =>
-      token
-        ? Effect.succeed(token)
-        : Effect.fail(
-            new ManagedRelaySessionError({
-              message: "The T3 Connect session token is unavailable.",
-            }),
-          ),
-    ),
-  );
-}
-
-export const waitForManagedRelayClerkToken = Effect.fn(
-  "clientRuntime.managedRelaySession.waitForClerkToken",
-)(function* (registry: AtomRegistry.AtomRegistry) {
-  return yield* Effect.callback<string, ManagedRelaySessionError>((resume) => {
-    let unsubscribe: (() => void) | undefined;
-    let completed = false;
-    const readCurrentSession = () => {
-      if (completed) {
-        return true;
-      }
-      const session = registry.get(managedRelaySessionAtom);
-      if (!session) {
-        return false;
-      }
-      completed = true;
-      unsubscribe?.();
-      resume(readSessionClerkToken(session));
-      return true;
-    };
-
-    if (readCurrentSession()) {
-      return;
-    }
-
-    unsubscribe = registry.subscribe(managedRelaySessionAtom, readCurrentSession);
-    readCurrentSession();
-    return Effect.sync(() => unsubscribe?.());
-  });
-});

@@ -10,7 +10,6 @@ import {
   managedRelayAccountChanges,
   managedRelaySessionAtom,
   setManagedRelaySession,
-  waitForManagedRelayClerkToken,
 } from "./managedRelayState.ts";
 
 let registry = AtomRegistry.make();
@@ -18,13 +17,6 @@ let registry = AtomRegistry.make();
 function resetRegistry() {
   registry.dispose();
   registry = AtomRegistry.make();
-}
-
-function setSession() {
-  setManagedRelaySession(registry, {
-    accountId: "account-1",
-    readClerkToken: () => Promise.resolve("clerk-token"),
-  });
 }
 
 function zeropsToken(expiresAtSeconds: number): string {
@@ -35,17 +27,6 @@ function zeropsToken(expiresAtSeconds: number): string {
 
 describe("ManagedRelaySession", () => {
   afterEach(resetRegistry);
-
-  it.effect("waits for the current cloud session before reading its token", () =>
-    Effect.gen(function* () {
-      const tokenFiber = yield* waitForManagedRelayClerkToken(registry).pipe(Effect.forkChild);
-
-      setSession();
-
-      expect(yield* Fiber.join(tokenFiber)).toBe("clerk-token");
-      expect(registry.getNodes().get(managedRelaySessionAtom)?.listeners.size).toBe(0);
-    }),
-  );
 
   it.effect(
     "deduplicates concurrent Zerops token reads and reuses the token until JWT expiry",
