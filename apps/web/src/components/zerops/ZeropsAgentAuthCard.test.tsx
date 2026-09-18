@@ -53,8 +53,41 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html.match(/data-zerops-agent-identity/g)).toHaveLength(2);
     expect(html).toContain('data-zerops-agent-logo="claude-code"');
     expect(html).toContain('data-zerops-agent-logo="codex"');
-    expect(html).toContain('data-zerops-status-tone="attention"');
+    // Codex is in, so Claude's row is an offer: no attention tone anywhere.
+    expect(html).toContain('data-zerops-status-tone="off"');
+    expect(html).not.toContain('data-zerops-status-tone="attention"');
     expect(html).toContain('data-zerops-status-tone="ok"');
+  });
+
+  it("demands a sign-in only while no agent is signed in", () => {
+    const alone = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([agent({ agentId: "claude-code", state: "not-authorized" })])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(alone).toContain("Action required");
+    expect(alone).toContain('data-zerops-status-tone="attention"');
+
+    const withClaude = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+          }),
+          agent({ agentId: "codex", state: "not-authorized" }),
+        ])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(withClaude).not.toContain("Action required");
+    expect(withClaude).toContain("Not signed in");
+    expect(withClaude).toContain("Sign in to Codex");
   });
 
   it("shows a sign-in button for a not-authorized agent", () => {

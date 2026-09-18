@@ -90,6 +90,13 @@ export function ZeropsAgentAuthRows({
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
+  // One authorized agent is enough to work: the other's row is then an
+  // offer, not a demand (the audit run, 2026-09-17: Codex's "Action
+  // required" stayed lit after Claude Code was signed in).
+  const anotherAuthorized = (agent: ZeropsAgentAuth) =>
+    snapshot.agents.some(
+      (other) => other.agentId !== agent.agentId && agentAuthAction(other) === "none",
+    );
   return (
     <div className="divide-y divide-border/60" data-zerops-agent-auth-rows>
       {snapshot.agents.map((agent) => (
@@ -98,6 +105,7 @@ export function ZeropsAgentAuthRows({
           agent={agent}
           onSignIn={onSignIn}
           onCancel={onCancel}
+          quiet={anotherAuthorized(agent)}
           viewerSubject={viewerSubject}
         />
       ))}
@@ -108,17 +116,20 @@ export function ZeropsAgentAuthRows({
 function ZeropsAgentAuthRow({
   agent,
   viewerSubject,
+  quiet,
   onSignIn,
   onCancel,
 }: {
   readonly agent: ZeropsAgentAuth;
   readonly viewerSubject?: string | undefined;
+  /** Another agent is signed in, so this one's sign-in is an offer. */
+  readonly quiet: boolean;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
   const login = classifyAgentLogin(agent.login);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
-  const status = agentStatusPresentation(agent, login);
+  const status = agentStatusPresentation(agent, login, quiet);
   // Whose subscription a turn here would spend. Silent for your own agent —
   // telling someone their own login is theirs is noise on every screen.
   // The record this client wrote itself counts until the snapshot carries it.
@@ -197,6 +208,7 @@ function AgentLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
 function agentStatusPresentation(
   agent: ZeropsAgentAuth,
   login: ZeropsAgentLoginPresentation,
+  quiet: boolean,
 ): { readonly label: string; readonly tone: "attention" | "busy" | "failed" | "off" | "ok" } {
   switch (login.kind) {
     case "starting":
@@ -211,7 +223,11 @@ function agentStatusPresentation(
       return { label: "Sign-in failed", tone: "failed" };
     case "none": {
       const action = agentAuthAction(agent);
-      if (action === "sign-in") return { label: "Action required", tone: "attention" };
+      if (action === "sign-in") {
+        return quiet
+          ? { label: agentAuthLabel(agent), tone: "off" }
+          : { label: "Action required", tone: "attention" };
+      }
       if (action === "registering" || action === "checking") {
         return { label: action === "registering" ? "Registering" : "Checking", tone: "busy" };
       }
