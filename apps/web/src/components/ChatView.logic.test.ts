@@ -38,12 +38,15 @@ import {
   isBranchMismatchDismissedForSession,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
+  recallCheckoutIsRepo,
+  rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
+  threadShellHasStarted,
   resolveDraftHeroState,
   scheduleEnvironmentReconnectWarning,
   startNewThreadForProject,
@@ -1299,5 +1302,64 @@ describe("the version-skew banner (spec-mate.md §2.9 MU-1)", () => {
     expect(source).not.toContain("useZcpRestart");
     expect(NodeFS.existsSync(new URL("../versionSkew.ts", import.meta.url))).toBe(false);
     expect(NodeFS.existsSync(new URL("../zerops/useZcpRestart.ts", import.meta.url))).toBe(false);
+  });
+});
+
+describe("checkout Git memory", () => {
+  it("answers from the last status seen for the same checkout", () => {
+    rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", false);
+    expect(recallCheckoutIsRepo(environmentId, "/repo/plain-folder")).toBe(false);
+    rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", true);
+    expect(recallCheckoutIsRepo(environmentId, "/repo/plain-folder")).toBe(true);
+  });
+
+  it("does not answer for a checkout it has not seen", () => {
+    expect(recallCheckoutIsRepo(environmentId, "/repo/never-opened")).toBeUndefined();
+    expect(recallCheckoutIsRepo(environmentId, null)).toBeUndefined();
+  });
+
+  it("keeps environments apart", () => {
+    rememberCheckoutIsRepo(environmentId, "/repo/shared-path", false);
+    expect(
+      recallCheckoutIsRepo(EnvironmentId.make("env-other"), "/repo/shared-path"),
+    ).toBeUndefined();
+  });
+
+  it("does not confuse an environment id containing the separator with a path", () => {
+    rememberCheckoutIsRepo(EnvironmentId.make("env"), "a:b", false);
+    expect(recallCheckoutIsRepo(EnvironmentId.make("env:a"), "b")).toBeUndefined();
+  });
+});
+
+describe("threadShellHasStarted", () => {
+  it("counts a thread that has a user message but no latest turn", () => {
+    expect(
+      threadShellHasStarted({ latestTurn: null, latestUserMessageAt: now, session: null }),
+    ).toBe(true);
+  });
+
+  it("counts a thread with a live session and nothing else", () => {
+    expect(
+      threadShellHasStarted({
+        latestTurn: null,
+        latestUserMessageAt: null,
+        session: {
+          threadId,
+          status: "starting",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not count a thread that never sent anything", () => {
+    expect(
+      threadShellHasStarted({ latestTurn: null, latestUserMessageAt: null, session: null }),
+    ).toBe(false);
+    expect(threadShellHasStarted(null)).toBe(false);
   });
 });
