@@ -44,3 +44,14 @@ On desktop, press `Cmd+Enter` on macOS or `Ctrl+Enter` on Windows and Linux from
 start it in the background. T3 Code opens another new thread and shows an **Open** action for the
 thread that started. The new thread keeps the selected workspace mode and base branch. If **New
 worktree** is selected, each background thread creates its own worktree.
+
+## Rewind to an earlier prompt
+
+On web and desktop, choose **Revert to this message** beneath a sent message to rewind the
+conversation and workspace files to before that message. Its prompt text returns to the composer
+for editing and resending; any unsent draft stays above it. Attachments are not restored, so attach
+them again before resending.
+
+This removes the selected message and later conversation from the thread and from the provider's
+own history. It does not undo external actions. The action is available only when the provider
+supports rewind.

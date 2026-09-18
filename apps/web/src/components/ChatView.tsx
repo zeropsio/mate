@@ -343,6 +343,7 @@ import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
   buildCheckpointRevertConfirmation,
+  waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
@@ -5329,9 +5330,11 @@ function ChatViewContent(props: ChatViewProps) {
   ]);
 
   const onRevertToTurnCount = useCallback(
-    async (turnCount: number) => {
+    async (turnCount: number, messageId: MessageId) => {
       const localApi = readLocalApi();
       if (!localApi || !activeThread || isRevertingCheckpoint) return;
+      const message = activeThread.messages.find((message) => message.id === messageId);
+      if (!message || message.role !== "user") return;
 
       if (!supportsConversationRollback) {
         setThreadError(
@@ -5361,26 +5364,48 @@ function ChatViewContent(props: ChatViewProps) {
 
       setIsRevertingCheckpoint(true);
       setThreadError(activeThread.id, null);
-      const result = await revertThreadCheckpoint({
-        environmentId,
-        input: {
-          threadId: activeThread.id,
-          turnCount,
-        },
-      });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
+      try {
+        // The command's acceptance is not the rewind: wait until the thread no
+        // longer holds the message, so the prompt comes back only once the
+        // provider history is rolled back too.
+        await waitForRevertedMessage(routeThreadRef, messageId, turnCount, async () => {
+          const result = await revertThreadCheckpoint({
+            environmentId,
+            input: { threadId: activeThread.id, turnCount },
+          });
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            throw squashAtomCommandFailure(result);
+          }
+        });
+        const currentPrompt = promptRef.current;
+        const restoredPrompt = message.text.trim();
+        const nextPrompt =
+          restoredPrompt.length === 0
+            ? currentPrompt
+            : currentPrompt.length > 0
+              ? `${currentPrompt}\n\n${restoredPrompt}`
+              : restoredPrompt;
+        setComposerDraftPrompt(composerDraftTarget, nextPrompt);
+        promptRef.current = nextPrompt;
+        composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
+        requestAnimationFrame(() => composerRef.current?.focusAtEnd());
+      } catch (error) {
         setThreadError(
           activeThread.id,
           error instanceof Error ? error.message : "Failed to revert thread state.",
         );
+      } finally {
+        setIsRevertingCheckpoint(false);
       }
-      setIsRevertingCheckpoint(false);
     },
     [
       activeThread,
       activeEnvironmentUnavailable,
       activeEnvironmentUnavailableLabel,
+      composerDraftTarget,
+      composerRef,
+      routeThreadRef,
+      setComposerDraftPrompt,
       environmentId,
       isConnecting,
       isRevertingCheckpoint,
@@ -5416,6 +5441,7 @@ function ChatViewContent(props: ChatViewProps) {
       !activeThread ||
       isSendBusy ||
       isConnecting ||
+      isRevertingCheckpoint ||
       threadDetailLoading ||
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
@@ -6732,7 +6758,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (typeof targetTurnCount !== "number") {
       return;
     }
-    void onRevertToTurnCountRef.current(targetTurnCount);
+    void onRevertToTurnCountRef.current(targetTurnCount, messageId);
   }, []);
 
   // Empty state: no active thread
@@ -7105,6 +7131,7 @@ function ChatViewContent(props: ChatViewProps) {
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
             <div
               ref={setComposerOverlayElement}
+              inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               className={
                 isDraftHeroState
