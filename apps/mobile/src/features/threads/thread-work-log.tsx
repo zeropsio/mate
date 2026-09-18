@@ -792,14 +792,16 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
  * before it renders.
  */
 export function ThreadReasoningRow(props: {
-  readonly iconSubtleColor: import("react-native").ColorValue;
+  readonly rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
+  readonly iconSubtleColor: ColorValue;
   readonly expanded: boolean;
   readonly label: string;
+  readonly streaming: boolean;
   readonly onToggle: () => void;
-  readonly children: import("react").ReactNode;
+  readonly children: ReactNode;
 }) {
   return (
-    <View className="-mx-1 mb-1 px-1 py-0">
+    <View className={cn("-mx-1 px-1 py-0", props.expanded && "pb-1.5")}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: props.expanded }}
@@ -807,31 +809,48 @@ export function ThreadReasoningRow(props: {
         accessibilityHint={`Double tap to ${props.expanded ? "hide" : "show"} the thinking trace.`}
         hitSlop={4}
         onPress={() => {
-          triggerDisclosureFeedback();
+          void Haptics.selectionAsync();
           props.onToggle();
         }}
         className="min-h-8 flex-row items-center gap-1.5 rounded-md px-0.5 py-0 active:bg-subtle"
+        style={{ minHeight: props.rowSizing.estimatedRowHeight }}
       >
-        <View className="h-[18px] w-5 items-center justify-center">
-          <SymbolView
-            name={{ ios: "brain", android: "psychology" }}
-            size={13}
-            tintColor={props.iconSubtleColor}
-            type="monochrome"
+        {props.streaming ? (
+          <ShimmeringWorkContent
+            key={props.rowSizing.textSizeKey}
+            icon="brain"
+            iconSubtleColor={props.iconSubtleColor}
+            label={props.label}
+            showIcon
           />
-        </View>
-        <Text className="min-w-0 flex-1 text-sm text-foreground-muted" numberOfLines={1}>
-          {props.label}
-        </Text>
-        <SymbolView
-          name={props.expanded ? "chevron.down" : "chevron.right"}
+        ) : (
+          <>
+            <View className="h-6 w-6 shrink-0 items-center justify-center">
+              <WorkLogIcon icon="brain" color={props.iconSubtleColor} />
+            </View>
+            <Text
+              key={props.rowSizing.textSizeKey}
+              className="min-w-0 flex-1 text-sm text-foreground-muted"
+              numberOfLines={1}
+            >
+              {props.label}
+            </Text>
+          </>
+        )}
+        <ThreadDisclosureChevron
+          expanded={props.expanded}
+          collapsedDirection="right"
           size={11}
           tintColor={props.iconSubtleColor}
-          type="monochrome"
         />
       </Pressable>
       {props.expanded ? (
-        <View className="mb-1.5 ml-7 mt-1 rounded-xl bg-subtle px-3 py-2">
+        <Animated.View
+          entering={WORK_LOG_DETAIL_ENTER_TRANSITION}
+          exiting={WORK_LOG_DETAIL_EXIT_TRANSITION}
+          layout={WORK_LOG_LAYOUT_TRANSITION}
+          className="ml-7 mt-1 rounded-xl bg-subtle px-3 py-2"
+        >
           <ScrollView
             nestedScrollEnabled
             directionalLockEnabled
@@ -840,7 +859,7 @@ export function ThreadReasoningRow(props: {
           >
             {props.children}
           </ScrollView>
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );

@@ -51,6 +51,7 @@ export function ComposerUsageLimits({
               key={account.id}
               dense
               first={index === 0}
+              driver={account.driver}
               label={driverLabel}
               // Siblings need telling apart: a custom instance without a name shows its
               // id, and a pooled account shows its hub and account id.

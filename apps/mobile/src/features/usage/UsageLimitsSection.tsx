@@ -2,11 +2,12 @@ import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   ProviderConsumeResetCreditOutcome,
-  ProviderInstanceId,
+  ProviderConsumeResetCreditInput,
   ServerProvider,
   ServerProviderResetCredits,
   ServerProviderUsageWindow,
   UsageLimitSourceAccount,
+  UsageLimitSourceId,
   UsageProviderKind,
 } from "@t3tools/contracts";
 import {
@@ -99,7 +100,7 @@ function WindowRow(props: {
 }
 
 /** One account: icon, name and plan on a single line, then its windows. */
-function AccountLimits(props: {
+export function AccountLimits(props: {
   readonly driver: Driver;
   readonly label: string;
   readonly instanceLabel: string;
@@ -107,14 +108,23 @@ function AccountLimits(props: {
   readonly limits: ServerProvider["usageLimits"];
   readonly now: number;
   readonly first: boolean;
+  /** Tighter padding for the composer card. */
+  readonly dense?: boolean;
+  /** Sits at the end of the heading row, such as a close control. */
+  readonly trailing?: ReactNode;
   readonly footer?: ReactNode;
 }) {
-  const { limits, now } = props;
+  const { limits, now, dense = false } = props;
   const color = useBarColor(props.driver);
   if (!limits) return null;
   const notice = limitsNotice(limits);
+  const padding = dense ? "px-4 py-3" : "p-4";
   return (
-    <View className={props.first ? "gap-3 p-4" : "gap-3 border-t border-border-subtle p-4"}>
+    <View
+      className={
+        props.first ? `gap-3 ${padding}` : `gap-3 border-t border-border-subtle ${padding}`
+      }
+    >
       <View className="flex-row items-center gap-2">
         <ProviderIcon provider={props.driver} size={16} />
         <View className="min-w-0 flex-1 flex-row items-baseline gap-2">
@@ -130,6 +140,7 @@ function AccountLimits(props: {
             </Text>
           ) : null}
         </View>
+        {props.trailing}
       </View>
       {notice ? (
         <Text className="text-sm text-foreground-muted">{notice}</Text>
@@ -157,13 +168,15 @@ const OUTCOME_TEXT: Record<ProviderConsumeResetCreditOutcome, string> = {
  * credit the provider granted the user, so it goes through the native
  * confirm alert rather than firing on a bare tap.
  */
-function ResetCredits(props: {
+export function ResetCredits(props: {
   readonly environmentId: EnvironmentId;
-  readonly instanceId: ProviderInstanceId;
+  readonly input: ProviderConsumeResetCreditInput;
   readonly credits: ServerProviderResetCredits;
   readonly now: number;
+  /** A smaller pill for the composer card. */
+  readonly dense?: boolean;
 }) {
-  const { environmentId, instanceId, credits, now } = props;
+  const { environmentId, input, credits, now, dense = false } = props;
   const consume = useAtomCommand(serverEnvironment.consumeResetCredit, {
     reportFailure: false,
   });
@@ -184,10 +197,10 @@ function ResetCredits(props: {
   const redeem = async () => {
     setBusy(true);
     setStatus(null);
-    const result = await consume({ environmentId, input: { instanceId } });
+    const result = await consume({ environmentId, input });
     setBusy(false);
     if (result._tag === "Success") {
-      setStatus(OUTCOME_TEXT[result.value.outcome]);
+      setStatus(result.value.warning ?? OUTCOME_TEXT[result.value.outcome]);
       return;
     }
     setStatus(
@@ -217,10 +230,20 @@ function ResetCredits(props: {
           accessibilityState={{ disabled: busy }}
           disabled={busy}
           onPress={confirm}
-          className="rounded-full bg-subtle-strong px-3 py-1.5"
+          className={
+            dense
+              ? "rounded-full bg-subtle-strong px-2.5 py-1"
+              : "rounded-full bg-subtle-strong px-3 py-1.5"
+          }
         >
-          <Text className="text-sm font-t3-medium text-foreground">
-            {busy ? "Using credit…" : "Use a reset credit"}
+          <Text
+            className={
+              dense
+                ? "text-xs font-t3-medium text-foreground"
+                : "text-sm font-t3-medium text-foreground"
+            }
+          >
+            {busy ? "Using…" : "Use reset"}
           </Text>
         </Pressable>
       ) : null}
@@ -250,7 +273,7 @@ function ProviderLimits(props: {
         credits ? (
           <ResetCredits
             environmentId={environmentId}
-            instanceId={provider.instanceId}
+            input={{ instanceId: provider.instanceId }}
             credits={credits}
             now={now}
           />
@@ -263,10 +286,12 @@ function ProviderLimits(props: {
 /** Emails stay off the phone screen; the plan and driver identify the row. */
 function SourceAccountLimits(props: {
   readonly account: UsageLimitSourceAccount;
+  readonly source: { readonly id: UsageLimitSourceId; readonly environmentId: EnvironmentId };
   readonly now: number;
   readonly first: boolean;
 }) {
-  const { account } = props;
+  const { account, source } = props;
+  const credits = account.usageLimits.resetCredits;
   return (
     <AccountLimits
       driver={account.driver}
@@ -276,6 +301,16 @@ function SourceAccountLimits(props: {
       limits={account.usageLimits}
       now={props.now}
       first={props.first}
+      footer={
+        credits?.nextCreditId ? (
+          <ResetCredits
+            environmentId={source.environmentId}
+            input={{ sourceId: source.id, accountId: account.id, creditId: credits.nextCreditId }}
+            credits={credits}
+            now={props.now}
+          />
+        ) : undefined
+      }
     />
   );
 }
@@ -382,6 +417,7 @@ export function UsageLimitsSection(props: {
               <SourceAccountLimits
                 key={account.id}
                 account={account}
+                source={source}
                 now={now}
                 first={index === 0}
               />

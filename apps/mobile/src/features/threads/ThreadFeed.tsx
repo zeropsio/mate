@@ -124,6 +124,7 @@ import { markdownFileIconSource } from "@t3tools/mobile-markdown-text/file-icons
 import { resolveMarkdownLinkPresentation } from "@t3tools/mobile-markdown-text/links";
 import {
   deriveThreadFeedPresentation,
+  deriveUnsettledTurnId,
   isContextCompactionActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestTurn,
@@ -138,6 +139,7 @@ import {
   collapsedWorkLogHeight,
   ThreadAgentSpawnCard,
   ThreadDisclosureChevron,
+  ThreadReasoningRow,
   ThreadWorkGroupToggle,
   ThreadThinkingRow,
   ThreadWorkLog,
@@ -154,6 +156,9 @@ import * as Option from "effect/Option";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
 import { MARKDOWN_IMAGE_MAX_WIDTH, resolveMarkdownImageDisplaySize } from "./markdownImageSize";
 import { fileChipMenu, resolveFileChipTarget, type FileChipAction } from "./fileChipMenu";
+
+/** `ml-7` gutter plus the `px-3` padding of the expanded reasoning container. */
+const REASONING_CONTENT_INSET = 52;
 
 const WIDE_MARKDOWN_BLOCK_OPTIONS = {
   // Native iOS blockquotes and adjacent selectable text are separate layout
@@ -1371,14 +1376,17 @@ function renderFeedEntry(
   > & {
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
+    readonly expandedReasoningMessageIds: ReadonlySet<string>;
     readonly workRowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
     readonly workGroupScrollPositions: Map<string, ThreadWorkGroupScrollPosition>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
     readonly unsettledTurnId: TurnId | null;
+    readonly isWorking: boolean;
     readonly onCopyWorkRow: (rowId: string, value: string) => void;
     readonly onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
     readonly onToggleWorkRow: (rowId: string, anchorKey: string) => void;
     readonly onToggleTurnFold: (turnId: TurnId) => void;
+    readonly onToggleReasoning: (messageId: string) => void;
     readonly onPressPreview: (source: FilePreviewSource) => void;
     readonly onPressVideo: (attachment: ChatFileAttachment, sourceIdentifier: string) => void;
     readonly markdownLinkHandlers: MarkdownLinkHandlers;
@@ -1485,6 +1493,38 @@ function renderFeedEntry(
 
   if (entry.type === "message") {
     const { message } = entry;
+    if (message.role === "reasoning") {
+      // Only the live turn may claim to still be thinking, and only while the
+      // thread is actually working: a block left open by a crashed provider
+      // must not shimmer on a turn that settled long ago. Same test as web.
+      const liveReasoning =
+        Boolean(message.streaming) &&
+        props.isWorking &&
+        message.turnId !== null &&
+        message.turnId === props.unsettledTurnId;
+      return (
+        <ThreadReasoningRow
+          rowSizing={props.workRowSizing}
+          iconSubtleColor={iconSubtleColor}
+          expanded={props.expandedReasoningMessageIds.has(message.id)}
+          label={liveReasoning ? "Thinking" : "Thought"}
+          streaming={liveReasoning}
+          onToggle={() => props.onToggleReasoning(message.id)}
+        >
+          <MarkdownImageAvailableWidthContext
+            value={props.markdownContentWidth - REASONING_CONTENT_INSET}
+          >
+            <AssistantMarkdownContent
+              markdown={message.text}
+              markdownStyles={markdownStyles.assistant}
+              linkHandlers={props.markdownLinkHandlers}
+              renderImage={props.renderMarkdownImage}
+              skills={props.skills}
+            />
+          </MarkdownImageAvailableWidthContext>
+        </ThreadReasoningRow>
+      );
+    }
     const isUser = message.role === "user";
     const renderedText = message.text;
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
@@ -2035,13 +2075,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     readonly expandedWorkGroups: Record<string, boolean>;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly expandedTurnIds: ReadonlySet<TurnId>;
+    readonly expandedReasoningMessageIds: ReadonlySet<string>;
   }>({
     copiedRowId: null,
     expandedWorkGroups: {},
     expandedWorkRows: {},
     expandedTurnIds: new Set(),
+    expandedReasoningMessageIds: new Set(),
   });
-  const { copiedRowId, expandedWorkGroups, expandedWorkRows, expandedTurnIds } = interactionState;
+  const {
+    copiedRowId,
+    expandedWorkGroups,
+    expandedWorkRows,
+    expandedTurnIds,
+    expandedReasoningMessageIds,
+  } = interactionState;
   const [expandedFile, setExpandedFile] = useState<FilePreviewSource | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<VideoPreviewSource | null>(null);
   useEffect(() => {
@@ -2210,11 +2258,9 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   );
   const markdownStyles = useMarkdownStyles(onMarkdownLinkPress, renderMarkdownImage);
   const reviewCommentColors = useReviewCommentColors();
-  const unsettledTurnId =
-    props.latestTurn &&
-    (props.latestTurn.completedAt === null || props.latestTurn.state === "running")
-      ? props.latestTurn.turnId
-      : null;
+  // One definition of "still live", shared with the fold derivation: two
+  // copies of this test are what let a row and the fold beside it disagree.
+  const unsettledTurnId = deriveUnsettledTurnId(props.latestTurn ?? null);
   // LegendList does not invalidate visible rows when only the renderItem closure changes.
   // Include turn completion so unchanged message rows reveal their footer and spacing
   // even when the final message update arrives before the turn settles.
@@ -2224,6 +2270,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       unsettledTurnId,
       copiedRowId,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       workRowSizing,
       iconSubtleColor,
       markdownStyles,
@@ -2236,6 +2283,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       unsettledTurnId,
       copiedRowId,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       workRowSizing,
       iconSubtleColor,
       markdownStyles,
@@ -2507,7 +2555,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     if (disclosureAnchorKeyRef.current !== null) {
       settleDisclosureAfterLayout();
     }
-  }, [expandedTurnIds, expandedWorkGroups, expandedWorkRows, settleDisclosureAfterLayout]);
+  }, [
+    expandedTurnIds,
+    expandedWorkGroups,
+    expandedWorkRows,
+    expandedReasoningMessageIds,
+    settleDisclosureAfterLayout,
+  ]);
 
   const handleItemSizeChanged = useCallback(() => {
     if (disclosureAnchorKeyRef.current !== null) {
@@ -2590,6 +2644,24 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     [suspendEndScrollMaintenanceForDisclosure],
   );
 
+  const onToggleReasoning = useCallback(
+    (messageId: string) => {
+      // The anchor must be the feed row id, which for a message row is the
+      // message id, or position restoration is skipped for every row.
+      suspendEndScrollMaintenanceForDisclosure(messageId);
+      setInteractionState((current) => {
+        const next = new Set(current.expandedReasoningMessageIds);
+        if (next.has(messageId)) {
+          next.delete(messageId);
+        } else {
+          next.add(messageId);
+        }
+        return { ...current, expandedReasoningMessageIds: next };
+      });
+    },
+    [suspendEndScrollMaintenanceForDisclosure],
+  );
+
   const onPressPreview = useCallback((source: FilePreviewSource) => {
     setExpandedFile((current) => current ?? source);
   }, []);
@@ -2620,6 +2692,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         return undefined;
       }
       switch (entry.type) {
+        case "message":
+          // A collapsed reasoning row is the same chrome as a work toggle.
+          return entry.message.role === "reasoning" &&
+            !expandedReasoningMessageIds.has(entry.message.id)
+            ? WORK_GROUP_TOGGLE_HEIGHT
+            : undefined;
         case "turn-fold":
           return TURN_FOLD_HEIGHT;
         case "work-toggle":
@@ -2638,7 +2716,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           return undefined;
       }
     },
-    [expandedWorkRows, workRowSizing.fixedRowHeight],
+    [expandedReasoningMessageIds, expandedWorkRows, workRowSizing.fixedRowHeight],
   );
 
   // Disclosures can mount existing offscreen rows as well as new work rows.
@@ -2655,14 +2733,17 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           onEditPendingMessage: props.onEditPendingMessage,
           copiedRowId,
           expandedWorkRows,
+          expandedReasoningMessageIds,
           workRowSizing,
           workGroupScrollPositions,
           terminalAssistantMessageIds,
           unsettledTurnId,
+          isWorking: props.activeWorkStartedAt !== null,
           onCopyWorkRow,
           onToggleWorkGroup,
           onToggleWorkRow,
           onToggleTurnFold,
+          onToggleReasoning,
           onPressPreview,
           onPressVideo,
           markdownLinkHandlers,
@@ -2687,10 +2768,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       copiedRowId,
       disclosureToggleSettling,
       expandedWorkRows,
+      expandedReasoningMessageIds,
       workRowSizing,
       workGroupScrollPositions,
       terminalAssistantMessageIds,
       unsettledTurnId,
+      props.activeWorkStartedAt,
       iconSubtleColor,
       screenColor,
       userBubbleColor,
@@ -2703,6 +2786,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       markdownLinkHandlers,
       onPressPreview,
       onPressVideo,
+      onToggleReasoning,
       onToggleTurnFold,
       onToggleWorkGroup,
       onToggleWorkRow,
