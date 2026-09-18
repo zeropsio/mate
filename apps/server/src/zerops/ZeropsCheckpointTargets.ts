@@ -369,26 +369,30 @@ export const captureAcrossTargets = (
 
         // A diff we could not read costs a summary, never the checkpoint -
         // but it is reported rather than swallowed, so the turn can say the
-        // history is there and the summary is not.
-        const diff = yield* fanOut.store
-          .diffCheckpoints({
-            cwd: target.cwd,
-            fromCheckpointRef: input.fromCheckpointRef,
-            toCheckpointRef: input.toCheckpointRef,
-            fallbackFromToHead: false,
-            ignoreWhitespace: false,
-            format: "numstat",
-          })
-          .pipe(
-            Effect.map((numstat) => ({
-              files: parseTurnDiffFilesFromNumstat(numstat),
-              reason: "",
-            })),
-            Effect.catch((error) => Effect.succeed({ files: [], reason: error.message })),
-            Effect.catchCause(() =>
-              Effect.succeed({ files: [], reason: "The turn diff could not be computed." }),
-            ),
-          );
+        // history is there and the summary is not. A repository initialized
+        // during the turn has no pre-turn snapshot: keep the checkpoint for the
+        // next turn and do not diff against a ref that does not exist.
+        const diff = baselineMissing
+          ? { files: [], reason: "" }
+          : yield* fanOut.store
+              .diffCheckpoints({
+                cwd: target.cwd,
+                fromCheckpointRef: input.fromCheckpointRef,
+                toCheckpointRef: input.toCheckpointRef,
+                fallbackFromToHead: false,
+                ignoreWhitespace: false,
+                format: "numstat",
+              })
+              .pipe(
+                Effect.map((numstat) => ({
+                  files: parseTurnDiffFilesFromNumstat(numstat),
+                  reason: "",
+                })),
+                Effect.catch((error) => Effect.succeed({ files: [], reason: error.message })),
+                Effect.catchCause(() =>
+                  Effect.succeed({ files: [], reason: "The turn diff could not be computed." }),
+                ),
+              );
 
         return {
           target,
