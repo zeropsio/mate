@@ -286,6 +286,14 @@
     "./showcaseScenes": {
       "types": "./src/showcaseScenes/index.ts",
       "import": "./src/showcaseScenes/index.ts"
+    },
+    "./hostClassification": {
+      "types": "./src/hostClassification.ts",
+      "import": "./src/hostClassification.ts"
+    },
+    "./favicon": {
+      "types": "./src/favicon.ts",
+      "import": "./src/favicon.ts"
     }
   },
   "scripts": {

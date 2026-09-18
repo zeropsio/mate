@@ -20,6 +20,7 @@ import type {
   ServerProviderSkill,
   ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
+import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -1040,6 +1041,7 @@ function brandLinkIcon(host: string): typeof GitHubIcon | null {
 const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: string }) {
   const [failedHost, setFailedHost] = useState<string | null>(null);
   const BrandIcon = brandLinkIcon(host);
+  const faviconUrl = faviconUrlForOrigin(`https://${host}`);
   return (
     <span
       className="ms-[0.25em] me-[0.2em] inline-flex size-[14px] [vertical-align:-0.125em]"
@@ -1047,11 +1049,11 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({ host }: { host: 
     >
       {BrandIcon ? (
         <BrandIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
-      ) : failedHost === host || failedFaviconHosts.has(host) ? (
+      ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : (
         <img
-          src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
+          src={faviconUrl}
           alt=""
           loading="lazy"
           draggable={false}
