@@ -40,9 +40,9 @@ import {
   stripInlineTerminalContextPlaceholders,
 } from "./lib/terminalContext";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
-import { createDebouncedStorage } from "./lib/storage";
+import { createDeferredStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -60,15 +60,45 @@ export type DraftId = typeof DraftId.Type;
 
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
-const composerDebouncedStorage = createDebouncedStorage(
+// Keep the immutable state until flush. Migration writebacks already have the persisted shape.
+type ComposerPersistState =
+  | { capturedState: ComposerDraftStoreState }
+  | PersistedComposerDraftStoreState;
+
+const composerDebouncedStorage = createDeferredStorage<StorageValue<ComposerPersistState>>(
   {
     ...accountDraftStorage,
     setItem: (key, value) => {
       if (!changingAccount) accountDraftStorage.setItem(key, value);
     },
   },
+  (value) =>
+    JSON.stringify({
+      state:
+        "capturedState" in value.state
+          ? partializeComposerDraftStoreState(value.state.capturedState)
+          : value.state,
+      version: value.version,
+    }),
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
+
+const composerPersistStorage: PersistStorage<ComposerPersistState> = {
+  getItem: (name) => {
+    // The account draft storage is synchronous.
+    const raw = composerDebouncedStorage.getItem(name);
+    if (typeof raw !== "string") {
+      return null;
+    }
+    // Parsed persisted JSON. `migrate` and `merge` normalize it from unknown,
+    // so the cast mirrors the one zustand's createJSONStorage performs.
+    return JSON.parse(raw) as StorageValue<ComposerPersistState>;
+  },
+  setItem: (name, value) => {
+    if (!changingAccount) composerDebouncedStorage.setItem(name, value);
+  },
+  removeItem: (name) => composerDebouncedStorage.removeItem(name),
+};
 
 // Flush pending composer draft writes before page unload to prevent data loss.
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
@@ -1770,7 +1800,8 @@ function migratePersistedComposerDraftStoreState(
   };
 }
 
-function partializeComposerDraftStoreState(
+/** Select the persisted draft fields when the storage write is ready to flush. */
+export function partializeComposerDraftStoreState(
   state: ComposerDraftStoreState,
 ): PersistedComposerDraftStoreState {
   // Draft sessions worth persisting: mapped (a new-thread flow targets
@@ -3275,14 +3306,10 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
       name: COMPOSER_DRAFT_STORAGE_KEY,
       skipHydration: true,
       version: COMPOSER_DRAFT_STORAGE_VERSION,
-      storage: createJSONStorage(() => ({
-        ...composerDebouncedStorage,
-        setItem: (key, value) => {
-          if (!changingAccount) composerDebouncedStorage.setItem(key, value);
-        },
-      })),
+      storage: composerPersistStorage,
       migrate: migratePersistedComposerDraftStoreState,
-      partialize: partializeComposerDraftStoreState,
+      // Defer the draft walk and serialization until the storage write flushes.
+      partialize: (state): ComposerPersistState => ({ capturedState: state }),
       merge: (persistedState, currentState) => {
         const normalizedPersisted =
           normalizeCurrentPersistedComposerDraftStoreState(persistedState);
