@@ -468,7 +468,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     if (composerTrigger.kind === "skill") {
       const enabledSkills = (selectedProviderStatus?.skills ?? []).filter((s) => s.enabled);
       const normalizedQuery = normalizeSearchQuery(composerTrigger.query, {
-        trimLeadingPattern: /^\$+/,
+        trimLeadingPattern: /^\p{Sc}+/u,
       });
 
       if (!normalizedQuery) {
