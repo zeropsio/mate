@@ -974,7 +974,7 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          ...(registerVerb(candidate, tags) === undefined
+          ...(!mate || registerVerb(candidate, tags) === undefined
             ? []
             : [
                 {
@@ -985,7 +985,7 @@ function ZeropsProjectsContent() {
                   },
                 },
               ]),
-          ...(verbs.assign
+          ...(mate && verbs.assign
             ? [
                 {
                   id: "assign",
@@ -996,7 +996,7 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          ...(verbs.move
+          ...(mate && verbs.move
             ? [
                 {
                   id: "move",
@@ -1008,7 +1008,7 @@ function ZeropsProjectsContent() {
                 },
               ]
             : []),
-          ...(tags.groupId === undefined || !verbs.move
+          ...(!mate || tags.groupId === undefined || !verbs.move
             ? []
             : [
                 {

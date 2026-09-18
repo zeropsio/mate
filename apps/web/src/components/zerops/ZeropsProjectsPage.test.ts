@@ -403,3 +403,16 @@ describe("hasNoZeropsProject", () => {
     );
   });
 });
+
+describe("an environment's menu", () => {
+  it("carries a Mate's verbs only for a Mate — a stage or a production has none", () => {
+    // The audit run, 2026-09-17: a stage's menu offered "Hand this Mate over"
+    // and "Change project or role". Rename was already gated; these are too.
+    expect(projectsPageSource).toContain(
+      "...(!mate || registerVerb(candidate, tags) === undefined",
+    );
+    expect(projectsPageSource).toContain("...(mate && verbs.assign");
+    expect(projectsPageSource).toContain("...(mate && verbs.move");
+    expect(projectsPageSource).toContain("...(!mate || tags.groupId === undefined || !verbs.move");
+  });
+});
