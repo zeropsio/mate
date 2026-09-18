@@ -37,6 +37,23 @@ index fa1b77317f609983ae2434764174072e51130550..270c81c90971b0ff3038b999973dd4d1
      override fun setTitleFontFamily(
          config: ScreenStackHeaderConfig,
          titleFontFamily: String?,
+diff --git a/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderSubviewManager.kt b/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderSubviewManager.kt
+index 64f14f0c5ade16eb9519b8780d4ce013f88fbd3a..6cb1d69f97a95759c662a6006a9626925d9fefd9 100644
+--- a/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderSubviewManager.kt
++++ b/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderSubviewManager.kt
+@@ -47,6 +47,12 @@ class ScreenStackHeaderSubviewManager :
+         Log.w("[RNScreens]", "hidesSharedBackground prop is not available on Android")
+     }
+ 
++    // Bar button transition identifiers only apply on iOS.
++    override fun setIdentifier(
++        view: ScreenStackHeaderSubview,
++        identifier: String?,
++    ) = Unit
++
+     // synchronousShadowStateUpdatesEnabled is not available on Android atm,
+     // however we must override their setters
+     override fun setSynchronousShadowStateUpdatesEnabled(
 diff --git a/ios/RNSBarButtonItem.h b/ios/RNSBarButtonItem.h
 index a26d1254eafd89268f65d968988cf6a3b8c1e457..62eea42ac26c532801189556c5f51012c3df3a52 100644
 --- a/ios/RNSBarButtonItem.h
@@ -142,10 +159,10 @@ index 8a41697223f6c4b5cb2dd6d450fc58cbb3b27536..309ba2f762068dcf452c172f7c7cbf2a
  
  NS_ASSUME_NONNULL_END
 diff --git a/ios/RNSScreenStackHeaderConfig.mm b/ios/RNSScreenStackHeaderConfig.mm
-index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9c1945222 100644
+index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..d36bda28552e5ac75088e18d0fde338eff90c694 100644
 --- a/ios/RNSScreenStackHeaderConfig.mm
 +++ b/ios/RNSScreenStackHeaderConfig.mm
-@@ -24,11 +24,33 @@
+@@ -24,11 +24,46 @@
  #import "RNSSearchBar.h"
  #import "UINavigationBar+RNSUtility.h"
  
@@ -155,10 +172,23 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
  static const NSNumber *const DEFAULT_TITLE_FONT_SIZE = @17;
 +
-+// Keys for the last-applied JS bar button configs, associated with the
-+// navigation item so unrelated header updates (title, subtitle, tint) don't
-+// recreate the native buttons they configure.
-+static char RNSAppliedHeaderBarButtonConfigsKey;
++#if !TARGET_OS_TV
++// Each placement keeps its own cache so changes to one side do not move live
++// items on the other side into new groups during a navigation transition.
++static char RNSAppliedLeadingHeaderItemsKey;
++static char RNSAppliedTrailingHeaderItemsKey;
++static char RNSAppliedCenterHeaderItemsKey;
++
++// Records a placement's owner and contents, returning whether they changed.
++static BOOL RNSUpdateHeaderItemsCache(UINavigationItem *navitem, const void *key, NSArray *itemsKey)
++{
++  if ([objc_getAssociatedObject(navitem, key) isEqual:itemsKey]) {
++    return NO;
++  }
++  objc_setAssociatedObject(navitem, key, itemsKey, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++  return YES;
++}
++#endif
 +static char RNSAppliedToolbarConfigsKey;
  static const NSNumber *const DEFAULT_TITLE_LARGE_FONT_SIZE = @34;
  
@@ -179,7 +209,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  @interface RCTImageLoader (Private)
  - (id<RCTImageCache>)imageCache;
  @end
-@@ -46,6 +68,9 @@ + (BOOL)rnscreens_isBlankOrNull:(NSString *)string
+@@ -46,6 +81,9 @@ + (BOOL)rnscreens_isBlankOrNull:(NSString *)string
  @end
  
  @interface RNSScreenStackHeaderConfig () <RCTMountingTransactionObserving>
@@ -189,7 +219,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  @end
  
  @implementation RNSScreenStackHeaderConfig {
-@@ -80,6 +105,7 @@ - (void)initProps
+@@ -80,6 +118,7 @@ - (void)initProps
    self.hidden = YES;
    _reactSubviews = [NSMutableArray new];
    _backTitleVisible = YES;
@@ -197,7 +227,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
    _blurEffect = RNSBlurEffectStyleNone;
    _synchronousShadowStateUpdatesEnabled = YES;
  }
-@@ -507,6 +533,10 @@ + (void)updateViewController:(UIViewController *)vc
+@@ -507,6 +546,10 @@ + (void)updateViewController:(UIViewController *)vc
  
    if (shouldHide) {
      navitem.title = config.title;
@@ -208,7 +238,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
      // Setting navigation bar visibility is split to mitigate iOS 26 bug with bar button items.
      [navctr setNavigationBarHidden:YES animated:animated];
-@@ -523,11 +553,19 @@ + (void)updateViewController:(UIViewController *)vc
+@@ -523,11 +566,19 @@ + (void)updateViewController:(UIViewController *)vc
    }
    navitem.largeTitleDisplayMode =
        config.largeTitle ? UINavigationItemLargeTitleDisplayModeAlways : UINavigationItemLargeTitleDisplayModeNever;
@@ -228,7 +258,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
  // appearance does not apply to the tvOS so we need to use lagacy customization
  #if TARGET_OS_TV
-@@ -559,8 +597,6 @@ + (void)updateViewController:(UIViewController *)vc
+@@ -559,8 +610,6 @@ + (void)updateViewController:(UIViewController *)vc
    navitem.leftItemsSupplementBackButton = config.backButtonInCustomView;
  #endif
    navitem.titleView = nil;
@@ -237,7 +267,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
  #if !TARGET_OS_TV
    // We want to set navitem.searchController to nil only if we are sure
-@@ -568,22 +604,18 @@ + (void)updateViewController:(UIViewController *)vc
+@@ -568,22 +617,18 @@ + (void)updateViewController:(UIViewController *)vc
    bool searchBarPresent = false;
  #endif /* !TARGET_OS_TV */
  
@@ -264,7 +294,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
          break;
        }
        case RNSScreenStackHeaderSubviewTypeCenter:
-@@ -648,10 +680,467 @@ + (void)updateViewController:(UIViewController *)vc
+@@ -648,10 +693,453 @@ + (void)updateViewController:(UIViewController *)vc
    // This assignment should be done after `navitem.titleView = ...` assignment (iOS 16.0 bug).
    // See: https://github.com/software-mansion/react-native-screens/issues/1570 (comments)
    navitem.title = config.title;
@@ -272,9 +302,6 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
 -                                                withCurrentItems:navitem.leftBarButtonItems];
 -  navitem.rightBarButtonItems = [config barButtonItemsFromConfigs:config.headerRightBarButtonItems
 -                                                 withCurrentItems:navitem.rightBarButtonItems];
-+  NSArray *headerLeftConfigs = config.headerLeftBarButtonItems ?: @[];
-+  NSArray *headerRightConfigs = config.headerRightBarButtonItems ?: @[];
-+  NSArray *headerCenterConfigs = config.headerCenterBarButtonItems ?: @[];
 +  // Retain the config in the key so its address cannot be reused while cached.
 +  // Items capture this config's event emitter in their press handlers, so a
 +  // remounted header-config view with value-equal configs must still rebuild
@@ -283,59 +310,48 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
 +  // subview. Include those native identities in the key so React-backed
 +  // items can use the same cache without reusing a group after its view was
 +  // replaced.
-+  NSArray *headerItemsKey = @[
-+    config,
-+    headerLeftConfigs,
-+    headerRightConfigs,
-+    headerCenterConfigs,
-+    subviewLeftItems,
-+    subviewRightItems,
-+  ];
-+  // Rebuilding bar button items creates brand-new native buttons (glass
-+  // UIButton custom views on iOS 26). Replacing them while UIKit animates an
-+  // existing one (menu capsule morph, push/pop glass transitions) strands the
-+  // animation overlay — a stuck expanded capsule or an unmasked square back
-+  // button. When both the JS configs and React-backed item identities are
-+  // unchanged, keep the already-applied item groups. Item groups are only
-+  // available from iOS 16, so older platforms keep the legacy rebuild path.
-+  BOOL canReuseHeaderBarButtonItems = NO;
++  // A bar button item can belong to only one group. Even if the item itself
++  // is reused, constructing a new group removes it from the old group that
++  // UIKit may still be animating. Preserve each unchanged placement's group,
++  // including the empty leading group beside the system back button.
 +#if !TARGET_OS_TV
 +  if (@available(iOS 16.0, *)) {
-+    canReuseHeaderBarButtonItems = YES;
-+  }
++    NSArray *headerLeftConfigs = config.headerLeftBarButtonItems ?: @[];
++    NSArray *headerRightConfigs = config.headerRightBarButtonItems ?: @[];
++    NSArray *headerCenterConfigs = config.headerCenterBarButtonItems ?: @[];
++    if (RNSUpdateHeaderItemsCache(
++            navitem, &RNSAppliedLeadingHeaderItemsKey, @[ config, headerLeftConfigs, subviewLeftItems ])) {
++      NSArray *items = [config barButtonItemsFromConfigs:config.headerLeftBarButtonItems
++                                      withCurrentItems:subviewLeftItems
++                                        navigationItem:navitem];
++      navitem.leadingItemGroups = [config barButtonItemGroupsFromItems:items];
++    }
++    if (RNSUpdateHeaderItemsCache(
++            navitem, &RNSAppliedTrailingHeaderItemsKey, @[ config, headerRightConfigs, subviewRightItems ])) {
++      NSArray *items = [config barButtonItemsFromConfigs:config.headerRightBarButtonItems
++                                      withCurrentItems:subviewRightItems
++                                        navigationItem:navitem];
++      navitem.trailingItemGroups = [config barButtonItemGroupsFromItems:items];
++    }
++    if (@available(iOS 26.0, *)) {
++      if (RNSUpdateHeaderItemsCache(navitem, &RNSAppliedCenterHeaderItemsKey, @[ config, headerCenterConfigs ])) {
++        NSArray *items = [config barButtonItemsFromConfigs:config.headerCenterBarButtonItems
++                                        withCurrentItems:@[]
++                                          navigationItem:navitem];
++        navitem.centerItemGroups = [config barButtonItemGroupsFromItems:items];
++      }
++    }
++  } else
 +#endif
-+  BOOL reuseHeaderBarButtonItems = canReuseHeaderBarButtonItems &&
-+      [objc_getAssociatedObject(navitem, &RNSAppliedHeaderBarButtonConfigsKey) isEqual:headerItemsKey];
-+  if (!reuseHeaderBarButtonItems) {
++  {
 +    NSArray<UIBarButtonItem *> *leftBarButtonItems = [config barButtonItemsFromConfigs:config.headerLeftBarButtonItems
 +                                                                      withCurrentItems:subviewLeftItems
 +                                                                        navigationItem:navitem];
 +    NSArray<UIBarButtonItem *> *rightBarButtonItems = [config barButtonItemsFromConfigs:config.headerRightBarButtonItems
 +                                                                       withCurrentItems:subviewRightItems
 +                                                                         navigationItem:navitem];
-+    NSArray<UIBarButtonItem *> *centerBarButtonItems = [config barButtonItemsFromConfigs:config.headerCenterBarButtonItems
-+                                                                        withCurrentItems:@[]
-+                                                                          navigationItem:navitem];
-+#if !TARGET_OS_TV
-+    if (@available(iOS 16.0, *)) {
-+      navitem.leadingItemGroups = [config barButtonItemGroupsFromItems:leftBarButtonItems];
-+      navitem.trailingItemGroups = [config barButtonItemGroupsFromItems:rightBarButtonItems];
-+      if (@available(iOS 26.0, *)) {
-+        navitem.centerItemGroups = [config barButtonItemGroupsFromItems:centerBarButtonItems];
-+      }
-+    } else {
-+      navitem.leftBarButtonItems = leftBarButtonItems;
-+      navitem.rightBarButtonItems = rightBarButtonItems;
-+    }
-+#else
 +    navitem.leftBarButtonItems = leftBarButtonItems;
 +    navitem.rightBarButtonItems = rightBarButtonItems;
-+#endif
-+    objc_setAssociatedObject(
-+        navitem,
-+        &RNSAppliedHeaderBarButtonConfigsKey,
-+        headerItemsKey,
-+        OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +  }
 +  NSDictionary<NSString *, id> *mailSearchToolbarConfig = nil;
 +  for (NSDictionary<NSString *, id> *toolbarConfig in config.headerToolbarItems) {
@@ -736,7 +752,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
    // Setting navigation bar visibility is split to mitigate iOS 26 bug with bar button items
    // (setting nav bar visibility should be done after `navitem.*BarButtonItems`).
-@@ -784,6 +1273,7 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
+@@ -784,6 +1272,7 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
  
  - (NSArray<UIBarButtonItem *> *)barButtonItemsFromConfigs:(NSArray<NSDictionary<NSString *, id> *> *)dicts
                                           withCurrentItems:(NSArray<UIBarButtonItem *> *)currentItems
@@ -744,7 +760,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  {
    if (dicts.count == 0) {
      return currentItems;
-@@ -792,7 +1282,197 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
+@@ -792,7 +1281,197 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
    [items addObjectsFromArray:currentItems];
    for (NSUInteger i = 0; i < dicts.count; i++) {
      NSDictionary *dict = dicts[i];
@@ -943,7 +959,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
        RNSBarButtonItem *item = [[RNSBarButtonItem alloc] initWithConfig:dict
            action:^(NSString *buttonId) {
              auto eventEmitter = std::static_pointer_cast<const facebook::react::RNSScreenStackHeaderConfigEventEmitter>(
-@@ -814,19 +1494,23 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
+@@ -814,19 +1493,23 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
            }
            imageLoader:_imageLoader];
        NSNumber *index = dict[@"index"];
@@ -973,7 +989,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
          [items insertObject:item atIndex:index.integerValue];
        } else {
          [items addObject:item];
-@@ -836,6 +1520,47 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
+@@ -836,6 +1519,47 @@ - (void)applySemanticContentAttributeIfNeededToNavCtrl:(UINavigationController *
    return items;
  }
  
@@ -1021,7 +1037,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  RNS_IGNORE_SUPER_CALL_BEGIN
  - (void)insertReactSubview:(RNSScreenStackHeaderSubview *)subview atIndex:(NSInteger)atIndex
  {
-@@ -1023,6 +1748,8 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
+@@ -1023,6 +1747,8 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
    }
  
    _title = RCTNSStringFromStringNilIfEmpty(newScreenProps.title);
@@ -1030,7 +1046,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
    if (newScreenProps.titleFontFamily != oldScreenProps.titleFontFamily) {
      _titleFontFamily = RCTNSStringFromStringNilIfEmpty(newScreenProps.titleFontFamily);
    }
-@@ -1048,6 +1775,7 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
+@@ -1048,6 +1774,7 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
    _disableBackButtonMenu = newScreenProps.disableBackButtonMenu;
    _backButtonDisplayMode =
        [RNSConvert UINavigationItemBackButtonDisplayModeFromCppEquivalent:newScreenProps.backButtonDisplayMode];
@@ -1038,7 +1054,7 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
  
    if (newScreenProps.userInterfaceStyle != oldScreenProps.userInterfaceStyle) {
      _userInterfaceStyle = [RNSConvert UIUserInterfaceStyleFromCppEquivalent:newScreenProps.userInterfaceStyle];
-@@ -1094,6 +1822,30 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
+@@ -1094,6 +1821,30 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
      _headerRightBarButtonItems = array;
    }
  
@@ -1069,6 +1085,65 @@ index 1c844846a5c66e31cfa530ca462774d2fb6bbea1..4225b9203f058cc04fb8286cbbced6d9
    [self updateViewControllerIfNeeded];
  
    if (needsNavigationControllerLayout) {
+diff --git a/ios/RNSScreenStackHeaderSubview.mm b/ios/RNSScreenStackHeaderSubview.mm
+index add33c4807e038dcd846f6c72b2fc472ded02809..9a7c7a8a775579c85de39f921e7a362241a72075 100644
+--- a/ios/RNSScreenStackHeaderSubview.mm
++++ b/ios/RNSScreenStackHeaderSubview.mm
+@@ -20,6 +20,7 @@ @implementation RNSScreenStackHeaderSubview {
+   // This is a strong reference to UIBarButtonItem which creates a retain cycle.
+   // The cycle is cleared via `invalidateUIBarButtonItem` method, called by `invalidate` callback.
+   UIBarButtonItem *_barButtonItem;
++  NSString *_barButtonItemIdentifier;
+   BOOL _hidesSharedBackground;
+ }
+ 
+@@ -124,6 +125,7 @@ - (void)updateProps:(react::Props::Shared const &)props oldProps:(react::Props::
+   const auto &newHeaderSubviewProps = *std::static_pointer_cast<const react::RNSScreenStackHeaderSubviewProps>(props);
+ 
+   [self setType:[RNSConvert RNSScreenStackHeaderSubviewTypeFromCppEquivalent:newHeaderSubviewProps.type]];
++  [self setBarButtonItemIdentifier:RCTNSStringFromStringNilIfEmpty(newHeaderSubviewProps.identifier)];
+   [self setHidesSharedBackground:newHeaderSubviewProps.hidesSharedBackground];
+   [self setSynchronousShadowStateUpdatesEnabled:newHeaderSubviewProps.synchronousShadowStateUpdatesEnabled];
+   [super updateProps:props oldProps:oldProps];
+@@ -276,7 +278,14 @@ - (void)configureBarButtonItem
+ #if RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
+   if (@available(iOS 26.0, *)) {
+     if (_barButtonItem != nil) {
+-      [_barButtonItem setHidesSharedBackground:_hidesSharedBackground];
++      NSString *currentIdentifier = _barButtonItem.identifier;
++      if (currentIdentifier != _barButtonItemIdentifier &&
++          ![currentIdentifier isEqualToString:_barButtonItemIdentifier]) {
++        _barButtonItem.identifier = _barButtonItemIdentifier;
++      }
++      if (_barButtonItem.hidesSharedBackground != _hidesSharedBackground) {
++        _barButtonItem.hidesSharedBackground = _hidesSharedBackground;
++      }
+     }
+   }
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
+@@ -284,10 +293,22 @@ - (void)configureBarButtonItem
+ 
+ - (void)setHidesSharedBackground:(BOOL)hidesSharedBackground
+ {
++  if (_hidesSharedBackground == hidesSharedBackground) {
++    return;
++  }
+   _hidesSharedBackground = hidesSharedBackground;
+   [self configureBarButtonItem];
+ }
+ 
++- (void)setBarButtonItemIdentifier:(nullable NSString *)identifier
++{
++  if (_barButtonItemIdentifier == identifier || [_barButtonItemIdentifier isEqualToString:identifier]) {
++    return;
++  }
++  _barButtonItemIdentifier = [identifier copy];
++  [self configureBarButtonItem];
++}
++
+ #pragma mark - Dynamic frameworks support
+ 
+ // Needed because of this: https://github.com/facebook/react-native/pull/37274
 diff --git a/lib/commonjs/components/ScreenStackHeaderConfig.js b/lib/commonjs/components/ScreenStackHeaderConfig.js
 index 8c509f2657105cfd86448347c1a01fb73651ff9e..d1f53322a7d2401852732ce46bfc6f32ba1aca64 100644
 --- a/lib/commonjs/components/ScreenStackHeaderConfig.js
@@ -1347,8 +1422,20 @@ index a51d8648567cff29cd2be0d5262bd15c6fc69c61..8b7439aff4d7e6fe8a72bf0bac93c3c1
      onPressHeaderBarButtonItem?: CT.DirectEventHandler<OnPressHeaderBarButtonItemEvent> | undefined;
      onPressHeaderBarButtonMenuItem?: CT.DirectEventHandler<OnPressHeaderBarButtonMenuItemEvent> | undefined;
      synchronousShadowStateUpdatesEnabled?: CT.WithDefault<boolean, true>;
+diff --git a/lib/typescript/fabric/ScreenStackHeaderSubviewNativeComponent.d.ts b/lib/typescript/fabric/ScreenStackHeaderSubviewNativeComponent.d.ts
+index 1ca926e6753294861f5f79ab6267dc7999f70639..15929959d1e274cc6abd55f2eb8db50ba102169a 100644
+--- a/lib/typescript/fabric/ScreenStackHeaderSubviewNativeComponent.d.ts
++++ b/lib/typescript/fabric/ScreenStackHeaderSubviewNativeComponent.d.ts
+@@ -3,6 +3,7 @@ export type HeaderSubviewTypes = 'back' | 'right' | 'left' | 'title' | 'center'
+ export interface NativeProps extends ViewProps {
+     type?: CT.WithDefault<HeaderSubviewTypes, 'left'>;
+     hidesSharedBackground?: boolean | undefined;
++    identifier?: string | undefined;
+     synchronousShadowStateUpdatesEnabled?: CT.WithDefault<boolean, true>;
+ }
+ declare const _default: import("react-native").HostComponent<NativeProps>;
 diff --git a/lib/typescript/types.d.ts b/lib/typescript/types.d.ts
-index 10a31341f4eff258a7f8ea6abae3eddf0dd21218..086d66aac18da1fffc05ecf0a2c76118ebeb7b00 100644
+index 10a31341f4eff258a7f8ea6abae3eddf0dd21218..bab5031f5f9b246f15e5396f3f2fee90b91d826a 100644
 --- a/lib/typescript/types.d.ts
 +++ b/lib/typescript/types.d.ts
 @@ -10,6 +10,7 @@ export type SearchBarCommands = {
@@ -1422,7 +1509,21 @@ index 10a31341f4eff258a7f8ea6abae3eddf0dd21218..086d66aac18da1fffc05ecf0a2c76118
      /**
       * Allows for setting text color of the title.
       */
-@@ -1037,6 +1080,11 @@ interface SharedHeaderBarButtonItem {
+@@ -999,6 +1042,13 @@ export interface SearchBarProps {
+     shouldShowHintSearchIcon?: boolean | undefined;
+ }
+ export interface ScreenStackHeaderSubviewProps {
++    /**
++     * An identifier used to match this item across navigation bar transitions.
++     * Only applicable to type="right" and type="left" subviews on iOS 26.0 and later.
++     *
++     * Read more: https://developer.apple.com/documentation/uikit/uibarbuttonitem/identifier
++     */
++    identifier?: string | undefined;
+     /**
+      * A boolean value indicating whether the background this item may share with other items in the bar should be hidden.
+      * Only applicable to type="right" and type="left" subviews.
+@@ -1037,6 +1087,11 @@ interface SharedHeaderBarButtonItem {
       * Read more: https://developer.apple.com/documentation/uikit/uibarbuttonitem/style-swift.property
       */
      variant?: 'plain' | 'done' | 'prominent' | undefined;
@@ -1434,7 +1535,7 @@ index 10a31341f4eff258a7f8ea6abae3eddf0dd21218..086d66aac18da1fffc05ecf0a2c76118
      /**
       * The tint color to apply to the item.
       *
-@@ -1181,8 +1229,38 @@ export interface HeaderBarButtonItemWithMenu extends SharedHeaderBarButtonItem {
+@@ -1181,8 +1236,38 @@ export interface HeaderBarButtonItemWithMenu extends SharedHeaderBarButtonItem {
  export interface HeaderBarButtonItemSpacing {
      type: 'spacing';
      spacing: number;
@@ -1688,8 +1789,20 @@ index a80d9fef0c0ab5ce8221c5e0c7fae65162bc6164..fc16f51425702a418c09de553a547533
    onPressHeaderBarButtonItem?:
      | CT.DirectEventHandler<OnPressHeaderBarButtonItemEvent>
      | undefined;
+diff --git a/src/fabric/ScreenStackHeaderSubviewNativeComponent.ts b/src/fabric/ScreenStackHeaderSubviewNativeComponent.ts
+index 7d3fbfe08c70461936832a40a1ce8d9c11b22457..1f9caca6271b68d182b70a180f180d6a4ce3988c 100644
+--- a/src/fabric/ScreenStackHeaderSubviewNativeComponent.ts
++++ b/src/fabric/ScreenStackHeaderSubviewNativeComponent.ts
+@@ -14,6 +14,7 @@ export type HeaderSubviewTypes =
+ export interface NativeProps extends ViewProps {
+   type?: CT.WithDefault<HeaderSubviewTypes, 'left'>;
+   hidesSharedBackground?: boolean | undefined;
++  identifier?: string | undefined;
+   synchronousShadowStateUpdatesEnabled?: CT.WithDefault<boolean, true>;
+ }
+ 
 diff --git a/src/types.tsx b/src/types.tsx
-index 9c3ab4c3653ee1769addda8a6464cdf49695a601..8e016176e011918ecc0a8729877a3de0a155f7ff 100644
+index 9c3ab4c3653ee1769addda8a6464cdf49695a601..6f242ad2bbd7152ea9f873ef7754ad47caf2466d 100644
 --- a/src/types.tsx
 +++ b/src/types.tsx
 @@ -26,6 +26,7 @@ export type SearchBarCommands = {
@@ -1763,7 +1876,21 @@ index 9c3ab4c3653ee1769addda8a6464cdf49695a601..8e016176e011918ecc0a8729877a3de0
    /**
     * Allows for setting text color of the title.
     */
-@@ -1161,6 +1204,11 @@ interface SharedHeaderBarButtonItem {
+@@ -1120,6 +1163,13 @@ export interface SearchBarProps {
+ }
+ 
+ export interface ScreenStackHeaderSubviewProps {
++  /**
++   * An identifier used to match this item across navigation bar transitions.
++   * Only applicable to type="right" and type="left" subviews on iOS 26.0 and later.
++   *
++   * Read more: https://developer.apple.com/documentation/uikit/uibarbuttonitem/identifier
++   */
++  identifier?: string | undefined;
+   /**
+    * A boolean value indicating whether the background this item may share with other items in the bar should be hidden.
+    * Only applicable to type="right" and type="left" subviews.
+@@ -1161,6 +1211,11 @@ interface SharedHeaderBarButtonItem {
     * Read more: https://developer.apple.com/documentation/uikit/uibarbuttonitem/style-swift.property
     */
    variant?: 'plain' | 'done' | 'prominent' | undefined;
@@ -1775,7 +1902,7 @@ index 9c3ab4c3653ee1769addda8a6464cdf49695a601..8e016176e011918ecc0a8729877a3de0
    /**
     * The tint color to apply to the item.
     *
-@@ -1315,11 +1363,47 @@ export interface HeaderBarButtonItemWithMenu extends SharedHeaderBarButtonItem {
+@@ -1315,11 +1370,47 @@ export interface HeaderBarButtonItemWithMenu extends SharedHeaderBarButtonItem {
  export interface HeaderBarButtonItemSpacing {
    type: 'spacing';
    spacing: number;
