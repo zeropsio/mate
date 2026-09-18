@@ -147,7 +147,11 @@ export default defineConfig({
           "packages/shared/src/**",
         ],
         excludeFiles: ["**/*.test.ts", "**/*.test.tsx"],
-        rules: { "t3code/no-hermes-unsupported-apis": "error" },
+        rules: {
+          "t3code/no-hermes-unsupported-apis": "error",
+          // Its toReversed() suggestion is exactly what Hermes lacks.
+          "unicorn/no-array-reverse": "off",
+        },
       },
     ],
     options: {
