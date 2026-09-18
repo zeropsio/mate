@@ -41,14 +41,6 @@ export function useAssetUrlState(
       };
 }
 
-export function useAssetUrl(environmentId: EnvironmentId, resource: AssetResource): string | null {
-  const result = useAssetUrlState(environmentId, resource);
-  if (result._tag !== "Success") {
-    return null;
-  }
-  return result.url;
-}
-
 export function useAssetUrls(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<AssetResource>,

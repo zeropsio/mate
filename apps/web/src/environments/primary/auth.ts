@@ -8,7 +8,6 @@ import type {
 } from "@t3tools/contracts";
 import { EnvironmentHttpCommonError } from "@t3tools/contracts";
 import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClientError } from "effect/unstable/http";
@@ -71,7 +70,7 @@ export class PrimaryEnvironmentRequestError extends Schema.TaggedError<PrimaryEn
   }
 }
 
-export const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
+const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
 
 export class PrimaryEnvironmentPairingCredentialRejectedError extends Schema.TaggedError<PrimaryEnvironmentPairingCredentialRejectedError>()(
   "PrimaryEnvironmentPairingCredentialRejectedError",
@@ -99,10 +98,6 @@ export class PrimaryEnvironmentPairingCredentialRequiredError extends Schema.Tag
     return "Enter a pairing token to continue.";
   }
 }
-
-export const isPrimaryEnvironmentPairingCredentialRequiredError = Schema.is(
-  PrimaryEnvironmentPairingCredentialRequiredError,
-);
 
 const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
 
@@ -252,38 +247,6 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     status: "requires-auth",
     auth: currentSession.auth,
   };
-}
-
-export async function listServerClientSessions(): Promise<
-  ReadonlyArray<ServerClientSessionRecord>
-> {
-  try {
-    const clientSessions = await runPrimaryHttp(
-      PrimaryEnvironmentHttpClient.pipe(
-        Effect.flatMap((client) => client.auth.clients({ headers: {} })),
-      ),
-    );
-    return clientSessions.map((clientSession) => ({
-      sessionId: clientSession.sessionId,
-      subject: clientSession.subject,
-      scopes: clientSession.scopes,
-      method: clientSession.method,
-      client: clientSession.client,
-      issuedAt: DateTime.formatIso(clientSession.issuedAt),
-      expiresAt: DateTime.formatIso(clientSession.expiresAt),
-      lastConnectedAt:
-        clientSession.lastConnectedAt === null
-          ? null
-          : DateTime.formatIso(clientSession.lastConnectedAt),
-      connected: clientSession.connected,
-      current: clientSession.current,
-    }));
-  } catch (error) {
-    throw PrimaryEnvironmentRequestError.fromCause({
-      operation: "list-client-sessions",
-      cause: error,
-    });
-  }
 }
 
 export async function revokeServerClientSession(sessionId: AuthSessionId): Promise<void> {

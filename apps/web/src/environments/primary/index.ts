@@ -2,7 +2,6 @@ export {
   getPrimaryKnownEnvironment,
   isPrimaryEnvironmentBasePathMismatchError,
   PrimaryEnvironmentBasePathMismatchError,
-  readPrimaryEnvironmentDescriptor,
   resetPrimaryEnvironmentDescriptorForTests,
   resolveInitialPrimaryEnvironmentDescriptor,
   writePrimaryEnvironmentDescriptor,
@@ -11,15 +10,7 @@ export {
 } from "./context";
 
 export {
-  resolveInitialPrimaryEnvironmentDescriptor as ensurePrimaryEnvironmentReady,
-  writePrimaryEnvironmentDescriptor as updatePrimaryEnvironmentDescriptor,
-} from "./context";
-
-export {
-  fetchSessionState,
   isPrimaryEnvironmentPairingCredentialRejectedError,
-  isPrimaryEnvironmentRequestError,
-  listServerClientSessions,
   peekPairingTokenFromUrl,
   PrimaryEnvironmentPairingCredentialRejectedError,
   PrimaryEnvironmentRequestError,
@@ -33,9 +24,7 @@ export {
   __resetServerAuthBootstrapForTests,
 } from "./auth";
 
-export { refreshPrimarySessionState, usePrimarySessionState } from "./sessionState";
-
-export { PrimaryEnvironmentHttpClient } from "./httpClient";
+export { usePrimarySessionState } from "./sessionState";
 
 export {
   isPrimaryEnvironmentProtocolUnsupportedError,
