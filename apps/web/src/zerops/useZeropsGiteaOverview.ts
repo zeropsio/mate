@@ -7,8 +7,13 @@
  * sixty seconds while the page is open. Nothing here is per project; a
  * project's own flow is the provider's (`ZeropsProjectFlowProvider`).
  */
-import { giteaOverview, type GiteaOverviewOwner } from "@t3tools/client-runtime/zerops";
-import { useEffect, useState } from "react";
+import {
+  giteaOverview,
+  type GiteaIssueSearchHit,
+  type GiteaOverviewOwner,
+  type GiteaRepository,
+} from "@t3tools/client-runtime/zerops";
+import { useEffect, useMemo, useState } from "react";
 
 import { giteaClientFor } from "./giteaSession";
 
@@ -21,17 +26,25 @@ export interface ZeropsGiteaOverviewState {
   readonly read: boolean;
 }
 
+/** What Gitea answered, before it is grouped: the names come from the account, later or sooner. */
+interface GiteaAnswer {
+  readonly repositories: ReadonlyArray<GiteaRepository>;
+  readonly pulls: ReadonlyArray<GiteaIssueSearchHit>;
+}
+
 const UNREAD: ZeropsGiteaOverviewState = { owners: [], read: false };
 
 export function useZeropsGiteaOverview(input: {
   readonly giteaOrigin: string | undefined;
   readonly enabled: boolean;
+  /** A Mate's name by its project (`giteaOverview`); the account's to know. */
+  readonly mateName?: (projectId: string) => string | undefined;
 }): ZeropsGiteaOverviewState {
-  const { enabled, giteaOrigin } = input;
+  const { enabled, giteaOrigin, mateName } = input;
   const key = enabled && giteaOrigin !== undefined ? giteaOrigin : "";
   const [answer, setAnswer] = useState<{
     readonly key: string;
-    readonly state: ZeropsGiteaOverviewState;
+    readonly answer: GiteaAnswer;
   } | null>(null);
   const [tick, setTick] = useState(0);
 
@@ -55,12 +68,26 @@ export function useZeropsGiteaOverview(input: {
       client.searchPullRequests().catch(() => []),
     ]).then(([repositories, pulls]) => {
       if (controller.signal.aborted) return;
-      setAnswer({ key, state: { owners: giteaOverview({ repositories, pulls }), read: true } });
+      setAnswer({ key, answer: { repositories, pulls } });
     });
     return () => {
       controller.abort();
     };
   }, [giteaOrigin, key, tick]);
 
-  return answer?.key === key ? answer.state : UNREAD;
+  const read = answer?.key === key ? answer.answer : undefined;
+  return useMemo<ZeropsGiteaOverviewState>(
+    () =>
+      read === undefined
+        ? UNREAD
+        : {
+            owners: giteaOverview({
+              repositories: read.repositories,
+              pulls: read.pulls,
+              ...(mateName === undefined ? {} : { mateName }),
+            }),
+            read: true,
+          },
+    [mateName, read],
+  );
 }

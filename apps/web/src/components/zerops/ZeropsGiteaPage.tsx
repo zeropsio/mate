@@ -18,6 +18,7 @@
  */
 import { giteaRepositoryLine, type GiteaOverviewOwner } from "@t3tools/client-runtime/zerops";
 import { ExternalLinkIcon } from "lucide-react";
+import { useCallback } from "react";
 
 import { Button } from "../ui/button";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
@@ -135,9 +136,14 @@ export function ZeropsGiteaPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
   const flow = useZeropsProjectFlow();
+  const mateName = useCallback(
+    (projectId: string) => flow.mateNames.get(projectId),
+    [flow.mateNames],
+  );
   const overview = useZeropsGiteaOverview({
     giteaOrigin: flow.giteaOrigin,
     enabled: flow.signedIn,
+    mateName,
   });
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;

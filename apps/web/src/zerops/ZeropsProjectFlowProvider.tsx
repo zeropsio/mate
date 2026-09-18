@@ -14,6 +14,7 @@
  * say so where they stand.
  */
 import {
+  botDisplayName,
   environmentRow,
   readZeropsGroupTags,
   releaseDeploys,
@@ -151,6 +152,19 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
     [registry.registry.groups],
   );
+  const mateNames = useMemo(
+    () =>
+      new Map(
+        inventory.projects.map((project) => [
+          project.id,
+          botDisplayName({
+            bot: readZeropsGroupTags(project.tagList ?? []).bot,
+            projectName: project.name,
+          }),
+        ]),
+      ),
+    [inventory.projects],
+  );
 
   const mergePullRequest = useCallback(
     async (slug: string, pull: Pick<FlowPullRequest, "repository" | "number">) => {
@@ -273,6 +287,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       signInTrouble,
       flows,
       slugs,
+      mateNames,
       trouble,
       refresh: settled,
       mergePullRequest,
@@ -284,6 +299,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       createPullRequest,
       flows,
       giteaOrigin,
+      mateNames,
       mergePullRequest,
       release,
       rollBack,

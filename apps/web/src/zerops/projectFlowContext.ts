@@ -54,6 +54,8 @@ export interface ZeropsProjectFlowValue {
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /** Each group's Gitea org, from the registry — known before its flow has been read. */
   readonly slugs: ReadonlyMap<string, string>;
+  /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
+  readonly mateNames: ReadonlyMap<string, string>;
   /** What the last verb's refusal said, until the next verb. */
   readonly trouble: string | null;
   readonly refresh: () => void;

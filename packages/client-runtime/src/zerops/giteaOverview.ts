@@ -15,14 +15,18 @@
  */
 
 import type { GiteaIssueSearchHit, GiteaRepository } from "./giteaClient.ts";
+import { mateProjectOfLogin } from "./projectFlow.ts";
 
 export interface GiteaOverviewPullRequest {
   readonly number: number;
   readonly title: string;
+  /** The Mate's name for a Mate's, the login for a person's; the bot login for a Mate this account cannot name. */
   readonly author: string | undefined;
+  /** The Mate's project behind a bot login; `undefined` for a person's. */
+  readonly mateProjectId: string | undefined;
   readonly url: string | undefined;
   readonly updatedAt: string | undefined;
-  /** `#4 · mate-abc` */
+  /** `#4 · Vera`, or `#4 · ada` for a person's */
   readonly line: string;
 }
 
@@ -75,6 +79,12 @@ function byNewest(left: GiteaOverviewPullRequest, right: GiteaOverviewPullReques
 export function giteaOverview(input: {
   readonly repositories: ReadonlyArray<GiteaRepository>;
   readonly pulls: ReadonlyArray<GiteaIssueSearchHit>;
+  /**
+   * A Mate's name by its project, for the pull requests its bot opened:
+   * a bot's login (`mate-{projectId}`) is an address, not a name a person
+   * scans for. Absent, or answering nothing, the login stands.
+   */
+  readonly mateName?: (projectId: string) => string | undefined;
 }): ReadonlyArray<GiteaOverviewOwner> {
   const repositories = new Map<
     string,
@@ -88,11 +98,14 @@ export function giteaOverview(input: {
     if (fullName === undefined) continue;
     const entry = repositories.get(fullName) ?? { url: undefined, pulls: [] };
     repositories.set(fullName, entry);
-    const author = hit.user?.login;
+    const login = hit.user?.login;
+    const mateProjectId = mateProjectOfLogin(login);
+    const author = mateProjectId === undefined ? login : (input.mateName?.(mateProjectId) ?? login);
     entry.pulls.push({
       number: hit.number,
       title: hit.title,
       author,
+      mateProjectId,
       url: hit.html_url,
       updatedAt: hit.updated_at,
       line: giteaPullRequestLine({ number: hit.number, author }),

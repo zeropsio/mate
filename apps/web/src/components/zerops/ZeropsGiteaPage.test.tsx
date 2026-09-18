@@ -17,10 +17,11 @@ const OWNERS: ReadonlyArray<GiteaOverviewOwner> = [
           {
             number: 4,
             title: "Add a due date to each todo",
-            author: "mate-abc",
+            author: "Vera",
+            mateProjectId: "abc",
             url: "https://gitea.example/todo/appdev/pulls/4",
             updatedAt: "2026-09-17T18:00:00Z",
-            line: "#4 · mate-abc",
+            line: "#4 · Vera",
           },
         ],
       },
@@ -42,7 +43,7 @@ describe("ZeropsGiteaOverview", () => {
     expect(html).toContain("No open pull request");
     expect(html).toContain("Add a due date to each todo");
     expect(html).toContain('href="https://gitea.example/todo/appdev/pulls/4"');
-    expect(html).toContain("#4 · mate-abc");
+    expect(html).toContain("#4 · Vera");
     // The way in is the title; the page changes nothing.
     expect(html).not.toContain("<button");
   });

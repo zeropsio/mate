@@ -73,6 +73,26 @@ describe("the Gitea overview", () => {
     expect(overview[0]?.openPulls).toBe(2);
   });
 
+  it("names a Mate's pull request by its Mate, a person's by their login", () => {
+    const overview = giteaOverview({
+      repositories: [repo("todo/appdev")],
+      pulls: [hit("todo/appdev", 4), hit("todo/appdev", 5, { user: { login: "ada" } })],
+      mateName: (projectId) => (projectId === "abc" ? "Vera" : undefined),
+    });
+    const pulls = overview[0]?.repositories[0]?.pulls ?? [];
+    expect(pulls.map((pull) => pull.line)).toEqual(["#5 · ada", "#4 · Vera"]);
+    expect(pulls.map((pull) => pull.mateProjectId)).toEqual([undefined, "abc"]);
+  });
+
+  it("keeps the bot login for a Mate this account cannot name", () => {
+    const overview = giteaOverview({
+      repositories: [repo("todo/appdev")],
+      pulls: [hit("todo/appdev", 4)],
+      mateName: () => undefined,
+    });
+    expect(overview[0]?.repositories[0]?.pulls[0]?.line).toBe("#4 · mate-abc");
+  });
+
   it("is empty for an account with nothing", () => {
     expect(giteaOverview({ repositories: [], pulls: [] })).toEqual([]);
   });
