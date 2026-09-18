@@ -106,6 +106,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
@@ -2797,8 +2798,16 @@ export const websocketRpcRouteLayer = HttpRouter.add(
     const clientAnalyticsProps = readClientAnalyticsProps(request);
     yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
     yield* analytics.record("client.connected", clientAnalyticsProps);
-    const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup, {
-      disableTracing: true,
+    const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
+      const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
+      // Terminal output streams run ahead of the client's acks inside a small
+      // window, so each chunk no longer costs a round trip.
+      yield* RpcServer.make(WsRpcGroup, { disableTracing: true }).pipe(
+        Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
+        Effect.forkScoped,
+      );
+      // @effect-diagnostics-next-line returnEffectInGen:off
+      return httpEffect;
     }).pipe(
       Effect.provide(
         makeWsRpcLayer(session, clientOrigin, clientAnalyticsProps).pipe(
