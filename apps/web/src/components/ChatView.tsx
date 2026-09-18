@@ -342,7 +342,6 @@ import {
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
-  buildCheckpointRevertConfirmation,
   waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
@@ -5329,8 +5328,18 @@ function ChatViewContent(props: ChatViewProps) {
     composerRef,
   ]);
 
+  const [pendingRevert, setPendingRevert] = useState<{
+    turnCount: number;
+    messageId: MessageId;
+    routeThreadKey: string;
+  } | null>(null);
+
+  if (pendingRevert && pendingRevert.routeThreadKey !== routeThreadKey) {
+    setPendingRevert(null);
+  }
+
   const onRevertToTurnCount = useCallback(
-    async (turnCount: number, messageId: MessageId) => {
+    async (turnCount: number, messageId: MessageId, restoreFiles?: boolean) => {
       const localApi = readLocalApi();
       if (!localApi || !activeThread || isRevertingCheckpoint) return;
       const message = activeThread.messages.find((message) => message.id === messageId);
@@ -5354,11 +5363,9 @@ function ChatViewContent(props: ChatViewProps) {
         setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
         return;
       }
-      const confirmed = await localApi.dialogs.confirm(
-        buildCheckpointRevertConfirmation(turnCount),
-        { variant: "destructive" },
-      );
-      if (!confirmed) {
+      // The choice between keeping and restoring the files is the confirmation.
+      if (restoreFiles === undefined) {
+        setPendingRevert({ turnCount, messageId, routeThreadKey });
         return;
       }
 
@@ -5371,7 +5378,7 @@ function ChatViewContent(props: ChatViewProps) {
         await waitForRevertedMessage(routeThreadRef, messageId, turnCount, async () => {
           const result = await revertThreadCheckpoint({
             environmentId,
-            input: { threadId: activeThread.id, turnCount },
+            input: { threadId: activeThread.id, turnCount, restoreFiles },
           });
           if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
             throw squashAtomCommandFailure(result);
@@ -5404,6 +5411,7 @@ function ChatViewContent(props: ChatViewProps) {
       activeEnvironmentUnavailableLabel,
       composerDraftTarget,
       composerRef,
+      routeThreadKey,
       routeThreadRef,
       setComposerDraftPrompt,
       environmentId,
@@ -7467,6 +7475,35 @@ function ChatViewContent(props: ChatViewProps) {
         </RightPanelSheet>
       ) : null}
 
+      <AlertDialog
+        open={pendingRevert !== null && pendingRevert.routeThreadKey === routeThreadKey}
+        onOpenChange={(open) => {
+          if (!open) setPendingRevert(null);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert to this message?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Rewind the conversation to before this message; its prompt returns to the composer.
+              Workspace files stay as they are: the service's changes are recorded in its workspace
+              history, where they can be reviewed and undone on purpose.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <Button
+              onClick={() => {
+                if (!pendingRevert || pendingRevert.routeThreadKey !== routeThreadKey) return;
+                setPendingRevert(null);
+                void onRevertToTurnCount(pendingRevert.turnCount, pendingRevert.messageId, false);
+              }}
+            >
+              Revert and keep changes
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
       {expandedImage && (
         <ExpandedImageDialog
           key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${expandedImage.index}`}

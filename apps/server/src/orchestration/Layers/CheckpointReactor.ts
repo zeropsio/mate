@@ -805,7 +805,10 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    if (Option.isSome(workspaceHistory)) {
+    // A conversation-only rewind keeps the files as they are, so it needs no
+    // checkpoint workspace and is not refused by workspace history.
+    const restoreFiles = event.payload.restoreFiles !== false;
+    if (restoreFiles && Option.isSome(workspaceHistory)) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -822,8 +825,10 @@ const make = Effect.gen(function* () {
       thread,
       projects: yield* resolveThreadProjects(thread.projectId),
       preferSessionRuntime: true,
-    });
-    if (!checkpointCwd) {
+    }).pipe(
+      Effect.catch((error) => (restoreFiles ? Effect.fail(error) : Effect.succeed(undefined))),
+    );
+    if (restoreFiles && !checkpointCwd) {
       yield* appendRevertFailureActivity({
         threadId: event.payload.threadId,
         turnCount: event.payload.turnCount,
@@ -832,7 +837,10 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.catch(() => Effect.void));
       return;
     }
-    const revertTargets = yield* resolveTargets(checkpointCwd);
+    // Workspace history records the service repository's changes; a
+    // conversation-only rewind leaves those records alone.
+    const revertTargets =
+      checkpointCwd && Option.isNone(workspaceHistory) ? yield* resolveTargets(checkpointCwd) : [];
 
     const currentTurnCount = thread.checkpoints.reduce(
       (maxTurnCount, checkpoint) => Math.max(maxTurnCount, checkpoint.checkpointTurnCount),
@@ -849,53 +857,55 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    const targetCheckpointRef =
-      event.payload.turnCount === 0
-        ? checkpointRefForThreadTurn(event.payload.threadId, 0)
-        : thread.checkpoints.find(
-            (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
-          )?.checkpointRef;
-
-    if (!targetCheckpointRef) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-
     yield* providerService.assertConversationRollbackSupported(event.payload.threadId);
 
-    const restore = yield* restoreAcrossTargets(checkpointStore, {
-      targets: revertTargets,
-      checkpointRef: targetCheckpointRef,
-      fallbackToHead: event.payload.turnCount === 0,
-    });
-    if (restore.restored.length === 0) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Filesystem checkpoint is unavailable for turn ${event.payload.turnCount}.`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-      return;
-    }
-    // A repository the revert could not reach is named rather than swallowed:
-    // the others are already back, and the user must know which one is not.
-    for (const failure of restore.failed) {
-      yield* appendRevertFailureActivity({
-        threadId: event.payload.threadId,
-        turnCount: event.payload.turnCount,
-        detail: `Not reverted in ${failure.cwd}: ${failure.reason}`,
-        createdAt: now,
-      }).pipe(Effect.catch(() => Effect.void));
-    }
+    if (restoreFiles) {
+      const targetCheckpointRef =
+        event.payload.turnCount === 0
+          ? checkpointRefForThreadTurn(event.payload.threadId, 0)
+          : thread.checkpoints.find(
+              (checkpoint) => checkpoint.checkpointTurnCount === event.payload.turnCount,
+            )?.checkpointRef;
 
-    // Refresh the workspace entry index so the @-mention file picker
-    // reflects the reverted filesystem state.
-    yield* workspaceEntries.refresh(checkpointCwd);
+      if (!targetCheckpointRef) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: `Checkpoint ref for turn ${event.payload.turnCount} is unavailable in read model.`,
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+
+      const restore = yield* restoreAcrossTargets(checkpointStore, {
+        targets: revertTargets,
+        checkpointRef: targetCheckpointRef,
+        fallbackToHead: event.payload.turnCount === 0,
+      });
+      if (restore.restored.length === 0) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: `Filesystem checkpoint is unavailable for turn ${event.payload.turnCount}.`,
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+        return;
+      }
+      // A repository the revert could not reach is named rather than swallowed:
+      // the others are already back, and the user must know which one is not.
+      for (const failure of restore.failed) {
+        yield* appendRevertFailureActivity({
+          threadId: event.payload.threadId,
+          turnCount: event.payload.turnCount,
+          detail: `Not reverted in ${failure.cwd}: ${failure.reason}`,
+          createdAt: now,
+        }).pipe(Effect.catch(() => Effect.void));
+      }
+
+      // Refresh the workspace entry index so the @-mention file picker
+      // reflects the reverted filesystem state.
+      if (checkpointCwd) yield* workspaceEntries.refresh(checkpointCwd);
+    }
 
     const rolledBackTurns = Math.max(0, currentTurnCount - event.payload.turnCount);
     if (rolledBackTurns > 0) {

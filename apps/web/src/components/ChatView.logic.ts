@@ -49,16 +49,6 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 export const MAX_HIDDEN_MOUNTED_PREVIEW_THREADS = 3;
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
-export function buildCheckpointRevertConfirmation(turnCount: number): string {
-  return [
-    `Revert this thread to checkpoint ${turnCount}?`,
-    "This will discard newer messages and turn diffs in this thread.",
-    "Tracked and staged working changes in this thread's repositories will be restored to that checkpoint.",
-    "The rewound prompt returns to the composer for editing.",
-    "This action cannot be undone.",
-  ].join("\n");
-}
-
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
 export function shouldDockDraftHeroForSubmission(input: {
