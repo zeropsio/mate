@@ -1,4 +1,4 @@
-import { CheckpointRef, MessageId, TurnId } from "@t3tools/contracts";
+import { ApprovalRequestId, CheckpointRef, MessageId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
@@ -768,6 +768,73 @@ describe("resolveAssistantMessageCopyState", () => {
 });
 
 describe("deriveMessagesTimelineRows", () => {
+  it("keeps user input in its own row through tool grouping and turn folding", () => {
+    const turnId = TurnId.make("answer-turn");
+    const time = (second: number) => new Date(Date.UTC(2026, 8, 8, 0, 0, second)).toISOString();
+    const answer: WorkLogEntry = {
+      id: "answer-submitted",
+      createdAt: time(3),
+      turnId,
+      tone: "info",
+      label: "User input submitted",
+      sourceActivityKind: "user-input.answer-submitted",
+      questionAnswer: {
+        requestId: ApprovalRequestId.make("answer-request"),
+        answers: { scope: "Use the private repository" },
+        questionTextById: { scope: "Which repository?" },
+        attachmentsByQuestionId: {},
+      },
+    };
+    const tools: WorkLogEntry[] = [1, 2, 4, 5].map((second) => ({
+      id: `tool-${second}`,
+      createdAt: time(second),
+      turnId,
+      tone: "tool",
+      label: "Ran command",
+      command: "git status",
+      toolCallId: `call-${second}`,
+      toolLifecycleStatus: "completed",
+      sourceActivityKind: "tool.completed",
+    }));
+    const input = {
+      timelineEntries: deriveTimelineEntries([], [], [...tools, answer]),
+      latestTurn: { turnId, state: "completed", startedAt: time(0), completedAt: time(6) },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    } satisfies Parameters<typeof deriveMessagesTimelineRows>[0];
+    const collapsed = deriveMessagesTimelineRows(input);
+    const expanded = deriveMessagesTimelineRows({ ...input, expandedTurnIds: new Set([turnId]) });
+    const expandedGroups = deriveMessagesTimelineRows({
+      ...input,
+      expandedTurnIds: new Set([turnId]),
+      expandedWorkGroupIds: new Set(
+        expanded.flatMap((row) => (row.kind === "work-toggle" ? [row.groupId] : [])),
+      ),
+    });
+    const active = deriveMessagesTimelineRows({
+      ...input,
+      latestTurn: { ...input.latestTurn, state: "running", completedAt: null },
+      runningTurnId: turnId,
+      isWorking: true,
+      activeTurnStartedAt: time(0),
+    });
+    // The settled turn folds its tool calls but not the answer.
+    expect(collapsed.map((row) => row.kind)).toEqual(["turn-fold", "work"]);
+    for (const rows of [collapsed, expanded, expandedGroups, active]) {
+      const answerRows = rows.filter(
+        (row) =>
+          (row.kind === "work" || row.kind === "work-live") && row.groupedEntries.includes(answer),
+      );
+      expect(answerRows).toMatchObject([{ kind: "work", groupedEntries: [answer] }]);
+    }
+    // The live tail is only the tool calls after the answer.
+    expect(active.find((row) => row.kind === "work-live")).toMatchObject({
+      groupedEntries: tools.slice(2),
+    });
+  });
+
   it("appends queued messages after the live rows, marking the oldest as next", () => {
     const queuedMessage = (id: string, prompt: string) => ({
       id,

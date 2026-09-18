@@ -681,8 +681,11 @@ function deriveTurnFolds(input: {
       if (entry === firstAssistantEntry || entry === group.terminalEntry) {
         continue;
       }
-      // Subagent batches stay visible after their turn settles.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+      // User input and subagent batches stay visible after their turn settles.
+      if (
+        entry.kind === "work" &&
+        (entry.entry.questionAnswer !== undefined || entry.entry.agentSpawn !== undefined)
+      ) {
         continue;
       }
       // Operation cards never fold either: they are the durable outcomes a
@@ -924,6 +927,7 @@ export function deriveMessagesTimelineRows(input: {
       !entryBelongsToActiveTurn(entry, index) ||
       entry.kind !== "work" ||
       entry.entry.agentSpawn !== undefined ||
+      entry.entry.questionAnswer !== undefined ||
       entry.entry.sourceActivityKind === "context-compaction" ||
       entry.entry.tone === "error" ||
       !workLogEntryIsToolLike(entry.entry)
@@ -1026,6 +1030,20 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    // A question answer is the user's own words: always its own row, never
+    // grouped with the tool calls around it.
+    if (timelineEntry.kind === "work" && timelineEntry.entry.questionAnswer !== undefined) {
+      nextRows.push({
+        kind: "work",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        groupedEntries: [timelineEntry.entry],
+        isExpandedToolGroupEntry: false,
+        isLastExpandedToolGroupEntry: false,
+      });
+      continue;
+    }
+
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
       let cursor = index + 1;
@@ -1035,6 +1053,7 @@ export function deriveMessagesTimelineRows(input: {
           !nextEntry ||
           // An "operation" row (like any other non-"work" kind) ends the run.
           nextEntry.kind !== "work" ||
+          nextEntry.entry.questionAnswer !== undefined ||
           nextEntry.entry.sourceActivityKind === "context-compaction" ||
           nextEntry.entry.tone === "error" ||
           activeWorkEntries.has(nextEntry) ||
