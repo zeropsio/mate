@@ -72,8 +72,10 @@ type WorkContentIcon = AppSymbolName | "browser" | "t3-code";
 function WorkLogIcon(props: {
   readonly icon: WorkContentIcon;
   readonly color: ColorValue;
+  readonly colorClassName?: string;
   readonly highlighted?: boolean;
 }) {
+  const colorClassName = props.highlighted ? "accent-foreground" : props.colorClassName;
   if (props.icon === "t3-code") {
     // The app's own tools carry the product mark (the fork draws Zerops', not T3's).
     return <ZeropsMark height={10} />;
@@ -83,9 +85,7 @@ function WorkLogIcon(props: {
       name={props.icon === "browser" ? { ios: "globe", android: "public" } : props.icon}
       size={14}
       weight="medium"
-      {...(props.highlighted
-        ? { tintColorClassName: "accent-foreground" }
-        : { tintColor: props.color })}
+      {...(colorClassName ? { tintColorClassName: colorClassName } : { tintColor: props.color })}
       type="monochrome"
     />
   );
@@ -668,7 +668,7 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
     !toolPresentation && expanded && row.workEntry.command?.trim() ? "Command" : previewText;
   const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
   const failed = row.status === "failure";
-  const icon = toolPresentation?.icon ?? (failed ? "xmark" : workRowSymbolName(row.icon));
+  const icon = toolPresentation?.icon ?? workRowSymbolName(row.icon);
 
   return (
     <Animated.View
@@ -706,7 +706,14 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
               <View className="h-6 w-6 shrink-0 items-center justify-center">
                 <WorkLogIcon
                   icon={icon}
-                  color={iconIsDestructive ? "#e11d48" : props.iconSubtleColor}
+                  color={props.iconSubtleColor}
+                  colorClassName={
+                    iconIsDestructive
+                      ? "accent-adaptive-rose-600-400"
+                      : failed
+                        ? "accent-danger-foreground/40"
+                        : undefined
+                  }
                 />
               </View>
               <Text
@@ -726,20 +733,6 @@ const ThreadWorkLogRow = memo(function ThreadWorkLogRow(
               <Text className="pr-1 font-t3-medium text-3xs text-adaptive-emerald-600-400">
                 Copied
               </Text>
-            ) : null}
-            {failed && toolPresentation ? (
-              <View
-                className="h-4 w-4 items-center justify-center"
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                <SymbolView
-                  name="xmark"
-                  size={11}
-                  tintColorClassName="accent-adaptive-rose-600-400"
-                  type="monochrome"
-                />
-              </View>
             ) : null}
             <View className="h-4 w-4 items-center justify-center">
               {canExpand ? (
