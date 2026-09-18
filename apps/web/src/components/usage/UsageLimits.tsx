@@ -233,7 +233,18 @@ function AccountHeading({
       <span className="truncate">{label}</span>
       {instanceLabel !== label ? (
         <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
-          · {instanceLabel}
+          ·{" "}
+          {instanceLabel.includes("@") ? (
+            <RedactedSensitiveText
+              key={instanceLabel}
+              value={instanceLabel}
+              ariaLabel="Toggle account label visibility"
+              revealTooltip="Click to reveal account"
+              hideTooltip="Click to hide account"
+            />
+          ) : (
+            instanceLabel
+          )}
         </span>
       ) : null}
       {plan ? <span className="font-normal text-muted-foreground">· {plan}</span> : null}
