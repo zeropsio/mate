@@ -15,7 +15,7 @@ import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import {
   useEnvironmentAllowsWorktrees,
   useProject,
-  useThread,
+  useThreadShell,
   useThreadShellsForProjectRefs,
 } from "../state/entities";
 import { useIsMobile } from "../hooks/useMediaQuery";
@@ -408,7 +408,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   const draftThread = useComposerDraftStore((store) =>
     draftId ? store.getDraftSession(draftId) : store.getDraftThreadByRef(threadRef),
   );
-  const serverThread = useThread(threadRef, { waitForShell: draftThread !== null });
+  const serverThread = useThreadShell(threadRef);
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const activeProjectRef = serverThread
     ? scopeProjectRef(serverThread.environmentId, serverThread.projectId)
