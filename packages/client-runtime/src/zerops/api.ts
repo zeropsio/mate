@@ -668,6 +668,15 @@ function isProjectWriteAdmissionError(cause: unknown): boolean {
   );
 }
 
+/**
+ * Whether the platform refused a project variable because the key is already
+ * there. Its words are the only marker: the code is the generic
+ * `invalidUserInput` every bad body gets.
+ */
+function isDuplicateProjectEnvKey(cause: unknown): boolean {
+  return cause instanceof ZeropsApiError && /is not unique/i.test(cause.message);
+}
+
 function waitForPromiseOrAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal | null | undefined,
@@ -2128,19 +2137,44 @@ export class ZeropsApiClient {
           );
           break;
         case "create-project-env":
-          await this.#request(
-            `/project/${projectId}/env`,
-            {
-              method: "POST",
-              signal: signal ?? null,
-              body: JSON.stringify({
-                key: step.key,
-                content: step.content,
-                sensitive: step.sensitive,
-              }),
-            },
-            write,
-          );
+          try {
+            await this.#request(
+              `/project/${projectId}/env`,
+              {
+                method: "POST",
+                signal: signal ?? null,
+                body: JSON.stringify({
+                  key: step.key,
+                  content: step.content,
+                  sensitive: step.sensitive,
+                }),
+              },
+              write,
+            );
+          } catch (cause) {
+            // The search this planned from is an index that trails the write
+            // path, so a project made a moment ago answers without the
+            // variables the platform gave it at birth — and the creation is
+            // refused as a duplicate. The entry is there; write it instead of
+            // failing the whole isolation (measured 2026-09-18).
+            if (!isDuplicateProjectEnvKey(cause)) throw cause;
+            fresh = await this.readProjectEnv(clientId, projectId, signal);
+            const existing = fresh.find(
+              (entry) => entry.key.toLowerCase() === step.key.toLowerCase(),
+            );
+            if (existing === undefined) throw cause;
+            if (existing.content !== step.content) {
+              await this.#request(
+                `/project-env/${existing.id}`,
+                {
+                  method: "PUT",
+                  signal: signal ?? null,
+                  body: JSON.stringify({ key: step.key, content: step.content }),
+                },
+                write,
+              );
+            }
+          }
           break;
         case "move-key-to-service": {
           const serviceId = serviceIdByName.get(step.serviceName);

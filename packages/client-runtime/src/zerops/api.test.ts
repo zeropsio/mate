@@ -484,6 +484,50 @@ describe("ZeropsApiClient project reads", () => {
     });
   });
 
+  it("updates the isolation variable the platform already has, when the index has not caught up", async () => {
+    let searches = 0;
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/project/search")) {
+        searches += 1;
+        // The index trails the write path: a project created a moment ago
+        // answers without the variables the platform gave it at birth.
+        return jsonResponse(200, {
+          items: [
+            {
+              envList:
+                searches === 1 ? [] : [{ id: "iso-1", key: "envIsolation", content: "none" }],
+            },
+          ],
+        });
+      }
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      if (request.method === "POST" && request.url.endsWith("/env")) {
+        return jsonResponse(400, {
+          error: {
+            code: "invalidUserInputWithText",
+            message:
+              "Project environment variable key 'envIsolation' is not unique (case insensitive).",
+          },
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await client.isolateProjectEnvironment("org-1", "project-1");
+
+    const put = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.includes("/project-env/iso-1"),
+    );
+    expect(put).toBeDefined();
+    expect(JSON.parse(put?.body ?? "{}")).toEqual({ key: "envIsolation", content: "service" });
+  });
+
   it("does not hide a non-permission failure behind the project search fallback", async () => {
     const stub = recordingFetch(() => jsonResponse(503, { error: { code: "unavailable" } }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
