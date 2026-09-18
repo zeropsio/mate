@@ -15,8 +15,8 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-export const APP_DISPLAY_NAME = isDevelopment ? "Zerops Mate (Dev)" : "Zerops Mate (Alpha)";
-export const APP_BUNDLE_ID = isDevelopment
+const APP_DISPLAY_NAME = isDevelopment ? "Zerops Mate (Dev)" : "Zerops Mate (Alpha)";
+const APP_BUNDLE_ID = isDevelopment
   ? `io.zerops.mate.dev.${devBundleIdSuffix || "local"}`
   : "io.zerops.mate";
 const APP_PROTOCOL_SCHEMES = isDevelopment ? ["zerops-mate-dev"] : ["zerops-mate"];
@@ -387,7 +387,7 @@ function resolveLinuxSandboxArgs(electronBinaryPath) {
   return ["--no-sandbox"];
 }
 
-export function resolveElectronPath() {
+function resolveElectronPath() {
   const electronBinaryPath = resolveElectronBinaryPath();
 
   if (hostPlatform !== "darwin") {
