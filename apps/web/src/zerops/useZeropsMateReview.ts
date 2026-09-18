@@ -9,10 +9,10 @@
  * answer. Nothing new is read for it: the project flow already holds every
  * open pull request of the account, and which Mate each belongs to.
  *
- * Merging does two things, in order. Gitea merges as the person, and then the
- * Mate's own checkout takes the merged `main` in — otherwise the container
- * still sits on a branch whose work is already upstream, and the next task is
- * written against a tree that is behind.
+ * Merging is Gitea's, as the person. The Mate's checkout is not the app's to
+ * move: its branch takes the merged `main` in at its next delivery, which
+ * merges the base in before it pushes (zcp, MB-26), so a request opened after
+ * this one carries only the new work.
  */
 import {
   mateReviewOffer,
@@ -27,7 +27,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useZeropsProjectFlowOptional } from "./projectFlowContext";
 import { browserZeropsStorage } from "./storage";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
-import { useVcsPullAction } from "../state/sourceControlActions";
 
 export interface ZeropsMateReview {
   readonly offer: MateReviewOffer | undefined;
@@ -50,7 +49,6 @@ export function useZeropsMateReview(threadRef: ScopedThreadRef | null): ZeropsMa
   const inventory = useZeropsInventory();
   const environmentId = threadRef?.environmentId;
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
-  const pull = useVcsPullAction({ environmentId: environmentId ?? null, cwd: null });
 
   useEffect(() => {
     if (environmentId === undefined) {
@@ -80,13 +78,11 @@ export function useZeropsMateReview(threadRef: ScopedThreadRef | null): ZeropsMa
 
   const merge = useCallback(() => {
     if (flow === null || slug === undefined || offer === undefined) return;
-    void flow
-      .mergePullRequest(slug, { repository: offer.pull.repository, number: offer.pull.number })
-      // The checkout follows the merge, never instead of it: a merge that went
-      // through and a pull that did not still leaves the work on `main`.
-      .then(() => pull.run())
-      .catch(() => undefined);
-  }, [flow, offer, pull, slug]);
+    void flow.mergePullRequest(slug, {
+      repository: offer.pull.repository,
+      number: offer.pull.number,
+    });
+  }, [flow, offer, slug]);
 
   if (flow === null || offer === undefined || slug === undefined) return NOTHING;
   return {

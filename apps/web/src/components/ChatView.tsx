@@ -4771,8 +4771,8 @@ function ChatViewContent(props: ChatViewProps) {
   /**
    * What this Mate is waiting to have merged, right where the person is
    * reading its answer (the owner, 2026-09-18). The verb merges in Gitea as
-   * the person and then brings the Mate's checkout onto the merged `main`; a
-   * refusal is shown here in Gitea's own words, which is where it was missing.
+   * the person; a refusal is shown here in Gitea's own words, which is where
+   * it was missing.
    */
   const mateReviewBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (zeropsMateReview.offer === undefined) return null;
