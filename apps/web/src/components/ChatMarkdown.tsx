@@ -81,6 +81,7 @@ import { fnv1a32 } from "../lib/diffRendering";
 import { LRUCache } from "../lib/lruCache";
 import { getSyntaxHighlighterPromise } from "../lib/syntaxHighlighting";
 import { GitHubIcon } from "./Icons";
+import { createIncrementalHighlighter } from "../lib/incrementalHighlighting";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
@@ -856,9 +857,15 @@ function UncachedShikiCodeBlock({
   isStreaming,
 }: UncachedShikiCodeBlockProps) {
   const highlighter = use(getSyntaxHighlighterPromise(language));
+  const incrementalHighlight = useMemo(
+    () => (isStreaming ? createIncrementalHighlighter(highlighter, language, themeName) : null),
+    [highlighter, isStreaming, language, themeName],
+  );
   const highlightedHtml = useMemo(() => {
     try {
-      return highlighter.codeToHtml(code, { lang: language, theme: themeName });
+      return incrementalHighlight
+        ? incrementalHighlight(code)
+        : highlighter.codeToHtml(code, { lang: language, theme: themeName });
     } catch (error) {
       // Log highlighting failures for debugging while falling back to plain text
       console.warn(
@@ -868,7 +875,7 @@ function UncachedShikiCodeBlock({
       // If highlighting fails for this language, render as plain text
       return highlighter.codeToHtml(code, { lang: "text", theme: themeName });
     }
-  }, [code, highlighter, language, themeName]);
+  }, [code, highlighter, incrementalHighlight, language, themeName]);
 
   useEffect(() => {
     if (!isStreaming) {
