@@ -5317,6 +5317,8 @@ export default function ChatView(props: ChatViewProps) {
       terminalFocus: getTerminalFocusOwner() !== null,
       terminalOpen: Boolean(terminalUiState.terminalOpen),
       modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
+      isWeb: !isElectron,
+      isDesktop: isElectron,
     }),
     [composerRef, terminalUiState.terminalOpen],
   );

@@ -8,6 +8,7 @@ import {
   type ModelPickerJumpKeybindingCommand,
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
+import { isElectron } from "./env";
 import { isMacPlatform } from "./lib/utils";
 
 export interface ShortcutEventLike {
@@ -31,6 +32,8 @@ export interface ShortcutModifierStateLike {
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
   terminalOpen: boolean;
+  isWeb: boolean;
+  isDesktop: boolean;
   [key: string]: boolean;
 }
 
@@ -129,6 +132,8 @@ function resolveContext(options: ShortcutMatchOptions | undefined): ShortcutMatc
   return {
     terminalFocus: false,
     terminalOpen: false,
+    isWeb: !isElectron,
+    isDesktop: isElectron,
     ...options?.context,
   };
 }
