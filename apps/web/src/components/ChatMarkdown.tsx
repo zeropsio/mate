@@ -41,9 +41,14 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from "react";
-import type { Components, Options as ReactMarkdownOptions } from "react-markdown";
+import type {
+  Components,
+  ExtraProps as ReactMarkdownExtraProps,
+  Options as ReactMarkdownOptions,
+} from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
@@ -143,6 +148,10 @@ interface ChatMarkdownProps {
   lineBreaks?: boolean;
   /** Parse sanitized raw HTML instead of displaying its source text. */
   parseRawHtml?: boolean;
+  /** Levels added to each markdown heading in the accessibility tree so the
+      text nests under the heading that introduces it, such as a chat message's
+      author. Rendered tags and their styling are unchanged. */
+  headingLevelOffset?: number | undefined;
 }
 
 export function canUseMarkdownFileShellActions(
@@ -1586,6 +1595,7 @@ function useChatMarkdownState({
   onTaskListChange,
   isStreaming = false,
   skills = EMPTY_MARKDOWN_SKILLS,
+  headingLevelOffset = 0,
 }: ChatMarkdownStateProps) {
   const { resolvedTheme } = useTheme();
   const searchProjectEntries = useAtomQueryRunner(projectEnvironment.searchEntries, {
@@ -1845,6 +1855,7 @@ function useChatMarkdownState({
       cwd,
       diffThemeName,
       fileLinkChip,
+      headingLevelOffset,
       inlineCodeFileLinkMetaByText,
       isStreaming,
       markdownFileLinkMetaByHref,
@@ -1861,6 +1872,7 @@ function useChatMarkdownState({
       cwd,
       diffThemeName,
       fileLinkChip,
+      headingLevelOffset,
       inlineCodeFileLinkMetaByText,
       isStreaming,
       markdownFileLinkMetaByHref,
@@ -1881,8 +1893,33 @@ const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
 >(null!);
 
+// Screen readers take a heading's level from its tag, which would let a `#` in a
+// message outrank the heading placed above it. Override only the exposed level:
+// the tag keeps driving the stylesheet and copy-as-markdown.
+function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
+  const Tag = `h${level}` as const;
+  return function MarkdownHeading({
+    node: _node,
+    ...props
+  }: ComponentProps<typeof Tag> & ReactMarkdownExtraProps) {
+    const { headingLevelOffset } = use(ChatMarkdownRendererContext);
+    return (
+      <Tag
+        {...props}
+        aria-level={headingLevelOffset > 0 ? Math.min(level + headingLevelOffset, 6) : undefined}
+      />
+    );
+  };
+}
+
 // Keep component types stable when streaming changes the message state.
 const CHAT_MARKDOWN_COMPONENTS = {
+  h1: markdownHeadingRenderer(1),
+  h2: markdownHeadingRenderer(2),
+  h3: markdownHeadingRenderer(3),
+  h4: markdownHeadingRenderer(4),
+  h5: markdownHeadingRenderer(5),
+  h6: markdownHeadingRenderer(6),
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
     const { skills } = use(ChatMarkdownRendererContext);
     return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
