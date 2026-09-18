@@ -68,6 +68,7 @@ function makeFakeBrowserWindow() {
     copyImageAt: vi.fn(),
     getURL: vi.fn(() => "http://127.0.0.1:5733/"),
     getZoomLevel: vi.fn(() => zoomLevel),
+    getZoomFactor: vi.fn(() => 1.2 ** zoomLevel),
     setZoomLevel: vi.fn((level: number) => {
       zoomLevel = level;
     }),
@@ -107,6 +108,7 @@ function makeFakeBrowserWindow() {
     setAutoHideCursor: vi.fn(),
     setTitle: vi.fn(),
     setTitleBarOverlay: vi.fn(),
+    setWindowButtonPosition: vi.fn(),
     show: vi.fn(),
     webContents,
   };
@@ -125,6 +127,7 @@ function makeFakeBrowserWindow() {
     reload: webContents.reload,
     send: webContents.send,
     setZoomLevel: webContents.setZoomLevel,
+    setWindowButtonPosition: window.setWindowButtonPosition,
     setBackgroundThrottling: webContents.setBackgroundThrottling,
     setAutoHideCursor: window.setAutoHideCursor,
     webContentsOnce: webContents.once,
@@ -422,6 +425,39 @@ describe("DesktopWindow", () => {
         prevented = false;
         beforeInput(event, { ...input, meta: false });
         assert.isFalse(prevented);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("keeps macOS window buttons centered when zooming and leaving fullscreen", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = makeTestLayer({ window: fakeWindow.window, createCount, mainWindow });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.createMain;
+
+        for (const direction of ["in", "in", "out", "reset", "out"] as const) {
+          yield* desktopWindow.zoomMain(direction);
+          const position = fakeWindow.setWindowButtonPosition.mock.lastCall?.[0];
+          assert.isDefined(position);
+          // The 14-point native buttons should share the zoomed 52px header's center.
+          const headerCenter = 26 * fakeWindow.window.webContents.getZoomFactor();
+          assert.isAtMost(Math.abs(position.y + 7 - headerCenter), 0.5);
+          assert.equal(position.x, 16);
+        }
+
+        fakeWindow.isFullScreen.mockReturnValue(true);
+        fakeWindow.setWindowButtonPosition.mockClear();
+        yield* desktopWindow.zoomMain("reset");
+        assert.equal(fakeWindow.setWindowButtonPosition.mock.calls.length, 0);
+
+        fakeWindow.isFullScreen.mockReturnValue(false);
+        fakeWindow.windowListeners.get("leave-full-screen")?.();
+        assert.deepEqual(fakeWindow.setWindowButtonPosition.mock.lastCall, [{ x: 16, y: 19 }]);
       }).pipe(Effect.provide(layer));
     }),
   );
