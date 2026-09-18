@@ -200,6 +200,7 @@ export function buildKeybindingRows(
   return rowsWithConflicts.filter((row) => {
     return (
       row.command.toLowerCase().includes(normalizedQuery) ||
+      commandLabel(row.command).toLowerCase().includes(normalizedQuery) ||
       row.key.toLowerCase().includes(normalizedQuery) ||
       row.when.toLowerCase().includes(normalizedQuery) ||
       row.source.toLowerCase().includes(normalizedQuery)

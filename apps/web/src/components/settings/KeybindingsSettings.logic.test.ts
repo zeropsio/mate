@@ -16,6 +16,30 @@ import {
 } from "./KeybindingsSettings.logic";
 
 describe("KeybindingsSettings.logic", () => {
+  it("lists composer and provider commands with editable defaults", () => {
+    const rows = buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "");
+    for (const command of [
+      "composer.host",
+      "composer.effort",
+      "composer.mode",
+      "composer.workspace",
+      "composer.branch",
+      "composer.previousWorktree",
+      "modelPicker.previousProvider",
+      "modelPicker.nextProvider",
+    ]) {
+      expect(rows.find((row) => row.command === command)).toMatchObject({
+        source: "Default",
+        conflicts: [],
+      });
+    }
+  });
+  it("finds a shortcut by its command label in Settings", () => {
+    const rows = buildKeybindingRows(DEFAULT_RESOLVED_KEYBINDINGS, "Previous Worktree");
+    expect(rows).toEqual([
+      expect.objectContaining({ command: "composer.previousWorktree", key: "mod+shift+l" }),
+    ]);
+  });
   it("builds searchable rows with readable key and when values", () => {
     const rows = buildKeybindingRows(
       [

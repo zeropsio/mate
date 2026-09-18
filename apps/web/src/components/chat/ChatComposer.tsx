@@ -1,5 +1,6 @@
 import type {
   ApprovalRequestId,
+  KeybindingCommand,
   EnvironmentId,
   ModelSelection,
   ProviderApprovalDecision,
@@ -33,7 +34,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   clampCollapsedComposerCursor,
   type ComposerSubmissionIntent,
@@ -438,7 +439,13 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           onValueChange={(value) => props.onRuntimeModeChange(value!)}
         >
           <TooltipTrigger
-            render={<ComposerSelectControl className="font-medium" aria-label="Runtime mode" />}
+            render={
+              <ComposerSelectControl
+                data-composer-shortcut="composer.mode"
+                className="font-medium"
+                aria-label="Runtime mode"
+              />
+            }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} />
             <SelectValue>{runtimeModeOption.label}</SelectValue>
@@ -550,6 +557,7 @@ export interface ChatComposerHandle {
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
+  openControl: (command: KeybindingCommand) => void;
   isModelPickerOpen: () => boolean;
   compactContext: () => void;
   readSnapshot: () => {
@@ -3165,6 +3173,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       },
       toggleModelPicker: () => {
         setIsComposerModelPickerOpen((open) => !open);
+      },
+      openControl: (command) => {
+        if (composerBlurFrameRef.current !== null) {
+          window.cancelAnimationFrame(composerBlurFrameRef.current);
+          composerBlurFrameRef.current = null;
+        }
+        flushSync(() => {
+          setIsComposerFocused(true);
+        });
+        const shell = composerFormRef.current?.closest('[data-slot="composer-shell"]');
+        const trigger = Array.from(
+          shell?.querySelectorAll<HTMLButtonElement>(
+            `button[data-composer-shortcut~="${command}"]:not(:disabled)`,
+          ) ?? [],
+        ).find(
+          (element) =>
+            !element.closest("[inert]") && element.checkVisibility({ visibilityProperty: true }),
+        );
+        if (!trigger) return;
+        trigger.focus({ preventScroll: true });
+        trigger.click();
       },
       compactContext: compactThreadContext,
       isModelPickerOpen: () => isComposerModelPickerOpen,

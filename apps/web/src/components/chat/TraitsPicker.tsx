@@ -598,6 +598,7 @@ export const TraitsPicker = memo(function TraitsPicker({
       <MenuTrigger
         render={
           <ComposerControl
+            data-composer-shortcut="composer.effort"
             variant={triggerVariant ?? "ghost"}
             className={cn(
               isCodexStyle

@@ -1,4 +1,9 @@
 import { assert, describe, it } from "vite-plus/test";
+import {
+  compileResolvedKeybindingsConfig,
+  DEFAULT_RESOLVED_KEYBINDINGS,
+  mergeWithDefaultKeybindings,
+} from "@t3tools/shared/keybindings";
 
 import {
   type KeybindingCommand,
@@ -966,4 +971,172 @@ describe("plus key parsing", () => {
       }),
     );
   });
+});
+
+describe("composer shortcuts", () => {
+  it("fills missing composer shortcuts without replacing a saved binding", () => {
+    const olderServerBindings = DEFAULT_RESOLVED_KEYBINDINGS.filter(
+      (binding) => binding.command !== "composer.effort" && binding.command !== "composer.branch",
+    );
+    const bindings = mergeWithDefaultKeybindings([
+      ...olderServerBindings,
+      ...compileResolvedKeybindingsConfig([
+        { key: "mod+shift+8", command: "composer.branch", when: "!terminalFocus" },
+      ]),
+    ]);
+    for (const [key, command] of [
+      ["e", "composer.effort"],
+      ["8", "composer.branch"],
+      ["g", null],
+      ["y", null],
+    ] as const) {
+      assert.strictEqual(
+        resolveShortcutCommand(event({ key, metaKey: true, shiftKey: true }), bindings, {
+          platform: "MacIntel",
+        }),
+        command,
+      );
+    }
+  });
+
+  const shortcuts = [
+    ["h", "composer.host"],
+    ["e", "composer.effort"],
+    ["a", "composer.mode"],
+    ["x", "composer.workspace"],
+    ["g", "composer.branch"],
+    ["l", "composer.previousWorktree"],
+  ] as const;
+
+  for (const platform of ["MacIntel", "Win32", "Linux"]) {
+    it.each(shortcuts)(
+      `resolves %s on ${platform} and leaves terminal input alone`,
+      (key, command) => {
+        const input = event({
+          key,
+          shiftKey: true,
+          metaKey: platform === "MacIntel",
+          ctrlKey: platform !== "MacIntel",
+        });
+        assert.strictEqual(
+          resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+            platform,
+            context: { terminalFocus: false },
+          }),
+          command,
+        );
+        assert.isNull(
+          resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+            platform,
+            context: { terminalFocus: true },
+          }),
+        );
+      },
+    );
+  }
+
+  for (const platform of ["MacIntel", "Win32", "Linux"]) {
+    it.each([
+      ["s", "thread.settle"],
+      ["p", "thread.pin"],
+    ])(`preserves the existing %s shortcut on ${platform}`, (key, command) => {
+      assert.strictEqual(
+        resolveShortcutCommand(
+          event({
+            key,
+            shiftKey: true,
+            metaKey: platform === "MacIntel",
+            ctrlKey: platform !== "MacIntel",
+          }),
+          DEFAULT_RESOLVED_KEYBINDINGS,
+          { platform },
+        ),
+        command,
+      );
+    });
+  }
+
+  const altEffortBindings = compileResolvedKeybindingsConfig([
+    { key: "mod+alt+e", command: "composer.effort", when: "!terminalFocus" },
+  ]);
+
+  it("leaves AltGr text entry alone with a custom Alt binding", () => {
+    for (const platform of ["Win32", "Linux"]) {
+      const input = event({
+        key: "€",
+        code: "KeyE",
+        ctrlKey: true,
+        altKey: true,
+        getModifierState: (key) => key === "AltGraph",
+      });
+      assert.isNull(resolveShortcutCommand(input, altEffortBindings, { platform }));
+      assert.strictEqual(
+        resolveShortcutCommand({ ...input, getModifierState: () => false }, altEffortBindings, {
+          platform,
+        }),
+        "composer.effort",
+      );
+    }
+  });
+
+  it("keeps Firefox modifier reporting usable on Windows and macOS", () => {
+    const getModifierState = (key: string) => key === "AltGraph";
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "e", ctrlKey: true, altKey: true, getModifierState }),
+        altEffortBindings,
+        { platform: "Win32" },
+      ),
+      "composer.effort",
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "´", code: "KeyE", metaKey: true, altKey: true, getModifierState }),
+        altEffortBindings,
+        { platform: "MacIntel" },
+      ),
+      "composer.effort",
+    );
+  });
+
+  it.each(shortcuts)("uses a custom binding for %s", (_key, command) => {
+    const bindings = compileResolvedKeybindingsConfig([
+      { key: "mod+shift+y", command, when: "!terminalFocus" },
+    ]);
+    assert.strictEqual(
+      resolveShortcutCommand(
+        event({ key: "Y", code: "KeyY", ctrlKey: true, shiftKey: true }),
+        bindings,
+        { platform: "Linux" },
+      ),
+      command,
+    );
+  });
+
+  for (const platform of ["MacIntel", "Win32", "Linux"]) {
+    it.each([
+      ["ArrowUp", "modelPicker.previousProvider"],
+      ["ArrowDown", "modelPicker.nextProvider"],
+    ] as const)(`limits %s to the model picker on ${platform}`, (key, command) => {
+      const input = event({
+        key,
+        shiftKey: true,
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+      });
+      assert.strictEqual(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { modelPickerOpen: true },
+        }),
+        command,
+      );
+      assert.isNull(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { modelPickerOpen: false },
+        }),
+      );
+    });
+  }
 });

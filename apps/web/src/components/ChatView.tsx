@@ -188,7 +188,7 @@ import {
   deriveAgentPanelModel,
   foldSubagentActivities,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import { BranchToolbar } from "./BranchToolbar";
+import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
@@ -1450,6 +1450,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([]);
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const branchToolbarRef = useRef<BranchToolbarHandle>(null);
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
@@ -5195,6 +5196,15 @@ export default function ChatView(props: ChatViewProps) {
     terminalUiOpenByThreadRef.current[activeThreadKey] = current;
   }, [activeThreadKey, focusComposer, terminalUiState.terminalOpen]);
 
+  const getShortcutContext = useCallback(
+    () => ({
+      terminalFocus: getTerminalFocusOwner() !== null,
+      terminalOpen: Boolean(terminalUiState.terminalOpen),
+      modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
+    }),
+    [composerRef, terminalUiState.terminalOpen],
+  );
+
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
@@ -5215,11 +5225,7 @@ export default function ChatView(props: ChatViewProps) {
       if (event.defaultPrevented && terminalFocusOwner === null) {
         return;
       }
-      const shortcutContext = {
-        terminalFocus: terminalFocusOwner !== null,
-        terminalOpen: Boolean(terminalUiState.terminalOpen),
-        modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
-      };
+      const shortcutContext = getShortcutContext();
 
       if (
         !shortcutContext.terminalFocus &&
@@ -5365,7 +5371,33 @@ export default function ChatView(props: ChatViewProps) {
       if (command === "modelPicker.toggle") {
         event.preventDefault();
         event.stopPropagation();
-        composerRef.current?.toggleModelPicker();
+        if (!event.repeat) composerRef.current?.toggleModelPicker();
+        return;
+      }
+
+      if (
+        command === "composer.host" ||
+        command === "composer.effort" ||
+        command === "composer.mode" ||
+        command === "composer.workspace"
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) composerRef.current?.openControl(command);
+        return;
+      }
+
+      if (command === "composer.branch") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) branchToolbarRef.current?.openBranchPicker();
+        return;
+      }
+
+      if (command === "composer.previousWorktree") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) branchToolbarRef.current?.usePreviousWorktree();
         return;
       }
 
@@ -5418,6 +5450,7 @@ export default function ChatView(props: ChatViewProps) {
     supportsPinning,
     supportsSettlement,
     unpinThread,
+    getShortcutContext,
     toggleRightPanel,
     toggleRightPanelMaximized,
     toggleTerminalVisibility,
@@ -7558,6 +7591,7 @@ export default function ChatView(props: ChatViewProps) {
                     }
                   >
                     <div
+                      data-slot="composer-shell"
                       className={cn(
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
@@ -7677,6 +7711,7 @@ export default function ChatView(props: ChatViewProps) {
                           {showComposerContextStrip && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
+                                ref={branchToolbarRef}
                                 environmentId={activeThread.environmentId}
                                 threadId={activeThread.id}
                                 showGitControls={isGitRepo}
