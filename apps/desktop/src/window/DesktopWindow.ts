@@ -442,7 +442,13 @@ export const make = Effect.gen(function* () {
         { role: "selectAll", enabled: params.editFlags.canSelectAll },
       );
 
-      void runPromise(electronMenu.popupTemplate({ window, template: menuTemplate }));
+      void runPromise(
+        electronMenu.popupTemplate({
+          window,
+          template: menuTemplate,
+          ...(params.frame ? { frame: params.frame } : {}),
+        }),
+      );
     });
 
     window.webContents.setWindowOpenHandler(({ url }) => {
