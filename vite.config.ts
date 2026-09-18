@@ -135,6 +135,21 @@ export default defineConfig({
       "t3code/no-theme-escape-hatches": "error",
       "t3code/namespace-node-imports": "error",
     },
+    overrides: [
+      {
+        // Shared client code must not call APIs missing from Hermes. Our ESNext
+        // TypeScript target accepts them even when they would crash mobile at launch.
+        // Tests run on Node and are exempt.
+        files: [
+          "apps/mobile/src/**",
+          "packages/client-runtime/src/**",
+          "packages/contracts/src/**",
+          "packages/shared/src/**",
+        ],
+        excludeFiles: ["**/*.test.ts", "**/*.test.tsx"],
+        rules: { "t3code/no-hermes-unsupported-apis": "error" },
+      },
+    ],
     options: {
       // Revisit once Oxlint's tsgolint path can integrate with @effect/tsgo diagnostics.
       typeAware: false,

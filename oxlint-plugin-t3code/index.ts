@@ -2,6 +2,7 @@ import { definePlugin } from "@oxlint/plugins";
 
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
+import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
 import noInfiniteMotion from "./rules/no-infinite-motion.ts";
 import noInlineSchemaCompile from "./rules/no-inline-schema-compile.ts";
 import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
@@ -17,6 +18,7 @@ export default definePlugin({
   rules: {
     "namespace-node-imports": namespaceNodeImports,
     "no-global-process-runtime": noGlobalProcessRuntime,
+    "no-hermes-unsupported-apis": noHermesUnsupportedApis,
     "no-infinite-motion": noInfiniteMotion,
     "no-inline-schema-compile": noInlineSchemaCompile,
     "no-legacy-vocabulary": noLegacyVocabulary,
