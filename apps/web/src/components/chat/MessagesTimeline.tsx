@@ -2525,26 +2525,33 @@ function liveWorkEntryLabel(
   return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }
 
+/**
+ * The expanded body never repeats the row's visible label. A failed row keeps
+ * its label in the body so the full, untruncated error stays reachable.
+ */
 function buildToolCallExpandedBody(
   workEntry: TimelineWorkEntry,
   workspaceRoot: string | undefined,
+  visibleLabel: string,
+  failed: boolean,
 ): string | null {
   const blocks: string[] = [];
+  const seen = new Set<string>(failed ? [] : [visibleLabel.trim()]);
+  const addBlock = (value: string | null | undefined) => {
+    const text = value?.trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    blocks.push(text);
+  };
   if (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) {
-    blocks.push(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
+    addBlock(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
   }
   const raw = workEntryRawCommand(workEntry);
-  if (raw?.trim()) {
-    blocks.push(raw.trim());
-  } else if (workEntry.command?.trim()) {
-    blocks.push(workEntry.command.trim());
-  }
-  if (workEntry.detail?.trim()) {
-    blocks.push(workEntry.detail.trim());
-  }
+  addBlock(raw?.trim() ? raw : workEntry.command);
+  addBlock(workEntry.detail);
   const changedFiles = workEntry.changedFiles ?? [];
   if (changedFiles.length > 0) {
-    blocks.push(
+    addBlock(
       changedFiles
         .map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
         .join("\n"),
@@ -2714,8 +2721,16 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const entryIconName =
     showWarningIndicator || showFailedIndicator ? "x" : workEntryIconName(workEntry);
   const previewText = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
-  const displayText = expanded && workEntry.command?.trim() ? "Command" : previewText;
-  const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
+  // An expanded command row is labelled "Command" and shows the command in its
+  // body, so the body dedupes against that label rather than the preview.
+  const expandedLabel = workEntry.command?.trim() ? "Command" : previewText;
+  const displayText = expanded ? expandedLabel : previewText;
+  const expandedBody = buildToolCallExpandedBody(
+    workEntry,
+    workspaceRoot,
+    expandedLabel,
+    showFailedIndicator,
+  );
   const canExpand = expandedBody !== null;
   const showDestructiveRowStyle =
     showFailedIndicator &&
