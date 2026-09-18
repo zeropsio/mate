@@ -58,8 +58,6 @@ export class ElectronWindowCreateError extends Schema.TaggedError<ElectronWindow
   }
 }
 
-export const isElectronWindowCreateError = Schema.is(ElectronWindowCreateError);
-
 export class ElectronWindowOperationError extends Schema.TaggedError<ElectronWindowOperationError>()(
   "ElectronWindowOperationError",
   {
