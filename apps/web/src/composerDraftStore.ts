@@ -2587,6 +2587,13 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           }
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
+            // The composer writes the prompt it already holds — on a keystroke
+            // that changes nothing, and on every render that syncs the editor.
+            // Handing back a fresh draft for those wakes the subscribers, which
+            // write again, and React throws "Maximum update depth exceeded".
+            if (existing.prompt === prompt && state.draftsByThreadKey[threadKey] !== undefined) {
+              return state;
+            }
             const nextDraft: ComposerThreadDraftState = {
               ...existing,
               prompt,

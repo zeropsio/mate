@@ -345,6 +345,53 @@ describe("composerDraftStore moveComposerPromptAndImages", () => {
   });
 });
 
+describe("composerDraftStore setPrompt", () => {
+  const threadId = ThreadId.make("thread-set-prompt");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("stores a changed prompt", () => {
+    useComposerDraftStore.getState().setPrompt(threadRef, "deploy the stage");
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe("deploy the stage");
+  });
+
+  // The composer writes the prompt it is already holding on every keystroke
+  // and on every render that syncs the editor. A write that changes nothing
+  // must hand back the same state, or each one wakes the subscribers, which
+  // write again: React counts the nested updates and throws "Maximum update
+  // depth exceeded" (measured on every send, 2026-09-18).
+  it("hands back the same state when the prompt has not changed", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "deploy the stage");
+    const before = useComposerDraftStore.getState();
+    const listener = vi.fn();
+    const unsubscribe = useComposerDraftStore.subscribe(listener);
+
+    store.setPrompt(threadRef, "deploy the stage");
+
+    const after = useComposerDraftStore.getState();
+    unsubscribe();
+    expect(listener).not.toHaveBeenCalled();
+    expect(after.draftsByThreadKey).toBe(before.draftsByThreadKey);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBe(
+      before.draftsByThreadKey[threadKeyFor(threadId, TEST_ENVIRONMENT_ID)],
+    );
+  });
+
+  it("still removes a draft the empty prompt leaves with nothing in it", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "deploy the stage");
+
+    store.setPrompt(threadRef, "");
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+});
+
 describe("composerDraftStore syncPersistedAttachments", () => {
   const threadId = ThreadId.make("thread-sync-persisted");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
