@@ -1,6 +1,8 @@
 import { ZEROPS_THEME, type ThemeAppearance, type ThemeColors } from "./themePalettes.ts";
 
-export type MobileThemeVariable = `--color-${string}`;
+// Closed set: every key `createMobileThemeVariables` writes. Reads of a
+// misspelled variable then fail to compile instead of yielding undefined.
+export type MobileThemeVariable = keyof ReturnType<typeof createMobileThemeVariables>;
 export type MobileThemeVariables = Readonly<Record<MobileThemeVariable, string>>;
 
 const OKLCH_PATTERN = /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+(-?[\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/u;
@@ -118,10 +120,7 @@ function readableMessageAccent(accent: string, surface: string): string {
   return `#${readable.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
-export function createMobileThemeVariables(
-  colors: ThemeColors,
-  appearance: ThemeAppearance,
-): MobileThemeVariables {
+export function createMobileThemeVariables(colors: ThemeColors, appearance: ThemeAppearance) {
   const c = nativeColors(colors);
   return {
     "--color-screen": c.canvas,

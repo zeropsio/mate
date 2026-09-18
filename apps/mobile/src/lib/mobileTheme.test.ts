@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BUILT_IN_THEME_IDS, BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEME_IDS, BUILT_IN_THEMES, T3_CHAT_THEME } from "@t3tools/shared/themePalettes";
 import { readDefaultMobileThemeVariables } from "./mobileTheme.test-support";
 
 import {
@@ -65,7 +65,7 @@ describe("mobile themes", () => {
   });
 
   it("declares every runtime theme variable in the static stylesheet", () => {
-    const generatedVariables = createMobileThemeVariables(BUILT_IN_THEMES[0].colors, "light");
+    const generatedVariables = createMobileThemeVariables(T3_CHAT_THEME.colors, "light");
     expect(Object.keys(readDefaultMobileThemeVariables("light")).sort()).toEqual(
       Object.keys(generatedVariables).sort(),
     );

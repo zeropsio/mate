@@ -1,7 +1,7 @@
 import { ZEROPS_MARK } from "@t3tools/shared/brand";
 import Svg, { Path } from "react-native-svg";
 
-const [, , VIEWBOX_WIDTH, VIEWBOX_HEIGHT] = ZEROPS_MARK.viewBox.split(" ").map(Number);
+const [, , VIEWBOX_WIDTH = 1, VIEWBOX_HEIGHT = 1] = ZEROPS_MARK.viewBox.split(" ").map(Number);
 const MARK_ASPECT_RATIO = VIEWBOX_WIDTH / VIEWBOX_HEIGHT;
 
 export function ZeropsMark(props: { readonly height: number }) {

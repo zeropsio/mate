@@ -1,5 +1,6 @@
 import {
   BUILT_IN_THEMES,
+  ZEROPS_THEME,
   getThemeColorsForAppearance,
   MOBILE_DEFAULT_THEME_ID,
   MOBILE_THEME_IDS as SHARED_MOBILE_THEME_IDS,
@@ -103,7 +104,8 @@ export function createMobileThemePairPatch(value: MobileThemeId) {
 export function themeColorWithAlpha(color: string, alpha: number): string {
   const hex = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(color);
   if (hex) {
-    return `rgba(${Number.parseInt(hex[1], 16)}, ${Number.parseInt(hex[2], 16)}, ${Number.parseInt(hex[3], 16)}, ${alpha})`;
+    const [, red = "0", green = "0", blue = "0"] = hex;
+    return `rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt(blue, 16)}, ${alpha})`;
   }
   const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/.exec(color);
   return rgb ? `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${alpha})` : color;
@@ -114,7 +116,7 @@ export function getMobileThemeVariables(
   appearance: MobileThemeAppearance,
   overrides: Partial<MobileThemeVariables> | null = null,
 ): MobileThemeVariables {
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? BUILT_IN_THEMES[0];
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === themeId) ?? ZEROPS_THEME;
   const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
   const baseVariables = createMobileThemeVariables(colors, appearance);
 
@@ -127,7 +129,7 @@ export function getMobileThemePreviewColors(
   appearance: MobileThemeAppearance,
 ): ThemePreviewColors {
   const baseId = mobileThemeBaseId(themeId);
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? BUILT_IN_THEMES[0];
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? ZEROPS_THEME;
   const colors = getThemeColorsForAppearance(theme, appearance) ?? theme.colors;
   return {
     canvas: themeColorToNativeColor(colors.canvas),

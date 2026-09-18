@@ -45,11 +45,11 @@ export function startDutyCycleFrameDriver(
       (options.endValue - options.startValue) * (index / (options.frameCount - 1)),
   );
   let frameIndex = 0;
-  onFrame(frames[frameIndex]);
+  onFrame(frames[frameIndex]!);
 
   const interval = globalThis.setInterval(() => {
     frameIndex = (frameIndex + 1) % frames.length;
-    onFrame(frames[frameIndex]);
+    onFrame(frames[frameIndex]!);
   }, options.duration / options.frameCount);
 
   return () => globalThis.clearInterval(interval);

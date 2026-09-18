@@ -52,10 +52,10 @@ function contrastRatio(foreground: string, background: string) {
       const srgb = Number.parseInt(channel, 16) / 255;
       return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
     });
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!;
   };
   const values = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
-  return (values[0] + 0.05) / (values[1] + 0.05);
+  return (values[0]! + 0.05) / (values[1]! + 0.05);
 }
 
 function statusLabelColor(generatedBody: string, themeBody: string, tone: ZeropsStatusTone) {

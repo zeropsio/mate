@@ -34,10 +34,10 @@ describe("useFontFamily", () => {
   it("keeps plugin font references aligned with expo-font generated resources", () => {
     const appConfig = NodeFS.readFileSync(new URL("app.config.ts", mobileRoot), "utf8");
     const fontFamilies = [...appConfig.matchAll(/fontFamily: "([^"]+)"/gu)].map(
-      (match) => match[1],
+      (match) => match[1]!,
     );
     const fontPaths = [...appConfig.matchAll(/(?:regular|medium|bold): "([^"]+\.ttf)"/gu)].map(
-      (match) => match[1],
+      (match) => match[1]!,
     );
     const generatedFamilyResources = generatedAndroidNames(fontFamilies).map(
       (name) => `xml_${name}`,
@@ -60,7 +60,7 @@ describe("useFontFamily", () => {
       "plugins/withAndroidModernAlertDialog.cjs",
     ].flatMap((relativePath) => {
       const source = NodeFS.readFileSync(new URL(relativePath, mobileRoot), "utf8");
-      return [...source.matchAll(/@font\/([a-z0-9_]+)/gu)].map((match) => match[1]);
+      return [...source.matchAll(/@font\/([a-z0-9_]+)/gu)].map((match) => match[1]!);
     });
     const generatedResources = new Set([...generatedFamilyResources, ...generatedFileResources]);
 

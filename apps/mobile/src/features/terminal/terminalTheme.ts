@@ -1,4 +1,8 @@
-import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
+import {
+  BUILT_IN_THEMES,
+  ZEROPS_THEME,
+  getThemeColorsForAppearance,
+} from "@t3tools/shared/themePalettes";
 
 import {
   getMobileThemeVariables,
@@ -16,8 +20,28 @@ export interface TerminalTheme {
   readonly border: string;
   readonly cursorForeground: string;
   readonly cursorBackground: string;
-  readonly palette: readonly string[];
+  /** The 16 ANSI colors, in order. A fixed tuple so indexed reads are never undefined. */
+  readonly palette: TerminalPalette;
 }
+
+type TerminalPalette = readonly [
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+];
 
 const PIERRE_LIGHT_THEME: TerminalTheme = {
   // Pierre terminal palette with the app's shared screen background.
@@ -85,7 +109,7 @@ export function getMobileTerminalTheme(
 ): TerminalTheme {
   const base = getPierreTerminalTheme(scheme);
   const baseId = mobileThemeBaseId(themeId);
-  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? BUILT_IN_THEMES[0];
+  const theme = BUILT_IN_THEMES.find((candidate) => candidate.id === baseId) ?? ZEROPS_THEME;
   const palette = getThemeColorsForAppearance(theme, scheme) ?? theme.colors;
   const colors = getMobileThemeVariables(baseId, scheme);
   const background = themeColorToNativeColor(palette.terminalBackground);
