@@ -39,6 +39,9 @@
       --color-switch-active-thumb: #ffffff;
       --color-switch-inactive-track: #f3f5f7;
       --color-switch-inactive-thumb: #5f6a72;
+      --color-warning: #fdf6ef;
+      --color-warning-border: rgba(255, 167, 38, 0.32);
+      --color-warning-foreground: #bb4d00;
       --color-danger: #fdefef;
       --color-danger-border: rgba(204, 0, 17, 0.32);
       --color-danger-foreground: #cc0011;
@@ -107,6 +110,9 @@
       --color-switch-active-thumb: #0c0f0e;
       --color-switch-inactive-track: #232b29;
       --color-switch-inactive-thumb: #9faea9;
+      --color-warning: #453f36;
+      --color-warning-border: rgba(255, 167, 38, 0.32);
+      --color-warning-foreground: #ffb74d;
       --color-danger: #312828;
       --color-danger-border: rgba(229, 115, 115, 0.32);
       --color-danger-foreground: #e57373;

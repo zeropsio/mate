@@ -19,7 +19,7 @@ export interface ThreadPrPresentation {
 const PR_STATE_TEXT_CLASS: Record<ThreadPr["state"], string> = {
   open: "text-adaptive-emerald-600-400",
   merged: "text-adaptive-violet-600-400",
-  closed: "text-adaptive-zinc-500-400",
+  closed: "text-foreground-muted",
 };
 
 export function presentThreadPr(
