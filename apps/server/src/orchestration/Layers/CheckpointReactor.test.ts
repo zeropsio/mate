@@ -306,6 +306,7 @@ describe("CheckpointReactor", () => {
     readonly providerSessionCwd?: string;
     readonly providerName?: ProviderDriverKind;
     readonly gitStatusRefreshCalls?: Array<string>;
+    readonly gitStatusRefresh?: Effect.Effect<void>;
     /** Zerops: the services mounted under the cwd, each a repository of its own. */
     readonly repositoryHosts?: ReadonlyArray<string>;
   }) {
@@ -346,6 +347,7 @@ describe("CheckpointReactor", () => {
         Effect.sync(() => {
           options?.gitStatusRefreshCalls?.push(cwd);
         }).pipe(
+          Effect.andThen(options?.gitStatusRefresh ?? Effect.void),
           Effect.as({
             isRepo: true,
             hasPrimaryRemote: false,
@@ -963,6 +965,56 @@ describe("CheckpointReactor", () => {
 
     expect(gitStatusRefreshCalls).toEqual([harness.cwd]);
   });
+
+  effectIt.effect("captures the next turn while a status refresh is still pending", () =>
+    Effect.gen(function* () {
+      const refreshStarted = yield* Deferred.make<void>();
+      const finishRefresh = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          seedFilesystemCheckpoints: false,
+          gitStatusRefresh: Deferred.succeed(refreshStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(finishRefresh)),
+          ),
+        }),
+      );
+      const complete = (turn: string) =>
+        harness.provider.emit({
+          type: "turn.completed",
+          eventId: EventId.make(`evt-turn-completed-${turn}`),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId(turn),
+          payload: { state: "completed" },
+        });
+      const finalized = (turnId: string) =>
+        Effect.gen(function* () {
+          for (;;) {
+            const receipt = yield* harness.nextReceipt;
+            if (receipt.type === "checkpoint.diff.finalized" && receipt.turnId === turnId) {
+              return receipt;
+            }
+          }
+        });
+      complete("turn-slow-refresh-1");
+      yield* finalized("turn-slow-refresh-1");
+      yield* Deferred.await(refreshStarted);
+      yield* Effect.gen(function* () {
+        NodeFS.writeFileSync(NodePath.join(harness.cwd, "README.md"), "second turn\n");
+        complete("turn-slow-refresh-2");
+        yield* finalized("turn-slow-refresh-2");
+        expect(
+          gitShowFileAtRef(
+            harness.cwd,
+            checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2),
+            "README.md",
+          ),
+        ).toBe("second turn\n");
+      }).pipe(Effect.ensuring(Deferred.succeed(finishRefresh, undefined)));
+      yield* Effect.promise(harness.drain);
+    }),
+  );
 
   it("refreshes every mounted checkout on turn completion, not only the workspace root", async () => {
     // Dara's run of 2026-09-17: the agent made `todoapp` a repository
