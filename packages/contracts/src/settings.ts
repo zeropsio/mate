@@ -693,12 +693,22 @@ export const BackgroundActivitySettings = Schema.Struct({
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 
+/**
+ * How assistant text reaches clients while a turn runs.
+ * - `turn`: hold the whole message until the turn finishes or pauses.
+ * - `paragraph`: deliver each finished paragraph or closed code block.
+ * - `token`: forward every provider delta. Legacy, kept for compatibility.
+ */
+export const ResponseStreamingMode = Schema.Literals(["turn", "paragraph", "token"]);
+export type ResponseStreamingMode = typeof ResponseStreamingMode.Type;
+
 export const ServerSettings = Schema.Struct({
-  // Legacy token-by-token assistant output. Deliberately a fresh key (was
+  // How assistant text reaches clients during a turn. Deliberately a fresh
+  // key (was `enableLegacyTokenStreaming`, before that
   // `enableAssistantStreaming`): decoding drops the old key, so everyone,
-  // including prior opt-ins, resets to the buffered default.
-  enableLegacyTokenStreaming: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
+  // including prior token-streaming opt-ins, resets to the paragraph default.
+  responseStreamingMode: ResponseStreamingMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
   ),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   defaultProjectScripts: Schema.Array(ProjectScript).pipe(
@@ -941,7 +951,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
 
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
-  enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
+  responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   defaultProjectScripts: Schema.optionalKey(Schema.Array(ProjectScript)),
   projectScriptOverrides: Schema.optionalKey(

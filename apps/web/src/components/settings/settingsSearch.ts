@@ -140,6 +140,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "response-streaming",
+    title: "Response streaming",
+    to: "/settings/general",
+    searchTerms: ["output token paragraph buffered wait turn legacy"],
+  },
+  {
     id: "hide-whitespace-changes",
     title: "Hide whitespace changes",
     to: "/settings/general",
@@ -199,11 +205,6 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "legacy-plan-mode",
     title: "Plan mode (legacy)",
-    to: "/settings/general",
-  },
-  {
-    id: "legacy-token-streaming",
-    title: "Stream token by token (legacy)",
     to: "/settings/general",
   },
   {
