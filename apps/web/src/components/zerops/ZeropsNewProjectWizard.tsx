@@ -41,6 +41,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsOrganization,
   type ZeropsRegistry,
+  toolProjectName,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -445,7 +446,7 @@ function ZeropsNewProjectContent() {
           runtime.commands.createToolProject({
             organization: organizationRef(activeOrganization.id),
             toolKind: "gitea",
-            name: "Gitea",
+            name: toolProjectName("gitea"),
             appUrl: origin,
           }),
         );

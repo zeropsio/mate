@@ -66,6 +66,20 @@ export function formatToolTag(kind: ZeropsToolKind): string {
   return `${TOOL_TAG_PREFIX}${kind}`;
 }
 
+/**
+ * What the tool's Zerops project is called when the app makes it. Not
+ * "Gitea": the project also holds the broker and the groups' runners, and may
+ * hold more of the account's own machinery later (the owner, 2026-09-18: "it
+ * could be called headquarters or something"). The project is found by its
+ * tag, never by this name, so an account made before keeps the name it has.
+ */
+export function toolProjectName(kind: ZeropsToolKind): string {
+  switch (kind) {
+    case "gitea":
+      return "Headquarters";
+  }
+}
+
 /** The tool this project *is*, or `undefined` for an ordinary project. */
 export function readZeropsToolKind(
   tagList: ReadonlyArray<string> | undefined,

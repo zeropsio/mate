@@ -166,6 +166,7 @@ export {
   type ZeropsGiteaStepState,
   type ZeropsToolKind,
   type ZeropsToolProject,
+  toolProjectName,
 } from "./tools.ts";
 export {
   buildGiteaImportYaml,

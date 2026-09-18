@@ -9,6 +9,7 @@ import {
   readZeropsToolKind,
   type ZeropsGiteaSetupInput,
   type ZeropsGiteaStepState,
+  toolProjectName,
 } from "./tools.ts";
 
 /** The probe project as the platform actually returned it, 2026-09-05. */
@@ -49,6 +50,11 @@ function stepState(
 }
 
 describe("tool tags", () => {
+  it("names the project after what it holds, not after one of its services", () => {
+    // Gitea, the broker and the runners live in it; it is found by its tag.
+    expect(toolProjectName("gitea")).toBe("Headquarters");
+  });
+
   it("formats the tag", () => {
     expect(formatToolTag("gitea")).toBe("mate:tool:gitea");
   });

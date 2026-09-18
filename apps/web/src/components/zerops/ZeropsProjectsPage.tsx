@@ -71,6 +71,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  toolProjectName,
   flowVerbKey,
   flowVerbLabel,
   deployWord,
@@ -1817,7 +1818,7 @@ function ZeropsProjectsContent() {
         runtime.commands.createToolProject({
           organization: organizationRef(activeOrganization.id),
           toolKind: "gitea",
-          name: "Gitea",
+          name: toolProjectName("gitea"),
           appUrl: window.location.origin,
         }),
       );
