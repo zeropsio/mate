@@ -59,7 +59,7 @@ describe("ComposerPendingApprovalActions", () => {
     buttonState.actions.length = 0;
   });
 
-  it("makes one-shot accept primary without changing advertised decisions", () => {
+  it("makes one-shot accept primary and keeps cancel behind the overflow menu", () => {
     const requestId = ApprovalRequestId.make("approval-hierarchy");
     const respond = vi.fn(async () => undefined);
 
@@ -77,20 +77,19 @@ describe("ComposerPendingApprovalActions", () => {
       />,
     );
 
-    expect(
-      buttonState.actions.map(({ decision, tone, variant }) => ({ decision, tone, variant })),
-    ).toEqual([
-      { decision: "cancel", tone: "quiet", variant: "ghost-muted" },
+    const rowActions = buttonState.actions.filter(({ decision }) => decision !== undefined);
+    expect(rowActions.map(({ decision, tone, variant }) => ({ decision, tone, variant }))).toEqual([
       { decision: "acceptForSession", tone: "secondary", variant: "secondary" },
       { decision: "decline", tone: "quiet", variant: "ghost-muted" },
       { decision: "accept", tone: "primary", variant: "pill" },
     ]);
+    // The overflow trigger is the one button without a decision.
+    expect(buttonState.actions).toHaveLength(rowActions.length + 1);
 
-    for (const action of buttonState.actions) {
+    for (const action of rowActions) {
       action.onClick();
     }
     expect(respond.mock.calls).toEqual([
-      [requestId, "cancel"],
       [requestId, "acceptForSession"],
       [requestId, "decline"],
       [requestId, "accept"],
@@ -106,7 +105,8 @@ describe("ComposerPendingApprovalActions", () => {
       />,
     );
 
-    expect(markup).toContain(">Cancel<");
+    expect(markup).not.toContain(">Cancel<");
+    expect(markup).toContain("lucide-ellipsis");
     expect(markup).toContain("Always allow this session");
     expect(markup).not.toContain(">Always allow<");
     expect(markup).toContain("min-h-7");

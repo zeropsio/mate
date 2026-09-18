@@ -4,8 +4,9 @@ import {
   type ProviderApprovalOption,
 } from "@t3tools/contracts";
 import { memo } from "react";
-import { TriangleAlertIcon } from "lucide-react";
+import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface ComposerPendingApprovalActionsProps {
@@ -32,9 +33,15 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
   options = DEFAULT_APPROVAL_OPTIONS,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
+  // The row keeps the decisions a reader weighs: approve, the standing
+  // approvals, and decline. Anything else (cancel, provider extras) waits
+  // behind the overflow menu.
+  const rowOptions = options.filter(isRowDecision);
+  const moreOptions = options.filter((option) => !isRowDecision(option));
+
   return (
     <>
-      {options.map((option) => {
+      {rowOptions.map((option) => {
         const actionTone =
           option.decision === "accept"
             ? "primary"
@@ -81,6 +88,60 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           button
         );
       })}
+      {moreOptions.length > 0 ? (
+        <Menu>
+          <MenuTrigger
+            disabled={isResponding}
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                className="self-center"
+                aria-label="More approval options"
+              />
+            }
+          >
+            <EllipsisIcon />
+          </MenuTrigger>
+          <MenuPopup side="top" align="end" className="w-56 max-w-[calc(100vw-2rem)]">
+            {moreOptions.map((option) => {
+              const item = (
+                <MenuItem
+                  key={option.decision}
+                  disabled={isResponding}
+                  aria-description={option.warning}
+                  data-approval-decision={option.decision}
+                  onClick={() => void onRespondToApproval(requestId, option.decision)}
+                  variant="ghost"
+                  className="mb-1 last:mb-0"
+                >
+                  {option.warning ? <TriangleAlertIcon className="size-3 text-warning" /> : null}
+                  <span className="min-w-0 whitespace-normal wrap-break-word">{option.label}</span>
+                </MenuItem>
+              );
+              return option.warning ? (
+                <Tooltip key={option.decision}>
+                  <TooltipTrigger render={item} />
+                  <TooltipPopup side="top" className="max-w-64 text-xs leading-snug">
+                    {option.warning}
+                  </TooltipPopup>
+                </Tooltip>
+              ) : (
+                item
+              );
+            })}
+          </MenuPopup>
+        </Menu>
+      ) : null}
     </>
   );
 });
+
+function isRowDecision(option: ProviderApprovalOption): boolean {
+  return (
+    option.decision === "accept" ||
+    option.decision === "acceptForSession" ||
+    option.decision === "acceptAlways" ||
+    option.decision === "decline"
+  );
+}

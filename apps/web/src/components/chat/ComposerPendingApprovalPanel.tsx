@@ -14,6 +14,9 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
   pendingCount,
   className,
 }: ComposerPendingApprovalPanelProps) {
+  // An app-access request is a sentence for a person; commands and paths
+  // stay monospaced and unwrapped.
+  const Detail = approval.requestKind === "mcp-elicitation" ? "span" : "code";
   const fallbackLabel =
     approval.requestKind === "mcp-elicitation"
       ? "App access approval"
@@ -67,14 +70,19 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           </span>
         ) : null}
       </div>
-      <code
+      <Detail
         aria-label={detailAriaLabel}
-        className="block max-h-20 min-w-0 w-full overflow-auto whitespace-pre font-mono text-[11px] text-foreground/85 [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 [&::-webkit-scrollbar]:h-1.5"
+        className={cn(
+          "block max-h-20 min-w-0 w-full overflow-auto text-foreground/85 [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 [&::-webkit-scrollbar]:h-1.5",
+          approval.requestKind === "mcp-elicitation"
+            ? "whitespace-pre-wrap font-sans text-xs wrap-break-word"
+            : "whitespace-pre font-mono text-[11px]",
+        )}
         data-approval-detail="complete"
         tabIndex={0}
       >
         {approval.detail || fallbackLabel}
-      </code>
+      </Detail>
     </div>
   );
 });

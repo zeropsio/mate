@@ -3670,8 +3670,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   onPaste={onComposerPaste}
                   placeholder={
                     isComposerApprovalState
-                      ? (activePendingApproval?.detail ??
-                        "Resolve this approval request to continue")
+                      ? "Resolve this approval request to continue"
                       : activePendingProgress
                         ? isChoiceOnlyPendingQuestion
                           ? "Choose an option above"

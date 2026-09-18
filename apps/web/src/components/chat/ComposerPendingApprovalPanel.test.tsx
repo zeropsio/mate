@@ -69,6 +69,9 @@ describe("ComposerPendingApprovalPanel", () => {
     expect(markup).toContain('aria-label="App access request"');
     expect(markup).toContain(">Safari<");
     expect(markup).toContain("Allow ChatGPT to use Safari?");
+    // An app-access request reads as prose: wrapped, not monospaced.
+    expect(markup).toContain("whitespace-pre-wrap font-sans");
+    expect(markup).not.toContain("<code");
   });
 
   it("limits long app names so the complete approval message stays readable", () => {
