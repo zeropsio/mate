@@ -4,7 +4,11 @@ import { ActivityIndicator, Animated, Platform, Pressable, View } from "react-na
 
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
-import { brandTitleOffset, CompactBrandTitle } from "../../components/CompactBrandTitle";
+import {
+  brandTitleOffset,
+  CompactBrandTitle,
+  getCompactBrandHeaderOptions,
+} from "../../components/CompactBrandTitle";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { useWorkspaceState } from "../../state/workspace";
 import {
@@ -48,7 +52,11 @@ function useDelayedConnectionStatus(): WorkspaceConnectionStatusPresentation | n
  * native-driver animated nodes blank the re-hosted view entirely. The JS driver
  * updates opacity through the ordinary style path, which those subviews handle.
  */
-function StatusFadeIn(props: { readonly children: ReactNode; readonly grow?: boolean }) {
+function StatusFadeIn(props: {
+  readonly children: ReactNode;
+  readonly grow?: boolean;
+  readonly maxWidth?: number;
+}) {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -64,7 +72,7 @@ function StatusFadeIn(props: { readonly children: ReactNode; readonly grow?: boo
   return (
     <Animated.View
       style={[
-        { alignItems: "center", flexDirection: "row", opacity },
+        { alignItems: "center", flexDirection: "row", maxWidth: props.maxWidth, opacity },
         props.grow ? { flex: 1, minWidth: 0 } : null,
       ]}
     >
@@ -93,6 +101,8 @@ export function WorkspaceConnectionTitle(props: {
   readonly size?: "navbar" | "pageTitle";
   /** Horizontal correction so the status aligns with the brand in native title slots. */
   readonly statusOffset?: number;
+  /** Space available beside the native header actions. */
+  readonly maxWidth?: number;
 }) {
   const status = useDelayedConnectionStatus();
   const size = props.size ?? "navbar";
@@ -108,7 +118,7 @@ export function WorkspaceConnectionTitle(props: {
   }
 
   return (
-    <StatusFadeIn grow={props.grow}>
+    <StatusFadeIn grow={props.grow} maxWidth={props.maxWidth}>
       <Pressable
         accessibilityHint="Opens environment settings"
         accessibilityLabel={status.label}
@@ -117,7 +127,7 @@ export function WorkspaceConnectionTitle(props: {
         hitSlop={8}
         onPress={props.onPress}
         className="flex-row items-center gap-2"
-        style={{ marginLeft: props.statusOffset ?? 0 }}
+        style={{ flexShrink: 1, marginLeft: props.statusOffset ?? 0 }}
       >
         {status.showsProgress ? (
           <ActivityIndicator colorClassName={"accent-icon-muted"} size="small" />
@@ -151,38 +161,34 @@ export function WorkspaceConnectionTitle(props: {
  * this over the static brand options at mount.
  */
 export function getConnectionAwareBrandHeaderOptions(opts: {
+  readonly headerWidth: number;
+  readonly trailingItemCount?: number;
   readonly onOpenEnvironments: () => void;
   readonly fallbackTitleStyle?: NativeStackNavigationOptions["headerTitleStyle"];
   readonly navigationItemStyle?: "navigator" | "editor";
 }): NativeStackNavigationOptions & {
   readonly unstable_navigationItemStyle?: "navigator" | "editor";
 } {
-  if (Platform.OS === "ios" && NATIVE_LIQUID_GLASS_SUPPORTED) {
-    return {
-      headerTitle: () => (
-        <WorkspaceConnectionTitle
-          brand={<CompactBrandTitle allowFontScaling />}
-          onPress={opts.onOpenEnvironments}
-          statusOffset={brandTitleOffset()}
-        />
-      ),
-      headerTitleStyle: opts.fallbackTitleStyle,
-      title: "Threads",
-      // See CompactBrandTitle: use the stable title slot because iOS 26 drops
-      // React views supplied through unstable_headerLeftItems on this screen.
-      unstable_navigationItemStyle: opts.navigationItemStyle ?? "navigator",
-    };
-  }
+  // Leave room for bar margins, title spacing and the 44-point native actions.
+  // Long status labels must not push Settings into UIKit's overflow menu.
+  const maxWidth = Math.max(0, opts.headerWidth - 64 - 44 * (opts.trailingItemCount ?? 1));
 
   return {
+    ...getCompactBrandHeaderOptions(opts.fallbackTitleStyle),
     headerTitle: () => (
       <WorkspaceConnectionTitle
-        brand={<CompactBrandTitle />}
+        brand={<CompactBrandTitle allowFontScaling />}
+        maxWidth={maxWidth}
         onPress={opts.onOpenEnvironments}
         statusOffset={brandTitleOffset()}
       />
     ),
-    headerTitleStyle: opts.fallbackTitleStyle,
-    title: "Threads",
+    ...(Platform.OS === "ios" && NATIVE_LIQUID_GLASS_SUPPORTED
+      ? {
+          // See CompactBrandTitle: use the stable title slot because iOS 26 drops
+          // React views supplied through unstable_headerLeftItems on this screen.
+          unstable_navigationItemStyle: opts.navigationItemStyle ?? "navigator",
+        }
+      : {}),
   };
 }
