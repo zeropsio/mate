@@ -41,7 +41,7 @@ export const ExecErrorReason = Schema.Literals([
 ]);
 export type ExecErrorReason = typeof ExecErrorReason.Type;
 
-export class ExecError extends Schema.TaggedErrorClass<ExecError>()("ExecError", {
+export class ExecError extends Schema.TaggedError<ExecError>()("ExecError", {
   reason: ExecErrorReason,
   detail: Schema.String,
 }) {

@@ -86,7 +86,7 @@ const decodeProbeFields = Schema.decodeUnknownSync(ProbeFields);
 export const decodeWorkspaceProbe = (output: string) =>
   decodeProbeFields(output.endsWith("\0") ? output.slice(0, -1).split("\0") : []);
 
-export class WorkspaceProbeError extends Schema.TaggedErrorClass<WorkspaceProbeError>()(
+export class WorkspaceProbeError extends Schema.TaggedError<WorkspaceProbeError>()(
   "WorkspaceProbeError",
   { cause: Schema.Defect() },
 ) {}

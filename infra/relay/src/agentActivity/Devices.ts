@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 import * as RelayDb from "../db.ts";
 import { relayLiveActivities, relayMobileDevices } from "../persistence/schema.ts";
 
-export class DeviceRegistrationPersistenceError extends Schema.TaggedErrorClass<DeviceRegistrationPersistenceError>()(
+export class DeviceRegistrationPersistenceError extends Schema.TaggedError<DeviceRegistrationPersistenceError>()(
   "DeviceRegistrationPersistenceError",
   {
     userId: Schema.String,
@@ -24,7 +24,7 @@ export class DeviceRegistrationPersistenceError extends Schema.TaggedErrorClass<
   }
 }
 
-export class DeviceUnregistrationPersistenceError extends Schema.TaggedErrorClass<DeviceUnregistrationPersistenceError>()(
+export class DeviceUnregistrationPersistenceError extends Schema.TaggedError<DeviceUnregistrationPersistenceError>()(
   "DeviceUnregistrationPersistenceError",
   {
     userId: Schema.String,

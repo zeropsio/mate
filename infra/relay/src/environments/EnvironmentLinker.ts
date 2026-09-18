@@ -24,7 +24,7 @@ import * as RelayConfiguration from "../Config.ts";
 import * as ZeropsAuth from "../zerops/ZeropsAuth.ts";
 import * as ZeropsProjectBinding from "../zerops/ZeropsProjectBinding.ts";
 
-export class EnvironmentLinkProofExpired extends Schema.TaggedErrorClass<EnvironmentLinkProofExpired>()(
+export class EnvironmentLinkProofExpired extends Schema.TaggedError<EnvironmentLinkProofExpired>()(
   "EnvironmentLinkProofExpired",
   {
     userId: Schema.String,
@@ -37,7 +37,7 @@ export class EnvironmentLinkProofExpired extends Schema.TaggedErrorClass<Environ
   }
 }
 
-export class EnvironmentLinkProofInvalid extends Schema.TaggedErrorClass<EnvironmentLinkProofInvalid>()(
+export class EnvironmentLinkProofInvalid extends Schema.TaggedError<EnvironmentLinkProofInvalid>()(
   "EnvironmentLinkProofInvalid",
   {
     userId: Schema.String,
@@ -65,7 +65,7 @@ export class EnvironmentLinkProofInvalid extends Schema.TaggedErrorClass<Environ
 }
 
 /** The presented Zerops token is valid but its owner is not a member of the claimed project. */
-export class EnvironmentLinkNotAuthorized extends Schema.TaggedErrorClass<EnvironmentLinkNotAuthorized>()(
+export class EnvironmentLinkNotAuthorized extends Schema.TaggedError<EnvironmentLinkNotAuthorized>()(
   "EnvironmentLinkNotAuthorized",
   {
     userId: Schema.String,
@@ -78,7 +78,7 @@ export class EnvironmentLinkNotAuthorized extends Schema.TaggedErrorClass<Enviro
 }
 
 /** The Zerops API could not be reached or answered something unusable while verifying the project claim. */
-export class EnvironmentLinkUnavailable extends Schema.TaggedErrorClass<EnvironmentLinkUnavailable>()(
+export class EnvironmentLinkUnavailable extends Schema.TaggedError<EnvironmentLinkUnavailable>()(
   "EnvironmentLinkUnavailable",
   {
     userId: Schema.String,

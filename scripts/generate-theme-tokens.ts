@@ -377,7 +377,7 @@ export function runThemeTokenProjector({
 export const generateThemeTokensCommand = Command.make(
   "generate-theme-tokens",
   {
-    check: Flag.boolean("check").pipe(
+    check: Flag.Boolean("check").pipe(
       Flag.withDescription("Check generated projections without writing them."),
     ),
   },

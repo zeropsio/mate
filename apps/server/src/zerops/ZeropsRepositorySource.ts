@@ -55,7 +55,7 @@ export type ZeropsRepositories =
     };
 
 /** The mount table could not be read; this is not an empty attachment set. */
-export class MountTableReadError extends Schema.TaggedErrorClass<MountTableReadError>()(
+export class MountTableReadError extends Schema.TaggedError<MountTableReadError>()(
   "MountTableReadError",
   {
     path: Schema.String,

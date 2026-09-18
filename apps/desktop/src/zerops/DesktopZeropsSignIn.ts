@@ -27,7 +27,7 @@ const SIGN_IN_TIMEOUT = "5 minutes";
 
 const { logInfo, logWarning } = makeComponentLogger("desktop-zerops-sign-in");
 
-export class DesktopZeropsSignInError extends Schema.TaggedErrorClass<DesktopZeropsSignInError>()(
+export class DesktopZeropsSignInError extends Schema.TaggedError<DesktopZeropsSignInError>()(
   "DesktopZeropsSignInError",
   {
     reason: Schema.Literal("listen-failed"),

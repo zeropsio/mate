@@ -49,7 +49,7 @@ const openCodeTextGenerationErrorContext = {
   cwd: Schema.String,
 };
 
-export class OpenCodeTextGenerationSessionRequestError extends Schema.TaggedErrorClass<OpenCodeTextGenerationSessionRequestError>()(
+export class OpenCodeTextGenerationSessionRequestError extends Schema.TaggedError<OpenCodeTextGenerationSessionRequestError>()(
   "OpenCodeTextGenerationSessionRequestError",
   {
     ...openCodeTextGenerationErrorContext,
@@ -61,7 +61,7 @@ export class OpenCodeTextGenerationSessionRequestError extends Schema.TaggedErro
   }
 }
 
-export class OpenCodeTextGenerationSessionPayloadError extends Schema.TaggedErrorClass<OpenCodeTextGenerationSessionPayloadError>()(
+export class OpenCodeTextGenerationSessionPayloadError extends Schema.TaggedError<OpenCodeTextGenerationSessionPayloadError>()(
   "OpenCodeTextGenerationSessionPayloadError",
   openCodeTextGenerationErrorContext,
 ) {
@@ -77,7 +77,7 @@ const openCodePromptErrorContext = {
   modelId: Schema.String,
 };
 
-export class OpenCodeTextGenerationPromptRequestError extends Schema.TaggedErrorClass<OpenCodeTextGenerationPromptRequestError>()(
+export class OpenCodeTextGenerationPromptRequestError extends Schema.TaggedError<OpenCodeTextGenerationPromptRequestError>()(
   "OpenCodeTextGenerationPromptRequestError",
   {
     ...openCodePromptErrorContext,
@@ -89,7 +89,7 @@ export class OpenCodeTextGenerationPromptRequestError extends Schema.TaggedError
   }
 }
 
-export class OpenCodeTextGenerationPromptResponseError extends Schema.TaggedErrorClass<OpenCodeTextGenerationPromptResponseError>()(
+export class OpenCodeTextGenerationPromptResponseError extends Schema.TaggedError<OpenCodeTextGenerationPromptResponseError>()(
   "OpenCodeTextGenerationPromptResponseError",
   {
     ...openCodePromptErrorContext,
@@ -103,7 +103,7 @@ export class OpenCodeTextGenerationPromptResponseError extends Schema.TaggedErro
   }
 }
 
-export class OpenCodeTextGenerationEmptyOutputError extends Schema.TaggedErrorClass<OpenCodeTextGenerationEmptyOutputError>()(
+export class OpenCodeTextGenerationEmptyOutputError extends Schema.TaggedError<OpenCodeTextGenerationEmptyOutputError>()(
   "OpenCodeTextGenerationEmptyOutputError",
   {
     ...openCodePromptErrorContext,

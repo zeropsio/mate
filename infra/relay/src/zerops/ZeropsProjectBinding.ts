@@ -38,23 +38,23 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 
-export class ZeropsNotAMemberError extends Schema.TaggedErrorClass<ZeropsNotAMemberError>()(
+export class ZeropsNotAMemberError extends Schema.TaggedError<ZeropsNotAMemberError>()(
   "ZeropsNotAMemberError",
   {},
 ) {}
 
-export class ZeropsProjectNotFoundError extends Schema.TaggedErrorClass<ZeropsProjectNotFoundError>()(
+export class ZeropsProjectNotFoundError extends Schema.TaggedError<ZeropsProjectNotFoundError>()(
   "ZeropsProjectNotFoundError",
   {},
 ) {}
 
 /** The project is real and the caller belongs to it, but no service in it publishes `endpointOrigin`. */
-export class ZeropsEndpointNotBoundError extends Schema.TaggedErrorClass<ZeropsEndpointNotBoundError>()(
+export class ZeropsEndpointNotBoundError extends Schema.TaggedError<ZeropsEndpointNotBoundError>()(
   "ZeropsEndpointNotBoundError",
   {},
 ) {}
 
-export class ZeropsApiUnavailableError extends Schema.TaggedErrorClass<ZeropsApiUnavailableError>()(
+export class ZeropsApiUnavailableError extends Schema.TaggedError<ZeropsApiUnavailableError>()(
   "ZeropsApiUnavailableError",
   {
     reason: Schema.String,

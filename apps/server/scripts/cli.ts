@@ -28,7 +28,7 @@ import {
 
 const RELEASE_WORKSPACE_SELECTOR = "./apps/server";
 
-class ServerCliPackOutputError extends Schema.TaggedErrorClass<ServerCliPackOutputError>()(
+class ServerCliPackOutputError extends Schema.TaggedError<ServerCliPackOutputError>()(
   "ServerCliPackOutputError",
   {
     outputDir: Schema.String,
@@ -84,7 +84,7 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Stan
 const buildCmd = Command.make(
   "build",
   {
-    verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
+    verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
   },
   (config) =>
     Effect.gen(function* () {
@@ -251,10 +251,10 @@ const readTarballFingerprints = Effect.fn("readTarballFingerprints")(function* (
 const packCmd = Command.make(
   "pack",
   {
-    out: Flag.string("out").pipe(Flag.withDefault("apps/server/dist")),
-    appVersion: Flag.string("app-version").pipe(Flag.optional),
-    nodePtyPrebuild: Flag.string("node-pty-prebuild").pipe(Flag.optional),
-    verbose: Flag.boolean("verbose").pipe(Flag.withDefault(false)),
+    out: Flag.String("out").pipe(Flag.withDefault("apps/server/dist")),
+    appVersion: Flag.String("app-version").pipe(Flag.optional),
+    nodePtyPrebuild: Flag.String("node-pty-prebuild").pipe(Flag.optional),
+    verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
   },
   (config) =>
     Effect.gen(function* () {

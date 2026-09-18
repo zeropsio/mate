@@ -14,7 +14,7 @@ const PrimaryEnvironmentUrlKind = Schema.Literals([
 ]);
 type PrimaryEnvironmentUrlKind = typeof PrimaryEnvironmentUrlKind.Type;
 
-export class PrimaryEnvironmentUrlInvalidError extends Schema.TaggedErrorClass<PrimaryEnvironmentUrlInvalidError>()(
+export class PrimaryEnvironmentUrlInvalidError extends Schema.TaggedError<PrimaryEnvironmentUrlInvalidError>()(
   "PrimaryEnvironmentUrlInvalidError",
   {
     source: PrimaryEnvironmentTargetSource,
@@ -27,7 +27,7 @@ export class PrimaryEnvironmentUrlInvalidError extends Schema.TaggedErrorClass<P
   }
 }
 
-export class PrimaryEnvironmentProtocolUnsupportedError extends Schema.TaggedErrorClass<PrimaryEnvironmentProtocolUnsupportedError>()(
+export class PrimaryEnvironmentProtocolUnsupportedError extends Schema.TaggedError<PrimaryEnvironmentProtocolUnsupportedError>()(
   "PrimaryEnvironmentProtocolUnsupportedError",
   {
     source: PrimaryEnvironmentTargetSource,

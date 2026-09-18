@@ -86,23 +86,23 @@ const encodeStableManifest = Schema.encodeEffect(fromJsonStringPretty(StableMani
 const releaseManifestAssetCommand = Command.make(
   "release-manifest-asset",
   {
-    version: Flag.string("version").pipe(Flag.withDescription("SemVer this release publishes.")),
-    asset: Flag.string("asset").pipe(
+    version: Flag.String("version").pipe(Flag.withDescription("SemVer this release publishes.")),
+    asset: Flag.String("asset").pipe(
       Flag.withDescription("The tarball's file name, e.g. zerops-mate-0.8.1.tgz."),
     ),
-    repository: Flag.string("repository").pipe(
+    repository: Flag.String("repository").pipe(
       Flag.withDefault("zeropsio/mate"),
       Flag.withDescription("owner/repo the release publishes on."),
     ),
-    tag: Flag.string("tag").pipe(Flag.withDescription("The release tag, e.g. v0.8.1.")),
-    sha256: Flag.string("sha256").pipe(
+    tag: Flag.String("tag").pipe(Flag.withDescription("The release tag, e.g. v0.8.1.")),
+    sha256: Flag.String("sha256").pipe(
       Flag.withDescription("The tarball's SHA-256, matching the SHA256SUMS entry."),
     ),
-    size: Flag.integer("size").pipe(Flag.withDescription("The tarball's size in bytes.")),
-    publishedAt: Flag.string("published-at").pipe(
+    size: Flag.Int("size").pipe(Flag.withDescription("The tarball's size in bytes.")),
+    publishedAt: Flag.String("published-at").pipe(
       Flag.withDescription("RFC3339 publish timestamp."),
     ),
-    out: Flag.string("out").pipe(Flag.withDescription("Where to write stable.json.")),
+    out: Flag.String("out").pipe(Flag.withDescription("Where to write stable.json.")),
   },
   (config) =>
     Effect.gen(function* () {

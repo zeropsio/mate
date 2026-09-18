@@ -19,7 +19,7 @@ export interface AgentAwarenessDeliveryUserRecord {
   readonly liveActivitiesEnabled: boolean;
 }
 
-export class EnvironmentLinkUpsertPersistenceError extends Schema.TaggedErrorClass<EnvironmentLinkUpsertPersistenceError>()(
+export class EnvironmentLinkUpsertPersistenceError extends Schema.TaggedError<EnvironmentLinkUpsertPersistenceError>()(
   "EnvironmentLinkUpsertPersistenceError",
   {
     userId: Schema.String,
@@ -33,7 +33,7 @@ export class EnvironmentLinkUpsertPersistenceError extends Schema.TaggedErrorCla
   }
 }
 
-export class EnvironmentLinkUserListPersistenceError extends Schema.TaggedErrorClass<EnvironmentLinkUserListPersistenceError>()(
+export class EnvironmentLinkUserListPersistenceError extends Schema.TaggedError<EnvironmentLinkUserListPersistenceError>()(
   "EnvironmentLinkUserListPersistenceError",
   {
     operation: Schema.Literals(["list-users", "list-delivery-users"]),
@@ -46,7 +46,7 @@ export class EnvironmentLinkUserListPersistenceError extends Schema.TaggedErrorC
   }
 }
 
-export class EnvironmentPublicKeyListPersistenceError extends Schema.TaggedErrorClass<EnvironmentPublicKeyListPersistenceError>()(
+export class EnvironmentPublicKeyListPersistenceError extends Schema.TaggedError<EnvironmentPublicKeyListPersistenceError>()(
   "EnvironmentPublicKeyListPersistenceError",
   {
     environmentId: Schema.String,

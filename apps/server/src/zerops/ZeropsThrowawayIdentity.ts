@@ -113,7 +113,7 @@ export type ZeropsThrowawayRule =
   | "not_member";
 
 /** The presented credential is not a throwaway minted for this Mate. */
-export class ZeropsThrowawayRefusedError extends Schema.TaggedErrorClass<ZeropsThrowawayRefusedError>()(
+export class ZeropsThrowawayRefusedError extends Schema.TaggedError<ZeropsThrowawayRefusedError>()(
   "ZeropsThrowawayRefusedError",
   {
     rule: Schema.String,
@@ -125,7 +125,7 @@ export class ZeropsThrowawayRefusedError extends Schema.TaggedErrorClass<ZeropsT
  * list and not to open (D5 — a conversation carries tool output, file contents
  * and whatever the agent printed, and that is the Mate's owner's).
  */
-export class ZeropsReadOnlyError extends Schema.TaggedErrorClass<ZeropsReadOnlyError>()(
+export class ZeropsReadOnlyError extends Schema.TaggedError<ZeropsReadOnlyError>()(
   "ZeropsReadOnlyError",
   {},
 ) {}

@@ -37,7 +37,7 @@ export class RelayTransactions extends Context.Service<
  * between the relay and PlanetScale.
  */
 export const pgClientLayer = pgClientLayerConfig({
-  url: Config.redacted("DATABASE_URL"),
+  url: Config.Redacted("DATABASE_URL"),
   applicationName: Config.succeed("t3code-relay"),
 });
 

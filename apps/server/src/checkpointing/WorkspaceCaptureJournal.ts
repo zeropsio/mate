@@ -14,7 +14,7 @@ export const CaptureRun = Schema.Struct({
 });
 export type CaptureRun = typeof CaptureRun.Type;
 
-export class CaptureJournalError extends Schema.TaggedErrorClass<CaptureJournalError>()(
+export class CaptureJournalError extends Schema.TaggedError<CaptureJournalError>()(
   "CaptureJournalError",
   { cause: Schema.Defect() },
 ) {}

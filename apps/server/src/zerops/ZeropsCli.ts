@@ -41,7 +41,7 @@ const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
  * whereas a failure is retried. Conflating them would either spam a non-Zerops
  * user with errors or make a transient auth blip permanent.
  */
-export class ZeropsCliNotFound extends Schema.TaggedErrorClass<ZeropsCliNotFound>()(
+export class ZeropsCliNotFound extends Schema.TaggedError<ZeropsCliNotFound>()(
   "ZeropsCliNotFound",
   { command: Schema.String },
 ) {
@@ -51,7 +51,7 @@ export class ZeropsCliNotFound extends Schema.TaggedErrorClass<ZeropsCliNotFound
 }
 
 /** `zcp` ran and did not answer usefully — a non-zero exit, or output we cannot read. */
-export class ZeropsCliFailed extends Schema.TaggedErrorClass<ZeropsCliFailed>()("ZeropsCliFailed", {
+export class ZeropsCliFailed extends Schema.TaggedError<ZeropsCliFailed>()("ZeropsCliFailed", {
   command: Schema.String,
   reason: Schema.String,
 }) {

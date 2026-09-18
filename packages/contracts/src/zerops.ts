@@ -420,7 +420,7 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
 export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
 
 /** Mirrors `ExecError` (`exec.ts`) — this RPC performs a real action, so "not a Zerops environment" is a failure, not a feed value. */
-export class ZeropsAgentLoginError extends Schema.TaggedErrorClass<ZeropsAgentLoginError>()(
+export class ZeropsAgentLoginError extends Schema.TaggedError<ZeropsAgentLoginError>()(
   "ZeropsAgentLoginError",
   {
     reason: ZeropsAgentLoginErrorReason,
@@ -561,7 +561,7 @@ export const ZeropsMateUpdateErrorReason = Schema.Literals([
 ]);
 export type ZeropsMateUpdateErrorReason = typeof ZeropsMateUpdateErrorReason.Type;
 
-export class ZeropsMateUpdateError extends Schema.TaggedErrorClass<ZeropsMateUpdateError>()(
+export class ZeropsMateUpdateError extends Schema.TaggedError<ZeropsMateUpdateError>()(
   "ZeropsMateUpdateError",
   {
     reason: ZeropsMateUpdateErrorReason,
@@ -796,7 +796,7 @@ export const ZeropsDataConsoleErrorCode = Schema.Literals([
 ]);
 export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
 
-export class ZeropsDataConsoleError extends Schema.TaggedErrorClass<ZeropsDataConsoleError>()(
+export class ZeropsDataConsoleError extends Schema.TaggedError<ZeropsDataConsoleError>()(
   "ZeropsDataConsoleError",
   {
     code: ZeropsDataConsoleErrorCode,
@@ -852,7 +852,7 @@ export const ZeropsGitRemoteProbeResult = Schema.Struct({
 export type ZeropsGitRemoteProbeResult = typeof ZeropsGitRemoteProbeResult.Type;
 
 /** The probe could not be run at all — no git, no checkout, or it timed out. */
-export class ZeropsGitRemoteProbeError extends Schema.TaggedErrorClass<ZeropsGitRemoteProbeError>()(
+export class ZeropsGitRemoteProbeError extends Schema.TaggedError<ZeropsGitRemoteProbeError>()(
   "ZeropsGitRemoteProbeError",
   { reason: Schema.String },
 ) {

@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-export class ServerCliCommandExitError extends Schema.TaggedErrorClass<ServerCliCommandExitError>()(
+export class ServerCliCommandExitError extends Schema.TaggedError<ServerCliCommandExitError>()(
   "ServerCliCommandExitError",
   {
     command: Schema.String,
@@ -14,7 +14,7 @@ export class ServerCliCommandExitError extends Schema.TaggedErrorClass<ServerCli
   }
 }
 
-export class ServerCliBuildAssetMissingError extends Schema.TaggedErrorClass<ServerCliBuildAssetMissingError>()(
+export class ServerCliBuildAssetMissingError extends Schema.TaggedError<ServerCliBuildAssetMissingError>()(
   "ServerCliBuildAssetMissingError",
   {
     assetPath: Schema.String,
@@ -32,7 +32,7 @@ export class ServerCliBuildAssetMissingError extends Schema.TaggedErrorClass<Ser
  * container — the manifest declares only what the bundler left external, so a
  * package that stops being inlined has to be noticed here.
  */
-export class ServerCliUndeclaredRuntimeImportError extends Schema.TaggedErrorClass<ServerCliUndeclaredRuntimeImportError>()(
+export class ServerCliUndeclaredRuntimeImportError extends Schema.TaggedError<ServerCliUndeclaredRuntimeImportError>()(
   "ServerCliUndeclaredRuntimeImportError",
   {
     packages: Schema.Array(Schema.String),

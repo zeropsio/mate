@@ -93,21 +93,21 @@ const configLayer = Layer.unwrap(
     // `aud` claims on every relay-signed JWT. Set explicitly in deployment
     // (the container's public Zerops subdomain); defaults to a local origin
     // so `pnpm dev` works without configuration.
-    const relayIssuer = yield* Config.string("RELAY_ISSUER").pipe(
+    const relayIssuer = yield* Config.String("RELAY_ISSUER").pipe(
       Config.withDefault("http://localhost:8080"),
     );
     const apnsEnvironment = yield* Config.schema(
       RelayConfiguration.ApnsEnvironment,
       "APNS_ENVIRONMENT",
     );
-    const apnsTeamId = yield* Config.string("APNS_TEAM_ID");
-    const apnsKeyId = yield* Config.string("APNS_KEY_ID");
-    const apnsBundleId = yield* Config.string("APNS_BUNDLE_ID");
-    const apnsPrivateKey = yield* Config.redacted("APNS_PRIVATE_KEY");
-    const apnsDeliveryJobSigningSecret = yield* Config.redacted("APNS_DELIVERY_JOB_SIGNING_SECRET");
-    const cloudMintPrivateKey = yield* Config.redacted("CLOUD_MINT_PRIVATE_KEY");
-    const cloudMintPublicKey = yield* Config.string("CLOUD_MINT_PUBLIC_KEY");
-    const zeropsApiHost = yield* Config.string("ZEROPS_API_HOST").pipe(Config.withDefault(""));
+    const apnsTeamId = yield* Config.String("APNS_TEAM_ID");
+    const apnsKeyId = yield* Config.String("APNS_KEY_ID");
+    const apnsBundleId = yield* Config.String("APNS_BUNDLE_ID");
+    const apnsPrivateKey = yield* Config.Redacted("APNS_PRIVATE_KEY");
+    const apnsDeliveryJobSigningSecret = yield* Config.Redacted("APNS_DELIVERY_JOB_SIGNING_SECRET");
+    const cloudMintPrivateKey = yield* Config.Redacted("CLOUD_MINT_PRIVATE_KEY");
+    const cloudMintPublicKey = yield* Config.String("CLOUD_MINT_PUBLIC_KEY");
+    const zeropsApiHost = yield* Config.String("ZEROPS_API_HOST").pipe(Config.withDefault(""));
 
     return RelayConfiguration.layer({
       relayIssuer,
@@ -179,8 +179,8 @@ const routerLayer = Layer.mergeAll(
   relayNotFoundRoute,
 ).pipe(Layer.provide(relayCors));
 
-const port = Config.port("PORT").pipe(Config.withDefault(8080));
-const host = Config.string("HOST").pipe(Config.withDefault("0.0.0.0"));
+const port = Config.Port("PORT").pipe(Config.withDefault(8080));
+const host = Config.String("HOST").pipe(Config.withDefault("0.0.0.0"));
 
 const HttpServerLive = Layer.unwrap(
   Effect.gen(function* () {

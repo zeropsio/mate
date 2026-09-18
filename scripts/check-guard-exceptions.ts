@@ -237,7 +237,7 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
 export const checkGuardExceptionsCommand = Command.make(
   "check-guard-exceptions",
   {
-    rule: Flag.string("rule").pipe(
+    rule: Flag.String("rule").pipe(
       Flag.atLeast(0),
       Flag.withDescription(
         "Rule ledger to reconcile. Repeat for multiple rules; defaults to every rule ledger.",

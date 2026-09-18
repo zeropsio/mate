@@ -84,6 +84,7 @@ import {
 } from "effect/unstable/http";
 import { OtlpSerialization, OtlpTracer } from "effect/unstable/observability";
 import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
+import * as NetAddress from "effect/unstable/net/NetAddress";
 import * as Socket from "effect/unstable/socket/Socket";
 import { vi } from "vite-plus/test";
 
@@ -400,7 +401,7 @@ const browserOtlpTracingLayer = Layer.mergeAll(
 const testAuthByPort = new Map<number, EnvironmentAuth.EnvironmentAuth["Service"]>();
 const testAuth = Effect.gen(function* () {
   const server = yield* HttpServer.HttpServer;
-  const auth = testAuthByPort.get((server.address as HttpServer.TcpAddress).port);
+  const auth = testAuthByPort.get((server.address as NetAddress.InetAddress).port);
   if (!auth) return yield* Effect.die(new Error("Missing test auth fixture"));
   return auth;
 });
@@ -1297,7 +1298,7 @@ const buildAppUnderTest = (options?: {
 
     const context = yield* Layer.build(appLayer);
     const server = yield* HttpServer.HttpServer;
-    const port = (server.address as HttpServer.TcpAddress).port;
+    const port = (server.address as NetAddress.InetAddress).port;
     testAuthByPort.set(port, Context.get(context, EnvironmentAuth.EnvironmentAuth));
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
@@ -1326,9 +1327,10 @@ const wsRpcProtocolLayer = (wsUrl: string, onMessage?: (message: string) => void
   const webSocketConstructorLayer = Layer.succeed(
     Socket.WebSocketConstructor,
     (socketUrl, protocols) => {
+      // Socket.makeWebSocket only ever passes its `protocols` option here.
       const socket = new NodeSocket.NodeWS.WebSocket(
         socketUrl,
-        protocols,
+        protocols as string | string[] | undefined,
         cookie ? { headers: { authorization: cookie } } : undefined,
       );
       if (onMessage) socket.on("message", (data) => onMessage(data.toString()));
@@ -1388,7 +1390,7 @@ const appendAuthorizationToWsUrl = (url: string, sessionCookieHeader: string) =>
 const getHttpServerUrl = (pathname = "") =>
   Effect.gen(function* () {
     const server = yield* HttpServer.HttpServer;
-    const address = server.address as HttpServer.TcpAddress;
+    const address = server.address as NetAddress.InetAddress;
     return `http://127.0.0.1:${address.port}${pathname}`;
   });
 
@@ -1735,7 +1737,7 @@ const getWsServerUrl = (
 ) =>
   Effect.gen(function* () {
     const server = yield* HttpServer.HttpServer;
-    const address = server.address as HttpServer.TcpAddress;
+    const address = server.address as NetAddress.InetAddress;
     const baseUrl = `ws://127.0.0.1:${address.port}${pathname}`;
     if (options?.authenticated === false) {
       return baseUrl;
@@ -2181,7 +2183,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             return new Proxy(file, {
               get(target, key) {
                 if (key === "readAlloc") {
-                  return (size: FileSystem.SizeInput) => {
+                  return (size: number) => {
                     bodyReads += 1;
                     return target.readAlloc(size);
                   };
@@ -4328,7 +4330,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // No wildcard, no echo: the browser has nothing to accept.
       assert.equal(response.headers["access-control-allow-origin"], undefined);
       assert.equal(response.headers["access-control-allow-credentials"], undefined);
-      assert.equal(response.headers.vary, undefined);
+      // Effect rc.115 marks a refused origin `Vary: Origin` too, so a cache keeps the refusal
+      // apart from an allowed origin's answer; it grants nothing.
+      assert.equal(response.headers.vary, "Origin");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -10564,14 +10568,14 @@ it.live(
 
       const report = formatTransferBudgetReport(runs);
       yield* Effect.logInfo(`\n${report}`);
-      const reportPath = yield* Config.string("T3CODE_TRANSFER_BUDGET_REPORT_PATH").pipe(
+      const reportPath = yield* Config.String("T3CODE_TRANSFER_BUDGET_REPORT_PATH").pipe(
         Config.option,
       );
       if (Option.isSome(reportPath)) {
         const fileSystem = yield* FileSystem.FileSystem;
         yield* fileSystem.writeFileString(reportPath.value, report);
       }
-      const resultPath = yield* Config.string("T3CODE_TRANSFER_BUDGET_RESULT_PATH").pipe(
+      const resultPath = yield* Config.String("T3CODE_TRANSFER_BUDGET_RESULT_PATH").pipe(
         Config.option,
       );
       if (Option.isSome(resultPath)) {

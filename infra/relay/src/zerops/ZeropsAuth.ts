@@ -20,13 +20,13 @@ import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 
 /** The presented token is not a valid Zerops credential. */
-export class ZeropsInvalidTokenError extends Schema.TaggedErrorClass<ZeropsInvalidTokenError>()(
+export class ZeropsInvalidTokenError extends Schema.TaggedError<ZeropsInvalidTokenError>()(
   "ZeropsInvalidTokenError",
   {},
 ) {}
 
 /** The platform could not be reached, or answered something unusable. */
-export class ZeropsApiUnavailableError extends Schema.TaggedErrorClass<ZeropsApiUnavailableError>()(
+export class ZeropsApiUnavailableError extends Schema.TaggedError<ZeropsApiUnavailableError>()(
   "ZeropsApiUnavailableError",
   {
     reason: Schema.String,

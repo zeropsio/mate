@@ -1,4 +1,4 @@
-import Mime from "@effect/platform-node/Mime";
+import * as Mime from "effect/unstable/http/Mime";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -404,7 +404,7 @@ const streamStaticFile = (file: FileSystem.File, size: bigint) =>
     Effect.fnUntraced(function* (offset: bigint) {
       if (offset >= size) return;
       const remaining = size - offset;
-      const bytes = yield* file.readAlloc(remaining < 65_536n ? remaining : 65_536n);
+      const bytes = yield* file.readAlloc(Number(remaining < 65_536n ? remaining : 65_536n));
       if (Option.isNone(bytes)) return;
       return [bytes.value, offset + BigInt(bytes.value.byteLength)] as const;
     }),
@@ -538,7 +538,7 @@ const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
     const contentType =
       path.extname(filePath) === ".html"
         ? "text/html; charset=utf-8"
-        : (Mime.getType(filePath) ?? "application/octet-stream");
+        : Option.getOrElse(Mime.getType(filePath), () => "application/octet-stream");
     // The request scope closes the handle for GET, HEAD, 304, errors, and cancellation.
     // HEAD still passes through compression, which selects headers without reading the stream.
     return HttpServerResponse.stream(streamStaticFile(opened.file, fileInfo.size), {

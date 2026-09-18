@@ -22,7 +22,7 @@ import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
 
-export class ServerEnvironmentIdPersistenceError extends Schema.TaggedErrorClass<ServerEnvironmentIdPersistenceError>()(
+export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
   "ServerEnvironmentIdPersistenceError",
   {
     operation: Schema.Literals(["check", "read", "write"]),

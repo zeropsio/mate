@@ -19,58 +19,58 @@ import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 
-export const modeFlag = Flag.choice("mode", ServerConfig.RuntimeMode.literals).pipe(
+export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
   Flag.optional,
 );
-export const portFlag = Flag.integer("port").pipe(
+export const portFlag = Flag.Int("port").pipe(
   Flag.withSchema(PortSchema),
   Flag.withDescription("Port for the HTTP/WebSocket server."),
   Flag.optional,
 );
-export const hostFlag = Flag.string("host").pipe(
+export const hostFlag = Flag.String("host").pipe(
   Flag.withDescription("Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a VPN IP)."),
   Flag.optional,
 );
-export const baseDirFlag = Flag.string("base-dir").pipe(
+export const baseDirFlag = Flag.String("base-dir").pipe(
   Flag.withDescription(
     "Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).",
   ),
   Flag.optional,
 );
-export const basePathFlag = Flag.string("base-path").pipe(
+export const basePathFlag = Flag.String("base-path").pipe(
   Flag.withDescription(
     "Public path prefix this server is published under, for example /mate. Routes stay mounted at the root: the reverse proxy is expected to strip the prefix, and the server uses this for the URLs it emits (and tolerates a prefix a proxy forwarded).",
   ),
   Flag.optional,
 );
-export const devUrlFlag = Flag.string("dev-url").pipe(
+export const devUrlFlag = Flag.String("dev-url").pipe(
   Flag.withSchema(Schema.URLFromString),
   Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
   Flag.optional,
 );
-export const zeropsFixturesFlag = Flag.string("zerops-fixtures").pipe(
+export const zeropsFixturesFlag = Flag.String("zerops-fixtures").pipe(
   Flag.withDescription(
     "Publish a Zerops showcase scene by web:<id> or an absolute scene JSON path (equivalent to T3CODE_ZEROPS_FIXTURES).",
   ),
   Flag.optional,
 );
-export const noBrowserFlag = Flag.boolean("no-browser").pipe(
+export const noBrowserFlag = Flag.Boolean("no-browser").pipe(
   Flag.withDescription("Disable automatic browser opening."),
   Flag.optional,
 );
-export const bootstrapFdFlag = Flag.integer("bootstrap-fd").pipe(
+export const bootstrapFdFlag = Flag.Int("bootstrap-fd").pipe(
   Flag.withSchema(Schema.Int),
   Flag.withDescription("Read one-time bootstrap secrets from the given file descriptor."),
   Flag.optional,
 );
-export const autoBootstrapProjectFromCwdFlag = Flag.boolean("auto-bootstrap-project-from-cwd").pipe(
+export const autoBootstrapProjectFromCwdFlag = Flag.Boolean("auto-bootstrap-project-from-cwd").pipe(
   Flag.withDescription(
     "Create a project for the current working directory on startup when missing.",
   ),
   Flag.optional,
 );
-export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
+export const logWebSocketEventsFlag = Flag.Boolean("log-websocket-events").pipe(
   Flag.withDescription(
     "Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).",
   ),
@@ -78,41 +78,41 @@ export const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.optional,
 );
 const EnvServerConfig = Config.all({
-  logLevel: Config.logLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
-  traceMinLevel: Config.logLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
-  traceTimingEnabled: Config.boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
-  traceFile: Config.string("T3CODE_TRACE_FILE").pipe(
+  logLevel: Config.LogLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
+  traceMinLevel: Config.LogLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
+  traceTimingEnabled: Config.Boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
+  traceFile: Config.String("T3CODE_TRACE_FILE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  traceMaxBytes: Config.int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
-  traceMaxFiles: Config.int("T3CODE_TRACE_MAX_FILES").pipe(Config.withDefault(10)),
-  traceBatchWindowMs: Config.int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(1_000)),
-  otlpTracesUrl: Config.string("T3CODE_OTLP_TRACES_URL").pipe(
+  traceMaxBytes: Config.Int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
+  traceMaxFiles: Config.Int("T3CODE_TRACE_MAX_FILES").pipe(Config.withDefault(10)),
+  traceBatchWindowMs: Config.Int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(1_000)),
+  otlpTracesUrl: Config.String("T3CODE_OTLP_TRACES_URL").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpMetricsUrl: Config.string("T3CODE_OTLP_METRICS_URL").pipe(
+  otlpMetricsUrl: Config.String("T3CODE_OTLP_METRICS_URL").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  otlpExportIntervalMs: Config.int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
+  otlpExportIntervalMs: Config.Int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
     Config.withDefault(10_000),
   ),
-  otlpServiceName: Config.string("T3CODE_OTLP_SERVICE_NAME").pipe(Config.withDefault("t3-server")),
+  otlpServiceName: Config.String("T3CODE_OTLP_SERVICE_NAME").pipe(Config.withDefault("t3-server")),
   mode: Config.schema(ServerConfig.RuntimeMode, "T3CODE_MODE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  port: Config.port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  host: Config.string("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  basePath: Config.string("T3CODE_BASE_PATH").pipe(
+  port: Config.Port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  host: Config.String("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  basePath: Config.String("T3CODE_BASE_PATH").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  t3Home: Config.string("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  devAllowedOrigins: Config.string("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
+  t3Home: Config.String("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  devUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  devAllowedOrigins: Config.String("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
     Config.map((value) =>
       value
@@ -123,15 +123,15 @@ const EnvServerConfig = Config.all({
   ),
   // Zerops container settings. `zeropsProjectId` alone decides whether this is
   // a Zerops environment (see ZeropsEnvironment); the rest only shape it.
-  zeropsProjectId: Config.string("T3CODE_ZEROPS_PROJECT_ID").pipe(
+  zeropsProjectId: Config.String("T3CODE_ZEROPS_PROJECT_ID").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsApiHost: Config.string("T3CODE_ZEROPS_API_HOST").pipe(
+  zeropsApiHost: Config.String("T3CODE_ZEROPS_API_HOST").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsAllowedOrigins: Config.string("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
+  zeropsAllowedOrigins: Config.String("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
     Config.map((value) =>
       value
@@ -143,41 +143,41 @@ const EnvServerConfig = Config.all({
   // Explicit override for this container's own public origin, consulted by
   // the environment-link proof before falling back to the linking request's
   // Origin/Host (see ZeropsEnvironment.publicOrigin).
-  zeropsPublicOrigin: Config.string("T3CODE_ZEROPS_PUBLIC_ORIGIN").pipe(
+  zeropsPublicOrigin: Config.String("T3CODE_ZEROPS_PUBLIC_ORIGIN").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
   // The Mate's own Zerops key, as zcp already sets it in this container. The
   // door never asks the caller for rights; it looks them up with this.
-  zeropsApiToken: Config.string("ZCP_API_KEY").pipe(
+  zeropsApiToken: Config.String("ZCP_API_KEY").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsRoleRecheckSeconds: Config.int("T3CODE_ZEROPS_ROLE_RECHECK_SECONDS").pipe(
+  zeropsRoleRecheckSeconds: Config.Int("T3CODE_ZEROPS_ROLE_RECHECK_SECONDS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsSessionMaxAgeSeconds: Config.int("T3CODE_ZEROPS_SESSION_MAX_AGE_SECONDS").pipe(
+  zeropsSessionMaxAgeSeconds: Config.Int("T3CODE_ZEROPS_SESSION_MAX_AGE_SECONDS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsFixtures: Config.string("T3CODE_ZEROPS_FIXTURES").pipe(
+  zeropsFixtures: Config.String("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  noBrowser: Config.boolean("T3CODE_NO_BROWSER").pipe(
+  noBrowser: Config.Boolean("T3CODE_NO_BROWSER").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  bootstrapFd: Config.int("T3CODE_BOOTSTRAP_FD").pipe(
+  bootstrapFd: Config.Int("T3CODE_BOOTSTRAP_FD").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  autoBootstrapProjectFromCwd: Config.boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
+  autoBootstrapProjectFromCwd: Config.Boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  logWebSocketEvents: Config.boolean("T3CODE_LOG_WS_EVENTS").pipe(
+  logWebSocketEvents: Config.Boolean("T3CODE_LOG_WS_EVENTS").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -218,7 +218,7 @@ export const sharedServerCommandFlags = {
   host: hostFlag,
   basePath: basePathFlag,
   baseDir: baseDirFlag,
-  cwd: Argument.string("cwd").pipe(
+  cwd: Argument.String("cwd").pipe(
     Argument.withDescription(
       "Working directory for provider sessions (defaults to the current directory).",
     ),
@@ -518,7 +518,7 @@ const parseDurationInput = (value: string): Duration.Duration | null => {
 export const DurationFromString = Schema.String.pipe(
   Schema.decodeTo(
     Schema.Duration,
-    SchemaTransformation.transformOrFail({
+    SchemaTransformation.transformEffect({
       decode: (value) => {
         const duration = parseDurationInput(value);
         if (duration !== null) {

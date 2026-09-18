@@ -19,25 +19,25 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 /** The presented token is not a valid Zerops credential. */
-export class ZeropsInvalidTokenError extends Schema.TaggedErrorClass<ZeropsInvalidTokenError>()(
+export class ZeropsInvalidTokenError extends Schema.TaggedError<ZeropsInvalidTokenError>()(
   "ZeropsInvalidTokenError",
   {},
 ) {}
 
 /** The caller holds a valid token but may not operate this project. */
-export class ZeropsNotAMemberError extends Schema.TaggedErrorClass<ZeropsNotAMemberError>()(
+export class ZeropsNotAMemberError extends Schema.TaggedError<ZeropsNotAMemberError>()(
   "ZeropsNotAMemberError",
   {},
 ) {}
 
 /** This container is configured with a project id the platform does not know. */
-export class ZeropsProjectNotFoundError extends Schema.TaggedErrorClass<ZeropsProjectNotFoundError>()(
+export class ZeropsProjectNotFoundError extends Schema.TaggedError<ZeropsProjectNotFoundError>()(
   "ZeropsProjectNotFoundError",
   {},
 ) {}
 
 /** The platform could not be reached, or answered something unusable. */
-export class ZeropsApiUnavailableError extends Schema.TaggedErrorClass<ZeropsApiUnavailableError>()(
+export class ZeropsApiUnavailableError extends Schema.TaggedError<ZeropsApiUnavailableError>()(
   "ZeropsApiUnavailableError",
   {
     reason: Schema.String,

@@ -122,7 +122,7 @@ function reduceProcessObservation(
     state.processes.get(processKeyOf(observation.ref)) ?? makeUnresolvedProcess(observation.ref);
   const facet = processFacet(observation);
   const current = existing[facet.name] as FacetState<Record<string, unknown>, string>;
-  const result = applyFacet(
+  const result = applyFacet<Record<string, unknown>, string>(
     current,
     facet.required,
     observation.observation,

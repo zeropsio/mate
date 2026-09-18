@@ -7,7 +7,7 @@
     "start": "node src/server.ts",
     "migrate": "node scripts/migrate.ts",
     "test": "vp test run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

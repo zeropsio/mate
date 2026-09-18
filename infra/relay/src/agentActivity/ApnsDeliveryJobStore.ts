@@ -42,7 +42,7 @@ export function isDeadLetterAttempt(attempts: number): boolean {
   return attempts >= MAX_DELIVERY_ATTEMPTS;
 }
 
-export class ApnsDeliveryJobPersistError extends Schema.TaggedErrorClass<ApnsDeliveryJobPersistError>()(
+export class ApnsDeliveryJobPersistError extends Schema.TaggedError<ApnsDeliveryJobPersistError>()(
   "ApnsDeliveryJobPersistError",
   {
     operation: Schema.Literals([

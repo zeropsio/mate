@@ -34,7 +34,7 @@ export interface ShowcaseSceneMismatch {
   readonly actual: string | undefined;
 }
 
-export class ShowcaseScenesLockError extends Schema.TaggedErrorClass<ShowcaseScenesLockError>()(
+export class ShowcaseScenesLockError extends Schema.TaggedError<ShowcaseScenesLockError>()(
   "ShowcaseScenesLockError",
   {
     operation: Schema.Literals(["read", "decode", "encode", "write"]),
@@ -47,7 +47,7 @@ export class ShowcaseScenesLockError extends Schema.TaggedErrorClass<ShowcaseSce
   }
 }
 
-export class ShowcaseScenesDriftError extends Schema.TaggedErrorClass<ShowcaseScenesDriftError>()(
+export class ShowcaseScenesDriftError extends Schema.TaggedError<ShowcaseScenesDriftError>()(
   "ShowcaseScenesDriftError",
   {
     lockPath: Schema.String,
@@ -141,11 +141,11 @@ export const writeShowcaseScenesLock = Effect.fn("writeShowcaseScenesLock")(func
 export const showcaseScenesCommand = Command.make(
   "showcase-scenes",
   {
-    check: Flag.boolean("check").pipe(
+    check: Flag.Boolean("check").pipe(
       Flag.withDescription("Decode the scenes and verify their checked-in hashes."),
       Flag.withDefault(false),
     ),
-    lock: Flag.string("lock").pipe(
+    lock: Flag.String("lock").pipe(
       Flag.withDescription("Scene lock path. Defaults to the checked-in scenes.lock."),
       Flag.optional,
     ),

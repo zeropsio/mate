@@ -45,21 +45,26 @@ export default Effect.gen(function* () {
     WHERE newest.row_number = 1
   `;
 
+  const previews = sources.flatMap((source) => {
+    const text = messagePreviewText(source.text);
+    return text === null
+      ? []
+      : [
+          {
+            threadId: source.threadId,
+            preview: JSON.stringify({ role: "user", text, createdAt: source.createdAt }),
+          },
+        ];
+  });
+
   yield* Effect.forEach(
-    sources,
-    (source) => {
-      const text = messagePreviewText(source.text);
-      if (text === null) {
-        return Effect.void;
-      }
-      const preview = JSON.stringify({ role: "user", text, createdAt: source.createdAt });
-      return sql`
-        UPDATE projection_threads
-        SET latest_user_message_preview_json = ${preview}
-        WHERE thread_id = ${source.threadId}
-          AND latest_user_message_preview_json IS NULL
-      `;
-    },
+    previews,
+    ({ threadId, preview }) => sql`
+      UPDATE projection_threads
+      SET latest_user_message_preview_json = ${preview}
+      WHERE thread_id = ${threadId}
+        AND latest_user_message_preview_json IS NULL
+      `,
     { concurrency: 1, discard: true },
   );
 });

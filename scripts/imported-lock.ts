@@ -34,7 +34,7 @@ const ImportedLockJson = fromJsonStringPretty(ImportedLockSchema);
 const decodeImportedLock = Schema.decodeEffect(ImportedLockJson);
 const encodeImportedLock = Schema.encodeEffect(ImportedLockJson);
 
-export class ImportedLockFileError extends Schema.TaggedErrorClass<ImportedLockFileError>()(
+export class ImportedLockFileError extends Schema.TaggedError<ImportedLockFileError>()(
   "ImportedLockFileError",
   {
     operation: Schema.Literals(["read", "decode", "encode", "write"]),
@@ -52,7 +52,7 @@ const gitRevisionContext = {
   revision: Schema.String,
 };
 
-export class GitRevisionResolutionError extends Schema.TaggedErrorClass<GitRevisionResolutionError>()(
+export class GitRevisionResolutionError extends Schema.TaggedError<GitRevisionResolutionError>()(
   "GitRevisionResolutionError",
   {
     ...gitRevisionContext,
@@ -65,7 +65,7 @@ export class GitRevisionResolutionError extends Schema.TaggedErrorClass<GitRevis
   }
 }
 
-export class GitRevisionExitError extends Schema.TaggedErrorClass<GitRevisionExitError>()(
+export class GitRevisionExitError extends Schema.TaggedError<GitRevisionExitError>()(
   "GitRevisionExitError",
   {
     ...gitRevisionContext,
@@ -78,7 +78,7 @@ export class GitRevisionExitError extends Schema.TaggedErrorClass<GitRevisionExi
   }
 }
 
-export class ImportedLockDriftError extends Schema.TaggedErrorClass<ImportedLockDriftError>()(
+export class ImportedLockDriftError extends Schema.TaggedError<ImportedLockDriftError>()(
   "ImportedLockDriftError",
   {
     lockFilePath: Schema.String,
@@ -90,7 +90,7 @@ export class ImportedLockDriftError extends Schema.TaggedErrorClass<ImportedLock
   }
 }
 
-export class ImportedLockNotByteIdenticalError extends Schema.TaggedErrorClass<ImportedLockNotByteIdenticalError>()(
+export class ImportedLockNotByteIdenticalError extends Schema.TaggedError<ImportedLockNotByteIdenticalError>()(
   "ImportedLockNotByteIdenticalError",
   {
     upstreamRef: Schema.String,
@@ -108,7 +108,7 @@ export class ImportedLockNotByteIdenticalError extends Schema.TaggedErrorClass<I
   }
 }
 
-export class ImportedLockMissingUpstreamError extends Schema.TaggedErrorClass<ImportedLockMissingUpstreamError>()(
+export class ImportedLockMissingUpstreamError extends Schema.TaggedError<ImportedLockMissingUpstreamError>()(
   "ImportedLockMissingUpstreamError",
   {},
 ) {
@@ -283,21 +283,21 @@ export const writeImportedLock = Effect.fn("writeImportedLock")(function* (
 export const importedLockCommand = Command.make(
   "imported-lock",
   {
-    write: Flag.boolean("write").pipe(
+    write: Flag.Boolean("write").pipe(
       Flag.withDescription("Regenerate imported.lock from --upstream instead of checking it."),
       Flag.withDefault(false),
     ),
-    check: Flag.boolean("check").pipe(
+    check: Flag.Boolean("check").pipe(
       Flag.withDescription("Check imported.lock against HEAD. The default when --write is absent."),
       Flag.withDefault(false),
     ),
-    upstream: Flag.string("upstream").pipe(
+    upstream: Flag.String("upstream").pipe(
       Flag.withDescription(
         "Upstream ref or SHA to regenerate the lock from (required with --write).",
       ),
       Flag.optional,
     ),
-    root: Flag.string("root").pipe(
+    root: Flag.String("root").pipe(
       Flag.withDescription(
         "Workspace root containing imported.lock. Defaults to the current directory.",
       ),

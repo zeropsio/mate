@@ -32,7 +32,7 @@ function formatOutputSection(label: string, output: string): string | undefined 
   return trimmed.length === 0 ? undefined : `${label} tail:\n${trimmed}`;
 }
 
-export class DesktopWebBuildCommandFailedError extends Schema.TaggedErrorClass<DesktopWebBuildCommandFailedError>()(
+export class DesktopWebBuildCommandFailedError extends Schema.TaggedError<DesktopWebBuildCommandFailedError>()(
   "DesktopWebBuildCommandFailedError",
   {
     exitCode: Schema.Int,
@@ -50,7 +50,7 @@ export class DesktopWebBuildCommandFailedError extends Schema.TaggedErrorClass<D
   }
 }
 
-export class DesktopWebBuildMissingError extends Schema.TaggedErrorClass<DesktopWebBuildMissingError>()(
+export class DesktopWebBuildMissingError extends Schema.TaggedError<DesktopWebBuildMissingError>()(
   "DesktopWebBuildMissingError",
   { entryPath: Schema.String },
 ) {
@@ -59,7 +59,7 @@ export class DesktopWebBuildMissingError extends Schema.TaggedErrorClass<Desktop
   }
 }
 
-export class DesktopWebBuildAssetsMissingError extends Schema.TaggedErrorClass<DesktopWebBuildAssetsMissingError>()(
+export class DesktopWebBuildAssetsMissingError extends Schema.TaggedError<DesktopWebBuildAssetsMissingError>()(
   "DesktopWebBuildAssetsMissingError",
   {
     indexPath: Schema.String,
@@ -210,7 +210,7 @@ export const stageHostedWebBundle = Effect.fn("stageHostedWebBundle")(function* 
 const stageDesktopWebCommand = Command.make(
   "stage-desktop-web",
   {
-    skipBuild: Flag.boolean("skip-build").pipe(
+    skipBuild: Flag.Boolean("skip-build").pipe(
       Flag.withDescription("Stage the existing apps/web/dist without rebuilding it."),
       Flag.optional,
     ),
