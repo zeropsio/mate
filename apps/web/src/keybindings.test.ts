@@ -1067,6 +1067,7 @@ describe("composer shortcuts", () => {
     ["x", "composer.workspace"],
     ["g", "composer.branch"],
     ["l", "composer.previousWorktree"],
+    ["Enter", "thread.steerQueuedMessage"],
   ] as const;
 
   for (const platform of ["MacIntel", "Win32", "Linux"]) {

@@ -16,6 +16,7 @@ const clientSettings: ClientSettings = {
   notificationMode: "notifications-and-sound",
   inAppNotificationsEnabled: true,
   sendShortcut: "mod-enter-multiline",
+  followUpBehavior: "steer",
   appearanceContrast: 100,
   confirmQuit: true,
   confirmThreadArchive: true,

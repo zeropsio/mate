@@ -5519,6 +5519,17 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "thread.steerQueuedMessage") {
+        const message = activeThreadKey
+          ? useQueuedMessageStore.getState().queuesByThreadKey[activeThreadKey]?.[0]
+          : undefined;
+        if (!message) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) queuedMessageActionsRef.current.steer(message.id);
+        return;
+      }
+
       if (command === "thread.stop") {
         // An unavailable command should not shadow contextual shortcuts such as Escape to close a dialog.
         if (!canInterruptRunningThread) return;
@@ -5548,6 +5559,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadPinned,
     activeThreadSettled,
     canInterruptRunningThread,
+    activeThreadKey,
     terminalUiState.terminalOpen,
     terminalUiState.activeTerminalId,
     activeThreadId,
@@ -6013,11 +6025,16 @@ export default function ChatView(props: ChatViewProps) {
       );
       return;
     }
-    // A send during a running turn waits in the queue. It leaves on the next
-    // tool boundary, when the turn ends, or when the user clicks Send now.
-    // The provider treats a mid-turn send as a steer of the active turn, so
-    // the dispatch below is the same either way.
-    if (!queuedMessage && phase === "running" && activeThreadKey) {
+    // With the queue follow-up behavior, a send during a running turn waits in
+    // the queue. It leaves on the next tool boundary, when the turn ends, or
+    // when the user clicks Send now. Steer sends it straight away; the provider
+    // treats a mid-turn send as a steer of the active turn either way.
+    if (
+      !queuedMessage &&
+      phase === "running" &&
+      activeThreadKey &&
+      settings.followUpBehavior === "queue"
+    ) {
       if (composerRef.current?.validateProviderInput(promptForSend) === false) {
         return;
       }
@@ -7643,6 +7660,11 @@ export default function ChatView(props: ChatViewProps) {
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
                 queuedMessages={queuedMessages}
                 onSteerQueuedMessage={onSteerQueuedMessage}
+                steerQueuedMessageShortcutLabel={shortcutLabelForCommand(
+                  keybindings,
+                  "thread.steerQueuedMessage",
+                  { context: { terminalFocus: false } },
+                )}
                 onRemoveQueuedMessage={onRemoveQueuedMessage}
                 topFadeEnabled={!hasTimelineTopBanner}
                 loadEarlier={loadEarlierTurns}
