@@ -221,6 +221,7 @@ const config: ExpoConfig = {
       },
       NSLocalNetworkUsageDescription:
         "Allow Zerops Mate to connect to Zerops Mate servers on your local network.",
+      NSPhotoLibraryAddUsageDescription: "Allow Zerops Mate to save images to your photo library.",
       ITSAppUsesNonExemptEncryption: false,
       // The App Store screenshot harness rotates the iPad interface from
       // inside the app (CI denies osascript the Accessibility access that
