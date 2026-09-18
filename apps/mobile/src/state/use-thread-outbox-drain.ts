@@ -636,7 +636,7 @@ export function useThreadOutboxDrain(): void {
       if (isModelSelectionUnavailable(serverConfig, settings.modelSelection)) {
         return restoreQueuedMessage(
           queuedMessage,
-          "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
+          "Antigravity model unavailable. Set it up on web or desktop, or choose another model.",
         );
       }
       const { reportFailure } = makeDeliveryHelpers(queuedMessage);
@@ -730,7 +730,7 @@ export function useThreadOutboxDrain(): void {
       if (isModelSelectionUnavailable(currentConfig, settings.modelSelection)) {
         return restoreQueuedMessage(
           persistedMessage,
-          "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
+          "Antigravity model unavailable. Set it up on web or desktop, or choose another model.",
         );
       }
       const sendSettings = resolveQueuedThreadSettings(
@@ -813,7 +813,7 @@ export function useThreadOutboxDrain(): void {
       if (isModelSelectionUnavailable(serverConfig, settings.modelSelection)) {
         return restoreQueuedMessage(
           queuedMessage,
-          "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
+          "Antigravity model unavailable. Set it up on web or desktop, or choose another model.",
         );
       }
       let prepared: PreparedTurnAttachments;
@@ -858,7 +858,7 @@ export function useThreadOutboxDrain(): void {
       if (isModelSelectionUnavailable(currentConfig, settings.modelSelection)) {
         return restoreQueuedMessage(
           persistedMessage,
-          "Antigravity model unavailable. Open model settings to finish setup or choose another model.",
+          "Antigravity model unavailable. Set it up on web or desktop, or choose another model.",
         );
       }
       const sendSettings = resolveQueuedThreadSettings(

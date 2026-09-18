@@ -899,6 +899,16 @@ export function NewTaskDraftScreen(props: {
     ) {
       return;
     }
+    if (
+      environmentConnected &&
+      isModelSelectionUnavailable(selectedEnvironmentServerConfig, modelSelection)
+    ) {
+      Alert.alert(
+        "Antigravity model unavailable",
+        "Set up Antigravity on web or desktop, or choose another model.",
+      );
+      return;
+    }
     // A failed-send restore can leave the draft over the cap on purpose (it
     // never drops the user's files); starting anyway would upload everything
     // and have the server reject the turn.
@@ -910,16 +920,6 @@ export function NewTaskDraftScreen(props: {
       return;
     }
 
-    if (
-      environmentConnected &&
-      isModelSelectionUnavailable(selectedEnvironmentServerConfig, modelSelection)
-    ) {
-      Alert.alert(
-        "Antigravity model unavailable",
-        "Open model settings to finish setup or choose another model.",
-      );
-      return;
-    }
     const editingPendingTask = flow.editingPendingTask;
 
     if (!environmentConnected) {
