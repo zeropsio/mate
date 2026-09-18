@@ -13,7 +13,7 @@
  *
  * @module claudeProvider
  */
-import type { ModelCapabilities, ModelSelection } from "@t3tools/contracts";
+import type { CustomModelSetting, ModelCapabilities, ModelSelection } from "@t3tools/contracts";
 
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG as driverBundledClaudeModelCatalog,
@@ -36,7 +36,7 @@ export const BUNDLED_CLAUDE_MODEL_CATALOG: ClaudeModelCatalog = driverBundledCla
 /** Keeps custom model aliases opaque while preserving canonical built-in models and capabilities. */
 export function scopeClaudeModelCatalog(
   catalog: ClaudeModelCatalog,
-  customModels: ReadonlyArray<string>,
+  customModels: ReadonlyArray<CustomModelSetting>,
 ): ClaudeModelCatalog {
   return driverScopeClaudeModelCatalog(catalog, customModels);
 }
