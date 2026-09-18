@@ -92,6 +92,7 @@ interface HomeScreenProps {
     thread: EnvironmentThreadShell,
     direction: "up" | "down",
   ) => Promise<boolean>;
+  readonly onRenameThread: (thread: EnvironmentThreadShell) => void;
   readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
@@ -391,6 +392,10 @@ export function HomeScreen(props: HomeScreenProps) {
     },
     [props.onRegenerateThreadTitle],
   );
+  const handleRenameThread = useCallback(
+    (thread: EnvironmentThreadShell) => props.onRenameThread(thread),
+    [props.onRenameThread],
+  );
   const handleDeleteThread = props.onDeleteThread;
   const handleUnsettleThread = props.onUnsettleThread;
   // The settled tail renders in pages; expansion resets when the filter
@@ -677,6 +682,7 @@ export function HomeScreen(props: HomeScreenProps) {
           onSelectThread={props.onSelectThread}
           onDeleteThread={handleDeleteThread}
           onArchiveThread={props.onArchiveThread}
+          onRenameThread={handleRenameThread}
           onRegenerateThreadTitle={handleRegenerateThreadTitle}
           titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
           settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
@@ -711,6 +717,7 @@ export function HomeScreen(props: HomeScreenProps) {
       handleMovePinnedThread,
       handlePinThread,
       handleRegenerateThreadTitle,
+      handleRenameThread,
       handleSettleThread,
       handleSnoozeThread,
       handleUnpinThread,

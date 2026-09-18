@@ -145,6 +145,7 @@ function ThreadNavigationSidebarPane(
     pinThread,
     unpinThread,
     movePinnedThread,
+    renameThread,
     regenerateThreadTitle,
   } = useThreadListActions();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
@@ -750,6 +751,7 @@ function ThreadNavigationSidebarPane(
               onSelectThread={handleSelectThread}
               onDeleteThread={confirmDeleteThread}
               onArchiveThread={archiveThread}
+              onRenameThread={renameThread}
               onRegenerateThreadTitle={regenerateThreadTitle}
               titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
               settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
@@ -834,6 +836,7 @@ function ThreadNavigationSidebarPane(
       projectTitleByProjectKey,
       queuedThreadKeys,
       regenerateThreadTitle,
+      renameThread,
       props.onNewThreadOnBranch,
       props.searchQuery,
       props.selectedThreadKey,
