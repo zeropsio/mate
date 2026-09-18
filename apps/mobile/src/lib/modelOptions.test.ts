@@ -103,7 +103,7 @@ describe("mobile model options", () => {
     ]);
   });
 
-  it("normalizes a legacy fallback selection against current capabilities", () => {
+  it("does not materialize catalog defaults for missing stored options", () => {
     const config = {
       providers: [
         {
@@ -141,11 +141,17 @@ describe("mobile model options", () => {
     const [option] = buildModelOptions(config, {
       instanceId: ProviderInstanceId.make("codex"),
       model: "gpt-test",
-      options: [{ id: "fastMode", value: true }],
     });
 
     expect(option?.capabilities?.optionDescriptors?.[0]?.id).toBe("serviceTier");
-    expect(option?.selection.options).toEqual([{ id: "serviceTier", value: "default" }]);
+    expect(option?.selection.options).toBeUndefined();
+
+    const [explicitOption] = buildModelOptions(config, {
+      instanceId: ProviderInstanceId.make("codex"),
+      model: "gpt-test",
+      options: [{ id: "serviceTier", value: "priority" }],
+    });
+    expect(explicitOption?.selection.options).toEqual([{ id: "serviceTier", value: "priority" }]);
   });
 
   it("rejects stored selections whose provider is not usable", () => {
@@ -249,8 +255,7 @@ describe("mobile model options", () => {
       expect(option).toMatchObject({
         key: `google_work:${selection.model}`,
         label: model.name,
-        // The fork's mobile picker subtitles a model with its provider label; upstream's
-        // sub-provider subtitles (acb599d2d) are a UI-programme decision, not ported.
+        // An unavailable selection's option subtitles with its provider label.
         subtitle: "Google Work",
         providerKey: "google_work",
         providerLabel: "Google Work",
@@ -298,12 +303,7 @@ describe("mobile model options", () => {
       expect(restored?.isUnavailable).not.toBe(true);
       expect(restored?.selection).toBe(selection);
       expect(resolveDefaultableModelSelection(config, selection)).toBe(selection);
-      // A fresh option carries the descriptor's current value: the fork normalises
-      // through buildProviderOptionSelectionsFromDescriptors, while upstream keeps only
-      // explicit selections (5392c9bb9, not ported).
-      expect(buildModelOptions(config, null)[0]?.selection.options).toEqual([
-        { id: "native-option", value: "current/default" },
-      ]);
+      expect(buildModelOptions(config, null)[0]?.selection.options).toBeUndefined();
     });
 
     it("uses configured instance metadata when provider status is missing", () => {
