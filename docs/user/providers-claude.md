@@ -175,6 +175,12 @@ CLAUDE_CODE_SUBAGENT_MODEL      anthropic/claude-sonnet-4.6
 
 Add those to the same provider's Environment variables section if you want stable model choices.
 
+These variables map Claude Code aliases such as `sonnet`; they do not replace the explicit model
+ID selected in T3 Code. Select the model you want in the chat model picker. For an OpenRouter model
+outside the built-in list, open that Claude provider in Settings, type its full model ID into the
+custom model field of its models list, and press **Add**. Custom models may have fewer effort,
+thinking, or context controls than built-in models.
+
 ### Verify OpenRouter Is Being Used
 
 Open a Claude session and run:
