@@ -69,3 +69,10 @@ When the composer has text, the arrow keys move the caret as usual. Recall takes
 the text is an unedited recalled prompt, with the caret on the first visual line for `ArrowUp` or
 the last visual line for `ArrowDown`, counting wrapped lines. Editing a recalled prompt turns it
 into a normal draft.
+
+## Send while the agent is working
+
+A message sent during a running turn waits at the end of the conversation as a dashed bubble. It
+goes out on its own when the agent finishes its next tool call, or when the turn ends. Use the
+arrow in the bubble to send it right away, or the X to move it back into the composer. Stop
+returns every queued message to the composer.
