@@ -128,6 +128,7 @@ export const make = Effect.gen(function* () {
         target,
         aggregate,
         nowMs: now.epochMilliseconds,
+        replay: true,
       });
     }),
     publish: Effect.fn("relay.agent_activity_publisher.publish")(function* (input) {
