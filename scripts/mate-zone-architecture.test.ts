@@ -1108,7 +1108,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
         "apps/mobile/src/features/threads/threadListV2.ts",
         "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",
-        "infra/relay/src/agentActivity/AgentActivityPublisher.ts",
+        "infra/relay/src/agentActivity/agentActivityAggregate.ts",
       ] as const;
       const violations: Array<{ readonly file: string; readonly reason: string }> = [];
 
