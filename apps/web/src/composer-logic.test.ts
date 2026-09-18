@@ -13,6 +13,27 @@ import {
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
 describe("composerSubmissionIntentForEnter", () => {
+  it.each([
+    ["enter", "one line", false, "foreground"],
+    ["enter", "two\nlines", false, "foreground"],
+    ["mod-enter-multiline", "one line", false, "foreground"],
+    ["mod-enter-multiline", "two\nlines", false, null],
+    ["mod-enter-multiline", "two\nlines", true, "foreground"],
+    ["mod-enter", "one line", false, null],
+    ["mod-enter", "one line", true, "foreground"],
+  ] as const)("uses %s for %j with modifier=%s", (sendShortcut, prompt, modifierKey, expected) => {
+    expect(
+      composerSubmissionIntentForEnter({
+        isMobileViewport: false,
+        shiftKey: false,
+        modifierKey,
+        isDraftThread: false,
+        sendShortcut,
+        prompt,
+      }),
+    ).toBe(expected);
+  });
+
   it("submits plain Enter on desktop", () => {
     expect(
       composerSubmissionIntentForEnter({

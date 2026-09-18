@@ -15,6 +15,7 @@ import * as DesktopClientSettings from "./DesktopClientSettings.ts";
 const clientSettings: ClientSettings = {
   notificationMode: "notifications-and-sound",
   inAppNotificationsEnabled: true,
+  sendShortcut: "mod-enter-multiline",
   appearanceContrast: 100,
   confirmQuit: true,
   confirmThreadArchive: true,

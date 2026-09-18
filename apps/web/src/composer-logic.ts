@@ -1,3 +1,4 @@
+import type { ClientSettings } from "@t3tools/contracts/settings";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
@@ -17,8 +18,13 @@ export function composerSubmissionIntentForEnter(input: {
   shiftKey: boolean;
   modifierKey: boolean;
   isDraftThread: boolean;
+  sendShortcut?: ClientSettings["sendShortcut"];
+  prompt?: string;
 }): ComposerSubmissionIntent | null {
-  if (input.isMobileViewport || input.shiftKey) {
+  const requiresModifier =
+    input.sendShortcut === "mod-enter" ||
+    (input.sendShortcut === "mod-enter-multiline" && /[\r\n]/.test(input.prompt ?? ""));
+  if (input.isMobileViewport || input.shiftKey || (requiresModifier && !input.modifierKey)) {
     return null;
   }
   return input.modifierKey && input.isDraftThread ? "background" : "foreground";

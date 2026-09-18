@@ -126,6 +126,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("enter")),
+  ),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
@@ -1018,6 +1021,7 @@ export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 export const ClientSettingsPatch = Schema.Struct({
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
+  sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   confirmQuit: Schema.optionalKey(Schema.Boolean),

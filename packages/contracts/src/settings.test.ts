@@ -135,6 +135,18 @@ describe("ClaudeSettings auto-compaction", () => {
   });
 });
 
+describe("ClientSettings send shortcut", () => {
+  it("defaults to Enter and round-trips each choice", () => {
+    expect(decodeClientSettings({}).sendShortcut).toBe("enter");
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("sendShortcut");
+    for (const sendShortcut of ["enter", "mod-enter-multiline", "mod-enter"] as const) {
+      expect(decodeClientSettings({ sendShortcut }).sendShortcut).toBe(sendShortcut);
+      expect(decodeClientSettingsPatch({ sendShortcut }).sendShortcut).toBe(sendShortcut);
+    }
+    expect(() => decodeClientSettings({ sendShortcut: "shift-enter" })).toThrow();
+  });
+});
+
 describe("ClientSettings notifications", () => {
   it("requires opt-in when existing settings omit notification preferences", () => {
     expect(decodeClientSettings({}).notificationMode).toBe("off");

@@ -140,6 +140,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "send-shortcut",
+    title: "Send shortcut",
+    to: "/settings/general",
+    searchTerms: ["enter return command ctrl multiline prompt new line composer"],
+  },
+  {
     id: "response-streaming",
     title: "Response streaming",
     to: "/settings/general",

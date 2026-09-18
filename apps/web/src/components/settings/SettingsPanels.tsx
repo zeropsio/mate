@@ -484,6 +484,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.inAppNotificationsEnabled !== DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled
         ? ["In-app notifications"]
         : []),
+      ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
       ...(settings.sidebarProjectGroupingMode !==
       DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
         ? ["Project Grouping"]
@@ -564,6 +565,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.timestampFormat,
       settings.notificationMode,
       settings.inAppNotificationsEnabled,
+      settings.sendShortcut,
       settings.wordWrap,
       followSystem,
       theme,
@@ -639,6 +641,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
+      sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
@@ -1829,6 +1832,12 @@ function LegacyFeaturesSection() {
 }
 
 export function GeneralSettingsPanel() {
+  const modifierLabel = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
+  const sendShortcutOptions = [
+    { value: "enter", label: "Enter" },
+    { value: "mod-enter-multiline", label: `${modifierLabel} + Enter for multiline prompts` },
+    { value: "mod-enter", label: `${modifierLabel} + Enter always` },
+  ] as const;
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const navigate = useNavigate();
@@ -2059,6 +2068,45 @@ export function GeneralSettingsPanel() {
                 <SelectItem hideIndicator value="24-hour">
                   {TIMESTAMP_FORMAT_LABELS["24-hour"]}
                 </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("send-shortcut")}
+          description="Choose when Enter sends a prompt or inserts a new line."
+          resetAction={
+            settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? (
+              <SettingResetButton
+                label="send shortcut"
+                onClick={() =>
+                  updateSettings({ sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.sendShortcut}
+              onValueChange={(value) => {
+                const option = sendShortcutOptions.find((option) => option.value === value);
+                if (option) updateSettings({ sendShortcut: option.value });
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-auto sm:min-w-40" aria-label="Send shortcut">
+                <SelectValue>
+                  {
+                    sendShortcutOptions.find((option) => option.value === settings.sendShortcut)
+                      ?.label
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {sendShortcutOptions.map((option) => (
+                  <SelectItem hideIndicator key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectPopup>
             </Select>
           }
