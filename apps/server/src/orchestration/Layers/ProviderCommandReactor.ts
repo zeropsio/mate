@@ -53,6 +53,7 @@ import { canReplaceThreadTitle, DEFAULT_THREAD_TITLE } from "../threadTitles.ts"
 import {
   resolveSourceControlWriterModelSelection,
   ServerSettingsService,
+  textGenerationSelectionForThread,
 } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
@@ -964,8 +965,12 @@ const make = Effect.gen(function* () {
     }) {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } =
-          yield* serverSettingsService.getSettings;
+        const titled = yield* resolveThread(input.threadId);
+        if (!titled) return;
+        const modelSelection = textGenerationSelectionForThread(
+          yield* serverSettingsService.getSettings,
+          titled.modelSelection,
+        );
 
         const generated = yield* textGeneration
           .generateThreadTitle({
@@ -1034,8 +1039,10 @@ const make = Effect.gen(function* () {
         thread,
         projects: project ? [project] : [],
       }) ?? process.cwd();
-    const { textGenerationModelSelection: modelSelection } =
-      yield* serverSettingsService.getSettings;
+    const modelSelection = textGenerationSelectionForThread(
+      yield* serverSettingsService.getSettings,
+      thread.modelSelection,
+    );
     const generated = yield* textGeneration.generateThreadTitle({
       cwd,
       message,

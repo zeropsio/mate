@@ -13,6 +13,7 @@
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  isProviderDriverKind,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
   type ModelSelection,
@@ -311,6 +312,38 @@ function restoreUsedProviders(
       },
     },
     providerInstances,
+  };
+}
+
+/**
+ * Which provider titles a thread: the thread's own, when it is enabled. The
+ * server-wide text-generation setting falls back to any enabled provider,
+ * signed in or not, so a Mate where only Claude Code was signed in asked
+ * Codex for every title and got `401 Unauthorized` each turn (Juno's log,
+ * 2026-09-17). The model is the provider's text-generation default, never
+ * the thread's own: a title is not worth the thread's model.
+ */
+export function textGenerationSelectionForThread(
+  settings: ServerSettings,
+  thread: ModelSelection,
+): ModelSelection {
+  const configured = settings.textGenerationModelSelection;
+  if (
+    configured.instanceId === thread.instanceId ||
+    !isModelSelectionProviderEnabled(settings, thread)
+  ) {
+    return configured;
+  }
+  const driver =
+    settings.providerInstances[thread.instanceId]?.driver ??
+    (isProviderDriverKind(thread.instanceId) ? thread.instanceId : undefined);
+  return {
+    instanceId: thread.instanceId,
+    model:
+      (driver === undefined
+        ? undefined
+        : (DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER[driver] ??
+          DEFAULT_MODEL_BY_PROVIDER[driver])) ?? thread.model,
   };
 }
 

@@ -1049,3 +1049,48 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 });
+
+it("titles a thread with the thread's own provider when it is enabled, on that provider's title model", () => {
+  const settings: ServerSettings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    providers: {
+      ...DEFAULT_SERVER_SETTINGS.providers,
+      claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: true },
+    },
+    textGenerationModelSelection: createModelSelection(
+      ProviderInstanceId.make("codex"),
+      "gpt-5-codex",
+    ),
+  };
+  const thread = createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-opus-5");
+  assert.deepEqual(ServerSettingsModule.textGenerationSelectionForThread(settings, thread), {
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    model: "claude-haiku-4-5",
+  });
+});
+
+it("keeps the configured title provider when the thread's is not enabled, or is the same one", () => {
+  const configured = createModelSelection(ProviderInstanceId.make("codex"), "gpt-5-codex");
+  const settings: ServerSettings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    providers: {
+      ...DEFAULT_SERVER_SETTINGS.providers,
+      claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: false },
+    },
+    textGenerationModelSelection: configured,
+  };
+  assert.strictEqual(
+    ServerSettingsModule.textGenerationSelectionForThread(
+      settings,
+      createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-opus-5"),
+    ),
+    configured,
+  );
+  assert.strictEqual(
+    ServerSettingsModule.textGenerationSelectionForThread(
+      settings,
+      createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.1"),
+    ),
+    configured,
+  );
+});
