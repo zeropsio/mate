@@ -104,6 +104,9 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
   const topology = useProjectTopology(environmentId ?? null);
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
   const [generation, setGeneration] = useState(0);
+  // The verb that is running, by its block: the row says so where it was
+  // pressed, and takes no second click while it runs.
+  const [running, setRunning] = useState<string | null>(null);
   const pull = useVcsPullAction({ environmentId: environmentId ?? null, cwd: null });
 
   const onState = useCallback((hostname: string, state: GitCheckoutState) => {
@@ -187,10 +190,14 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     // The forge is read again once the verb has settled, not when it was
     // pressed: a read racing the request it asks about would show the row as
     // it was (2026-09-17, the request opened and the row kept offering it).
+    const key = `${block.repository} ${action.kind}`;
+    const isRunning = running === key;
     const settled = () => {
+      setRunning((current) => (current === key ? null : current));
       setGeneration((current) => current + 1);
     };
     const run = () => {
+      setRunning(key);
       switch (action.kind) {
         case "update-from-main":
           void pull.run().finally(settled);
@@ -208,7 +215,13 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       }
     };
     if (action.kind === "push") return null;
-    return <ZeropsMateVerb label={action.label} onClick={run} />;
+    return (
+      <ZeropsMateVerb
+        disabled={isRunning}
+        label={isRunning ? action.running : action.label}
+        onClick={run}
+      />
+    );
   };
 
   return (

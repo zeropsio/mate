@@ -173,7 +173,12 @@ describe("every state of a block", () => {
   it("an unpushed branch offers Push, and only Push", () => {
     const answer = block(checkout({ headRef: "feature/invoices", hasUpstream: false }));
     expect(answer.state).toBe("unpushed");
-    expect(answer.action).toEqual({ kind: "push", label: "Push", ownerOnly: true });
+    expect(answer.action).toEqual({
+      kind: "push",
+      label: "Push",
+      running: "Pushing…",
+      ownerOnly: true,
+    });
   });
 
   it("commits ahead of the remote are unpushed too", () => {
@@ -188,6 +193,7 @@ describe("every state of a block", () => {
     expect(answer.action).toEqual({
       kind: "update-from-main",
       label: "Update from main",
+      running: "Updating…",
       ownerOnly: true,
     });
   });
@@ -202,6 +208,7 @@ describe("every state of a block", () => {
     expect(block(checkout({ headRef: "feature/invoices" })).action).toEqual({
       kind: "open-pull-request",
       label: "Open pull request",
+      running: "Opening…",
       ownerOnly: false,
     });
   });
@@ -227,7 +234,12 @@ describe("every state of a block", () => {
       checkout({ headRef: "feature/invoices" }),
       forge({ pullRequest: pull({ mergeable: true }) }),
     );
-    expect(mergeable.action).toEqual({ kind: "merge", label: "Merge", ownerOnly: false });
+    expect(mergeable.action).toEqual({
+      kind: "merge",
+      label: "Merge",
+      running: "Merging…",
+      ownerOnly: false,
+    });
     const blocked = block(
       checkout({ headRef: "feature/invoices" }),
       forge({ pullRequest: pull({ mergeable: false }) }),
@@ -355,10 +367,18 @@ describe("a setup proved broken offers no verb that would fail", () => {
 
 describe("the owner-only gate on checkout verbs", () => {
   it.each([
-    { name: "Push", action: { kind: "push", label: "Push", ownerOnly: true } as const },
+    {
+      name: "Push",
+      action: { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true } as const,
+    },
     {
       name: "Update from main",
-      action: { kind: "update-from-main", label: "Update from main", ownerOnly: true } as const,
+      action: {
+        kind: "update-from-main",
+        label: "Update from main",
+        running: "Updating…",
+        ownerOnly: true,
+      } as const,
     },
   ])("$name runs only for the Mate's owner", ({ action }) => {
     expect(gitActionAllowed(action, { isOwner: true })).toBe(true);
@@ -368,9 +388,22 @@ describe("the owner-only gate on checkout verbs", () => {
   it.each([
     {
       name: "Open pull request",
-      action: { kind: "open-pull-request", label: "Open pull request", ownerOnly: false } as const,
+      action: {
+        kind: "open-pull-request",
+        label: "Open pull request",
+        running: "Opening…",
+        ownerOnly: false,
+      } as const,
     },
-    { name: "Merge", action: { kind: "merge", label: "Merge", ownerOnly: false } as const },
+    {
+      name: "Merge",
+      action: {
+        kind: "merge",
+        label: "Merge",
+        running: "Merging…",
+        ownerOnly: false,
+      } as const,
+    },
   ])("$name is Gitea's to police, so anyone here may press it", ({ action }) => {
     expect(gitActionAllowed(action, { isOwner: false })).toBe(true);
   });

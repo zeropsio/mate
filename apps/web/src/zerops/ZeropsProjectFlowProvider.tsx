@@ -16,6 +16,7 @@
 import {
   botDisplayName,
   environmentRow,
+  flowVerbKey,
   readZeropsGroupTags,
   releaseDeploys,
   releaseEntriesFromStage,
@@ -102,6 +103,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   const [generation, setGeneration] = useState(0);
   const [trouble, setTrouble] = useState<string | null>(null);
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
   const deploys = useZeropsGroupDeploys({ groups, giteaOrigin, readVersion, enabled });
@@ -148,6 +150,24 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     setGeneration((current) => current + 1);
   }, []);
 
+  /** Holds the verb's key in `pending` while it runs, then reads the flow again. */
+  const run = useCallback(
+    async (key: string, act: () => Promise<void>) => {
+      setPending((current) => new Set(current).add(key));
+      try {
+        await act();
+      } finally {
+        setPending((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+        settled();
+      }
+    },
+    [settled],
+  );
+
   const slugs = useMemo(
     () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
     [registry.registry.groups],
@@ -171,16 +191,19 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (giteaOrigin === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      try {
-        await client.mergePullRequest(slug, pull.repository, pull.number, { style: "merge" });
-        setTrouble(null);
-      } catch (cause) {
-        setTrouble(`Gitea would not merge it: ${zeropsErrorMessage(cause)}`);
-      } finally {
-        settled();
-      }
+      await run(
+        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
+        async () => {
+          try {
+            await client.mergePullRequest(slug, pull.repository, pull.number, { style: "merge" });
+            setTrouble(null);
+          } catch (cause) {
+            setTrouble(`Gitea would not merge it: ${zeropsErrorMessage(cause)}`);
+          }
+        },
+      );
     },
-    [giteaOrigin, settled],
+    [giteaOrigin, run],
   );
 
   const createPullRequest = useCallback(
@@ -196,20 +219,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (giteaOrigin === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      try {
-        await client.createPullRequest(slug, input.repository, {
-          head: input.head,
-          base: input.base,
-          title: input.title,
-        });
-        setTrouble(null);
-      } catch (cause) {
-        setTrouble(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
-      } finally {
-        settled();
-      }
+      await run(
+        flowVerbKey({ kind: "open", slug, repository: input.repository, head: input.head }),
+        async () => {
+          try {
+            await client.createPullRequest(slug, input.repository, {
+              head: input.head,
+              base: input.base,
+              title: input.title,
+            });
+            setTrouble(null);
+          } catch (cause) {
+            setTrouble(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
+          }
+        },
+      );
     },
-    [giteaOrigin, settled],
+    [giteaOrigin, run],
   );
 
   /** A tag on the group repo's `main`, as the person; Gitea's tag protection is the real gate. */
@@ -233,11 +259,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             ? "Only releasers can tag."
             : "Gitea would not create the tag.",
         );
-      } finally {
-        settled();
       }
     },
-    [giteaOrigin, settled],
+    [giteaOrigin],
   );
 
   const release = useCallback(
@@ -246,13 +270,15 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (flow === undefined) return;
       const entries = releaseEntriesFromStage(releaseDeploys(flow.environmentInputs).stage);
       if (entries.length === 0) return;
-      await tagAs(
-        flow.slug,
-        releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
-        releaseMessage(entries),
+      await run(flowVerbKey({ kind: "release", groupId }), () =>
+        tagAs(
+          flow.slug,
+          releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
+          releaseMessage(entries),
+        ),
       );
     },
-    [flows, tagAs],
+    [flows, run, tagAs],
   );
 
   const rollBack = useCallback(
@@ -261,23 +287,25 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       if (flow === undefined || giteaOrigin === undefined) return;
       const client = giteaClientFor(giteaOrigin);
       if (client === null) return;
-      const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
-      const found = tags.find((entry) => entry.name === earlier);
-      const plan =
-        found === undefined
-          ? undefined
-          : rollbackTo({
-              tag: found.name,
-              message: found.message ?? "",
-              existingTags: tags.map((entry) => entry.name),
-            });
-      if (plan === undefined) {
-        setTrouble(`${earlier} does not list commits this build can read.`);
-        return;
-      }
-      await tagAs(flow.slug, plan.tag, plan.message);
+      await run(flowVerbKey({ kind: "roll-back", groupId, tag: earlier }), async () => {
+        const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
+        const found = tags.find((entry) => entry.name === earlier);
+        const plan =
+          found === undefined
+            ? undefined
+            : rollbackTo({
+                tag: found.name,
+                message: found.message ?? "",
+                existingTags: tags.map((entry) => entry.name),
+              });
+        if (plan === undefined) {
+          setTrouble(`${earlier} does not list commits this build can read.`);
+          return;
+        }
+        await tagAs(flow.slug, plan.tag, plan.message);
+      });
     },
-    [flows, giteaOrigin, tagAs],
+    [flows, giteaOrigin, run, tagAs],
   );
 
   const value = useMemo<ZeropsProjectFlowValue>(
@@ -288,6 +316,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows,
       slugs,
       mateNames,
+      pending,
       trouble,
       refresh: settled,
       mergePullRequest,
@@ -301,6 +330,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       giteaOrigin,
       mateNames,
       mergePullRequest,
+      pending,
       release,
       rollBack,
       settled,

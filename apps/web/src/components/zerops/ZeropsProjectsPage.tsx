@@ -71,6 +71,8 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  flowVerbKey,
+  flowVerbLabel,
   deployWord,
   rankZeropsCandidateForListing,
   defaultAgentForRole,
@@ -1471,12 +1473,18 @@ function ZeropsProjectsContent() {
   const pullRequestRowOf = (group: ZeropsGroup, pull: FlowPullRequest) => {
     const slug = groupDeploys.get(group.groupId)?.slug;
     const tone = checkDotTone(pull);
+    const merging =
+      slug !== undefined &&
+      projectFlow.pending.has(
+        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
+      );
     return (
       <ZeropsPullRequestRow
         action={
           pull.mergeable && slug !== undefined ? (
             <ZeropsMateVerb
-              label="Merge"
+              disabled={merging}
+              label={flowVerbLabel("merge", merging)}
               onClick={() => {
                 void projectFlow.mergePullRequest(slug, pull);
               }}
@@ -2064,12 +2072,16 @@ function ZeropsProjectsContent() {
             groupDeploys.get(tags.groupId)?.release.gate.allowed === true
               ? tags.groupId
               : undefined;
+          const releasing =
+            releaseFor !== undefined &&
+            projectFlow.pending.has(flowVerbKey({ kind: "release", groupId: releaseFor }));
           return (
             <ZeropsEnvironmentRow
               action={
                 releaseFor !== undefined ? (
                   <ZeropsMateVerb
-                    label="Release"
+                    disabled={releasing}
+                    label={flowVerbLabel("release", releasing)}
                     onClick={() => {
                       void projectFlow.release(releaseFor);
                     }}
@@ -2133,12 +2145,16 @@ function ZeropsProjectsContent() {
                 on an earlier approved one, the way back to it. */}
             {(groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {
               const tone = releaseRowTone(release.verdict);
+              const rollingBack = projectFlow.pending.has(
+                flowVerbKey({ kind: "roll-back", groupId: group.groupId, tag: release.tag }),
+              );
               return (
                 <ZeropsEnvironmentRow
                   action={
                     release.rollBack ? (
                       <ZeropsMateVerb
-                        label="Roll back to this"
+                        disabled={rollingBack}
+                        label={flowVerbLabel("roll-back", rollingBack)}
                         onClick={() => {
                           void projectFlow.rollBack(group.groupId, release.tag);
                         }}

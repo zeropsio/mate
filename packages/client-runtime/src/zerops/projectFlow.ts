@@ -225,3 +225,52 @@ export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow 
     rollBack: index > 0 && release.verdict === "approved",
   };
 }
+
+/** A verb the person runs on the flow, as the surfaces key its progress. */
+export type FlowVerb =
+  | {
+      readonly kind: "merge";
+      readonly slug: string;
+      readonly repository: string;
+      readonly number: number;
+    }
+  | {
+      readonly kind: "open";
+      readonly slug: string;
+      readonly repository: string;
+      readonly head: string;
+    }
+  | { readonly kind: "release"; readonly groupId: string }
+  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
+
+/**
+ * One key per verb and target: a row shows its own verb running and takes
+ * no second click, and no other row's verb changes it (the audit run,
+ * 2026-09-17: *Merge* and *Release* gave no sign where they were pressed).
+ */
+export function flowVerbKey(verb: FlowVerb): string {
+  switch (verb.kind) {
+    case "merge":
+      return `merge ${verb.slug}/${verb.repository}#${verb.number}`;
+    case "open":
+      return `open ${verb.slug}/${verb.repository} ${verb.head}`;
+    case "release":
+      return `release ${verb.groupId}`;
+    case "roll-back":
+      return `roll-back ${verb.groupId} ${verb.tag}`;
+  }
+}
+
+/** The verb's word on a row: what it does, or what it is doing while it runs. */
+export function flowVerbLabel(kind: FlowVerb["kind"], running: boolean): string {
+  switch (kind) {
+    case "merge":
+      return running ? "Merging…" : "Merge";
+    case "open":
+      return running ? "Opening…" : "Open pull request";
+    case "release":
+      return running ? "Releasing…" : "Release";
+    case "roll-back":
+      return running ? "Rolling back…" : "Roll back to this";
+  }
+}

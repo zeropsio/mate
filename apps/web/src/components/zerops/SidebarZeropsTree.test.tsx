@@ -294,6 +294,8 @@ describe("the project's flow under it", () => {
       ["crm-prod", productionRow],
     ]),
     releaseOffered: true,
+    merging: () => false,
+    releasing: false,
     onMerge: () => {},
     onRelease: () => {},
     ...overrides,
@@ -320,6 +322,16 @@ describe("the project's flow under it", () => {
     expect(
       withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
     ).not.toContain('data-zerops-primary-action="Merge"');
+  });
+
+  it("says a verb is running where it was pressed, and takes no second click", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE, CRM_PROD],
+      flow({ merging: () => true, releasing: true }),
+    );
+    expect(html).toContain('data-zerops-primary-action="Merging…" disabled=""');
+    expect(html).toContain('data-zerops-primary-action="Releasing…" disabled=""');
+    expect(html).not.toContain('data-zerops-primary-action="Merge"');
   });
 
   it("folds a Mate's pull requests behind a count once there are more than three", () => {

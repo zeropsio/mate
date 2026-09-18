@@ -106,6 +106,8 @@ export type GitBlockActionKind = "open-pull-request" | "update-from-main" | "pus
 export interface GitBlockAction {
   readonly kind: GitBlockActionKind;
   readonly label: string;
+  /** The verb's word while it runs — "Merging…" — so the row says so where it was pressed. */
+  readonly running: string;
   /**
    * The verb runs in the container, through the Mate server, as the agent's
    * user — so only the Mate's owner may press it (D11). A verb that runs in
@@ -252,21 +254,31 @@ function actionOf(
 ): GitBlockAction | undefined {
   if (state === "no-repository" || state === "merged") return undefined;
   if (state === "unpushed" && checkout.isRepo) {
-    return { kind: "push", label: "Push", ownerOnly: true };
+    return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
   }
   if (checkout.behindCount > 0) {
-    return { kind: "update-from-main", label: "Update from main", ownerOnly: true };
+    return {
+      kind: "update-from-main",
+      label: "Update from main",
+      running: "Updating…",
+      ownerOnly: true,
+    };
   }
   if (state === "in-review") {
     // Gitea decides whether this person may merge; the app only offers it
     // where Gitea already said yes for that branch.
     return forge.pullRequest?.mergeable === true
-      ? { kind: "merge", label: "Merge", ownerOnly: false }
+      ? { kind: "merge", label: "Merge", running: "Merging…", ownerOnly: false }
       : undefined;
   }
   const defaultBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
   if (checkout.headRef === null || checkout.headRef === defaultBranch) return undefined;
-  return { kind: "open-pull-request", label: "Open pull request", ownerOnly: false };
+  return {
+    kind: "open-pull-request",
+    label: "Open pull request",
+    running: "Opening…",
+    ownerOnly: false,
+  };
 }
 
 /** One repository's block — the two lines and the verb. */

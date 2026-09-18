@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
   flowPullRequest,
+  flowVerbKey,
+  flowVerbLabel,
   mateBotLogin,
   mateProjectOfBranch,
   mateProjectOfLogin,
@@ -235,6 +237,31 @@ describe("a release's row", () => {
     expect(row.word).toBe("Refused");
     expect(row.line).toBe("ada is not a releaser");
     expect(releaseRow(newest, 0).line).toBe("api 3f9c1b2");
+  });
+});
+
+describe("a verb in flight", () => {
+  it("keys each verb by its target, so one row's Merge is nobody else's", () => {
+    const merge4 = flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 });
+    expect(merge4).toBe(
+      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 4 }),
+    );
+    expect(merge4).not.toBe(
+      flowVerbKey({ kind: "merge", slug: "todo", repository: "appdev", number: 3 }),
+    );
+    expect(flowVerbKey({ kind: "release", groupId: "g1" })).not.toBe(
+      flowVerbKey({ kind: "roll-back", groupId: "g1", tag: "v0.1.0" }),
+    );
+  });
+
+  it.each([
+    ["merge", "Merge", "Merging…"],
+    ["open", "Open pull request", "Opening…"],
+    ["release", "Release", "Releasing…"],
+    ["roll-back", "Roll back to this", "Rolling back…"],
+  ] as const)("says what %s does, then that it is doing it", (kind, idle, running) => {
+    expect(flowVerbLabel(kind, false)).toBe(idle);
+    expect(flowVerbLabel(kind, true)).toBe(running);
   });
 });
 

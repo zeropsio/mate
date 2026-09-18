@@ -199,7 +199,7 @@ import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
-import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import { flowVerbKey, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1721,6 +1721,16 @@ export default function Sidebar() {
         pullRequests: flow.pullRequests,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
+        merging: (pull) =>
+          zeropsProjectFlow.pending.has(
+            flowVerbKey({
+              kind: "merge",
+              slug: flow.slug,
+              repository: pull.repository,
+              number: pull.number,
+            }),
+          ),
+        releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
         onMerge: (pull) => {
           void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
         },

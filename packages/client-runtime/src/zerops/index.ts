@@ -342,6 +342,8 @@ export {
 } from "./giteaClient.ts";
 export {
   flowPullRequest,
+  flowVerbKey,
+  flowVerbLabel,
   GROUP_REPOSITORY,
   mateBotLogin,
   mateProjectOfBranch,
@@ -355,6 +357,7 @@ export {
   type FlowPullRequestKind,
   type FlowRelease,
   type FlowReleaseRow,
+  type FlowVerb,
 } from "./projectFlow.ts";
 export {
   giteaOverview,

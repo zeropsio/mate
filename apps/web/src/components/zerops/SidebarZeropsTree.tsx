@@ -32,6 +32,7 @@
 import {
   assignCandidateMateTints,
   botDisplayName,
+  flowVerbLabel,
   buildZeropsGroupTree,
   deployWord,
   hasMate,
@@ -85,6 +86,10 @@ export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
+  /** Whether this pull request's *Merge* is running. */
+  readonly merging: (pull: FlowPullRequest) => boolean;
+  /** Whether the project's *Release* is running. */
+  readonly releasing: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onRelease: () => void;
 }
@@ -221,6 +226,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               />
               {pulls.length === 0 || flow === undefined ? null : (
                 <PullRequestList
+                  merging={flow.merging}
                   onMerge={flow.onMerge}
                   onToggle={() => {
                     toggle(listKey);
@@ -237,6 +243,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             {grouped.others.map((pull) => (
               <PullRequestRow
                 key={`${pull.repository}#${pull.number}`}
+                merging={flow.merging(pull)}
                 onMerge={flow.onMerge}
                 pull={pull}
               />
@@ -407,11 +414,13 @@ function PullRequestList({
   pulls,
   open,
   onToggle,
+  merging,
   onMerge,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
   readonly open: boolean;
   readonly onToggle: () => void;
+  readonly merging: (pull: FlowPullRequest) => boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
 }) {
   const folded = pullRequestsFolded(pulls.length);
@@ -439,6 +448,7 @@ function PullRequestList({
           {pulls.map((pull) => (
             <PullRequestRow
               key={`${pull.repository}#${pull.number}`}
+              merging={merging(pull)}
               onMerge={onMerge}
               pull={pull}
             />
@@ -457,9 +467,11 @@ function PullRequestList({
  */
 function PullRequestRow({
   pull,
+  merging,
   onMerge,
 }: {
   readonly pull: FlowPullRequest;
+  readonly merging: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
 }) {
   const tone = checkDotTone({ checks: pull.checks });
@@ -487,7 +499,13 @@ function PullRequestRow({
           <TooltipPopup side="right">{pull.checkWord}</TooltipPopup>
         </Tooltip>
       )}
-      {pull.mergeable ? <ZeropsMateVerb label="Merge" onClick={() => onMerge(pull)} /> : null}
+      {pull.mergeable ? (
+        <ZeropsMateVerb
+          disabled={merging}
+          label={flowVerbLabel("merge", merging)}
+          onClick={() => onMerge(pull)}
+        />
+      ) : null}
     </li>
   );
 }
@@ -528,7 +546,13 @@ function EnvironmentRows<T extends RosterCandidate>({
                 <TooltipPopup side="right">{word}</TooltipPopup>
               </Tooltip>
             )}
-            {release ? <ZeropsMateVerb label="Release" onClick={flow.onRelease} /> : null}
+            {release ? (
+              <ZeropsMateVerb
+                disabled={flow.releasing}
+                label={flowVerbLabel("release", flow.releasing)}
+                onClick={flow.onRelease}
+              />
+            ) : null}
             <span className="ms-auto flex w-6 shrink-0 justify-center">
               <ZeropsRoutesMenu
                 label={`Public access of ${item.project.name}`}

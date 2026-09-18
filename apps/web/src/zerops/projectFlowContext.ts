@@ -56,6 +56,8 @@ export interface ZeropsProjectFlowValue {
   readonly slugs: ReadonlyMap<string, string>;
   /** Every Mate's name by its project, for a surface that meets a bot login (`mate-{projectId}`). */
   readonly mateNames: ReadonlyMap<string, string>;
+  /** The verbs in flight, by `flowVerbKey`: a row shows its own running and takes no second click. */
+  readonly pending: ReadonlySet<string>;
   /** What the last verb's refusal said, until the next verb. */
   readonly trouble: string | null;
   readonly refresh: () => void;
