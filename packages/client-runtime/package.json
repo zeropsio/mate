@@ -306,6 +306,14 @@
     "./zerops/serverCompatibility": {
       "types": "./src/zerops/serverCompatibility.ts",
       "default": "./src/zerops/serverCompatibility.ts"
+    },
+    "./work-log/presentation": {
+      "types": "./src/work-log/presentation.ts",
+      "default": "./src/work-log/presentation.ts"
+    },
+    "./work-log/command-label": {
+      "types": "./src/work-log/commandLabel.ts",
+      "default": "./src/work-log/commandLabel.ts"
     }
   },
   "scripts": {
