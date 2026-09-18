@@ -476,7 +476,13 @@ function SortablePinnedThreadRow(props: {
     id: props.id,
     animateLayoutChanges: animatePinnedLayoutChanges,
   });
-  return props.children({ listeners, setNodeRef, transform, transition, isDragging });
+  // dnd-kit memoizes each field but not the bag, so the memoized row would
+  // rerender on every shell update without this.
+  const bag = useMemo(
+    () => ({ listeners, setNodeRef, transform, transition, isDragging }),
+    [listeners, setNodeRef, transform, transition, isDragging],
+  );
+  return props.children(bag);
 }
 
 // One unsent draft session the user has invested content in. Two lines,
