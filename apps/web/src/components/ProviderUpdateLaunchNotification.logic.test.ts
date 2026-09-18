@@ -12,7 +12,6 @@ import {
   getProviderUpdateProgressToastView,
   getProviderUpdateRejectedToastView,
   getProviderUpdateSidebarPillView,
-  getSingleProviderUpdateProgressToastView,
   hasOneClickUpdateProviderCandidate,
   isProviderUpdateCandidate,
   isTerminalProviderUpdatePhase,
@@ -348,29 +347,6 @@ describe("provider update launch notification logic", () => {
       description: "command failed",
     });
   });
-
-  it("resolves a single-provider completion view from the returned provider snapshot", () => {
-    const view = getSingleProviderUpdateProgressToastView(
-      provider({
-        driver: driver("codex"),
-        updateState: {
-          status: "failed",
-          startedAt: checkedAt,
-          finishedAt: checkedAt,
-          message: "command failed",
-          output: "stderr",
-        },
-      }),
-    );
-
-    expect(view).toMatchObject({
-      phase: "failed",
-      type: "error",
-      title: "Codex v1.1.0 update failed",
-      description: "command failed",
-    });
-  });
-
   it("keeps unchanged providers actionable from settings", () => {
     const view = getProviderUpdateProgressToastView({
       providers: [
@@ -424,32 +400,6 @@ describe("provider update launch notification logic", () => {
       dismissAfterVisibleMs: 3_000,
     });
   });
-
-  it("uses the updated version in the single-provider success toast title", () => {
-    const view = getSingleProviderUpdateProgressToastView(
-      provider({
-        driver: driver("codex"),
-        version: "1.1.0",
-        latestVersion: "1.1.0",
-        advisoryStatus: "current",
-        updateState: {
-          status: "succeeded",
-          startedAt: checkedAt,
-          finishedAt: checkedAt,
-          message: "Provider updated.",
-          output: null,
-        },
-      }),
-    );
-
-    expect(view).toMatchObject({
-      phase: "succeeded",
-      type: "success",
-      title: "Codex updated: v1.1.0",
-      description: "New sessions will use the updated provider.",
-    });
-  });
-
   it("falls back to a rejected RPC message for transport-level failures", () => {
     const results = [AsyncResult.failure(Cause.die(new Error("WebSocket closed")))];
 

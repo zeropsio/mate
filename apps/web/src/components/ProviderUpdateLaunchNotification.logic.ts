@@ -328,41 +328,6 @@ export function getProviderUpdateProgressToastView(input: {
   return getProviderUpdateRunningToastView(input.providerCount);
 }
 
-export function getSingleProviderUpdateProgressToastView(
-  provider: ServerProvider,
-): ProviderUpdateToastView {
-  const view = getProviderUpdateProgressToastView({
-    providers: [provider],
-    providerCount: 1,
-  });
-  const providerName = PROVIDER_DISPLAY_NAMES[provider.driver] ?? provider.driver;
-
-  switch (view.phase) {
-    case "running":
-      return {
-        ...view,
-        title: `Updating ${providerName}`,
-      };
-    case "failed":
-      return {
-        ...view,
-        title: getProviderFailedUpdateTitle(provider),
-      };
-    case "unchanged":
-      return {
-        ...view,
-        title: `${providerName} still needs an update`,
-      };
-    case "succeeded":
-      return {
-        ...view,
-        title: getProviderUpdatedTitle(provider),
-      };
-    default:
-      return view;
-  }
-}
-
 export function collectUpdatedProviderSnapshots(input: {
   readonly results: ReadonlyArray<
     AtomCommandResult<{ readonly providers: ReadonlyArray<ServerProvider> }, unknown>
