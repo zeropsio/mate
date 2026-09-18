@@ -1,9 +1,11 @@
 /**
  * Giving the broker's Zerops token one more project, and registering a Mate.
  *
- * The broker holds the one deploy key on the account (`docs/vocabulary.md`,
- * "the broker's token"): org `READ_ONLY`, `BASIC_USER` on the Gitea project,
- * and `BASIC_USER` on every stage, production and Mate as the app makes them.
+ * The broker's own Zerops token (`docs/vocabulary.md`, "the broker's token"):
+ * org `READ_ONLY`, `BASIC_USER` on the Gitea project, and `BASIC_USER` on
+ * every stage, production and Mate as the app makes them. It reads and decides
+ * with it; since D27 a job deploys, on the environment's own deploy token
+ * (`deployToken.ts`).
  * A Mate needs it because the broker's rights loop, not the app, delivers a
  * Mate's Gitea access — it finds the Mate's `zcp` service with that token and
  * writes the three variables on it (D20, `broker-api.md`, "A Mate's Gitea

@@ -2160,6 +2160,27 @@ export class ZeropsApiClient {
   }
 
   /**
+   * The names of a service's own variables — never a value. It is all the app
+   * ever learns about an environment's deploy token once it has written it:
+   * whether the broker's service carries it (`deployToken.ts`, D27).
+   */
+  async listServiceVariableNames(
+    serviceId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<string>> {
+    return (await this.#serviceEnv(serviceId, signal)).map((entry) => entry.key);
+  }
+
+  /** `POST /service-stack/{id}/user-data` — one sensitive variable on a service, written once. */
+  async writeServiceSecret(
+    input: { readonly serviceId: string; readonly key: string; readonly content: string },
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    await this.#writeServiceEnvOnce({ ...input, sensitive: true }, signal, beforeWrite);
+  }
+
+  /**
    * `POST /service-stack/{id}/user-data`.
    *
    * A create the platform refuses is checked rather than swallowed: the only

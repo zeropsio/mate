@@ -39,6 +39,11 @@ function apiFake(overrides: Record<string, unknown> = {}) {
       },
     ]),
     setIntegrationTokenProjects: vi.fn().mockResolvedValue(undefined),
+    listProjectServices: vi.fn().mockResolvedValue([{ id: "svc-broker", name: "broker" }]),
+    listServiceVariableNames: vi.fn().mockResolvedValue(["MATE_ZEROPS_TOKEN"]),
+    mintIntegrationToken: vi.fn().mockResolvedValue({ id: "t-deploy", token: "the-stage-key" }),
+    writeServiceSecret: vi.fn().mockResolvedValue(undefined),
+    deleteIntegrationToken: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -60,7 +65,12 @@ describe("addGroupEnvironment", () => {
     const gitea = giteaFake();
     const outcome = await addGroupEnvironment(base(api, gitea));
 
-    expect(outcome.done).toEqual(["registry", "broker-grant", "environments-document"]);
+    expect(outcome.done).toEqual([
+      "registry",
+      "broker-grant",
+      "deploy-token",
+      "environments-document",
+    ]);
     expect(outcome.failed).toBeUndefined();
     expect(api.writeGroupRegistry).toHaveBeenCalledWith(
       {
@@ -215,6 +225,15 @@ describe("addGroupEnvironment", () => {
       reason: "This account has no broker to deploy with yet.",
       done: ["registry"],
     },
+    {
+      name: "a deploy key the platform would not mint",
+      patch: {
+        mintIntegrationToken: vi.fn().mockRejectedValue(new Error("Only admins mint tokens.")),
+      },
+      step: "deploy-token",
+      reason: "Only admins mint tokens.",
+      done: ["registry", "broker-grant"],
+    },
   ])("stops at $name and says which step", async ({ patch, step, reason, done }) => {
     const outcome = await addGroupEnvironment(base(apiFake(patch), giteaFake()));
     expect(outcome.failed).toEqual({ step, reason });
@@ -223,8 +242,64 @@ describe("addGroupEnvironment", () => {
 
   it("keeps the project when nobody is signed in to Gitea yet", async () => {
     const outcome = await addGroupEnvironment(base(apiFake(), null));
-    expect(outcome.done).toEqual(["registry", "broker-grant"]);
+    expect(outcome.done).toEqual(["registry", "broker-grant", "deploy-token"]);
     expect(outcome.failed?.step).toBe("environments-document");
+  });
+});
+
+describe("the environment's deploy token (D27)", () => {
+  it("is minted for that one project and written on the broker's service, before the declaration", async () => {
+    const api = apiFake();
+    const gitea = giteaFake();
+    await addGroupEnvironment(base(api, gitea));
+
+    expect(api.mintIntegrationToken).toHaveBeenCalledWith(
+      {
+        clientId: "org-1",
+        name: `deploy-${STAGE.displayName}`,
+        roleCode: "NO_ACCESS",
+        projects: [{ projectId: STAGE.project, roleCode: "BASIC_USER" }],
+      },
+      undefined,
+    );
+    const [secret] = api.writeServiceSecret.mock.calls[0] as [Record<string, string>];
+    expect(secret.serviceId).toBe("svc-broker");
+    expect(secret.key).toMatch(/^MATE_DEPLOY_TOKEN_[0-9A-F]+$/u);
+    expect(secret.content).toBe("the-stage-key");
+    expect(api.writeServiceSecret.mock.invocationCallOrder[0]).toBeLessThan(
+      (gitea.changeFiles as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("is left alone when the broker already holds it", async () => {
+    const { deployTokenVariable } = await import("@t3tools/client-runtime/zerops");
+    const api = apiFake({
+      listServiceVariableNames: vi.fn().mockResolvedValue([deployTokenVariable(STAGE.project)]),
+    });
+    const outcome = await addGroupEnvironment(base(api, giteaFake()));
+    expect(outcome.failed).toBeUndefined();
+    expect(api.mintIntegrationToken).not.toHaveBeenCalled();
+  });
+
+  it("is taken back when the broker could not be given it", async () => {
+    const api = apiFake({
+      writeServiceSecret: vi.fn().mockRejectedValue(new Error("The service is not ready.")),
+    });
+    const outcome = await addGroupEnvironment(base(api, giteaFake()));
+    expect(outcome.failed).toEqual({ step: "deploy-token", reason: "The service is not ready." });
+    expect(api.deleteIntegrationToken).toHaveBeenCalledWith(
+      { clientId: "org-1", tokenId: "t-deploy" },
+      undefined,
+    );
+  });
+
+  it("stops where an account's Gitea project has no broker service", async () => {
+    const api = apiFake({
+      listProjectServices: vi.fn().mockResolvedValue([{ id: "svc-web", name: "web" }]),
+    });
+    const outcome = await addGroupEnvironment(base(api, giteaFake()));
+    expect(outcome.failed?.step).toBe("deploy-token");
+    expect(api.mintIntegrationToken).not.toHaveBeenCalled();
   });
 });
 
@@ -245,7 +320,12 @@ environments:
     });
     const outcome = await addGroupEnvironment(base(apiFake(), gitea));
     expect(outcome.failed).toBeUndefined();
-    expect(outcome.done).toEqual(["registry", "broker-grant", "environments-document"]);
+    expect(outcome.done).toEqual([
+      "registry",
+      "broker-grant",
+      "deploy-token",
+      "environments-document",
+    ]);
     expect(gitea.changeFiles).not.toHaveBeenCalled();
     expect(gitea.createPullRequest).not.toHaveBeenCalled();
   });

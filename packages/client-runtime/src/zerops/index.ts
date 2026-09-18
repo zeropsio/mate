@@ -361,6 +361,14 @@ export {
   type FlowVerb,
 } from "./projectFlow.ts";
 export {
+  BROKER_HOSTNAME,
+  deployTokenName,
+  deployTokenVariable,
+  environmentsWithoutDeployToken,
+  planDeployToken,
+  type DeployTokenPlan,
+} from "./deployToken.ts";
+export {
   giteaOverview,
   giteaPullRequestLine,
   giteaRepositoryLine,

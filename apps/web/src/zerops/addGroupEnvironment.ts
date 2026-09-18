@@ -1,5 +1,5 @@
 /**
- * The three writes that turn a new Zerops project into a group environment
+ * The four writes that turn a new Zerops project into a group environment
  * (guide 5.2), performed in an order that never leaves a half-made one.
  *
  * 1. **The registry** — `mate:gm:{groupId}:{projectId}:stage|production`, as
@@ -9,7 +9,11 @@
  *    the broker already holds (`brokerGrant.ts`, the same write a Mate's
  *    registration makes). Its token's value is never read or written; only
  *    its grant list and its own org role are round-tripped.
- * 3. **`environments.yaml`** — always as a pull request from
+ * 3. **The deploy token** — the environment's own key, `BASIC_USER` on the new
+ *    project and nothing else, minted as the person and kept on the broker's
+ *    service (`deployToken.ts`, D27). A job deploys with `zcli push` on it, so
+ *    it is there before the declaration that starts the first deploy.
+ * 4. **`environments.yaml`** — always as a pull request from
  *    `mate-app/env-{name}`, because `main` takes no direct push from anybody;
  *    merged in the same breath only when Gitea says this person may merge it.
  *
@@ -40,11 +44,16 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { grantBrokerProject } from "./brokerGrant";
+import { ensureDeployToken } from "./deployToken";
 
 /** The group repo of a group, by its slug (`{slug}/group`). */
 export const GROUP_REPOSITORY = "group";
 
-export type AddGroupEnvironmentStep = "registry" | "broker-grant" | "environments-document";
+export type AddGroupEnvironmentStep =
+  | "registry"
+  | "broker-grant"
+  | "deploy-token"
+  | "environments-document";
 
 export interface AddGroupEnvironmentOutcome {
   /** The steps that went through, in order. */
@@ -117,6 +126,18 @@ export async function addGroupEnvironment(input: {
   });
   if (grant.kind !== "granted") return stop("broker-grant", grant.reason);
   done.push("broker-grant");
+
+  // Before the declaration: merging it is what starts the environment's first
+  // deploy, and the job that runs it asks the broker for this key (D27).
+  const key = await ensureDeployToken({
+    client: input.client,
+    clientId: input.clientId,
+    giteaProjectId: input.giteaProjectId,
+    environment: { projectId: input.environment.project, name: input.environment.displayName },
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+  });
+  if (key.kind !== "held") return stop("deploy-token", key.reason);
+  done.push("deploy-token");
 
   const gitea = input.gitea;
   const slug = input.slug;
