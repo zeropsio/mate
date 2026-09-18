@@ -142,12 +142,15 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         missing: deployed?.missing ?? [],
         pullRequests: forge?.pullRequests ?? [],
         releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
-        release: releaseOffer({
-          mayRelease,
-          candidate,
-          production: sides.production,
-          tags,
-        }),
+        release: {
+          ...releaseOffer({
+            mayRelease,
+            candidate,
+            production: sides.production,
+            tags,
+          }),
+          contents: deployed?.releaseContents ?? [],
+        },
       });
     }
     return next;

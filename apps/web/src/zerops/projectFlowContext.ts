@@ -20,6 +20,8 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import { createContext, useContext } from "react";
 
+import type { ReleaseContent } from "./useZeropsGroupDeploys";
+
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
   readonly gate: ReleaseGate;
@@ -28,6 +30,11 @@ export interface ZeropsReleaseOffer {
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   /** What the tag would list — what the verb tags, so it matches what was shown. */
   readonly entries: ReadonlyArray<ReleaseEntry>;
+  /**
+   * What pressing it would carry: per service, the commits `main` has that the
+   * service is not running. With squash merges each is one task delivered.
+   */
+  readonly contents: ReadonlyArray<ReleaseContent>;
 }
 
 /** One project's flow: its environments, what is waiting, what was released. */

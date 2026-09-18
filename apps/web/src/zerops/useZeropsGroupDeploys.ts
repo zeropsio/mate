@@ -28,7 +28,9 @@ import {
   planDeployedVersionReads,
   planMainHeadReads,
   readGroupEnvironments,
+  releaseDeploys,
   RECIPE_TIER_PATHS,
+  type GiteaCommit,
   type GiteaCommitStatus,
   type GiteaPullRequest,
   type GroupEnvironment,
@@ -82,6 +84,19 @@ export interface ZeropsGroupDeployState {
    * otherwise, where the stage's own deploys are the release's candidate.
    */
   readonly mainHeads: ReadonlyMap<string, string>;
+  /**
+   * What a release would carry: per production service, the commits `main` has
+   * that the service is not running. With squash merges each one is a task
+   * delivered, under the words the person asked for (the owner, 2026-09-18:
+   * "it would be great if you could show like what is it going to release").
+   */
+  readonly releaseContents: ReadonlyArray<ReleaseContent>;
+}
+
+/** One service's share of what a release would carry. */
+export interface ReleaseContent {
+  readonly service: string;
+  readonly commits: ReadonlyArray<GiteaCommit>;
 }
 
 export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
@@ -214,6 +229,15 @@ export function useZeropsGroupDeploys(input: {
           }
         }
 
+        const rowInputs = buildGroupEnvironmentRowInputs({
+          owner: group.slug,
+          declarations,
+          projectNames: new Map(group.projects.map((project) => [project.projectId, project.name])),
+          services,
+          versions,
+          statuses,
+        });
+
         // What a project with no stage releases: the head of each production
         // service's repository (D28). One read per service, and only for such
         // a project — a group with a stage never issues it.
@@ -231,21 +255,32 @@ export function useZeropsGroupDeploys(input: {
           }
         }
 
+        // What each production service is not running yet. Read against the
+        // deployed commit, not against the newest tag: a release that was
+        // never deployed is still ahead of the service, and the person is
+        // being told what pressing the verb would put there.
+        const running = releaseDeploys(rowInputs).production;
+        const releaseContents: Array<ReleaseContent> = [];
+        if (client !== null) {
+          for (const [service, head] of mainHeads) {
+            const from = running.get(service);
+            if (from === undefined || from === head) continue;
+            const repo = onMain.repositories.get(service) ?? service;
+            const commits = await client
+              .compareCommits(group.slug, repo, from, head)
+              .catch((): ReadonlyArray<GiteaCommit> => []);
+            if (controller.signal.aborted) return;
+            if (commits.length > 0) releaseContents.push({ service, commits });
+          }
+        }
+
         deploys.set(group.groupId, {
           declarations,
           pullRequests,
           missing,
           mainHeads,
-          environments: buildGroupEnvironmentRowInputs({
-            owner: group.slug,
-            declarations,
-            projectNames: new Map(
-              group.projects.map((project) => [project.projectId, project.name]),
-            ),
-            services,
-            versions,
-            statuses,
-          }),
+          releaseContents,
+          environments: rowInputs,
         });
       }
       if (!controller.signal.aborted) setAnswer({ key, deploys });

@@ -337,6 +337,7 @@ export {
   type GiteaBranch,
   type GiteaClient,
   type GiteaClientOptions,
+  type GiteaCommit,
   type GiteaCommitStatus,
   type GiteaFile,
   type GiteaFileChange,

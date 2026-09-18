@@ -1471,6 +1471,30 @@ function ZeropsProjectsContent() {
     );
   };
 
+  /**
+   * What pressing *Release* would carry, under the row that offers it: one
+   * line per commit `main` has that the production is not running, which with
+   * squash merges is one line per task delivered (the owner, 2026-09-18 — "it
+   * would be great if you could show like what is it going to release, the PRs
+   * that it contains"). Nothing is drawn where a release would move nothing.
+   */
+  const releaseContentLines = (group: ZeropsGroup) => {
+    const flow = groupDeploys.get(group.groupId);
+    if (flow === undefined || !flow.release.gate.allowed) return null;
+    const commits = flow.release.contents.flatMap((entry) => entry.commits);
+    if (commits.length === 0) return null;
+    return commits.map((commit) => (
+      <li
+        className="flex gap-2 py-0.5 text-xs text-muted-foreground"
+        data-zerops-surface="release-content"
+        key={`release-content-${group.groupId}-${commit.sha}`}
+      >
+        <span className="font-mono tabular-nums">{commit.sha.slice(0, 7)}</span>
+        <span className="truncate">{commit.subject}</span>
+      </li>
+    ));
+  };
+
   /** One pull request's row, the same on both ends of the list. */
   const pullRequestRowOf = (group: ZeropsGroup, pull: FlowPullRequest) => {
     const slug = groupDeploys.get(group.groupId)?.slug;
@@ -2162,6 +2186,7 @@ function ZeropsProjectsContent() {
         renderGroupRows={(group: ZeropsGroup) => (
           <>
             {releaseGateLine(group)}
+            {releaseContentLines(group)}
             {/* The releases, newest first, each with the broker's word and,
                 on an earlier approved one, the way back to it. */}
             {(groupDeploys.get(group.groupId)?.releases ?? []).map((release) => {

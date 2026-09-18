@@ -97,6 +97,19 @@ export interface GiteaIssueSearchHit {
     | undefined;
 }
 
+/** One commit, as a release's contents need it. */
+export interface GiteaCommit {
+  readonly sha: string;
+  /** The first line of its message — with squash merges, the task's words. */
+  readonly subject: string;
+}
+
+/** Gitea's own shape for a commit inside a comparison. */
+interface GiteaCompareCommitWire {
+  readonly sha: string;
+  readonly commit?: { readonly message?: string | undefined } | undefined;
+}
+
 export interface GiteaBranch {
   readonly name: string;
   readonly commit?: { readonly id?: string | undefined } | undefined;
@@ -300,6 +313,17 @@ export interface GiteaClient {
     repo: string,
     sha: string,
   ): Promise<ReadonlyArray<GiteaCommitStatus>>;
+
+  /**
+   * The commits `head` has and `base` does not — what a release would carry.
+   * Empty where the two are the same commit or Gitea cannot compare them.
+   */
+  compareCommits(
+    owner: string,
+    repo: string,
+    base: string,
+    head: string,
+  ): Promise<ReadonlyArray<GiteaCommit>>;
 
   listActionRuns(
     owner: string,
@@ -571,6 +595,24 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           "list the commit statuses",
         )
       ).map(commitStatusFromWire),
+
+    compareCommits: async (owner, repo, base, head) => {
+      if (base === head || base === "" || head === "") return [];
+      const answer = await optional<{ readonly commits?: ReadonlyArray<GiteaCompareCommitWire> }>(
+        {
+          method: "GET",
+          // Gitea takes the two refs as one path segment, `base...head`, and
+          // answers `404` for a pair it cannot compare — a commit the
+          // repository has lost, a fork with no common history.
+          path: `/repos/${enc(owner)}/${enc(repo)}/compare/${enc(base)}...${enc(head)}`,
+        },
+        "compare the commits",
+      );
+      return (answer?.commits ?? []).map((entry) => ({
+        sha: entry.sha,
+        subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+      }));
+    },
 
     listActionRuns: (owner, repo, listOptions) =>
       json<{ readonly workflow_runs?: ReadonlyArray<GiteaActionRun> }>(

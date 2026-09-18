@@ -12,7 +12,7 @@ function pull(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     mateProjectId: "p-iris",
     author: "mate-p-iris",
     url: "https://gitea.example/notes/appdev/pulls/4",
-    checks: "neutral",
+    checks: "none",
     checkWord: undefined,
     mergeable: true,
     headSha: "abc",
