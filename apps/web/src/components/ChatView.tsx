@@ -154,6 +154,7 @@ import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
+import { useZeropsMateReview } from "../zerops/useZeropsMateReview";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
@@ -274,7 +275,11 @@ import {
   type ZeropsAgentId,
 } from "./zerops/ZeropsAgentAuthorizationHost";
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
-import { creationJobSendable } from "@t3tools/client-runtime/zerops";
+import {
+  creationJobSendable,
+  MATE_REVIEW_MERGE_LABEL,
+  MATE_REVIEW_MERGE_RUNNING,
+} from "@t3tools/client-runtime/zerops";
 import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
 import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -3376,6 +3381,7 @@ function ChatViewContent(props: ChatViewProps) {
           ),
     viewerSubject: zeropsViewerSubject,
   });
+  const zeropsMateReview = useZeropsMateReview(activeThreadRef);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
@@ -4762,6 +4768,29 @@ function ChatViewContent(props: ChatViewProps) {
     } satisfies ComposerBannerStackItem;
   }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent]);
 
+  /**
+   * What this Mate is waiting to have merged, right where the person is
+   * reading its answer (the owner, 2026-09-18). The verb merges in Gitea as
+   * the person and then brings the Mate's checkout onto the merged `main`; a
+   * refusal is shown here in Gitea's own words, which is where it was missing.
+   */
+  const mateReviewBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (zeropsMateReview.offer === undefined) return null;
+    const pull = zeropsMateReview.offer.pull;
+    return {
+      id: `mate-review:${pull.repository}#${pull.number}`,
+      variant: zeropsMateReview.trouble === null ? "info" : "error",
+      icon: <GitBranchIcon />,
+      title: zeropsMateReview.offer.title,
+      description: zeropsMateReview.trouble ?? pull.title,
+      actions: (
+        <Button disabled={zeropsMateReview.merging} size="xs" onClick={zeropsMateReview.merge}>
+          {zeropsMateReview.merging ? MATE_REVIEW_MERGE_RUNNING : MATE_REVIEW_MERGE_LABEL}
+        </Button>
+      ),
+    } satisfies ComposerBannerStackItem;
+  }, [zeropsMateReview]);
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
@@ -4771,6 +4800,7 @@ function ChatViewContent(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
+    const mateReviewItems = mateReviewBannerItem === null ? [] : [mateReviewBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
@@ -4781,6 +4811,7 @@ function ChatViewContent(props: ChatViewProps) {
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...urgentSystemItems,
+        ...mateReviewItems,
         ...backgroundLivenessItems,
         ...calmSystemItems,
         ...resumeCompactionItems,
@@ -4790,6 +4821,7 @@ function ChatViewContent(props: ChatViewProps) {
     }
     return [
       ...urgentSystemItems,
+      ...mateReviewItems,
       ...backgroundLivenessItems,
       ...calmSystemItems,
       ...resumeCompactionItems,

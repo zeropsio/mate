@@ -21,14 +21,16 @@
  * A service whose two shas already match is not a change; the tag still lists
  * it, because a tag lists what production should run, not what is new.
  *
- * ## A project with no stage (D28)
+ * ## What a release lists: what is merged (D28)
  *
- * A project may be a Mate and a production with nothing in between. There is
- * no deployed commit to list then, and nothing to have verified one on: what
- * is merged is what such a project releases, so the candidate is each
- * repository's default branch. The person's merge is the review, the tag is
- * still the approval, and the day the project declares a stage the candidate
- * is what that stage runs again (`releaseBasis`).
+ * Each repository's default branch, always — never what a stage happens to be
+ * running. A project may have no stage at all; one that has a stage has it as
+ * a place that runs `main` too, not as a gate the tag waits behind, and a
+ * stage that is mid-deploy or behind must not change what a release means (the
+ * owner, 2026-09-18: "I hope that even with stage prod release is not tied to
+ * stage in any way"). A group that wants production held until a stage has the
+ * commit says so once, in `environments.yaml`, as `requireOnStage` — an
+ * explicit gate the broker enforces, not something the tag's contents imply.
  *
  * ## Who may
  *
@@ -164,17 +166,6 @@ export function suggestReleaseTags(tags: ReadonlyArray<string>): {
   };
 }
 
-/**
- * Where a release's commits come from: what the stage runs, or — for a project
- * that declares no stage — what each repository's default branch holds.
- */
-export type ReleaseBasis = "stage" | "main";
-
-/** `main` for a project with no stage between its Mates and its production. */
-export function releaseBasis(declarations: ReadonlyArray<{ readonly tier: string }>): ReleaseBasis {
-  return declarations.some((entry) => entry.tier === "stage") ? "stage" : "main";
-}
-
 /** One row of what *Release* shows before it is pressed. */
 export interface ReleaseComparison {
   readonly service: string;
@@ -195,7 +186,7 @@ export interface ReleaseComparison {
  * broker deploys. With none, the candidate is the default branch's head.
  */
 export function compareForRelease(input: {
-  /** `{service: full sha}` that would be released (`ReleaseBasis`). */
+  /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
   /** `{service: full sha}` from production's version names. */
   readonly production: ReadonlyMap<string, string>;
@@ -230,16 +221,14 @@ export type ReleaseGate =
 
 /** What the app says when it will not offer the button. */
 export const RELEASE_NOT_A_RELEASER = "Only releasers can tag.";
-export const RELEASE_NOTHING_TO_LIST = "The stage has not deployed anything to release.";
-/**
- * Every service of the stage already runs what production runs, so the tag
- * would list production's own state back to it and the broker would redeploy
- * what is live. A tag still lists an unchanged service (that is what a tag is);
- * a release where *nothing* moved is not a release.
- */
-export const RELEASE_NOTHING_CHANGED = "Production already runs what the stage runs.";
-/** The same two, for a project with no stage — never a sentence about one it lacks. */
+/** Nothing is on `main` to release — a group whose Mates have landed nothing. */
 export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
+/**
+ * Production already runs every commit `main` holds, so the tag would list
+ * production's own state back to it and the broker would redeploy what is
+ * live. A tag still lists an unchanged service (that is what a tag is); a
+ * release where *nothing* moved is not a release.
+ */
 export const RELEASE_NOTHING_NEW_ON_MAIN = "Production already runs what is merged.";
 
 /**
@@ -258,20 +247,12 @@ export function releaseGate(input: {
    * side is not known — then the gate says nothing about what would move.
    */
   readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
-  /** Where the entries come from; a stage unless the project has none. */
-  readonly basis?: ReleaseBasis | undefined;
 }): ReleaseGate {
-  const onMain = input.basis === "main";
   if (!input.mayRelease) return { allowed: false, reason: RELEASE_NOT_A_RELEASER };
-  if (input.entries.length === 0) {
-    return { allowed: false, reason: onMain ? RELEASE_NOTHING_MERGED : RELEASE_NOTHING_TO_LIST };
-  }
+  if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_MERGED };
   const comparison = input.comparison;
   if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
-    return {
-      allowed: false,
-      reason: onMain ? RELEASE_NOTHING_NEW_ON_MAIN : RELEASE_NOTHING_CHANGED,
-    };
+    return { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN };
   }
   return { allowed: true };
 }
@@ -287,12 +268,7 @@ export function releaseGate(input: {
  */
 export function releaseOffer(input: {
   readonly mayRelease: boolean;
-  readonly basis: ReleaseBasis;
-  /**
-   * `{service: full sha}` that would be released: what the stage runs
-   * (`groupDeploys.releaseDeploys`), or each repository's default branch for a
-   * project with no stage.
-   */
+  /** `{service: full sha}` each repository's default branch holds. */
   readonly candidate: ReadonlyMap<string, string>;
   /** `{service: full sha}` production runs. */
   readonly production: ReadonlyMap<string, string>;
@@ -310,7 +286,7 @@ export function releaseOffer(input: {
     production: input.production,
   });
   return {
-    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison, basis: input.basis }),
+    gate: releaseGate({ mayRelease: input.mayRelease, entries, comparison }),
     suggestion: suggestReleaseTags(input.tags).patch,
     comparison,
     entries,

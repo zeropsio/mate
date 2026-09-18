@@ -18,7 +18,6 @@ import {
   environmentRow,
   flowVerbKey,
   readZeropsGroupTags,
-  releaseBasis,
   releaseDeploys,
   releaseMessage,
   releaseOffer,
@@ -48,6 +47,7 @@ import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
+const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
 
 export function ZeropsProjectFlowProvider({ children }: { readonly children: ReactNode }) {
   const session = useZeropsSession();
@@ -127,11 +127,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       const sides = releaseDeploys(environmentInputs);
       const tags = forge?.tags ?? [];
       const declarations = deployed?.declarations ?? [];
-      // A project with no stage releases what is merged (D28): the candidate
-      // is each production repository's `main`, which the deploys hook reads
-      // only for such a project.
-      const basis = releaseBasis(declarations);
-      const candidate = basis === "main" ? (deployed?.mainHeads ?? new Map()) : sides.stage;
+      // What a release lists is what is merged (D28), whether or not the group
+      // has a stage: a stage is a place that runs `main` too, not a gate the
+      // tag waits behind, and one mid-deploy must not change what Release
+      // means. Holding production until a stage has the commit is said once,
+      // explicitly, as `requireOnStage`.
+      const candidate = deployed?.mainHeads ?? EMPTY_HEADS;
       next.set(group.groupId, {
         groupId: group.groupId,
         slug: group.slug,
@@ -143,7 +144,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
         release: releaseOffer({
           mayRelease,
-          basis,
           candidate,
           production: sides.production,
           tags,

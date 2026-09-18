@@ -37,7 +37,6 @@
 
 import type { GiteaCommitStatus } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
-import { releaseBasis } from "./release.ts";
 import {
   deployedCommit,
   environmentRow,
@@ -143,11 +142,11 @@ export interface MainHeadRead {
 /**
  * Which repositories' default branches a release has to read (D28, `release.ts`).
  *
- * None for a project with a stage: it releases what that stage runs, which the
- * version reads already answered. A project with a production and nothing in
- * between releases what is merged, so each service the production runs is
- * asked for — at the repository its tier's `buildFromGit` names, the hostname
- * when the tier does not say (`DeployStatusRead.repo`).
+ * A release lists what is merged, whether or not the group has a stage, so
+ * every service the production runs is asked for — at the repository its
+ * tier's `buildFromGit` names, the hostname when the tier does not say
+ * (`DeployStatusRead.repo`). A group with no production declared has nothing
+ * to release and is asked nothing.
  */
 export function planMainHeadReads(input: {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
@@ -155,7 +154,6 @@ export function planMainHeadReads(input: {
   /** The repository's name in the org by hostname, from the tiers on `main`. */
   readonly repositories: ReadonlyMap<string, string>;
 }): ReadonlyArray<MainHeadRead> {
-  if (releaseBasis(input.declarations) !== "main") return [];
   const productions = new Set(
     input.declarations.filter((entry) => entry.tier === "production").map((entry) => entry.project),
   );

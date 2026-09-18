@@ -282,12 +282,17 @@ export {
   type GitForgeState,
 } from "./gitTab.ts";
 export {
+  mateReviewOffer,
+  MATE_REVIEW_MERGE_LABEL,
+  MATE_REVIEW_MERGE_RUNNING,
+  type MateReviewOffer,
+} from "./mateReview.ts";
+export {
   compareForRelease,
   isReleaseTag,
   newestReleaseTag,
   readReleaseMessage,
   readSemver,
-  releaseBasis,
   releaseEntries,
   releaseGate,
   releaseMessage,
@@ -296,14 +301,11 @@ export {
   releaseTagName,
   releaseVerdict,
   releaseWord,
-  RELEASE_NOTHING_CHANGED,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  RELEASE_NOTHING_TO_LIST,
   RELEASE_NOT_A_RELEASER,
   rollbackTo,
   suggestReleaseTags,
-  type ReleaseBasis,
   type ReleaseComparison,
   type ReleaseEntry,
   type ReleaseGate,

@@ -322,11 +322,11 @@ describe("what a release compares", () => {
 });
 
 /**
- * A project with a production and no stage releases what is merged (D28,
- * `release.ts`), so the one read a stage spares it — each repository's default
- * branch — is planned here, and only for such a project.
+ * A release lists what is merged (D28, `release.ts`) — never what a stage
+ * happens to run — so every production service's repository is asked for its
+ * default branch, stage or no stage.
  */
-describe("what a release from main has to read", () => {
+describe("what a release has to read", () => {
   const repositories = new Map([["api", "apidev"]]);
 
   it("asks for the repository of every service the production runs", () => {
@@ -341,13 +341,13 @@ describe("what a release from main has to read", () => {
     ).toEqual([{ hostname: "api", repo: "api" }]);
   });
 
-  it.each([
-    {
-      name: "a project with a stage, which releases what the stage runs",
-      declarations: [stage, production],
-    },
-    { name: "a project with no production to release to", declarations: [] },
-  ])("asks for nothing for $name", ({ declarations }) => {
-    expect(planMainHeadReads({ declarations, services, repositories })).toEqual([]);
+  it("asks the same for a project that also has a stage", () => {
+    expect(
+      planMainHeadReads({ declarations: [stage, production], services, repositories }),
+    ).toEqual([{ hostname: "api", repo: "apidev" }]);
+  });
+
+  it("asks for nothing where no production is declared", () => {
+    expect(planMainHeadReads({ declarations: [], services, repositories })).toEqual([]);
   });
 });

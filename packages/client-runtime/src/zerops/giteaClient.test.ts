@@ -134,6 +134,18 @@ describe("GiteaClient request shapes", () => {
     expect(failure).toBeInstanceOf(GiteaApiError);
     expect((failure as GiteaApiError).status).toBe(403);
     expect((failure as GiteaApiError).detail).toBe("user does not have push access");
+    // And in the message itself: a surface that shows only `message` — the
+    // conversation, a toast — would otherwise say "Gitea refused to …" and
+    // nothing a person could act on (the owner, 2026-09-18).
+    expect((failure as GiteaApiError).message).toBe(
+      "Gitea refused to list the branches. user does not have push access",
+    );
+  });
+
+  it("says only what it refused where Gitea sent no words", async () => {
+    const { client } = fake([{ status: 500, body: {} }]);
+    const failure = await client.listBranches("acme", "group").catch((cause: unknown) => cause);
+    expect((failure as GiteaApiError).message).toBe("Gitea refused to list the branches.");
   });
 
   it("decodes a file's content and keeps its blob sha", async () => {

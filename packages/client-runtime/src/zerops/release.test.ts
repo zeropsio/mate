@@ -9,15 +9,12 @@ import {
   releaseEntries,
   releaseGate,
   releaseMessage,
-  releaseBasis,
   releaseOffer,
   releaseStatusContext,
   releaseVerdict,
   releaseWord,
-  RELEASE_NOTHING_CHANGED,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  RELEASE_NOTHING_TO_LIST,
   RELEASE_NOT_A_RELEASER,
   rollbackTo,
   suggestReleaseTags,
@@ -157,11 +154,11 @@ describe("the app's own gate", () => {
       reason: RELEASE_NOT_A_RELEASER,
     },
     {
-      name: "a releaser with an empty stage",
+      name: "a releaser with nothing merged",
       mayRelease: true,
       entries: [],
       allowed: false,
-      reason: RELEASE_NOTHING_TO_LIST,
+      reason: RELEASE_NOTHING_MERGED,
     },
   ])("for $name", ({ mayRelease, entries: list, allowed, reason }) => {
     const gate = releaseGate({ mayRelease, entries: list });
@@ -179,7 +176,6 @@ describe("what Release offers, from what the environments run", () => {
   it("compares the stage against production, per service, and offers the next patch", () => {
     const offer = releaseOffer({
       mayRelease: true,
-      basis: "stage",
       candidate: stage,
       production: new Map([
         ["api", OLD],
@@ -204,20 +200,20 @@ describe("what Release offers, from what the environments run", () => {
       allowed: true,
     },
     {
-      name: "a production already running what the stage runs",
+      name: "a production already running everything main holds",
       mayRelease: true,
       stage,
       production: new Map(stage),
       allowed: false,
-      reason: RELEASE_NOTHING_CHANGED,
+      reason: RELEASE_NOTHING_NEW_ON_MAIN,
     },
     {
-      name: "a stage that has deployed nothing",
+      name: "repositories with nothing merged",
       mayRelease: true,
       stage: new Map<string, string>(),
       production: new Map([["api", OLD]]),
       allowed: false,
-      reason: RELEASE_NOTHING_TO_LIST,
+      reason: RELEASE_NOTHING_MERGED,
     },
     {
       name: "somebody who is not a releaser",
@@ -230,7 +226,6 @@ describe("what Release offers, from what the environments run", () => {
   ])("answers, for $name", ({ mayRelease, stage: stageCommits, production, allowed, reason }) => {
     const gate = releaseOffer({
       mayRelease,
-      basis: "stage",
       candidate: stageCommits,
       production,
       tags: [],
@@ -242,7 +237,6 @@ describe("what Release offers, from what the environments run", () => {
   it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
     const offer = releaseOffer({
       mayRelease: true,
-      basis: "stage",
       candidate: new Map([
         ["api", API.toUpperCase()],
         ["web", "hotfix"],
@@ -255,22 +249,11 @@ describe("what Release offers, from what the environments run", () => {
 });
 
 /**
- * A project with a Mate and a production and nothing in between (the owner,
- * 2026-09-18: "this time we can have just one mate and one prod"). With no
- * stage there is no deployed commit to list, and the offer read "The stage has
- * not deployed anything to release." for ever — about a stage the project does
- * not have. What is merged is what such a project releases (D28).
+ * A release lists what is merged, whether or not the group has a stage (D28).
+ * The owner, 2026-09-18, on a project whose stage was mid-deploy: "I hope that
+ * even with stage prod release is not tied to stage in any way."
  */
-describe("a project with no stage releases what main holds", () => {
-  it.each([
-    { name: "a stage and a production", tiers: ["stage", "production"], basis: "stage" },
-    { name: "two stages", tiers: ["stage", "stage"], basis: "stage" },
-    { name: "a production alone", tiers: ["production"], basis: "main" },
-    { name: "nothing declared yet", tiers: [], basis: "main" },
-  ])("for $name the basis is $basis", ({ tiers, basis }) => {
-    expect(releaseBasis(tiers.map((tier) => ({ tier })))).toBe(basis);
-  });
-
+describe("a release lists what is merged", () => {
   const main = new Map([["app", API]]);
 
   it.each([
@@ -303,7 +286,6 @@ describe("a project with no stage releases what main holds", () => {
   ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
     const offer = releaseOffer({
       mayRelease: true,
-      basis: "main",
       candidate,
       production,
       tags: [],
@@ -315,8 +297,12 @@ describe("a project with no stage releases what main holds", () => {
     );
   });
 
-  it("never says a sentence about a stage", () => {
-    for (const reason of [RELEASE_NOTHING_MERGED, RELEASE_NOTHING_NEW_ON_MAIN]) {
+  it("never says a sentence about a stage, which a release does not depend on", () => {
+    for (const reason of [
+      RELEASE_NOTHING_MERGED,
+      RELEASE_NOTHING_NEW_ON_MAIN,
+      RELEASE_NOT_A_RELEASER,
+    ]) {
       expect(reason).not.toMatch(/stage/iu);
     }
   });
