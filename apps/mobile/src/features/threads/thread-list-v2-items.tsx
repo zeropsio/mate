@@ -16,7 +16,8 @@ import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
-import { ProviderIcon } from "../../components/ProviderIcon";
+import { ProviderInstanceIcon } from "../../components/ProviderIcon";
+import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import { cn } from "../../lib/cn";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
@@ -358,7 +359,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozePresetMinute: string;
   readonly project: EnvironmentProject | null;
   readonly projectTitle?: string;
-  readonly providerDriver: string | null;
+  readonly providerInstance: ThreadRowProviderInstance | null;
   /** Which machine hosts the thread. Null when only one environment is
       connected — repeating the same label on every row is noise. Mirrors
       the web sidebar's remote-environment cloud icon, but as text since
@@ -463,6 +464,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     theme[materialYouStyleLayoutActive ? "--color-thread-selected" : "--color-user-bubble"];
   const sidebarPane = props.pane === "sidebar";
   const selected = props.selected === true;
+  // The provider badge's border blends into the row's own surface, which
+  // differs by pane and (for the sidebar pane) selection: the sidebar row
+  // background becomes the selected fill or the drawer surface, while the
+  // flat "screen" pane rows always sit on the screen background.
+  const providerIconSurfaceColor = sidebarPane
+    ? selected
+      ? selectedBackgroundColor
+      : drawerColor
+    : screenColor;
 
   const resolvedStatus = resolveThreadStatus(thread);
   const statusPresentation = threadListV2StatusPresentation(resolvedStatus);
@@ -852,9 +862,16 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           <View className="flex-1" />
         )}
         {pr ? <ThreadListV2PullRequestLink pr={pr} selected={selected} /> : null}
-        {props.providerDriver ? (
+        {props.providerInstance ? (
           <View className="opacity-60">
-            <ProviderIcon provider={props.providerDriver} size={14} />
+            <ProviderInstanceIcon
+              provider={props.providerInstance.driverKind}
+              size={14}
+              displayName={props.providerInstance.displayName}
+              accentColor={props.providerInstance.accentColor}
+              showBadge={props.providerInstance.showBadge}
+              surfaceColor={providerIconSurfaceColor}
+            />
           </View>
         ) : null}
       </View>
