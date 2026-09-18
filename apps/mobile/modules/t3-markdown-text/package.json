@@ -4,7 +4,9 @@
   "private": true,
   "source": "./index.ts",
   "files": [
+    "android",
     "assets",
+    "expo-module.config.json",
     "ios",
     "src",
     "index.ts",
@@ -26,6 +28,7 @@
     "./types": "./src/SelectableMarkdownText.types.ts"
   },
   "peerDependencies": {
+    "expo": "*",
     "expo-asset": "*",
     "expo-clipboard": "*",
     "expo-haptics": "*",
