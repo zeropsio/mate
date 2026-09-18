@@ -590,6 +590,7 @@ function deriveTurnFolds(input: {
   terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
   unsettledTurnId: TurnId | null;
+  liveAgentTaskIds: ReadonlySet<string> | undefined;
 }): ReadonlyMap<TimelineEntry, TurnFold> {
   interface TurnGroup {
     entries: Array<TimelineEntry>;
@@ -672,11 +673,22 @@ function deriveTurnFolds(input: {
       if (entry === firstAssistantEntry || entry === group.terminalEntry) {
         continue;
       }
-      // Agent-spawn CTA rows never fold: workflows outlive their launching
-      // turn (dynamic spawns, background execution), and folding the CTA
-      // when the turn settles makes a still-running fleet invisible.
+      // Workflows outlive their launching turn (dynamic spawns, background
+      // execution), so a spawn row with a live member or coordinator stays
+      // outside the fold instead of hiding a still-running fleet. Settled
+      // spawns fold with the rest of the turn. Without a live set (no agent
+      // panel model, as in the held paint during a thread switch) every
+      // spawn row stays out.
       if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
-        continue;
+        const live = input.liveAgentTaskIds;
+        const { workflowId, agentTaskIds } = entry.entry.agentSpawn;
+        if (
+          live === undefined ||
+          (workflowId !== null && live.has(workflowId)) ||
+          agentTaskIds.some((taskId) => live.has(taskId))
+        ) {
+          continue;
+        }
       }
       // Operation cards never fold either: they are the durable outcomes a
       // settled turn needs to leave readable.
@@ -793,6 +805,13 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt: string | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
+  /**
+   * Task ids of subagents still working; their spawn row stays outside turn
+   * folds. Undefined means unknown, which keeps every spawn row out.
+   */
+  liveAgentTaskIds?: ReadonlySet<string> | undefined;
+  /** Spawn rows the user opened stay visible while their turn fold is collapsed. */
+  expandedSpawnEntryIds?: ReadonlySet<string> | undefined;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -853,11 +872,15 @@ export function deriveMessagesTimelineRows(input: {
     terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
     unsettledTurnId,
+    liveAgentTaskIds: input.liveAgentTaskIds,
   });
   const collapsedEntries = new Set<TimelineEntry>();
   for (const fold of foldsByAnchorEntry.values()) {
     if (!input.expandedTurnIds?.has(fold.turnId)) {
       for (const entry of fold.hiddenEntries) {
+        // An opened spawn row keeps its fold membership but is not pulled
+        // away mid-read when its last member settles.
+        if (input.expandedSpawnEntryIds?.has(entry.id)) continue;
         collapsedEntries.add(entry);
       }
     }
