@@ -54,6 +54,7 @@ import {
   getComposerDraftSnapshot,
   mergeComposerDraftContent,
   replaceComposerDraftAttachments,
+  removeDeliveredCloudQueuedMessage,
   undoComposerDraftMerge,
   updateComposerDraftSettings,
   waitForComposerDraftsLoaded,
@@ -112,7 +113,10 @@ function settingsCommandId(message: QueuedThreadMessage, setting: string): Comma
  * `deliveryRevision` is the revision of the payload this attempt will send,
  * used for the delivery removal's compare-and-set.
  */
-export async function prepareQueuedMessageAttachments(queuedMessage: QueuedThreadMessage): Promise<
+export async function prepareQueuedMessageAttachments(
+  queuedMessage: QueuedThreadMessage,
+  supportsImageUploads = false,
+): Promise<
   | {
       readonly status: "ready";
       readonly prepared: PreparedTurnAttachments;
@@ -133,6 +137,7 @@ export async function prepareQueuedMessageAttachments(queuedMessage: QueuedThrea
   const result = await prepareTurnAttachments({
     environmentId: queuedMessage.environmentId,
     attachments: queuedMessage.attachments,
+    supportsImageUploads,
     persistUploadedReferences: async (draftAttachments) => {
       if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) {
         return "abandon";
@@ -177,13 +182,19 @@ export async function completeQueuedMessageDelivery(
   queuedMessage: QueuedThreadMessage,
   deliveryRevision: number,
 ): Promise<"removed" | "edited" | "failed"> {
-  // The editor may have taken the entry while startTurn was in flight; its
-  // unsaved edits have not bumped the revision yet, so the CAS alone would
-  // let removal win and the editor would lose them once it saves.
-  if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) {
-    return "edited";
-  }
   try {
+    await removeDeliveredCloudQueuedMessage(queuedMessage).catch((error) => {
+      console.warn("[thread-outbox] could not update sign-out snapshot after delivery", {
+        messageId: queuedMessage.messageId,
+        error,
+      });
+    });
+    // The editor may have taken the entry while startTurn was in flight; its
+    // unsaved edits have not bumped the revision yet, so the CAS alone would
+    // let removal win and the editor would lose them once it saves.
+    if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) {
+      return "edited";
+    }
     // Removal also releases the message's local attachment files.
     const removed = await removeThreadOutboxMessage(
       queuedMessage,
@@ -219,6 +230,12 @@ export async function removeAcknowledgedExistingThreadMessage(
   acknowledgedMessageIds: Set<MessageId>,
 ): Promise<boolean> {
   try {
+    await removeDeliveredCloudQueuedMessage(queuedMessage).catch((error) => {
+      console.warn("[thread-outbox] could not update sign-out snapshot after delivery", {
+        messageId: queuedMessage.messageId,
+        error,
+      });
+    });
     const removed = await removeThreadOutboxMessage(queuedMessage);
     if (removed) {
       acknowledgedMessageIds.delete(queuedMessage.messageId);
@@ -451,15 +468,10 @@ async function preserveUploadedAttachmentsForEditor(
   const draftKey = `pending-task:${originalMessage.messageId}`;
   const draft = getComposerDraftSnapshot(draftKey);
   const uploadedById = new Map(
-    uploadedMessage.attachments
-      .filter((attachment) => attachment.type === "file")
-      .map((attachment) => [attachment.id, attachment] as const),
+    uploadedMessage.attachments.map((attachment) => [attachment.id, attachment] as const),
   );
   let changed = false;
   const nextAttachments = draft.attachments.map((attachment) => {
-    if (attachment.type !== "file") {
-      return attachment;
-    }
     const uploaded = uploadedById.get(attachment.id);
     if (
       !uploaded?.uploadedAttachmentId ||
@@ -680,7 +692,11 @@ export function useThreadOutboxDrain(): void {
       let persistedMessage: QueuedThreadMessage;
       let deliveryRevision: number;
       try {
-        const preparedResult = await prepareQueuedMessageAttachments(queuedMessage);
+        const preparedResult = await prepareQueuedMessageAttachments(
+          queuedMessage,
+          serverConfigs.get(queuedMessage.environmentId)?.environment.capabilities
+            .attachmentUploads === true,
+        );
         if (preparedResult.status === "abandoned") {
           return true;
         }
@@ -767,6 +783,7 @@ export function useThreadOutboxDrain(): void {
       startTurn,
       updateThreadMetadata,
       restoreQueuedMessage,
+      serverConfigs,
     ],
   );
 
@@ -803,7 +820,11 @@ export function useThreadOutboxDrain(): void {
       let persistedMessage: QueuedThreadMessage;
       let deliveryRevision: number;
       try {
-        const preparedResult = await prepareQueuedMessageAttachments(queuedMessage);
+        const preparedResult = await prepareQueuedMessageAttachments(
+          queuedMessage,
+          serverConfigs.get(queuedMessage.environmentId)?.environment.capabilities
+            .attachmentUploads === true,
+        );
         if (preparedResult.status === "abandoned") {
           return true;
         }
@@ -895,7 +916,7 @@ export function useThreadOutboxDrain(): void {
       }
       return false;
     },
-    [makeDeliveryHelpers, restoreQueuedMessage, startTurn],
+    [makeDeliveryHelpers, restoreQueuedMessage, serverConfigs, startTurn],
   );
 
   useEffect(() => {
