@@ -204,19 +204,28 @@ index ce1fe00001c9e5aee6c6ea8bb2d4757d4586d002..3ccf6f16067152dfcb0c143371e2ec6a
       * Number of columns to render items in.
       * @default 1
 diff --git a/react-native.js b/react-native.js
-index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7125b956a 100644
+index b3c5a306b293f797a8b338adfca3060c0f6db22b..d963930927f51ceeec7b43022200bec89d43f4fb 100644
 --- a/react-native.js
 +++ b/react-native.js
-@@ -954,7 +954,7 @@ function setInitialRenderState(ctx, {
+@@ -954,7 +954,16 @@ function setInitialRenderState(ctx, {
    if (didInitialScroll) {
      state.didFinishInitialScroll = true;
    }
 -  const isReadyToRender = Boolean(state.didContainersLayout && state.didFinishInitialScroll);
++  // Native contentOffset can seed an end target without dispatchInitialScroll.
++  // Both overflow completion paths must wait for the native end landing.
++  // Underflow needs no scroll: preserve UIKit's untouched resting position.
++  if (state.didContainersLayout && state.didFinishInitialScroll && state.initialScroll && state.initialScroll.viewPosition === 1 && state.initialScroll.index === state.props.data.length - 1 && state.props.data.length > 0) {
++    const insetStartAdjustment = getContentInsetStartAdjustment(ctx);
++    if (insetStartAdjustment > 0 && getContentSize(ctx) > state.scrollLength - insetStartAdjustment + 1) {
++      startInsetEndSettleWatchdog(ctx);
++    }
++  }
 +  const isReadyToRender = Boolean(state.didContainersLayout && state.didFinishInitialScroll && !state.insetEndRevealHold);
    if (isReadyToRender && !peek$(ctx, "readyToRender")) {
      set$(ctx, "readyToRender", true);
      setAdaptiveRender(ctx, "normal", "ready");
-@@ -1304,18 +1304,23 @@ function calculateOffsetWithOffsetPosition(ctx, offsetParam, params) {
+@@ -1304,18 +1313,23 @@ function calculateOffsetWithOffsetPosition(ctx, offsetParam, params) {
  }
  
  // src/core/clampScrollOffset.ts
@@ -242,7 +251,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    return clampedOffset;
  }
  
-@@ -1451,10 +1456,10 @@ function checkFinishedScrollFrame(ctx) {
+@@ -1451,10 +1465,10 @@ function checkFinishedScrollFrame(ctx) {
      finishScrollTo(ctx);
    }
  }
@@ -255,7 +264,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      x: ctx.state.props.horizontal ? offset : 0,
      y: ctx.state.props.horizontal ? 0 : offset
    });
-@@ -1503,7 +1508,10 @@ function checkFinishedScrollFallback(ctx) {
+@@ -1503,7 +1517,10 @@ function checkFinishedScrollFallback(ctx) {
          );
          scheduleFallbackCheck(SILENT_INITIAL_SCROLL_RETRY_DELAY_MS);
        } else if (shouldRetryUnalignedEndScroll) {
@@ -267,7 +276,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
          scheduleFallbackCheck(100);
        } else if (shouldFinishZeroTarget || shouldFinishAfterObservedScroll || canFinishInitialScrollWithoutNativeProgress || canFinishAfterSilentNativeDispatch || numChecks > maxChecks) {
          finishScrollTo(ctx);
-@@ -1566,9 +1574,18 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1566,9 +1583,18 @@ function doMaintainScrollAtEnd(ctx) {
    }
    if (shouldMaintainScrollAtEnd) {
      state.pendingMaintainScrollAtEnd = false;
@@ -287,7 +296,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      }
      if (!state.maintainingScrollAtEnd) {
        const pendingState = maintainScrollAtEnd.animated ? "pending-animated" : "pending-instant";
-@@ -1591,9 +1608,18 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1591,9 +1617,18 @@ function doMaintainScrollAtEnd(ctx) {
                y: 0
              });
            } else {
@@ -309,7 +318,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
            }
            setTimeout(
              () => {
-@@ -1624,6 +1650,10 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1624,6 +1659,10 @@ function doMaintainScrollAtEnd(ctx) {
  function requestAdjust(ctx, positionDiff, dataChanged) {
    const state = ctx.state;
    if (Math.abs(positionDiff) > 0.1) {
@@ -320,7 +329,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      const needsScrollWorkaround = Platform.OS === "android" && !IsNewArchitecture && dataChanged && state.scroll <= positionDiff;
      const doit = () => {
        if (needsScrollWorkaround) {
-@@ -1728,7 +1758,9 @@ function getPredictedNativeClamp(state, unresolvedAmount, totalSize) {
+@@ -1728,7 +1767,9 @@ function getPredictedNativeClamp(state, unresolvedAmount, totalSize) {
    if (Math.abs(unresolvedAmount) <= MVCP_POSITION_EPSILON) {
      return 0;
    }
@@ -331,7 +340,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    const clampDelta = maxScroll - state.scroll;
    if (unresolvedAmount < 0) {
      return Math.max(unresolvedAmount, Math.min(0, clampDelta));
-@@ -1790,7 +1822,7 @@ function resolvePendingNativeMVCPAdjust(ctx, newScroll) {
+@@ -1790,7 +1831,7 @@ function resolvePendingNativeMVCPAdjust(ctx, newScroll) {
      settlePendingNativeMVCPAdjust(ctx, remainingAfterManual, nativeDelta);
      return true;
    }
@@ -340,7 +349,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    const distanceToClamp = Math.abs(newScroll - expectedNativeClampScroll);
    const isAtExpectedNativeClamp = distanceToClamp <= NATIVE_END_CLAMP_EPSILON;
    if (isAtExpectedNativeClamp) {
-@@ -1923,7 +1955,7 @@ function prepareMVCP(ctx, dataChanged) {
+@@ -1923,7 +1964,7 @@ function prepareMVCP(ctx, dataChanged) {
              if (diff > 0) {
                diff = Math.max(0, totalSize - state.scroll - state.scrollLength);
              } else {
@@ -349,7 +358,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
                state.scroll = maxScroll;
                state.scrollPending = maxScroll;
                diff = 0;
-@@ -2320,8 +2352,121 @@ function scrollToIndex(ctx, {
+@@ -2320,8 +2361,121 @@ function scrollToIndex(ctx, {
  }
  
  // src/core/initialScroll.ts
@@ -359,11 +368,11 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
 +var INSET_END_REVEAL_MAX_HOLD_FRAMES = 40;
 +function startInsetEndSettleWatchdog(ctx) {
 +  const state = ctx.state;
-+  if (state.insetEndSettleWatchdogActive) {
++  if (state.insetEndSettleWatchdogStarted || state.didLoad) {
 +    return;
 +  }
++  state.insetEndSettleWatchdogStarted = true;
 +  state.insetEndSettleWatchdogActive = true;
-+  state.didUserDrag = false;
 +  // Hold the readyToRender opacity gate until the end landing is stable, so
 +  // the estimated-to-measured settle chase happens before first VISIBLE
 +  // paint instead of in front of the user. Capped so slow measurement can
@@ -372,6 +381,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
 +  let frames = 0;
 +  let settledFrames = 0;
 +  let revealStableFrames = 0;
++  let previousEndOffset;
 +  const releaseRevealHold = () => {
 +    if (state.insetEndRevealHold) {
 +      state.insetEndRevealHold = false;
@@ -411,33 +421,32 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
 +    const insetStartAdjustment = getContentInsetStartAdjustment(ctx);
 +    const contentSize = getContentSize(ctx);
 +    const scrollLength = state.scrollLength;
-+    if (insetStartAdjustment > 0 && scrollLength > 0 && Number.isFinite(contentSize) && contentSize > scrollLength && !state.scrollingTo && !state.maintainingScrollAtEnd) {
-+      const endOffset = Math.max(-insetStartAdjustment, contentSize - scrollLength);
-+      const distance = endOffset - state.scroll;
-+      // Estimated row sizes converging to measured ones can strand the initial
-+      // end landing when the library's own end-anchor bookkeeping gives up.
-+      // While still near the end (never fighting a user who scrolled away),
-+      // re-pin to the current true end until sizes stop changing.
-+      if (Math.abs(distance) > 2 && Math.abs(distance) <= scrollLength * 0.5) {
-+        settledFrames = 0;
-+        revealStableFrames = 0;
++    const endOffset = Math.max(-insetStartAdjustment, contentSize - scrollLength);
++    // state.scroll is optimistic: non-animated scrollTo writes it before UIKit
++    // moves. Only a native scroll event proves that the requested offset landed.
++    const nativeOffset = state.lastNativeScroll;
++    const hasNativeOffset = typeof nativeOffset === "number" && Number.isFinite(nativeOffset);
++    const distance = hasNativeOffset ? endOffset - nativeOffset : Infinity;
++    const isIdle = !state.scrollingTo && !state.maintainingScrollAtEnd;
++    const hasViewport = insetStartAdjustment > 0 && scrollLength > 0 && Number.isFinite(contentSize);
++    const isStable = hasViewport && isIdle && Math.abs(distance) <= 2 && previousEndOffset !== void 0 && Math.abs(endOffset - previousEndOffset) <= 1;
++    previousEndOffset = endOffset;
++    if (isStable) {
++      settledFrames++;
++      revealStableFrames++;
++      if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
++        onRevealStability();
++      }
++    } else {
++      settledFrames = 0;
++      revealStableFrames = 0;
++      // Keep the existing near-end correction limit. In-flight scrolls and
++      // unknown native offsets wait; neither counts as a settled frame.
++      if (hasViewport && isIdle && Math.abs(distance) > 2 && Math.abs(distance) <= scrollLength * 0.5) {
 +        const scroller = state.refScroller.current;
 +        if (scroller) {
 +          scroller.scrollTo({ animated: false, x: 0, y: endOffset });
 +        }
-+      } else {
-+        settledFrames++;
-+        revealStableFrames++;
-+        if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
-+          onRevealStability();
-+        }
-+      }
-+    } else {
-+      // Conditions that make re-pinning unnecessary (underflow, in-flight
-+      // programmatic scroll) count toward stability for the reveal.
-+      revealStableFrames++;
-+      if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
-+        onRevealStability();
 +      }
 +    }
 +    requestAnimationFrame(tick);
@@ -471,7 +480,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    const requestedIndex = target.index;
    const index = requestedIndex !== void 0 ? clampScrollIndex(requestedIndex, ctx.state.props.data.length) : void 0;
    const itemSize = getItemSizeAtIndex(ctx, index);
-@@ -2747,7 +2892,9 @@ function clearFinishedBootstrapInitialScrollTargetIfMovedAway(ctx) {
+@@ -2747,7 +2901,9 @@ function clearFinishedBootstrapInitialScrollTargetIfMovedAway(ctx) {
      return;
    }
    if (didFinishedInitialScrollMoveAwayFromTarget(ctx, initialScroll)) {
@@ -482,7 +491,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      if (!shouldKeepEndTargetAlive) {
        if (shouldPreserveInitialScrollForFooterLayout(initialScroll)) {
          clearPendingInitialScrollFooterLayout(ctx, {
-@@ -4672,7 +4819,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4672,7 +4828,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
@@ -492,7 +501,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4692,6 +4840,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4692,6 +4849,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
@@ -505,7 +514,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    }
    return nextSize;
  }
-@@ -6010,7 +6164,10 @@ var ListComponent = typedMemo(function ListComponent2({
+@@ -6010,7 +6173,10 @@ var ListComponent = typedMemo(function ListComponent2({
        ],
        contentOffset: initialContentOffset !== void 0 ? horizontal ? { x: initialContentOffset, y: 0 } : { x: 0, y: initialContentOffset } : void 0,
        horizontal,
@@ -517,7 +526,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
        onLayout,
        onScroll: onScroll2,
        ref: refScrollView,
-@@ -7075,6 +7232,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7075,6 +7241,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
      dataVersion,
      drawDistance = 250,
      contentInsetEndAdjustment,
@@ -525,7 +534,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      estimatedItemSize = 100,
      estimatedListSize,
      extraData,
-@@ -7200,7 +7358,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7200,7 +7367,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
    const combinedRef = useCombinedRef(refScroller, refScrollView);
    const keyExtractor = keyExtractorProp != null ? keyExtractorProp : ((_item, index) => index.toString());
    const stickyHeaderIndices = stickyHeaderIndicesProp;
@@ -534,7 +543,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
    const previousContentInsetEndAdjustmentRef = React2.useRef(contentInsetEndAdjustmentResolved);
    const alwaysRenderIndices = React2.useMemo(() => {
      const indices = getAlwaysRenderIndices(alwaysRender, dataProp, keyExtractor, anchoredEndSpace == null ? void 0 : anchoredEndSpace.anchorIndex);
-@@ -7341,6 +7499,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7341,6 +7508,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
      contentContainerAlignItems: contentContainerStyle.alignItems,
      contentInset,
      contentInsetEndAdjustment: contentInsetEndAdjustmentResolved,
@@ -542,7 +551,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      data: dataProp,
      dataKey,
      dataVersion,
-@@ -7423,6 +7582,13 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7423,6 +7591,13 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        return void 0;
      }
      const resolvedOffset = (_a4 = initialScroll.contentOffset) != null ? _a4 : resolveInitialScrollOffset(ctx, initialScroll);
@@ -556,7 +565,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
      return usesBootstrapInitialScroll && ((_b2 = state.initialScrollSession) == null ? void 0 : _b2.kind) === "bootstrap" && Platform.OS === "web" ? void 0 : resolvedOffset;
    }, [usesBootstrapInitialScroll]);
    React2.useLayoutEffect(() => {
-@@ -7651,6 +7817,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7651,6 +7826,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        onScroll: (event) => onScroll(ctx, event),
        onScrollBeginDrag: (event) => {
          var _a4, _b2;
@@ -564,7 +573,7 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
          prepareReachedEdgeForNextUserScroll(ctx);
          (_b2 = (_a4 = state.props).onScrollBeginDrag) == null ? void 0 : _b2.call(_a4, event);
        },
-@@ -7681,6 +7848,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7681,6 +7857,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        onLayout,
        onLayoutFooter,
        onMomentumScrollEnd: fns.onMomentumScrollEnd,
@@ -573,19 +582,28 @@ index b3c5a306b293f797a8b338adfca3060c0f6db22b..8aa7e68465015bae58cc2a46a020e1e7
        recycleItems,
        refreshControl: refreshControlElement ? stylePaddingTopState > 0 ? React2__namespace.cloneElement(refreshControlElement, {
 diff --git a/react-native.mjs b/react-native.mjs
-index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fcef546f3bf 100644
+index 40e87cda8c9bc79a889e5542f29af429a24b24d4..aac9aa0fa291d8466765fb3fca6dd207669b3af6 100644
 --- a/react-native.mjs
 +++ b/react-native.mjs
-@@ -933,7 +933,7 @@ function setInitialRenderState(ctx, {
+@@ -933,7 +933,16 @@ function setInitialRenderState(ctx, {
    if (didInitialScroll) {
      state.didFinishInitialScroll = true;
    }
 -  const isReadyToRender = Boolean(state.didContainersLayout && state.didFinishInitialScroll);
++  // Native contentOffset can seed an end target without dispatchInitialScroll.
++  // Both overflow completion paths must wait for the native end landing.
++  // Underflow needs no scroll: preserve UIKit's untouched resting position.
++  if (state.didContainersLayout && state.didFinishInitialScroll && state.initialScroll && state.initialScroll.viewPosition === 1 && state.initialScroll.index === state.props.data.length - 1 && state.props.data.length > 0) {
++    const insetStartAdjustment = getContentInsetStartAdjustment(ctx);
++    if (insetStartAdjustment > 0 && getContentSize(ctx) > state.scrollLength - insetStartAdjustment + 1) {
++      startInsetEndSettleWatchdog(ctx);
++    }
++  }
 +  const isReadyToRender = Boolean(state.didContainersLayout && state.didFinishInitialScroll && !state.insetEndRevealHold);
    if (isReadyToRender && !peek$(ctx, "readyToRender")) {
      set$(ctx, "readyToRender", true);
      setAdaptiveRender(ctx, "normal", "ready");
-@@ -1283,18 +1283,23 @@ function calculateOffsetWithOffsetPosition(ctx, offsetParam, params) {
+@@ -1283,18 +1292,23 @@ function calculateOffsetWithOffsetPosition(ctx, offsetParam, params) {
  }
  
  // src/core/clampScrollOffset.ts
@@ -611,7 +629,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    return clampedOffset;
  }
  
-@@ -1430,10 +1435,10 @@ function checkFinishedScrollFrame(ctx) {
+@@ -1430,10 +1444,10 @@ function checkFinishedScrollFrame(ctx) {
      finishScrollTo(ctx);
    }
  }
@@ -624,7 +642,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      x: ctx.state.props.horizontal ? offset : 0,
      y: ctx.state.props.horizontal ? 0 : offset
    });
-@@ -1482,7 +1487,10 @@ function checkFinishedScrollFallback(ctx) {
+@@ -1482,7 +1496,10 @@ function checkFinishedScrollFallback(ctx) {
          );
          scheduleFallbackCheck(SILENT_INITIAL_SCROLL_RETRY_DELAY_MS);
        } else if (shouldRetryUnalignedEndScroll) {
@@ -636,7 +654,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
          scheduleFallbackCheck(100);
        } else if (shouldFinishZeroTarget || shouldFinishAfterObservedScroll || canFinishInitialScrollWithoutNativeProgress || canFinishAfterSilentNativeDispatch || numChecks > maxChecks) {
          finishScrollTo(ctx);
-@@ -1545,9 +1553,18 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1545,9 +1562,18 @@ function doMaintainScrollAtEnd(ctx) {
    }
    if (shouldMaintainScrollAtEnd) {
      state.pendingMaintainScrollAtEnd = false;
@@ -656,7 +674,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      }
      if (!state.maintainingScrollAtEnd) {
        const pendingState = maintainScrollAtEnd.animated ? "pending-animated" : "pending-instant";
-@@ -1570,9 +1587,18 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1570,9 +1596,18 @@ function doMaintainScrollAtEnd(ctx) {
                y: 0
              });
            } else {
@@ -678,7 +696,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
            }
            setTimeout(
              () => {
-@@ -1603,6 +1629,10 @@ function doMaintainScrollAtEnd(ctx) {
+@@ -1603,6 +1638,10 @@ function doMaintainScrollAtEnd(ctx) {
  function requestAdjust(ctx, positionDiff, dataChanged) {
    const state = ctx.state;
    if (Math.abs(positionDiff) > 0.1) {
@@ -689,7 +707,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      const needsScrollWorkaround = Platform.OS === "android" && !IsNewArchitecture && dataChanged && state.scroll <= positionDiff;
      const doit = () => {
        if (needsScrollWorkaround) {
-@@ -1707,7 +1737,9 @@ function getPredictedNativeClamp(state, unresolvedAmount, totalSize) {
+@@ -1707,7 +1746,9 @@ function getPredictedNativeClamp(state, unresolvedAmount, totalSize) {
    if (Math.abs(unresolvedAmount) <= MVCP_POSITION_EPSILON) {
      return 0;
    }
@@ -700,7 +718,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    const clampDelta = maxScroll - state.scroll;
    if (unresolvedAmount < 0) {
      return Math.max(unresolvedAmount, Math.min(0, clampDelta));
-@@ -1769,7 +1801,7 @@ function resolvePendingNativeMVCPAdjust(ctx, newScroll) {
+@@ -1769,7 +1810,7 @@ function resolvePendingNativeMVCPAdjust(ctx, newScroll) {
      settlePendingNativeMVCPAdjust(ctx, remainingAfterManual, nativeDelta);
      return true;
    }
@@ -709,7 +727,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    const distanceToClamp = Math.abs(newScroll - expectedNativeClampScroll);
    const isAtExpectedNativeClamp = distanceToClamp <= NATIVE_END_CLAMP_EPSILON;
    if (isAtExpectedNativeClamp) {
-@@ -1902,7 +1934,7 @@ function prepareMVCP(ctx, dataChanged) {
+@@ -1902,7 +1943,7 @@ function prepareMVCP(ctx, dataChanged) {
              if (diff > 0) {
                diff = Math.max(0, totalSize - state.scroll - state.scrollLength);
              } else {
@@ -718,7 +736,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
                state.scroll = maxScroll;
                state.scrollPending = maxScroll;
                diff = 0;
-@@ -2299,8 +2331,121 @@ function scrollToIndex(ctx, {
+@@ -2299,8 +2340,121 @@ function scrollToIndex(ctx, {
  }
  
  // src/core/initialScroll.ts
@@ -728,11 +746,11 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
 +var INSET_END_REVEAL_MAX_HOLD_FRAMES = 40;
 +function startInsetEndSettleWatchdog(ctx) {
 +  const state = ctx.state;
-+  if (state.insetEndSettleWatchdogActive) {
++  if (state.insetEndSettleWatchdogStarted || state.didLoad) {
 +    return;
 +  }
++  state.insetEndSettleWatchdogStarted = true;
 +  state.insetEndSettleWatchdogActive = true;
-+  state.didUserDrag = false;
 +  // Hold the readyToRender opacity gate until the end landing is stable, so
 +  // the estimated-to-measured settle chase happens before first VISIBLE
 +  // paint instead of in front of the user. Capped so slow measurement can
@@ -741,6 +759,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
 +  let frames = 0;
 +  let settledFrames = 0;
 +  let revealStableFrames = 0;
++  let previousEndOffset;
 +  const releaseRevealHold = () => {
 +    if (state.insetEndRevealHold) {
 +      state.insetEndRevealHold = false;
@@ -780,33 +799,32 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
 +    const insetStartAdjustment = getContentInsetStartAdjustment(ctx);
 +    const contentSize = getContentSize(ctx);
 +    const scrollLength = state.scrollLength;
-+    if (insetStartAdjustment > 0 && scrollLength > 0 && Number.isFinite(contentSize) && contentSize > scrollLength && !state.scrollingTo && !state.maintainingScrollAtEnd) {
-+      const endOffset = Math.max(-insetStartAdjustment, contentSize - scrollLength);
-+      const distance = endOffset - state.scroll;
-+      // Estimated row sizes converging to measured ones can strand the initial
-+      // end landing when the library's own end-anchor bookkeeping gives up.
-+      // While still near the end (never fighting a user who scrolled away),
-+      // re-pin to the current true end until sizes stop changing.
-+      if (Math.abs(distance) > 2 && Math.abs(distance) <= scrollLength * 0.5) {
-+        settledFrames = 0;
-+        revealStableFrames = 0;
++    const endOffset = Math.max(-insetStartAdjustment, contentSize - scrollLength);
++    // state.scroll is optimistic: non-animated scrollTo writes it before UIKit
++    // moves. Only a native scroll event proves that the requested offset landed.
++    const nativeOffset = state.lastNativeScroll;
++    const hasNativeOffset = typeof nativeOffset === "number" && Number.isFinite(nativeOffset);
++    const distance = hasNativeOffset ? endOffset - nativeOffset : Infinity;
++    const isIdle = !state.scrollingTo && !state.maintainingScrollAtEnd;
++    const hasViewport = insetStartAdjustment > 0 && scrollLength > 0 && Number.isFinite(contentSize);
++    const isStable = hasViewport && isIdle && Math.abs(distance) <= 2 && previousEndOffset !== void 0 && Math.abs(endOffset - previousEndOffset) <= 1;
++    previousEndOffset = endOffset;
++    if (isStable) {
++      settledFrames++;
++      revealStableFrames++;
++      if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
++        onRevealStability();
++      }
++    } else {
++      settledFrames = 0;
++      revealStableFrames = 0;
++      // Keep the existing near-end correction limit. In-flight scrolls and
++      // unknown native offsets wait; neither counts as a settled frame.
++      if (hasViewport && isIdle && Math.abs(distance) > 2 && Math.abs(distance) <= scrollLength * 0.5) {
 +        const scroller = state.refScroller.current;
 +        if (scroller) {
 +          scroller.scrollTo({ animated: false, x: 0, y: endOffset });
 +        }
-+      } else {
-+        settledFrames++;
-+        revealStableFrames++;
-+        if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
-+          onRevealStability();
-+        }
-+      }
-+    } else {
-+      // Conditions that make re-pinning unnecessary (underflow, in-flight
-+      // programmatic scroll) count toward stability for the reveal.
-+      revealStableFrames++;
-+      if (revealStableFrames >= INSET_END_REVEAL_STABLE_FRAMES) {
-+        onRevealStability();
 +      }
 +    }
 +    requestAnimationFrame(tick);
@@ -840,7 +858,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    const requestedIndex = target.index;
    const index = requestedIndex !== void 0 ? clampScrollIndex(requestedIndex, ctx.state.props.data.length) : void 0;
    const itemSize = getItemSizeAtIndex(ctx, index);
-@@ -2726,7 +2871,9 @@ function clearFinishedBootstrapInitialScrollTargetIfMovedAway(ctx) {
+@@ -2726,7 +2880,9 @@ function clearFinishedBootstrapInitialScrollTargetIfMovedAway(ctx) {
      return;
    }
    if (didFinishedInitialScrollMoveAwayFromTarget(ctx, initialScroll)) {
@@ -851,7 +869,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      if (!shouldKeepEndTargetAlive) {
        if (shouldPreserveInitialScrollForFooterLayout(initialScroll)) {
          clearPendingInitialScrollFooterLayout(ctx, {
-@@ -4651,7 +4798,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4651,7 +4807,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
@@ -861,7 +879,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4671,6 +4819,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4671,6 +4828,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
@@ -874,7 +892,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    }
    return nextSize;
  }
-@@ -5989,7 +6143,10 @@ var ListComponent = typedMemo(function ListComponent2({
+@@ -5989,7 +6152,10 @@ var ListComponent = typedMemo(function ListComponent2({
        ],
        contentOffset: initialContentOffset !== void 0 ? horizontal ? { x: initialContentOffset, y: 0 } : { x: 0, y: initialContentOffset } : void 0,
        horizontal,
@@ -886,7 +904,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
        onLayout,
        onScroll: onScroll2,
        ref: refScrollView,
-@@ -7054,6 +7211,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7054,6 +7220,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
      dataVersion,
      drawDistance = 250,
      contentInsetEndAdjustment,
@@ -894,7 +912,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      estimatedItemSize = 100,
      estimatedListSize,
      extraData,
-@@ -7179,7 +7337,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7179,7 +7346,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
    const combinedRef = useCombinedRef(refScroller, refScrollView);
    const keyExtractor = keyExtractorProp != null ? keyExtractorProp : ((_item, index) => index.toString());
    const stickyHeaderIndices = stickyHeaderIndicesProp;
@@ -903,7 +921,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
    const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustmentResolved);
    const alwaysRenderIndices = useMemo(() => {
      const indices = getAlwaysRenderIndices(alwaysRender, dataProp, keyExtractor, anchoredEndSpace == null ? void 0 : anchoredEndSpace.anchorIndex);
-@@ -7320,6 +7478,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7320,6 +7487,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
      contentContainerAlignItems: contentContainerStyle.alignItems,
      contentInset,
      contentInsetEndAdjustment: contentInsetEndAdjustmentResolved,
@@ -911,7 +929,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      data: dataProp,
      dataKey,
      dataVersion,
-@@ -7402,6 +7561,13 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7402,6 +7570,13 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        return void 0;
      }
      const resolvedOffset = (_a4 = initialScroll.contentOffset) != null ? _a4 : resolveInitialScrollOffset(ctx, initialScroll);
@@ -925,7 +943,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
      return usesBootstrapInitialScroll && ((_b2 = state.initialScrollSession) == null ? void 0 : _b2.kind) === "bootstrap" && Platform.OS === "web" ? void 0 : resolvedOffset;
    }, [usesBootstrapInitialScroll]);
    useLayoutEffect(() => {
-@@ -7630,6 +7796,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7630,6 +7805,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        onScroll: (event) => onScroll(ctx, event),
        onScrollBeginDrag: (event) => {
          var _a4, _b2;
@@ -933,7 +951,7 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..192256485d07acad17812c6558ef3fce
          prepareReachedEdgeForNextUserScroll(ctx);
          (_b2 = (_a4 = state.props).onScrollBeginDrag) == null ? void 0 : _b2.call(_a4, event);
        },
-@@ -7660,6 +7827,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+@@ -7660,6 +7836,7 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
        onLayout,
        onLayoutFooter,
        onMomentumScrollEnd: fns.onMomentumScrollEnd,
