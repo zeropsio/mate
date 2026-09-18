@@ -191,7 +191,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
-  it("omits bundled workspace packages from staged desktop dependencies", () => {
+  it("stages only the desktop main-process externals", () => {
+    // The main-process bundle inlines every JS dependency; the Mate desktop
+    // has no native addon, so the staged install carries nothing.
     assert.deepStrictEqual(
       resolveDesktopRuntimeDependencies(
         {
@@ -200,17 +202,16 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           "@t3tools/contracts": "workspace:*",
           "@t3tools/shared": "workspace:*",
           effect: "catalog:",
-          electron: "41.5.0",
+          electron: "44.4.2",
+          "electron-store": "^8.2.0",
+          "electron-updater": "^6.8.9",
         },
         {
           "@effect/platform-node": "4.0.0-beta.59",
           effect: "4.0.0-beta.59",
         },
       ),
-      {
-        "@effect/platform-node": "4.0.0-beta.59",
-        effect: "4.0.0-beta.59",
-      },
+      {},
     );
   });
 
@@ -340,6 +341,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.deepStrictEqual(DESKTOP_ELECTRON_LANGUAGES, ["en-US"]);
     assert.deepStrictEqual(DESKTOP_FILE_EXCLUSIONS, [
       "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
+      "!**/*.map",
+      "!**/*.d.cts",
     ]);
   });
 
