@@ -39,6 +39,17 @@ sessions for the same subject do not replace one another.
 provider sessions and provider credentials have environment lifetime, not browser-session lifetime.
 Offline logout locks the renderer immediately; unreachable server sessions expire at their deadline.
 
+## Media preview access
+
+Clients with `orchestration:read` can request a `media-file` URL through `assets.createUrl` for
+supported images and videos anywhere the environment's server account can read. A thread ID supplies
+the workspace for relative paths; absolute paths refer to the environment host, not the client —
+the same reach `terminal:operate` already has. [`AssetAccess.ts`](../../apps/server/src/assets/AssetAccess.ts)
+resolves symlinks, requires a regular file, validates the resolved file's extension, and signs its
+canonical path and device/inode identity for one hour. Serving rechecks the path, media type and the
+opened descriptor's identity. Signed asset URLs are bearer credentials until they expire. Video reads
+support byte ranges and are served `private, no-store` without validators.
+
 ## Transport
 
 HTTP uses `Authorization: Bearer <token>` or the existing DPoP proof-bound session protocol. Browser
