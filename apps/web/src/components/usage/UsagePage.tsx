@@ -121,6 +121,7 @@ export function UsagePage() {
   const activeProviders = useMemo(() => providersWithUsage(merged.providers), [merged.providers]);
   const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
 
+  const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const selectWindow = (days: number) => {
     if (!isUsageWindowDays(days)) return;
     const nextPreferences = { metric, windowDays: days };
@@ -132,17 +133,22 @@ export function UsagePage() {
     });
   };
   const selectMetric = (nextMetric: UsageMetric) => {
+    if (nextMetric === "limits") setLimitsNow(Date.now());
     const nextPreferences = { metric: nextMetric, windowDays };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
   };
   const refreshWindow = () => {
     if (showingLimits) {
+      const refreshes: Promise<unknown>[] = [];
       for (const [environmentId, presentation] of presentations) {
         if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
-          void refreshProviders({ environmentId, input: {} });
+          refreshes.push(refreshProviders({ environmentId, input: {} }));
         }
       }
+      void Promise.allSettled(refreshes).then(() => {
+        setLimitsNow(Date.now());
+      });
       return;
     }
     const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
@@ -287,7 +293,7 @@ export function UsagePage() {
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
             {showingLimits ? (
-              <UsageLimitsSection />
+              <UsageLimitsSection now={limitsNow} />
             ) : settling ? (
               <>
                 {environments.length > 1 ? <UsageDeviceStrip environments={environments} /> : null}

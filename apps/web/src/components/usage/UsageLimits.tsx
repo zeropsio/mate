@@ -458,15 +458,13 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
 
 /**
  * Subscription quota windows from every connected environment's providers.
- * Countdowns anchor to render time rather than ticking: a live clock would
- * repaint the page every minute for no decision-changing gain.
+ * The page advances `now` on explicit refresh rather than ticking: a live
+ * clock would repaint the page for no decision-changing gain.
  */
-export function UsageLimitsSection() {
+export function UsageLimitsSection({ now }: { readonly now: number }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
   const groups = collectLimitsGroups(presentations);
   const sources = collectLimitSources(presentations);
-  // Anchored once per mount on purpose: countdowns must not tick (see below).
-  const [now] = useState(() => Date.now());
 
   return (
     <div className="flex flex-col gap-8">
