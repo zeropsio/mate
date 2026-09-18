@@ -143,11 +143,9 @@ import {
   isImageAttachment,
   type SessionPhase,
   type Thread,
-  type TurnDiffSummary,
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -348,7 +346,6 @@ import {
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildLoadingThreadFromShell,
-  buildRevertTurnCountByUserMessageId,
   buildThreadTurnInterruptInput,
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
@@ -2717,35 +2714,6 @@ export default function ChatView(props: ChatViewProps) {
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
-  const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
-    useTurnDiffSummaries(activeThread);
-  const turnDiffSummaryByAssistantMessageId = useMemo(() => {
-    const byMessageId = new Map<MessageId, TurnDiffSummary>();
-    for (const summary of turnDiffSummaries) {
-      if (!summary.assistantMessageId) continue;
-      byMessageId.set(summary.assistantMessageId, summary);
-    }
-    return byMessageId;
-  }, [turnDiffSummaries]);
-  const lastRevertTurnCountRef = useRef<Map<MessageId, number> | null>(null);
-  const revertTurnCountByUserMessageId = useMemo(() => {
-    const next = buildRevertTurnCountByUserMessageId(
-      {
-        supportsConversationRollback,
-        timelineEntries,
-        turnDiffSummaryByAssistantMessageId,
-        inferredCheckpointTurnCountByTurnId,
-      },
-      lastRevertTurnCountRef.current,
-    );
-    lastRevertTurnCountRef.current = next;
-    return next;
-  }, [
-    supportsConversationRollback,
-    inferredCheckpointTurnCountByTurnId,
-    timelineEntries,
-    turnDiffSummaryByAssistantMessageId,
-  ]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -6753,17 +6721,11 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef, isServerThread, onDiffPanelOpen],
   );
-  // Both the Map and the revert handler are read from refs at call-time so
-  // the callback reference is fully stable and never busts context identity.
-  const revertTurnCountRef = useRef(revertTurnCountByUserMessageId);
-  revertTurnCountRef.current = revertTurnCountByUserMessageId;
+  // The revert handler is read from a ref at call-time so the callback
+  // reference is fully stable and never busts TimelineRowCtx identity.
   const onRevertToTurnCountRef = useRef(onRevertToTurnCount);
   onRevertToTurnCountRef.current = onRevertToTurnCount;
-  const onRevertUserMessage = useCallback((messageId: MessageId) => {
-    const targetTurnCount = revertTurnCountRef.current.get(messageId);
-    if (typeof targetTurnCount !== "number") {
-      return;
-    }
+  const onRevertTimelineTurn = useCallback((targetTurnCount: number, messageId: MessageId) => {
     void onRevertToTurnCountRef.current(targetTurnCount, messageId);
   }, []);
 
@@ -7090,12 +7052,12 @@ export default function ChatView(props: ChatViewProps) {
                 timelineEntries={timelineEntries}
                 latestTurn={activeLatestTurn}
                 runningTurnId={activeRunningTurnId}
-                turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
+                turnDiffSummaries={activeThread.checkpoints}
                 activeThreadEnvironmentId={activeThread.environmentId}
                 routeThreadKey={routeThreadKey}
                 onOpenTurnDiff={onOpenTurnDiff}
-                revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
-                onRevertUserMessage={onRevertUserMessage}
+                supportsConversationRollback={supportsConversationRollback}
+                onRevertToTurnCount={onRevertTimelineTurn}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 markdownCwd={gitCwd ?? undefined}

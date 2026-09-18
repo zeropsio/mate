@@ -189,11 +189,11 @@ function buildProps() {
     listRef: createRef<LegendListRef | null>(),
     latestTurn: null,
     runningTurnId: null,
-    turnDiffSummaryByAssistantMessageId: new Map(),
+    turnDiffSummaries: [],
     routeThreadKey: "environment-local:thread-1",
     onOpenTurnDiff: () => {},
-    revertTurnCountByUserMessageId: new Map(),
-    onRevertUserMessage: () => {},
+    supportsConversationRollback: false,
+    onRevertToTurnCount: () => {},
     isRevertingCheckpoint: false,
     onImageExpand: () => {},
     activeThreadEnvironmentId: ACTIVE_THREAD_ENVIRONMENT_ID,
@@ -382,22 +382,17 @@ describe("MessagesTimeline", () => {
             },
           },
         ]}
-        turnDiffSummaryByAssistantMessageId={
-          new Map([
-            [
-              assistantMessageId,
-              {
-                turnId,
-                checkpointTurnCount: 1,
-                checkpointRef: CheckpointRef.make("checkpoint-with-files"),
-                status: "ready",
-                files: [{ path: "README.md", kind: "modified", additions: 2, deletions: 1 }],
-                assistantMessageId,
-                completedAt: MESSAGE_CREATED_AT,
-              },
-            ],
-          ])
-        }
+        turnDiffSummaries={[
+          {
+            turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-with-files"),
+            status: "ready",
+            files: [{ path: "README.md", kind: "modified", additions: 2, deletions: 1 }],
+            assistantMessageId,
+            completedAt: MESSAGE_CREATED_AT,
+          },
+        ]}
       />,
     );
 
@@ -439,47 +434,42 @@ describe("MessagesTimeline", () => {
             },
           },
         ]}
-        turnDiffSummaryByAssistantMessageId={
-          new Map([
-            [
-              assistantMessageId,
-              {
-                turnId,
-                checkpointTurnCount: 1,
-                checkpointRef: CheckpointRef.make("checkpoint-no-files"),
-                status: "ready",
-                files: [],
-                history: {
-                  runId: "run-1",
-                  coverage: "partial",
-                  semantics: "observed-workspace",
-                  representation: "git-normalized",
-                  policyVersion: "git-v1",
-                  roots: [
-                    {
-                      root: {
-                        rootId: "weatherapp",
-                        label: "weatherapp",
-                        remotePath: "/var/www/weatherapp",
-                        pathPrefix: "weatherapp/",
-                      },
-                      before: {
-                        status: "captured",
-                        oid: "0123456789abcdef0123456789abcdef01234567",
-                        ref: CheckpointRef.make("checkpoint-no-files"),
-                        startedAt: MESSAGE_CREATED_AT,
-                        completedAt: MESSAGE_CREATED_AT,
-                      },
-                      after: { status: "unavailable", reason: "Snapshot refused." },
-                    },
-                  ],
+        turnDiffSummaries={[
+          {
+            turnId,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("checkpoint-no-files"),
+            status: "ready",
+            files: [],
+            history: {
+              runId: "run-1",
+              coverage: "partial",
+              semantics: "observed-workspace",
+              representation: "git-normalized",
+              policyVersion: "git-v1",
+              roots: [
+                {
+                  root: {
+                    rootId: "weatherapp",
+                    label: "weatherapp",
+                    remotePath: "/var/www/weatherapp",
+                    pathPrefix: "weatherapp/",
+                  },
+                  before: {
+                    status: "captured",
+                    oid: "0123456789abcdef0123456789abcdef01234567",
+                    ref: CheckpointRef.make("checkpoint-no-files"),
+                    startedAt: MESSAGE_CREATED_AT,
+                    completedAt: MESSAGE_CREATED_AT,
+                  },
+                  after: { status: "unavailable", reason: "Snapshot refused." },
                 },
-                assistantMessageId,
-                completedAt: MESSAGE_CREATED_AT,
-              },
-            ],
-          ])
-        }
+              ],
+            },
+            assistantMessageId,
+            completedAt: MESSAGE_CREATED_AT,
+          },
+        ]}
       />,
     );
 

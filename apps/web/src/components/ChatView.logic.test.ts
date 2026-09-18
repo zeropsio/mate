@@ -18,8 +18,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
 
-import type { Thread, ThreadShell, TurnDiffSummary } from "../types";
-import type { TimelineEntry } from "../session-logic";
+import type { Thread, ThreadShell } from "../types";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import type { RightPanelSurface } from "../rightPanelStore";
 import {
@@ -29,7 +28,6 @@ import {
   waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
-  buildRevertTurnCountByUserMessageId,
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
@@ -746,128 +744,6 @@ describe("resolveComposerInteractionMode", () => {
         interactionMode: "plan",
       }),
     ).toEqual({ enabled: false, interactionMode: "default" });
-  });
-});
-
-describe("buildRevertTurnCountByUserMessageId", () => {
-  const userMessageId = MessageId.make("rewind-user-message");
-  const assistantMessageId = MessageId.make("rewind-assistant-message");
-  const turnId = TurnId.make("rewind-turn");
-  const timelineEntries = [
-    {
-      id: userMessageId,
-      kind: "message",
-      createdAt: now,
-      message: {
-        id: userMessageId,
-        role: "user",
-        text: "Update the file",
-        turnId,
-        createdAt: now,
-        updatedAt: now,
-        streaming: false,
-      },
-    },
-    {
-      id: assistantMessageId,
-      kind: "message",
-      createdAt: now,
-      message: {
-        id: assistantMessageId,
-        role: "assistant",
-        text: "Updated the file",
-        turnId,
-        createdAt: now,
-        updatedAt: now,
-        streaming: false,
-      },
-    },
-  ] satisfies ReadonlyArray<TimelineEntry>;
-  const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>([
-    [
-      assistantMessageId,
-      {
-        turnId,
-        checkpointTurnCount: 1,
-        checkpointRef: CheckpointRef.make("refs/t3/checkpoints/rewind-turn"),
-        status: "ready",
-        files: [],
-        assistantMessageId,
-        completedAt: now,
-      },
-    ],
-  ]);
-
-  it("offers the checkpoint before the user message when conversation rollback is supported", () => {
-    expect(
-      buildRevertTurnCountByUserMessageId({
-        supportsConversationRollback: true,
-        timelineEntries,
-        turnDiffSummaryByAssistantMessageId,
-        inferredCheckpointTurnCountByTurnId: {},
-      }),
-    ).toEqual(new Map([[userMessageId, 0]]));
-  });
-
-  it("offers no rewind action when file checkpoints exist but conversation rollback is unsupported", () => {
-    expect(
-      buildRevertTurnCountByUserMessageId({
-        supportsConversationRollback: false,
-        timelineEntries,
-        turnDiffSummaryByAssistantMessageId,
-        inferredCheckpointTurnCountByTurnId: {},
-      }).size,
-    ).toBe(0);
-  });
-
-  it.each([true, false])(
-    "returns the previous map when contents are unchanged (rollback supported: %s)",
-    (supportsConversationRollback) => {
-      const input = {
-        supportsConversationRollback,
-        timelineEntries,
-        turnDiffSummaryByAssistantMessageId,
-        inferredCheckpointTurnCountByTurnId: {},
-      };
-      const previous = buildRevertTurnCountByUserMessageId(input);
-      const streamed = timelineEntries.map((entry) =>
-        entry.message.role === "assistant"
-          ? { ...entry, message: { ...entry.message, text: "Updated the file again" } }
-          : entry,
-      );
-
-      expect(
-        buildRevertTurnCountByUserMessageId({ ...input, timelineEntries: streamed }, previous),
-      ).toBe(previous);
-    },
-  );
-
-  it("returns a new map when a revert target changes", () => {
-    const input = {
-      supportsConversationRollback: true,
-      timelineEntries,
-      turnDiffSummaryByAssistantMessageId,
-      inferredCheckpointTurnCountByTurnId: {},
-    };
-    const previous = buildRevertTurnCountByUserMessageId(input);
-    const next = buildRevertTurnCountByUserMessageId(
-      {
-        ...input,
-        turnDiffSummaryByAssistantMessageId: new Map([
-          [
-            assistantMessageId,
-            {
-              ...turnDiffSummaryByAssistantMessageId.get(assistantMessageId)!,
-              checkpointTurnCount: 3,
-            },
-          ],
-        ]),
-      },
-      previous,
-    );
-
-    expect(next).not.toBe(previous);
-    expect(next).toEqual(new Map([[userMessageId, 2]]));
   });
 });
 
