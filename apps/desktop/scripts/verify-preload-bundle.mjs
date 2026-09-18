@@ -74,6 +74,7 @@ const createSandboxModules = (exposedGlobals) => {
       exposeInMainWorld: (name, api) => exposedGlobals.set(name, api),
     },
     ipcRenderer,
+    webFrame: { getZoomFactor: () => 1 },
   };
 
   return new Map([
@@ -110,6 +111,9 @@ const executeBundle = (source, sandboxModules) => {
     {
       process: sandboxProcess,
       require: requireSandboxModule,
+      // On macOS the preload keeps the window-control inset in step with zoom
+      // through window listeners; the sandbox only needs to accept them.
+      window: { addEventListener: () => undefined },
     },
     {
       filename: "desktop-preload.cjs",
