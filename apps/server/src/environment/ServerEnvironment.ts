@@ -96,6 +96,7 @@ export const makeServerEnvironmentCapabilities = (
     threadSettlement: true,
     threadSnooze: true,
     usageLimitSources: true,
+    usagePriceOverrides: true,
     threadPinning: true,
     threadPinReorder: true,
     threadTitleRegeneration: true,

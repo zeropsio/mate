@@ -207,6 +207,19 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientS
 // Moved to environment.ts so orchestration contracts can use it without an
 // import cycle; re-exported here for compatibility with deep imports.
 export { ThreadEnvMode } from "./environment.ts";
+const UsageModelTokenPrice = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isGreaterThanOrEqualTo(0),
+);
+
+/** USD per million tokens. Omitted cache rates use the input rate. */
+export const UsageModelPriceOverride = Schema.Struct({
+  inputCostPerMillionTokens: UsageModelTokenPrice,
+  outputCostPerMillionTokens: UsageModelTokenPrice,
+  cacheReadCostPerMillionTokens: Schema.optionalKey(UsageModelTokenPrice),
+  cacheWriteCostPerMillionTokens: Schema.optionalKey(UsageModelTokenPrice),
+});
+export type UsageModelPriceOverride = typeof UsageModelPriceOverride.Type;
 
 const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
@@ -752,6 +765,10 @@ export const ServerSettings = Schema.Struct({
   usageLimitSources: Schema.Record(UsageLimitSourceId, UsageLimitSourceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** Exact model IDs, applied to past and future usage on this environment. */
+  usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -963,6 +980,10 @@ export const ServerSettingsPatch = Schema.Struct({
   // echoed back yet. `null` removes; the server merges into its current map.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
+  ),
+  /** Each entry replaces one model's rates; `null` restores automatic pricing. */
+  usagePriceOverrides: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, Schema.NullOr(UsageModelPriceOverride)),
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
