@@ -6,37 +6,6 @@ const INLINE_CODE_DISQUALIFIER_PATTERN = /[\s`]/;
 const PATH_SEPARATOR_PATTERN = /[\\/]/;
 const FILE_EXTENSION_PATTERN = /\.[A-Za-z0-9_-]+$/;
 const NUMERIC_DOTTED_PATTERN = /^\d+(?:\.\d+)+$/;
-const BARE_EXTENSIONLESS_POSITION_PATTERN = /^[A-Za-z0-9_-]+(?::\d+){1,2}$/;
-// `Name:digits` also matches `error:1`, `port:3000`, and `TODO:12`.
-const EXTENSIONLESS_FILE_NAMES = new Set([
-  "Makefile",
-  "makefile",
-  "GNUmakefile",
-  "Dockerfile",
-  "Containerfile",
-  "Justfile",
-  "justfile",
-  "Rakefile",
-  "Gemfile",
-  "Procfile",
-  "Brewfile",
-  "Caddyfile",
-  "Vagrantfile",
-  "Jenkinsfile",
-  "Podfile",
-  "Fastfile",
-  "BUILD",
-  "WORKSPACE",
-  "LICENSE",
-  "LICENCE",
-  "COPYING",
-  "NOTICE",
-  "AUTHORS",
-  "CONTRIBUTORS",
-  "CHANGELOG",
-  "README",
-  "CODEOWNERS",
-]);
 const SINGLE_LABEL_HOSTNAMES = new Set(["localhost"]);
 // These allowlists avoid classifying dotted directories such as `conf.d/`
 // or filenames such as `Makefile.in:12` as hosts.
@@ -113,14 +82,6 @@ function looksLikeHostname(segment: string, hasPosition: boolean): boolean {
   if (labels.length < 2 || lastLabel === undefined) return false;
   if (GENERIC_HOSTNAME_TLDS.has(lastLabel)) return true;
   return !hasPosition && COUNTRY_HOSTNAME_TLDS.has(lastLabel);
-}
-
-/** Recognizes conventional extensionless filenames with an explicit line position. */
-export function isConventionalFilePosition(path: string): boolean {
-  return (
-    BARE_EXTENSIONLESS_POSITION_PATTERN.test(path) &&
-    EXTENSIONLESS_FILE_NAMES.has(path.replace(POSITION_SUFFIX_PATTERN, ""))
-  );
 }
 
 /**
