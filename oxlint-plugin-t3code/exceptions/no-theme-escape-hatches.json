@@ -208,22 +208,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/home/thread-swipe-actions.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#5856d6\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in thread-swipe-actions awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/home/thread-swipe-actions.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#ff2d55\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in thread-swipe-actions awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/mobile/src/features/review/reviewDiffRendering.tsx",
     "kind": "Literal",
     "fingerprint": "\"h-px w-[5px] bg-rose-400\"",
@@ -280,43 +264,11 @@
     "expires": "F4"
   },
   {
-    "path": "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute left-0 rounded-full bg-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in FontSizeSliderRow awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"rgba(0, 0, 0, 0.06)\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in FontSizeSliderRow awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
-    "kind": "ImportSpecifier",
-    "fingerprint": "useUniwindTheme",
-    "owner": "karel",
-    "reason": "native/third-party interop boundary \u2014 reviewed",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
     "kind": "ImportSpecifier",
     "fingerprint": "useUniwindTheme",
     "owner": "karel",
     "reason": "native/third-party interop boundary \u2014 reviewed",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/settings/SettingsProviderSetupRouteScreen.tsx",
-    "kind": "ImportSpecifier",
-    "fingerprint": "useUniwindTheme",
-    "owner": "karel",
-    "reason": "native/third-party interop boundary \u2014 reviewed (native stack header colours; upstream port 06336460c, intake 2026-09-04)",
     "expires": "never"
   },
   {
@@ -334,14 +286,6 @@
     "owner": "karel",
     "reason": "fixed terminal palette; only bg/fg/cursor/border are themed",
     "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/terminal/ThreadTerminalPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"max-w-44 text-right text-2xs text-red-300\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ThreadTerminalPanel awaiting semantic roles",
-    "expires": "F4"
   },
   {
     "path": "apps/mobile/src/features/threads/git/GitCommitSheet.tsx",
@@ -393,14 +337,6 @@
   },
   {
     "path": "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"h-6 w-6 items-center justify-center rounded-full bg-red-500\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in GitActionProgressOverlay awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`flex-row items-center gap-2.5 rounded-[26px] border border-continuous px-3.5 py-3 shadow-lg shadow-black/10 ${bgClass}`",
     "owner": "karel",
@@ -416,14 +352,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/threads/NewTaskContextPickerScreens.tsx",
-    "kind": "ImportSpecifier",
-    "fingerprint": "useUniwindTheme",
-    "owner": "karel",
-    "reason": "native/third-party interop boundary \u2014 reviewed",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
     "kind": "ImportSpecifier",
     "fingerprint": "useUniwindTheme",
@@ -432,62 +360,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/features/threads/PendingApprovalCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-blue-500\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PendingApprovalCard awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/PendingApprovalCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"font-t3-extrabold text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PendingApprovalCard awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/PendingUserInputCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-blue-500\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PendingUserInputCard awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/PendingUserInputCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"font-t3-bold text-xs uppercase tracking-[1px] text-neutral-500\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PendingUserInputCard awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/PendingUserInputCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"font-t3-extrabold text-sm text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PendingUserInputCard awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#2563eb\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"#60a5fa\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
     "path": "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
     "kind": "ImportSpecifier",
     "fingerprint": "useUniwindTheme",
@@ -497,27 +369,11 @@
   },
   {
     "path": "apps/mobile/src/features/threads/ThreadComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"h-2 w-2 rounded-full bg-red-500\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ThreadComposer awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/ThreadComposer.tsx",
     "kind": "ImportSpecifier",
     "fingerprint": "useUniwindTheme",
     "owner": "karel",
     "reason": "native/third-party interop boundary \u2014 reviewed",
     "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/features/threads/ThreadDetailScreen.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"h-9 w-9 border border-border bg-card shadow-md shadow-black/10\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ThreadDetailScreen awaiting semantic roles",
-    "expires": "F4"
   },
   {
     "path": "apps/mobile/src/features/threads/ThreadFeed.tsx",
@@ -3518,5 +3374,133 @@
     "owner": "karel",
     "reason": "T3 chrome styling in __root awaiting semantic roles",
     "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/components/ComposerAttachmentStrip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute bottom-0.5 left-0.5 flex-row items-center gap-0.5 rounded-full bg-black/70 px-1 py-0.5\"",
+    "owner": "mobile-intake",
+    "reason": "upload badge over an image thumbnail: fixed black/white stay legible on any picture, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/ComposerAttachmentStrip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-2xs text-white\"",
+    "owner": "mobile-intake",
+    "reason": "upload badge over an image thumbnail: fixed black/white stay legible on any picture, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1.5\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"items-center justify-center overflow-hidden bg-black/80\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"items-center justify-center rounded-full bg-black/45\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-center text-xs text-white\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ffffff\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ffffff\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex-1 bg-black\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex-1 font-t3-medium text-base text-white\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"font-t3-medium text-base text-white\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"mx-4 my-3 min-h-12 items-center justify-center rounded-xl bg-white/15 px-4\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"px-4 pb-3 text-sm text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"px-6 text-center text-base text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-center text-base text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-sm text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
   }
 ]

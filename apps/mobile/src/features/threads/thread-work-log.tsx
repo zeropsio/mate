@@ -49,19 +49,15 @@ import {
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import type { MarkdownImageRenderer } from "../../native/SelectableMarkdownText";
 import Animated, {
-  cancelAnimation,
-  Easing,
   FadeIn,
   FadeOut,
   LinearTransition,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { useDutyCycle } from "../../lib/useDutyCycle";
 
 const SHIMMER_WIDTH = 72;
 const SHIMMER_SWEEP_MS = 1_350;
@@ -181,7 +177,6 @@ export function ShimmeringWorkContent(props: {
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
   const [reducedMotion, setReducedMotion] = useState(true);
   const screenIsFocused = useIsFocused();
-  const progress = useSharedValue(0);
   const gradientId = `work-shimmer-${useId().replaceAll(":", "")}`;
   const contentWidth = Math.min(
     availableWidth,
@@ -204,30 +199,12 @@ export function ShimmeringWorkContent(props: {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => {
-    cancelAnimation(progress);
-    progress.value = 0;
-    if (contentWidth <= 0 || reducedMotion || !appIsActive || !screenIsFocused) return;
-
-    progress.value = withRepeat(
-      withSequence(
-        withTiming(1, {
-          duration: SHIMMER_SWEEP_MS,
-          easing: Easing.linear,
-          reduceMotion: ReduceMotion.Never,
-        }),
-        withDelay(
-          SHIMMER_PAUSE_MS,
-          withTiming(0, { duration: 0, reduceMotion: ReduceMotion.Never }),
-        ),
-      ),
-      -1,
-      false,
-      undefined,
-      ReduceMotion.Never,
-    );
-    return () => cancelAnimation(progress);
-  }, [appIsActive, contentWidth, progress, reducedMotion, screenIsFocused]);
+  // Stepped duty cycle, not an infinite Reanimated repeat (design-system R6): the
+  // sweep advances in discrete frames and stops whenever the row is off screen.
+  const { progress } = useDutyCycle(
+    contentWidth > 0 && !reducedMotion && appIsActive && screenIsFocused,
+    { duration: SHIMMER_SWEEP_MS + SHIMMER_PAUSE_MS, frameCount: 8 },
+  );
 
   const sweepStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -SHIMMER_WIDTH + progress.value * (contentWidth + SHIMMER_WIDTH) }],

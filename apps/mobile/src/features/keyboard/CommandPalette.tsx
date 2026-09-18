@@ -386,7 +386,7 @@ export function CommandPalette(props: {
             className="flex-1 items-center justify-center p-4"
           >
             <Pressable
-              className="absolute inset-0 bg-black/15"
+              className="absolute inset-0 bg-backdrop"
               accessibilityLabel="Close command palette"
               onPress={() => close()}
             />

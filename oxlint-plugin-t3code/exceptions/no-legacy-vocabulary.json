@@ -414,5 +414,21 @@
     "owner": "karel",
     "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
     "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Setting up worktree\u2026\"",
+    "owner": "mobile-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Setting up worktree\u2026\"",
+    "owner": "mobile-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
   }
 ]

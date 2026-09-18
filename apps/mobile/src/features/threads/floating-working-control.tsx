@@ -187,7 +187,7 @@ export function FloatingWorkingControl(props: {
         <View pointerEvents="box-none" className="flex-row items-center gap-4">
           <Animated.View
             pointerEvents={statusInteractive ? "box-none" : "none"}
-            className="h-11 items-center justify-center overflow-hidden rounded-full border border-border bg-card shadow-md shadow-black/10"
+            className="h-11 items-center justify-center overflow-hidden rounded-full border border-border bg-card shadow-md shadow-adaptive-black-a10-a25"
             style={capsuleStyle}
           >
             {statusContent}
@@ -202,7 +202,7 @@ export function FloatingWorkingControl(props: {
             <ControlPill
               accessibilityLabel="Scroll to end"
               activateOnPressIn
-              className="h-11 w-11 border border-border bg-card shadow-md shadow-black/10"
+              className="h-11 w-11 border border-border bg-card shadow-md shadow-adaptive-black-a10-a25"
               disabled={!props.showScrollToEnd}
               icon={{ ios: "chevron.down", android: "keyboard_arrow_down" }}
               onPress={props.onScrollToEnd}
@@ -222,7 +222,7 @@ export function FloatingWorkingControl(props: {
         <ControlPill
           accessibilityLabel="Scroll to end"
           activateOnPressIn
-          className="h-11 w-11 border border-border bg-card shadow-md shadow-black/10"
+          className="h-11 w-11 border border-border bg-card shadow-md shadow-adaptive-black-a10-a25"
           icon={{ ios: "chevron.down", android: "keyboard_arrow_down" }}
           onPress={props.onScrollToEnd}
         />
@@ -282,7 +282,7 @@ function FloatingStatusLabel(props: {
         {props.status.tone === "reconnecting" ? (
           <ActivityIndicator size="small" colorClassName="accent-icon-muted" />
         ) : (
-          <View className="h-2 w-2 rounded-full bg-red-500" />
+          <View className="h-2 w-2 rounded-full bg-danger-foreground" />
         )}
         <Text
           className="max-w-[260px] shrink font-t3-medium text-xs text-foreground"
