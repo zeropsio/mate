@@ -7477,6 +7477,15 @@ export default function ChatView(props: ChatViewProps) {
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,
     addFiles: (files) => composerRef.current?.addDroppedFiles(files),
+    // Every environment here is remote, so a local folder path means nothing
+    // to the agent; the drop is refused instead of uploading an empty file.
+    addFolders: () => {
+      toastManager.add({
+        type: "error",
+        title: "Folders can't be dropped into remote environments",
+        description: "Drop the files themselves instead.",
+      });
+    },
   });
   const externalComposerDrawerAttached =
     composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
