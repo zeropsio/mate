@@ -251,9 +251,7 @@ const make = Effect.gen(function* () {
     return cwd;
   });
 
-  // Shared tail for both capture paths: creates the git checkpoint ref, diffs
-  // it against the previous turn, then dispatches the domain events to update
-  // the orchestration read model.
+  // Capture the completed turn's files, then publish its summary and receipts.
   const captureAndDispatchCheckpoint = Effect.fn("captureAndDispatchCheckpoint")(function* (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;
@@ -427,9 +425,9 @@ const make = Effect.gen(function* () {
     });
   });
 
-  // Captures a real git checkpoint when a turn completes via a runtime event.
+  // Capture the files left by a completed or interrupted turn.
   const captureCheckpointFromTurnCompletion = Effect.fn("captureCheckpointFromTurnCompletion")(
-    function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" }>) {
+    function* (event: Extract<ProviderRuntimeEvent, { type: "turn.completed" | "turn.aborted" }>) {
       const turnId = toTurnId(event.turnId);
       if (!turnId) {
         return;
@@ -486,8 +484,11 @@ const make = Effect.gen(function* () {
           thread,
           cwd: checkpointCwd,
           turnCount: nextTurnCount,
-          status: checkpointStatusFromRuntime(event.payload.state),
-          assistantMessageId: undefined,
+          status:
+            event.type === "turn.aborted"
+              ? "ready"
+              : checkpointStatusFromRuntime(event.payload.state),
+          assistantMessageId: existingPlaceholder?.assistantMessageId ?? undefined,
           createdAt: event.createdAt,
         });
       }).pipe(
@@ -499,68 +500,6 @@ const make = Effect.gen(function* () {
       );
     },
   );
-
-  // Captures a real git checkpoint when a placeholder checkpoint (status "missing")
-  // is detected via a domain event. This replaces the placeholder with a real
-  // git-ref-based checkpoint.
-  //
-  // ProviderRuntimeIngestion creates placeholder checkpoints on turn.diff.updated
-  // events from the Codex runtime. This handler fires when the corresponding
-  // domain event arrives, allowing the reactor to capture the actual filesystem
-  // state into a git ref and dispatch a replacement checkpoint.
-  const captureCheckpointFromPlaceholder = Effect.fn("captureCheckpointFromPlaceholder")(function* (
-    event: Extract<OrchestrationEvent, { type: "thread.turn-diff-completed" }>,
-  ) {
-    const { threadId, turnId, checkpointTurnCount, status } = event.payload;
-
-    // Only replace placeholders; skip events from our own real captures.
-    if (status !== "missing") {
-      return;
-    }
-
-    const thread = yield* resolveThreadDetail(threadId);
-    if (!thread) {
-      yield* Effect.logWarning("checkpoint capture from placeholder skipped: thread not found", {
-        threadId,
-      });
-      return;
-    }
-
-    // If a real checkpoint already exists for this turn, skip.
-    if (
-      thread.checkpoints.some(
-        (checkpoint) => checkpoint.turnId === turnId && checkpoint.status !== "missing",
-      )
-    ) {
-      yield* Effect.logDebug(
-        "checkpoint capture from placeholder skipped: real checkpoint already exists",
-        { threadId, turnId },
-      );
-      return;
-    }
-
-    const projects = yield* resolveThreadProjects(thread.projectId);
-    const checkpointCwd = yield* resolveCheckpointCwd({
-      threadId,
-      thread,
-      projects,
-      preferSessionRuntime: true,
-    });
-    if (!checkpointCwd) {
-      return;
-    }
-
-    yield* captureAndDispatchCheckpoint({
-      threadId,
-      turnId,
-      thread,
-      cwd: checkpointCwd,
-      turnCount: checkpointTurnCount,
-      status: "ready",
-      assistantMessageId: event.payload.assistantMessageId ?? undefined,
-      createdAt: event.payload.completedAt,
-    });
-  });
 
   const ensurePreTurnBaselineFromTurnStart = Effect.fn("ensurePreTurnBaselineFromTurnStart")(
     function* (event: Extract<ProviderRuntimeEvent, { type: "turn.started" }>) {
@@ -1013,30 +952,10 @@ const make = Effect.gen(function* () {
       );
       return;
     }
-
-    // When ProviderRuntimeIngestion creates a placeholder checkpoint (status "missing")
-    // from a turn.diff.updated runtime event, capture the real git checkpoint to
-    // replace it. The providerService.streamEvents PubSub does not reliably deliver
-    // turn.completed runtime events to this reactor (shared subscription), so
-    // reacting to the domain event is the reliable path.
-    if (event.type === "thread.turn-diff-completed") {
-      // Provider updates may arrive while work is still running; only completion
-      // finalizes the new capture lifecycle.
-      if (Option.isSome(workspaceHistory)) return;
-      yield* captureCheckpointFromPlaceholder(event).pipe(
-        Effect.catch((error) =>
-          Effect.flatMap(nowIso, (createdAt) =>
-            appendCaptureFailureActivity({
-              threadId: event.payload.threadId,
-              turnId: event.payload.turnId,
-              detail: error.message,
-              createdAt,
-            }).pipe(Effect.catch(() => Effect.void)),
-          ),
-        ),
-      );
-    }
   });
+
+  // The latest turn each thread started, so an abort checkpoints only real work.
+  const startedTurns = new Map<ThreadId, TurnId>();
 
   const processRuntimeEvent = Effect.fn("processRuntimeEvent")(function* (
     event: ProviderRuntimeEvent,
@@ -1059,23 +978,38 @@ const make = Effect.gen(function* () {
       return;
     }
     if (event.type === "turn.aborted" && Option.isSome(workspaceHistory)) {
-      yield* captureCheckpointFromTurnCompletion({
-        ...event,
-        type: "turn.completed",
-        payload: { state: "cancelled" },
-      });
+      yield* captureCheckpointFromTurnCompletion(event);
+      return;
+    }
+    if (event.type === "session.exited") {
+      startedTurns.delete(event.threadId);
       return;
     }
     if (event.type === "turn.started") {
       if (Option.isSome(workspaceHistory)) {
         const turnId = toTurnId(event.turnId);
         if (turnId) yield* workspaceHistory.value.bindTurn(event.threadId, turnId);
-      } else yield* ensurePreTurnBaselineFromTurnStart(event);
+      } else {
+        // Only a turn that started here may checkpoint on interruption.
+        const turnId = toTurnId(event.turnId);
+        if (turnId !== null) startedTurns.set(event.threadId, turnId);
+        yield* ensurePreTurnBaselineFromTurnStart(event);
+      }
       return;
     }
 
-    if (event.type === "turn.completed") {
+    if (event.type === "turn.completed" || event.type === "turn.aborted") {
       const turnId = toTurnId(event.turnId);
+      const thread = yield* resolveThreadDetail(event.threadId);
+      const isTrackedTurn = sameId(startedTurns.get(event.threadId), turnId);
+      if (isTrackedTurn) startedTurns.delete(event.threadId);
+      if (
+        event.type === "turn.aborted" &&
+        !isTrackedTurn &&
+        !sameId(thread?.session?.activeTurnId, turnId)
+      ) {
+        return;
+      }
       yield* captureCheckpointFromTurnCompletion(event).pipe(
         Effect.catch((error) =>
           Effect.flatMap(nowIso, (createdAt) =>
@@ -1088,7 +1022,9 @@ const make = Effect.gen(function* () {
           ),
         ),
       );
-      yield* refreshLocalGitStatusFromTurnCompletion(event);
+      if (event.type === "turn.completed") {
+        yield* refreshLocalGitStatusFromTurnCompletion(event);
+      }
       return;
     }
   });
@@ -1125,7 +1061,6 @@ const make = Effect.gen(function* () {
           event.type !== "thread.turn-start-requested" &&
           event.type !== "thread.message-sent" &&
           event.type !== "thread.checkpoint-revert-requested" &&
-          event.type !== "thread.turn-diff-completed" &&
           event.type !== "thread.deleted"
         ) {
           return Effect.void;
