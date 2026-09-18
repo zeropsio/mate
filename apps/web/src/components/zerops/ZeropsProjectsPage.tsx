@@ -61,6 +61,7 @@ import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -1860,14 +1861,32 @@ function ZeropsProjectsContent() {
       ),
     [groupDeploys],
   );
+  // An environment made before a job deployed (D27) has no deploy token on
+  // the broker; a person who may mint one finishes it here like any other
+  // write a creation lost.
+  const declaredProjects = useMemo(
+    () => [...declaredByGroup.values()].flatMap((projects) => [...projects]),
+    [declaredByGroup],
+  );
+  const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
+  const withoutDeployToken = useZeropsDeployTokenGaps({
+    client,
+    giteaProjectId,
+    declaredProjects,
+    enabled:
+      status === "signed-in" &&
+      (activeOrganization?.roleCode === "ADMIN" || activeOrganization?.roleCode === "OWNER"),
+    generation: deployTokenGeneration,
+  });
   const halfMade = useMemo(
     () =>
       halfMadeGroupEnvironments({
         projects: candidates.map((candidate) => candidate.project),
         registry: registryState.registry,
         declared: declaredByGroup,
+        withoutDeployToken,
       }),
-    [candidates, declaredByGroup, registryState.registry],
+    [candidates, declaredByGroup, registryState.registry, withoutDeployToken],
   );
   useZeropsGroupEnvironmentReconcile({
     enabled: status === "signed-in" && projectFlow.signedIn && !isLoading && !creationRunning,
@@ -1881,6 +1900,7 @@ function ZeropsProjectsContent() {
     // Not a failed creation: the project runs, and what is outstanding is
     // named so the person knows what is waiting on whom.
     onOutcome: (entry, outcome) => {
+      setDeployTokenGeneration((current) => current + 1);
       if (outcome.failed !== undefined) {
         setToolError(`${entry.displayName}: ${outcome.failed.reason}`);
       }

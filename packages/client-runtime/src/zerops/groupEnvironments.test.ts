@@ -405,4 +405,34 @@ describe("halfMadeGroupEnvironments", () => {
     ]);
     expect(halfMadeGroupEnvironments({ projects, registry: registered, declared })).toEqual([]);
   });
+
+  it("names an environment known in full whose deploy token the broker does not hold (D27)", () => {
+    // Made before a job deployed: registered and declared, and its first job
+    // is refused until somebody who may mint a token opens the page.
+    const declared = new Map([["g-1", new Set(["p-stage", "p-prod"])]]);
+    const registered = parseZeropsRegistry([
+      "mate:gn:g-1:acme",
+      "mate:gm:g-1:p-stage:stage",
+      "mate:gm:g-1:p-prod:production",
+    ]);
+    expect(
+      halfMadeGroupEnvironments({
+        projects,
+        registry: registered,
+        declared,
+        withoutDeployToken: new Set(["p-prod"]),
+      }),
+    ).toEqual([
+      { groupId: "g-1", projectId: "p-prod", displayName: "Acme - production", tier: "production" },
+    ]);
+    // Not asked — a person who may not mint one, or the broker not read yet.
+    expect(
+      halfMadeGroupEnvironments({
+        projects,
+        registry: registered,
+        declared,
+        withoutDeployToken: undefined,
+      }),
+    ).toEqual([]);
+  });
 });

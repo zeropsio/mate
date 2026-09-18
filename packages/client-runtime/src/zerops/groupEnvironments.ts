@@ -399,8 +399,10 @@ export function planBrokerProjectGrant<Token extends BrokerTokenLike>(
 
 /**
  * A stage or a production the account holds that the group does not know in
- * full: not in the registry as that kind, or not declared in
- * `environments.yaml`. The three writes that follow a creation's project live
+ * full: not in the registry as that kind, not declared in `environments.yaml`,
+ * or — for a person who may mint one — without its deploy token on the broker
+ * (D27: an environment made before a job deployed has none, and its first job
+ * is refused until somebody who may opens the page). The writes that follow a creation's project live
  * in the page that made it, and a reload in that minute lost them — the
  * project ran, the page kept asking for the tier it already had (2026-09-17).
  * The projects page finishes these on its next read.
@@ -422,6 +424,12 @@ export function halfMadeGroupEnvironments(input: {
   readonly registry: ZeropsRegistry;
   /** Per group, the projects its `environments.yaml` declares. */
   readonly declared: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * The declared projects whose deploy token the broker does not hold
+   * (`deployToken.ts`). Absent for a person who may not mint one, and until
+   * the broker's variables have been read: nothing is then half-made for it.
+   */
+  readonly withoutDeployToken?: ReadonlySet<string> | undefined;
 }): ReadonlyArray<HalfMadeGroupEnvironment> {
   const out: Array<HalfMadeGroupEnvironment> = [];
   for (const project of input.projects) {
@@ -436,7 +444,8 @@ export function halfMadeGroupEnvironments(input: {
       (entry) => entry.projectId === project.id && entry.kind === tier,
     );
     const declared = input.declared.get(tags.groupId)?.has(project.id) ?? false;
-    if (registered && declared) continue;
+    const keyed = !(input.withoutDeployToken?.has(project.id) ?? false);
+    if (registered && declared && keyed) continue;
     out.push({ groupId: tags.groupId, projectId: project.id, displayName: project.name, tier });
   }
   return out;
