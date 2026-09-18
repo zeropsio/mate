@@ -2813,7 +2813,11 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     expandedLabel,
     showFailedIndicator,
   );
-  const canExpand = expandedBody !== null;
+  // A command that is the visible label still expands: the expanded row wraps
+  // the label in full instead of repeating it in the body.
+  const canExpand =
+    expandedBody !== null ||
+    Boolean(workEntryRawCommand(workEntry)?.trim() || workEntry.command?.trim());
   const showDestructiveRowStyle =
     showFailedIndicator &&
     (workEntrySignalsSevereFailure(workEntry) || !workLogEntryIsToolLike(workEntry));
@@ -2881,7 +2885,15 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
-              <span className={cn("min-w-0 flex-1 truncate", headingClass)}>{displayText}</span>
+              <span
+                className={cn(
+                  "min-w-0 flex-1",
+                  expanded ? "whitespace-pre-wrap break-words select-text" : "truncate",
+                  headingClass,
+                )}
+              >
+                {displayText}
+              </span>
             </p>
           </div>
           <span
