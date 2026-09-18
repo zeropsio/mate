@@ -1381,8 +1381,8 @@ function RevertUserMessageButton({
  * carries `group/timeline-row`; hover or focus on an existing control reveals
  * the time without adding a tab stop. Hidden timestamps stay outside the row
  * layout. Visibility changes immediately so leaving flow cannot overlap text
- * during a fade-out. Render it as the row's rightmost flex child so the
- * revealed time lands at the right edge, clear of disclosure controls.
+ * during a fade-out. Place it before any trailing disclosure control so
+ * revealing the time does not move the chevron.
  */
 function TimelineRowTimestamp({
   createdAt,
@@ -3178,6 +3178,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
               </span>
             </p>
           </div>
+          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
           <span
             className={cn(
               "flex size-4 shrink-0 items-center justify-center",
@@ -3192,7 +3193,6 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
               )}
             />
           </span>
-          <TimelineRowTimestamp createdAt={workEntry.createdAt} timestampFormat={timestampFormat} />
         </div>
       </div>
       {expanded && canExpand && expandedBody ? (
