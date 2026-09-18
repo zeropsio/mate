@@ -58,6 +58,7 @@ import {
   terminalSessionsTotal,
 } from "../observability/Metrics.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { expandHomePath } from "../pathExpansion.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
 
 export {
@@ -1152,7 +1153,8 @@ function createTerminalSpawnEnv(
   }
   if (runtimeEnv) {
     for (const [key, value] of Object.entries(runtimeEnv)) {
-      spawnEnv[key] = value;
+      spawnEnv[key] =
+        key === "CODEX_HOME" || key === "CLAUDE_CONFIG_DIR" ? expandHomePath(value) : value;
     }
   }
   return stripAppImageRuntimeEnv(spawnEnv);
