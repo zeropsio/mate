@@ -19,6 +19,8 @@ Node otherwise, and nothing in contributor setup needs it.
 `vp run dev` prints a one-time pairing URL. Open it so the first browser navigation is
 authenticated.
 
+Prefer a container? See [Dev container](./devcontainer.md) for VS Code and Codespaces setup.
+
 ## Dev
 
 - `vp run dev`: Starts contracts, server, and web in watch mode.
