@@ -1166,6 +1166,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      page — resolved to nothing in light and inherited the body colour. Dark
      enough to read on the surface above, like its ok and attention siblings. */
   --zerops-status-failed-text: #c62828;
+  /* The timeline's spine. Opaque on purpose: drawn with an alpha the branch's
+     arc paints over the line it leaves and the overlap comes out half again as
+     dark, which reads as a notch cut into the spine. */
+  --zerops-rail: #c3c7cc;
   --zerops-status-off: #bdbdbd;
   --zerops-status-off-surface: #f3f5f7;
   --zerops-micro-label-font-size: 10px;
@@ -1267,6 +1271,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-status-failed: #f47067;
     --zerops-status-failed-surface: #312828;
     --zerops-status-failed-text: #f47067;
+    --zerops-rail: #3f4650;
     --zerops-status-off: #5e6e69;
     --zerops-status-off-surface: #151b1a;
     --zerops-micro-label-font-size: 10px;

@@ -575,7 +575,7 @@ describe("the project's flow under it", () => {
       count('data-zerops-surface="sidebar-environment"') +
       count('data-zerops-surface="sidebar-pull-request"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
-    const painted = count('class="w-px flex-1 bg-sidebar-muted-foreground/30"');
+    const painted = count('class="w-px flex-1 bg-[var(--zerops-rail)]"');
     const blank = count('class="w-px flex-1"');
     expect(rows).toBeGreaterThan(0);
     expect(changes).toBeGreaterThan(0);

@@ -286,7 +286,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           const last = endsOnMates && index === mateEntries.length - 1;
           const ownRow = pulls.length === 0 || flow === undefined;
           return (
-            <div className="flex flex-col gap-px" key={item.key}>
+            <div className="flex flex-col" key={item.key}>
               <MateRow
                 active={item.project.id === activeProjectId}
                 activity={getActivity?.(item)}
@@ -317,7 +317,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           // `· ada` could not undo at 256px, where it is truncated away.
           // The dedent is the whole signal; a rule as well would make this
           // read as the start of the stops, which is the next block's rule.
-          <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-other-pull-requests">
+          <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
             {grouped.others.map((pull, index) => (
               <PullRequestRow
                 key={`${pull.repository}#${pull.number}`}
@@ -356,11 +356,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       data-zerops-surface="sidebar-environments"
     >
       {groups.map(({ group, environments }) => (
-        <section
-          className="flex flex-col gap-px"
-          data-zerops-group={group.groupId}
-          key={group.groupId}
-        >
+        <section className="flex flex-col" data-zerops-group={group.groupId} key={group.groupId}>
           {section(
             group.groupId,
             environments,
@@ -376,7 +372,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ))}
 
       {ungroupedMates ? (
-        <section className="flex flex-col gap-px" data-zerops-ungrouped="true">
+        <section className="flex flex-col" data-zerops-ungrouped="true">
           {section(
             "ungrouped",
             ungrouped,
@@ -620,16 +616,20 @@ function RailCell({ children, cap }: { readonly children?: ReactNode; readonly c
  * below it — the node's place on the row may not depend on where the row
  * happens to sit on the line.
  */
-const RAIL_LINE = "w-px flex-1 bg-sidebar-muted-foreground/30";
+const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
 const RAIL_BLANK = "w-px flex-1";
 /*
- * The spine's ink is the muted foreground at 30%, not `sidebar-border`: that
- * token is the faintest in the set — about five percent of contrast against
- * the sidebar's own ground — which is right for a rule nobody should notice
- * and wrong for the structure a whole group hangs on. The branch a change
- * makes off it "is still absolutely invisible" (the owner, 2026-09-19), and so
- * very nearly was the line. Taken from the foreground it darkens on a light
- * ground and lightens on a dark one without a second rule.
+ * The spine's ink is its own token, not `sidebar-border`: that one is the
+ * faintest in the set — about five percent of contrast against the sidebar's
+ * own ground — which is right for a rule nobody should notice and wrong for
+ * the structure a whole group hangs on. It is opaque rather than an alpha of
+ * the foreground because the branch's arc leaves the line by drawing over it,
+ * and two thirty-percent strokes stack to half again as dark: a notch cut
+ * into the spine at every change.
+ *
+ * The rows themselves sit flush for the same reason. A pixel of air between
+ * them went unseen while the line was faint and became a row of dashes the
+ * moment it was not.
  */
 
 /**
@@ -664,12 +664,12 @@ function RailFork({ cap }: { readonly cap?: RailCap }) {
           at 9.5, not at 10. */}
       <span
         aria-hidden="true"
-        className="absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-sidebar-muted-foreground/30"
+        className="absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-[var(--zerops-rail)]"
         data-zerops-rail="fork"
       />
       <span
         aria-hidden="true"
-        className="absolute start-[23.5px] top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-muted-foreground/45"
+        className="absolute start-[23.5px] top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--zerops-rail)]"
       />
     </span>
   );
@@ -715,7 +715,7 @@ function PullRequestList({
   const folded = pullRequestsFolded(pulls.length);
   const listed = !folded || open;
   return (
-    <div className="flex flex-col gap-px" data-zerops-surface="sidebar-pull-requests">
+    <div className="flex flex-col" data-zerops-surface="sidebar-pull-requests">
       {folded ? (
         <button
           aria-expanded={open}
@@ -732,7 +732,7 @@ function PullRequestList({
         </button>
       ) : null}
       {!folded || open ? (
-        <ul className="flex flex-col gap-px">
+        <ul className="flex flex-col">
           {pulls.map((pull, index) => (
             <PullRequestRow
               key={`${pull.repository}#${pull.number}`}
@@ -1098,7 +1098,7 @@ function EnvironmentRows<T extends RosterCandidate>({
   return (
     // The stops belong to the project, not to the Mate they happen to follow:
     // a rule and the project's own left edge say so.
-    <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-environment-rows">
+    <ul className="flex flex-col" data-zerops-surface="sidebar-environment-rows">
       {environments.map(({ item, role }, index) => {
         const tag = environmentRoleTag(role);
         const name = environmentNameUnderGroup(groupName, item.project.name);
