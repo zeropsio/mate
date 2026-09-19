@@ -989,9 +989,11 @@ function ReleaseVerb({
   const summary = releaseContentsSummary(contents ?? []);
   const verb = (
     <ZeropsMateVerb
+      count={summary.total}
       description={releaseContentsSentence(summary)}
       disabled={releasing}
       label={flowVerbLabel("release", releasing)}
+      urgent
       onClick={() => {
         setConfirming(true);
       }}
@@ -1428,20 +1430,10 @@ function EnvironmentRows<T extends RosterCandidate>({
                         {version.label}
                       </button>
                     )}
-                    {/* Work that is merged but not live is the one thing on this
-                    row a person may need to act on, and it was muted text
-                    glued to the version with a middle dot while the green
-                    badge — which only reports the last deploy — took the eye,
-                    so the row read as settled when it was not. The badge keeps
-                    its own meaning; the state wears the tone it has earned. */}
-                    {production && waitingLabel !== undefined ? (
-                      <span
-                        className={BEHIND_CLASS}
-                        data-zerops-surface="sidebar-environment-behind"
-                      >
-                        {waitingLabel}
-                      </span>
-                    ) : null}
+                    {/* What is merged and not live is worn by *Release*, which
+                    is the thing that deals with it — it used to be a chip on
+                    this line while the verb sat on the one above, a fact and
+                    its cure separated by a globe and a menu. */}
                   </span>
                 </span>
               </li>

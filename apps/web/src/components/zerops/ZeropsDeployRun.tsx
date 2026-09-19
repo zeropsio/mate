@@ -83,7 +83,7 @@ function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: Zero
       className="border-b border-border/60 last:border-b-0"
       data-zerops-surface="zerops-deploy-job"
     >
-      <div className="flex min-w-0 items-center gap-3 py-2">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_4rem_7rem_auto] items-center gap-3 py-2">
         <button
           aria-expanded={log !== null}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
@@ -102,13 +102,11 @@ function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: Zero
           <span className="min-w-0 truncate">{job.name ?? `Job ${String(job.id)}`}</span>
         </button>
         {/* How long it took: the one number every other forge puts here. */}
-        {duration === undefined ? null : (
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-            {duration}
-          </span>
-        )}
+        <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
+          {duration ?? ""}
+        </span>
         <StatusDot
-          className="shrink-0 text-xs text-muted-foreground"
+          className="min-w-0 text-xs text-muted-foreground"
           label={reading ? "Reading" : word}
           sentence
           tone={reading ? "busy" : tone}

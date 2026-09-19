@@ -469,10 +469,14 @@ describe("the project's flow under it", () => {
         releaseContents: [{ commits: [{ sha: "a", subject: "Add a search box above the list" }] }],
       }),
     );
-    const at = html.indexOf('data-zerops-surface="sidebar-environment-behind"');
+    // What is merged and not live is worn by *Release* now, not by a separate
+    // chip a line below it: one fact, one element, and it is the one that
+    // deals with it.
+    const at = html.indexOf('data-zerops-surface="verb-count"');
     expect(at).toBeGreaterThan(-1);
     const chip = html.slice(html.lastIndexOf("<span", at), html.indexOf("</span>", at));
-    expect(chip).toContain("1 waiting");
+    // The count rides the verb: `1`, on the button that would ship it.
+    expect(chip).toContain(">1");
     // Muted text beside a green badge read as settled: the badge only reports
     // the last deploy, and work merged but not live is the thing to act on.
     expect(chip).toContain("--zerops-status-attention-surface");

@@ -30,11 +30,23 @@ export function ZeropsMateVerb({
   onClick,
   disabled = false,
   description,
+  count,
+  urgent = false,
   ...rest
 }: {
   readonly label: string;
   readonly onClick: () => void;
   readonly disabled?: boolean;
+  /**
+   * How much the verb would carry, worn on the verb itself.
+   *
+   * *Release* used to say `Release` on one line while a separate amber chip
+   * said `1 waiting` on the next, with a globe and a menu between the fact and
+   * its cure — two elements for one thing (the owner, 2026-09-19).
+   */
+  readonly count?: number | undefined;
+  /** Whether that count is something somebody should act on. */
+  readonly urgent?: boolean;
   /**
    * What the verb would actually do, in words — for a verb whose name says
    * the mechanism rather than the outcome. It becomes the button's accessible
@@ -57,6 +69,19 @@ export function ZeropsMateVerb({
       type="button"
     >
       {label}
+      {count === undefined || count === 0 ? null : (
+        <span
+          className={cn(
+            "ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
+            urgent
+              ? "bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)]"
+              : "bg-muted text-muted-foreground",
+          )}
+          data-zerops-surface="verb-count"
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }

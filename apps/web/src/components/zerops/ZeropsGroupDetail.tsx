@@ -40,6 +40,7 @@ import {
   stopSourceLine,
   type ChangeRemark,
   type ProjectAttentionItem,
+  type ZeropsPublicRoute,
   type ProjectAttentionKind,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -47,7 +48,13 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  GlobeIcon,
+  PlusIcon,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
@@ -175,6 +182,17 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
     });
   }, [activity, candidates, groupId]);
 }
+
+/** Where a stop answers from, as the menu's globe reads it. */
+function useStopRoutes(projectId: string): ReadonlyArray<ZeropsPublicRoute> {
+  const { candidates } = useZeropsCandidates();
+  return useMemo(
+    () => candidates.find((entry) => entry.project.id === projectId)?.routes ?? EMPTY_ROUTES,
+    [candidates, projectId],
+  );
+}
+
+const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
 
 /** Opens a Mate's own conversation, as selecting its row in the menu does. */
 function useOpenMate(): (projectId: string) => void {
@@ -556,6 +574,7 @@ export function ZeropsStopDetailPage({
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
   const names = useHistoryNames(stopGroupName);
+  const routes = useStopRoutes(projectId);
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -585,6 +604,7 @@ export function ZeropsStopDetailPage({
       production={production}
       readDetail={readDetail}
       release={release}
+      routes={routes}
       repo={repo}
       run={run}
       stop={stop}
@@ -610,6 +630,7 @@ export function ZeropsStopPane({
   groupName,
   names,
   release,
+  routes,
   repo,
   run,
   stop,
@@ -628,6 +649,8 @@ export function ZeropsStopPane({
   /** The project's name, so the stop's own title does not repeat it. */
   readonly groupName: string | undefined;
   readonly names: HistoryNames;
+  /** Where this stop answers from — a page about an environment you cannot open is half an answer. */
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly stop: EnvironmentRow;
   readonly waiting: ReleaseContentsSummary;
 }) {
@@ -676,11 +699,40 @@ export function ZeropsStopPane({
         </Section>
       )}
 
+      {routes.length === 0 ? null : (
+        <Section
+          title={
+            routes.length === 1 ? "Where it answers" : `Where it answers · ${String(routes.length)}`
+          }
+        >
+          <ul className="flex flex-col">
+            {routes.map((route) => (
+              <li key={`${route.service}:${route.host}`}>
+                <a
+                  className="flex min-w-0 items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-muted"
+                  href={route.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <GlobeIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-foreground">{route.host}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{route.service}</span>
+                  <ExternalLinkIcon
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 text-muted-foreground/60"
+                  />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       <Section title="How it got here">
         <ZeropsDeployRunView run={run} />
       </Section>
 
-      <Section title={repo === undefined ? "What is in it" : `What is in it · ${repo}`}>
+      <Section title={repo === undefined ? "History" : `History · ${repo}`}>
         {repo === undefined ? (
           <Note>
             No repository is declared for this environment&rsquo;s services, so its history cannot
@@ -1111,26 +1163,30 @@ function AttentionPanel({
     >
       {items.map((item) => (
         <li
-          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2.5 last:border-b-0"
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0"
           key={`${item.kind}:${item.text}`}
         >
           <StatusDot
-            className="min-w-0 flex-1 text-sm text-foreground"
+            className="min-w-0 text-sm text-foreground"
             label={item.text}
             sentence
             tone={ATTENTION_TONE[item.kind]}
           />
-          {item.verb === undefined ? null : (
-            <Button
-              onClick={() => {
-                onAct(item);
-              }}
-              size="sm"
-              variant="outline"
-            >
-              {item.verb}
-            </Button>
-          )}
+          {/* One column for the verbs: three buttons stacked with only
+              `justify-end` between them landed on three different edges. */}
+          <span className="flex w-28 shrink-0 justify-end">
+            {item.verb === undefined ? null : (
+              <Button
+                onClick={() => {
+                  onAct(item);
+                }}
+                size="sm"
+                variant="outline"
+              >
+                {item.verb}
+              </Button>
+            )}
+          </span>
         </li>
       ))}
     </ul>
@@ -1238,16 +1294,18 @@ function StopLine({
   return (
     <li>
       <button
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        // Fixed tracks, not a right-ragged flex: a version and a state that
+        // start at a different x on every row cannot be read down the column.
+        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
         onClick={open}
         type="button"
       >
         {/* `Links - stage` under a page titled `Links` says it twice. */}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
           {environmentNameUnderGroup(groupName, environment.name)}
         </span>
-        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-          {environment.version.label ?? "nothing deployed yet"}
+        <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
+          {environment.version.label ?? "none"}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
             a colour nobody reads, and a screen reader gets nothing from it. */}
@@ -1289,13 +1347,11 @@ function ChangeLine({
   return (
     <li>
       <button
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
         onClick={open}
         type="button"
       >
-        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-          {sidebarChangeLabel(pull)}
-        </span>
+        <span className="min-w-0 truncate text-sm text-foreground">{sidebarChangeLabel(pull)}</span>
         {state === undefined ? null : (
           <StatusDot
             className="shrink-0 text-xs text-muted-foreground"

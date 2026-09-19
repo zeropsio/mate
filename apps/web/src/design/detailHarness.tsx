@@ -72,6 +72,21 @@ const ATTENTION = [
   },
 ];
 
+const ROUTES = [
+  {
+    service: "app",
+    port: 80,
+    host: "shop-app.prg1.zerops.app",
+    url: "https://shop-app.prg1.zerops.app",
+  },
+  {
+    service: "api",
+    port: 80,
+    host: "shop-api.prg1.zerops.app",
+    url: "https://shop-api.prg1.zerops.app",
+  },
+];
+
 const NAMES = {
   mateNames: new Map([["p-theo", "Theo"]]),
   groupName: "Shop",
@@ -356,6 +371,7 @@ function Harness() {
           readDetail={READ_DETAIL}
           release={RELEASE_WAITING}
           repo="appdev"
+          routes={ROUTES}
           run={BUILT}
           stop={environment({
             projectId: "shop-prod",
@@ -388,6 +404,7 @@ function Harness() {
           readDetail={undefined}
           release={RELEASE_NONE}
           repo="appdev"
+          routes={ROUTES}
           run={BROKEN}
           stop={environment({ tone: "bad" })}
           waiting={NOTHING_WAITING}
@@ -408,6 +425,7 @@ function Harness() {
           readDetail={undefined}
           release={RELEASE_NONE}
           repo={undefined}
+          routes={[]}
           run={run({ kind: "none" })}
           stop={environment({
             tone: "neutral",
