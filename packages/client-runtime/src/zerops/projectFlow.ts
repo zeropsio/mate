@@ -333,8 +333,31 @@ export function pullRequestBlocked(pull: {
     kind: "behind",
     word: "needs a rebase",
     tone: "attention",
-    ask: `${change} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
+    // Capitalised: the sentence is shown verbatim on a change's page as well
+    // as written into a composer, and a page does not open mid-sentence.
+    ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
   };
+}
+
+/**
+ * How a change merges, in merge's own terms.
+ *
+ * A page that reports the checks and then reports them again under *Merges*
+ * says the same words twice and answers neither question. What the checks did
+ * is one fact; whether the change can land, and what it is waiting on, is
+ * another — so this says the second without repeating the first.
+ */
+export function pullRequestMergeLine(pull: {
+  readonly number: number;
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+  readonly baseBranch: string;
+}): string {
+  const blocked = pullRequestBlocked(pull);
+  if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
+  if (blocked.kind === "checks-running") return "Once the checks have finished";
+  if (blocked.kind === "checks-failed") return "Not while the checks are failing";
+  return `Not until it is rebased on ${pull.baseBranch}`;
 }
 
 /** What a release would carry, as much of it as a hover has room for. */

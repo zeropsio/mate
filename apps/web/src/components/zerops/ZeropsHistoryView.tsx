@@ -25,6 +25,8 @@ import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
+import { RAIL_BLANK, RAIL_LINE } from "./rail";
+
 /** What the dialog is looking at, and what the reads answered. */
 export interface ZeropsHistoryRequest {
   /** The repository, as the recipe names it — never guessed from a hostname. */
@@ -199,6 +201,3 @@ const FILE_MARK: Record<string, string> = {
   removed: "−",
   renamed: "→",
 };
-
-const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
-const RAIL_BLANK = "w-px flex-1";

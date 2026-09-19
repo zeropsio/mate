@@ -17,20 +17,34 @@
  */
 import {
   buildZeropsGroupTree,
+  changeAskLabel,
+  changeConversationCount,
+  changeRemarks,
   deployWord,
+  flowVerbKey,
+  flowVerbLabel,
   pullRequestBlocked,
+  pullRequestMergeLine,
   releaseContentsSummary,
   sidebarChangeLabel,
+  type ChangeRemark,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
+import { ArrowLeftIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
+import { useAskMate } from "~/zerops/useAskMate";
+import { giteaSessionLogin } from "~/zerops/giteaSession";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
+import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
@@ -39,6 +53,7 @@ import {
 } from "~/zerops/useZeropsRepositoryCommits";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
+import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsHistoryView } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
@@ -89,6 +104,7 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
+  const back = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
@@ -109,14 +125,14 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   if (flow === undefined) {
     return (
-      <DetailShell title={groupName ?? "Project"}>
+      <DetailShell onBack={back} title={groupName ?? "Project"}>
         <Note>This project has not been read yet.</Note>
       </DetailShell>
     );
   }
 
   return (
-    <DetailShell subtitle={flow.slug} title={groupName ?? flow.groupId}>
+    <DetailShell onBack={back} subtitle={flow.slug} title={groupName ?? flow.groupId}>
       <Section title="Where it is">
         <ul className="flex flex-col">
           {environments.length === 0 ? (
@@ -135,7 +151,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         ) : (
           <ul className="flex flex-col">
             {flow.pullRequests.map((pull) => (
-              <ChangeLine key={`${pull.repository}#${pull.number}`} pull={pull} />
+              <ChangeLine groupId={groupId} key={`${pull.repository}#${pull.number}`} pull={pull} />
             ))}
           </ul>
         )}
@@ -178,6 +194,7 @@ export function ZeropsStopDetailPage({
   readonly groupId: string;
   readonly projectId: string;
 }) {
+  const back = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
@@ -211,7 +228,7 @@ export function ZeropsStopDetailPage({
 
   if (flow === undefined || stop === undefined) {
     return (
-      <DetailShell title="Environment">
+      <DetailShell onBack={back} title="Environment">
         <Note>This environment has not been read yet.</Note>
       </DetailShell>
     );
@@ -220,7 +237,7 @@ export function ZeropsStopDetailPage({
   const word = deployWord(stop.tone);
   const dotTone = STOP_DOT_TONE[stop.tone];
   return (
-    <DetailShell subtitle={`${flow.slug} · ${stop.source}`} title={stop.name}>
+    <DetailShell onBack={back} subtitle={`${flow.slug} · ${stop.source}`} title={stop.name}>
       <Section title="What is running">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <Fact term="Version">{stop.version.label ?? "Nothing deployed yet"}</Fact>
@@ -299,6 +316,7 @@ export function ZeropsChangeDetailPage({
   readonly repository: string;
   readonly number: number;
 }) {
+  const onBack = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const pull = flow?.pullRequests.find(
@@ -320,20 +338,127 @@ export function ZeropsChangeDetailPage({
     owner: flow?.slug,
     repo: pull?.repository,
   });
+  const comments = useZeropsChangeComments(
+    flow === undefined || pull === undefined
+      ? null
+      : {
+          giteaOrigin: flowValue?.giteaOrigin,
+          owner: flow.slug,
+          repo: pull.repository,
+          number: pull.number,
+        },
+  );
+  const askMate = useAskMate();
+  const me =
+    flowValue?.giteaOrigin === undefined ? undefined : giteaSessionLogin(flowValue.giteaOrigin);
+  const mateNames = flowValue?.mateNames;
+  const remarks = useMemo(
+    () =>
+      comments.state.kind === "read"
+        ? changeRemarks({
+            comments: comments.state.comments,
+            mateNames: mateNames ?? EMPTY_MATE_NAMES,
+            me,
+          })
+        : EMPTY_REMARKS,
+    [comments.state, mateNames, me],
+  );
+  const slug = flow?.slug;
+  const merge = useCallback(() => {
+    if (flowValue === null || slug === undefined || pull === undefined) return;
+    void flowValue.mergePullRequest(slug, { repository: pull.repository, number: pull.number });
+  }, [flowValue, pull, slug]);
 
   if (flow === undefined || pull === undefined) {
     return (
-      <DetailShell title={`#${String(number)}`}>
+      <DetailShell onBack={onBack} title={`#${String(number)}`}>
         <Note>This change is not open on {repository} any more.</Note>
       </DetailShell>
     );
   }
 
+  return (
+    <ZeropsChangePane
+      comments={comments}
+      commits={commits}
+      mateName={
+        pull.mateProjectId === undefined ? undefined : flowValue?.mateNames.get(pull.mateProjectId)
+      }
+      merging={
+        flowValue?.pending.has(
+          flowVerbKey({
+            kind: "merge",
+            slug: flow.slug,
+            repository: pull.repository,
+            number: pull.number,
+          }),
+        ) ?? false
+      }
+      onAsk={askMate}
+      onBack={onBack}
+      onMerge={merge}
+      pull={pull}
+      readDetail={readDetail}
+      remarks={remarks}
+      slug={flow.slug}
+      trouble={flowValue?.trouble ?? null}
+    />
+  );
+}
+
+/**
+ * One change, drawn — every read already done and handed in.
+ *
+ * The page above holds the hooks; this holds the picture, so a harness and a
+ * test can look at a change that is failing its checks, or twelve commits
+ * behind, or merged, without an account behind it. Same split as the release
+ * confirm's.
+ */
+export function ZeropsChangePane({
+  comments,
+  commits,
+  mateName,
+  merging,
+  onAsk,
+  onBack,
+  onMerge,
+  pull,
+  readDetail,
+  remarks,
+  slug,
+  trouble,
+}: {
+  readonly comments: ZeropsChangeComments;
+  readonly commits: ZeropsCommitsState;
+  readonly mateName: string | undefined;
+  readonly merging: boolean;
+  readonly onAsk: (mateProjectId: string | undefined, ask: string) => void;
+  readonly onBack: () => void;
+  readonly onMerge: () => void;
+  readonly pull: FlowPullRequest;
+  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
+  readonly remarks: ReadonlyArray<ChangeRemark>;
+  /** The project's Gitea org — the subtitle's first word. */
+  readonly slug: string;
+  /** What the last verb's refusal said, where one refused. */
+  readonly trouble: string | null;
+}) {
   const blocked = pullRequestBlocked(pull);
   const checks = checkDotTone(pull);
   return (
     <DetailShell
-      subtitle={`${flow.slug} · ${pull.repository} · ${pull.baseBranch}`}
+      actions={
+        <Button
+          data-zerops-primary-action="Merge"
+          disabled={merging || blocked !== null}
+          onClick={onMerge}
+          size="sm"
+        >
+          {flowVerbLabel("merge", merging)}
+        </Button>
+      }
+      onBack={onBack}
+      subtitle={`${slug} · ${pull.repository} · ${pull.baseBranch}`}
       title={pull.title}
     >
       <Section title="Where it stands">
@@ -349,18 +474,46 @@ export function ZeropsChangeDetailPage({
           </Fact>
           <Fact term="Merges">
             {blocked === null ? (
-              "Cleanly, into " + pull.baseBranch
+              pullRequestMergeLine(pull)
             ) : (
-              <StatusDot label={blocked.word} sentence tone={blocked.tone} />
+              <StatusDot label={pullRequestMergeLine(pull)} sentence tone={blocked.tone} />
             )}
           </Fact>
         </dl>
         {blocked?.ask === undefined ? null : (
-          <p className="mt-3 text-sm text-muted-foreground">
-            {/* The Mate that wrote it is the one who can move it. */}
-            {blocked.ask}
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {/* What is stopping it is the Mate's to move, so the sentence that
+                says so is the button that hands it over rather than advice. */}
+            <Button
+              onClick={() => {
+                onAsk(pull.mateProjectId, blocked.ask ?? "");
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {changeAskLabel(mateName)} to fix it
+            </Button>
+            <span className="min-w-0 text-sm text-muted-foreground">{blocked.ask}</span>
+          </div>
         )}
+        {trouble === null ? null : (
+          <p className="mt-3 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+        )}
+      </Section>
+
+      <Section title={`Conversation · ${changeConversationCount(remarks)}`}>
+        <ZeropsChangeConversation
+          change={{
+            mateProjectId: pull.mateProjectId,
+            number: pull.number,
+            repository: pull.repository,
+            title: pull.title,
+          }}
+          comments={comments}
+          mateName={mateName}
+          onAsk={onAsk}
+          remarks={remarks}
+        />
       </Section>
 
       <Section title={`What it carries · ${pull.repository}`}>
@@ -376,6 +529,23 @@ export function ZeropsChangeDetailPage({
 
 /** Nothing in an unmerged change is running anywhere yet. */
 const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
+
+/** Nothing said, and nobody to name: the states before the reads land. */
+const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
+const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
+
+/**
+ * The way out of a detail page: the conversation it stands in place of.
+ *
+ * `/` is the index, which lands on the environment's one conversation — the
+ * same place closing the page ought to leave you.
+ */
+function useBackToConversation(): () => void {
+  const navigate = useNavigate();
+  return useCallback(() => {
+    void navigate({ to: "/" });
+  }, [navigate]);
+}
 
 function StopLine({
   environment,
@@ -414,21 +584,42 @@ function StopLine({
   );
 }
 
-function ChangeLine({ pull }: { readonly pull: FlowPullRequest }) {
+function ChangeLine({
+  groupId,
+  pull,
+}: {
+  readonly groupId: string;
+  readonly pull: FlowPullRequest;
+}) {
+  const navigate = useNavigate();
   const blocked = pullRequestBlocked(pull);
   const checks = checkDotTone(pull);
+  // The group page is where somebody comes looking for a change, so its rows
+  // open one — a stop's row next to it has always been a door.
+  const open = useCallback(() => {
+    void navigate({
+      to: "/change/$groupId/$repository/$number",
+      params: { groupId, repository: pull.repository, number: String(pull.number) },
+    });
+  }, [groupId, navigate, pull.number, pull.repository]);
   return (
-    <li className="flex min-w-0 items-center gap-3 px-2 py-2">
-      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-        {sidebarChangeLabel(pull)}
-      </span>
-      {blocked === null ? (
-        pull.checkWord === undefined || checks === undefined ? null : (
-          <StatusDot label={pull.checkWord} sentence tone={checks} />
-        )
-      ) : (
-        <StatusDot label={blocked.word} sentence tone={blocked.tone} />
-      )}
+    <li>
+      <button
+        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        onClick={open}
+        type="button"
+      >
+        <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {sidebarChangeLabel(pull)}
+        </span>
+        {blocked === null ? (
+          pull.checkWord === undefined || checks === undefined ? null : (
+            <StatusDot label={pull.checkWord} sentence tone={checks} />
+          )
+        ) : (
+          <StatusDot label={blocked.word} sentence tone={blocked.tone} />
+        )}
+      </button>
     </li>
   );
 }
@@ -436,31 +627,46 @@ function ChangeLine({ pull }: { readonly pull: FlowPullRequest }) {
 function DetailShell({
   title,
   subtitle,
+  actions,
+  onBack,
   children,
 }: {
   readonly title: string;
   readonly subtitle?: string;
+  /** The verbs this page carries, beside its name rather than under it. */
+  readonly actions?: React.ReactNode;
+  /** Where the way out goes; the shell holds no router of its own. */
+  readonly onBack: () => void;
   readonly children: React.ReactNode;
 }) {
-  const navigate = useNavigate();
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-y-auto overscroll-y-none bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl px-6 py-8">
         <header className="mb-8">
-          <h1 className="text-2xl leading-8 font-semibold tracking-tight">{title}</h1>
-          {subtitle === undefined ? null : (
-            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
-          )}
+          {/* Going back is a way out, not the page's business: it sits above
+              the name, quiet, rather than competing with the verbs below it. */}
           <Button
-            className="mt-4"
-            onClick={() => {
-              void navigate({ to: "/" });
-            }}
+            className="-ms-2 mb-3 h-7 px-2 text-muted-foreground hover:text-foreground"
+            onClick={onBack}
             size="sm"
             variant="ghost"
           >
+            <ArrowLeftIcon className="size-3.5" />
             Back to the conversation
           </Button>
+          <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl leading-8 font-semibold tracking-tight wrap-anywhere">
+                {title}
+              </h1>
+              {subtitle === undefined ? null : (
+                <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+              )}
+            </div>
+            {actions === undefined ? null : (
+              <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            )}
+          </div>
         </header>
         {children}
       </div>

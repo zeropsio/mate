@@ -81,6 +81,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
+import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { checkDotTone } from "./ZeropsGitBlock";
 import {
@@ -673,8 +674,6 @@ function RailCell({ children, cap }: { readonly children?: ReactNode; readonly c
  * below it — the node's place on the row may not depend on where the row
  * happens to sit on the line.
  */
-const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
-const RAIL_BLANK = "w-px flex-1";
 /*
  * The spine's ink is its own token, not `sidebar-border`: that one is the
  * faintest in the set — about five percent of contrast against the sidebar's

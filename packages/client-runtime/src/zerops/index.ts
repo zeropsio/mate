@@ -335,6 +335,13 @@ export {
   type HistoryEntry,
 } from "./groupHistory.ts";
 export {
+  changeAskLabel,
+  changeAskPrompt,
+  changeConversationCount,
+  changeRemarks,
+  type ChangeRemark,
+} from "./changeConversation.ts";
+export {
   base64Decode,
   base64Encode,
   createGiteaClient,
@@ -350,6 +357,7 @@ export {
   type GiteaCommitStatus,
   type GiteaFile,
   type GiteaFileChange,
+  type GiteaIssueComment,
   type GiteaIssueSearchHit,
   type GiteaOrganization,
   type GiteaPullRequest,
@@ -370,6 +378,7 @@ export {
   pullRequestsByMate,
   pullRequestBlocked,
   pullRequestBlockedReason,
+  pullRequestMergeLine,
   type PullRequestBlocked,
   pullRequestsFolded,
   releaseContentsSentence,

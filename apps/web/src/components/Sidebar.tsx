@@ -201,6 +201,7 @@ import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./u
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
+import { useAskMate } from "../zerops/useAskMate";
 import { useZeropsAutoConnect } from "../zerops/useZeropsAutoConnect";
 import { useZeropsCandidateHealth } from "../zerops/useZeropsCandidateHealth";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
@@ -1784,36 +1785,16 @@ export default function Sidebar() {
    * composed and a person presses send is the one the quick actions and the
    * file browser already use.
    */
+  const handOver = useAskMate({
+    onNavigate: () => {
+      if (isMobile) setOpenMobile(false);
+    },
+  });
   const askMate = useCallback<NonNullable<SidebarProjectFlow["onAsk"]>>(
     (pull, ask) => {
-      const mateProjectId = pull.mateProjectId;
-      const candidate =
-        mateProjectId === undefined
-          ? undefined
-          : zeropsCandidates.find((entry) => entry.project.id === mateProjectId);
-      const environmentId = candidate?.environmentId;
-      const { primary } =
-        environmentId === undefined
-          ? { primary: undefined }
-          : resolvePrimaryConversation(
-              threads.filter((thread) => thread.environmentId === environmentId),
-            );
-      // No Mate we can reach, or no conversation yet: the projects screen owns
-      // connecting and starting one, exactly as selecting the row does.
-      if (environmentId === undefined || primary === undefined) {
-        void router.navigate({ to: "/zerops" });
-        return;
-      }
-      const threadRef = scopeThreadRef(environmentId, primary.id);
-      useComposerDraftStore.getState().setPrompt(threadRef, ask);
-      rememberZeropsEnvironment(String(environmentId));
-      if (isMobile) setOpenMobile(false);
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      handOver(pull.mateProjectId, ask);
     },
-    [router, threads, zeropsCandidates, isMobile, setOpenMobile],
+    [handOver],
   );
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(

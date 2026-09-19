@@ -4,6 +4,7 @@ import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
   pullRequestBlocked,
+  pullRequestMergeLine,
   pullRequestBlockedReason,
   releaseContentsSentence,
   releaseContentsSummary,
@@ -352,7 +353,9 @@ describe("pullRequestBlockedReason", () => {
     // Nobody reading the menu is going to rebase a branch they have not
     // checked out in a repository they have no session for. The Mate does it.
     const behind = pullRequestBlocked({ number: 4, mergeable: false, checks: "passing" });
-    expect(behind?.ask).toContain("pull request #4");
+    // Shown verbatim on a change's page as well as written into a composer, so
+    // it opens as a sentence does.
+    expect(behind?.ask).toContain("Pull request #4");
     expect(behind?.ask).toContain("Rebase");
     const failing = pullRequestBlocked({ number: 9, mergeable: false, checks: "failing" });
     expect(failing?.ask).toContain("pull request #9");
@@ -488,5 +491,29 @@ describe("what a folded stop still has to say", () => {
 
   it("wears nothing rather than a zero, which would stop being read", () => {
     expect(stopAttention({ failed: false, production: true, waiting: 0 })).toBeUndefined();
+  });
+});
+
+describe("pullRequestMergeLine", () => {
+  const base = { number: 4, baseBranch: "main" } as const;
+
+  it.each([
+    [{ mergeable: true, checks: "passing" }, "Cleanly, into main"],
+    [{ mergeable: false, checks: "pending" }, "Once the checks have finished"],
+    [{ mergeable: false, checks: "failing" }, "Not while the checks are failing"],
+    [{ mergeable: false, checks: "none" }, "Not until it is rebased on main"],
+  ] as const)("answers merging in its own words, not the checks'", (pull, expected) => {
+    expect(pullRequestMergeLine({ ...base, ...pull })).toBe(expected);
+  });
+
+  it("never repeats the word the checks row already said", () => {
+    const pull = { ...base, mergeable: false, checks: "failing" } as const;
+    expect(pullRequestMergeLine(pull)).not.toBe(pullRequestBlocked(pull)?.word);
+  });
+
+  it("names the branch it would land on, so the row is not abstract", () => {
+    expect(
+      pullRequestMergeLine({ ...base, baseBranch: "trunk", mergeable: true, checks: "passing" }),
+    ).toContain("trunk");
   });
 });
