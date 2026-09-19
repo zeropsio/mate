@@ -37,7 +37,10 @@ export const SERVICE_STATUS_TONES = {
     dark: { dot: "#56d364", text: "#56d364", surface: DARK_MINT_SURFACE },
   },
   busy: {
-    light: { dot: "#42a5f5", surface: "#eff9fd" },
+    // Light had no busy text colour, so every word that asked for one
+    // inherited the body's — a blue chip with black text beside an amber chip
+    // with amber text. Same mistake, same fix, as `failed` below.
+    light: { dot: "#42a5f5", text: "#1565c0", surface: "#eff9fd" },
     dark: { dot: "#58a6ff", text: "#58a6ff", surface: "#1e2e3b" },
   },
   attention: {
@@ -45,7 +48,7 @@ export const SERVICE_STATUS_TONES = {
     dark: { dot: "#e8a33d", text: "#ffb74d", surface: "#453f36" },
   },
   failed: {
-    light: { dot: "#ef5350", surface: "#fdefef" },
+    light: { dot: "#ef5350", text: "#c62828", surface: "#fdefef" },
     dark: { dot: "#f47067", text: "#f47067", surface: "#312828" },
   },
   off: {

@@ -161,7 +161,11 @@ describe("Zerops brand tokens", () => {
       }
     }
 
-    expect(withheld).toEqual(["busy.light", "failed.light", "off.light", "off.dark"]);
+    // Only `off` withholds a text colour now, and it means it: grey is the
+    // absence of a signal, so its word is the body's. `busy` and `failed` used
+    // to withhold theirs by accident, which put black words on a blue chip
+    // beside amber words on an amber one (2026-09-19).
+    expect(withheld).toEqual(["off.light", "off.dark"]);
   });
 
   it("pins the exact ok dark surface and its 7.030395873026908 AA contrast", () => {
