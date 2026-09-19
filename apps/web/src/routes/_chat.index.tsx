@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
+import { useZeropsInventory } from "../zerops/ZeropsInventoryProvider";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -80,6 +81,7 @@ type IndexLanding =
  */
 function IndexDraftLanding() {
   const projects = useProjects();
+  const inventory = useZeropsInventory();
   const threads = useThreadShells();
   const { environments } = useEnvironments();
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
@@ -231,6 +233,14 @@ function IndexDraftLanding() {
       />
     ) : null;
   }
+  // "You have no projects" is an answer, and it must not be given before the
+  // account has been read. Measured on a fresh account, 2026-09-19: a second
+  // after the wizard made a project and its Mate came up, this painted
+  // "What should we work on? Add a project to start your first thread." and
+  // then replaced itself with the draft — telling somebody to add the project
+  // they had just added. Nothing here is taken back any more: while the read
+  // is out this waits, exactly as it already waits on `landing === null`.
+  if (inventory.isLoading) return null;
   return <NoProjectsHero />;
 }
 
