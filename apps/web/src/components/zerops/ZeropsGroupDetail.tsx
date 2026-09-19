@@ -19,6 +19,7 @@ import {
   assignCandidateMateTints,
   botDisplayName,
   buildZeropsGroupTree,
+  hasMate,
   changeAskLabel,
   changeAuthorName,
   changeConversationCount,
@@ -29,6 +30,7 @@ import {
   flowVerbKey,
   flowVerbLabel,
   pullRequestBlocked,
+  preferredMateTint,
   pullRequestMergeLine,
   readZeropsGroupTags,
   PROJECT_ALL_CLEAR,
@@ -83,6 +85,7 @@ import {
 } from "~/zerops/useZeropsRepositoryCommits";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
+import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
@@ -160,26 +163,32 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
     const group = buildZeropsGroupTree(candidates, {}).groups.find(
       (entry) => entry.group.groupId === groupId,
     );
-    return (group?.environments ?? []).map(({ item }) => {
-      const tags = readZeropsGroupTags(item.project.tagList);
-      const live =
-        item.group === "connected" && item.environmentId !== undefined
-          ? activity.get(item.environmentId)
-          : undefined;
-      const subject = live?.subject;
-      return {
-        projectId: item.project.id,
-        name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-        tint: tints.get(item.project.id) ?? "slate",
-        face: mateFaceFor(item.group === "connected", live),
-        subject,
-        snippet: subject === undefined ? undefined : live?.snippet,
-        when:
-          live === undefined || subject === undefined
-            ? undefined
-            : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
-      };
-    });
+    // A group's `environments` is every project in it — the stage and the
+    // production included. `hasMate` is the predicate the menu has always used
+    // to tell a Mate from a stop, and this listed the stops as Mates without it
+    // (the owner, 2026-09-19).
+    return (group?.environments ?? [])
+      .filter(({ item }) => hasMate(item))
+      .map(({ item }) => {
+        const tags = readZeropsGroupTags(item.project.tagList);
+        const live =
+          item.group === "connected" && item.environmentId !== undefined
+            ? activity.get(item.environmentId)
+            : undefined;
+        const subject = live?.subject;
+        return {
+          projectId: item.project.id,
+          name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+          tint: tints.get(item.project.id) ?? "slate",
+          face: mateFaceFor(item.group === "connected", live),
+          subject,
+          snippet: subject === undefined ? undefined : live?.snippet,
+          when:
+            live === undefined || subject === undefined
+              ? undefined
+              : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+        };
+      });
   }, [activity, candidates, groupId]);
 }
 
@@ -903,6 +912,7 @@ export function ZeropsChangePane({
   readonly trouble: string | null;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [asking, setAsking] = useState(false);
   const blocked = pullRequestBlocked(pull);
   const checks = checkDotTone(pull);
   const author = changeAuthorName(pull, mateName);
@@ -964,7 +974,7 @@ export function ZeropsChangePane({
                 says so is the button that hands it over rather than advice. */}
             <Button
               onClick={() => {
-                onAsk(pull.mateProjectId, blocked.ask ?? "");
+                setAsking(true);
               }}
               size="sm"
               variant="outline"
@@ -972,6 +982,19 @@ export function ZeropsChangePane({
               {changeAskLabel(mateName)} to fix it
             </Button>
             <span className="min-w-0 text-sm text-muted-foreground">{blocked.ask}</span>
+            <ZeropsAskDialog
+              ask={blocked.ask ?? ""}
+              mateName={mateName}
+              onConfirm={() => {
+                setAsking(false);
+                onAsk(pull.mateProjectId, blocked.ask ?? "");
+              }}
+              onOpenChange={setAsking}
+              open={asking}
+              sending={false}
+              tint={mateName === undefined ? undefined : preferredMateTint(mateName)}
+              what={`Change #${String(pull.number)} ${blocked.word.toLocaleLowerCase()}.`}
+            />
           </div>
         )}
         {trouble === null ? null : (

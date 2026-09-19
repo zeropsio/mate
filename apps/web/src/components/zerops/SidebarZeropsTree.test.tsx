@@ -391,7 +391,12 @@ describe("the project's flow under it", () => {
     // The words that name the problem are the way to hand it over: a rebase
     // happens in the Mate's checkout, not in this menu.
     expect(html).toContain('data-zerops-primary-action="Ask"');
-    expect(html).toContain("needs a rebase");
+    // One casing down the column: it sat beside `Release` reading `needs a
+    // rebase`, two verbs in the same list opening differently.
+    expect(html).toContain("Needs a rebase");
+    // And it wears what it is about, so a rebase and a failed check are not
+    // the same grey pill.
+    expect(html).toContain("--zerops-status-attention-surface");
     expect(html).toContain("Rebase it on main");
     // Without a way to ask, the state stays a label rather than becoming a
     // verb that goes nowhere.

@@ -18,13 +18,24 @@
  *
  * Structural: every word on the line and every verb is the caller's (R5).
  */
-import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import type { MateMarkState, MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
 /** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
+/** A verb that is about something with a state wears that state. */
+const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "border-[var(--zerops-status-ok)]/40 bg-[var(--zerops-status-ok-surface)] text-[var(--zerops-status-ok-text)] hover:bg-[var(--zerops-status-ok-surface)]/70",
+  busy: "border-[var(--zerops-status-busy)]/40 bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)] hover:bg-[var(--zerops-status-busy-surface)]/70",
+  attention:
+    "border-[var(--zerops-status-attention)]/40 bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)] hover:bg-[var(--zerops-status-attention-surface)]/70",
+  failed:
+    "border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)] hover:bg-[var(--zerops-status-failed-surface)]/70",
+  off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
+};
+
 export function ZeropsMateVerb({
   label,
   onClick,
@@ -32,9 +43,17 @@ export function ZeropsMateVerb({
   description,
   count,
   urgent = false,
+  tone,
+  action,
   ...rest
 }: {
   readonly label: string;
+  /**
+   * What the press does, where the label says something else — a refusal
+   * whose words are the way to hand it over reads `needs a rebase` and acts
+   * as *Ask*. Defaults to the label.
+   */
+  readonly action?: string | undefined;
   readonly onClick: () => void;
   readonly disabled?: boolean;
   /**
@@ -47,6 +66,12 @@ export function ZeropsMateVerb({
   readonly count?: number | undefined;
   /** Whether that count is something somebody should act on. */
   readonly urgent?: boolean;
+  /**
+   * What the verb is about, where that has a state: a change that cannot land
+   * and a release that is merely waiting are not the same news, and a row of
+   * identical grey pills says they are.
+   */
+  readonly tone?: ServiceStatusToneId | undefined;
   /**
    * What the verb would actually do, in words — for a verb whose name says
    * the mechanism rather than the outcome. It becomes the button's accessible
@@ -62,8 +87,13 @@ export function ZeropsMateVerb({
       // meant "this leaves for Gitea" until nothing did any more — so every
       // verb read as a link out, and the one that mattered (Release) was
       // quieter than the amber chip counting what it would ship.
-      className="relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border border-input bg-popover px-1.5 text-xs leading-none font-medium text-foreground transition-[transform,background-color] hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60"
-      data-zerops-primary-action={label}
+      className={cn(
+        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-xs leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
+        tone === undefined
+          ? "border-input bg-popover text-foreground hover:bg-accent/50"
+          : VERB_TONE_CLASS[tone],
+      )}
+      data-zerops-primary-action={action ?? label}
       disabled={disabled}
       onClick={onClick}
       type="button"

@@ -83,6 +83,7 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
@@ -5755,6 +5756,44 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   const queuedMessages = useQueuedMessages(activeThreadKey ?? "");
+  const onSendRef = useRef<(() => Promise<void>) | null>(null);
+  // Re-runs the effect below when a surface files a request while this thread
+  // is already open; the store is outside React, so it has to say so.
+  const sendRequestGeneration = useSyncExternalStore(
+    useComposerDraftStore.subscribe,
+    () => Object.keys(useComposerDraftStore.getState().sendRequestsByThreadKey).join(","),
+    () => "",
+  );
+
+  /**
+   * A surface elsewhere has already asked the person and been told to send.
+   *
+   * Every hand-over to a Mate used to stop at composing and wait for a
+   * keystroke (spec §5.4). A confirm dialog moves that decision earlier: the
+   * person reads the exact request and presses *Send*, so nothing is left to
+   * press here. The send itself stays in this component because only it knows
+   * the model selection, the runtime mode and the attachments a turn needs —
+   * a dialog reproducing that would be a second, worse sender.
+   *
+   * Taken once, and only while this thread is the live one and nothing is
+   * already in flight, so a re-render never sends twice.
+   */
+  useEffect(() => {
+    if (activeThread === undefined) return;
+    if (composerDraftTarget === null || composerDraftTarget === undefined) return;
+    const pending = useComposerDraftStore.getState().takeSendRequest(composerDraftTarget);
+    if (pending === null || pending.trim().length === 0) return;
+    promptRef.current = pending;
+    setComposerDraftPrompt(composerDraftTarget, pending);
+    // After paint, so the composer has the text before the turn reads it.
+    const timer = setTimeout(() => {
+      void onSendRef.current?.();
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [activeThread, composerDraftTarget, sendRequestGeneration]);
+
   // Puts queued messages back into the composer, e.g. after Stop or a Cancel.
   // Prompts join with blank lines; attachments and contexts are added.
   restoreQueuedMessagesRef.current = (messages) => restoreQueuedMessagesToComposer(messages);
@@ -5818,6 +5857,11 @@ export default function ChatView(props: ChatViewProps) {
     });
   };
 
+  // Bound on every render, as `restoreQueuedMessagesRef` is: the effect above
+  // is declared before this and would otherwise hold a stale closure.
+  onSendRef.current = async () => {
+    await onSend();
+  };
   const onSend = async (
     e?: { preventDefault: () => void },
     submissionIntent: ComposerSubmissionIntent = "foreground",

@@ -2,12 +2,15 @@
  * Handing something to the Mate that can do it.
  *
  * Every change to a project goes through the agent's own tools, so a surface
- * that finds work to be done does not do it: it opens the Mate's conversation
- * with the request already written and stops there, and the person presses
- * send. That is the seam the quick actions and the file browser already use
- * (spec §5.4) — "you still need the agent to take care of it, so why can't
- * 'needs a rebase' simply prompt it automatically to do the rebase?" (the
- * owner, 2026-09-19).
+ * that finds work to be done hands it over rather than doing it itself: it
+ * opens the Mate's conversation with the request written, and sends it.
+ *
+ * It used to stop at composing and wait for a keystroke (spec §5.4). Every
+ * caller now asks first — a confirm naming the Mate and quoting the request,
+ * the same shape *Release* and *Merge* ask in — so the decision has already
+ * been made by the time this runs, and a second press would be asking twice
+ * (the owner, 2026-09-19: "it should open dialog which would then not only put
+ * the text into an agent, but actually send it").
  *
  * The left menu grew this first and kept it to itself; a change's own page
  * needs the same seam, so it lives here and both call it.
@@ -55,7 +58,10 @@ export function useAskMate(
         return;
       }
       const threadRef = scopeThreadRef(environmentId, primary.id);
-      useComposerDraftStore.getState().setPrompt(threadRef, ask);
+      // Sent, not left in the box: every caller now confirms first, so the
+      // person has already read the exact request and pressed Send (spec §5.4
+      // retired for these surfaces by the owner, 2026-09-19).
+      useComposerDraftStore.getState().requestSend(threadRef, ask);
       rememberZeropsEnvironment(String(environmentId));
       onNavigate?.();
       void router.navigate({

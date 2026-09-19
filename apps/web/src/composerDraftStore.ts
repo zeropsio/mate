@@ -348,6 +348,12 @@ type ComposerThreadTarget = ScopedThreadRef | DraftId;
  */
 interface ComposerDraftStoreState {
   draftsByThreadKey: Record<string, ComposerThreadDraftState>;
+  /**
+   * Prompts a surface has asked the composer to send, by thread. Never
+   * persisted: a send the app did not get to before a reload is a send the
+   * person did not watch happen, and it must not fire on the next boot.
+   */
+  sendRequestsByThreadKey: Record<string, string>;
   draftThreadsByThreadKey: Record<string, DraftThreadState>;
   logicalProjectDraftThreadKeyByLogicalProjectKey: Record<string, string>;
   backgroundSubmissionThreadKeys: Record<string, true>;
@@ -425,6 +431,20 @@ interface ComposerDraftStoreState {
   clearDraftThread: (threadRef: ComposerThreadTarget) => void;
   setStickyModelSelection: (modelSelection: ModelSelection | null | undefined) => void;
   setPrompt: (threadRef: ComposerThreadTarget, prompt: string) => void;
+  /**
+   * Writes a prompt and asks the composer to send it, rather than leaving it
+   * for a person to press send.
+   *
+   * Every hand-over to a Mate used to stop at composing (spec §5.4). A confirm
+   * dialog moves that decision earlier — the person has already read the exact
+   * request and pressed *Send* — so the composer carries it out. Sending stays
+   * the composer's job because only it knows the model selection, the runtime
+   * mode and the attachments a turn needs; a dialog reproducing that would be a
+   * second, worse sender.
+   */
+  requestSend: (threadRef: ComposerThreadTarget, prompt: string) => void;
+  /** Taken once by the composer, so a re-render never sends twice. */
+  takeSendRequest: (threadRef: ComposerThreadTarget) => string | null;
   setTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   setModelSelection: (
     threadRef: ComposerThreadTarget,
@@ -2169,6 +2189,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         draftsByThreadKey: {},
         draftThreadsByThreadKey: {},
         logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+        sendRequestsByThreadKey: {},
         backgroundSubmissionThreadKeys: {},
         stickyModelSelectionByProvider: {},
         stickyActiveProvider: null,
@@ -2580,6 +2601,28 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
         },
+        requestSend: (threadRef, prompt) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) return;
+          get().setPrompt(threadRef, prompt);
+          set((state) => ({
+            sendRequestsByThreadKey: { ...state.sendRequestsByThreadKey, [threadKey]: prompt },
+          }));
+        },
+
+        takeSendRequest: (threadRef) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) return null;
+          const pending = get().sendRequestsByThreadKey[threadKey];
+          if (pending === undefined) return null;
+          set((state) => {
+            const next = { ...state.sendRequestsByThreadKey };
+            delete next[threadKey];
+            return { sendRequestsByThreadKey: next };
+          });
+          return pending;
+        },
+
         setPrompt: (threadRef, prompt) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) {

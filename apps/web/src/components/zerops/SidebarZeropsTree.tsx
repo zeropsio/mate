@@ -39,6 +39,7 @@ import {
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
+  changeState,
   pullRequestBlocked,
   pullRequestsFolded,
   releaseContentsSentence,
@@ -61,7 +62,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
   CheckIcon,
@@ -90,6 +91,7 @@ import {
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
@@ -212,7 +214,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
-  const [collapsedStops, setCollapsedStops] = useState<ReadonlySet<string>>(() => new Set());
+  // Folded stops survive a reload: a person who folded a project away had a
+  // reason, and a menu that unfolds everything on every boot makes them do it
+  // again (the owner, 2026-09-19). Per-browser, so it never leaves the device.
+  const [collapsedStops, setCollapsedStops] = useState<ReadonlySet<string>>(readCollapsedStops);
 
   // Nothing read yet is not nothing: an empty state that shows for the first
   // second of every reload and then gives way to the roster sends the whole
@@ -276,6 +281,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      writeCollapsedStops(next);
       return next;
     });
   };
@@ -888,38 +894,99 @@ function PullRequestRow({
           tone={blocked.tone}
         />
       ) : (
-        // A refusal somebody has to act on is a verb, not a label: the Mate
-        // that wrote the change is the one who can move it, so the words that
-        // name the problem are the way to hand it back.
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                // Not hover-only: the request the button would send is its own
-                // name, so a keyboard and a screen reader reach what a pointer
-                // reaches.
-                aria-label={blocked.ask}
-                className="shrink-0 cursor-pointer rounded-sm text-sidebar-muted-foreground transition-colors hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                data-zerops-primary-action="Ask"
-                onClick={() => {
-                  onAsk(pull, blocked.ask ?? "");
-                }}
-                type="button"
-              >
-                <StatusDot
-                  className="text-[11px]"
-                  data-zerops-surface="sidebar-pull-request-blocked"
-                  label={blocked.word}
-                  sentence
-                  tone={blocked.tone}
-                />
-              </button>
-            }
-          />
-          <TooltipPopup side="right">{blocked.ask}</TooltipPopup>
-        </Tooltip>
+        // A refusal somebody has to act on is a verb, not a label — and it has
+        // to look like one. It was a coloured word with a tooltip, which reads
+        // as a status, so nobody pressed the only thing on the row that moves
+        // the change (the owner, 2026-09-19).
+        <AskVerb
+          ask={blocked.ask}
+          onAsk={onAsk}
+          pull={pull}
+          tone={blocked.tone}
+          word={changeState(pull)?.word ?? blocked.word}
+        />
       )}
     </li>
+  );
+}
+
+/**
+ * The verb that hands a stuck change back to the Mate that wrote it.
+ *
+ * It asks first, in the shape *Release* and *Merge* ask in, and the confirm
+ * quotes the exact words that will be sent — because *Send* sends them.
+ */
+/** Where the folded projects are remembered, per browser. */
+const COLLAPSED_STOPS_KEY = "zerops.sidebar.collapsedStops";
+
+/**
+ * The projects whose stops were folded away last time.
+ *
+ * Storage can throw outright (a private window, blocked site data) and can
+ * hold anything at all, so a bad read is an empty set rather than a crash on
+ * boot — the menu unfolded is the safe wrong answer.
+ */
+function readCollapsedStops(): ReadonlySet<string> {
+  try {
+    const raw = globalThis.localStorage?.getItem(COLLAPSED_STOPS_KEY);
+    if (raw === null || raw === undefined) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((entry): entry is string => typeof entry === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsedStops(collapsed: ReadonlySet<string>): void {
+  try {
+    globalThis.localStorage?.setItem(COLLAPSED_STOPS_KEY, JSON.stringify([...collapsed]));
+  } catch {
+    // A menu that cannot remember its folds still works; one that throws on a
+    // fold does not.
+  }
+}
+
+function AskVerb({
+  pull,
+  word,
+  tone,
+  ask,
+  onAsk,
+}: {
+  readonly pull: FlowPullRequest;
+  readonly word: string;
+  /** What is wrong, as a colour: a rebase and a failed check are not one thing. */
+  readonly tone: ServiceStatusToneId;
+  readonly ask: string;
+  readonly onAsk: (pull: FlowPullRequest, ask: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <ZeropsMateVerb
+        action="Ask"
+        description={ask}
+        label={word}
+        tone={tone}
+        onClick={() => {
+          setConfirming(true);
+        }}
+      />
+      <ZeropsAskDialog
+        ask={ask}
+        mateName={undefined}
+        onConfirm={() => {
+          setConfirming(false);
+          onAsk(pull, ask);
+        }}
+        onOpenChange={setConfirming}
+        open={confirming}
+        sending={false}
+        tint={undefined}
+        what={`Change #${String(pull.number)} ${word.toLocaleLowerCase()}.`}
+      />
+    </>
   );
 }
 
@@ -993,6 +1060,7 @@ function ReleaseVerb({
       description={releaseContentsSentence(summary)}
       disabled={releasing}
       label={flowVerbLabel("release", releasing)}
+      tone={summary.total === 0 ? undefined : "attention"}
       urgent
       onClick={() => {
         setConfirming(true);
