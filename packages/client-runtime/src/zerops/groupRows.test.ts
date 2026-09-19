@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  environmentNameUnderGroup,
   buildGroupRows,
   deployedCommit,
   deployStatusContext,
@@ -333,6 +334,36 @@ describe("missingEnvironmentRows", () => {
         expect(row.kind).toBe("missing-environment");
         expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
       }
+    });
+  }
+});
+
+describe("environmentNameUnderGroup", () => {
+  const cases: ReadonlyArray<[string | undefined, string, string]> = [
+    // The prefix the heading already carries, in every separator a person types.
+    ["Links", "Links - stage", "stage"],
+    ["Links", "Links – stage", "stage"],
+    ["Links", "Links-stage", "stage"],
+    ["Links", "Links stage", "stage"],
+    ["Links", "Links_stage", "stage"],
+    ["Links", "Links / production", "production"],
+    ["Links", "links - STAGE", "STAGE"],
+    ["  Links  ", "Links - stage", "stage"],
+    // A name that is the group's, or somebody else's, stays whole: there is
+    // nothing left to say, or nothing of ours to drop.
+    ["Links", "Links", "Links"],
+    ["Links", "Links - ", "Links -"],
+    ["Links", "Notes - stage", "Notes - stage"],
+    ["Links", "My Links - stage", "My Links - stage"],
+    // Nothing known about the group leaves the name exactly as Zerops has it.
+    [undefined, "Links - stage", "Links - stage"],
+    ["", "Links - stage", "Links - stage"],
+    ["   ", "Links - stage", "Links - stage"],
+  ];
+
+  for (const [group, environment, expected] of cases) {
+    it(`reads ${JSON.stringify(environment)} under ${JSON.stringify(group)} as ${JSON.stringify(expected)}`, () => {
+      expect(environmentNameUnderGroup(group, environment)).toBe(expected);
     });
   }
 });

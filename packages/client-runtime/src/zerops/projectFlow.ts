@@ -226,6 +226,86 @@ export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow 
   };
 }
 
+/**
+ * Why a pull request offers no *Merge*, in the words a row has space for —
+ * `null` where Gitea says it merges and the verb speaks for itself.
+ *
+ * A row that simply dropped its verb was a dead end: Gitea had refused, and
+ * the menu said nothing about it, so the person was left to open the request
+ * to find out. Gitea's own answer is the only authority here (MU-1's
+ * discipline applied to merges): nothing recomputes whether a branch merges.
+ *
+ * The checks' dot already carries a failure, so a refusal while they are red
+ * says nothing further — two sayings of one fact on a row seven words wide.
+ */
+export function pullRequestBlockedReason(pull: {
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+}): string | null {
+  if (pull.mergeable) return null;
+  if (pull.checks === "pending") return "checks running";
+  // The dot beside it is red and has the word in its tooltip.
+  if (pull.checks === "failing") return null;
+  return "needs a rebase";
+}
+
+/** What a release would carry, as much of it as a hover has room for. */
+export interface ReleaseContentsSummary {
+  /** The tasks, newest first, in the words the person asked for them in. */
+  readonly subjects: ReadonlyArray<string>;
+  /** How many more there are than the summary lists. */
+  readonly more: number;
+  /** Every commit the release carries, listed or not. */
+  readonly total: number;
+}
+
+/**
+ * The words a release is about to put in front of people.
+ *
+ * "Release" names the mechanism, not the thing — and someone who has never
+ * merged a branch cannot tell from the verb what it would do. With squash
+ * merges each commit on `main` that production is not running IS a task
+ * delivered, under the words the person asked for it in, so the list reads as
+ * plain English and no vocabulary has to be invented for it (the owner,
+ * 2026-09-18: "it would be great if you could show like what is it going to
+ * release").
+ *
+ * One commit reaches several services in a monorepo, so a sha is counted
+ * once: the person is being told what changes, not how many services take it.
+ */
+export function releaseContentsSummary(
+  contents: ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>,
+  limit = 4,
+): ReleaseContentsSummary {
+  const seen = new Set<string>();
+  const subjects: Array<string> = [];
+  for (const entry of contents) {
+    for (const commit of entry.commits) {
+      if (seen.has(commit.sha)) continue;
+      seen.add(commit.sha);
+      const subject = commit.subject.trim();
+      if (subject.length > 0) subjects.push(subject);
+    }
+  }
+  const total = seen.size;
+  return {
+    subjects: subjects.slice(0, limit),
+    more: Math.max(0, subjects.length - limit),
+    total,
+  };
+}
+
+/**
+ * The same answer as one sentence, for the places a hover cannot reach — a
+ * button's accessible name, a narrow row, a keyboard.
+ */
+export function releaseContentsSentence(summary: ReleaseContentsSummary): string | undefined {
+  if (summary.total === 0) return undefined;
+  const listed = summary.subjects.join("; ");
+  const change = summary.total === 1 ? "1 change" : `${summary.total} changes`;
+  return listed.length === 0 ? `puts ${change} live` : `puts ${change} live — ${listed}`;
+}
+
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
   | {

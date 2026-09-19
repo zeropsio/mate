@@ -42,6 +42,27 @@ const CRM_PROD = candidate(
 );
 const LOOSE = candidate("loose", ["mate"]);
 
+/** A group whose environments are named the way Zerops names them: after it. */
+function named(id: string, name: string, tags: ReadonlyArray<string>, withContainer = true) {
+  const base = candidate(id, tags, "ready", withContainer);
+  return { ...base, project: { ...base.project, name } } as ZeropsCandidate;
+}
+
+const LINKS_TAGS = ["mate:g:links", "mate:name:Links"];
+const LINKS_MATE = named("links-dev", "Links - dev", ["mate", ...LINKS_TAGS, "mate:role:dev"]);
+const LINKS_STAGE = named(
+  "links-stage",
+  "Links - stage",
+  [...LINKS_TAGS, "mate:role:stage"],
+  false,
+);
+const LINKS_PROD = named(
+  "links-prod",
+  "Links - production",
+  [...LINKS_TAGS, "mate:role:prod"],
+  false,
+);
+
 function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string, unknown> = {}) {
   return renderToStaticMarkup(
     <SidebarZeropsTree
@@ -158,6 +179,37 @@ describe("SidebarZeropsTree", () => {
     expect(html).not.toContain("aria-expanded");
     // A project whose only environment is its Mate's has no stops to list.
     expect(render([CRM_DEV])).not.toContain("sidebar-environment-rows");
+  });
+
+  it("says a stop's own name, not the project's name a third time", () => {
+    const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
+    // The heading already says Links; the rows say what tells them apart.
+    expect(html).toContain(">stage<");
+    expect(html).toContain(">production<");
+    expect(html).not.toContain(">Links - stage<");
+    expect(html).not.toContain(">Links - production<");
+  });
+
+  it("drops the role pill where the name it shortened to already says the role", () => {
+    const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
+    const rows = html.slice(html.indexOf('data-zerops-surface="sidebar-environment-rows"'));
+    expect(rows).not.toContain(String.raw`data-zerops-surface="role-tag"`);
+  });
+
+  it("keeps the role pill where a chosen name says nothing about the role", () => {
+    const euWest = named("links-eu", "Links - eu-west", [...LINKS_TAGS, "mate:role:prod"], false);
+    const html = render([LINKS_MATE, euWest]);
+    expect(html).toContain(">eu-west<");
+    expect(html).toContain(String.raw`data-zerops-surface="role-tag"`);
+  });
+
+  it("hangs the stops off the project rather than off the Mate above them", () => {
+    const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
+    const list = html.slice(html.indexOf('data-zerops-surface="sidebar-environment-rows"') - 200);
+    // A rule over the list, and the project's own left edge under it: the
+    // stops are the project's, whichever Mate happens to be listed last.
+    expect(list).toContain("border-t");
+    expect(list).toContain("ps-2.5");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
@@ -322,6 +374,63 @@ describe("the project's flow under it", () => {
     expect(
       withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
     ).not.toContain('data-zerops-primary-action="Merge"');
+  });
+
+  it("says what Release would put in front of people, in the words they asked for", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE, CRM_PROD],
+      flow({
+        releaseContents: [
+          {
+            commits: [
+              { sha: "a", subject: "Add a search box above the list" },
+              { sha: "b", subject: "Rename the app in the page title" },
+            ],
+          },
+        ],
+      }),
+    );
+    // Not hover-only: the button's own name carries it, so a keyboard and a
+    // screen reader reach the same answer a pointer does.
+    expect(html).toContain("Release: puts 2 changes live");
+    expect(html).toContain("Add a search box above the list");
+    expect(html).toContain("Rename the app in the page title");
+  });
+
+  it("keeps the verb bare where nothing said what a release carries", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    expect(html).toContain('data-zerops-primary-action="Release"');
+    expect(html).not.toContain("puts");
+  });
+
+  it("says why a pull request offers no Merge rather than leaving a dead end", () => {
+    const running = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({ pullRequests: [pull(4, { mergeable: false, checks: "pending" })] }),
+    );
+    expect(running).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
+    expect(running).toContain("checks running");
+
+    const stale = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({ pullRequests: [pull(4, { mergeable: false, checks: "passing" })] }),
+    );
+    expect(stale).toContain("needs a rebase");
+
+    // The dot beside it is already red and carries the word in its tooltip;
+    // the row does not say one fact twice.
+    const failed = withFlow(
+      [CRM_DEV, CRM_STAGE],
+      flow({
+        pullRequests: [pull(4, { mergeable: false, checks: "failing", checkWord: "Failing" })],
+      }),
+    );
+    expect(failed).not.toContain('data-zerops-surface="sidebar-pull-request-blocked"');
+
+    // Nothing is added where the verb speaks for itself.
+    expect(withFlow([CRM_DEV, CRM_STAGE])).not.toContain(
+      'data-zerops-surface="sidebar-pull-request-blocked"',
+    );
   });
 
   it("says a verb is running where it was pressed, and takes no second click", () => {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
+  pullRequestBlockedReason,
+  releaseContentsSentence,
+  releaseContentsSummary,
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
@@ -290,5 +294,103 @@ describe("types", () => {
         "url",
       ].sort(),
     );
+  });
+});
+
+describe("pullRequestBlockedReason", () => {
+  const cases: ReadonlyArray<[boolean, GitCheckTone, string | null]> = [
+    // Gitea says it merges: the verb is the whole answer.
+    [true, "none", null],
+    [true, "pending", null],
+    [true, "passing", null],
+    [true, "failing", null],
+    // It does not, and the row says why rather than dropping its verb silently.
+    [false, "pending", "checks running"],
+    [false, "none", "needs a rebase"],
+    [false, "passing", "needs a rebase"],
+    // The dot is already red and carries the word; the row does not say it twice.
+    [false, "failing", null],
+  ];
+
+  for (const [mergeable, checks, expected] of cases) {
+    it(`${mergeable ? "merges" : "does not merge"} with ${checks} checks: ${expected ?? "nothing to add"}`, () => {
+      expect(pullRequestBlockedReason({ mergeable, checks })).toBe(expected);
+    });
+  }
+});
+
+describe("releaseContentsSummary", () => {
+  const commit = (sha: string, subject: string) => ({ sha, subject });
+
+  it("says what is going live in the words the person asked for it in", () => {
+    const summary = releaseContentsSummary([
+      { commits: [commit("a", "Add a search box above the list"), commit("b", "Rename the app")] },
+    ]);
+    expect(summary.subjects).toEqual(["Add a search box above the list", "Rename the app"]);
+    expect(summary.more).toBe(0);
+    expect(summary.total).toBe(2);
+  });
+
+  it("counts one change once, however many services take it", () => {
+    const summary = releaseContentsSummary([
+      { commits: [commit("a", "Add a search box")] },
+      { commits: [commit("a", "Add a search box"), commit("b", "Fix the footer")] },
+    ]);
+    expect(summary.subjects).toEqual(["Add a search box", "Fix the footer"]);
+    expect(summary.total).toBe(2);
+  });
+
+  it("lists as many as a hover has room for and counts the rest", () => {
+    const summary = releaseContentsSummary(
+      [{ commits: [1, 2, 3, 4, 5, 6].map((n) => commit(`s${n}`, `Change ${n}`)) }],
+      4,
+    );
+    expect(summary.subjects).toHaveLength(4);
+    expect(summary.more).toBe(2);
+    expect(summary.total).toBe(6);
+  });
+
+  it("drops a commit whose message is only whitespace rather than showing a blank line", () => {
+    const summary = releaseContentsSummary([
+      { commits: [commit("a", "   "), commit("b", "Fix the footer")] },
+    ]);
+    expect(summary.subjects).toEqual(["Fix the footer"]);
+  });
+
+  it("says nothing about a release that carries nothing", () => {
+    expect(releaseContentsSummary([])).toEqual({ subjects: [], more: 0, total: 0 });
+    expect(releaseContentsSummary([{ commits: [] }]).total).toBe(0);
+  });
+});
+
+describe("releaseContentsSentence", () => {
+  it("says the count and the tasks in one line, for the places a hover cannot reach", () => {
+    const summary = releaseContentsSummary([
+      {
+        commits: [
+          { sha: "a", subject: "Add a search box" },
+          { sha: "b", subject: "Fix the footer" },
+        ],
+      },
+    ]);
+    expect(releaseContentsSentence(summary)).toBe(
+      "puts 2 changes live — Add a search box; Fix the footer",
+    );
+  });
+
+  it("counts one change as one", () => {
+    const summary = releaseContentsSummary([
+      { commits: [{ sha: "a", subject: "Fix the footer" }] },
+    ]);
+    expect(releaseContentsSentence(summary)).toBe("puts 1 change live — Fix the footer");
+  });
+
+  it("still says how many where every message was blank", () => {
+    const summary = releaseContentsSummary([{ commits: [{ sha: "a", subject: "  " }] }]);
+    expect(releaseContentsSentence(summary)).toBe("puts 1 change live");
+  });
+
+  it("says nothing about a release that carries nothing", () => {
+    expect(releaseContentsSentence(releaseContentsSummary([]))).toBeUndefined();
   });
 });

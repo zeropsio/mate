@@ -35,10 +35,14 @@ import {
   flowVerbLabel,
   buildZeropsGroupTree,
   deployWord,
+  environmentNameUnderGroup,
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
+  pullRequestBlockedReason,
   pullRequestsFolded,
+  releaseContentsSentence,
+  releaseContentsSummary,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
@@ -63,7 +67,11 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { checkDotTone } from "./ZeropsGitBlock";
-import { environmentRoleTag, groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import {
+  environmentRoleTag,
+  environmentRoleTagIsRedundant,
+  groupNameIsPlaceholder,
+} from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
@@ -86,6 +94,14 @@ export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
+  /**
+   * What a release would carry, per production service. Rendered as the
+   * verb's hover: "Release" names the mechanism, and the tasks name the
+   * thing — the one reading a person needs who has never merged a branch.
+   */
+  readonly releaseContents?:
+    | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
+    | undefined;
   /** Whether this pull request's *Merge* is running. */
   readonly merging: (pull: FlowPullRequest) => boolean;
   /** Whether the project's *Release* is running. */
@@ -201,6 +217,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     entries: ReadonlyArray<Entry<T>>,
     header: ReactNode,
     flow: SidebarProjectFlow | undefined,
+    groupName: string | undefined,
   ) => {
     const mateEntries = entries.filter(({ item }) => hasMate(item));
     if (mateEntries.length === 0) return null;
@@ -250,7 +267,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ))}
           </ul>
         )}
-        {others.length > 0 ? <EnvironmentRows environments={others} flow={flow} /> : null}
+        {others.length > 0 ? (
+          <EnvironmentRows environments={others} flow={flow} groupName={groupName} />
+        ) : null}
       </>
     );
   };
@@ -278,6 +297,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             environments,
             <ProjectName group={group} />,
             getFlow?.(group.groupId),
+            groupNameIsPlaceholder(group) ? undefined : group.name,
           )}
         </section>
       ))}
@@ -288,6 +308,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             "ungrouped",
             ungrouped,
             groups.length > 0 ? <ProjectName muted name="Ungrouped" /> : null,
+            undefined,
+            // Nothing groups these, so nothing above a row repeats its name.
             undefined,
           )}
         </section>
@@ -476,6 +498,7 @@ function PullRequestRow({
 }) {
   const tone = checkDotTone({ checks: pull.checks });
   const title = sidebarPullRequestTitle(pull);
+  const blocked = pullRequestBlockedReason(pull);
   return (
     <li
       className={cn("flex h-7 min-w-0 items-center gap-2 text-xs", UNDER_MATE_CLASS)}
@@ -505,8 +528,63 @@ function PullRequestRow({
           label={flowVerbLabel("merge", merging)}
           onClick={() => onMerge(pull)}
         />
-      ) : null}
+      ) : blocked === null ? null : (
+        // Gitea refused, and a row that only dropped its verb left the person
+        // to open the request to find out why.
+        <span
+          className="shrink-0 text-[11px] text-sidebar-muted-foreground"
+          data-zerops-surface="sidebar-pull-request-blocked"
+        >
+          {blocked}
+        </span>
+      )}
     </li>
+  );
+}
+
+/**
+ * *Release*, and — where the flow read them — the tasks it would put in front
+ * of people, as a hover.
+ *
+ * The verb keeps its name: renaming it would cost the people who know exactly
+ * what it means and buy the others only a different word to learn. The hover
+ * is what a person reads instead, and it is written in their own words,
+ * because a squash merge carries the task's message.
+ */
+function ReleaseVerb({
+  contents,
+  releasing,
+  onRelease,
+}: {
+  readonly contents: SidebarProjectFlow["releaseContents"];
+  readonly releasing: boolean;
+  readonly onRelease: () => void;
+}) {
+  const summary = releaseContentsSummary(contents ?? []);
+  const verb = (
+    <ZeropsMateVerb
+      description={releaseContentsSentence(summary)}
+      disabled={releasing}
+      label={flowVerbLabel("release", releasing)}
+      onClick={onRelease}
+    />
+  );
+  if (summary.total === 0) return verb;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={verb} />
+      <TooltipPopup side="right">
+        <span className="flex flex-col gap-0.5" data-zerops-surface="sidebar-release-contents">
+          <span className="font-medium">
+            {summary.total === 1 ? "Going live:" : `Going live — ${summary.total} changes:`}
+          </span>
+          {summary.subjects.map((subject) => (
+            <span key={subject}>{subject}</span>
+          ))}
+          {summary.more === 0 ? null : <span className="opacity-70">+{summary.more} more</span>}
+        </span>
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -519,14 +597,25 @@ function PullRequestRow({
 function EnvironmentRows<T extends RosterCandidate>({
   environments,
   flow,
+  groupName,
 }: {
   readonly environments: ReadonlyArray<Entry<T>>;
   readonly flow: SidebarProjectFlow | undefined;
+  /** The heading above, so a row never repeats the word already on it. */
+  readonly groupName: string | undefined;
 }) {
   return (
-    <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-environment-rows">
+    // The stops belong to the project, not to the Mate they happen to follow:
+    // a rule and the project's own left edge say so. Held in the list rather
+    // than on the first row, so a project with one stop is drawn like a
+    // project with three.
+    <ul
+      className="mt-1 flex flex-col gap-px border-t border-sidebar-border pt-1"
+      data-zerops-surface="sidebar-environment-rows"
+    >
       {environments.map(({ item, role }) => {
         const tag = environmentRoleTag(role);
+        const name = environmentNameUnderGroup(groupName, item.project.name);
         const declared = flow?.environments.get(item.project.id);
         const tone = declared === undefined ? undefined : deployRowTone(declared.tone);
         const word = declared === undefined ? undefined : deployWord(declared.tone);
@@ -534,12 +623,14 @@ function EnvironmentRows<T extends RosterCandidate>({
           flow !== undefined && flow.releaseOffered && declared?.tier === "production";
         return (
           <li
-            className="flex h-7 min-w-0 items-center gap-2 ps-[1.625rem] pe-0.5 text-xs"
+            className="flex h-7 min-w-0 items-center gap-2 ps-2.5 pe-0.5 text-xs"
             data-zerops-surface="sidebar-environment"
             key={item.project.id}
           >
-            <span className="min-w-0 truncate text-muted-foreground">{item.project.name}</span>
-            {tag === null ? null : <ZeropsRoleTag label={tag} />}
+            <span className="min-w-0 truncate text-muted-foreground">{name}</span>
+            {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
+              <ZeropsRoleTag label={tag} />
+            )}
             {tone === undefined || word === undefined ? null : (
               <Tooltip>
                 <TooltipTrigger render={<StatusDot dotOnly label={word} tone={tone} />} />
@@ -547,10 +638,10 @@ function EnvironmentRows<T extends RosterCandidate>({
               </Tooltip>
             )}
             {release ? (
-              <ZeropsMateVerb
-                disabled={flow.releasing}
-                label={flowVerbLabel("release", flow.releasing)}
-                onClick={flow.onRelease}
+              <ReleaseVerb
+                contents={flow.releaseContents}
+                onRelease={flow.onRelease}
+                releasing={flow.releasing}
               />
             ) : null}
             <span className="ms-auto flex w-6 shrink-0 justify-center">

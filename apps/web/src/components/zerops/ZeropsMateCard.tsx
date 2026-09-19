@@ -29,13 +29,23 @@ export function ZeropsMateVerb({
   label,
   onClick,
   disabled = false,
+  description,
+  ...rest
 }: {
   readonly label: string;
   readonly onClick: () => void;
   readonly disabled?: boolean;
+  /**
+   * What the verb would actually do, in words — for a verb whose name says
+   * the mechanism rather than the outcome. It becomes the button's accessible
+   * name, so the answer is not hover-only: a keyboard reaches it too.
+   */
+  readonly description?: string | undefined;
 }) {
   return (
     <button
+      {...rest}
+      aria-label={description === undefined ? undefined : `${label}: ${description}`}
       className="relative z-[1] shrink-0 rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
       data-zerops-primary-action={label}
       disabled={disabled}

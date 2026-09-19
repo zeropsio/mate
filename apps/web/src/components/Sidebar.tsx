@@ -1740,6 +1740,8 @@ export default function Sidebar() {
         pullRequests: flow.pullRequests,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
+        // What the verb's hover says it would put in front of people.
+        releaseContents: flow.release.contents,
         merging: (pull) =>
           zeropsProjectFlow.pending.has(
             flowVerbKey({

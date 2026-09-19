@@ -52,6 +52,23 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
 }
 
 /**
+ * Whether a row still needs its role tag once the name has been shortened.
+ *
+ * Under a project heading, `Links - stage` reads as `stage`, and a `STAGE`
+ * pill beside it is the same word a third time on one line. The tag earns its
+ * place only where the name does not already carry the role — a project
+ * somebody named `eu-west` that happens to be the production.
+ *
+ * Matched as a prefix, not an equality: the tag is the short spelling
+ * (`prod`) of a word people write in full (`production`), and both say the
+ * same thing to the person reading the row.
+ */
+export function environmentRoleTagIsRedundant(tag: string | null, shortenedName: string): boolean {
+  if (tag === null) return false;
+  return shortenedName.trim().toLocaleLowerCase().startsWith(tag.toLocaleLowerCase());
+}
+
+/**
  * Whether the group's name is a real name or the id standing in for one. A
  * group named by its id is one the user should be invited to name — the tree
  * marks it rather than pretending `7k2m9qx4vb1c` is a title.
