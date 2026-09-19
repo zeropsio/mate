@@ -142,6 +142,6 @@ describe("ZeropsMateVerb", () => {
 
   it("answers a press, so the row feels heard", () => {
     const html = renderToStaticMarkup(<ZeropsMateVerb label="Merge" onClick={() => {}} />);
-    expect(html).toContain("active:scale-[0.97]");
+    expect(html).toContain("active:scale-95");
   });
 });

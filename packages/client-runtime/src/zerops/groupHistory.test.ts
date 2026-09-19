@@ -85,8 +85,16 @@ describe("a group's history", () => {
     };
 
     it("says who wrote it and where it is running", () => {
+      expect(historyLine({ ...base, author: "ada", deployedTo: ["production"] })).toBe(
+        "ada · production",
+      );
+    });
+
+    it("never writes a bot login out: this test used to assert that it did", () => {
+      // `mate-links-dev` is a Gitea login, not a who — a line naming it was
+      // the bug, and asserting it was how the bug survived a rewrite.
       expect(historyLine({ ...base, author: "mate-links-dev", deployedTo: ["production"] })).toBe(
-        "mate-links-dev · production",
+        "production",
       );
     });
 
@@ -190,5 +198,38 @@ describe("historyLine with a clock", () => {
 
   it("still answers with the age alone when nothing else is known", () => {
     expect(historyLine({ ...entry, author: undefined, deployedTo: [] }, now)).toBe("4h");
+  });
+});
+
+describe("historyLine naming", () => {
+  const entry = {
+    sha: "a".repeat(40),
+    shortSha: "aaaaaaa",
+    subject: "Deploy the link keeper",
+    author: "mate-PXGYIVK9RLWlE3eTL3QwoW",
+    at: "2026-09-19T08:00:00Z",
+    deployedTo: ["Links - production"],
+    tags: [],
+  };
+  const now = Date.parse("2026-09-19T12:00:00Z");
+  const names = {
+    mateNames: new Map([["PXGYIVK9RLWlE3eTL3QwoW", "Theo"]]),
+    groupName: "Links",
+  };
+
+  it("names the Mate rather than writing its bot login into the line", () => {
+    expect(historyLine(entry, now, names)).toBe("Theo · production · 4h");
+  });
+
+  it("drops a Mate it cannot name instead of falling back to the login", () => {
+    expect(historyLine(entry, now, { groupName: "Links" })).toBe("production · 4h");
+  });
+
+  it("leaves a person's login alone: it is their name here", () => {
+    expect(historyLine({ ...entry, author: "ales" }, now, names)).toBe("ales · production · 4h");
+  });
+
+  it("stops a project repeating itself on every stop it names", () => {
+    expect(historyLine(entry, now, names)).not.toContain("Links - production");
   });
 });

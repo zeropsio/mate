@@ -25,7 +25,8 @@
  */
 
 import type { GiteaCommit, GiteaTag } from "./giteaClient.ts";
-import { shortCommit } from "./groupRows.ts";
+import { environmentNameUnderGroup, shortCommit } from "./groupRows.ts";
+import { mateProjectOfLogin } from "./projectFlow.ts";
 import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
 
 /** One commit on the branch, and what reached it. */
@@ -88,8 +89,22 @@ export function groupHistory(input: {
  * `undefined` where neither is known — a row with an empty second line is a
  * row that moved everything below it for nothing.
  */
-export function historyLine(entry: HistoryEntry, now?: number): string | undefined {
-  const parts = [entry.author, ...entry.deployedTo].filter(
+export function historyLine(
+  entry: HistoryEntry,
+  now?: number,
+  names?: {
+    /** `projectId → the Mate's name`, so a bot login never reaches the line. */
+    readonly mateNames?: ReadonlyMap<string, string> | undefined;
+    /** The project, so a stop under it does not repeat it. */
+    readonly groupName?: string | undefined;
+  },
+): string | undefined {
+  // `author` is a Gitea login, and a Mate's is `mate-{projectId}`: putting it
+  // through raw wrote `mate-PXGYIVK9RLWlE3eTL3QwoW` where a name belongs.
+  const mateProjectId = mateProjectOfLogin(entry.author);
+  const who = mateProjectId === undefined ? entry.author : names?.mateNames?.get(mateProjectId);
+  const where = entry.deployedTo.map((stop) => environmentNameUnderGroup(names?.groupName, stop));
+  const parts = [who, ...where].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );
   // A history with no time in it is a list, not a history: the age is the one

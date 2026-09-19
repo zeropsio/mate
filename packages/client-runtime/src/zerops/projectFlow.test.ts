@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
+  changeAuthorName,
   changeState,
   mergeConsequence,
   pullRequestBlocked,
@@ -565,5 +566,21 @@ describe("changeState", () => {
 
   it("says nothing where nothing ran and nothing is blocking", () => {
     expect(changeState({ number: 1, mergeable: true, checks: "none" })).toBeUndefined();
+  });
+});
+
+describe("changeAuthorName", () => {
+  it("names the Mate, never the bot login a page has no business showing", () => {
+    const pull = { author: "mate-0bPLTRRSSTuV54WMpcLoww", mateProjectId: "0bPLTRRSSTuV54WMpcLoww" };
+    expect(changeAuthorName(pull, "Theo")).toBe("Theo");
+  });
+
+  it("says nothing rather than the bot login where the Mate cannot be named", () => {
+    const pull = { author: "mate-abc", mateProjectId: "abc" };
+    expect(changeAuthorName(pull, undefined)).toBeUndefined();
+  });
+
+  it("names a person by their login, which is their name here", () => {
+    expect(changeAuthorName({ author: "ales", mateProjectId: undefined }, undefined)).toBe("ales");
   });
 });

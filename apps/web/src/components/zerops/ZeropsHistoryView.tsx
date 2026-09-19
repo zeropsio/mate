@@ -31,6 +31,12 @@ import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 
 /** What the dialog is looking at, and what the reads answered. */
+/** What to call the things a history row names. */
+export interface HistoryNames {
+  readonly mateNames?: ReadonlyMap<string, string> | undefined;
+  readonly groupName?: string | undefined;
+}
+
 export interface ZeropsHistoryRequest {
   /** The repository, as the recipe names it — never guessed from a hostname. */
   readonly repo: string;
@@ -41,10 +47,12 @@ export interface ZeropsHistoryRequest {
 export function ZeropsHistoryView({
   request,
   commits,
+  names = {},
   readDetail,
 }: {
   readonly request: ZeropsHistoryRequest;
   readonly commits: ZeropsCommitsState;
+  readonly names?: HistoryNames;
   /** Opens what a commit changed. Absent, a row is a line and nothing more. */
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
@@ -76,6 +84,7 @@ export function ZeropsHistoryView({
           first={index === 0}
           key={entry.sha}
           last={index === entries.length - 1}
+          names={names}
           now={now}
           readDetail={readDetail}
         />
@@ -88,6 +97,7 @@ function HistoryRow({
   entry,
   first,
   last,
+  names,
   now,
   readDetail,
 }: {
@@ -96,9 +106,11 @@ function HistoryRow({
   readonly last: boolean;
   /** The clock, read once by the list so every row ages against the same one. */
   readonly now: number;
+  /** What to call a Mate and a project, so neither shows as an identifier. */
+  readonly names: HistoryNames;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
-  const line = historyLine(entry, now);
+  const line = historyLine(entry, now, names);
   const live = entry.deployedTo.length > 0;
   const [detail, setDetail] = useState<ZeropsCommitDetailResult | "reading" | null>(null);
   const toggle = useCallback(() => {
@@ -113,7 +125,13 @@ function HistoryRow({
   return (
     <li className="flex min-w-0 items-stretch gap-2.5" data-zerops-surface="zerops-history-commit">
       <span className="relative flex w-5 shrink-0 flex-col items-center self-stretch">
-        <span aria-hidden="true" className={first ? RAIL_BLANK : RAIL_LINE} />
+        {/* Pinned to the row's first line, never centred in it: the row grows
+            when somebody opens what the commit changed, and a centred node
+            slides down the rail as it does. */}
+        <span
+          aria-hidden="true"
+          className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-[var(--zerops-rail)]"}
+        />
         {/* A commit something is running is a stop on this line, so it is the
             same filled node the menu gives one; the rest are open. */}
         <span

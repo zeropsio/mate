@@ -30,6 +30,11 @@ import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import "../index.css";
 
 /** Where these panes sit, as the harness pretends: the chat, then the project. */
+const NAMES = {
+  mateNames: new Map([["p-theo", "Theo"]]),
+  groupName: "Shop",
+};
+
 const CRUMBS = [
   { label: "Conversation", onClick: () => {} },
   { label: "Shop", onClick: () => {} },
@@ -136,6 +141,21 @@ const RELEASE_NONE: ReleaseOffer = {
   onRelease: () => {},
 };
 
+/** Opening a commit is what grew the row and dragged the node down the rail. */
+const READ_DETAIL = async (sha: string) => ({
+  kind: "read" as const,
+  detail: {
+    sha,
+    subject: "Key the preview cache on locale",
+    files: [
+      { filename: "src/server.js", status: "modified" },
+      { filename: "src/cache.js", status: "added" },
+    ],
+    additions: 41,
+    deletions: 7,
+  },
+});
+
 function run(state: ZeropsDeployRun["state"]): ZeropsDeployRun {
   return { state, readLog: async () => "", rerun: async () => {}, refresh: () => {} };
 }
@@ -241,6 +261,7 @@ function Harness() {
           groupId="shop"
           name="Shop"
           crumbs={CRUMBS}
+          names={NAMES}
           onSetUp={() => {}}
           pullRequests={[pull(), pull({ number: 6, title: "Bump the linter", mergeable: false })]}
           release={RELEASE_WAITING}
@@ -261,6 +282,7 @@ function Harness() {
           groupId="fresh"
           name="Design tokens"
           crumbs={CRUMBS}
+          names={NAMES}
           onSetUp={() => {}}
           pullRequests={[]}
           release={RELEASE_NONE}
@@ -276,8 +298,10 @@ function Harness() {
           commits={COMMITS}
           deployed={new Map([["production", sha("3f9c1b2e")]])}
           crumbs={CRUMBS}
+          names={NAMES}
+          groupName="Shop"
           production
-          readDetail={undefined}
+          readDetail={READ_DETAIL}
           release={RELEASE_WAITING}
           repo="appdev"
           run={BUILT}
@@ -306,6 +330,8 @@ function Harness() {
           commits={COMMITS}
           deployed={new Map([["stage", sha("b21d904c")]])}
           crumbs={CRUMBS}
+          names={NAMES}
+          groupName="Shop"
           production={false}
           readDetail={undefined}
           release={RELEASE_NONE}
@@ -324,6 +350,8 @@ function Harness() {
           commits={{ kind: "reading" }}
           deployed={new Map()}
           crumbs={CRUMBS}
+          names={NAMES}
+          groupName="Shop"
           production={false}
           readDetail={undefined}
           release={RELEASE_NONE}

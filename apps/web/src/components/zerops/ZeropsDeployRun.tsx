@@ -107,7 +107,12 @@ function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: Zero
             {duration}
           </span>
         )}
-        <StatusDot label={reading ? "Reading" : word} sentence tone={reading ? "busy" : tone} />
+        <StatusDot
+          className="shrink-0 text-xs text-muted-foreground"
+          label={reading ? "Reading" : word}
+          sentence
+          tone={reading ? "busy" : tone}
+        />
         {!failed ? null : (
           <Button
             disabled={rerunning}

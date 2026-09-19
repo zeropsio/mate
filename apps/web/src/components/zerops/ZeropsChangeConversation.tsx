@@ -185,7 +185,12 @@ function Remark({
   return (
     <li className="flex min-w-0 items-stretch gap-2.5" data-zerops-surface="zerops-change-remark">
       <span className={RAIL_COLUMN}>
-        <span aria-hidden="true" className={first ? RAIL_BLANK : RAIL_LINE} />
+        {/* Pinned to the first line: a comment is as tall as what somebody
+            wrote, and a centred face drifts down the rail as the body grows. */}
+        <span
+          aria-hidden="true"
+          className={first ? "h-2 w-px" : "h-2 w-px bg-[var(--zerops-rail)]"}
+        />
         {/* A Mate wears its face; a person gets the open disc the history
             gives a commit nobody is running. Both are 20px, so the rail runs
             through their shared centre rather than jogging at every turn. */}

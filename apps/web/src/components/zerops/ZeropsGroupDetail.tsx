@@ -18,10 +18,12 @@
 import {
   buildZeropsGroupTree,
   changeAskLabel,
+  changeAuthorName,
   changeConversationCount,
   changeRemarks,
   changeState,
   deployWord,
+  environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
   pullRequestBlocked,
@@ -61,7 +63,7 @@ import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
-import { ZeropsHistoryView } from "./ZeropsHistoryView";
+import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
 import { StatusDot } from "./primitives";
 
@@ -109,6 +111,16 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
   return undefined;
 }
 
+/**
+ * What a history may call things: a Mate by its name rather than its bot
+ * login, and a stop without the project's name in front of it.
+ */
+function useHistoryNames(groupName: string | undefined): HistoryNames {
+  const flowValue = useZeropsProjectFlowOptional();
+  const mateNames = flowValue?.mateNames;
+  return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
+}
+
 /** Where a project with nothing set up goes: the screen that sets things up. */
 function useOpenProjects(): () => void {
   const navigate = useNavigate();
@@ -154,6 +166,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const openProjects = useOpenProjects();
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
+  const names = useHistoryNames(groupName);
 
   if (flow === undefined) {
     return (
@@ -169,6 +182,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       environments={environments}
       groupId={groupId}
       name={groupName ?? flow.groupId}
+      names={names}
       crumbs={crumbs}
       onSetUp={openProjects}
       release={release}
@@ -193,6 +207,7 @@ export function ZeropsGroupPane({
   environments,
   groupId,
   name,
+  names,
   crumbs,
   onSetUp,
   pullRequests,
@@ -214,6 +229,7 @@ export function ZeropsGroupPane({
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
+  readonly names: HistoryNames;
   readonly slug: string;
   readonly waiting: ReleaseContentsSummary;
 }) {
@@ -237,7 +253,12 @@ export function ZeropsGroupPane({
             />
           ) : (
             environments.map((environment) => (
-              <StopLine environment={environment} groupId={groupId} key={environment.projectId} />
+              <StopLine
+                environment={environment}
+                groupId={groupId}
+                groupName={name}
+                key={environment.projectId}
+              />
             ))
           )}
         </ul>
@@ -280,6 +301,7 @@ export function ZeropsGroupPane({
         ) : (
           <ZeropsHistoryView
             commits={commits}
+            names={names}
             readDetail={readDetail}
             request={{ repo, deployed }}
           />
@@ -319,6 +341,7 @@ export function ZeropsStopDetailPage({
   const release = useReleaseOffer(groupId);
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
+  const names = useHistoryNames(stopGroupName);
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -343,6 +366,8 @@ export function ZeropsStopDetailPage({
       commits={commits}
       deployed={deployed}
       crumbs={crumbs}
+      groupName={stopGroupName}
+      names={names}
       production={production}
       readDetail={readDetail}
       release={release}
@@ -368,6 +393,8 @@ export function ZeropsStopPane({
   crumbs,
   production,
   readDetail,
+  groupName,
+  names,
   release,
   repo,
   run,
@@ -384,6 +411,9 @@ export function ZeropsStopPane({
   readonly release: ReleaseOffer;
   readonly repo: string | undefined;
   readonly run: ZeropsDeployRun;
+  /** The project's name, so the stop's own title does not repeat it. */
+  readonly groupName: string | undefined;
+  readonly names: HistoryNames;
   readonly stop: EnvironmentRow;
   readonly waiting: ReleaseContentsSummary;
 }) {
@@ -393,7 +423,7 @@ export function ZeropsStopPane({
     <DetailShell
       actions={production ? <ReleaseAction release={release} /> : undefined}
       crumbs={crumbs}
-      title={stop.name}
+      title={environmentNameUnderGroup(groupName, stop.name)}
     >
       <Section title="What is running">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
@@ -445,6 +475,7 @@ export function ZeropsStopPane({
         ) : (
           <ZeropsHistoryView
             commits={commits}
+            names={names}
             readDetail={readDetail}
             request={{ repo, deployed }}
           />
@@ -521,6 +552,7 @@ export function ZeropsChangeDetailPage({
   );
   const groupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
+  const names = useHistoryNames(groupName);
   const slug = flow?.slug;
   const merge = useCallback(() => {
     if (flowValue === null || slug === undefined || pull === undefined) return;
@@ -552,6 +584,7 @@ export function ZeropsChangeDetailPage({
           }),
         ) ?? false
       }
+      names={names}
       onAsk={askMate}
       crumbs={crumbs}
       onMerge={merge}
@@ -577,6 +610,7 @@ export function ZeropsChangePane({
   commits,
   mateName,
   merging,
+  names,
   onAsk,
   crumbs,
   onMerge,
@@ -596,6 +630,7 @@ export function ZeropsChangePane({
   readonly pull: FlowPullRequest;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly remarks: ReadonlyArray<ChangeRemark>;
+  readonly names: HistoryNames;
   /** The project's Gitea org — the subtitle's first word. */
   readonly slug: string;
   /** What the last verb's refusal said, where one refused. */
@@ -604,6 +639,7 @@ export function ZeropsChangePane({
   const [confirming, setConfirming] = useState(false);
   const blocked = pullRequestBlocked(pull);
   const checks = checkDotTone(pull);
+  const author = changeAuthorName(pull, mateName);
   return (
     <DetailShell
       actions={
@@ -639,7 +675,8 @@ export function ZeropsChangePane({
       <Section title="Where it stands">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <Fact term="Change">#{pull.number}</Fact>
-          {pull.author === undefined ? null : <Fact term="Opened by">{pull.author}</Fact>}
+          {/* Never the bot login: `mate-0bPLTRRSSTuV54WMpcLoww` is not a who. */}
+          {author === undefined ? null : <Fact term="Opened by">{author}</Fact>}
           <Fact term="Checks">
             {pull.checkWord === undefined || checks === undefined ? (
               "Nothing has run yet"
@@ -694,6 +731,7 @@ export function ZeropsChangePane({
       <Section title={`What it carries · ${pull.repository}`}>
         <ZeropsHistoryView
           commits={commits}
+          names={names}
           readDetail={readDetail}
           request={{ repo: pull.repository, deployed: EMPTY_DEPLOYED }}
         />
@@ -829,9 +867,12 @@ function Empty({
 function StopLine({
   environment,
   groupId,
+  groupName,
 }: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
+  /** The project's name, so a stop under it does not repeat it. */
+  readonly groupName: string | undefined;
 }) {
   const navigate = useNavigate();
   const word = deployWord(environment.tone);
@@ -849,16 +890,24 @@ function StopLine({
         onClick={open}
         type="button"
       >
+        {/* `Links - stage` under a page titled `Links` says it twice. */}
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          {environment.name}
+          {environmentNameUnderGroup(groupName, environment.name)}
         </span>
         <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
           {environment.version.label ?? "nothing deployed yet"}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
             a colour nobody reads, and a screen reader gets nothing from it. */}
+        {/* The dot carries the state; the word supports it. Unsized, it
+            inherited 16px and came out larger than the name it annotates. */}
         {word === undefined || dotTone === undefined ? null : (
-          <StatusDot label={word} sentence tone={dotTone} />
+          <StatusDot
+            className="shrink-0 text-xs text-muted-foreground"
+            label={word}
+            sentence
+            tone={dotTone}
+          />
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>

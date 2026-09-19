@@ -14,7 +14,11 @@
  *
  * Structural only: the sentence is `projectFlow.ts`'s (R5).
  */
-import { mergeConsequence, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  changeAuthorName,
+  mergeConsequence,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 
 import { Button } from "../ui/button";
 import {
@@ -43,9 +47,7 @@ export function ZeropsMergeConfirm({
   readonly onConfirm: () => void;
 }) {
   const checks = checkDotTone(pull);
-  // A Mate's change names its Mate or says nothing: `pull.author` on one of
-  // those is the bot login, which is never a thing to show a person.
-  const who = pull.mateProjectId === undefined ? pull.author : mateName;
+  const who = changeAuthorName(pull, mateName);
   return (
     <DialogPanel>
       <DialogHeader>

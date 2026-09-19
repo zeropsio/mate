@@ -339,6 +339,25 @@ export function pullRequestBlocked(pull: {
   };
 }
 
+/**
+ * Who wrote a change, as a person reads it.
+ *
+ * `author` is the Gitea login, and a Mate's login is `mate-{projectId}` — so
+ * showing it raw puts `mate-0bPLTRRSSTuV54WMpcLoww` on a page where a name
+ * belongs (the owner, 2026-09-19). A Mate's change names its Mate, or says
+ * nothing at all rather than saying that; a person's names the person, whose
+ * login is their name here.
+ *
+ * Two surfaces had reached this conclusion separately and one of them had
+ * already drifted, which is why it is decided here and nowhere else.
+ */
+export function changeAuthorName(
+  pull: Pick<FlowPullRequest, "author" | "mateProjectId">,
+  mateName: string | undefined,
+): string | undefined {
+  return pull.mateProjectId === undefined ? pull.author : mateName;
+}
+
 /** Where a change stands, as one word and the tone that means it. */
 export interface ChangeState {
   readonly word: string;
