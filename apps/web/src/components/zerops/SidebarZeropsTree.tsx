@@ -57,11 +57,12 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
@@ -274,13 +275,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ))}
           </ul>
         )}
-        {others.length > 0 || (flow?.missing?.length ?? 0) > 0 ? (
-          <EnvironmentRows
-            environments={others}
-            flow={flow}
-            groupName={groupName}
-            onBrowseProjects={onBrowseProjects}
-          />
+        {others.length > 0 ? (
+          <EnvironmentRows environments={others} flow={flow} groupName={groupName} />
         ) : null}
       </>
     );
@@ -307,7 +303,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           {section(
             group.groupId,
             environments,
-            <ProjectName group={group} />,
+            <ProjectHeader
+              group={group}
+              missing={getFlow?.(group.groupId)?.missing ?? []}
+              onBrowseProjects={onBrowseProjects}
+            />,
             getFlow?.(group.groupId),
             groupNameIsPlaceholder(group) ? undefined : group.name,
           )}
@@ -319,7 +319,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           {section(
             "ungrouped",
             ungrouped,
-            groups.length > 0 ? <ProjectName muted name="Ungrouped" /> : null,
+            groups.length > 0 ? (
+              <ProjectHeader muted name="Ungrouped" onBrowseProjects={onBrowseProjects} />
+            ) : null,
             undefined,
             // Nothing groups these, so nothing above a row repeats its name.
             undefined,
@@ -331,32 +333,94 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 }
 
 /**
- * The project's name as a name — a small heading, not a label. A project
- * nothing has named shows its id, quietly, the way the projects screen does.
+ * The project's header: the name that everything under it belongs to, and the
+ * two things a person does to the project itself.
+ *
+ * It is set apart from the rows rather than merely bolder than them — a
+ * section heading that looks like a row is a row. The verbs appear on hover
+ * and focus in a slot that is always there, so nothing moves when they do.
+ *
+ * Setting a stage or a production up lives in the menu rather than as a row of
+ * its own: not every project wants one, and a permanent row asking for
+ * something optional reads as a fault (the owner, 2026-09-19).
  */
-function ProjectName({
+function ProjectHeader({
   group,
   name,
   muted = false,
+  missing = NO_MISSING_TIERS,
+  onBrowseProjects,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
   readonly muted?: boolean;
+  readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
+  readonly onBrowseProjects: () => void;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
+  const title = group?.name ?? name ?? "";
   return (
     <div
-      className={cn(
-        "flex h-7 min-w-0 items-center px-2 text-xs font-semibold text-sidebar-foreground",
-        muted && "font-medium text-sidebar-muted-foreground",
-        placeholder && "font-normal text-sidebar-muted-foreground italic",
-      )}
+      className="group/project flex h-9 min-w-0 items-center gap-1 px-2"
       data-zerops-surface="sidebar-project"
     >
-      <span className="min-w-0 truncate">{group?.name ?? name}</span>
+      {/* A name, not a label: no uppercase and no `MicroLabel` — the heading
+          anchors its section by the room around it and by being the one
+          semibold thing in the column, not by shouting. */}
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-[13px] leading-5 font-semibold text-sidebar-foreground",
+          muted && "font-medium text-sidebar-muted-foreground",
+          placeholder && "font-normal text-sidebar-muted-foreground italic",
+        )}
+      >
+        {title}
+      </span>
+      {muted ? null : (
+        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Add a Mate to ${title}`}
+                  className={PROJECT_ACTION_CLASS}
+                  data-zerops-surface="sidebar-project-add-mate"
+                  onClick={onBrowseProjects}
+                  type="button"
+                />
+              }
+            >
+              <PlusIcon aria-hidden="true" className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="right">Add a Mate</TooltipPopup>
+          </Tooltip>
+          <Menu>
+            <MenuTrigger
+              aria-label={`More for ${title}`}
+              className={PROJECT_ACTION_CLASS}
+              data-zerops-surface="sidebar-project-more"
+            >
+              <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="start" className="w-56" side="right">
+              <MenuItem onClick={onBrowseProjects}>Open project</MenuItem>
+              {missing.map((row) => (
+                <MenuItem key={row.tier} onClick={onBrowseProjects}>
+                  {`Set up ${row.name.toLocaleLowerCase()}`}
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        </span>
+      )}
     </div>
   );
 }
+
+const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
+
+const PROJECT_ACTION_CLASS =
+  "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
 function MateRow<T extends RosterCandidate>({
   candidate,
@@ -610,20 +674,16 @@ function EnvironmentRows<T extends RosterCandidate>({
   environments,
   flow,
   groupName,
-  onBrowseProjects,
 }: {
   readonly environments: ReadonlyArray<Entry<T>>;
   readonly flow: SidebarProjectFlow | undefined;
   /** The heading above, so a row never repeats the word already on it. */
   readonly groupName: string | undefined;
-  /** Setting a stop up is the projects screen's — the menu's one way there. */
-  readonly onBrowseProjects: () => void;
 }) {
+  const behind = releaseContentsSummary(flow?.releaseContents ?? []);
   return (
     // The stops belong to the project, not to the Mate they happen to follow:
-    // a rule and the project's own left edge say so. Held in the list rather
-    // than on the first row, so a project with one stop is drawn like a
-    // project with three.
+    // a rule and the project's own left edge say so.
     <ul
       className="mt-1 flex flex-col gap-px border-t border-sidebar-border pt-1"
       data-zerops-surface="sidebar-environment-rows"
@@ -636,54 +696,72 @@ function EnvironmentRows<T extends RosterCandidate>({
         const word = declared === undefined ? undefined : deployWord(declared.tone);
         const release =
           flow !== undefined && flow.releaseOffered && declared?.tier === "production";
+        const routes = item.routes ?? [];
+        const [firstRoute] = routes;
         return (
           <li
-            className="flex h-7 min-w-0 items-center gap-2 ps-2.5 pe-0.5 text-xs"
+            className="flex min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-sidebar-row-hover"
             data-zerops-surface="sidebar-environment"
             key={item.project.id}
           >
-            <span className="min-w-0 truncate text-muted-foreground">{name}</span>
-            {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
-              <ZeropsRoleTag label={tag} />
-            )}
-            {tone === undefined || word === undefined ? null : (
-              <Tooltip>
-                <TooltipTrigger render={<StatusDot dotOnly label={word} tone={tone} />} />
-                <TooltipPopup side="right">{word}</TooltipPopup>
-              </Tooltip>
-            )}
-            {release ? (
-              <ReleaseVerb
-                contents={flow.releaseContents}
-                onRelease={flow.onRelease}
-                releasing={flow.releasing}
-              />
-            ) : null}
-            <span className="ms-auto flex w-6 shrink-0 justify-center">
-              <ZeropsRoutesMenu
-                label={`Public access of ${item.project.name}`}
-                routes={item.routes ?? []}
-              />
+            <span className="flex min-w-0 items-center gap-2">
+              {/* A stop is named in the same hand as a Mate: it is a place the
+                  work reaches, not a footnote under the ones who did it. */}
+              <span className="min-w-0 flex-1 truncate text-[13px] leading-4 font-medium text-sidebar-foreground">
+                {name}
+              </span>
+              {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
+                <ZeropsRoleTag label={tag} />
+              )}
+              {release ? (
+                <ReleaseVerb
+                  contents={flow.releaseContents}
+                  onRelease={flow.onRelease}
+                  releasing={flow.releasing}
+                />
+              ) : null}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
+              {tone === undefined || word === undefined ? null : (
+                <StatusDot dotOnly label={word} tone={tone} />
+              )}
+              {/* What is actually running here — the question the row never
+                  answered (the owner, 2026-09-19: "nothing shows what version
+                  they run"). */}
+              {declared?.commit === undefined ? (
+                <span>{word ?? "nothing deployed yet"}</span>
+              ) : (
+                <span className="tabular-nums">{declared.commit}</span>
+              )}
+              {declared?.tier === "production" && behind.total > 0 ? (
+                <span data-zerops-surface="sidebar-environment-behind">
+                  · {behind.total === 1 ? "1 change waiting" : `${behind.total} changes waiting`}
+                </span>
+              ) : null}
+              <span className="ms-auto flex min-w-0 shrink items-center">
+                {/* The host itself rather than a bare arrow: every service can
+                    have several, and an arrow never said which one it opened. */}
+                {routes.length === 1 && firstRoute !== undefined ? (
+                  <a
+                    className="min-w-0 truncate rounded-sm underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                    data-zerops-surface="sidebar-environment-route"
+                    href={firstRoute.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {firstRoute.host}
+                  </a>
+                ) : (
+                  <ZeropsRoutesMenu
+                    label={`Public access of ${item.project.name}`}
+                    routes={routes}
+                  />
+                )}
+              </span>
             </span>
           </li>
         );
       })}
-      {(flow?.missing ?? []).map((row) => (
-        <li
-          className="flex h-7 min-w-0 items-center gap-2 ps-2.5 pe-0.5 text-xs"
-          data-zerops-surface="sidebar-environment-missing"
-          key={`missing:${row.tier}`}
-        >
-          <span className="min-w-0 truncate text-sidebar-muted-foreground">{row.name}</span>
-          {/* The stop is a next step, not a fault: said in the muted hand, and
-              the verb is the invitation rather than a warning. */}
-          <span className="shrink-0 text-[11px] text-sidebar-muted-foreground">{row.line}</span>
-          <ZeropsMateVerb
-            label={`Set up ${row.name.toLocaleLowerCase()}`}
-            onClick={onBrowseProjects}
-          />
-        </li>
-      ))}
     </ul>
   );
 }

@@ -209,7 +209,7 @@ describe("SidebarZeropsTree", () => {
     // A rule over the list, and the project's own left edge under it: the
     // stops are the project's, whichever Mate happens to be listed last.
     expect(list).toContain("border-t");
-    expect(list).toContain("ps-2.5");
+    expect(list).toContain("px-2.5");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
@@ -376,7 +376,7 @@ describe("the project's flow under it", () => {
     ).not.toContain('data-zerops-primary-action="Merge"');
   });
 
-  it("asks for a stop the recipe offers and nobody has added", () => {
+  it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
     const html = withFlow(
       [CRM_DEV],
       flow({
@@ -390,10 +390,10 @@ describe("the project's flow under it", () => {
         ],
       }),
     );
-    expect(html).toContain('data-zerops-surface="sidebar-environment-missing"');
-    expect(html).toContain(">Production<");
-    expect(html).toContain("not set up yet");
-    expect(html).toContain('data-zerops-primary-action="Set up production"');
+    // Not every project wants one, and a permanent row asking for something
+    // optional reads as a fault (the owner, 2026-09-19).
+    expect(html).not.toContain('data-zerops-surface="sidebar-environment-missing"');
+    expect(html).toContain('data-zerops-surface="sidebar-project-more"');
   });
 
   it("says nothing about missing stops when the recipe offers none", () => {
