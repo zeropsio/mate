@@ -21,6 +21,7 @@ import {
   projectProcessSearchBody,
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
+import { findMateIntegrationToken } from "./groupReach.ts";
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
@@ -1897,7 +1898,58 @@ export class ZeropsApiClient {
       );
     }
 
+    await this.#secureMateContainer(input.clientId, project.id, signal, beforeWrite);
+
     return { project, serviceName };
+  }
+
+  /**
+   * The two steps that make a container a Mate rather than a way into the
+   * project it sits in.
+   *
+   * `planEnvironmentCreation` has always ended a with-agent creation on them —
+   * `drop-container-delegation` and `isolate-project-env` — and this one-call
+   * path, which the wizard has taken since 0.11.2, ran neither. Measured on a
+   * project minutes old (2026-09-19, primer §7.1): `envIsolation: none`, so
+   * every service in it reads every other's environment, and one delegation
+   * still on the container's own token. Nothing reconciles either afterwards,
+   * so a Mate made this way stayed that way for its whole life.
+   *
+   * Both are idempotent — `isolateProjectEnvironment` plans nothing on a
+   * project already through it, and a token with no delegation is a read — so
+   * this is safe on a retried creation.
+   *
+   * The token is the platform's to mint and is looked for once: this package
+   * holds no timers by design — `runEnvironmentCreation` takes its `sleep`
+   * from the caller — so there is no waiting here. A creation is never failed
+   * over it either: the project and its Mate are up regardless, and the
+   * isolation, which is the half that needs no token and the half that
+   * matters, runs whether the token was found or not.
+   */
+  async #secureMateContainer(
+    clientId: string,
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    const tokens = await this.listIntegrationTokens(clientId, signal);
+    const token = findMateIntegrationToken(tokens, projectId);
+    if (token !== undefined) {
+      const delegations = await this.listIntegrationTokenDelegations(
+        { clientId, tokenId: token.id },
+        signal,
+      );
+      // Every one of them: a Mate is never given a delegation on purpose, so
+      // there is no shape worth keeping.
+      for (const delegation of delegations) {
+        await this.deleteIntegrationTokenDelegation(
+          { clientId, tokenId: token.id, delegationId: delegation.id },
+          signal,
+          beforeWrite,
+        );
+      }
+    }
+    await this.isolateProjectEnvironment(clientId, projectId, signal, beforeWrite);
   }
 
   /**
