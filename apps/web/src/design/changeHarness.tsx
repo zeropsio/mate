@@ -9,10 +9,12 @@
  * ## The states are the point
  *
  * A change that merges cleanly, with two people and a Mate talking on it, is
- * the happy path. The ones below it are the ones that broke something: a
- * change whose checks failed and whose only way forward is the Mate; one that
- * is behind `main` and needs a rebase nobody here can do; one nobody has said
- * anything on; and a Gitea that will not answer at all.
+ * the happy path. The rest are the ones a real account cannot be waited into:
+ * checks that failed and blocked the merge, checks that failed and did not,
+ * checks still running, a change nothing ever ran on, one behind `main` that
+ * needs a rebase nobody here can do, a forge that refused the last merge, and
+ * a Gitea that will not answer at all. The pair in the middle is why the
+ * verdict exists — they look identical on a definition list and are not.
  *
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html`
  * is not `index.html`, and no route imports this module.
@@ -150,6 +152,7 @@ function Harness() {
         note="The verb is live; the conversation carries a person, a Mate and a reviewer."
       >
         <ZeropsChangePane
+          age="2h"
           comments={TALKING}
           commits={COMMITS}
           mateName="Theo"
@@ -161,7 +164,6 @@ function Harness() {
           pull={pull()}
           readDetail={undefined}
           remarks={remarks(TALKING.state.kind === "read" ? TALKING.state.comments : [])}
-          slug="links"
           trouble={null}
         />
       </State>
@@ -171,6 +173,7 @@ function Harness() {
         note="Merge is refused and the only way forward is the Mate that wrote it."
       >
         <ZeropsChangePane
+          age="14m"
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
@@ -182,7 +185,74 @@ function Harness() {
           pull={pull({ checks: "failing", checkWord: "checks failed", mergeable: false })}
           readDetail={undefined}
           remarks={[]}
-          slug="links"
+          trouble={null}
+        />
+      </State>
+
+      <State
+        label="Checks failed, and the forge takes it anyway"
+        note="Nothing required the checks, so Merge is live — the page says that rather than leaving a lit button unexplained."
+      >
+        <ZeropsChangePane
+          age="1h"
+          comments={SILENT}
+          commits={COMMITS}
+          mateName="Theo"
+          merging={false}
+          onAsk={() => {}}
+          crumbs={CRUMBS}
+          names={NAMES}
+          onMerge={() => {}}
+          pull={pull({ checks: "failing", checkWord: "checks failed" })}
+          readDetail={undefined}
+          remarks={[]}
+          trouble={null}
+        />
+      </State>
+
+      <State
+        label="Checks still running"
+        note="Nothing is waiting on a person: there is no verb to hand it over with."
+      >
+        <ZeropsChangePane
+          age="4m"
+          comments={SILENT}
+          commits={COMMITS}
+          mateName="Theo"
+          merging={false}
+          onAsk={() => {}}
+          crumbs={CRUMBS}
+          names={NAMES}
+          onMerge={() => {}}
+          pull={pull({ checks: "pending", checkWord: "checks running", mergeable: false })}
+          readDetail={undefined}
+          remarks={[]}
+          trouble={null}
+        />
+      </State>
+
+      <State
+        label="Nothing ever ran"
+        note="No signal is not a good signal, so it is grey rather than green."
+      >
+        <ZeropsChangePane
+          age="6d"
+          comments={SILENT}
+          commits={COMMITS}
+          mateName={undefined}
+          merging={false}
+          onAsk={() => {}}
+          crumbs={CRUMBS}
+          names={NAMES}
+          onMerge={() => {}}
+          pull={pull({
+            author: "ales",
+            mateProjectId: undefined,
+            checks: "none",
+            checkWord: undefined,
+          })}
+          readDetail={undefined}
+          remarks={[]}
           trouble={null}
         />
       </State>
@@ -192,6 +262,7 @@ function Harness() {
         note="Nobody here can rebase it; the button writes the request into Theo's composer."
       >
         <ZeropsChangePane
+          age="3d"
           comments={SILENT}
           commits={COMMITS}
           mateName="Theo"
@@ -203,7 +274,6 @@ function Harness() {
           pull={pull({ mergeable: false })}
           readDetail={undefined}
           remarks={[]}
-          slug="links"
           trouble={null}
         />
       </State>
@@ -213,6 +283,7 @@ function Harness() {
         note="The verb takes no second press, and the refusal is written rather than swallowed."
       >
         <ZeropsChangePane
+          age={undefined}
           comments={SILENT}
           commits={{ kind: "reading" }}
           mateName={undefined}
@@ -224,7 +295,6 @@ function Harness() {
           pull={pull({ author: "ales", mateProjectId: undefined })}
           readDetail={undefined}
           remarks={[]}
-          slug="links"
           trouble="Gitea refused the merge: the branch is protected."
         />
       </State>
@@ -234,6 +304,7 @@ function Harness() {
         note="Nothing is read, and the box says why rather than sitting dead."
       >
         <ZeropsChangePane
+          age="5h"
           comments={comments({ kind: "no-gitea" })}
           commits={{ kind: "no-gitea" }}
           mateName="Theo"
@@ -245,7 +316,6 @@ function Harness() {
           pull={pull()}
           readDetail={undefined}
           remarks={[]}
-          slug="links"
           trouble={null}
         />
       </State>

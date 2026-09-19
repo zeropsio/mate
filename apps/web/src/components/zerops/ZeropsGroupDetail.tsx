@@ -25,13 +25,14 @@ import {
   changeConversationCount,
   changeRemarks,
   changeState,
+  changeSubtitle,
+  changeVerdict,
+  historyAge,
   deployWord,
   environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
-  pullRequestBlocked,
   preferredMateTint,
-  pullRequestMergeLine,
   readZeropsGroupTags,
   PROJECT_ALL_CLEAR,
   projectAttention,
@@ -41,6 +42,7 @@ import {
   sidebarChangeLabel,
   stopSourceLine,
   type ChangeRemark,
+  type ChangeVerdict,
   type ProjectAttentionItem,
   type ZeropsPublicRoute,
   type ProjectAttentionKind,
@@ -69,6 +71,7 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useAskMate } from "~/zerops/useAskMate";
+import { useNowMs } from "~/zerops/useNowMs";
 import { giteaSessionLogin } from "~/zerops/giteaSession";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
@@ -83,6 +86,7 @@ import {
   useZeropsChangeCommits,
   useZeropsRepositoryCommits,
 } from "~/zerops/useZeropsRepositoryCommits";
+import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
@@ -91,7 +95,6 @@ import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
-import { checkDotTone } from "./ZeropsGitBlock";
 import { MateFace, StatusDot } from "./primitives";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
@@ -828,6 +831,7 @@ export function ZeropsChangeDetailPage({
   const groupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
   const names = useHistoryNames(groupName);
+  const now = useNowMs();
   const slug = flow?.slug;
   const merge = useCallback(() => {
     if (flowValue === null || slug === undefined || pull === undefined) return;
@@ -844,6 +848,7 @@ export function ZeropsChangeDetailPage({
 
   return (
     <ZeropsChangePane
+      age={historyAge(pull.updatedAt, now)}
       comments={comments}
       commits={commits}
       mateName={
@@ -866,7 +871,6 @@ export function ZeropsChangeDetailPage({
       pull={pull}
       readDetail={readDetail}
       remarks={remarks}
-      slug={flow.slug}
       trouble={flowValue?.trouble ?? null}
     />
   );
@@ -881,6 +885,7 @@ export function ZeropsChangeDetailPage({
  * confirm's.
  */
 export function ZeropsChangePane({
+  age,
   comments,
   commits,
   mateName,
@@ -892,9 +897,10 @@ export function ZeropsChangePane({
   pull,
   readDetail,
   remarks,
-  slug,
   trouble,
 }: {
+  /** How long since it last moved, as `historyAge` says it. */
+  readonly age: string | undefined;
   readonly comments: ZeropsChangeComments;
   readonly commits: ZeropsCommitsState;
   readonly mateName: string | undefined;
@@ -906,101 +912,66 @@ export function ZeropsChangePane({
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   readonly names: HistoryNames;
-  /** The project's Gitea org — the subtitle's first word. */
-  readonly slug: string;
   /** What the last verb's refusal said, where one refused. */
   readonly trouble: string | null;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [asking, setAsking] = useState(false);
-  const blocked = pullRequestBlocked(pull);
-  const checks = checkDotTone(pull);
+  const verdict = changeVerdict(pull);
   const author = changeAuthorName(pull, mateName);
   return (
     <DetailShell
-      actions={
-        <>
-          <Button
-            data-zerops-primary-action="Merge"
-            disabled={merging || blocked !== null}
-            onClick={() => {
-              setConfirming(true);
-            }}
-            size="sm"
-          >
-            {flowVerbLabel("merge", merging)}
-          </Button>
-          {/* The same confirm the menu's verb opens: one verb, one question. */}
-          <ZeropsMergeDialog
-            mateName={mateName}
-            merging={merging}
-            onConfirm={() => {
-              setConfirming(false);
-              onMerge();
-            }}
-            onOpenChange={setConfirming}
-            open={confirming}
-            pull={pull}
-          />
-        </>
-      }
       crumbs={crumbs}
-      subtitle={`${slug} · ${pull.repository} · ${pull.baseBranch}`}
+      // Every fact the definition list held, as the one line of provenance it
+      // always was. The org used to lead it — `shop · appdev · main` — which is
+      // the project's name again with a typo's worth of difference.
+      subtitle={changeSubtitle({
+        number: pull.number,
+        repository: pull.repository,
+        baseBranch: pull.baseBranch,
+        author,
+        age,
+      })}
       title={pull.title}
     >
-      <Section title="Where it stands">
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-          <Fact term="Change">#{pull.number}</Fact>
-          {/* Never the bot login: `mate-0bPLTRRSSTuV54WMpcLoww` is not a who. */}
-          {author === undefined ? null : <Fact term="Opened by">{author}</Fact>}
-          <Fact term="Checks">
-            {pull.checkWord === undefined || checks === undefined ? (
-              "Nothing has run yet"
-            ) : (
-              <StatusDot label={pull.checkWord} sentence tone={checks} />
-            )}
-          </Fact>
-          <Fact term="Merges">
-            {blocked === null ? (
-              pullRequestMergeLine(pull)
-            ) : (
-              <StatusDot label={pullRequestMergeLine(pull)} sentence tone={blocked.tone} />
-            )}
-          </Fact>
-        </dl>
-        {blocked?.ask === undefined ? null : (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            {/* What is stopping it is the Mate's to move, so the sentence that
-                says so is the button that hands it over rather than advice. */}
-            <Button
-              onClick={() => {
-                setAsking(true);
-              }}
-              size="sm"
-              variant="outline"
-            >
-              {changeAskLabel(mateName)} to fix it
-            </Button>
-            <span className="min-w-0 text-sm text-muted-foreground">{blocked.ask}</span>
-            <ZeropsAskDialog
-              ask={blocked.ask ?? ""}
-              mateName={mateName}
-              onConfirm={() => {
-                setAsking(false);
-                onAsk(pull.mateProjectId, blocked.ask ?? "");
-              }}
-              onOpenChange={setAsking}
-              open={asking}
-              sending={false}
-              tint={mateName === undefined ? undefined : preferredMateTint(mateName)}
-              what={`Change #${String(pull.number)} ${blocked.word.toLocaleLowerCase()}.`}
-            />
-          </div>
-        )}
-        {trouble === null ? null : (
-          <p className="mt-3 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
-        )}
-      </Section>
+      <ChangeVerdictPanel
+        merging={merging}
+        onAsk={() => {
+          setAsking(true);
+        }}
+        onMerge={() => {
+          setConfirming(true);
+        }}
+        askLabel={changeAskLabel(mateName)}
+        trouble={trouble}
+        verdict={verdict}
+      />
+      {/* Both confirms live outside the panel so neither reopens when the
+          verdict changes under them mid-flight. */}
+      <ZeropsMergeDialog
+        mateName={mateName}
+        merging={merging}
+        onConfirm={() => {
+          setConfirming(false);
+          onMerge();
+        }}
+        onOpenChange={setConfirming}
+        open={confirming}
+        pull={pull}
+      />
+      <ZeropsAskDialog
+        ask={verdict.ask ?? ""}
+        mateName={mateName}
+        onConfirm={() => {
+          setAsking(false);
+          onAsk(pull.mateProjectId, verdict.ask ?? "");
+        }}
+        onOpenChange={setAsking}
+        open={asking}
+        sending={false}
+        tint={mateName === undefined ? undefined : preferredMateTint(mateName)}
+        what={verdict.text}
+      />
 
       <Section title={`Conversation · ${changeConversationCount(remarks)}`}>
         <ZeropsChangeConversation
@@ -1017,7 +988,11 @@ export function ZeropsChangePane({
         />
       </Section>
 
-      <Section title={`What it carries · ${pull.repository}`}>
+      {/* Was `What it carries · appdev`: the repository is on the line under
+          the title already, and what a change carries is its commits. */}
+      <Section
+        title={commits.kind === "read" ? `Commits · ${String(commits.commits.length)}` : "Commits"}
+      >
         <ZeropsHistoryView
           commits={commits}
           names={names}
@@ -1215,6 +1190,82 @@ function AttentionPanel({
     </ul>
   );
 }
+
+/**
+ * A change's opening answer: can it land, and what moves it if it cannot.
+ *
+ * The page used to open on a four-row definition list and a greyed-out
+ * *Merge* whose reason was two lines below it. Here the sentence and the
+ * buttons that act on it are one element, for the reason a count and its cure
+ * became one on the menu: "why are `1 waiting` and `Release` two different
+ * elements?" (the owner, 2026-09-19). *Merge* stays drawn where the forge
+ * would refuse it, disabled and carrying the refusal as its name — a button
+ * that vanishes teaches the reader that this page does not merge.
+ */
+function ChangeVerdictPanel({
+  askLabel,
+  merging,
+  onAsk,
+  onMerge,
+  trouble,
+  verdict,
+}: {
+  /** What the remedy verb is called: `Ask Theo`, or `Ask the Mate`. */
+  readonly askLabel: string;
+  readonly merging: boolean;
+  readonly onAsk: () => void;
+  readonly onMerge: () => void;
+  readonly trouble: string | null;
+  readonly verdict: ChangeVerdict;
+}) {
+  return (
+    <div className="mb-8" data-zerops-surface="change-verdict">
+      <div
+        className={cn(
+          "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5",
+          VERDICT_BORDER_CLASS[verdict.tone],
+        )}
+      >
+        <StatusDot
+          className="min-w-0 text-sm text-foreground"
+          label={verdict.text}
+          sentence
+          tone={verdict.tone}
+        />
+        <span className="flex shrink-0 items-center gap-2">
+          {verdict.ask === undefined ? null : (
+            <Button data-zerops-primary-action="Ask" onClick={onAsk} size="sm" variant="outline">
+              {askLabel}
+            </Button>
+          )}
+          <Button
+            aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
+            data-zerops-primary-action="Merge"
+            disabled={merging || !verdict.canMerge}
+            onClick={onMerge}
+            size="sm"
+          >
+            {flowVerbLabel("merge", merging)}
+          </Button>
+        </span>
+      </div>
+      {/* A verb that refused says so under the verb that refused, not in a
+          toast somewhere off the page. */}
+      {trouble === null ? null : (
+        <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+      )}
+    </div>
+  );
+}
+
+/** The panel's edge, in the colour of the answer inside it. */
+const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "border-[var(--zerops-status-ok)]/40",
+  busy: "border-[var(--zerops-status-busy)]/40",
+  attention: "border-[var(--zerops-status-attention)]/40",
+  failed: "border-[var(--zerops-status-failed)]/40",
+  off: "border-border",
+};
 
 /**
  * A halted Mate and a failed deploy are not the same kind of bad — and work

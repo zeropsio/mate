@@ -23,6 +23,7 @@ import {
   pullRequestsFolded,
   releaseRow,
   sidebarChangeLabel,
+  changeSubtitle,
   stopAttention,
   type FlowPullRequest,
   type FlowRelease,
@@ -496,6 +497,32 @@ describe("what a folded stop still has to say", () => {
 
   it("wears nothing rather than a zero, which would stop being read", () => {
     expect(stopAttention({ failed: false, production: true, waiting: 0 })).toBeUndefined();
+  });
+});
+
+describe("changeSubtitle", () => {
+  it("reads as one line of provenance, not three nouns and a definition list", () => {
+    expect(
+      changeSubtitle({
+        number: 4,
+        repository: "appdev",
+        baseBranch: "main",
+        author: "Theo",
+        age: "2h",
+      }),
+    ).toBe("#4 · appdev → main · Theo · 2h");
+  });
+
+  it("leaves out what it does not know rather than drawing a gap", () => {
+    expect(
+      changeSubtitle({
+        number: 12,
+        repository: "appdev",
+        baseBranch: "release",
+        author: undefined,
+        age: undefined,
+      }),
+    ).toBe("#12 · appdev → release");
   });
 });
 

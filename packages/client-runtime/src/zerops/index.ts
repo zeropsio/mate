@@ -348,6 +348,7 @@ export {
   changeRemarks,
   type ChangeRemark,
 } from "./changeConversation.ts";
+export { changeVerdict, type ChangeVerdict, type ChangeVerdictKind } from "./changeVerdict.ts";
 export {
   base64Decode,
   base64Encode,
@@ -385,6 +386,7 @@ export {
   pullRequestsByMate,
   changeAuthorName,
   changeState,
+  changeSubtitle,
   mergeConsequence,
   pullRequestBlocked,
   pullRequestBlockedReason,

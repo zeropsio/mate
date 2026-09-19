@@ -20,12 +20,14 @@
 import {
   changeAskLabel,
   changeAskPrompt,
+  historyAge,
   preferredMateTint,
   type ChangeRemark,
 } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
 import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
+import { useNowMs } from "~/zerops/useNowMs";
 
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -61,6 +63,7 @@ export function ZeropsChangeConversation({
 }) {
   const [said, setSaid] = useState("");
   const [trouble, setTrouble] = useState<string | null>(null);
+  const now = useNowMs();
   const { say, saying, state } = comments;
   const { mateProjectId, number, repository, title } = change;
   const askLabel = changeAskLabel(mateName);
@@ -93,7 +96,7 @@ export function ZeropsChangeConversation({
       ) : remarks.length === 0 ? null : (
         <ul className="flex flex-col">
           {remarks.map((remark, index) => (
-            <Remark first={index === 0} key={remark.id} last={false} remark={remark} />
+            <Remark first={index === 0} key={remark.id} last={false} now={now} remark={remark} />
           ))}
         </ul>
       )}
@@ -176,10 +179,13 @@ export function ZeropsChangeConversation({
 function Remark({
   first,
   last,
+  now,
   remark,
 }: {
   readonly first: boolean;
   readonly last: boolean;
+  /** One clock for the list: rows a moment apart must not disagree by a minute. */
+  readonly now: number;
   readonly remark: ChangeRemark;
 }) {
   return (
@@ -210,7 +216,10 @@ function Remark({
           <span className="min-w-0 truncate text-sm leading-5 font-medium">{remark.speaker}</span>
           {remark.at === undefined ? null : (
             <span className="shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums">
-              {when(remark.at)}
+              {/* The age, not the date. The commits under this list already say
+                  `40m` and `1h`; a remark from an hour ago that read `Sep 19`
+                  put two clocks on one page. */}
+              {historyAge(remark.at, now)}
             </span>
           )}
         </span>
@@ -220,13 +229,6 @@ function Remark({
       </span>
     </li>
   );
-}
-
-/** The date, as a person writes it — never a raw timestamp. */
-function when(at: string): string {
-  const date = new Date(at);
-  if (Number.isNaN(date.getTime())) return at;
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function ConversationNote({ children }: { readonly children: React.ReactNode }) {
