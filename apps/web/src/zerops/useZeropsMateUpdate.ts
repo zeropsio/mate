@@ -135,6 +135,18 @@ function settleToIdleAfter(environmentId: EnvironmentId, generation: number): vo
   });
 }
 
+/**
+ * What to say about a call that failed, or `null` when the answer is only that
+ * the connection went away — the container restarting, or a moment of network.
+ * `SocketCloseError: 1006` is not a sentence anyone can act on, and it is not
+ * what went wrong with the thing the person asked for.
+ */
+function describeFailure(cause: unknown, fallback: string): string | null {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  if (isTransportConnectionErrorMessage(message)) return null;
+  return cause instanceof Error && message.trim().length > 0 ? message : fallback;
+}
+
 function settle(
   environmentId: EnvironmentId,
   generation: number,
@@ -257,15 +269,14 @@ export function useZeropsMateUpdate(
       const result = await runUpdate({ environmentId, input: {} });
       if (entryFor(environmentId).generation !== generation) return;
       if (result._tag === "Failure") {
-        const cause = squashAtomCommandFailure(result);
-        const message = cause instanceof Error ? cause.message : String(cause);
+        const message = describeFailure(
+          squashAtomCommandFailure(result),
+          "The update could not be started.",
+        );
         // The update restarts the server, so the connection closing is the
         // thing working, not failing: keep waiting for the version.
-        if (isTransportConnectionErrorMessage(message)) return;
-        settle(environmentId, generation, {
-          phase: "failed",
-          message: cause instanceof Error ? message : "The update could not be started.",
-        });
+        if (message === null) return;
+        settle(environmentId, generation, { phase: "failed", message });
         return;
       }
       const value = result.value;
@@ -301,10 +312,15 @@ export function useZeropsMateUpdate(
       const answered = entryFor(environmentId);
       if (answered.generation !== generation) return;
       if (result._tag === "Failure") {
-        const cause = squashAtomCommandFailure(result);
+        const message = describeFailure(
+          squashAtomCommandFailure(result),
+          "The check could not be started.",
+        );
+        // Nothing was asked of the Mate that a closed connection could have
+        // half-done, so unlike an update this says so and stops.
         settle(environmentId, generation, {
           phase: "failed",
-          message: cause instanceof Error ? cause.message : "The check could not be started.",
+          message: message ?? "This Mate is not reachable right now.",
         });
         return;
       }

@@ -289,10 +289,11 @@ describe("useZeropsMateUpdate", () => {
 
   it("the socket dropping is the update happening, not a failure", async () => {
     // Updating restarts the server, which is exactly what closes the socket
-    // the answer would have come back on.
+    // the answer would have come back on. This is the shape the RPC client
+    // hands over: a close code wrapped in its reason.
     commandSpy.mockResolvedValue({
       _tag: "Failure",
-      cause: Cause.die(new Error("SocketCloseError: connection reset")),
+      cause: Cause.die(new Error("RpcClientError: SocketCloseError: 1006")),
     });
     let hook = render("0.8.0");
     hook.request();
@@ -345,6 +346,21 @@ describe("useZeropsMateUpdate", () => {
     render("0.8.1");
     hook = render("0.8.1");
     expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
+  });
+
+  it("check: a closed socket is said in words, never as a close code", async () => {
+    checkCommandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("RpcClientError: SocketCloseError: 1006")),
+    });
+    let hook = render("0.8.0");
+    hook.check();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toEqual({
+      phase: "failed",
+      message: "This Mate is not reachable right now.",
+    });
   });
 
   it("check: a transport failure fails with the squashed cause's message", async () => {
