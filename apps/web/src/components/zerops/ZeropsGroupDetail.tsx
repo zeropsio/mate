@@ -103,7 +103,9 @@ import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import { MateFace, StatusDot, VERDICT_BORDER_CLASS, VerdictPanel } from "./primitives";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
+import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -153,6 +155,11 @@ function useGroupName(groupId: string): string | undefined {
  * listed its Mates and could do nothing to any of them (the owner,
  * 2026-09-19). The registry and the health read are taken here and handed
  * over: both hold per-instance state, and a second reader is a second poll.
+ *
+ * The update verbs are not among them: they belong to the server a Mate runs,
+ * and `ZeropsMateUpdateControl` is what holds that answer. It rides in as the
+ * menu's extra entries, mounted once per Mate, exactly as the Mate card does
+ * it — so the same *Check for updates* is offered on both.
  */
 function useMateMenus(): {
   readonly menuForMate: (projectId: string) => React.ReactNode;
@@ -174,15 +181,27 @@ function useMateMenus(): {
       const candidate = candidates.find((entry) => entry.project.id === projectId);
       if (candidate === undefined) return null;
       const tags = readZeropsGroupTags(candidate.project.tagList);
-      const entries = actions.actionsFor(candidate, tags);
-      // A menu with nothing in it is a button that opens an empty box.
-      if (entries.length === 0) return null;
+      const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
+        const entries = actions.actionsFor(candidate, tags, extra);
+        // A menu with nothing in it is a button that opens an empty box.
+        if (entries.length === 0) return null;
+        return (
+          <ZeropsProjectMenu
+            actions={entries}
+            label={`More for ${candidate.project.name}`}
+            routes={candidate.routes}
+          />
+        );
+      };
+      // *Check for updates* and *Update to x.y.z* are the server's own verbs,
+      // and the control that reads that server is a mount per Mate — the same
+      // one the Mate card uses, so a check started here and a check started
+      // there are the same check (`useZeropsMateUpdate` keys by environment).
+      if (candidate.group !== "connected" || candidate.environmentId === undefined) return menu([]);
       return (
-        <ZeropsProjectMenu
-          actions={entries}
-          label={`More for ${candidate.project.name}`}
-          routes={candidate.routes}
-        />
+        <ZeropsMateUpdateControl environmentId={candidate.environmentId}>
+          {({ menuActions }) => menu(menuActions)}
+        </ZeropsMateUpdateControl>
       );
     },
     [actions, candidates],

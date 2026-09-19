@@ -16,6 +16,7 @@ import {
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
+import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -425,5 +426,14 @@ describe("an environment's menu", () => {
     expect(mateActionsSource).toContain("...(verbs.move");
     expect(mateActionsSource).toContain("...(verbs.rename");
     expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
+  });
+
+  it("carries the update verbs wherever a Mate is listed, not only on the projects screen", () => {
+    // "Check for updates" and "Update to x.y.z" come from a control that
+    // holds the server's own answer, so a page that lists Mates mounts it
+    // per Mate rather than re-deriving the verbs. A project's page used to
+    // be the one place a Mate's update could not be started from.
+    expect(groupDetailSource).toContain("<ZeropsMateUpdateControl environmentId=");
+    expect(groupDetailSource).toContain("{({ menuActions }) => menu(menuActions)}");
   });
 });
