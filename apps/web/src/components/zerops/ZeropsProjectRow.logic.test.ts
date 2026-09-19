@@ -705,3 +705,45 @@ describe("giteaToolLine", () => {
     ).not.toMatch(/broker|db|volume/u);
   });
 });
+
+describe("a Mate on its way says one thing", () => {
+  const creating = (reason: string): ZeropsRowInput => ({
+    candidate: { ...READY, group: "unavailable", reason },
+    health: undefined,
+    waiting: true,
+    can: ALL,
+  });
+
+  it.each([
+    ["a deploy state", "READY_TO_DEPLOY"],
+    ["a routing setting", "PUBLIC_ACCESS_DISABLED"],
+  ])("never narrates %s at somebody waiting for a Mate", (_what, reason) => {
+    // Measured 2026-09-19 on a fresh account: the progress line under a Mate
+    // being created read "The container is ready to deploy." and then "Public
+    // access is off for this container." Neither answers "is my Mate ready".
+    const presentation = deriveZeropsRowPresentation(creating(reason));
+    expect(presentation.detail).toBe("Coming up. A few minutes.");
+    expect(presentation.status.label).toBe("Preparing");
+  });
+
+  it("says what the provisioning branch says, so progress cannot go backwards", () => {
+    // The inventory moves a creating candidate between `provisioning` and
+    // `unavailable`; the row flipped between the two vocabularies four times
+    // in 0.8 s. One sentence for one state.
+    const provisioning = deriveZeropsRowPresentation({
+      candidate: { ...READY, group: "provisioning" },
+      health: undefined,
+      waiting: true,
+      can: ALL,
+    });
+    const unavailable = deriveZeropsRowPresentation(creating("READY_TO_DEPLOY"));
+    expect(unavailable.detail).toBe(provisioning.detail);
+    expect(unavailable.status.label).toBe(provisioning.status.label);
+  });
+
+  it("still gives the platform's reason once nothing is being waited for", () => {
+    const settled = deriveZeropsRowPresentation({ ...creating("READY_TO_DEPLOY"), waiting: false });
+    expect(settled.status.label).toBe("Not available");
+    expect(settled.detail).not.toBe("Coming up. A few minutes.");
+  });
+});

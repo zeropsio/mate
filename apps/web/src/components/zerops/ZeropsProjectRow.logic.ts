@@ -279,6 +279,21 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     if (isStopped(candidate)) {
       return { status: { label: "Stopped", tone: "off" }, detail: "Stopped" };
     }
+    // A container still being made answers with whatever it is busy with —
+    // "The container is ready to deploy.", "Public access is off for this
+    // container." — and neither is progress towards a Mate: one is a deploy
+    // state and the other is a routing setting, shown to somebody waiting to
+    // be told their Mate is up.
+    //
+    // Worse, the inventory moves a creating candidate between `provisioning`
+    // and `unavailable`, so the row flipped between the two vocabularies:
+    // measured 2026-09-19, `Coming up.` → `ready to deploy.` → `Coming up.` →
+    // `ready to deploy.` inside 0.8 s. Progress that goes backwards. While the
+    // creation is on its way this says exactly what the provisioning branch
+    // says, so there is nothing for it to disagree with.
+    if (input.waiting === true) {
+      return { status: { label: "Preparing", pulse: true, tone: "busy" }, detail: COMING_UP_LINE };
+    }
     return {
       status: { label: "Not available", tone: "off" },
       ...(candidate.reason === undefined ? {} : { detail: zeropsReasonSentence(candidate.reason) }),
