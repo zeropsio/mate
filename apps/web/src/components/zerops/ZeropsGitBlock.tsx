@@ -24,7 +24,9 @@
  * person to a forge they have to sign into for a change this app can already
  * draw is the long way round to a worse copy (the owner, 2026-09-19).
  *
- * Structural: every word is `gitTab.ts`'s (R5).
+ * Structural: every word is `gitTab.ts`'s (R5) — including its case. A check
+ * answers "Passed", and the panel above it and the merge dialog next to it
+ * both say so in the running hand; this list used to shout PASSED.
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
@@ -175,7 +177,7 @@ export function ZeropsGitBlock({
               key={check.name}
             >
               <span className="min-w-0 truncate font-mono text-foreground">{check.name}</span>
-              <StatusDot className="shrink-0" label={check.word} tone={check.tone} />
+              <StatusDot className="shrink-0" label={check.word} sentence tone={check.tone} />
             </li>
           ))}
         </Detail>

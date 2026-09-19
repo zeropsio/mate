@@ -19,6 +19,10 @@ import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
+import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
+import mergeDialogSource from "./ZeropsMergeDialog.tsx?raw";
+import deployRunSource from "./ZeropsDeployRun.tsx?raw";
+import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -450,6 +454,10 @@ describe("a status word's hand", () => {
     ["a project's own page", groupDetailSource],
     ["the Git page", giteaPageSource],
     ["the left menu", sidebarTreeSource],
+    ["the Git tab", gitBlockSource],
+    ["the merge dialog", mergeDialogSource],
+    ["a deploy's run", deployRunSource],
+    ["the verdict panel", verdictPanelSource],
   ])("writes a state the way client-runtime wrote it, on %s", (_surface, source) => {
     // `deployWord` answers "Deployed" and `changeState` capitalises its first
     // letter on purpose. Drawn through the `MicroLabel` that is a StatusDot's
@@ -457,6 +465,11 @@ describe("a status word's hand", () => {
     // NEEDS A REBASE where the left menu and the project's own page said
     // "Needs a rebase" — one fact, two hands, on surfaces a click apart. R5:
     // the words are the runtime's, and so is their case.
+    //
+    // Every surface that draws a change or an environment is listed here.
+    // A service's runtime status on a card is not one of them: the accepted
+    // `ServiceRow` principle sets that word as a `MicroLabel` over the name,
+    // and it reads as a label because that is what it is.
     const dots = statusDots(source);
     expect(dots.length).toBeGreaterThan(0);
     for (const dot of dots) {
