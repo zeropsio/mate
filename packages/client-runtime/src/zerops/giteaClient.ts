@@ -362,6 +362,19 @@ export interface GiteaClient {
     repo: string,
     options?: { readonly state?: "open" | "closed" | "all" } | undefined,
   ): Promise<ReadonlyArray<GiteaPullRequest>>;
+  /**
+   * One pull request by number, whatever state it is in — `undefined` when
+   * there is none.
+   *
+   * The listings above carry the open ones, which is what every surface reads
+   * from. A change that has landed is still a change somebody links to, and
+   * its page has to be able to draw it (the owner, 2026-09-19).
+   */
+  getPullRequest(
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<GiteaPullRequest | undefined>;
   createPullRequest(
     owner: string,
     repo: string,
@@ -646,6 +659,14 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
           },
         },
         "write the files",
+      ),
+
+    // A number that is not there is an answer, not a failure: `optional`
+    // turns the forge's 404 into `undefined` and the caller says so.
+    getPullRequest: (owner, repo, number) =>
+      optional<GiteaPullRequest>(
+        { method: "GET", path: `/repos/${enc(owner)}/${enc(repo)}/pulls/${String(number)}` },
+        "read the pull request",
       ),
 
     listPullRequests: (owner, repo, listOptions) =>

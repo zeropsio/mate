@@ -23,7 +23,6 @@ export function useOpenZeropsChange(): (href: string) => (() => void) | null {
   const flow = useZeropsProjectFlowOptional();
   const giteaOrigin = flow?.giteaOrigin;
   const slugs = flow?.slugs;
-  const flows = flow?.flows;
   return useCallback(
     (href) => {
       const link = parseGiteaChangeUrl(href, giteaOrigin);
@@ -38,15 +37,6 @@ export function useOpenZeropsChange(): (href: string) => (() => void) | null {
         }
       }
       if (groupId === undefined) return null;
-      // The change's page reads from the flow's open changes. A merged one is
-      // not there, and sending somebody to "not open any more" is worse than
-      // sending them to the forge, which still has it.
-      const open = flows
-        ?.get(groupId)
-        ?.pullRequests.some(
-          (pull) => pull.repository === link.repository && pull.number === link.number,
-        );
-      if (open !== true) return null;
       const target = groupId;
       return () => {
         void navigate({
@@ -59,6 +49,6 @@ export function useOpenZeropsChange(): (href: string) => (() => void) | null {
         });
       };
     },
-    [flows, giteaOrigin, navigate, slugs],
+    [giteaOrigin, navigate, slugs],
   );
 }

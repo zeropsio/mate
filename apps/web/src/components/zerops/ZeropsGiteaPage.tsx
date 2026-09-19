@@ -221,9 +221,12 @@ export function ZeropsGiteaPage() {
               (entry) => entry.repository === repository && entry.number === number,
             )
         : undefined;
-      if (group === undefined || pull === undefined) return { state: undefined, open: undefined };
+      if (group === undefined) return { state: undefined, open: undefined };
       return {
-        state: changeState(pull),
+        // A change the flow does not carry has landed; its page reads it from
+        // the forge itself, so the way in is offered either way. Its state is
+        // the flow's to say, and the flow says nothing about a landed change.
+        state: pull === undefined ? undefined : changeState(pull),
         open: () => {
           void navigate({
             to: "/change/$groupId/$repository/$number",

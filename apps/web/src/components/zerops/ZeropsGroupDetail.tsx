@@ -74,6 +74,10 @@ import { mateFaceFor } from "~/zerops/agentActivity";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useNowMs } from "~/zerops/useNowMs";
+import {
+  useZeropsLandedChange,
+  type ZeropsLandedChangeState,
+} from "~/zerops/useZeropsLandedChange";
 import { giteaSessionLogin } from "~/zerops/giteaSession";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
@@ -930,9 +934,25 @@ export function ZeropsChangeDetailPage({
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const pull = flow?.pullRequests.find(
+  const open = flow?.pullRequests.find(
     (entry) => entry.repository === repository && entry.number === number,
   );
+  /**
+   * A change that has landed is not in the flow, which holds the open ones —
+   * and it is exactly the change somebody links to. Read it from the forge,
+   * once, for this number only.
+   */
+  const landed = useZeropsLandedChange(
+    flow === undefined || open !== undefined
+      ? null
+      : {
+          giteaOrigin: flowValue?.giteaOrigin,
+          owner: flow.slug,
+          repository,
+          number,
+        },
+  );
+  const pull = open ?? (landed.kind === "read" ? landed.pull : undefined);
   const commits = useZeropsChangeCommits(
     flow === undefined || pull === undefined
       ? null
@@ -987,7 +1007,7 @@ export function ZeropsChangeDetailPage({
   if (flow === undefined || pull === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={`#${String(number)}`}>
-        <Note>This change is not open on {repository} any more.</Note>
+        <Note>{landedNote(landed, repository, number)}</Note>
       </DetailShell>
     );
   }
@@ -1030,6 +1050,21 @@ export function ZeropsChangeDetailPage({
  * behind, or merged, without an account behind it. Same split as the release
  * confirm's.
  */
+/** What to say while a landed change is being fetched, and when it is not there. */
+function landedNote(state: ZeropsLandedChangeState, repository: string, number: number): string {
+  switch (state.kind) {
+    case "reading":
+      return "Reading this change…";
+    case "gone":
+      return `${repository} has no change #${String(number)}.`;
+    case "failed":
+      return state.reason;
+    case "idle":
+    case "read":
+      return "This project has not been read yet.";
+  }
+}
+
 export function ZeropsChangePane({
   age,
   comments,

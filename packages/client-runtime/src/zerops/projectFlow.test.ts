@@ -300,6 +300,7 @@ describe("types", () => {
         "line",
         "mateProjectId",
         "mergeable",
+        "merged",
         "number",
         "repository",
         "title",

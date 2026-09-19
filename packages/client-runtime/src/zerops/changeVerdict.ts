@@ -31,6 +31,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
 
 export type ChangeVerdictKind =
+  | "merged"
   | "ready"
   | "unchecked"
   | "checks-running"
@@ -56,7 +57,21 @@ export function changeVerdict(pull: {
   readonly number: number;
   readonly mergeable: boolean;
   readonly checks: GitCheckTone;
+  /** Whether it has already landed; `undefined` reads as not. */
+  readonly merged?: boolean | undefined;
 }): ChangeVerdict {
+  // A change that has landed is over. Whether its checks passed and whether
+  // the forge would take a merge are both answers to questions nobody is
+  // asking any more, and *Merge* on it would be a lie twice over.
+  if (pull.merged === true) {
+    return {
+      kind: "merged",
+      tone: "ok",
+      text: "This change has landed.",
+      ask: undefined,
+      canMerge: false,
+    };
+  }
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
     return {

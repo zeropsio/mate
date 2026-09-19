@@ -78,6 +78,15 @@ export interface FlowPullRequest {
   readonly checkWord: string | undefined;
   /** Gitea's answer, never the app's: Merge is offered only where it said yes. */
   readonly mergeable: boolean;
+  /**
+   * Whether it has already landed.
+   *
+   * The flows every surface reads carry the open changes, so this was always
+   * false and nobody needed it. A change's own page can now be asked for a
+   * landed one by number, and a page that offered *Merge* on a change that had
+   * merged an hour ago would be lying twice over.
+   */
+  readonly merged: boolean;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -117,6 +126,7 @@ export function flowPullRequest(input: {
     checks: tone,
     checkWord: checkWord(tone),
     mergeable: pull.mergeable === true,
+    merged: pull.merged === true,
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,

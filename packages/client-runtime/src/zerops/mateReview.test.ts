@@ -15,6 +15,7 @@ function pull(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     checks: "none",
     checkWord: undefined,
     mergeable: true,
+    merged: false,
     headSha: "abc",
     baseBranch: "main",
     line: "appdev #4",

@@ -77,13 +77,7 @@ export function ZeropsGitPanel({
                 commits={renderBlockCommits?.(block)}
                 key={block.repository}
                 onOpenChange={
-                  // A change has a page of its own only while it is open: the
-                  // flow every surface reads holds the open ones, and a merged
-                  // number would land on "not open any more", which is a worse
-                  // dead end than no link at all.
-                  block.state !== "in-review" ||
-                  block.pullRequestNumber === undefined ||
-                  onOpenChange === undefined
+                  block.pullRequestNumber === undefined || onOpenChange === undefined
                     ? undefined
                     : () => onOpenChange(block)
                 }

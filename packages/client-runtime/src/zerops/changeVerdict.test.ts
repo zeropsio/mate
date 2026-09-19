@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { changeVerdict } from "./changeVerdict.ts";
 import { gitVerdict, type GitCheckoutState, type GitCheckTone } from "./gitTab.ts";
 
-const change = (over: { mergeable?: boolean; checks?: GitCheckTone } = {}) => ({
+const change = (over: { mergeable?: boolean; checks?: GitCheckTone; merged?: boolean } = {}) => ({
   number: 4,
   mergeable: true,
   checks: "passing" as GitCheckTone,
@@ -113,5 +113,33 @@ describe("the same change, wherever it is read", () => {
         trouble: "",
       }).tone,
     ).toBe(changeVerdict({ number: 4, ...pull }).tone);
+  });
+});
+
+describe("a change that has already landed", () => {
+  it("says so, and offers no merge whatever the forge would take", () => {
+    // Read from the forge by number rather than from the flow, which carries
+    // only the open ones. *Merge* on it would be a lie twice over.
+    expect(changeVerdict(change({ merged: true, mergeable: true, checks: "passing" }))).toEqual({
+      kind: "merged",
+      tone: "ok",
+      text: "This change has landed.",
+      ask: undefined,
+      canMerge: false,
+    });
+  });
+
+  it.each(["none", "pending", "passing", "failing"] as const)(
+    "does not reopen the question of %s checks",
+    (checks) => {
+      const verdict = changeVerdict(change({ merged: true, mergeable: false, checks }));
+      expect(verdict.kind).toBe("merged");
+      expect(verdict.canMerge).toBe(false);
+      expect(verdict.ask).toBeUndefined();
+    },
+  );
+
+  it("reads an absent flag as not landed, which is what every open change is", () => {
+    expect(changeVerdict(change({ checks: "passing" })).kind).toBe("ready");
   });
 });

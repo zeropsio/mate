@@ -87,12 +87,12 @@ describe("ZeropsGitPanel", () => {
     expect(html).toContain('data-zerops-surface="git-change"');
   });
 
-  it("does not send a merged change to a page that holds only open ones", () => {
+  it("offers a merged change's page too, which reads it from the forge itself", () => {
     const html = render({
       model: model({ blocks: [{ ...BLOCK, state: "merged" }] }),
       onOpenChange: () => {},
     });
     expect(html).toContain("#12");
-    expect(html).not.toContain('data-zerops-surface="git-change"');
+    expect(html).toContain('data-zerops-surface="git-change"');
   });
 });
