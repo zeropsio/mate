@@ -1161,6 +1161,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-status-attention-text: #a26000;
   --zerops-status-failed: #ef5350;
   --zerops-status-failed-surface: #fdefef;
+  /* Only the dark block defined this, so every error line that asked for it
+     — the rename dialog, the environment-creation dialog, two on the projects
+     page — resolved to nothing in light and inherited the body colour. Dark
+     enough to read on the surface above, like its ok and attention siblings. */
+  --zerops-status-failed-text: #c62828;
   --zerops-status-off: #bdbdbd;
   --zerops-status-off-surface: #f3f5f7;
   --zerops-micro-label-font-size: 10px;
