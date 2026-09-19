@@ -896,6 +896,10 @@ const STOP_BADGE_CLASS: Record<GroupRowTone, string> = {
   neutral: "bg-sidebar-row-hover text-sidebar-muted-foreground",
 };
 
+/** A production carrying changes nobody outside can see yet. */
+const BEHIND_CLASS =
+  "inline-flex h-[18px] shrink-0 items-center rounded-full bg-[var(--zerops-status-attention-surface)] px-1.5 text-[11px] leading-none font-medium whitespace-nowrap text-[var(--zerops-status-attention-text)]";
+
 /** What a stop's row says it is running, when nothing has been deployed there. */
 const NOTHING_DEPLOYED = "nothing deployed yet";
 
@@ -1126,12 +1130,15 @@ function EnvironmentRows<T extends RosterCandidate>({
                     {version.label}
                   </a>
                 )}
+                {/* Work that is merged but not live is the one thing on this
+                    row a person may need to act on, and it was muted text
+                    glued to the version with a middle dot while the green
+                    badge — which only reports the last deploy — took the eye,
+                    so the row read as settled when it was not. The badge keeps
+                    its own meaning; the state wears the tone it has earned. */}
                 {production && waitingLabel !== undefined ? (
-                  <span
-                    className="shrink-0 whitespace-nowrap"
-                    data-zerops-surface="sidebar-environment-behind"
-                  >
-                    · {waitingLabel}
+                  <span className={BEHIND_CLASS} data-zerops-surface="sidebar-environment-behind">
+                    {waitingLabel}
                   </span>
                 ) : null}
               </span>

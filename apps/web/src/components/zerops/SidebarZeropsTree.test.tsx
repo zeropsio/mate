@@ -427,6 +427,23 @@ describe("the project's flow under it", () => {
     expect(html).toContain("Rename the app in the page title");
   });
 
+  it("wears the attention tone where a production is carrying work nobody can see", () => {
+    const html = withFlow(
+      [CRM_DEV, CRM_STAGE, CRM_PROD],
+      flow({
+        releaseContents: [{ commits: [{ sha: "a", subject: "Add a search box above the list" }] }],
+      }),
+    );
+    const at = html.indexOf('data-zerops-surface="sidebar-environment-behind"');
+    expect(at).toBeGreaterThan(-1);
+    const chip = html.slice(html.lastIndexOf("<span", at), html.indexOf("</span>", at));
+    expect(chip).toContain("1 waiting");
+    // Muted text beside a green badge read as settled: the badge only reports
+    // the last deploy, and work merged but not live is the thing to act on.
+    expect(chip).toContain("--zerops-status-attention-surface");
+    expect(chip).not.toContain("text-sidebar-muted-foreground");
+  });
+
   it("keeps the verb bare where nothing said what a release carries", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-primary-action="Release"');
