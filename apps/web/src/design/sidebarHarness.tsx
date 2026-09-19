@@ -7,6 +7,19 @@
  * nothing live to disturb; both themes stand side by side because a sidebar
  * that reads well in one and badly in the other is a sidebar nobody checked.
  *
+ * ## The states are the point
+ *
+ * A fixture that shows one pull request, one route and one deploy proves the
+ * happy path and hides every way the menu falls over. So the roster below is
+ * written to be *hostile*: a service with ten public routes, a Mate with six
+ * open pull requests, a production twelve changes behind, a name too long for
+ * any of the three widths, a deploy nobody named, a production that failed
+ * with nothing running, a project with no stops at all. Each one is a state
+ * the product really reaches, and each one broke something the first time it
+ * was drawn (the owner, 2026-09-19: "I still don't see you having simulated
+ * states with open prs, unreleased prod etc., so how can you judge the
+ * detail?").
+ *
  * Fixtures only. Nothing here ships in the app bundle — `design.html` is not
  * `index.html`, and no route imports this module.
  */
@@ -14,7 +27,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { EnvironmentRow, FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import {
+  deployedVersion,
+  type EnvironmentRow,
+  type FlowPullRequest,
+  type ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 import { ThreadId } from "@t3tools/contracts";
 
 import { SidebarZeropsTree, type SidebarProjectFlow } from "~/components/zerops/SidebarZeropsTree";
@@ -24,6 +42,20 @@ import "../index.css";
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
+/** A full sha, the only thing `deployedCommit` accepts. */
+const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
+
+function routes(
+  ...specs: ReadonlyArray<[service: string, host: string, port?: number]>
+): ReadonlyArray<ZeropsPublicRoute> {
+  return specs.map(([service, host, port = 80]) => ({
+    service,
+    port,
+    host,
+    url: `https://${host}`,
+  }));
+}
+
 function candidate(
   id: string,
   name: string,
@@ -31,16 +63,16 @@ function candidate(
   options: {
     readonly connected?: boolean;
     readonly container?: boolean;
-    readonly routes?: ReadonlyArray<{ host: string; url: string }>;
+    readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   } = {},
 ): ZeropsCandidate {
-  const { connected = true, container = true, routes } = options;
+  const { connected = true, container = true, routes: theRoutes } = options;
   const base = {
     key: `${id}:zcp`,
     project: { id, name, status: "ACTIVE", tagList: tags },
     group: connected ? ("connected" as const) : ("ready" as const),
   };
-  const withRoutes = routes === undefined ? base : { ...base, routes };
+  const withRoutes = theRoutes === undefined ? base : { ...base, routes: theRoutes };
   return container
     ? { ...withRoutes, service: { id: "zcp", name: "zcp", status: "ACTIVE" } }
     : {
@@ -68,39 +100,76 @@ function activity(input: {
   };
 }
 
-const LINKS = ["mate:g:links", "mate:name:Links"];
-const NOTES = ["mate:g:notes", "mate:name:Notes"];
-const TODO = ["mate:g:todo", "mate:name:Todo"];
+const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+
+const LINKS = group("links", "Links");
+const SHOP = group("shop", "Shop");
+const NOTES = group("notes", "Notes");
+const TODO = group("todo", "Todo");
+const LONG = group("design-tokens", "Design system tokens and primitives");
 
 const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
+  // A busy, healthy project: three Mates, a change of each kind waiting.
   candidate("links-enzo", "Links - enzo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Enzo"]),
   candidate("links-theo", "Links - theo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Theo"]),
   candidate("links-wren", "Links - wren", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Wren"]),
   candidate("links-stage", "Links - stage", [...LINKS, "mate:role:stage"], {
     container: false,
-    routes: [{ host: "links-stage.zerops.app", url: "https://links-stage.zerops.app" }],
+    routes: routes(["app", "links-stage.zerops.app"]),
   }),
   candidate("links-prod", "Links - production", [...LINKS, "mate:role:prod"], {
     container: false,
-    routes: [{ host: "links.example.com", url: "https://links.example.com" }],
+    routes: routes(["app", "links.example.com"]),
   }),
 
+  // The hostile one: a Mate buried in pull requests, a production ten routes
+  // wide and twelve changes behind, a stage mid-deploy.
+  candidate("shop-mira", "Shop - mira", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Mira"]),
+  candidate("shop-otto", "Shop - otto", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Otto"]),
+  candidate("shop-stage", "Shop - stage", [...SHOP, "mate:role:stage"], {
+    container: false,
+    routes: routes(["app", "shop-stage.zerops.app"], ["api", "api-shop-stage.zerops.app"]),
+  }),
+  candidate("shop-prod", "Shop - production", [...SHOP, "mate:role:prod"], {
+    container: false,
+    routes: routes(
+      ["api", "api.shop.example.com"],
+      ["api", "api.shop.example.com", 8443],
+      ["admin", "admin.shop.example.com"],
+      ["app", "shop.example.com"],
+      ["app", "www.shop.example.com"],
+      ["app", "shop.example.de"],
+      ["app", "shop.example.co.uk"],
+      ["assets", "static.shop.example.com"],
+      ["docs", "docs.shop.example.com"],
+      ["webhooks", "hooks.shop.example.com"],
+    ),
+  }),
+
+  // A production somebody deployed by hand, and a stage that does not exist.
   candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
   candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
     container: false,
-    routes: [
-      { host: "notes.example.com", url: "https://notes.example.com" },
-      { host: "www.notes.example.com", url: "https://www.notes.example.com" },
-    ],
+    routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
   }),
 
+  // The dead end: a production whose last deploy failed, running nothing.
   candidate("todo-vera", "Todo - vera", ["mate", ...TODO, "mate:role:dev", "mate:bot:Vera"]),
   candidate("todo-fen", "Todo - fen", ["mate", ...TODO, "mate:role:dev", "mate:bot:Fen"]),
   candidate("todo-stage", "Todo - stage", [...TODO, "mate:role:stage"], {
     container: false,
-    routes: [{ host: "todo-stage.zerops.app", url: "https://todo-stage.zerops.app" }],
+    routes: routes(["app", "todo-stage.zerops.app"]),
   }),
   candidate("todo-prod", "Todo - production", [...TODO, "mate:role:prod"], { container: false }),
+
+  // A name longer than any width here, and a project that is only a Mate:
+  // nothing has been set up for it to travel to yet.
+  candidate("tokens-ada", "Design system tokens and primitives - ada", [
+    "mate",
+    ...LONG,
+    "mate:role:dev",
+    "mate:bot:Ada",
+  ]),
 ];
 
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
@@ -114,6 +183,24 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
     }),
   ],
   ["links-theo", activity({ subject: "/compact", hours: 9, face: "idle" })],
+  [
+    "shop-mira",
+    activity({
+      subject: "Split the checkout into a two-step flow with a saved basket",
+      snippet: "The basket survives a reload now. Six branches are open…",
+      hours: 1,
+      face: "working",
+    }),
+  ],
+  [
+    "shop-otto",
+    activity({
+      subject: "Why does the VAT come out wrong for Irish orders?",
+      snippet: "Because the rate table is keyed by country and Ireland has…",
+      hours: 30,
+      face: "idle",
+    }),
+  ],
   [
     "notes-iris",
     activity({
@@ -133,6 +220,15 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       subject: "Rename the app in the page title and the main heading",
       snippet: "Done. Both the browser tab title and the <h1> now read…",
       hours: 20,
+      face: "idle",
+    }),
+  ],
+  [
+    "tokens-ada",
+    activity({
+      subject: "Pull the spacing scale out of the components into one file",
+      snippet: "There were four scales. They are one now, and nothing moved…",
+      hours: 52,
       face: "idle",
     }),
   ],
@@ -157,18 +253,37 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
   };
 }
 
-function environment(input: Partial<EnvironmentRow> & { projectId: string }): EnvironmentRow {
+/** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
+const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
+  pull({ mergeable: false, checks: "passing", checkWord: "Passing", ...input });
+
+function environment(
+  input: Partial<Omit<EnvironmentRow, "version">> & {
+    projectId: string;
+    /** The Zerops app-version name, parsed the way the product parses it. */
+    appVersionName?: string | undefined;
+  },
+): EnvironmentRow {
+  const { appVersionName, ...rest } = input;
+  const version = deployedVersion(appVersionName);
+  const source = rest.source ?? "main";
   return {
     kind: "environment",
     name: "stage",
     tier: "stage",
-    source: "main",
-    commit: "3f9c1b2",
-    line: "main · 3f9c1b2",
+    source,
+    commit: version.commit,
+    version,
+    line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone: "good",
-    ...input,
+    ...rest,
   };
 }
+
+/** What a release would put live, as `releaseContents` carries it. */
+const changes = (...subjects: ReadonlyArray<string>) => [
+  { commits: subjects.map((subject, index) => ({ sha: `c${index}`, subject })) },
+];
 
 const FLOWS = new Map<string, SidebarProjectFlow>([
   [
@@ -194,7 +309,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         pull({ number: 6, title: "Bump the linter", author: "ada", mateProjectId: undefined }),
       ],
       environments: new Map([
-        ["links-stage", environment({ projectId: "links-stage" })],
+        ["links-stage", environment({ projectId: "links-stage", appVersionName: sha("3f9c1b2e") })],
         [
           "links-prod",
           environment({
@@ -202,22 +317,110 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
             name: "production",
             tier: "production",
             source: "release",
-            commit: "77ab0e1",
-            line: "release · 77ab0e1",
-            tone: "neutral",
+            appVersionName: `${sha("77ab0e1f")} v1.4.0 ada`,
           }),
         ],
       ]),
       releaseOffered: true,
-      releaseContents: [
-        {
-          commits: [
-            { sha: "a1", subject: "Add a search box above the list" },
-            { sha: "b2", subject: "Rename the app in the page title" },
-            { sha: "c3", subject: "Cache the link previews" },
-          ],
-        },
+      releaseContents: changes(
+        "Add a search box above the list",
+        "Rename the app in the page title",
+        "Cache the link previews",
+      ),
+      merging: () => false,
+      releasing: false,
+      onMerge: () => {},
+      onRelease: () => {},
+    },
+  ],
+  [
+    "shop",
+    {
+      pullRequests: [
+        // Six on one Mate: past the fold, which is the state the fold exists for.
+        pull({
+          number: 41,
+          title: "Two-step checkout: the basket step",
+          mateProjectId: "shop-mira",
+        }),
+        pull({
+          number: 42,
+          title: "Two-step checkout: the payment step",
+          mateProjectId: "shop-mira",
+          checks: "pending",
+          checkWord: "Checking",
+          mergeable: false,
+        }),
+        behindPull({
+          number: 38,
+          title: "Keep the basket in local storage across a reload",
+          mateProjectId: "shop-mira",
+        }),
+        pull({
+          number: 39,
+          title: "Tidy the order confirmation email template",
+          mateProjectId: "shop-mira",
+          checks: "failing",
+          checkWord: "Failing",
+          mergeable: false,
+        }),
+        pull({ number: 40, title: "Extract the price formatter", mateProjectId: "shop-mira" }),
+        behindPull({
+          number: 31,
+          title: "Add an index on orders.created_at",
+          mateProjectId: "shop-mira",
+        }),
+        pull({
+          number: 44,
+          title: "Fix the VAT rate table for Ireland",
+          mateProjectId: "shop-otto",
+        }),
+        pull({
+          number: 45,
+          repository: "group",
+          kind: "recipe",
+          title: "Give the stage a bigger database",
+          author: "ales",
+          mateProjectId: undefined,
+        }),
       ],
+      environments: new Map([
+        [
+          "shop-stage",
+          environment({
+            projectId: "shop-stage",
+            appVersionName: sha("b21d904c"),
+            tone: "pending",
+          }),
+        ],
+        [
+          "shop-prod",
+          environment({
+            projectId: "shop-prod",
+            name: "production",
+            tier: "production",
+            source: "release",
+            appVersionName: `${sha("5c3ea18b")} v2.11.0 mira`,
+          }),
+        ],
+      ]),
+      releaseOffered: true,
+      // Twelve behind: the number a production reaches when nobody released
+      // for a fortnight, and the list a hover cannot hold.
+      releaseContents: changes(
+        "Two-step checkout: the basket step",
+        "Extract the price formatter",
+        "Fix the VAT rate table for Ireland",
+        "Tidy the order confirmation email template",
+        "Add an index on orders.created_at",
+        "Keep the basket in local storage across a reload",
+        "Retry the payment webhook three times",
+        "Stop logging the full card token",
+        "Move the sitemap to the CDN",
+        "Bump the image resizer",
+        "Add a health check to the worker",
+        "Drop the unused coupons table",
+      ),
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -236,9 +439,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
             name: "production",
             tier: "production",
             source: "release",
-            commit: "5d1e8a0",
-            line: "release · 5d1e8a0",
-            tone: "good",
+            // Nobody tagged this: somebody pushed it by hand during an outage.
+            appVersionName: "hotfix-cache-headers",
           }),
         ],
       ]),
@@ -259,7 +461,14 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         pull({ number: 9, title: "Rename the app in the page title", mateProjectId: "todo-fen" }),
       ],
       environments: new Map([
-        ["todo-stage", environment({ projectId: "todo-stage", tone: "pending" })],
+        [
+          "todo-stage",
+          environment({
+            projectId: "todo-stage",
+            appVersionName: sha("3f9c1b2e"),
+            tone: "pending",
+          }),
+        ],
         [
           "todo-prod",
           environment({
@@ -267,13 +476,33 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
             name: "production",
             tier: "production",
             source: "release",
-            commit: undefined,
-            line: "release",
+            // Never deployed, and the last attempt failed: the dead end.
             tone: "bad",
           }),
         ],
       ]),
       releaseOffered: false,
+      merging: () => false,
+      releasing: false,
+      onMerge: () => {},
+      onRelease: () => {},
+    },
+  ],
+  [
+    "design-tokens",
+    {
+      pullRequests: [],
+      environments: new Map(),
+      releaseOffered: false,
+      missing: [
+        { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
+        {
+          kind: "missing-environment",
+          tier: "production",
+          name: "Production",
+          line: "not set up yet",
+        },
+      ],
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -294,7 +523,7 @@ function Panel({ label, width }: { readonly label: string; readonly width: numbe
         {label}
       </span>
       <div
-        className="h-[900px] overflow-y-auto border border-border bg-sidebar py-2"
+        className="h-[1600px] overflow-y-auto border border-border bg-sidebar py-2"
         style={{ width }}
       >
         <SidebarZeropsTree
@@ -323,7 +552,7 @@ function Harness() {
 
 // The app sets the theme on the document element (`themePalette.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
-// reach — which is exactly how the first pass produced two identical panels.
+// reach — which is exactly how the first pass produced two identical light panels.
 document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark",

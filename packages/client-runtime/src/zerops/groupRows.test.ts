@@ -4,6 +4,7 @@ import {
   environmentNameUnderGroup,
   buildGroupRows,
   deployedCommit,
+  deployedVersion,
   deployStatusContext,
   deployTone,
   environmentRow,
@@ -57,6 +58,50 @@ describe("deployedCommit", () => {
 
   it("shortens a commit to the seven characters people read it by", () => {
     expect(shortCommit(SHA)).toBe("3f9c1b2");
+  });
+});
+
+describe("deployedVersion", () => {
+  it.each([
+    {
+      name: "a release, which everybody calls by its tag",
+      value: `${SHA} v1.2.0 u-jan`,
+      expected: { name: "v1.2.0", commit: "3f9c1b2", taggedBy: "u-jan", label: "v1.2.0" },
+    },
+    {
+      name: "a stage deploy, which nobody named, so the commit is the answer",
+      value: SHA,
+      expected: { name: undefined, commit: "3f9c1b2", taggedBy: undefined, label: "3f9c1b2" },
+    },
+    {
+      name: "a tag nobody signed",
+      value: `${SHA} v1.2.0`,
+      expected: { name: "v1.2.0", commit: "3f9c1b2", taggedBy: undefined, label: "v1.2.0" },
+    },
+    {
+      // Somebody typed this into `zcli`; it is still what is running, and it
+      // is still the best name anyone has for it.
+      name: "a hand-made deploy, whose name is the whole of it",
+      value: "hotfix for the outage",
+      expected: {
+        name: "hotfix for the outage",
+        commit: undefined,
+        taggedBy: undefined,
+        label: "hotfix for the outage",
+      },
+    },
+    {
+      name: "nothing deployed",
+      value: undefined,
+      expected: { name: undefined, commit: undefined, taggedBy: undefined, label: undefined },
+    },
+    {
+      name: "a blank name, which is nothing deployed by another route",
+      value: "   ",
+      expected: { name: undefined, commit: undefined, taggedBy: undefined, label: undefined },
+    },
+  ])("reads $name", ({ value, expected }) => {
+    expect(deployedVersion(value)).toEqual(expected);
   });
 });
 
@@ -152,7 +197,37 @@ describe("environmentRow", () => {
         service("api", "success", { environment: "production", version: `${SHA} v1.2.0 u-jan` }),
       ],
     });
-    expect(row.line).toBe("release · 3f9c1b2");
+    // The tag, because that is what everyone calls this deploy; the sha is on
+    // the row's `version` for whoever needs it.
+    expect(row.line).toBe("release · v1.2.0");
+    expect(row.version).toEqual({
+      name: "v1.2.0",
+      commit: "3f9c1b2",
+      taggedBy: "u-jan",
+      label: "v1.2.0",
+    });
+    expect(row.commit).toBe("3f9c1b2");
+  });
+
+  it("falls back to the commit where nobody named the deploy", () => {
+    const row = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [service("api", "success", { environment: "acme-stage", version: SHA })],
+    });
+    expect(row.version.label).toBe("3f9c1b2");
+    expect(row.version.name).toBeUndefined();
+  });
+
+  it("carries a hand-made deploy's name, which no sha would have told anyone", () => {
+    const row = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [service("api", "success", { environment: "acme-stage", version: "hotfix" })],
+    });
+    expect(row.line).toBe("main · hotfix");
+    expect(row.version.label).toBe("hotfix");
+    expect(row.commit).toBeUndefined();
   });
 });
 

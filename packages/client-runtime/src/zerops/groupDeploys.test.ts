@@ -202,8 +202,9 @@ describe("the join — a declaration, a version and a status", () => {
       expected: [
         { name: "Acme CRM - stage", line: "main", commit: undefined, tone: "neutral" },
         {
+          // The tag, not the sha: `v1.2.0` is what everybody calls this deploy.
           name: "Acme CRM - production",
-          line: "release · 3f9c1b2",
+          line: "release · v1.2.0",
           commit: "3f9c1b2",
           tone: "good",
         },

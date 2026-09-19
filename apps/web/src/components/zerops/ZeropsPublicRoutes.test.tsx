@@ -36,6 +36,19 @@ describe("routeMenuEntries", () => {
     expect(entries.map((entry) => entry.port)).toEqual([3000, 9000, undefined]);
   });
 
+  it("writes no port where one service has several hosts on the same one", () => {
+    // Four domains pointed at one service is the ordinary shape of a
+    // production, and `app:80` four times over tells nobody which is which.
+    const alias = (host: string): ZeropsPublicRoute => ({
+      service: "app",
+      port: 80,
+      url: `https://${host}`,
+      host,
+    });
+    const entries = routeMenuEntries([alias("shop.example.com"), alias("www.shop.example.com")]);
+    expect(entries.map((entry) => entry.port)).toEqual([undefined, undefined]);
+  });
+
   it("is empty when nobody can reach the environment", () => {
     expect(routeMenuEntries([])).toEqual([]);
   });
@@ -54,14 +67,17 @@ describe("ZeropsRoutesMenu", () => {
     expect(html).toContain(`href="${APP.url}"`);
     expect(html).toContain('aria-label="Public routes of app: app-26a7.prg1.zerops.app"');
     expect(html).not.toContain("<button");
+    // The count is on the row even at one, so one route and ten never look alike.
+    expect(html).toContain(">1<");
   });
 
   it("offers a menu when there are several", () => {
     const html = renderToStaticMarkup(
       <ZeropsRoutesMenu label="Public routes of app" routes={[API, APP]} />,
     );
-    expect(html).toContain('aria-label="Public routes of app"');
+    expect(html).toContain('aria-label="Public routes of app: 2 public URLs"');
     expect(html).toContain("<button");
+    expect(html).toContain(">2<");
     expect(html).not.toContain(`href="${APP.url}"`);
   });
 });

@@ -6,6 +6,7 @@ import {
   pullRequestBlockedReason,
   releaseContentsSentence,
   releaseContentsSummary,
+  releaseWaitingLabel,
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
@@ -308,8 +309,9 @@ describe("pullRequestBlockedReason", () => {
     [false, "pending", "checks running"],
     [false, "none", "needs a rebase"],
     [false, "passing", "needs a rebase"],
-    // The dot is already red and carries the word; the row does not say it twice.
-    [false, "failing", null],
+    // A red dot on its own is not a sentence: a row whose right edge is
+    // sometimes a verb and sometimes a wordless dot reads as neither.
+    [false, "failing", "checks failed"],
   ];
 
   for (const [mergeable, checks, expected] of cases) {
@@ -392,5 +394,26 @@ describe("releaseContentsSentence", () => {
 
   it("says nothing about a release that carries nothing", () => {
     expect(releaseContentsSentence(releaseContentsSummary([]))).toBeUndefined();
+  });
+});
+
+describe("releaseWaitingLabel", () => {
+  it("is short enough for a 256px row and still names what is waiting", () => {
+    expect(releaseWaitingLabel(releaseContentsSummary([{ commits: [] }]))).toBeUndefined();
+    expect(
+      releaseWaitingLabel(releaseContentsSummary([{ commits: [{ sha: "a", subject: "One" }] }])),
+    ).toBe("1 waiting");
+    expect(
+      releaseWaitingLabel(
+        releaseContentsSummary([
+          {
+            commits: [
+              { sha: "a", subject: "One" },
+              { sha: "b", subject: "Two" },
+            ],
+          },
+        ]),
+      ),
+    ).toBe("2 waiting");
   });
 });

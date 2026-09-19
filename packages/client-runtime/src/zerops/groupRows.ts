@@ -66,6 +66,8 @@ export interface EnvironmentRow {
   readonly source: string;
   /** The commit it actually runs, short — `undefined` until something is deployed. */
   readonly commit: string | undefined;
+  /** What that deploy is called, the commit being only the fallback. */
+  readonly version: DeployedVersion;
   readonly line: string;
   readonly tone: GroupRowTone;
 }
@@ -175,6 +177,59 @@ export function shortCommit(sha: string): string {
   return sha.slice(0, 7);
 }
 
+/**
+ * What is deployed, as a person talks about it: its name, and the commit
+ * underneath.
+ *
+ * Zerops keeps one string per service — the app version's name — and the two
+ * parties that write it write different things. The broker names a stage
+ * deploy by the commit alone, and a release by `{sha} {tag} {tagger}`
+ * (measured 2026-09-16); somebody deploying with `zcli` by hand names it
+ * whatever they typed.
+ *
+ * The name is what a row writes, and the commit is only its fallback: a
+ * release is `v1.2.0` to everyone who talks about it, and `77ab0e1` answers a
+ * question nobody asked (the owner, 2026-09-19 — "the commit hash should only
+ * be a fallback to version name from Zerops"). The commit stays on the answer
+ * either way, because the place that has room for both should say both.
+ */
+export interface DeployedVersion {
+  /** The tag, or the whole of a hand-made name; `undefined` for a bare commit. */
+  readonly name: string | undefined;
+  /** The commit it was built from, short; `undefined` where the name is not one of ours. */
+  readonly commit: string | undefined;
+  /** Who tagged the release, where the name carries it. */
+  readonly taggedBy: string | undefined;
+  /** The one thing a row writes: the name, and the commit only as its fallback. */
+  readonly label: string | undefined;
+}
+
+/** Nothing is deployed, however the name said so. */
+const NO_VERSION: DeployedVersion = {
+  name: undefined,
+  commit: undefined,
+  taggedBy: undefined,
+  label: undefined,
+};
+
+export function deployedVersion(appVersionName: string | undefined): DeployedVersion {
+  const tokens = (appVersionName ?? "")
+    .trim()
+    .split(/\s+/u)
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) return NO_VERSION;
+  const sha = deployedCommit(appVersionName);
+  if (sha === undefined) {
+    // Not one of ours: the whole string is the only name it has, and it is a
+    // better answer than saying nothing.
+    const name = tokens.join(" ");
+    return { name, commit: undefined, taggedBy: undefined, label: name };
+  }
+  const [, name, taggedBy] = tokens;
+  const commit = shortCommit(sha);
+  return { name, commit, taggedBy, label: name ?? commit };
+}
+
 /** The commit status the broker writes for one service of one environment. */
 export function deployStatusContext(environment: string, service: string): string {
   return `mate/deploy/${environment}/${service}`;
@@ -230,9 +285,13 @@ export function environmentRow(input: {
   readonly environment: string;
 }): EnvironmentRow {
   const source = input.sources === "release" ? "release" : input.sources.join(" + ") || "—";
-  const commit = input.services
-    .map((service) => deployedCommit(service.appVersionName))
-    .find((sha) => sha !== undefined);
+  // The first service that is running something names the environment: in a
+  // monorepo they all carry the same release, and in a split one the row has
+  // width for one answer.
+  const version =
+    input.services
+      .map((service) => deployedVersion(service.appVersionName))
+      .find((entry) => entry.label !== undefined) ?? NO_VERSION;
   const tone = deployTone({ environment: input.environment, services: input.services });
   return {
     kind: "environment",
@@ -240,8 +299,9 @@ export function environmentRow(input: {
     name: input.name,
     tier: input.tier,
     source,
-    commit: commit === undefined ? undefined : shortCommit(commit),
-    line: commit === undefined ? source : `${source} · ${shortCommit(commit)}`,
+    commit: version.commit,
+    version,
+    line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
   };
 }

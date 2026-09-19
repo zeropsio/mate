@@ -14,7 +14,6 @@
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "@t3tools/client-runtime/zerops";
 import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
 
-import { Button } from "../ui/button";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -27,16 +26,27 @@ export interface ZeropsRouteMenuEntry {
   readonly url: string;
 }
 
-/** The menu's items, in the order `derivePublicRoutes` sorted the routes. */
+/**
+ * The menu's items, in the order `derivePublicRoutes` sorted the routes.
+ *
+ * A port is written only where it tells the two apart — where one service
+ * answers on more than one of them. A service reached at four domains on the
+ * same port is the ordinary shape of a production, and `app:80` written four
+ * times over says nothing while looking like it does.
+ */
 export function routeMenuEntries(
   routes: ReadonlyArray<ZeropsPublicRoute>,
 ): ReadonlyArray<ZeropsRouteMenuEntry> {
-  const counts = new Map<string, number>();
-  for (const route of routes) counts.set(route.service, (counts.get(route.service) ?? 0) + 1);
+  const ports = new Map<string, Set<number>>();
+  for (const route of routes) {
+    const seen = ports.get(route.service) ?? new Set<number>();
+    seen.add(route.port);
+    ports.set(route.service, seen);
+  }
   return routes.map((route) => ({
     key: route.url,
     service: route.service,
-    port: (counts.get(route.service) ?? 0) > 1 ? route.port : undefined,
+    port: (ports.get(route.service)?.size ?? 0) > 1 ? route.port : undefined,
     host: route.host,
     url: route.url,
   }));
@@ -111,10 +121,22 @@ export function ZeropsRouteMenuItems({
   );
 }
 
-const ICON_BUTTON_CLASS =
-  "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
-
-/** The left menu's glyph beside an environment: the route itself, or the routes as a menu. */
+/**
+ * The left menu's public-access control: a globe and **how many**.
+ *
+ * Neither of the two obvious answers survives ten routes. Writing the host out
+ * spends most of a 256px row on one of them and looks ridiculous at ten (the
+ * owner, 2026-09-19). A bare arrow fits any number and says nothing about any
+ * of them — "the open in new is ambiguous, everything could have more public
+ * urls/ips" — and, worse, two routes and ten drew identically, so the menu hid
+ * the very fact a person opens it to learn.
+ *
+ * The count is the smallest thing that is honest at both ends: it is the same
+ * width at 1 and at 10, it never claims a URL it is not opening, and it says
+ * there are others before the person has to guess. One route still opens
+ * directly, because a menu holding a single item is a click spent on nothing;
+ * its host is the hover.
+ */
 export function ZeropsRoutesMenu({
   routes,
   label,
@@ -132,7 +154,7 @@ export function ZeropsRoutesMenu({
           render={
             <a
               aria-label={`${label}: ${only.host}`}
-              className={ICON_BUTTON_CLASS}
+              className={ROUTE_COUNT_CLASS}
               data-zerops-surface="public-routes-menu"
               href={only.url}
               rel="noreferrer"
@@ -140,7 +162,8 @@ export function ZeropsRoutesMenu({
             />
           }
         >
-          <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+          <GlobeIcon aria-hidden="true" className="size-3.5" />
+          <span className="tabular-nums">1</span>
         </TooltipTrigger>
         <TooltipPopup side="right">{only.host}</TooltipPopup>
       </Tooltip>
@@ -149,21 +172,19 @@ export function ZeropsRoutesMenu({
   return (
     <Menu>
       <MenuTrigger
-        render={
-          <Button
-            aria-label={label}
-            className="size-6 text-muted-foreground hover:text-foreground"
-            data-zerops-surface="public-routes-menu"
-            size="icon"
-            variant="ghost"
-          />
-        }
+        aria-label={`${label}: ${routes.length} public URLs`}
+        className={ROUTE_COUNT_CLASS}
+        data-zerops-surface="public-routes-menu"
       >
-        <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+        <GlobeIcon aria-hidden="true" className="size-3.5" />
+        <span className="tabular-nums">{routes.length}</span>
       </MenuTrigger>
-      <MenuPopup align="end" className="min-w-48 max-w-[24rem]">
+      <MenuPopup align="end" className="max-w-[24rem] min-w-48">
         <ZeropsRouteMenuItems routes={routes} />
       </MenuPopup>
     </Menu>
   );
 }
+
+const ROUTE_COUNT_CLASS =
+  "inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded px-1 text-[11px] leading-none text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";

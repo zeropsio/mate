@@ -328,6 +328,7 @@ describe("the project's flow under it", () => {
     tier: "stage",
     source: "main",
     commit: "3f9c1b2",
+    version: { name: undefined, commit: "3f9c1b2", taggedBy: undefined, label: "3f9c1b2" },
     line: "main · 3f9c1b2",
     tone: "good",
   };
@@ -441,15 +442,16 @@ describe("the project's flow under it", () => {
     );
     expect(stale).toContain("needs a rebase");
 
-    // The dot beside it is already red and carries the word in its tooltip;
-    // the row does not say one fact twice.
+    // A red dot with no word beside it is the row going quiet at the moment it
+    // has most to say: every refusal is written out, the red one included.
     const failed = withFlow(
       [CRM_DEV, CRM_STAGE],
       flow({
         pullRequests: [pull(4, { mergeable: false, checks: "failing", checkWord: "Failing" })],
       }),
     );
-    expect(failed).not.toContain('data-zerops-surface="sidebar-pull-request-blocked"');
+    expect(failed).toContain('data-zerops-surface="sidebar-pull-request-blocked"');
+    expect(failed).toContain("checks failed");
 
     // Nothing is added where the verb speaks for itself.
     expect(withFlow([CRM_DEV, CRM_STAGE])).not.toContain(

@@ -235,8 +235,10 @@ export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow 
  * to find out. Gitea's own answer is the only authority here (MU-1's
  * discipline applied to merges): nothing recomputes whether a branch merges.
  *
- * The checks' dot already carries a failure, so a refusal while they are red
- * says nothing further — two sayings of one fact on a row seven words wide.
+ * Every refusal has a word, including the red one. A row whose right edge is
+ * a verb on one line and a wordless red dot on the next reads as neither, and
+ * the dot's own tooltip is not an answer to a question asked by glancing (seen
+ * in the harness, 2026-09-19).
  */
 export function pullRequestBlockedReason(pull: {
   readonly mergeable: boolean;
@@ -244,8 +246,7 @@ export function pullRequestBlockedReason(pull: {
 }): string | null {
   if (pull.mergeable) return null;
   if (pull.checks === "pending") return "checks running";
-  // The dot beside it is red and has the word in its tooltip.
-  if (pull.checks === "failing") return null;
+  if (pull.checks === "failing") return "checks failed";
   return "needs a rebase";
 }
 
@@ -293,6 +294,17 @@ export function releaseContentsSummary(
     more: Math.max(0, subjects.length - limit),
     total,
   };
+}
+
+/**
+ * `12 waiting` — what a stop's row has width for at 256px, where the sentence
+ * wrapped onto a second line and pushed the route off the row.
+ *
+ * Short because the row is narrow, and not shortened further: "12" alone is a
+ * number with no noun, and the thing waiting is a change somebody made.
+ */
+export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | undefined {
+  return summary.total === 0 ? undefined : `${summary.total} waiting`;
 }
 
 /**
