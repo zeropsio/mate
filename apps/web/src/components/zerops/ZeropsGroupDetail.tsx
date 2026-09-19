@@ -107,6 +107,12 @@ import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
+import { useMateActions } from "~/zerops/useMateActions";
+import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { findAccountGitea } from "~/zerops/giteaProject";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -137,6 +143,51 @@ function useGroup(groupId: string): ZeropsGroup | undefined {
 /** What the group is called — never the raw group id. */
 function useGroupName(groupId: string): string | undefined {
   return useGroup(groupId)?.name;
+}
+
+/**
+ * Every Mate on this project, with everything that can be done to it.
+ *
+ * The same `useMateActions` the projects screen uses, so *Rename Mate*,
+ * *Restart*, *Hand this Mate over* and the rest are one definition — this page
+ * listed its Mates and could do nothing to any of them (the owner,
+ * 2026-09-19). The registry and the health read are taken here and handed
+ * over: both hold per-instance state, and a second reader is a second poll.
+ */
+function useMateMenus(): {
+  readonly menuForMate: (projectId: string) => React.ReactNode;
+  readonly dialogs: React.ReactNode;
+  readonly trouble: string | null;
+} {
+  const { activeOrganization, status } = useZeropsSession();
+  const { candidates } = useZeropsCandidates();
+  const inventory = useZeropsInventory();
+  const { serverVersions } = useZeropsCandidateHealth(candidates);
+  const giteaProjectId = useMemo(
+    () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
+    [activeOrganization?.id, inventory],
+  );
+  const registry = useZeropsRegistry({ giteaProjectId, enabled: status === "signed-in" });
+  const actions = useMateActions({ registry, serverVersions });
+  const menuForMate = useCallback(
+    (projectId: string) => {
+      const candidate = candidates.find((entry) => entry.project.id === projectId);
+      if (candidate === undefined) return null;
+      const tags = readZeropsGroupTags(candidate.project.tagList);
+      const entries = actions.actionsFor(candidate, tags);
+      // A menu with nothing in it is a button that opens an empty box.
+      if (entries.length === 0) return null;
+      return (
+        <ZeropsProjectMenu
+          actions={entries}
+          label={`More for ${candidate.project.name}`}
+          routes={candidate.routes}
+        />
+      );
+    },
+    [actions, candidates],
+  );
+  return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
 }
 
 /**
@@ -500,6 +551,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   });
   const openProjects = useOpenProjects();
   const actions = useGroupActions(groupId);
+  const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
@@ -530,13 +582,19 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       name={groupName ?? flow.groupId}
       onAct={attention.onAct}
       names={names}
-      menu={actions.menu}
+      menu={
+        <>
+          {actions.menu}
+          {mates_.dialogs}
+        </>
+      }
+      menuForMate={mates_.menuForMate}
       onAddMate={openProjects}
       onOpenMate={openMate}
       crumbs={crumbs}
       onSetUp={openProjects}
       release={release}
-      trouble={actions.trouble}
+      trouble={actions.trouble ?? mates_.trouble}
       pullRequests={flow.pullRequests}
       readDetail={readDetail}
       repo={repo}
@@ -563,6 +621,7 @@ export function ZeropsGroupPane({
   names,
   crumbs,
   menu,
+  menuForMate,
   onAddMate,
   onOpenMate,
   onSetUp,
@@ -592,6 +651,8 @@ export function ZeropsGroupPane({
   readonly mates: ReadonlyArray<GroupMate>;
   readonly names: HistoryNames;
   readonly onAddMate: () => void;
+  /** One Mate's own quiet actions, by its project id. */
+  readonly menuForMate?: (projectId: string) => React.ReactNode;
   /** The project's own quiet actions — rename, above all. */
   readonly menu?: React.ReactNode;
   /** Why a write from that menu failed, said under the heading it came from. */
@@ -633,7 +694,12 @@ export function ZeropsGroupPane({
         ) : (
           <ul className="flex flex-col">
             {mates.map((mate) => (
-              <MateLine key={mate.projectId} mate={mate} onOpen={onOpenMate} />
+              <MateLine
+                key={mate.projectId}
+                mate={mate}
+                menu={menuForMate?.(mate.projectId)}
+                onOpen={onOpenMate}
+              />
             ))}
           </ul>
         )}
@@ -1582,15 +1648,20 @@ export interface GroupMate {
  */
 function MateLine({
   mate,
+  menu,
   onOpen,
 }: {
   readonly mate: GroupMate;
+  /** This Mate's own quiet actions — the same set the projects screen offers. */
+  readonly menu?: React.ReactNode;
   readonly onOpen: (projectId: string) => void;
 }) {
   return (
-    <li>
+    // The row is a control and the menu is another: a button inside a button
+    // is not a thing, so they sit side by side and the row keeps the hover.
+    <li className="group/row flex min-w-0 items-center gap-1">
       <button
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
         onClick={() => {
           onOpen(mate.projectId);
         }}
@@ -1623,6 +1694,7 @@ function MateLine({
         </span>
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      {menu === undefined ? null : <span className="shrink-0">{menu}</span>}
     </li>
   );
 }
