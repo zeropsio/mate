@@ -206,10 +206,13 @@ describe("SidebarZeropsTree", () => {
   it("hangs the stops off the project rather than off the Mate above them", () => {
     const html = render([LINKS_MATE, LINKS_STAGE, LINKS_PROD]);
     const list = html.slice(html.indexOf('data-zerops-surface="sidebar-environment-rows"') - 200);
-    // A rule over the list, and the project's own left edge under it: the
-    // stops are the project's, whichever Mate happens to be listed last.
-    expect(list).toContain("border-t");
+    // The project's own left edge, and the spine running down through it: the
+    // stops are the project's, whichever Mate happens to be listed last. A
+    // rule across the list used to say so and cut the spine doing it.
     expect(list).toContain("px-2.5");
+    expect(list).not.toContain("border-t");
+    // Each stop is a node on the same line the Mates hang on.
+    expect(list).toContain("self-stretch");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {

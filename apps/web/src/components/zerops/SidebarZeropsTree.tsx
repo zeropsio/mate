@@ -502,11 +502,13 @@ function MateRow<T extends RosterCandidate>({
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <MateFace
-        size="sm"
-        state={mateFaceFor(candidate.group === "connected", activity)}
-        tint={tint}
-      />
+      <RailCell>
+        <MateFace
+          size="sm"
+          state={mateFaceFor(candidate.group === "connected", activity)}
+          tint={tint}
+        />
+      </RailCell>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">{name}</span>
@@ -543,8 +545,45 @@ function MateRow<T extends RosterCandidate>({
   );
 }
 
-/** The indent of everything that hangs under a Mate — its name's own left edge. */
-const UNDER_MATE_CLASS = "ps-10 pe-0.5";
+/**
+ * The spine a project hangs on.
+ *
+ * A project is a timeline — a Mate writes a change, the change waits as a pull
+ * request, it lands on the stage, it goes live on the production — and the
+ * menu drew it as a flat list of rows that all weighed the same, so it read as
+ * "one big same item" (the owner, 2026-09-19) rather than as work moving.
+ *
+ * Every row draws a line in its own icon column, from its top edge to just
+ * above its node and from just below its node to its bottom edge. Consecutive
+ * rows stack those segments into one continuous line without any row needing
+ * to know what is above or below it, and the gap around each node is what
+ * makes the node read as *on* the line rather than behind it — which also
+ * means nothing has to be painted opaque over a row whose background changes
+ * on hover.
+ */
+function RailCell({
+  children,
+  gap = "node",
+}: {
+  readonly children?: ReactNode;
+  /** How far the line stops short of what sits on it. */
+  readonly gap?: "node" | "tick";
+}) {
+  const segment = gap === "node" ? RAIL_SEGMENT_NODE : RAIL_SEGMENT_TICK;
+  return (
+    <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
+      <span aria-hidden="true" className={cn(RAIL_LINE, "top-0", segment)} />
+      <span aria-hidden="true" className={cn(RAIL_LINE, "bottom-0", segment)} />
+      {children}
+    </span>
+  );
+}
+
+const RAIL_LINE = "absolute left-1/2 w-px -translate-x-1/2 bg-sidebar-border";
+/** Clear of a 20px face or badge. */
+const RAIL_SEGMENT_NODE = "h-[calc(50%-0.75rem)]";
+/** Clear of the small dot a change wears — a lesser stop on the same line. */
+const RAIL_SEGMENT_TICK = "h-[calc(50%-0.4375rem)]";
 
 /**
  * A Mate's open pull requests: the rows themselves while there are a few, a
@@ -569,17 +608,16 @@ function PullRequestList({
       {folded ? (
         <button
           aria-expanded={open}
-          className={cn(
-            "flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-            UNDER_MATE_CLASS,
-          )}
+          className="flex h-7 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-[11px] text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onToggle}
           type="button"
         >
-          <ChevronRightIcon
-            aria-hidden="true"
-            className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
-          />
+          <RailCell gap="tick">
+            <ChevronRightIcon
+              aria-hidden="true"
+              className={cn("size-3 transition-transform", open && "rotate-90")}
+            />
+          </RailCell>
           <span>{pulls.length} pull requests</span>
         </button>
       ) : null}
@@ -622,12 +660,16 @@ function PullRequestRow({
   const blocked = pullRequestBlocked(pull);
   return (
     <li
-      className={cn(
-        "flex h-7 min-w-0 items-center gap-2 text-xs",
-        underMate ? UNDER_MATE_CLASS : "px-2.5",
-      )}
+      className={cn("flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
       data-zerops-surface="sidebar-pull-request"
     >
+      {/* A change is a lesser stop on the same line: the spine runs through it
+          and it wears a small dot where a Mate wears a face. Its title lands
+          on the same left edge the names above it use, because the rail cell
+          and the gap are the ones the other rows are built from. */}
+      <RailCell gap="tick">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-sidebar-border" />
+      </RailCell>
       {pull.url === undefined ? (
         <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
       ) : (
@@ -906,10 +948,7 @@ function EnvironmentRows<T extends RosterCandidate>({
   return (
     // The stops belong to the project, not to the Mate they happen to follow:
     // a rule and the project's own left edge say so.
-    <ul
-      className="mt-1 flex flex-col gap-px border-t border-sidebar-border pt-1"
-      data-zerops-surface="sidebar-environment-rows"
-    >
+    <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-environment-rows">
       {environments.map(({ item, role }) => {
         const tag = environmentRoleTag(role);
         const name = environmentNameUnderGroup(groupName, item.project.name);
@@ -931,7 +970,9 @@ function EnvironmentRows<T extends RosterCandidate>({
             {/* Centred on the row, because the Mate face directly above it is:
                 two neighbouring rows may not have two rules for their first
                 column. It was pinned to the first line, 11px high of centre. */}
-            <StopBadge tone={tone} word={word} />
+            <RailCell>
+              <StopBadge tone={tone} word={word} />
+            </RailCell>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex min-w-0 items-center gap-2">
                 {/* A stop is named in the same hand as a Mate: it is a place
