@@ -1032,12 +1032,20 @@ const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
 
 /**
- * Where a detail page sits, outermost first.
+ * Where a detail page sits, outermost first — a containment trail, not a way
+ * back to wherever you came from.
  *
- * Always the conversation it stands in place of (`/` lands on the
- * environment's one conversation), then the project where the page is inside
- * one. A stop offered only the conversation before this, so reaching its own
- * project meant leaving through the chat and coming back in.
+ * The first crumb said *Conversation* and went to `/`, which resolves to
+ * whichever thread the router settles on: "this `conversation` link never
+ * makes sense, it will just redirect to some random convo" (the owner,
+ * 2026-09-19). A trail whose root is a guess is worse than no trail, because
+ * it looks like it knows.
+ *
+ * So it is the hierarchy these pages actually sit in — every project, then the
+ * project, then this page's own name in the title. Each step is the page of
+ * the thing that contains this one, which is a claim the route can keep. The
+ * conversations are not above these pages anyway: they hang off the Mates, and
+ * a Mate's row on the project's page is the way into its own.
  */
 function useCrumbs(
   inside?: { readonly groupId: string; readonly name: string } | undefined,
@@ -1048,9 +1056,9 @@ function useCrumbs(
   return useMemo(() => {
     const trail: Array<Crumb> = [
       {
-        label: "Conversation",
+        label: "Projects",
         onClick: () => {
-          void navigate({ to: "/" });
+          void navigate({ to: "/zerops" });
         },
       },
     ];

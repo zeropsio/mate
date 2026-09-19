@@ -93,7 +93,7 @@ const NAMES = {
 };
 
 const CRUMBS = [
-  { label: "Conversation", onClick: () => {} },
+  { label: "Projects", onClick: () => {} },
   { label: "Shop", onClick: () => {} },
 ];
 
