@@ -427,3 +427,36 @@ function byTierThenName(
   if (left.tier !== right.tier) return left.tier === "stage" ? -1 : 1;
   return left.name.localeCompare(right.name, "en");
 }
+
+/**
+ * What a stop follows, as a sentence rather than a keyword.
+ *
+ * `Follows: release` told somebody who already knew nothing, and the word is
+ * the whole explanation of why a production does not move when a change lands.
+ */
+export function stopSourceLine(source: string): string {
+  if (source === "release") return "A release — it moves only when somebody tags one";
+  if (source === "\u2014" || source.length === 0) return "Nothing yet";
+  return `Every merge to ${source}`;
+}
+
+/**
+ * How long a build step took — `4s`, `1m 32s`, `1h 04m`.
+ *
+ * A run with no duration on it is the one thing every other forge shows and
+ * this one was dropping; a step still going has none to show yet.
+ */
+export function jobDuration(
+  startedAt: string | undefined,
+  completedAt: string | undefined,
+): string | undefined {
+  if (startedAt === undefined || completedAt === undefined) return undefined;
+  const from = Date.parse(startedAt);
+  const to = Date.parse(completedAt);
+  if (Number.isNaN(from) || Number.isNaN(to)) return undefined;
+  const seconds = Math.max(0, Math.round((to - from) / 1000));
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60).padStart(2, "0")}m`;
+}

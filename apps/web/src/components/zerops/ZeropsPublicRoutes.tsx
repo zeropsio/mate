@@ -171,14 +171,24 @@ export function ZeropsRoutesMenu({
   }
   return (
     <Menu>
-      <MenuTrigger
-        aria-label={`${label}: ${routes.length} public URLs`}
-        className={ROUTE_COUNT_CLASS}
-        data-zerops-surface="public-routes-menu"
-      >
-        <GlobeIcon aria-hidden="true" className="size-3.5" />
-        <span className="tabular-nums">{routes.length}</span>
-      </MenuTrigger>
+      {/* A globe and a number say nothing on their own: the single-route case
+          has always had a tooltip and this one had none, so `10` was a number
+          with no noun anywhere near it. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              aria-label={`${label}: ${routes.length} public URLs`}
+              className={ROUTE_COUNT_CLASS}
+              data-zerops-surface="public-routes-menu"
+            >
+              <GlobeIcon aria-hidden="true" className="size-3.5" />
+              <span className="tabular-nums">{routes.length}</span>
+            </MenuTrigger>
+          }
+        />
+        <TooltipPopup side="right">{routes.length} public URLs</TooltipPopup>
+      </Tooltip>
       <MenuPopup align="end" className="max-w-[24rem] min-w-48">
         <ZeropsRouteMenuItems routes={routes} />
       </MenuPopup>

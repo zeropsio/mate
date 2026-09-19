@@ -8,6 +8,7 @@
  *
  * Presentational: the reading is `useZeropsDeployRun`'s.
  */
+import { jobDuration, type GiteaActionJob } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
 import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
@@ -53,18 +54,7 @@ export function ZeropsDeployRunView({ run }: { readonly run: ZeropsDeployRun }) 
   );
 }
 
-function JobRow({
-  job,
-  run,
-}: {
-  readonly job: {
-    readonly id: number;
-    readonly name?: string | undefined;
-    readonly status?: string | undefined;
-    readonly conclusion?: string | undefined;
-  };
-  readonly run: ZeropsDeployRun;
-}) {
+function JobRow({ job, run }: { readonly job: GiteaActionJob; readonly run: ZeropsDeployRun }) {
   const [log, setLog] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [rerunning, setRerunning] = useState(false);
@@ -87,6 +77,7 @@ function JobRow({
       });
   }, [job.id, log, run]);
 
+  const duration = jobDuration(job.started_at, job.completed_at);
   return (
     <li
       className="border-b border-border/60 last:border-b-0"
@@ -110,6 +101,12 @@ function JobRow({
           />
           <span className="min-w-0 truncate">{job.name ?? `Job ${String(job.id)}`}</span>
         </button>
+        {/* How long it took: the one number every other forge puts here. */}
+        {duration === undefined ? null : (
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {duration}
+          </span>
+        )}
         <StatusDot label={reading ? "Reading" : word} sentence tone={reading ? "busy" : tone} />
         {!failed ? null : (
           <Button

@@ -33,6 +33,12 @@ import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 
 import "../index.css";
 
+/** Where these panes sit, as the harness pretends: the chat, then the project. */
+const CRUMBS = [
+  { label: "Conversation", onClick: () => {} },
+  { label: "Shop", onClick: () => {} },
+];
+
 const MATE_NAMES = new Map([
   ["p-theo", "Theo"],
   ["p-wren", "Wren"],
@@ -144,7 +150,7 @@ function Harness() {
           mateName="Theo"
           merging={false}
           onAsk={() => {}}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onMerge={() => {}}
           pull={pull()}
           readDetail={undefined}
@@ -164,7 +170,7 @@ function Harness() {
           mateName="Theo"
           merging={false}
           onAsk={() => {}}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onMerge={() => {}}
           pull={pull({ checks: "failing", checkWord: "checks failed", mergeable: false })}
           readDetail={undefined}
@@ -184,7 +190,7 @@ function Harness() {
           mateName="Theo"
           merging={false}
           onAsk={() => {}}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onMerge={() => {}}
           pull={pull({ mergeable: false })}
           readDetail={undefined}
@@ -204,7 +210,7 @@ function Harness() {
           mateName={undefined}
           merging
           onAsk={() => {}}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onMerge={() => {}}
           pull={pull({ author: "ales", mateProjectId: undefined })}
           readDetail={undefined}
@@ -224,7 +230,7 @@ function Harness() {
           mateName="Theo"
           merging={false}
           onAsk={() => {}}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onMerge={() => {}}
           pull={pull()}
           readDetail={undefined}

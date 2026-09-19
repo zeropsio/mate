@@ -454,6 +454,8 @@ export {
   type GroupEnvironmentWrite,
 } from "./groupEnvironments.ts";
 export {
+  jobDuration,
+  stopSourceLine,
   buildGroupRows,
   deployedCommit,
   deployedVersion,

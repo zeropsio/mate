@@ -46,7 +46,11 @@ export function ZeropsMateVerb({
     <button
       {...rest}
       aria-label={description === undefined ? undefined : `${label}: ${description}`}
-      className="relative z-[1] shrink-0 rounded-sm text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60"
+      // A verb, drawn as one. It was blue underlined text, which in this app
+      // meant "this leaves for Gitea" until nothing did any more — so every
+      // verb read as a link out, and the one that mattered (Release) was
+      // quieter than the amber chip counting what it would ship.
+      className="relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border border-input bg-popover px-1.5 text-xs leading-none font-medium text-foreground transition-[transform,background-color] hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60"
       data-zerops-primary-action={label}
       disabled={disabled}
       onClick={onClick}

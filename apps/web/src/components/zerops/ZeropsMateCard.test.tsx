@@ -131,9 +131,17 @@ describe("ZeropsToolCard", () => {
 });
 
 describe("ZeropsMateVerb", () => {
-  it("writes a verb in the acting colour", () => {
+  it("draws a verb as a control, never as a link out", () => {
+    // Blue underlined text meant "this leaves for Gitea" until nothing did;
+    // a verb that still read that way was lying about where it goes.
     const html = renderToStaticMarkup(<ZeropsMateVerb label="Connect" onClick={() => {}} />);
-    expect(html).toContain("text-primary");
+    expect(html).toContain("border-input");
+    expect(html).not.toContain("hover:underline");
     expect(html).toContain('data-zerops-primary-action="Connect"');
+  });
+
+  it("answers a press, so the row feels heard", () => {
+    const html = renderToStaticMarkup(<ZeropsMateVerb label="Merge" onClick={() => {}} />);
+    expect(html).toContain("active:scale-[0.97]");
   });
 });

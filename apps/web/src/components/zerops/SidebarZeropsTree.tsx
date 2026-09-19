@@ -490,8 +490,11 @@ function ProjectHeader({
           {title}
         </button>
       )}
+      {/* Hidden until hover keeps a list of five projects calm, but a finger
+          never hovers — so a coarse pointer gets them at rest, as the stop
+          rows below already do. */}
       {muted ? null : (
-        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
+        <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 pointer-coarse:opacity-100">
           <Tooltip>
             <TooltipTrigger
               render={

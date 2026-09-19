@@ -29,6 +29,7 @@ import {
   releaseContentsSummary,
   type ReleaseContentsSummary,
   sidebarChangeLabel,
+  stopSourceLine,
   type ChangeRemark,
   type EnvironmentRow,
   type FlowPullRequest,
@@ -133,7 +134,6 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
-  const back = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
@@ -153,10 +153,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   });
   const openProjects = useOpenProjects();
   const release = useReleaseOffer(groupId);
+  const crumbs = useCrumbs();
 
   if (flow === undefined) {
     return (
-      <DetailShell onBack={back} title={groupName ?? "Project"}>
+      <DetailShell crumbs={crumbs} title={groupName ?? "Project"}>
         <Note>This project has not been read yet.</Note>
       </DetailShell>
     );
@@ -168,7 +169,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       environments={environments}
       groupId={groupId}
       name={groupName ?? flow.groupId}
-      onBack={back}
+      crumbs={crumbs}
       onSetUp={openProjects}
       release={release}
       pullRequests={flow.pullRequests}
@@ -192,7 +193,7 @@ export function ZeropsGroupPane({
   environments,
   groupId,
   name,
-  onBack,
+  crumbs,
   onSetUp,
   pullRequests,
   readDetail,
@@ -205,7 +206,7 @@ export function ZeropsGroupPane({
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly groupId: string;
   readonly name: string;
-  readonly onBack: () => void;
+  readonly crumbs: ReadonlyArray<Crumb>;
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
@@ -220,8 +221,8 @@ export function ZeropsGroupPane({
   return (
     <DetailShell
       actions={<ReleaseAction release={release} />}
-      onBack={onBack}
-      subtitle={slug}
+      crumbs={crumbs}
+      subtitle={groupSubtitle(environments.length, pullRequests.length)}
       title={name}
     >
       <Section title="Where it is">
@@ -295,7 +296,6 @@ export function ZeropsStopDetailPage({
   readonly groupId: string;
   readonly projectId: string;
 }) {
-  const back = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
@@ -317,6 +317,8 @@ export function ZeropsStopDetailPage({
     repo,
   });
   const release = useReleaseOffer(groupId);
+  const stopGroupName = useGroupName(groupId);
+  const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -330,7 +332,7 @@ export function ZeropsStopDetailPage({
 
   if (flow === undefined || stop === undefined) {
     return (
-      <DetailShell onBack={back} title="Environment">
+      <DetailShell crumbs={crumbs} title="Environment">
         <Note>This environment has not been read yet.</Note>
       </DetailShell>
     );
@@ -340,13 +342,12 @@ export function ZeropsStopDetailPage({
     <ZeropsStopPane
       commits={commits}
       deployed={deployed}
-      onBack={back}
+      crumbs={crumbs}
       production={production}
       readDetail={readDetail}
       release={release}
       repo={repo}
       run={run}
-      slug={flow.slug}
       stop={stop}
       waiting={waiting}
     />
@@ -364,27 +365,25 @@ export function ZeropsStopDetailPage({
 export function ZeropsStopPane({
   commits,
   deployed,
-  onBack,
+  crumbs,
   production,
   readDetail,
   release,
   repo,
   run,
-  slug,
   stop,
   waiting,
 }: {
   readonly commits: ZeropsCommitsState;
   /** `environment name → the whole sha it runs`, for the history's own marks. */
   readonly deployed: ReadonlyMap<string, string>;
-  readonly onBack: () => void;
+  readonly crumbs: ReadonlyArray<Crumb>;
   readonly production: boolean;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly repo: string | undefined;
   readonly run: ZeropsDeployRun;
-  readonly slug: string;
   readonly stop: EnvironmentRow;
   readonly waiting: ReleaseContentsSummary;
 }) {
@@ -393,8 +392,7 @@ export function ZeropsStopPane({
   return (
     <DetailShell
       actions={production ? <ReleaseAction release={release} /> : undefined}
-      onBack={onBack}
-      subtitle={`${slug} · ${stop.source}`}
+      crumbs={crumbs}
       title={stop.name}
     >
       <Section title="What is running">
@@ -415,7 +413,7 @@ export function ZeropsStopPane({
               <StatusDot label={word} sentence tone={dotTone} />
             )}
           </Fact>
-          <Fact term="Follows">{stop.source}</Fact>
+          <Fact term="Follows">{stopSourceLine(stop.source)}</Fact>
         </dl>
       </Section>
 
@@ -475,7 +473,6 @@ export function ZeropsChangeDetailPage({
   readonly repository: string;
   readonly number: number;
 }) {
-  const onBack = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const pull = flow?.pullRequests.find(
@@ -522,6 +519,8 @@ export function ZeropsChangeDetailPage({
         : EMPTY_REMARKS,
     [comments.state, mateNames, me],
   );
+  const groupName = useGroupName(groupId);
+  const crumbs = useCrumbs({ groupId, name: groupName ?? groupId });
   const slug = flow?.slug;
   const merge = useCallback(() => {
     if (flowValue === null || slug === undefined || pull === undefined) return;
@@ -530,7 +529,7 @@ export function ZeropsChangeDetailPage({
 
   if (flow === undefined || pull === undefined) {
     return (
-      <DetailShell onBack={onBack} title={`#${String(number)}`}>
+      <DetailShell crumbs={crumbs} title={`#${String(number)}`}>
         <Note>This change is not open on {repository} any more.</Note>
       </DetailShell>
     );
@@ -554,7 +553,7 @@ export function ZeropsChangeDetailPage({
         ) ?? false
       }
       onAsk={askMate}
-      onBack={onBack}
+      crumbs={crumbs}
       onMerge={merge}
       pull={pull}
       readDetail={readDetail}
@@ -579,7 +578,7 @@ export function ZeropsChangePane({
   mateName,
   merging,
   onAsk,
-  onBack,
+  crumbs,
   onMerge,
   pull,
   readDetail,
@@ -592,7 +591,7 @@ export function ZeropsChangePane({
   readonly mateName: string | undefined;
   readonly merging: boolean;
   readonly onAsk: (mateProjectId: string | undefined, ask: string) => void;
-  readonly onBack: () => void;
+  readonly crumbs: ReadonlyArray<Crumb>;
   readonly onMerge: () => void;
   readonly pull: FlowPullRequest;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
@@ -633,7 +632,7 @@ export function ZeropsChangePane({
           />
         </>
       }
-      onBack={onBack}
+      crumbs={crumbs}
       subtitle={`${slug} · ${pull.repository} · ${pull.baseBranch}`}
       title={pull.title}
     >
@@ -711,16 +710,50 @@ const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
 
 /**
- * The way out of a detail page: the conversation it stands in place of.
+ * Where a detail page sits, outermost first.
  *
- * `/` is the index, which lands on the environment's one conversation — the
- * same place closing the page ought to leave you.
+ * Always the conversation it stands in place of (`/` lands on the
+ * environment's one conversation), then the project where the page is inside
+ * one. A stop offered only the conversation before this, so reaching its own
+ * project meant leaving through the chat and coming back in.
  */
-function useBackToConversation(): () => void {
+function useCrumbs(
+  inside?: { readonly groupId: string; readonly name: string } | undefined,
+): ReadonlyArray<Crumb> {
   const navigate = useNavigate();
-  return useCallback(() => {
-    void navigate({ to: "/" });
-  }, [navigate]);
+  const groupId = inside?.groupId;
+  const name = inside?.name;
+  return useMemo(() => {
+    const trail: Array<Crumb> = [
+      {
+        label: "Conversation",
+        onClick: () => {
+          void navigate({ to: "/" });
+        },
+      },
+    ];
+    if (groupId !== undefined && name !== undefined) {
+      trail.push({
+        label: name,
+        onClick: () => {
+          void navigate({ to: "/group/$groupId/flow", params: { groupId } });
+        },
+      });
+    }
+    return trail;
+  }, [groupId, name, navigate]);
+}
+
+/**
+ * A project's one line under its name.
+ *
+ * It was the Gitea org — `Shop` over `shop` — which reads as the name repeated
+ * with a typo. What is actually worth knowing at a glance is how much there is.
+ */
+function groupSubtitle(stops: number, changes: number): string {
+  const stopPart = stops === 1 ? "1 environment" : `${String(stops)} environments`;
+  const changePart = changes === 1 ? "1 change open" : `${String(changes)} changes open`;
+  return `${stopPart} · ${changePart}`;
 }
 
 /** What *Release* is offered on a page, or that it is not offered at all. */
@@ -869,36 +902,62 @@ function ChangeLine({
   );
 }
 
+/** One step of the trail above a page's name. */
+export interface Crumb {
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
 function DetailShell({
   title,
   subtitle,
   actions,
-  onBack,
+  crumbs,
   children,
 }: {
   readonly title: string;
   readonly subtitle?: string;
   /** The verbs this page carries, beside its name rather than under it. */
   readonly actions?: React.ReactNode;
-  /** Where the way out goes; the shell holds no router of its own. */
-  readonly onBack: () => void;
+  /**
+   * Where this page sits, outermost first. A stop used to offer only "back to
+   * the conversation", so reaching its project meant leaving through the chat
+   * and coming in again.
+   */
+  readonly crumbs: ReadonlyArray<Crumb>;
   readonly children: React.ReactNode;
 }) {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-y-auto overscroll-y-none bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl px-6 py-8">
         <header className="mb-8">
-          {/* Going back is a way out, not the page's business: it sits above
+          {/* The trail is a way out, not the page's business: it sits above
               the name, quiet, rather than competing with the verbs below it. */}
-          <Button
-            className="-ms-2 mb-3 h-7 px-2 text-muted-foreground hover:text-foreground"
-            onClick={onBack}
-            size="sm"
-            variant="ghost"
-          >
-            <ArrowLeftIcon className="size-3.5" />
-            Back to the conversation
-          </Button>
+          <nav aria-label="Breadcrumb" className="-ms-2 mb-3 flex min-w-0 flex-wrap items-center">
+            {crumbs.map((crumb, index) => (
+              <span className="flex min-w-0 items-center" key={crumb.label}>
+                {index === 0 ? (
+                  <ArrowLeftIcon
+                    aria-hidden="true"
+                    className="ms-2 size-3.5 text-muted-foreground"
+                  />
+                ) : (
+                  <ChevronRightIcon
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 text-muted-foreground/60"
+                  />
+                )}
+                <Button
+                  className="h-7 min-w-0 px-2 text-muted-foreground hover:text-foreground"
+                  onClick={crumb.onClick}
+                  size="sm"
+                  variant="ghost"
+                >
+                  <span className="min-w-0 truncate">{crumb.label}</span>
+                </Button>
+              </span>
+            ))}
+          </nav>
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl leading-8 font-semibold tracking-tight wrap-anywhere">
@@ -927,8 +986,12 @@ function Section({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="mb-9">
-      <h2 className="mb-2 text-sm font-semibold tracking-tight text-foreground">{title}</h2>
+    <section className="mb-8">
+      {/* A hairline under the heading: without one the page was four blocks of
+          identical weight and a reader had to parse it to find the seams. */}
+      <h2 className="mb-3 border-b border-border pb-1.5 text-sm font-semibold tracking-tight text-foreground">
+        {title}
+      </h2>
       {children}
     </section>
   );

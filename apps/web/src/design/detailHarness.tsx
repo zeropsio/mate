@@ -29,6 +29,12 @@ import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 
 import "../index.css";
 
+/** Where these panes sit, as the harness pretends: the chat, then the project. */
+const CRUMBS = [
+  { label: "Conversation", onClick: () => {} },
+  { label: "Shop", onClick: () => {} },
+];
+
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
 function commit(subject: string, seed: string, hoursAgo: number, author = "Theo") {
@@ -139,8 +145,24 @@ const BUILT: ZeropsDeployRun = run({
   runId: 41,
   runNumber: 12,
   jobs: [
-    { id: 1, name: "build", status: "completed", conclusion: "success", run_id: 41 },
-    { id: 2, name: "deploy", status: "completed", conclusion: "success", run_id: 41 },
+    {
+      id: 1,
+      name: "build",
+      status: "completed",
+      conclusion: "success",
+      run_id: 41,
+      started_at: "2026-09-19T11:00:00Z",
+      completed_at: "2026-09-19T11:01:32Z",
+    },
+    {
+      id: 2,
+      name: "deploy",
+      status: "completed",
+      conclusion: "success",
+      run_id: 41,
+      started_at: "2026-09-19T11:01:32Z",
+      completed_at: "2026-09-19T11:01:50Z",
+    },
   ],
 });
 
@@ -149,8 +171,24 @@ const BROKEN: ZeropsDeployRun = run({
   runId: 42,
   runNumber: 13,
   jobs: [
-    { id: 3, name: "build", status: "completed", conclusion: "success", run_id: 42 },
-    { id: 4, name: "deploy", status: "completed", conclusion: "failure", run_id: 42 },
+    {
+      id: 3,
+      name: "build",
+      status: "completed",
+      conclusion: "success",
+      run_id: 42,
+      started_at: "2026-09-19T11:00:00Z",
+      completed_at: "2026-09-19T11:02:11Z",
+    },
+    {
+      id: 4,
+      name: "deploy",
+      status: "completed",
+      conclusion: "failure",
+      run_id: 42,
+      started_at: "2026-09-19T11:02:11Z",
+      completed_at: "2026-09-19T11:02:15Z",
+    },
   ],
 });
 
@@ -202,7 +240,7 @@ function Harness() {
           ]}
           groupId="shop"
           name="Shop"
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onSetUp={() => {}}
           pullRequests={[pull(), pull({ number: 6, title: "Bump the linter", mergeable: false })]}
           release={RELEASE_WAITING}
@@ -222,7 +260,7 @@ function Harness() {
           environments={[]}
           groupId="fresh"
           name="Design tokens"
-          onBack={() => {}}
+          crumbs={CRUMBS}
           onSetUp={() => {}}
           pullRequests={[]}
           release={RELEASE_NONE}
@@ -237,13 +275,12 @@ function Harness() {
         <ZeropsStopPane
           commits={COMMITS}
           deployed={new Map([["production", sha("3f9c1b2e")]])}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           production
           readDetail={undefined}
           release={RELEASE_WAITING}
           repo="appdev"
           run={BUILT}
-          slug="shop"
           stop={environment({
             projectId: "shop-prod",
             name: "production",
@@ -268,13 +305,12 @@ function Harness() {
         <ZeropsStopPane
           commits={COMMITS}
           deployed={new Map([["stage", sha("b21d904c")]])}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           production={false}
           readDetail={undefined}
           release={RELEASE_NONE}
           repo="appdev"
           run={BROKEN}
-          slug="shop"
           stop={environment({ tone: "bad" })}
           waiting={NOTHING_WAITING}
         />
@@ -287,13 +323,12 @@ function Harness() {
         <ZeropsStopPane
           commits={{ kind: "reading" }}
           deployed={new Map()}
-          onBack={() => {}}
+          crumbs={CRUMBS}
           production={false}
           readDetail={undefined}
           release={RELEASE_NONE}
           repo={undefined}
           run={run({ kind: "none" })}
-          slug="shop"
           stop={environment({
             tone: "neutral",
             version: {

@@ -281,6 +281,10 @@ export interface GiteaActionJob {
   readonly status?: string | undefined;
   readonly conclusion?: string | undefined;
   readonly run_id?: number | undefined;
+  /** ISO-8601, when the runner picked it up. */
+  readonly started_at?: string | undefined;
+  /** ISO-8601, when it stopped — absent while it is still going. */
+  readonly completed_at?: string | undefined;
 }
 
 export interface GiteaUser {

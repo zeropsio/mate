@@ -8,6 +8,8 @@ import {
   deployStatusContext,
   deployTone,
   environmentRow,
+  jobDuration,
+  stopSourceLine,
   GROUP_BEING_SET_UP_LINE,
   mateRow,
   missingEnvironmentRows,
@@ -486,4 +488,41 @@ describe("environmentNameUnderGroup", () => {
       expect(environmentNameUnderGroup(group, environment)).toBe(expected);
     });
   }
+});
+
+describe("stopSourceLine", () => {
+  it.each([
+    ["release", "A release — it moves only when somebody tags one"],
+    ["main", "Every merge to main"],
+    ["main + develop", "Every merge to main + develop"],
+    ["—", "Nothing yet"],
+    ["", "Nothing yet"],
+  ])("reads %s as a sentence, not a keyword", (source, expected) => {
+    expect(stopSourceLine(source)).toBe(expected);
+  });
+});
+
+describe("jobDuration", () => {
+  // A fixed instant spelled out, so the test reaches no clock of its own.
+  const at = (seconds: number) =>
+    `1970-01-01T${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor(seconds / 60) % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}Z`;
+
+  it.each([
+    [0, 4, "4s"],
+    [0, 59, "59s"],
+    [0, 92, "1m 32s"],
+    [0, 3600, "1h 00m"],
+    [0, 3864, "1h 04m"],
+  ])("reads %i→%i as %s", (from, to, expected) => {
+    expect(jobDuration(at(from), at(to))).toBe(expected);
+  });
+
+  it("says nothing for a step still going, having nothing to say yet", () => {
+    expect(jobDuration(at(0), undefined)).toBeUndefined();
+    expect(jobDuration(undefined, at(4))).toBeUndefined();
+  });
+
+  it("never reads a clock skew as a negative duration", () => {
+    expect(jobDuration(at(10), at(4))).toBe("0s");
+  });
 });
