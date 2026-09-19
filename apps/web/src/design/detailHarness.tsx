@@ -30,6 +30,48 @@ import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import "../index.css";
 
 /** Where these panes sit, as the harness pretends: the chat, then the project. */
+const MATES = [
+  {
+    projectId: "p-theo",
+    name: "Theo",
+    tint: "amber" as const,
+    face: "working" as const,
+    subject: "Cache the link previews so the list stops flickering",
+    snippet: "Keying on locale now, and the tests cover both.",
+    when: "1h",
+  },
+  {
+    projectId: "p-iris",
+    name: "Iris",
+    tint: "violet" as const,
+    face: "needs" as const,
+    subject: "Split the checkout into two steps",
+    snippet: "Which of the two VAT rates should the basket show?",
+    when: "12m",
+  },
+];
+
+const ATTENTION = [
+  {
+    kind: "mate-waiting" as const,
+    text: "Iris is waiting on an answer",
+    verb: "Open",
+    target: { kind: "mate" as const, projectId: "p-iris" },
+  },
+  {
+    kind: "change-blocked" as const,
+    text: "#6 needs a rebase",
+    verb: "Ask Theo",
+    target: { kind: "change" as const, repository: "appdev", number: 6 },
+  },
+  {
+    kind: "not-live" as const,
+    text: "3 changes are merged and not live",
+    verb: "Release",
+    target: undefined,
+  },
+];
+
 const NAMES = {
   mateNames: new Map([["p-theo", "Theo"]]),
   groupName: "Shop",
@@ -241,6 +283,11 @@ function Harness() {
     <div className="flex flex-col gap-10 bg-background p-6">
       <State label="A project, running" note="Two stops, one change in flight, three waiting.">
         <ZeropsGroupPane
+          attention={ATTENTION}
+          mates={MATES}
+          onAct={() => {}}
+          onAddMate={() => {}}
+          onOpenMate={() => {}}
           commits={COMMITS}
           environments={[
             environment(),
@@ -277,6 +324,11 @@ function Harness() {
         note="No stops, no changes, no repository: every section is an empty state at once."
       >
         <ZeropsGroupPane
+          attention={[]}
+          mates={[]}
+          onAct={() => {}}
+          onAddMate={() => {}}
+          onOpenMate={() => {}}
           commits={{ kind: "no-gitea" }}
           environments={[]}
           groupId="fresh"

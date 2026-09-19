@@ -336,6 +336,12 @@ export {
   type HistoryEntry,
 } from "./groupHistory.ts";
 export {
+  PROJECT_ALL_CLEAR,
+  projectAttention,
+  type ProjectAttentionItem,
+  type ProjectAttentionKind,
+} from "./projectAttention.ts";
+export {
   changeAskLabel,
   changeAskPrompt,
   changeConversationCount,

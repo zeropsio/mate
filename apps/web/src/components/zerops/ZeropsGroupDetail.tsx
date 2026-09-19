@@ -16,6 +16,8 @@
  * `groupHistory.ts`'s (rule R5).
  */
 import {
+  assignCandidateMateTints,
+  botDisplayName,
   buildZeropsGroupTree,
   changeAskLabel,
   changeAuthorName,
@@ -28,20 +30,35 @@ import {
   flowVerbLabel,
   pullRequestBlocked,
   pullRequestMergeLine,
+  readZeropsGroupTags,
+  PROJECT_ALL_CLEAR,
+  projectAttention,
   releaseContentsSummary,
   type ReleaseContentsSummary,
+  resolvePrimaryConversation,
   sidebarChangeLabel,
   stopSourceLine,
   type ChangeRemark,
+  type ProjectAttentionItem,
+  type ProjectAttentionKind,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
+import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+
+import { useThreadShells } from "~/state/entities";
+import { buildThreadRouteParams } from "~/threadRoutes";
+import { compactSidebarTimeLabel } from "../Sidebar.logic";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { mateFaceFor } from "~/zerops/agentActivity";
+import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useAskMate } from "~/zerops/useAskMate";
 import { giteaSessionLogin } from "~/zerops/giteaSession";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -65,7 +82,7 @@ import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
-import { StatusDot } from "./primitives";
+import { MateFace, StatusDot } from "./primitives";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -121,6 +138,152 @@ function useHistoryNames(groupName: string | undefined): HistoryNames {
   return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
 }
 
+/**
+ * Every Mate on a project, as its page shows them.
+ *
+ * Read from the same three places the menu reads: the group tree for who is in
+ * the group, the activity feed for what each is on, and `mateTints` for the
+ * colour its face wears — so a Mate is the same Mate on both surfaces.
+ */
+function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
+  const { candidates } = useZeropsCandidates();
+  const activity = useZeropsAgentActivity();
+  return useMemo(() => {
+    const tints = assignCandidateMateTints(candidates);
+    const group = buildZeropsGroupTree(candidates, {}).groups.find(
+      (entry) => entry.group.groupId === groupId,
+    );
+    return (group?.environments ?? []).map(({ item }) => {
+      const tags = readZeropsGroupTags(item.project.tagList);
+      const live =
+        item.group === "connected" && item.environmentId !== undefined
+          ? activity.get(item.environmentId)
+          : undefined;
+      const subject = live?.subject;
+      return {
+        projectId: item.project.id,
+        name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+        tint: tints.get(item.project.id) ?? "slate",
+        face: mateFaceFor(item.group === "connected", live),
+        subject,
+        snippet: subject === undefined ? undefined : live?.snippet,
+        when:
+          live === undefined || subject === undefined
+            ? undefined
+            : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+      };
+    });
+  }, [activity, candidates, groupId]);
+}
+
+/** Opens a Mate's own conversation, as selecting its row in the menu does. */
+function useOpenMate(): (projectId: string) => void {
+  const { candidates } = useZeropsCandidates();
+  const threads = useThreadShells();
+  const navigate = useNavigate();
+  return useCallback(
+    (projectId: string) => {
+      const candidate = candidates.find((entry) => entry.project.id === projectId);
+      const environmentId = candidate?.environmentId;
+      const { primary } =
+        environmentId === undefined
+          ? { primary: undefined }
+          : resolvePrimaryConversation(
+              threads.filter((thread) => thread.environmentId === environmentId),
+            );
+      // Not connected, or nothing started: the projects screen owns both.
+      if (environmentId === undefined || primary === undefined) {
+        void navigate({ to: "/zerops" });
+        return;
+      }
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(environmentId, primary.id)),
+      });
+    },
+    [candidates, navigate, threads],
+  );
+}
+
+/**
+ * What this project needs somebody for, and the one handler that deals with
+ * whichever row they press.
+ *
+ * Each row already knows what it acts on, so this is a switch rather than four
+ * callbacks threaded down: a Mate opens its conversation, a stop and a change
+ * open their pages, and a release is the project's own verb.
+ */
+function useProjectAttention(
+  groupId: string,
+  mates: ReadonlyArray<GroupMate>,
+  input: {
+    readonly environments: ReadonlyArray<EnvironmentRow>;
+    readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+    readonly notLive: number;
+    readonly canRelease: boolean;
+  },
+): {
+  readonly items: ReadonlyArray<ProjectAttentionItem>;
+  readonly onAct: (item: ProjectAttentionItem) => void;
+} {
+  const flowValue = useZeropsProjectFlowOptional();
+  const mateNames = flowValue?.mateNames;
+  const openMate = useOpenMate();
+  const navigate = useNavigate();
+  const { environments, pullRequests, notLive, canRelease } = input;
+
+  const items = useMemo(
+    () =>
+      projectAttention({
+        // A face wearing `needs` is a Mate that has stopped and asked
+        // something: the one state where nothing moves until a person answers.
+        waitingMates: mates
+          .filter((mate) => mate.face === "needs")
+          .map((mate) => ({ projectId: mate.projectId, name: mate.name })),
+        failedStops: environments
+          .filter((environment) => environment.tone === "bad")
+          .map((environment) => ({
+            projectId: environment.projectId,
+            name: environment.name,
+          })),
+        pullRequests,
+        notLive,
+        canRelease,
+        mateNames: mateNames ?? EMPTY_MATE_NAMES,
+      }),
+    [canRelease, environments, mateNames, mates, notLive, pullRequests],
+  );
+
+  const onAct = useCallback(
+    (item: ProjectAttentionItem) => {
+      const target = item.target;
+      if (target === undefined) return;
+      if (target.kind === "mate") {
+        openMate(target.projectId);
+        return;
+      }
+      if (target.kind === "stop") {
+        void navigate({
+          to: "/group/$groupId/$projectId",
+          params: { groupId, projectId: target.projectId },
+        });
+        return;
+      }
+      void navigate({
+        to: "/change/$groupId/$repository/$number",
+        params: {
+          groupId,
+          repository: target.repository,
+          number: String(target.number),
+        },
+      });
+    },
+    [groupId, navigate, openMate],
+  );
+
+  return { items, onAct };
+}
+
 /** Where a project with nothing set up goes: the screen that sets things up. */
 function useOpenProjects(): () => void {
   const navigate = useNavigate();
@@ -167,6 +330,14 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
+  const mates = useGroupMates(groupId);
+  const openMate = useOpenMate();
+  const attention = useProjectAttention(groupId, mates, {
+    environments,
+    pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
+    notLive: waiting.total,
+    canRelease: release.offered,
+  });
 
   if (flow === undefined) {
     return (
@@ -181,8 +352,13 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       commits={commits}
       environments={environments}
       groupId={groupId}
+      attention={attention.items}
+      mates={mates}
       name={groupName ?? flow.groupId}
+      onAct={attention.onAct}
       names={names}
+      onAddMate={openProjects}
+      onOpenMate={openMate}
       crumbs={crumbs}
       onSetUp={openProjects}
       release={release}
@@ -205,10 +381,15 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 export function ZeropsGroupPane({
   commits,
   environments,
+  attention,
   groupId,
+  mates,
+  onAct,
   name,
   names,
   crumbs,
+  onAddMate,
+  onOpenMate,
   onSetUp,
   pullRequests,
   readDetail,
@@ -229,18 +410,51 @@ export function ZeropsGroupPane({
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
+  /** What needs somebody, worst first — the page's opening answer. */
+  readonly attention: ReadonlyArray<ProjectAttentionItem>;
+  readonly onAct: (item: ProjectAttentionItem) => void;
+  /** Every Mate on this project, in the order the menu lists them. */
+  readonly mates: ReadonlyArray<GroupMate>;
   readonly names: HistoryNames;
+  readonly onAddMate: () => void;
+  readonly onOpenMate: (projectId: string) => void;
   readonly slug: string;
   readonly waiting: ReleaseContentsSummary;
 }) {
   const deployed = useMemo(() => deployedShas(environments), [environments]);
   return (
     <DetailShell
-      actions={<ReleaseAction release={release} />}
+      actions={
+        <>
+          <Button onClick={onAddMate} size="sm" variant="outline">
+            <PlusIcon aria-hidden="true" className="size-3.5" />
+            Add a Mate
+          </Button>
+          <ReleaseAction release={release} />
+        </>
+      }
       crumbs={crumbs}
       subtitle={groupSubtitle(environments.length, pullRequests.length)}
       title={name}
     >
+      <AttentionPanel items={attention} onAct={onAct} />
+
+      <Section title="Who is on it">
+        {mates.length === 0 ? (
+          <Empty
+            action="Add a Mate"
+            onAction={onAddMate}
+            text="No Mate is working on this project yet."
+          />
+        ) : (
+          <ul className="flex flex-col">
+            {mates.map((mate) => (
+              <MateLine key={mate.projectId} mate={mate} onOpen={onOpenMate} />
+            ))}
+          </ul>
+        )}
+      </Section>
+
       <Section title="Where it is">
         <ul className="flex flex-col">
           {environments.length === 0 ? (
@@ -746,6 +960,7 @@ const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
 /** Nothing said, and nobody to name: the states before the reads land. */
 const EMPTY_REMARKS: ReadonlyArray<ChangeRemark> = [];
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
+const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
 
 /**
  * Where a detail page sits, outermost first.
@@ -864,6 +1079,143 @@ function Empty({
   );
 }
 
+/**
+ * What the project needs somebody for, before anything else on the page.
+ *
+ * Not a Section: it is the answer, and an answer that looks like the four
+ * blocks under it is an answer nobody reads first. It sits in a panel, above
+ * the heading rhythm, and every row is the way to deal with the thing it
+ * names.
+ */
+function AttentionPanel({
+  items,
+  onAct,
+}: {
+  readonly items: ReadonlyArray<ProjectAttentionItem>;
+  readonly onAct: (item: ProjectAttentionItem) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <p
+        className="mb-8 rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
+        data-zerops-surface="project-attention-clear"
+      >
+        {PROJECT_ALL_CLEAR}
+      </p>
+    );
+  }
+  return (
+    <ul
+      className="mb-8 flex flex-col overflow-hidden rounded-lg border border-[var(--zerops-status-attention)]/40"
+      data-zerops-surface="project-attention"
+    >
+      {items.map((item) => (
+        <li
+          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2.5 last:border-b-0"
+          key={`${item.kind}:${item.text}`}
+        >
+          <StatusDot
+            className="min-w-0 flex-1 text-sm text-foreground"
+            label={item.text}
+            sentence
+            tone={ATTENTION_TONE[item.kind]}
+          />
+          {item.verb === undefined ? null : (
+            <Button
+              onClick={() => {
+                onAct(item);
+              }}
+              size="sm"
+              variant="outline"
+            >
+              {item.verb}
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A halted Mate and a failed deploy are not the same kind of bad. */
+const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
+  "mate-waiting": "attention",
+  "deploy-failed": "failed",
+  "change-blocked": "attention",
+  "not-live": "busy",
+};
+
+/** One Mate on a project's page: who it is and what it is on. */
+export interface GroupMate {
+  readonly projectId: string;
+  readonly name: string;
+  readonly tint: MateTintId;
+  readonly face: MateMarkState;
+  /** What it is on, or was last on; absent until somebody has spoken to it. */
+  readonly subject: string | undefined;
+  readonly snippet: string | undefined;
+  readonly when: string | undefined;
+}
+
+/**
+ * Who is working on this project.
+ *
+ * The page listed environments, changes and commits and not one of the Mates
+ * that made them — on a product whose whole proposition is that Mates do the
+ * work (the owner, 2026-09-19: "it's basically a group dashboard and you
+ * didn't think to show a preview of mates"). It is the first section because
+ * it answers the first question anybody opens this page with.
+ *
+ * The same three lines the menu gives a Mate, at the page's size: the face
+ * wearing its state, what it is on, and the last thing it said.
+ */
+function MateLine({
+  mate,
+  onOpen,
+}: {
+  readonly mate: GroupMate;
+  readonly onOpen: (projectId: string) => void;
+}) {
+  return (
+    <li>
+      <button
+        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        onClick={() => {
+          onOpen(mate.projectId);
+        }}
+        type="button"
+      >
+        <MateFace size="md" state={mate.face} tint={mate.tint} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
+              {mate.name}
+            </span>
+            {mate.when === undefined || mate.when.length === 0 ? null : (
+              <span className="shrink-0 text-xs leading-5 text-muted-foreground tabular-nums">
+                {mate.when}
+              </span>
+            )}
+          </span>
+          {mate.subject === undefined ? (
+            <span className="truncate text-xs leading-4 text-muted-foreground/70">
+              Nothing asked of it yet
+            </span>
+          ) : (
+            <span className="truncate text-xs leading-4 text-muted-foreground">{mate.subject}</span>
+          )}
+          {mate.snippet === undefined ? null : (
+            <span className="truncate text-xs leading-4 text-muted-foreground/70">
+              {mate.snippet}
+            </span>
+          )}
+        </span>
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
+      </button>
+    </li>
+  );
+}
+
 function StopLine({
   environment,
   groupId,
@@ -944,7 +1296,14 @@ function ChangeLine({
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {sidebarChangeLabel(pull)}
         </span>
-        {state === undefined ? null : <StatusDot label={state.word} sentence tone={state.tone} />}
+        {state === undefined ? null : (
+          <StatusDot
+            className="shrink-0 text-xs text-muted-foreground"
+            label={state.word}
+            sentence
+            tone={state.tone}
+          />
+        )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
     </li>
