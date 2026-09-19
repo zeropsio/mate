@@ -6,6 +6,10 @@ import type { Dispatch, SetStateAction } from "react";
  * React's own rules-of-hooks contract, and `useMemoCache` emulates the React
  * Compiler runtime so compiled components can execute unmodified.
  *
+ * `useEffect` runs inline and `useSyncExternalStore` reads the snapshot on
+ * every render without subscribing: a test drives the re-renders itself, so
+ * the subscription has nothing to wake.
+ *
  * This module must stay free of runtime `react` imports: it is loaded from
  * inside `vi.mock("react", ...)` factories, and a value import would recurse
  * into the in-progress mock. Wire it up in each test file (mock calls cannot
@@ -61,6 +65,31 @@ function createReactHookHarness() {
         slots[index] = Array.from({ length: size }, () => Symbol.for("react.memo_cache_sentinel"));
       }
       return slots[index] as unknown[];
+    },
+    /**
+     * Runs the effect inline when its dependencies change, previous cleanup
+     * first. React runs effects after the commit rather than during the
+     * render, which for a hook that only writes to a store outside React is
+     * the same sequence a re-render observes.
+     */
+    useEffect(effect: () => void | (() => void), deps?: ReadonlyArray<unknown>): void {
+      const index = nextIndex();
+      const slot = slots[index] as
+        | { deps: ReadonlyArray<unknown> | undefined; cleanup: void | (() => void) }
+        | undefined;
+      const changed =
+        slot === undefined ||
+        deps === undefined ||
+        slot.deps === undefined ||
+        deps.length !== slot.deps.length ||
+        deps.some((dependency, position) => !Object.is(dependency, slot.deps?.[position]));
+      if (!changed) return;
+      if (typeof slot?.cleanup === "function") slot.cleanup();
+      slots[index] = { deps, cleanup: effect() };
+    },
+    useSyncExternalStore<T>(_subscribe: unknown, getSnapshot: () => T): T {
+      nextIndex();
+      return getSnapshot();
     },
     useRef<T>(initialValue: T): { current: T } {
       const index = nextIndex();

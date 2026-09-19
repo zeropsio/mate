@@ -1,8 +1,12 @@
 /**
  * Table-driven over `useZeropsMateUpdate`'s states, run as a plain function
- * against `reactHookHarness` (no DOM, no react-dom/client): the hook uses
- * only `useState`/`useRef`/`useCallback`, so calling it again after each
- * action observes the next state the same way a re-render would.
+ * against `reactHookHarness` (no DOM, no react-dom/client): calling the hook
+ * again after each action observes the next state the same way a re-render
+ * would.
+ *
+ * An update belongs to the Mate it was started on, so every test works in its
+ * own environment — the state lives outside React, keyed by environment, and
+ * two tests sharing an id would share an update.
  */
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -21,8 +25,10 @@ vi.mock("react", async (importOriginal) => {
   return {
     ...actual,
     useCallback: harness.useCallback,
+    useEffect: harness.useEffect,
     useRef: harness.useRef,
     useState: harness.useState,
+    useSyncExternalStore: harness.useSyncExternalStore,
   };
 });
 
@@ -36,11 +42,12 @@ vi.mock("../state/zeropsCommands", () => ({
 
 const { useZeropsMateUpdate } = await import("./useZeropsMateUpdate");
 
-const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
+let environments = 0;
+let ENVIRONMENT_ID = EnvironmentId.make("environment-0");
 
-function render(serverVersion: string | undefined) {
+function render(serverVersion: string | undefined, environmentId: EnvironmentId = ENVIRONMENT_ID) {
   reactHookHarness.beginRender();
-  return useZeropsMateUpdate(ENVIRONMENT_ID, serverVersion, {
+  return useZeropsMateUpdate(environmentId, serverVersion, {
     verifyAttempts: 3,
     verifyIntervalMs: 1_000,
   });
@@ -50,6 +57,8 @@ beforeEach(() => {
   reactHookHarness.reset();
   commandSpy.mockReset();
   checkCommandSpy.mockReset();
+  environments += 1;
+  ENVIRONMENT_ID = EnvironmentId.make(`environment-${environments}`);
   vi.useFakeTimers();
 });
 
@@ -88,7 +97,7 @@ describe("useZeropsMateUpdate", () => {
     hook = render("0.8.0");
     hook.confirm();
     hook = render("0.8.0");
-    expect(hook.state).toEqual({ phase: "updating" });
+    expect(hook.state).toMatchObject({ phase: "updating" });
 
     await vi.advanceTimersByTimeAsync(0);
     hook = render("0.8.0");
@@ -117,12 +126,12 @@ describe("useZeropsMateUpdate", () => {
     hook.confirm();
     await vi.advanceTimersByTimeAsync(0);
     hook = render(version);
-    expect(hook.state).toEqual({ phase: "updating" });
+    expect(hook.state).toMatchObject({ phase: "updating" });
 
-    // Still on the old version after the first poll tick.
+    // Still on the old version a moment later.
     await vi.advanceTimersByTimeAsync(1_000);
     hook = render(version);
-    expect(hook.state).toEqual({ phase: "updating" });
+    expect(hook.state).toMatchObject({ phase: "updating" });
 
     // The socket comes back on the new version.
     version = "0.8.1";
@@ -233,6 +242,109 @@ describe("useZeropsMateUpdate", () => {
     await vi.advanceTimersByTimeAsync(4_000);
     hook = render("0.8.0");
     expect(hook.state).toEqual({ phase: "idle" });
+  });
+
+  it("the update belongs to the Mate it was started on", async () => {
+    commandSpy.mockResolvedValue({
+      _tag: "Success",
+      value: {
+        action: "updated",
+        from: "0.8.0",
+        to: "0.8.1",
+        restarted: true,
+        serverVersion: "0.8.0",
+      },
+    });
+    const other = EnvironmentId.make(`${ENVIRONMENT_ID}-other`);
+    let hook = render("0.8.0");
+    hook.request();
+    hook = render("0.8.0");
+    hook.confirm();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The screen that carries this control is one component reused across
+    // Mates, so the other Mate renders through the same hook slots.
+    expect(render("0.9.0", other).state).toEqual({ phase: "idle" });
+    expect(render("0.8.0").state).toMatchObject({ phase: "updating" });
+  });
+
+  it("a check belongs to its Mate too", async () => {
+    checkCommandSpy.mockResolvedValue({
+      _tag: "Success",
+      value: {
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      },
+    });
+    const other = EnvironmentId.make(`${ENVIRONMENT_ID}-other`);
+    let hook = render("0.8.0");
+    hook.check();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.checked).toMatchObject({ latest: "0.8.1" });
+    expect(render("0.8.1", other).checked).toBeUndefined();
+  });
+
+  it("the socket dropping is the update happening, not a failure", async () => {
+    // Updating restarts the server, which is exactly what closes the socket
+    // the answer would have come back on.
+    commandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("SocketCloseError: connection reset")),
+    });
+    let hook = render("0.8.0");
+    hook.request();
+    hook = render("0.8.0");
+    hook.confirm();
+    await vi.advanceTimersByTimeAsync(0);
+    hook = render("0.8.0");
+    expect(hook.state).toMatchObject({ phase: "updating" });
+
+    // The server comes back, on a version it did not have before. The render
+    // that carries the new version is the one that notices; the next one is
+    // what a subscriber sees.
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
+  });
+
+  it("a server that never comes back does say so", async () => {
+    commandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("SocketCloseError: connection reset")),
+    });
+    let hook = render("0.8.0");
+    hook.request();
+    hook = render("0.8.0");
+    hook.confirm();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    hook = render("0.8.0");
+    expect(hook.state.phase).toBe("failed");
+  });
+
+  it("a Mate that comes back late has still updated", async () => {
+    commandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("SocketCloseError: connection reset")),
+    });
+    let hook = render("0.8.0");
+    hook.request();
+    hook = render("0.8.0");
+    hook.confirm();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    hook = render("0.8.0");
+    expect(hook.state.phase).toBe("failed");
+
+    // It was slow, not broken.
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
   });
 
   it("check: a transport failure fails with the squashed cause's message", async () => {
