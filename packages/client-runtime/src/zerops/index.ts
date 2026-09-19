@@ -344,6 +344,8 @@ export {
   type GiteaClient,
   type GiteaClientOptions,
   type GiteaCommit,
+  type GiteaCommitDetail,
+  type GiteaCommitFile,
   type GiteaCommitStatus,
   type GiteaFile,
   type GiteaFileChange,

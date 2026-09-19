@@ -108,6 +108,34 @@ export interface GiteaCommit {
   readonly at?: string | undefined;
 }
 
+/** One file a commit touched. */
+export interface GiteaCommitFile {
+  readonly filename: string;
+  /** Gitea's word: `added`, `modified`, `removed`, `renamed`. */
+  readonly status: string;
+}
+
+/** What a commit changed, as a page showing one needs it. */
+export interface GiteaCommitDetail {
+  readonly sha: string;
+  readonly subject: string;
+  readonly files: ReadonlyArray<GiteaCommitFile>;
+  readonly additions: number | undefined;
+  readonly deletions: number | undefined;
+}
+
+/** Gitea's own shape for a commit it is asked about by sha. */
+interface GiteaCommitDetailWire {
+  readonly sha?: string | undefined;
+  readonly commit?: { readonly message?: string | undefined } | undefined;
+  readonly files?:
+    | ReadonlyArray<{ readonly filename?: string; readonly status?: string }>
+    | undefined;
+  readonly stats?:
+    | { readonly additions?: number | undefined; readonly deletions?: number | undefined }
+    | undefined;
+}
+
 /** Gitea's own shape for a commit in a listing. */
 interface GiteaListCommitWire {
   readonly sha: string;
@@ -355,6 +383,15 @@ export interface GiteaClient {
       | { readonly ref?: string | undefined; readonly limit?: number | undefined }
       | undefined,
   ): Promise<ReadonlyArray<GiteaCommit>>;
+
+  /**
+   * What one commit changed: the files it touched and how many lines moved.
+   *
+   * The only read here that goes below a commit's subject. Without it the app
+   * could say a change had landed and never say what was in it, which is the
+   * one question a diff answers and a list of subjects cannot.
+   */
+  commitDetail(owner: string, repo: string, sha: string): Promise<GiteaCommitDetail | undefined>;
 
   listActionRuns(
     owner: string,
@@ -663,6 +700,28 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
         author: entry.author?.login ?? entry.commit?.author?.name,
         at: entry.commit?.author?.date,
       }));
+    },
+
+    commitDetail: async (owner, repo, sha) => {
+      const answer = await optional<GiteaCommitDetailWire>(
+        {
+          method: "GET",
+          // `files` and `stats` come back on the repository's own commit
+          // endpoint; `git/commits` answers the object without either.
+          path: `/repos/${enc(owner)}/${enc(repo)}/commits/${enc(sha)}`,
+        },
+        "read the commit",
+      );
+      if (answer === undefined) return undefined;
+      return {
+        sha: answer.sha ?? sha,
+        subject: (answer.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+        files: (answer.files ?? [])
+          .filter((file) => (file.filename ?? "").length > 0)
+          .map((file) => ({ filename: file.filename ?? "", status: file.status ?? "modified" })),
+        additions: answer.stats?.additions,
+        deletions: answer.stats?.deletions,
+      };
     },
 
     listActionRuns: (owner, repo, listOptions) =>

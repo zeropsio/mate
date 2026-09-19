@@ -31,6 +31,7 @@ import { useCallback, useMemo } from "react";
 
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import { useZeropsRepositoryCommits } from "~/zerops/useZeropsRepositoryCommits";
 import { Button } from "../ui/button";
@@ -97,6 +98,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   );
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const groupName = useGroupName(groupId);
+  const readDetail = useZeropsCommitDetailReader({
+    giteaOrigin: flowValue?.giteaOrigin,
+    owner: flow?.slug,
+    repo,
+  });
 
   if (flow === undefined) {
     return (
@@ -151,7 +157,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         {repo === undefined ? (
           <Note>No repository is declared for this project&rsquo;s services yet.</Note>
         ) : (
-          <ZeropsHistoryView commits={commits} request={{ repo, deployed }} />
+          <ZeropsHistoryView
+            commits={commits}
+            readDetail={readDetail}
+            request={{ repo, deployed }}
+          />
         )}
       </Section>
     </DetailShell>
@@ -180,6 +190,11 @@ export function ZeropsStopDetailPage({
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   // The build behind what is running — the reads for this existed and were
   // wired to nothing, so a failed deploy was a red dot and no more.
+  const readDetail = useZeropsCommitDetailReader({
+    giteaOrigin: flowValue?.giteaOrigin,
+    owner: flow?.slug,
+    repo,
+  });
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -251,7 +266,11 @@ export function ZeropsStopDetailPage({
             be read.
           </Note>
         ) : (
-          <ZeropsHistoryView commits={commits} request={{ repo, deployed }} />
+          <ZeropsHistoryView
+            commits={commits}
+            readDetail={readDetail}
+            request={{ repo, deployed }}
+          />
         )}
       </Section>
     </DetailShell>
