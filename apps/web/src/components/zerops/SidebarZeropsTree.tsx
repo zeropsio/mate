@@ -89,6 +89,7 @@ import {
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 import { MenuGroup, MenuGroupLabel, MenuSeparator } from "../ui/menu";
 
@@ -162,6 +163,8 @@ export interface SidebarProjectFlow {
   readonly releasing: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onRelease: () => void;
+  /** The version *Release* would tag, named in its confirm. */
+  readonly releaseTag?: string | undefined;
 }
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
@@ -904,22 +907,48 @@ function PullRequestRow({
 function ReleaseVerb({
   contents,
   releasing,
+  releaseTag,
   onRelease,
 }: {
   readonly contents: SidebarProjectFlow["releaseContents"];
   readonly releasing: boolean;
+  readonly releaseTag: string | undefined;
   readonly onRelease: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const summary = releaseContentsSummary(contents ?? []);
   const verb = (
     <ZeropsMateVerb
       description={releaseContentsSentence(summary)}
       disabled={releasing}
       label={flowVerbLabel("release", releasing)}
-      onClick={onRelease}
+      onClick={() => {
+        setConfirming(true);
+      }}
     />
   );
-  if (summary.total === 0) return verb;
+  // A release is the one verb here that reaches somebody outside the account,
+  // so it asks first — with the changes spelled out, not in a hover.
+  const confirm = (
+    <ZeropsReleaseDialog
+      contents={contents}
+      onConfirm={() => {
+        setConfirming(false);
+        onRelease();
+      }}
+      onOpenChange={setConfirming}
+      open={confirming}
+      releasing={releasing}
+      tag={releaseTag}
+    />
+  );
+  if (summary.total === 0)
+    return (
+      <>
+        {verb}
+        {confirm}
+      </>
+    );
   return (
     <Tooltip>
       <TooltipTrigger render={verb} />
@@ -939,6 +968,7 @@ function ReleaseVerb({
           {summary.more === 0 ? null : <span className="opacity-70">+{summary.more} more</span>}
         </span>
       </TooltipPopup>
+      {confirm}
     </Tooltip>
   );
 }
@@ -1199,6 +1229,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                     <ReleaseVerb
                       contents={flow.releaseContents}
                       onRelease={flow.onRelease}
+                      releaseTag={flow.releaseTag}
                       releasing={flow.releasing}
                     />
                   ) : null}

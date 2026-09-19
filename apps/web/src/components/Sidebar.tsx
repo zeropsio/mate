@@ -1770,6 +1770,8 @@ export default function Sidebar() {
             }),
           ),
         releasing: zeropsProjectFlow.pending.has(flowVerbKey({ kind: "release", groupId })),
+        // The version the verb would cut, so its confirm can name it.
+        releaseTag: flow.release.suggestion,
         onMerge: (pull) => {
           void zeropsProjectFlow.mergePullRequest(flow.slug, pull);
         },
