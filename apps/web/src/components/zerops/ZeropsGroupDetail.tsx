@@ -31,9 +31,11 @@ import { useCallback, useMemo } from "react";
 
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import { useZeropsRepositoryCommits } from "~/zerops/useZeropsRepositoryCommits";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
+import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsHistoryView } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
 import { StatusDot } from "./primitives";
@@ -176,6 +178,18 @@ export function ZeropsStopDetailPage({
   );
   const production = stop?.tier === "production";
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
+  // The build behind what is running — the reads for this existed and were
+  // wired to nothing, so a failed deploy was a red dot and no more.
+  const run = useZeropsDeployRun(
+    flow === undefined || repo === undefined
+      ? null
+      : {
+          giteaOrigin: flowValue?.giteaOrigin,
+          owner: flow.slug,
+          repo,
+          sha: stop?.version.sha,
+        },
+  );
 
   if (flow === undefined || stop === undefined) {
     return (
@@ -225,6 +239,10 @@ export function ZeropsStopDetailPage({
           </ul>
         </Section>
       )}
+
+      <Section title="How it got here">
+        <ZeropsDeployRunView run={run} />
+      </Section>
 
       <Section title={repo === undefined ? "What is in it" : `What is in it · ${repo}`}>
         {repo === undefined ? (
