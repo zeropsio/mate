@@ -47,7 +47,7 @@ import {
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
-  sidebarPullRequestTitle,
+  sidebarChangeLabel,
   type DeployedVersion,
   type DeployedVersionLinks,
   type EnvironmentRow,
@@ -738,7 +738,7 @@ function PullRequestRow({
   readonly railCap?: RailCap;
 }) {
   const tone = checkDotTone({ checks: pull.checks });
-  const title = sidebarPullRequestTitle(pull);
+  const label = sidebarChangeLabel(pull);
   const blocked = pullRequestBlocked(pull);
   return (
     <li
@@ -747,7 +747,7 @@ function PullRequestRow({
     >
       <RailFork cap={railCap} />
       {pull.url === undefined ? (
-        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{label}</span>
       ) : (
         <a
           className="min-w-0 flex-1 truncate rounded-sm text-sidebar-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
@@ -755,7 +755,7 @@ function PullRequestRow({
           rel="noopener"
           target="_blank"
         >
-          {title}
+          {label}
         </a>
       )}
       {/* The right edge is never a wordless dot on its own. Where Gitea

@@ -125,16 +125,27 @@ export function flowPullRequest(input: {
 }
 
 /**
- * `#4 Add a due date to each todo` — a menu row, where the Mate above it says
- * whose; a person's own, which sits under no Mate, names them after the title.
+ * What a change is called on the menu: `#4` under its Mate, `#4 Add a due date
+ * to each todo · ada` under nobody's.
+ *
+ * A Mate's pull request is titled with its commit message, which is the task
+ * the Mate was set — the line directly above it on the menu. So the row
+ * repeated the sentence it was sitting under, truncated at nearly the same
+ * word: `#4 Change page heading from "Lin…` beneath `Change the page heading
+ * to read: Saved Links. Then d…` (the owner, 2026-09-19). Under its Mate a
+ * change is identified by its number and nothing else — the words are already
+ * on the row above, and the width goes to the state on the right, which is the
+ * part that has something to say.
+ *
+ * A change that sits under no Mate has no such line above it, so it keeps its
+ * title and says whose it is.
  */
-export function sidebarPullRequestTitle(
+export function sidebarChangeLabel(
   pull: Pick<FlowPullRequest, "number" | "title" | "mateProjectId" | "author">,
 ): string {
+  if (pull.mateProjectId !== undefined) return `#${pull.number}`;
   const title = `#${pull.number} ${pull.title}`;
-  return pull.mateProjectId === undefined && pull.author !== undefined
-    ? `${title} · ${pull.author}`
-    : title;
+  return pull.author === undefined ? title : `${title} · ${pull.author}`;
 }
 
 /**

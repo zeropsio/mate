@@ -368,7 +368,7 @@ export {
   type ReleaseContentsSummary,
   releaseContentsSummary,
   releaseRow,
-  sidebarPullRequestTitle,
+  sidebarChangeLabel,
   type FlowPullRequest,
   type FlowPullRequestKind,
   type FlowRelease,

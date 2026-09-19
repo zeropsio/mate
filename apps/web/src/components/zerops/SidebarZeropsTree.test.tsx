@@ -364,12 +364,15 @@ describe("the project's flow under it", () => {
   it("hangs the Mate's open pull requests under it, before the environments", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-pull-request"');
-    expect(html).toContain("#4 Change 4");
+    // Its number, not its title: the title is the task the Mate was set, which
+    // is the line on the row directly above it.
+    expect(html).toContain(">#4</a>");
+    expect(html).not.toContain("Change 4");
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
-      html.indexOf("#4 Change 4"),
+      html.indexOf(">#4</a>"),
     );
-    expect(html.indexOf("#4 Change 4")).toBeLessThan(html.indexOf("crm-stage"));
-    // The way into Gitea is the title; the checks are a dot, not a word.
+    expect(html.indexOf(">#4</a>")).toBeLessThan(html.indexOf("crm-stage"));
+    // The way into Gitea is the number; the checks are a dot, not a word.
     expect(html).toContain('href="https://gitea.example/crm/appdev/pulls/4"');
     expect(html).toContain('aria-label="Passing"');
     expect(html).not.toContain(">Passing</span>");

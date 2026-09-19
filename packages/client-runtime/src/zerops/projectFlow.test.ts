@@ -18,7 +18,7 @@ import {
   pullRequestsByMate,
   pullRequestsFolded,
   releaseRow,
-  sidebarPullRequestTitle,
+  sidebarChangeLabel,
   type FlowPullRequest,
   type FlowRelease,
 } from "./projectFlow.ts";
@@ -147,15 +147,29 @@ describe("one pull request in the flow", () => {
     expect(row.checkWord).toBeUndefined();
   });
 
-  it("reads as its number and title in a menu row, a person's own naming them", () => {
-    const row = flowPullRequest({ repository: "appdev", pull: pull(), checks: [] });
-    expect(sidebarPullRequestTitle(row)).toBe("#4 Add a due date to each todo");
+  it("is its number alone under its Mate, whose row already carries the words", () => {
+    // The title is the Mate's commit message, which is the task on the row
+    // directly above it: spelled out again here it repeated that sentence and
+    // truncated at nearly the same word.
+    const mine = flowPullRequest({ repository: "appdev", pull: pull(), checks: [] });
+    expect(mine.mateProjectId).toBe(VERA);
+    expect(sidebarChangeLabel(mine)).toBe("#4");
+  });
+
+  it("keeps its title where no Mate's row stands above it, and names whose it is", () => {
     const ada = flowPullRequest({
       repository: "appdev",
       pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
       checks: [],
     });
-    expect(sidebarPullRequestTitle(ada)).toBe("#4 Add a due date to each todo · ada");
+    expect(ada.mateProjectId).toBeUndefined();
+    expect(sidebarChangeLabel(ada)).toBe("#4 Add a due date to each todo · ada");
+    const anonymous = flowPullRequest({
+      repository: "appdev",
+      pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: undefined }),
+      checks: [],
+    });
+    expect(sidebarChangeLabel(anonymous)).toBe("#4 Add a due date to each todo");
   });
 });
 
