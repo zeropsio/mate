@@ -466,7 +466,6 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const flow = flowValue?.flows.get(groupId);
   const environments = flow?.environments ?? [];
   const repo = groupRepository(environments);
-  const deployed = useMemo(() => deployedShas(environments), [environments]);
   const commits = useZeropsRepositoryCommits(
     flow === undefined || repo === undefined
       ? null
@@ -521,7 +520,6 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       pullRequests={flow.pullRequests}
       readDetail={readDetail}
       repo={repo}
-      slug={flow.slug}
       waiting={waiting}
     />
   );
@@ -553,7 +551,6 @@ export function ZeropsGroupPane({
   readDetail,
   release,
   repo,
-  slug,
   waiting,
 }: {
   readonly commits: ZeropsCommitsState;
@@ -580,7 +577,6 @@ export function ZeropsGroupPane({
   /** Why a write from that menu failed, said under the heading it came from. */
   readonly trouble?: string | null;
   readonly onOpenMate: (projectId: string) => void;
-  readonly slug: string;
   readonly waiting: ReleaseContentsSummary;
 }) {
   const deployed = useMemo(() => deployedShas(environments), [environments]);

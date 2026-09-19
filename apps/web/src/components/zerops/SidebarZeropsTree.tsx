@@ -45,7 +45,6 @@ import {
   pullRequestsFolded,
   releaseContentsSentence,
   releaseContentsSummary,
-  releaseWaitingLabel,
   rankZeropsCandidateForListing,
   readZeropsGroupTags,
   selectMateEnvironments,
@@ -69,7 +68,6 @@ import {
   CheckIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
-  ExternalLinkIcon,
   MinusIcon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -1184,10 +1182,6 @@ const STOP_BADGE_CLASS: Record<GroupRowTone, string> = {
   neutral: "bg-sidebar-row-hover text-sidebar-muted-foreground",
 };
 
-/** A production carrying changes nobody outside can see yet. */
-const BEHIND_CLASS =
-  "inline-flex h-[18px] shrink-0 items-center rounded-full bg-[var(--zerops-status-attention-surface)] px-1.5 text-[11px] leading-none font-medium whitespace-nowrap text-[var(--zerops-status-attention-text)]";
-
 /** What a stop's row says it is running, when nothing has been deployed there. */
 const NOTHING_DEPLOYED = "nothing deployed yet";
 
@@ -1310,7 +1304,6 @@ function EnvironmentRows<T extends RosterCandidate>({
   readonly onToggle: () => void;
 }) {
   const behind = releaseContentsSummary(flow?.releaseContents ?? []);
-  const waitingLabel = releaseWaitingLabel(behind);
   // The hover shows four because it floats over the menu; the stop's own menu
   // is a list and can hold the ones a person is actually looking for.
   const waitingInMenu = releaseContentsSummary(flow?.releaseContents ?? [], MENU_CHANGES_SHOWN);

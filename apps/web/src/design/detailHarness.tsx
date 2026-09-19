@@ -329,7 +329,6 @@ function Harness() {
           release={RELEASE_WAITING}
           readDetail={undefined}
           repo="appdev"
-          slug="shop"
           waiting={WAITING}
         />
       </State>
@@ -355,7 +354,6 @@ function Harness() {
           release={RELEASE_NONE}
           readDetail={undefined}
           repo={undefined}
-          slug="fresh"
           waiting={NOTHING_WAITING}
         />
       </State>
