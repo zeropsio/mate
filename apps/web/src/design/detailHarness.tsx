@@ -390,6 +390,31 @@ function Harness() {
       </State>
 
       <State
+        label="A stage with a service nobody can reach"
+        note="It serves HTTP and answers to nobody. The section that lists the addresses is the section you add one from."
+      >
+        <ZeropsStopPane
+          commits={COMMITS}
+          deployed={new Map([["stage", sha("b21d904c")]])}
+          crumbs={CRUMBS}
+          names={NAMES}
+          groupName="Shop"
+          production={false}
+          readDetail={READ_DETAIL}
+          release={RELEASE_NONE}
+          repo="appdev"
+          routes={[]}
+          offers={[{ service: "api", serviceId: "svc-api", port: 3000 }]}
+          onEnableRoute={() => {}}
+          enablingServiceId={null}
+          routeTrouble={null}
+          run={BUILT}
+          stop={environment({ projectId: "shop-stage", name: "stage", tier: "stage" })}
+          waiting={WAITING}
+        />
+      </State>
+
+      <State
         label="A stage whose deploy failed"
         note="The build is the whole story here, and it is the section nobody had wired."
       >

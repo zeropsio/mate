@@ -126,6 +126,7 @@ import {
 } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
+import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateInGroup } from "~/zerops/brokerGrant";
@@ -778,6 +779,9 @@ function ZeropsProjectsContent() {
   // The same write the project's own page uses, so one rename means one
   // thing wherever it is offered.
   const renameGroup = useRenameGroup();
+  // The same write an environment's own page uses, so one way to open a
+  // service to the internet means one thing wherever it is offered.
+  const route = useEnableRoute();
   const runWrite = useCallback(async (write: () => Promise<unknown>) => {
     setToolError(null);
     try {
@@ -1022,11 +1026,11 @@ function ZeropsProjectsContent() {
                 },
               ]),
         ]}
-        enablingServiceId={publishingServiceId}
+        enablingServiceId={route.enablingServiceId}
         label={`More for ${candidate.project.name}`}
         offers={candidate.routeOffers}
         onEnableRoute={(offer) => {
-          void enableRoute(candidate, offer);
+          void route.enable(candidate.project.id, offer.serviceId);
         }}
         routes={candidate.routes}
       />
@@ -1543,7 +1547,6 @@ function ZeropsProjectsContent() {
     return lines;
   }, [giteaOrganizations, registryState.registry.groups]);
 
-  const [publishingServiceId, setPublishingServiceId] = useState<string | null>(null);
   /**
    * Publish a service on its `*.zerops.app` subdomain.
    *
@@ -1552,29 +1555,6 @@ function ZeropsProjectsContent() {
    * first deploy lands and the page answers 502 with nothing saying why
    * (`verified.md`, 2026-09-07).
    */
-  const enableRoute = useCallback(
-    async (candidate: ZeropsCandidate, offer: { readonly serviceId: string }) => {
-      if (publishingServiceId !== null || activeOrganization === null) return;
-      const isCurrent = captureAccountLifetime();
-      setPublishingServiceId(offer.serviceId);
-      setToolError(null);
-      try {
-        await runZeropsCommand(
-          runtime.commands.enableSubdomainAccess({
-            kind: "service",
-            project: projectRef(activeOrganization.id, candidate.project.id),
-            serviceId: ZeropsServiceId.make(offer.serviceId),
-          }),
-        );
-      } catch (cause) {
-        if (isCurrent()) setToolError(zeropsErrorMessage(cause));
-      } finally {
-        if (isCurrent()) setPublishingServiceId(null);
-      }
-    },
-    [activeOrganization, projectRef, publishingServiceId, runtime.commands],
-  );
-
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (creationRunning) return;
@@ -2387,11 +2367,11 @@ function ZeropsProjectsContent() {
               menu={
                 <ZeropsProjectMenu
                   actions={[]}
-                  enablingServiceId={publishingServiceId}
+                  enablingServiceId={route.enablingServiceId}
                   label={`More for ${TOOL_LABEL[kind]}`}
                   offers={candidate.routeOffers}
                   onEnableRoute={(offer) => {
-                    void enableRoute(candidate, offer);
+                    void route.enable(candidate.project.id, offer.serviceId);
                   }}
                   routes={candidate.routes}
                 />
@@ -2546,9 +2526,9 @@ function ZeropsProjectsContent() {
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}
-      {toolError === null && renameGroup.trouble === null ? null : (
+      {toolError === null && renameGroup.trouble === null && route.trouble === null ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">
-          {toolError ?? renameGroup.trouble}
+          {toolError ?? renameGroup.trouble ?? route.trouble}
         </p>
       )}
     </div>

@@ -51,6 +51,7 @@ import {
   type FlowPullRequest,
   type GroupRowTone,
   type ZeropsGroup,
+  type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
@@ -105,6 +106,7 @@ import { MateFace, StatusDot, VERDICT_BORDER_CLASS, VerdictPanel } from "./primi
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
+import { useEnableRoute } from "~/zerops/useEnableRoute";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -276,16 +278,30 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
   }, [activity, candidates, groupId]);
 }
 
-/** Where a stop answers from, as the menu's globe reads it. */
-function useStopRoutes(projectId: string): ReadonlyArray<ZeropsPublicRoute> {
+/**
+ * Where a stop answers from, and what it could answer from.
+ *
+ * Both, because the section that lists the addresses is the section somebody
+ * would add one from — and it could only list them: the ask lived on the
+ * projects screen's row menu, so an environment's own page showed a service
+ * that serves HTTP to nobody and no way to open it.
+ */
+function useStopRoutes(projectId: string): {
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  readonly offers: ReadonlyArray<ZeropsRouteOffer>;
+} {
   const { candidates } = useZeropsCandidates();
-  return useMemo(
-    () => candidates.find((entry) => entry.project.id === projectId)?.routes ?? EMPTY_ROUTES,
-    [candidates, projectId],
-  );
+  return useMemo(() => {
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    return {
+      routes: candidate?.routes ?? EMPTY_ROUTES,
+      offers: candidate?.routeOffers ?? EMPTY_OFFERS,
+    };
+  }, [candidates, projectId]);
 }
 
 const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
+const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
 
 /** Opens a Mate's own conversation, as selecting its row in the menu does. */
 function useOpenMate(): (projectId: string) => void {
@@ -724,7 +740,8 @@ export function ZeropsStopDetailPage({
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName ?? groupId });
   const names = useHistoryNames(stopGroupName);
-  const routes = useStopRoutes(projectId);
+  const { routes, offers } = useStopRoutes(projectId);
+  const route = useEnableRoute();
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -754,6 +771,12 @@ export function ZeropsStopDetailPage({
       production={production}
       readDetail={readDetail}
       release={release}
+      offers={offers}
+      onEnableRoute={(serviceId) => {
+        void route.enable(projectId, serviceId);
+      }}
+      enablingServiceId={route.enablingServiceId}
+      routeTrouble={route.trouble}
       routes={routes}
       repo={repo}
       run={run}
@@ -781,6 +804,10 @@ export function ZeropsStopPane({
   names,
   release,
   routes,
+  offers,
+  onEnableRoute,
+  enablingServiceId,
+  routeTrouble,
   repo,
   run,
   stop,
@@ -801,11 +828,20 @@ export function ZeropsStopPane({
   readonly names: HistoryNames;
   /** Where this stop answers from — a page about an environment you cannot open is half an answer. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Services that serve HTTP with their subdomain off (`publicRoutes.ts`). */
+  readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
+  readonly onEnableRoute?: ((serviceId: string) => void) | undefined;
+  /** Which one is being opened, so its row says so and takes no second press. */
+  readonly enablingServiceId?: string | null;
+  readonly routeTrouble?: string | null;
   readonly stop: EnvironmentRow;
   readonly waiting: ReleaseContentsSummary;
 }) {
   const word = deployWord(stop.tone);
   const dotTone = STOP_DOT_TONE[stop.tone];
+  // Nothing to offer where the caller cannot act on it — a row with a button
+  // that does nothing is worse than no row.
+  const offered = onEnableRoute === undefined ? [] : (offers ?? []);
   const attention = environmentAttention({
     failed: stop.tone === "bad",
     deployed: stop.version.sha !== undefined,
@@ -861,10 +897,13 @@ export function ZeropsStopPane({
         </Section>
       )}
 
-      {routes.length === 0 ? null : (
+      {routes.length === 0 && offered.length === 0 ? null : (
         <Section
           title={
-            routes.length === 1 ? "Where it answers" : `Where it answers · ${String(routes.length)}`
+            // `<= 1`, not `=== 1`: the section could not render empty until it
+            // started carrying the services that answer to nobody yet, and a
+            // heading that says `· 0` over a row is counting the wrong thing.
+            routes.length <= 1 ? "Where it answers" : `Where it answers · ${String(routes.length)}`
           }
         >
           <ul className="flex flex-col">
@@ -886,7 +925,38 @@ export function ZeropsStopPane({
                 </a>
               </li>
             ))}
+            {/* A service that serves HTTP and answers to nobody: the section
+                that lists the addresses is the section you add one from. */}
+            {offered.map((offer) => {
+              const opening = enablingServiceId === offer.serviceId;
+              return (
+                <li
+                  className="flex min-w-0 items-center gap-3 px-2 py-2 text-sm"
+                  data-zerops-surface="stop-route-offer"
+                  key={`offer:${offer.serviceId}`}
+                >
+                  <GlobeIcon
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground/60"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                    {offer.service} answers on {offer.port}, but not from outside
+                  </span>
+                  <Button
+                    disabled={opening || enablingServiceId !== null}
+                    onClick={() => onEnableRoute?.(offer.serviceId)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {opening ? "Opening…" : "Open to the internet"}
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
+          {routeTrouble === null || routeTrouble === undefined ? null : (
+            <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
+          )}
         </Section>
       )}
 
