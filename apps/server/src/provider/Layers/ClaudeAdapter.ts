@@ -689,18 +689,31 @@ function asRuntimeItemId(value: string): RuntimeItemId {
  * made, so there is no id to match). Where the model *is* known, this is the
  * wrong question: see {@link claudeContextWindowForModel}.
  */
-function maxClaudeContextWindowFromModelUsage(
+/**
+ * The window to report when nothing here knows which model the conversation
+ * runs: no selection reached the session, so it runs the runtime's own
+ * default — and an expanded window is never a default, it has to be asked
+ * for. The SDK documents `modelUsage` as covering "the main loop, Task
+ * subagents, sidechains, and internal calls such as compaction", so the
+ * widest window in it belongs to whatever ran beside the conversation rather
+ * than to the conversation (`verified.md`, 2026-09-19). The narrowest is the
+ * one the conversation can be held to, and a gauge that understates the room
+ * left is the safe way to be wrong. Zeroed entries — which a crash or
+ * startup-error result carries — are not windows and are skipped.
+ */
+function narrowestClaudeContextWindowFromModelUsage(
   modelUsage: Record<string, ModelUsage> | undefined,
 ): number | undefined {
   if (!modelUsage) return undefined;
 
-  let maxContextWindow: number | undefined;
+  let narrowest: number | undefined;
   for (const value of Object.values(modelUsage)) {
-    const contextWindow = value.contextWindow;
-    maxContextWindow = Math.max(maxContextWindow ?? 0, contextWindow);
+    const contextWindow = finitePositiveInteger(value.contextWindow);
+    if (contextWindow === undefined) continue;
+    narrowest = narrowest === undefined ? contextWindow : Math.min(narrowest, contextWindow);
   }
 
-  return maxContextWindow;
+  return narrowest;
 }
 
 function claudeContextWindowForModel(
@@ -2620,7 +2633,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const resultContextWindow =
       context.selectedContextWindow ??
       claudeContextWindowForModel(result?.modelUsage, context.currentApiModelId) ??
-      maxClaudeContextWindowFromModelUsage(result?.modelUsage);
+      narrowestClaudeContextWindowFromModelUsage(result?.modelUsage);
     if (resultContextWindow !== undefined) {
       context.lastKnownContextWindow = resultContextWindow;
     }

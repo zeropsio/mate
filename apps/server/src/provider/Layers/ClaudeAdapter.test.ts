@@ -3374,6 +3374,73 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect(
+    "a conversation with no model selection is not measured by the largest model that ran",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        // No selection reaches this session, so nothing here knows an api model
+        // id: the runtime picked the model. `modelUsage` covers the main loop,
+        // subagents and internal calls alike, so the largest window in it is
+        // never the conversation's own.
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+
+        for (const index of [1, 2, 3]) {
+          harness.query.emit({
+            type: "assistant",
+            session_id: "sdk-session-unselected-window",
+            uuid: `assistant-unselected-window-${index}`,
+            parent_tool_use_id: null,
+            message: {
+              id: `assistant-message-unselected-window-${index}`,
+              role: "assistant",
+              content: [],
+              usage: { input_tokens: 80 * index, output_tokens: 20 },
+            },
+          } as unknown as SDKMessage);
+        }
+        harness.query.emit({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          duration_ms: 1234,
+          duration_api_ms: 1200,
+          num_turns: 1,
+          result: "done",
+          stop_reason: "end_turn",
+          session_id: "sdk-session-unselected-window",
+          usage: { input_tokens: 400, output_tokens: 50 },
+          modelUsage: {
+            [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
+            "claude-synthetic-subagent": { contextWindow: 1000000, maxOutputTokens: 64000 },
+          },
+        } as unknown as SDKMessage);
+
+        const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+        const usageEvent = runtimeEvents.find(
+          (event) => event.type === "thread.token-usage.updated",
+        );
+        assert.equal(usageEvent?.type, "thread.token-usage.updated");
+        if (usageEvent?.type === "thread.token-usage.updated") {
+          assert.equal(usageEvent.payload.usage.maxTokens, 200000);
+        }
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("follows the window of the model the person switched to", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
