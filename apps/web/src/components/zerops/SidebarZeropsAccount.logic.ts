@@ -31,16 +31,24 @@ export function sidebarAccountLines(input: {
 }
 
 /**
- * The organizations worth offering as a choice.
+ * The organizations the foot offers.
  *
- * One organization is a fact, not a decision: the switcher is left out
- * entirely rather than shown with a single, already-chosen row — the same
- * reason the sign-in door never renders a picker for one membership.
+ * A single membership used to be dropped on the grounds that one organization
+ * is a fact rather than a decision. But the row that opens this menu names the
+ * organization and wears the two-way chevron, which promises somewhere to go —
+ * and the menu then had no organization in it at all (the owner, 2026-09-19:
+ * "this should include org switcher"). An affordance that leads nowhere is
+ * worse than a row that confirms where you are.
+ *
+ * So every membership is listed, and the current one is the checked row. Only
+ * an account whose memberships have not been read yet offers nothing, because
+ * a list of one that is about to be a list of three is a lie with a shorter
+ * life.
  */
 export function sidebarAccountOrganizationChoices(
   organizations: ReadonlyArray<ZeropsOrganization>,
 ): ReadonlyArray<ZeropsOrganization> {
-  return organizations.length > 1 ? organizations : [];
+  return organizations;
 }
 
 /** One destination the foot folds away, in the order the menu lists them. */

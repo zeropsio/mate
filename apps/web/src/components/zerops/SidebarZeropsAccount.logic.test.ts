@@ -35,8 +35,12 @@ describe("sidebarAccountLines", () => {
 });
 
 describe("sidebarAccountOrganizationChoices", () => {
-  it("offers nothing to choose when the account has one organization", () => {
-    expect(sidebarAccountOrganizationChoices([organization("Zerops")])).toEqual([]);
+  it("still names the one organization an account is in: the trigger promises it", () => {
+    // The row that opens this menu wears the two-way chevron and the
+    // organization's name. Dropping the group left that promise unanswered.
+    expect(sidebarAccountOrganizationChoices([organization("Zerops")])).toEqual([
+      organization("Zerops"),
+    ]);
   });
 
   it("offers every organization once there is a choice to make", () => {

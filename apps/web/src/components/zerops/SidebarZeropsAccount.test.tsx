@@ -106,8 +106,14 @@ describe("SidebarZeropsAccountMenu", () => {
     expect(renderMenu({ destination: null })).not.toContain(">Open<");
   });
 
-  it("offers no organization switcher when the account has one", () => {
-    expect(renderMenu({ organizations: [ZEROPS] })).not.toContain("Organization");
+  it("names the one organization an account is in, because the trigger promises it", () => {
+    const html = renderMenu({ organizations: [ZEROPS] });
+    expect(html).toContain("Organization");
+    expect(html).toContain('aria-checked="true"');
+  });
+
+  it("offers nothing while the memberships have not been read", () => {
+    expect(renderMenu({ organizations: [] })).not.toContain("Organization");
   });
 
   it("offers every organization once there is a choice to make", () => {
