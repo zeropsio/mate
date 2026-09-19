@@ -19,7 +19,10 @@
  * caller's.
  */
 import { groupHistory, historyLine, type HistoryEntry } from "@t3tools/client-runtime/zerops";
+import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useState } from "react";
+
+import { cn } from "~/lib/utils";
 
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 
@@ -54,6 +57,9 @@ export function ZeropsHistoryView({
   if (commits.kind === "reading") {
     return <HistoryNote>Reading the history&hellip;</HistoryNote>;
   }
+  // One clock for the whole list: rows read a moment apart must not age
+  // against different nows and disagree by a minute.
+  const now = Date.now();
   const entries = groupHistory({
     commits: commits.commits,
     deployed: request.deployed,
@@ -70,6 +76,7 @@ export function ZeropsHistoryView({
           first={index === 0}
           key={entry.sha}
           last={index === entries.length - 1}
+          now={now}
           readDetail={readDetail}
         />
       ))}
@@ -81,14 +88,17 @@ function HistoryRow({
   entry,
   first,
   last,
+  now,
   readDetail,
 }: {
   readonly entry: HistoryEntry;
   readonly first: boolean;
   readonly last: boolean;
+  /** The clock, read once by the list so every row ages against the same one. */
+  readonly now: number;
   readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
 }) {
-  const line = historyLine(entry);
+  const line = historyLine(entry, now);
   const live = entry.deployedTo.length > 0;
   const [detail, setDetail] = useState<ZeropsCommitDetailResult | "reading" | null>(null);
   const toggle = useCallback(() => {
@@ -124,11 +134,21 @@ function HistoryRow({
             </span>
           ) : (
             <button
-              className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              aria-expanded={detail !== null}
+              className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-sm leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
               onClick={toggle}
               type="button"
             >
-              {entry.subject}
+              {/* What opens says so at rest. Hover was the only sign this row
+                  had more in it, and a touch screen has no hover at all. */}
+              <ChevronRightIcon
+                aria-hidden="true"
+                className={cn(
+                  "size-3.5 shrink-0 self-center text-muted-foreground/60 transition-transform",
+                  detail !== null && "rotate-90",
+                )}
+              />
+              <span className="min-w-0 truncate">{entry.subject}</span>
             </button>
           )}
           {/* The name it went live under, where a release carried it. */}

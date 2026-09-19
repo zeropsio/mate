@@ -88,11 +88,39 @@ export function groupHistory(input: {
  * `undefined` where neither is known — a row with an empty second line is a
  * row that moved everything below it for nothing.
  */
-export function historyLine(entry: HistoryEntry): string | undefined {
+export function historyLine(entry: HistoryEntry, now?: number): string | undefined {
   const parts = [entry.author, ...entry.deployedTo].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );
+  // A history with no time in it is a list, not a history: the age is the one
+  // thing every other VCS puts on the row and this one was dropping.
+  const age = now === undefined ? undefined : historyAge(entry.at, now);
+  if (age !== undefined) parts.push(age);
   return parts.length === 0 ? undefined : parts.join(" · ");
+}
+
+/**
+ * How long ago, in the shortest true form — `3m`, `4h`, `6d`, `2mo`, `1y`.
+ *
+ * Short because it sits at the end of a line that already carries a name and
+ * wherever it went live; a full date would be the longest thing on the row and
+ * the least often read. A commit dated in the future (a skewed committer
+ * clock, which Gitea happily stores) reads as `now` rather than as a negative.
+ */
+export function historyAge(at: string | undefined, now: number): string | undefined {
+  if (at === undefined) return undefined;
+  const then = Date.parse(at);
+  if (Number.isNaN(then)) return undefined;
+  const minutes = Math.floor((now - then) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${String(hours)}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${String(days)}d`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${String(months)}mo`;
+  return `${String(Math.floor(months / 12))}y`;
 }
 
 /**

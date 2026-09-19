@@ -339,6 +339,39 @@ export function pullRequestBlocked(pull: {
   };
 }
 
+/** Where a change stands, as one word and the tone that means it. */
+export interface ChangeState {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+}
+
+/**
+ * Where a change stands, in one vocabulary.
+ *
+ * A list of changes used to mix two: `checkWord` answers in adjectives
+ * (`Passing`, `Failing`) and `pullRequestBlocked` in phrases (`needs a
+ * rebase`, `checks failed`), and both landed in the same column — so one row
+ * read `Passing` and the next `needs a rebase`, in different registers, about
+ * the same kind of thing. What is stopping a change outranks what its checks
+ * did, because it is the thing somebody has to act on.
+ */
+export function changeState(pull: {
+  readonly number: number;
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+}): ChangeState | undefined {
+  const blocked = pullRequestBlocked(pull);
+  if (blocked !== null) {
+    return {
+      word: blocked.word.charAt(0).toLocaleUpperCase() + blocked.word.slice(1),
+      tone: blocked.tone,
+    };
+  }
+  const word = checkWord(pull.checks);
+  if (word === undefined) return undefined;
+  return { word, tone: pull.checks === "failing" ? "failed" : "ok" };
+}
+
 /**
  * What pressing *Merge* actually does, said before it is pressed.
  *

@@ -20,12 +20,14 @@ import {
   changeAskLabel,
   changeConversationCount,
   changeRemarks,
+  changeState,
   deployWord,
   flowVerbKey,
   flowVerbLabel,
   pullRequestBlocked,
   pullRequestMergeLine,
   releaseContentsSummary,
+  type ReleaseContentsSummary,
   sidebarChangeLabel,
   type ChangeRemark,
   type EnvironmentRow,
@@ -34,7 +36,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { useAskMate } from "~/zerops/useAskMate";
@@ -46,6 +48,7 @@ import type { ZeropsChangeComments } from "~/zerops/useZeropsChangeComments";
 import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
+import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
   useZeropsChangeCommits,
@@ -56,6 +59,7 @@ import { SidebarInset } from "../ui/sidebar";
 import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
+import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
 import { StatusDot } from "./primitives";
@@ -104,6 +108,30 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
   return undefined;
 }
 
+/** Where a project with nothing set up goes: the screen that sets things up. */
+function useOpenProjects(): () => void {
+  const navigate = useNavigate();
+  return useCallback(() => {
+    void navigate({ to: "/zerops" });
+  }, [navigate]);
+}
+
+/** The release the flow offers on a group, read the way the menu row reads it. */
+function useReleaseOffer(groupId: string): ReleaseOffer {
+  const flowValue = useZeropsProjectFlowOptional();
+  const flow = flowValue?.flows.get(groupId);
+  const onRelease = useCallback(() => {
+    void flowValue?.release(groupId);
+  }, [flowValue, groupId]);
+  return {
+    offered: flow?.release.gate.allowed ?? false,
+    releasing: flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false,
+    tag: flow?.release.suggestion,
+    contents: flow?.release.contents ?? [],
+    onRelease,
+  };
+}
+
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const back = useBackToConversation();
   const flowValue = useZeropsProjectFlowOptional();
@@ -123,6 +151,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     owner: flow?.slug,
     repo,
   });
+  const openProjects = useOpenProjects();
+  const release = useReleaseOffer(groupId);
 
   if (flow === undefined) {
     return (
@@ -133,11 +163,77 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   }
 
   return (
-    <DetailShell onBack={back} subtitle={flow.slug} title={groupName ?? flow.groupId}>
+    <ZeropsGroupPane
+      commits={commits}
+      environments={environments}
+      groupId={groupId}
+      name={groupName ?? flow.groupId}
+      onBack={back}
+      onSetUp={openProjects}
+      release={release}
+      pullRequests={flow.pullRequests}
+      readDetail={readDetail}
+      repo={repo}
+      slug={flow.slug}
+      waiting={waiting}
+    />
+  );
+}
+
+/**
+ * A project group, drawn — every read already done and handed in.
+ *
+ * Split from the page above for the same reason the change's pane is: a
+ * harness and a test can then look at a project with nothing set up, or twelve
+ * changes waiting, without an account behind it.
+ */
+export function ZeropsGroupPane({
+  commits,
+  environments,
+  groupId,
+  name,
+  onBack,
+  onSetUp,
+  pullRequests,
+  readDetail,
+  release,
+  repo,
+  slug,
+  waiting,
+}: {
+  readonly commits: ZeropsCommitsState;
+  readonly environments: ReadonlyArray<EnvironmentRow>;
+  readonly groupId: string;
+  readonly name: string;
+  readonly onBack: () => void;
+  /** Where a project with nothing set up goes to get something set up. */
+  readonly onSetUp: () => void;
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
+  readonly release: ReleaseOffer;
+  /** The repository its history is read from; absent where none is declared. */
+  readonly repo: string | undefined;
+  readonly slug: string;
+  readonly waiting: ReleaseContentsSummary;
+}) {
+  const deployed = useMemo(() => deployedShas(environments), [environments]);
+  return (
+    <DetailShell
+      actions={<ReleaseAction release={release} />}
+      onBack={onBack}
+      subtitle={slug}
+      title={name}
+    >
       <Section title="Where it is">
         <ul className="flex flex-col">
           {environments.length === 0 ? (
-            <Note>No stage or production declared yet.</Note>
+            // A project with nothing set up used to land on three sentences
+            // saying "no" and no way to change any of them.
+            <Empty
+              action="Set up an environment"
+              onAction={onSetUp}
+              text="No stage or production declared yet."
+            />
           ) : (
             environments.map((environment) => (
               <StopLine environment={environment} groupId={groupId} key={environment.projectId} />
@@ -147,11 +243,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       </Section>
 
       <Section title="In flight">
-        {flow.pullRequests.length === 0 ? (
+        {pullRequests.length === 0 ? (
           <Note>Nothing open. Every change the Mates made has landed.</Note>
         ) : (
           <ul className="flex flex-col">
-            {flow.pullRequests.map((pull) => (
+            {pullRequests.map((pull) => (
               <ChangeLine groupId={groupId} key={`${pull.repository}#${pull.number}`} pull={pull} />
             ))}
           </ul>
@@ -160,7 +256,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
       {waiting.total === 0 ? null : (
         <Section title={`Merged, not live · ${String(waiting.total)}`}>
-          <ul className="flex flex-col gap-1">
+          <ul className="mb-3 flex flex-col gap-1">
             {waiting.subjects.map((subject) => (
               <li className="truncate text-sm text-foreground" key={subject}>
                 {subject}
@@ -175,7 +271,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
       <Section title={repo === undefined ? "History" : `History · ${repo}`}>
         {repo === undefined ? (
-          <Note>No repository is declared for this project&rsquo;s services yet.</Note>
+          <Empty
+            action="Set up an environment"
+            onAction={onSetUp}
+            text="No repository is declared for this project’s services yet."
+          />
         ) : (
           <ZeropsHistoryView
             commits={commits}
@@ -216,6 +316,7 @@ export function ZeropsStopDetailPage({
     owner: flow?.slug,
     repo,
   });
+  const release = useReleaseOffer(groupId);
   const run = useZeropsDeployRun(
     flow === undefined || repo === undefined
       ? null
@@ -235,10 +336,67 @@ export function ZeropsStopDetailPage({
     );
   }
 
+  return (
+    <ZeropsStopPane
+      commits={commits}
+      deployed={deployed}
+      onBack={back}
+      production={production}
+      readDetail={readDetail}
+      release={release}
+      repo={repo}
+      run={run}
+      slug={flow.slug}
+      stop={stop}
+      waiting={waiting}
+    />
+  );
+}
+
+/**
+ * One stop, drawn — every read already done and handed in.
+ *
+ * Split from the page for the same reason the others are: the states worth
+ * looking at are a production twelve changes behind, a deploy that failed with
+ * nothing running, and a stop nobody has ever deployed to, and none of them is
+ * reachable by waiting for an account to be in that state.
+ */
+export function ZeropsStopPane({
+  commits,
+  deployed,
+  onBack,
+  production,
+  readDetail,
+  release,
+  repo,
+  run,
+  slug,
+  stop,
+  waiting,
+}: {
+  readonly commits: ZeropsCommitsState;
+  /** `environment name → the whole sha it runs`, for the history's own marks. */
+  readonly deployed: ReadonlyMap<string, string>;
+  readonly onBack: () => void;
+  readonly production: boolean;
+  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
+  /** Offered on a production that is behind — the one stop a release moves. */
+  readonly release: ReleaseOffer;
+  readonly repo: string | undefined;
+  readonly run: ZeropsDeployRun;
+  readonly slug: string;
+  readonly stop: EnvironmentRow;
+  readonly waiting: ReleaseContentsSummary;
+}) {
   const word = deployWord(stop.tone);
   const dotTone = STOP_DOT_TONE[stop.tone];
   return (
-    <DetailShell onBack={back} subtitle={`${flow.slug} · ${stop.source}`} title={stop.name}>
+    <DetailShell
+      actions={production ? <ReleaseAction release={release} /> : undefined}
+      onBack={onBack}
+      subtitle={`${slug} · ${stop.source}`}
+      title={stop.name}
+    >
       <Section title="What is running">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <Fact term="Version">{stop.version.label ?? "Nothing deployed yet"}</Fact>
@@ -565,6 +723,76 @@ function useBackToConversation(): () => void {
   }, [navigate]);
 }
 
+/** What *Release* is offered on a page, or that it is not offered at all. */
+export interface ReleaseOffer {
+  /** False where the stage has nothing the production lacks, or there is no production. */
+  readonly offered: boolean;
+  readonly releasing: boolean;
+  /** The version it would cut, where the flow suggested one. */
+  readonly tag: string | undefined;
+  readonly contents: ReadonlyArray<{
+    readonly commits: ReadonlyArray<{ sha: string; subject: string }>;
+  }>;
+  readonly onRelease: () => void;
+}
+
+/**
+ * *Release*, on the page that shows what is waiting for it.
+ *
+ * The menu row offered this and the page the row expands to did not, so the
+ * one screen listing three changes merged and not live was the one screen that
+ * could not put them live.
+ */
+function ReleaseAction({ release }: { readonly release: ReleaseOffer }) {
+  const [confirming, setConfirming] = useState(false);
+  if (!release.offered) return null;
+  return (
+    <>
+      <Button
+        data-zerops-primary-action="Release"
+        disabled={release.releasing}
+        onClick={() => {
+          setConfirming(true);
+        }}
+        size="sm"
+      >
+        {flowVerbLabel("release", release.releasing)}
+      </Button>
+      <ZeropsReleaseDialog
+        contents={release.contents}
+        onConfirm={() => {
+          setConfirming(false);
+          release.onRelease();
+        }}
+        onOpenChange={setConfirming}
+        open={confirming}
+        releasing={release.releasing}
+        tag={release.tag}
+      />
+    </>
+  );
+}
+
+/** A section with nothing in it yet, and the way to put something there. */
+function Empty({
+  text,
+  action,
+  onAction,
+}: {
+  readonly text: string;
+  readonly action: string;
+  readonly onAction: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Note>{text}</Note>
+      <Button onClick={onAction} size="sm" variant="outline">
+        {action}
+      </Button>
+    </div>
+  );
+}
+
 function StopLine({
   environment,
   groupId,
@@ -594,9 +822,12 @@ function StopLine({
         <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
           {environment.version.label ?? "nothing deployed yet"}
         </span>
+        {/* Never a wordless dot on its own: a colour that has to be learnt is
+            a colour nobody reads, and a screen reader gets nothing from it. */}
         {word === undefined || dotTone === undefined ? null : (
-          <StatusDot dotOnly label={word} tone={dotTone} />
+          <StatusDot label={word} sentence tone={dotTone} />
         )}
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
     </li>
   );
@@ -610,8 +841,9 @@ function ChangeLine({
   readonly pull: FlowPullRequest;
 }) {
   const navigate = useNavigate();
-  const blocked = pullRequestBlocked(pull);
-  const checks = checkDotTone(pull);
+  // One vocabulary down the column: `changeState` answers a rebase and a
+  // passing check in the same register, which two sources did not.
+  const state = changeState(pull);
   // The group page is where somebody comes looking for a change, so its rows
   // open one — a stop's row next to it has always been a door.
   const open = useCallback(() => {
@@ -630,13 +862,8 @@ function ChangeLine({
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {sidebarChangeLabel(pull)}
         </span>
-        {blocked === null ? (
-          pull.checkWord === undefined || checks === undefined ? null : (
-            <StatusDot label={pull.checkWord} sentence tone={checks} />
-          )
-        ) : (
-          <StatusDot label={blocked.word} sentence tone={blocked.tone} />
-        )}
+        {state === undefined ? null : <StatusDot label={state.word} sentence tone={state.tone} />}
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
     </li>
   );

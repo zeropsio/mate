@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupHistory, historyLine, releaseTagsByCommit } from "./groupHistory.ts";
+import { groupHistory, historyAge, historyLine, releaseTagsByCommit } from "./groupHistory.ts";
 
 const SHA_A = "3f9c1b2a4d5e6f70819293a4b5c6d7e8f9012345";
 const SHA_B = "aa11bb22cc33dd44ee55ff6677889900aabbccdd";
@@ -141,5 +141,54 @@ describe("the release a commit shipped in", () => {
     });
     expect(first?.tags).toEqual(["v1.2.0"]);
     expect(second?.tags).toEqual([]);
+  });
+});
+
+describe("historyAge", () => {
+  const now = Date.parse("2026-09-19T12:00:00Z");
+
+  it.each([
+    ["2026-09-19T11:59:40Z", "now"],
+    ["2026-09-19T11:57:00Z", "3m"],
+    ["2026-09-19T08:00:00Z", "4h"],
+    ["2026-09-13T12:00:00Z", "6d"],
+    ["2026-07-19T12:00:00Z", "2mo"],
+    ["2025-07-19T12:00:00Z", "1y"],
+  ])("reads %s as %s", (at, expected) => {
+    expect(historyAge(at, now)).toBe(expected);
+  });
+
+  it("says nothing where Gitea sent no date, rather than an epoch", () => {
+    expect(historyAge(undefined, now)).toBeUndefined();
+    expect(historyAge("not a date", now)).toBeUndefined();
+  });
+
+  it("reads a committer's skewed future clock as now, never as a negative", () => {
+    expect(historyAge("2026-09-19T12:30:00Z", now)).toBe("now");
+  });
+});
+
+describe("historyLine with a clock", () => {
+  const entry = {
+    sha: "a".repeat(40),
+    shortSha: "aaaaaaa",
+    subject: "Cache the link previews",
+    author: "Theo",
+    at: "2026-09-19T08:00:00Z",
+    deployedTo: ["production"],
+    tags: [],
+  };
+  const now = Date.parse("2026-09-19T12:00:00Z");
+
+  it("puts the age last, after who wrote it and where it runs", () => {
+    expect(historyLine(entry, now)).toBe("Theo · production · 4h");
+  });
+
+  it("leaves the age out when no clock is given, so the line stays pure", () => {
+    expect(historyLine(entry)).toBe("Theo · production");
+  });
+
+  it("still answers with the age alone when nothing else is known", () => {
+    expect(historyLine({ ...entry, author: undefined, deployedTo: [] }, now)).toBe("4h");
   });
 });

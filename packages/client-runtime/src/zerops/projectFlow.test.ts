@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
+  changeState,
   mergeConsequence,
   pullRequestBlocked,
   pullRequestMergeLine,
@@ -534,5 +535,35 @@ describe("mergeConsequence", () => {
 
   it("names the branch it lands on rather than assuming main", () => {
     expect(mergeConsequence({ baseBranch: "trunk", kind: "code" })).toContain("trunk");
+  });
+});
+
+describe("changeState", () => {
+  it("answers every row in one register, never Passing beside needs a rebase", () => {
+    const words = [
+      changeState({ number: 1, mergeable: true, checks: "passing" }),
+      changeState({ number: 2, mergeable: false, checks: "passing" }),
+      changeState({ number: 3, mergeable: false, checks: "failing" }),
+      changeState({ number: 4, mergeable: false, checks: "pending" }),
+    ].map((state) => state?.word);
+    expect(words).toEqual(["Passing", "Needs a rebase", "Checks failed", "Checks running"]);
+    // Every one of them opens the way a sentence does.
+    for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
+  });
+
+  it("lets what is stopping it outrank what the checks did", () => {
+    // The checks passed and it still cannot land: the rebase is the news.
+    expect(changeState({ number: 4, mergeable: false, checks: "passing" })?.word).toBe(
+      "Needs a rebase",
+    );
+  });
+
+  it("carries the tone that means the word, never the checks' under a rebase", () => {
+    expect(changeState({ number: 4, mergeable: false, checks: "passing" })?.tone).toBe("attention");
+    expect(changeState({ number: 1, mergeable: true, checks: "failing" })?.tone).toBe("failed");
+  });
+
+  it("says nothing where nothing ran and nothing is blocking", () => {
+    expect(changeState({ number: 1, mergeable: true, checks: "none" })).toBeUndefined();
   });
 });

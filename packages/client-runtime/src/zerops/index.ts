@@ -330,6 +330,7 @@ export {
 export { agentNeedsSignIn, AGENT_SIGN_IN_MESSAGE } from "./agentSignIn.ts";
 export {
   groupHistory,
+  historyAge,
   historyLine,
   releaseTagsByCommit,
   type HistoryEntry,
@@ -376,6 +377,7 @@ export {
   mateProjectOfLogin,
   pullRequestLineWith,
   pullRequestsByMate,
+  changeState,
   mergeConsequence,
   pullRequestBlocked,
   pullRequestBlockedReason,

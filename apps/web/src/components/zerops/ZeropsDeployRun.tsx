@@ -11,6 +11,9 @@
 import { useCallback, useState } from "react";
 
 import type { ZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
+import { ChevronRightIcon } from "lucide-react";
+
+import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { StatusDot } from "./primitives";
 
@@ -91,11 +94,21 @@ function JobRow({
     >
       <div className="flex min-w-0 items-center gap-3 py-2">
         <button
-          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          aria-expanded={log !== null}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
           onClick={toggle}
           type="button"
         >
-          {job.name ?? `Job ${String(job.id)}`}
+          {/* The log is the whole reason to be on this row; hover was the only
+              thing that said so, and a phone never hovers. */}
+          <ChevronRightIcon
+            aria-hidden="true"
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground/60 transition-transform",
+              log !== null && "rotate-90",
+            )}
+          />
+          <span className="min-w-0 truncate">{job.name ?? `Job ${String(job.id)}`}</span>
         </button>
         <StatusDot label={reading ? "Reading" : word} sentence tone={reading ? "busy" : tone} />
         {!failed ? null : (
