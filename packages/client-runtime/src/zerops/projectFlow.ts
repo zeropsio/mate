@@ -30,6 +30,8 @@
  * @module projectFlow
  */
 
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+
 import { checkTone, checkWord, type GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import { releaseWord, type ReleaseVerdict } from "./release.ts";
@@ -244,10 +246,33 @@ export function pullRequestBlockedReason(pull: {
   readonly mergeable: boolean;
   readonly checks: GitCheckTone;
 }): string | null {
+  return pullRequestBlocked(pull)?.word ?? null;
+}
+
+/** Why a pull request offers no *Merge*, and the tone that says it. */
+export interface PullRequestBlocked {
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+}
+
+/**
+ * The same answer with its own tone, because the dot beside the word has to
+ * mean the word.
+ *
+ * Painting the checks' tone under every reason put a **green** dot beside
+ * "needs a rebase" — the checks did pass, and the row still said the opposite
+ * of what its dot showed (seen in the harness, 2026-09-19). A branch that has
+ * fallen behind is nobody's failure and nothing is running: it is the one
+ * thing on the row asking for a person, which is what `attention` means.
+ */
+export function pullRequestBlocked(pull: {
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+}): PullRequestBlocked | null {
   if (pull.mergeable) return null;
-  if (pull.checks === "pending") return "checks running";
-  if (pull.checks === "failing") return "checks failed";
-  return "needs a rebase";
+  if (pull.checks === "pending") return { word: "checks running", tone: "busy" };
+  if (pull.checks === "failing") return { word: "checks failed", tone: "failed" };
+  return { word: "needs a rebase", tone: "attention" };
 }
 
 /** What a release would carry, as much of it as a hover has room for. */

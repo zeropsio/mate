@@ -39,7 +39,7 @@ import {
   hasMate,
   mateEnvironmentsEmptyReason,
   pullRequestsByMate,
-  pullRequestBlockedReason,
+  pullRequestBlocked,
   pullRequestsFolded,
   releaseContentsSentence,
   releaseContentsSummary,
@@ -87,7 +87,6 @@ import {
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
-import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 import { MenuGroup, MenuGroupLabel, MenuSeparator } from "../ui/menu";
 
@@ -608,7 +607,7 @@ function PullRequestRow({
 }) {
   const tone = checkDotTone({ checks: pull.checks });
   const title = sidebarPullRequestTitle(pull);
-  const blocked = pullRequestBlockedReason(pull);
+  const blocked = pullRequestBlocked(pull);
   return (
     <li
       className={cn(
@@ -652,9 +651,9 @@ function PullRequestRow({
         <StatusDot
           className="shrink-0 text-[11px] text-sidebar-muted-foreground"
           data-zerops-surface="sidebar-pull-request-blocked"
-          label={blocked}
+          label={blocked.word}
           sentence
-          tone={tone ?? "off"}
+          tone={blocked.tone}
         />
       )}
     </li>

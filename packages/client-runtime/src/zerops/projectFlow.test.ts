@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
+  pullRequestBlocked,
   pullRequestBlockedReason,
   releaseContentsSentence,
   releaseContentsSummary,
@@ -319,6 +320,24 @@ describe("pullRequestBlockedReason", () => {
       expect(pullRequestBlockedReason({ mergeable, checks })).toBe(expected);
     });
   }
+
+  it("tones each reason to itself, never to the checks under it", () => {
+    // Passing checks and a stale branch: a green dot beside "needs a rebase"
+    // said the opposite of the words next to it.
+    expect(pullRequestBlocked({ mergeable: false, checks: "passing" })).toEqual({
+      word: "needs a rebase",
+      tone: "attention",
+    });
+    expect(pullRequestBlocked({ mergeable: false, checks: "pending" })).toEqual({
+      word: "checks running",
+      tone: "busy",
+    });
+    expect(pullRequestBlocked({ mergeable: false, checks: "failing" })).toEqual({
+      word: "checks failed",
+      tone: "failed",
+    });
+    expect(pullRequestBlocked({ mergeable: true, checks: "failing" })).toBeNull();
+  });
 });
 
 describe("releaseContentsSummary", () => {
