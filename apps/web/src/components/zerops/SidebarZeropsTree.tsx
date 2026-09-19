@@ -258,12 +258,21 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       flow?.pullRequests ?? [],
       mateEntries.map(({ item }) => item.project.id),
     );
+    // Which row the spine ends on: the last stop where a project has one,
+    // then a change nobody's Mate owns, then the last Mate's own last row. A
+    // line that runs past its final node into the gap below reads as a list
+    // that got cut off rather than as work arriving somewhere.
+    const otherPulls = flow === undefined ? [] : grouped.others;
+    const endsOnMates = others.length === 0 && otherPulls.length === 0;
     return (
       <>
         {header}
-        {mateEntries.map(({ item }) => {
+        {mateEntries.map(({ item }, index) => {
           const pulls = grouped.byMate.get(item.project.id) ?? [];
           const listKey = `${id}:${item.project.id}`;
+          const first = index === 0;
+          const last = endsOnMates && index === mateEntries.length - 1;
+          const ownRow = pulls.length === 0 || flow === undefined;
           return (
             <div className="flex flex-col gap-px" key={item.key}>
               <MateRow
@@ -271,6 +280,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 activity={getActivity?.(item)}
                 candidate={item}
                 onSelect={onSelect}
+                railCap={railCapFor({ first, last: last && ownRow })}
                 tint={tints.get(item.project.id) ?? "slate"}
               />
               {pulls.length === 0 || flow === undefined ? null : (
@@ -282,6 +292,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   }}
                   open={openLists.has(listKey)}
                   pulls={pulls}
+                  railCap={last ? "end" : undefined}
                 />
               )}
             </div>
@@ -293,16 +304,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           // `· ada` could not undo at 256px, where it is truncated away.
           // The dedent is the whole signal; a rule as well would make this
           // read as the start of the stops, which is the next block's rule.
-          <ul
-            className="mt-1 flex flex-col gap-px"
-            data-zerops-surface="sidebar-other-pull-requests"
-          >
-            {grouped.others.map((pull) => (
+          <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-other-pull-requests">
+            {grouped.others.map((pull, index) => (
               <PullRequestRow
                 key={`${pull.repository}#${pull.number}`}
                 merging={flow.merging(pull)}
                 onMerge={flow.onMerge}
                 pull={pull}
+                railCap={others.length === 0 && index === otherPulls.length - 1 ? "end" : undefined}
                 underMate={false}
               />
             ))}
@@ -470,12 +479,14 @@ function MateRow<T extends RosterCandidate>({
   active,
   activity,
   onSelect,
+  railCap,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
   readonly onSelect: (candidate: T) => void;
+  readonly railCap?: RailCap;
 }) {
   const tags = readZeropsGroupTags(candidate.project.tagList);
   const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
@@ -493,7 +504,7 @@ function MateRow<T extends RosterCandidate>({
     <button
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+        "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left outline-none select-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-sidebar-row-active text-sidebar-foreground"
           : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
@@ -502,14 +513,16 @@ function MateRow<T extends RosterCandidate>({
       onClick={() => onSelect(candidate)}
       type="button"
     >
-      <RailCell>
+      <RailCell cap={railCap}>
         <MateFace
           size="sm"
           state={mateFaceFor(candidate.group === "connected", activity)}
           tint={tint}
         />
       </RailCell>
-      <span className="flex min-w-0 flex-1 flex-col">
+      {/* The row's own vertical padding lives here: the rail has to run the
+          full height of the row to meet the rows either side of it. */}
+      <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">{name}</span>
           {when === undefined || when.length === 0 ? null : (
@@ -553,37 +566,66 @@ function MateRow<T extends RosterCandidate>({
  * menu drew it as a flat list of rows that all weighed the same, so it read as
  * "one big same item" (the owner, 2026-09-19) rather than as work moving.
  *
- * Every row draws a line in its own icon column, from its top edge to just
- * above its node and from just below its node to its bottom edge. Consecutive
- * rows stack those segments into one continuous line without any row needing
- * to know what is above or below it, and the gap around each node is what
- * makes the node read as *on* the line rather than behind it — which also
- * means nothing has to be painted opaque over a row whose background changes
- * on hover.
+ * The line is drawn per row but spans the row's *padding* box, so consecutive
+ * rows meet across the one pixel the list puts between them. An earlier pass
+ * drew it inside the icon column instead, which is the row's content box: each
+ * row's `py-2` left eight blank pixels at both ends and the spine measured as
+ * twenty-eight separate ticks with gaps of nine to twenty-four pixels — a
+ * dashed ladder, which is what the owner was looking at when they called it
+ * the main problem. Measure the gaps between the segments, never the centres
+ * of the nodes; the nodes were always aligned.
+ *
+ * The node is painted after the line and so sits on it. Nothing is painted
+ * opaque underneath, because the row's background changes on hover and a
+ * halo in the resting colour would show; a hairline passing behind a tinted
+ * badge is what a timeline looks like anyway.
+ *
+ * The ends are capped: the line starts at the first node of a group and stops
+ * at the last, because a spine that runs past its final stop into the gap
+ * below reads as a list that got cut off.
  */
-function RailCell({
-  children,
-  gap = "node",
-}: {
-  readonly children?: ReactNode;
-  /** How far the line stops short of what sits on it. */
-  readonly gap?: "node" | "tick";
-}) {
-  const segment = gap === "node" ? RAIL_SEGMENT_NODE : RAIL_SEGMENT_TICK;
+function RailCell({ children, cap }: { readonly children?: ReactNode; readonly cap?: RailCap }) {
+  const first = cap === "start" || cap === "only";
+  const last = cap === "end" || cap === "only";
   return (
-    <span className="relative flex w-5 shrink-0 items-center justify-center self-stretch">
-      <span aria-hidden="true" className={cn(RAIL_LINE, "top-0", segment)} />
-      <span aria-hidden="true" className={cn(RAIL_LINE, "bottom-0", segment)} />
+    <span className="relative flex w-5 shrink-0 flex-col items-center justify-center self-stretch">
+      <span aria-hidden="true" className={first ? RAIL_BLANK : RAIL_LINE} />
       {children}
+      <span aria-hidden="true" className={last ? RAIL_BLANK : RAIL_LINE} />
     </span>
   );
 }
 
-const RAIL_LINE = "absolute left-1/2 w-px -translate-x-1/2 bg-sidebar-border";
-/** Clear of a 20px face or badge. */
-const RAIL_SEGMENT_NODE = "h-[calc(50%-0.75rem)]";
-/** Clear of the small dot a change wears — a lesser stop on the same line. */
-const RAIL_SEGMENT_TICK = "h-[calc(50%-0.4375rem)]";
+/**
+ * Half a row's share of the spine. It grows into whatever the node leaves, so
+ * it meets the node exactly whether that is a 20px face, a 20px badge or the
+ * 6px dot a change wears — and it can never be drawn across one. Positioning
+ * the line absolutely behind the node instead drew it straight through every
+ * tinted face, which no amount of z-index fixes: the faces are not opaque.
+ *
+ * A capped end keeps its half and gives up only the paint. Leaving the span
+ * out altogether let the other half take the free space, which pushed the
+ * first face of every group 24px above its row and every last badge 17px
+ * below it — the node's place on the row may not depend on where the row
+ * happens to sit on the line.
+ */
+const RAIL_LINE = "w-px flex-1 bg-sidebar-border";
+const RAIL_BLANK = "w-px flex-1";
+
+/** Where a row sits on its group's spine: the first node, the last, both, or between. */
+type RailCap = "start" | "end" | "only" | undefined;
+
+/** A row that is both ends of its group's spine carries no line at all. */
+function railCapFor(at: { readonly first: boolean; readonly last: boolean }): RailCap {
+  if (at.first && at.last) return "only";
+  if (at.first) return "start";
+  if (at.last) return "end";
+  return undefined;
+}
+
+/**
+ * One row's share of the spine, spanning its whole box so it meets the rows
+ * either side of it.
 
 /**
  * A Mate's open pull requests: the rows themselves while there are a few, a
@@ -595,14 +637,18 @@ function PullRequestList({
   onToggle,
   merging,
   onMerge,
+  railCap,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly merging: (pull: FlowPullRequest) => boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
+  /** Carried to whichever row is last on screen — folded shut, that is the count. */
+  readonly railCap?: RailCap;
 }) {
   const folded = pullRequestsFolded(pulls.length);
+  const listed = !folded || open;
   return (
     <div className="flex flex-col gap-px" data-zerops-surface="sidebar-pull-requests">
       {folded ? (
@@ -612,7 +658,7 @@ function PullRequestList({
           onClick={onToggle}
           type="button"
         >
-          <RailCell gap="tick">
+          <RailCell cap={listed ? undefined : railCap}>
             <ChevronRightIcon
               aria-hidden="true"
               className={cn("size-3 transition-transform", open && "rotate-90")}
@@ -623,12 +669,13 @@ function PullRequestList({
       ) : null}
       {!folded || open ? (
         <ul className="flex flex-col gap-px">
-          {pulls.map((pull) => (
+          {pulls.map((pull, index) => (
             <PullRequestRow
               key={`${pull.repository}#${pull.number}`}
               merging={merging(pull)}
               onMerge={onMerge}
               pull={pull}
+              railCap={index === pulls.length - 1 ? railCap : undefined}
             />
           ))}
         </ul>
@@ -648,12 +695,14 @@ function PullRequestRow({
   merging,
   onMerge,
   underMate = true,
+  railCap,
 }: {
   readonly pull: FlowPullRequest;
   readonly merging: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
   /** False for a change that is nobody's Mate's, which hangs under nothing. */
   readonly underMate?: boolean;
+  readonly railCap?: RailCap;
 }) {
   const tone = checkDotTone({ checks: pull.checks });
   const title = sidebarPullRequestTitle(pull);
@@ -667,7 +716,7 @@ function PullRequestRow({
           and it wears a small dot where a Mate wears a face. Its title lands
           on the same left edge the names above it use, because the rail cell
           and the gap are the ones the other rows are built from. */}
-      <RailCell gap="tick">
+      <RailCell cap={railCap}>
         <span aria-hidden="true" className="size-1.5 rounded-full bg-sidebar-border" />
       </RailCell>
       {pull.url === undefined ? (
@@ -949,7 +998,7 @@ function EnvironmentRows<T extends RosterCandidate>({
     // The stops belong to the project, not to the Mate they happen to follow:
     // a rule and the project's own left edge say so.
     <ul className="flex flex-col gap-px" data-zerops-surface="sidebar-environment-rows">
-      {environments.map(({ item, role }) => {
+      {environments.map(({ item, role }, index) => {
         const tag = environmentRoleTag(role);
         const name = environmentNameUnderGroup(groupName, item.project.name);
         const declared = flow?.environments.get(item.project.id);
@@ -962,7 +1011,7 @@ function EnvironmentRows<T extends RosterCandidate>({
         const links = declared === undefined ? undefined : flow?.versionLinks?.(declared);
         return (
           <li
-            className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors hover:bg-sidebar-row-hover"
+            className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
             data-zerops-project={item.project.id}
             data-zerops-surface="sidebar-environment"
             key={item.project.id}
@@ -970,10 +1019,12 @@ function EnvironmentRows<T extends RosterCandidate>({
             {/* Centred on the row, because the Mate face directly above it is:
                 two neighbouring rows may not have two rules for their first
                 column. It was pinned to the first line, 11px high of centre. */}
-            <RailCell>
+            {/* The production is the last stop, so the spine ends on its badge
+                rather than running past it into the gap under the group. */}
+            <RailCell cap={index === environments.length - 1 ? "end" : undefined}>
               <StopBadge tone={tone} word={word} />
             </RailCell>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
               <span className="flex min-w-0 items-center gap-2">
                 {/* A stop is named in the same hand as a Mate: it is a place
                     the work reaches, not a footnote under the ones who did it. */}

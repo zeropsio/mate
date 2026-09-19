@@ -523,6 +523,24 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("status-dot");
     expect(html).not.toContain("Release");
   });
+
+  it("draws one spine: both halves on every row, unpainted only where it ends", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    const count = (needle: string) => html.split(needle).length - 1;
+    const rows =
+      count('data-zerops-surface="sidebar-mate"') +
+      count('data-zerops-surface="sidebar-pull-request"') +
+      count('data-zerops-surface="sidebar-environment"');
+    const painted = count('class="w-px flex-1 bg-sidebar-border"');
+    const blank = count('class="w-px flex-1"');
+    // Every row carries both halves wherever it sits on the line. Leaving one
+    // out lets the other take the free space, which shoved the first face of
+    // every group 24px above its row and every last badge 17px below it.
+    expect(rows).toBeGreaterThan(0);
+    expect(painted + blank).toBe(rows * 2);
+    // Unpainted only at the two ends: the first node of the group and the last.
+    expect(blank).toBe(2);
+  });
 });
 
 describe("the Mate's card", () => {
