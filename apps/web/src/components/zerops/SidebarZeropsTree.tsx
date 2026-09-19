@@ -129,6 +129,18 @@ export interface SidebarProjectFlow {
     | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
     | undefined;
   /**
+   * Hands a blocked change to the Mate that wrote it, as a sentence in that
+   * Mate's composer.
+   *
+   * Nobody reading this menu is going to rebase a branch they have not checked
+   * out, in a repository they have no session for — the Mate does it, so the
+   * row that reports the problem is the row that hands it over. It opens the
+   * conversation with the request written and stops there: every change to a
+   * project goes through the agent's own tools, and a menu that sent work off
+   * on its own would be the first thing here that acts without being read.
+   */
+  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
+  /**
    * The stops the group's recipe offers and nobody has added yet. A timeline
    * that showed only its Mates never said a production was a next step (the
    * owner, twice, 2026-09-17: "it never asked me to setup production").
@@ -291,6 +303,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                     toggle(listKey);
                   }}
                   open={openLists.has(listKey)}
+                  onAsk={flow.onAsk}
                   pulls={pulls}
                   railCap={last ? "end" : undefined}
                 />
@@ -309,6 +322,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               <PullRequestRow
                 key={`${pull.repository}#${pull.number}`}
                 merging={flow.merging(pull)}
+                onAsk={flow.onAsk}
                 onMerge={flow.onMerge}
                 pull={pull}
                 railCap={others.length === 0 && index === otherPulls.length - 1 ? "end" : undefined}
@@ -606,8 +620,17 @@ function RailCell({ children, cap }: { readonly children?: ReactNode; readonly c
  * below it — the node's place on the row may not depend on where the row
  * happens to sit on the line.
  */
-const RAIL_LINE = "w-px flex-1 bg-sidebar-border";
+const RAIL_LINE = "w-px flex-1 bg-sidebar-muted-foreground/30";
 const RAIL_BLANK = "w-px flex-1";
+/*
+ * The spine's ink is the muted foreground at 30%, not `sidebar-border`: that
+ * token is the faintest in the set — about five percent of contrast against
+ * the sidebar's own ground — which is right for a rule nobody should notice
+ * and wrong for the structure a whole group hangs on. The branch a change
+ * makes off it "is still absolutely invisible" (the owner, 2026-09-19), and so
+ * very nearly was the line. Taken from the foreground it darkens on a light
+ * ground and lightens on a dark one without a second rule.
+ */
 
 /**
  * A change branches off the line rather than standing on it.
@@ -632,15 +655,21 @@ function RailFork({ cap }: { readonly cap?: RailCap }) {
         <span aria-hidden="true" className={RAIL_LINE} />
         <span aria-hidden="true" className={cap === "end" ? RAIL_BLANK : RAIL_LINE} />
       </span>
-      {/* The branch: a bottom border curving up out of the spine. It carries no
-          left border, which would double the line it is leaving. */}
+      {/* The branch: a quarter circle leaving the spine ten pixels above the
+          row's centre, then a short run out to the dot. Both borders are
+          drawn — given only the bottom one, CSS tapers the arc to nothing
+          where the left border would be, which is exactly where it meets the
+          spine, so the branch looked detached and read as invisible. The half
+          pixel is the spine's own: a 1px line centred in a 20px column sits
+          at 9.5, not at 10. */}
       <span
         aria-hidden="true"
-        className="absolute start-2.5 top-[calc(50%-0.5rem)] h-2 w-3.5 rounded-bl-md border-b border-sidebar-border"
+        className="absolute start-[9.5px] top-[calc(50%-0.625rem)] h-2.5 w-3.5 rounded-bl-[0.625rem] border-b border-s border-sidebar-muted-foreground/30"
+        data-zerops-rail="fork"
       />
       <span
         aria-hidden="true"
-        className="absolute start-6 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-border"
+        className="absolute start-[23.5px] top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-muted-foreground/45"
       />
     </span>
   );
@@ -671,6 +700,7 @@ function PullRequestList({
   onToggle,
   merging,
   onMerge,
+  onAsk,
   railCap,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
@@ -678,6 +708,7 @@ function PullRequestList({
   readonly onToggle: () => void;
   readonly merging: (pull: FlowPullRequest) => boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
+  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   /** Carried to whichever row is last on screen — folded shut, that is the count. */
   readonly railCap?: RailCap;
 }) {
@@ -706,6 +737,7 @@ function PullRequestList({
             <PullRequestRow
               key={`${pull.repository}#${pull.number}`}
               merging={merging(pull)}
+              onAsk={onAsk}
               onMerge={onMerge}
               pull={pull}
               railCap={index === pulls.length - 1 ? railCap : undefined}
@@ -729,10 +761,12 @@ function PullRequestRow({
   onMerge,
   underMate = true,
   railCap,
+  onAsk,
 }: {
   readonly pull: FlowPullRequest;
   readonly merging: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
+  readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   /** False for a change that is nobody's Mate's, which hangs under nothing. */
   readonly underMate?: boolean;
   readonly railCap?: RailCap;
@@ -777,7 +811,7 @@ function PullRequestRow({
             onClick={() => onMerge(pull)}
           />
         </>
-      ) : blocked === null ? null : (
+      ) : blocked === null ? null : blocked.ask === undefined || onAsk === undefined ? (
         <StatusDot
           className="shrink-0 text-[11px] text-sidebar-muted-foreground"
           data-zerops-surface="sidebar-pull-request-blocked"
@@ -785,6 +819,37 @@ function PullRequestRow({
           sentence
           tone={blocked.tone}
         />
+      ) : (
+        // A refusal somebody has to act on is a verb, not a label: the Mate
+        // that wrote the change is the one who can move it, so the words that
+        // name the problem are the way to hand it back.
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                // Not hover-only: the request the button would send is its own
+                // name, so a keyboard and a screen reader reach what a pointer
+                // reaches.
+                aria-label={blocked.ask}
+                className="shrink-0 cursor-pointer rounded-sm text-sidebar-muted-foreground transition-colors hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                data-zerops-primary-action="Ask"
+                onClick={() => {
+                  onAsk(pull, blocked.ask ?? "");
+                }}
+                type="button"
+              >
+                <StatusDot
+                  className="text-[11px]"
+                  data-zerops-surface="sidebar-pull-request-blocked"
+                  label={blocked.word}
+                  sentence
+                  tone={blocked.tone}
+                />
+              </button>
+            }
+          />
+          <TooltipPopup side="right">{blocked.ask}</TooltipPopup>
+        </Tooltip>
       )}
     </li>
   );

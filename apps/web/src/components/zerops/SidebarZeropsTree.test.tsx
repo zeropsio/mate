@@ -364,18 +364,40 @@ describe("the project's flow under it", () => {
   it("hangs the Mate's open pull requests under it, before the environments", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     expect(html).toContain('data-zerops-surface="sidebar-pull-request"');
-    // Its number, not its title: the title is the task the Mate was set, which
-    // is the line on the row directly above it.
-    expect(html).toContain(">#4</a>");
-    expect(html).not.toContain("Change 4");
+    expect(html).toContain("#4 Change 4");
     expect(html.indexOf('data-zerops-surface="sidebar-mate"')).toBeLessThan(
-      html.indexOf(">#4</a>"),
+      html.indexOf("#4 Change 4"),
     );
-    expect(html.indexOf(">#4</a>")).toBeLessThan(html.indexOf("crm-stage"));
-    // The way into Gitea is the number; the checks are a dot, not a word.
+    expect(html.indexOf("#4 Change 4")).toBeLessThan(html.indexOf("crm-stage"));
+    // The way into Gitea is the title; the checks are a dot, not a word.
     expect(html).toContain('href="https://gitea.example/crm/appdev/pulls/4"');
     expect(html).toContain('aria-label="Passing"');
     expect(html).not.toContain(">Passing</span>");
+  });
+
+  it("hands a change nobody here can fix back to the Mate that wrote it", () => {
+    const stale = flow({ pullRequests: [pull(4, { mergeable: false })], onAsk: () => {} });
+    const html = withFlow([CRM_DEV, CRM_STAGE], stale);
+    // The words that name the problem are the way to hand it over: a rebase
+    // happens in the Mate's checkout, not in this menu.
+    expect(html).toContain('data-zerops-primary-action="Ask"');
+    expect(html).toContain("needs a rebase");
+    expect(html).toContain("Rebase it on main");
+    // Without a way to ask, the state stays a label rather than becoming a
+    // verb that goes nowhere.
+    expect(
+      withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [pull(4, { mergeable: false })] })),
+    ).not.toContain('data-zerops-primary-action="Ask"');
+    // Checks still running are the one refusal with nothing to ask for.
+    expect(
+      withFlow(
+        [CRM_DEV, CRM_STAGE],
+        flow({
+          pullRequests: [pull(4, { mergeable: false, checks: "pending", checkWord: "Pending" })],
+          onAsk: () => {},
+        }),
+      ),
+    ).not.toContain('data-zerops-primary-action="Ask"');
   });
 
   it("offers Merge only where Gitea said the branch merges", () => {
@@ -553,7 +575,7 @@ describe("the project's flow under it", () => {
       count('data-zerops-surface="sidebar-environment"') +
       count('data-zerops-surface="sidebar-pull-request"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
-    const painted = count('class="w-px flex-1 bg-sidebar-border"');
+    const painted = count('class="w-px flex-1 bg-sidebar-muted-foreground/30"');
     const blank = count('class="w-px flex-1"');
     expect(rows).toBeGreaterThan(0);
     expect(changes).toBeGreaterThan(0);
@@ -567,7 +589,7 @@ describe("the project's flow under it", () => {
     expect(blank).toBe(2);
     // A change is not a node on the line — it branches off one. Drawn as a
     // node it read as one more Mate however small its dot.
-    expect(count("rounded-bl-md")).toBe(changes);
+    expect(count('data-zerops-rail="fork"')).toBe(changes);
   });
 });
 

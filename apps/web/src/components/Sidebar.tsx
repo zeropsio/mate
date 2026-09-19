@@ -1781,6 +1781,55 @@ export default function Sidebar() {
   );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
+  /**
+   * Hands a blocked change back to the Mate that wrote it.
+   *
+   * "who is going to deal with it? you still need the agent to take care of
+   * it" (the owner, 2026-09-19): a rebase happens in the Mate's own checkout,
+   * so the menu opens that Mate's conversation with the request already
+   * written. It stops there rather than sending — every change to a project
+   * goes through the agent's own tools, and the seam where a prompt is
+   * composed and a person presses send is the one the quick actions and the
+   * file browser already use.
+   */
+  const askMate = useCallback<NonNullable<SidebarProjectFlow["onAsk"]>>(
+    (pull, ask) => {
+      const mateProjectId = pull.mateProjectId;
+      const candidate =
+        mateProjectId === undefined
+          ? undefined
+          : zeropsCandidates.find((entry) => entry.project.id === mateProjectId);
+      const environmentId = candidate?.environmentId;
+      const { primary } =
+        environmentId === undefined
+          ? { primary: undefined }
+          : resolvePrimaryConversation(
+              threads.filter((thread) => thread.environmentId === environmentId),
+            );
+      // No Mate we can reach, or no conversation yet: the projects screen owns
+      // connecting and starting one, exactly as selecting the row does.
+      if (environmentId === undefined || primary === undefined) {
+        void router.navigate({ to: "/zerops" });
+        return;
+      }
+      const threadRef = scopeThreadRef(environmentId, primary.id);
+      useComposerDraftStore.getState().setPrompt(threadRef, ask);
+      rememberZeropsEnvironment(String(environmentId));
+      if (isMobile) setOpenMobile(false);
+      void router.navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+      });
+    },
+    [router, threads, zeropsCandidates, isMobile, setOpenMobile],
+  );
+  const zeropsSidebarFlowWithAsk = useCallback(
+    (groupId: string): SidebarProjectFlow | undefined => {
+      const base = zeropsSidebarFlow(groupId);
+      return base === undefined ? undefined : { ...base, onAsk: askMate };
+    },
+    [zeropsSidebarFlow, askMate],
+  );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
   const autoSettleOnMerge = useClientSettings((s) => s.sidebarAutoSettleOnMerge);
@@ -3840,7 +3889,7 @@ export default function Sidebar() {
               className="mb-2"
               unread={!zeropsCandidatesRead}
               onBrowseProjects={navigateToZeropsProjects}
-              getFlow={zeropsSidebarFlow}
+              getFlow={zeropsSidebarFlowWithAsk}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined
                   ? undefined

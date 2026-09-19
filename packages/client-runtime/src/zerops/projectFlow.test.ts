@@ -147,16 +147,13 @@ describe("one pull request in the flow", () => {
     expect(row.checkWord).toBeUndefined();
   });
 
-  it("is its number alone under its Mate, whose row already carries the words", () => {
-    // The title is the Mate's commit message, which is the task on the row
-    // directly above it: spelled out again here it repeated that sentence and
-    // truncated at nearly the same word.
+  it("reads as its number and title in a menu row, a person's own naming them", () => {
     const mine = flowPullRequest({ repository: "appdev", pull: pull(), checks: [] });
     expect(mine.mateProjectId).toBe(VERA);
-    expect(sidebarChangeLabel(mine)).toBe("#4");
-  });
-
-  it("keeps its title where no Mate's row stands above it, and names whose it is", () => {
+    // Stripped to its number under its Mate the change lost its name, which
+    // cost more than echoing the task above it did. The fork carries the
+    // distinction instead.
+    expect(sidebarChangeLabel(mine)).toBe("#4 Add a due date to each todo");
     const ada = flowPullRequest({
       repository: "appdev",
       pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: { login: "ada" } }),
@@ -164,12 +161,6 @@ describe("one pull request in the flow", () => {
     });
     expect(ada.mateProjectId).toBeUndefined();
     expect(sidebarChangeLabel(ada)).toBe("#4 Add a due date to each todo · ada");
-    const anonymous = flowPullRequest({
-      repository: "appdev",
-      pull: pull({ head: { ref: "feature/x", sha: "abc" }, user: undefined }),
-      checks: [],
-    });
-    expect(sidebarChangeLabel(anonymous)).toBe("#4 Add a due date to each todo");
   });
 });
 
@@ -331,26 +322,45 @@ describe("pullRequestBlockedReason", () => {
 
   for (const [mergeable, checks, expected] of cases) {
     it(`${mergeable ? "merges" : "does not merge"} with ${checks} checks: ${expected ?? "nothing to add"}`, () => {
-      expect(pullRequestBlockedReason({ mergeable, checks })).toBe(expected);
+      expect(pullRequestBlockedReason({ number: 4, mergeable, checks })).toBe(expected);
     });
   }
 
   it("tones each reason to itself, never to the checks under it", () => {
     // Passing checks and a stale branch: a green dot beside "needs a rebase"
     // said the opposite of the words next to it.
-    expect(pullRequestBlocked({ mergeable: false, checks: "passing" })).toEqual({
+    expect(pullRequestBlocked({ number: 4, mergeable: false, checks: "passing" })).toMatchObject({
+      kind: "behind",
       word: "needs a rebase",
       tone: "attention",
     });
-    expect(pullRequestBlocked({ mergeable: false, checks: "pending" })).toEqual({
+    expect(pullRequestBlocked({ number: 4, mergeable: false, checks: "pending" })).toMatchObject({
+      kind: "checks-running",
       word: "checks running",
       tone: "busy",
     });
-    expect(pullRequestBlocked({ mergeable: false, checks: "failing" })).toEqual({
+    expect(pullRequestBlocked({ number: 4, mergeable: false, checks: "failing" })).toMatchObject({
+      kind: "checks-failed",
       word: "checks failed",
       tone: "failed",
     });
-    expect(pullRequestBlocked({ mergeable: true, checks: "failing" })).toBeNull();
+    expect(pullRequestBlocked({ number: 4, mergeable: true, checks: "failing" })).toBeNull();
+  });
+
+  it("hands every refusal somebody can act on to the Mate, and names the change", () => {
+    // Nobody reading the menu is going to rebase a branch they have not
+    // checked out in a repository they have no session for. The Mate does it.
+    const behind = pullRequestBlocked({ number: 4, mergeable: false, checks: "passing" });
+    expect(behind?.ask).toContain("pull request #4");
+    expect(behind?.ask).toContain("Rebase");
+    const failing = pullRequestBlocked({ number: 9, mergeable: false, checks: "failing" });
+    expect(failing?.ask).toContain("pull request #9");
+    expect(failing?.ask).toContain("checks");
+    // Checks that are merely running are the one refusal with nothing to ask
+    // for: waiting is the correct move.
+    expect(
+      pullRequestBlocked({ number: 4, mergeable: false, checks: "pending" })?.ask,
+    ).toBeUndefined();
   });
 });
 

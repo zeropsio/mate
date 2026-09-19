@@ -125,27 +125,23 @@ export function flowPullRequest(input: {
 }
 
 /**
- * What a change is called on the menu: `#4` under its Mate, `#4 Add a due date
- * to each todo · ada` under nobody's.
+ * What a change is called on the menu: `#4 Add a due date to each todo`, and
+ * `· ada` after it where no Mate's row stands above to say whose it is.
  *
- * A Mate's pull request is titled with its commit message, which is the task
- * the Mate was set — the line directly above it on the menu. So the row
- * repeated the sentence it was sitting under, truncated at nearly the same
- * word: `#4 Change page heading from "Lin…` beneath `Change the page heading
- * to read: Saved Links. Then d…` (the owner, 2026-09-19). Under its Mate a
- * change is identified by its number and nothing else — the words are already
- * on the row above, and the width goes to the state on the right, which is the
- * part that has something to say.
- *
- * A change that sits under no Mate has no such line above it, so it keeps its
- * title and says whose it is.
+ * The number alone was tried and taken away again: a Mate's pull request is
+ * titled with its commit message, so the row does echo the task on the row
+ * above it — but stripped to `#4` the change loses its name entirely, which
+ * costs more than the echo did (the owner, 2026-09-19). The fork carries the
+ * distinction instead: a change is drawn branching off the line rather than
+ * standing on it, so it reads as subordinate without having to go mute.
  */
 export function sidebarChangeLabel(
   pull: Pick<FlowPullRequest, "number" | "title" | "mateProjectId" | "author">,
 ): string {
-  if (pull.mateProjectId !== undefined) return `#${pull.number}`;
   const title = `#${pull.number} ${pull.title}`;
-  return pull.author === undefined ? title : `${title} · ${pull.author}`;
+  return pull.mateProjectId === undefined && pull.author !== undefined
+    ? `${title} · ${pull.author}`
+    : title;
 }
 
 /**
@@ -254,16 +250,30 @@ export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow 
  * in the harness, 2026-09-19).
  */
 export function pullRequestBlockedReason(pull: {
+  readonly number: number;
   readonly mergeable: boolean;
   readonly checks: GitCheckTone;
 }): string | null {
   return pullRequestBlocked(pull)?.word ?? null;
 }
 
-/** Why a pull request offers no *Merge*, and the tone that says it. */
+/** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
 export interface PullRequestBlocked {
+  readonly kind: "checks-running" | "checks-failed" | "behind";
   readonly word: string;
   readonly tone: ServiceStatusToneId;
+  /**
+   * What to ask the Mate that wrote the change, where asking is what moves it
+   * — and `undefined` where nothing is waiting on anyone.
+   *
+   * Nobody reading this menu is going to rebase a branch they have not checked
+   * out, in a repository they have no session for. The Mate does it, so the
+   * row that reports the problem is the row that hands it over: "who is going
+   * to deal with it? you still need the agent to take care of it" (the owner,
+   * 2026-09-19). Checks that are merely running are the one refusal with
+   * nothing to ask for — waiting is the correct move.
+   */
+  readonly ask: string | undefined;
 }
 
 /**
@@ -277,13 +287,27 @@ export interface PullRequestBlocked {
  * thing on the row asking for a person, which is what `attention` means.
  */
 export function pullRequestBlocked(pull: {
+  readonly number: number;
   readonly mergeable: boolean;
   readonly checks: GitCheckTone;
 }): PullRequestBlocked | null {
   if (pull.mergeable) return null;
-  if (pull.checks === "pending") return { word: "checks running", tone: "busy" };
-  if (pull.checks === "failing") return { word: "checks failed", tone: "failed" };
-  return { word: "needs a rebase", tone: "attention" };
+  const change = `pull request #${pull.number}`;
+  if (pull.checks === "pending")
+    return { kind: "checks-running", word: "checks running", tone: "busy", ask: undefined };
+  if (pull.checks === "failing")
+    return {
+      kind: "checks-failed",
+      word: "checks failed",
+      tone: "failed",
+      ask: `The checks on ${change} are failing. Find out why, fix them, and push.`,
+    };
+  return {
+    kind: "behind",
+    word: "needs a rebase",
+    tone: "attention",
+    ask: `${change} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
+  };
 }
 
 /** What a release would carry, as much of it as a hover has room for. */
