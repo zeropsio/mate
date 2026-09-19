@@ -32,7 +32,13 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import { checkTone, checkWord, pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
+import {
+  checkDotTone,
+  checkTone,
+  checkWord,
+  pullRequestBlocked,
+  type GitCheckTone,
+} from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import { releaseWord, type ReleaseVerdict } from "./release.ts";
@@ -333,8 +339,16 @@ export function changeState(pull: {
     };
   }
   const word = checkWord(pull.checks);
-  if (word === undefined) return undefined;
-  return { word, tone: pull.checks === "failing" ? "failed" : "ok" };
+  // No check ran, and nothing is stopping it either. Saying nothing at all
+  // left a whole column blank on an account with no CI, where "nothing wrong"
+  // and "not read yet" then looked identical. Grey, because no signal is not a
+  // good signal — the same colour its own page gives it (`changeVerdict`).
+  if (word === undefined) return { word: "Unchecked", tone: "off" };
+  // From the one table, not a ternary of its own: `failing ? failed : ok`
+  // painted checks that were still *running* green, while the change's own
+  // page painted them blue. One fact, two colours, on two surfaces a click
+  // apart.
+  return { word, tone: checkDotTone(pull) ?? "off" };
 }
 
 /**

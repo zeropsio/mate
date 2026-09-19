@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
+import { changeVerdict } from "./changeVerdict.ts";
 import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
 import type { GitCheckTone } from "./gitTab.ts";
@@ -592,8 +593,11 @@ describe("changeState", () => {
     expect(changeState({ number: 1, mergeable: true, checks: "failing" })?.tone).toBe("failed");
   });
 
-  it("says nothing where nothing ran and nothing is blocking", () => {
-    expect(changeState({ number: 1, mergeable: true, checks: "none" })).toBeUndefined();
+  it("names the absence of a check rather than leaving the column blank", () => {
+    expect(changeState({ number: 1, mergeable: true, checks: "none" })).toEqual({
+      word: "Unchecked",
+      tone: "off",
+    });
   });
 });
 
@@ -610,5 +614,23 @@ describe("changeAuthorName", () => {
 
   it("names a person by their login, which is their name here", () => {
     expect(changeAuthorName({ author: "ales", mateProjectId: undefined }, undefined)).toBe("ales");
+  });
+});
+
+describe("a change with nothing wrong with it", () => {
+  it("says no check vouched for it rather than saying nothing at all", () => {
+    // A column that is blank for every row on an account with no CI cannot be
+    // told from a column that has not been read yet.
+    expect(changeState({ number: 4, mergeable: true, checks: "none" })).toEqual({
+      word: "Unchecked",
+      tone: "off",
+    });
+  });
+
+  it("agrees with the colour that change's own page gives it", () => {
+    for (const checks of ["none", "pending", "passing", "failing"] as const) {
+      const state = changeState({ number: 4, mergeable: true, checks });
+      expect(state?.tone).toBe(changeVerdict({ number: 4, mergeable: true, checks }).tone);
+    }
   });
 });
