@@ -691,29 +691,43 @@ function asRuntimeItemId(value: string): RuntimeItemId {
  */
 /**
  * The window to report when nothing here knows which model the conversation
- * runs: no selection reached the session, so it runs the runtime's own
- * default — and an expanded window is never a default, it has to be asked
- * for. The SDK documents `modelUsage` as covering "the main loop, Task
- * subagents, sidechains, and internal calls such as compaction", so the
- * widest window in it belongs to whatever ran beside the conversation rather
- * than to the conversation (`verified.md`, 2026-09-19). The narrowest is the
- * one the conversation can be held to, and a gauge that understates the room
- * left is the safe way to be wrong. Zeroed entries — which a crash or
- * startup-error result carries — are not windows and are skipped.
+ * runs: no selection reached the session, so there is no api model id to
+ * match on either.
+ *
+ * The answer is in the numerator. `modelUsage` covers "the main loop, Task
+ * subagents, sidechains, and internal calls such as compaction" (the SDK's
+ * own words), but the conversation's own model is the one the turn's tokens
+ * are on — a subagent or an internal call (a title, a classifier) touches a
+ * fraction of them. Taking that entry's window is not a heuristic so much as
+ * the fix for what went wrong in the first place: a numerator from one model
+ * measured against a denominator from another.
+ *
+ * Nothing said how busy each model was — a crash result carries zeroed usage
+ * — leaves every entry tied, and then the narrowest is taken: understating
+ * the room left is the safe way for a gauge to be wrong. Zeroed windows are
+ * not windows and are skipped.
  */
-function narrowestClaudeContextWindowFromModelUsage(
+function claudeConversationContextWindowFromModelUsage(
   modelUsage: Record<string, ModelUsage> | undefined,
 ): number | undefined {
   if (!modelUsage) return undefined;
 
-  let narrowest: number | undefined;
-  for (const value of Object.values(modelUsage)) {
-    const contextWindow = finitePositiveInteger(value.contextWindow);
+  let chosen: number | undefined;
+  let busiest = -1;
+  for (const usage of Object.values(modelUsage)) {
+    const contextWindow = finitePositiveInteger(usage.contextWindow);
     if (contextWindow === undefined) continue;
-    narrowest = narrowest === undefined ? contextWindow : Math.min(narrowest, contextWindow);
+    const tokens =
+      (finiteNonNegativeInteger(usage.inputTokens) ?? 0) +
+      (finiteNonNegativeInteger(usage.cacheReadInputTokens) ?? 0) +
+      (finiteNonNegativeInteger(usage.cacheCreationInputTokens) ?? 0);
+    if (tokens > busiest || (tokens === busiest && contextWindow < (chosen ?? Infinity))) {
+      busiest = tokens;
+      chosen = contextWindow;
+    }
   }
 
-  return narrowest;
+  return chosen;
 }
 
 function claudeContextWindowForModel(
@@ -2633,7 +2647,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const resultContextWindow =
       context.selectedContextWindow ??
       claudeContextWindowForModel(result?.modelUsage, context.currentApiModelId) ??
-      narrowestClaudeContextWindowFromModelUsage(result?.modelUsage);
+      claudeConversationContextWindowFromModelUsage(result?.modelUsage);
     if (resultContextWindow !== undefined) {
       context.lastKnownContextWindow = resultContextWindow;
     }

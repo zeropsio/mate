@@ -3357,8 +3357,17 @@ describe("ClaudeAdapterLive", () => {
         session_id: "sdk-session-subagent-window",
         usage: { input_tokens: 400, output_tokens: 50 },
         modelUsage: {
-          [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
-          "claude-synthetic-subagent": { contextWindow: 1000000, maxOutputTokens: 64000 },
+          [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: {
+            contextWindow: 200000,
+            maxOutputTokens: 64000,
+            inputTokens: 400,
+            cacheReadInputTokens: 21_000,
+          },
+          "claude-synthetic-subagent": {
+            contextWindow: 1000000,
+            maxOutputTokens: 64000,
+            inputTokens: 120,
+          },
         },
       } as unknown as SDKMessage);
 
@@ -3421,8 +3430,17 @@ describe("ClaudeAdapterLive", () => {
           session_id: "sdk-session-unselected-window",
           usage: { input_tokens: 400, output_tokens: 50 },
           modelUsage: {
-            [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
-            "claude-synthetic-subagent": { contextWindow: 1000000, maxOutputTokens: 64000 },
+            [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: {
+              contextWindow: 200000,
+              maxOutputTokens: 64000,
+              inputTokens: 400,
+              cacheReadInputTokens: 21_000,
+            },
+            "claude-synthetic-subagent": {
+              contextWindow: 1000000,
+              maxOutputTokens: 64000,
+              inputTokens: 120,
+            },
           },
         } as unknown as SDKMessage);
 
@@ -3440,6 +3458,80 @@ describe("ClaudeAdapterLive", () => {
       );
     },
   );
+
+  it.effect("keeps a wide window where the conversation is the one that is on it", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+
+      for (const index of [1, 2, 3]) {
+        harness.query.emit({
+          type: "assistant",
+          session_id: "sdk-session-wide-window",
+          uuid: `assistant-wide-window-${index}`,
+          parent_tool_use_id: null,
+          message: {
+            id: `assistant-message-wide-window-${index}`,
+            role: "assistant",
+            content: [],
+            usage: { input_tokens: 80 * index, output_tokens: 20 },
+          },
+        } as unknown as SDKMessage);
+      }
+      // The shape a real turn has (`plain-text-turn.jsonl`): the conversation
+      // runs the expanded window and carries the turn's tokens, while a small
+      // internal call — a title, a classifier — runs a narrow one. Taking the
+      // narrowest here would have measured this conversation against a model
+      // it never ran.
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1234,
+        duration_api_ms: 1200,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-wide-window",
+        usage: { input_tokens: 400, output_tokens: 50 },
+        modelUsage: {
+          "claude-synthetic-helper": {
+            contextWindow: 200000,
+            maxOutputTokens: 32000,
+            inputTokens: 899,
+            outputTokens: 10,
+          },
+          "claude-synthetic-wide[1m]": {
+            contextWindow: 1000000,
+            maxOutputTokens: 64000,
+            inputTokens: 2,
+            cacheReadInputTokens: 11_474,
+            cacheCreationInputTokens: 9980,
+          },
+        },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const usageEvent = runtimeEvents.find((event) => event.type === "thread.token-usage.updated");
+      assert.equal(usageEvent?.type, "thread.token-usage.updated");
+      if (usageEvent?.type === "thread.token-usage.updated") {
+        assert.equal(usageEvent.payload.usage.maxTokens, 1000000);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
 
   it.effect("follows the window of the model the person switched to", () => {
     const harness = makeHarness();
