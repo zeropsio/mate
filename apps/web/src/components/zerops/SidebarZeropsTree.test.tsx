@@ -376,6 +376,30 @@ describe("the project's flow under it", () => {
     ).not.toContain('data-zerops-primary-action="Merge"');
   });
 
+  it("asks for a stop the recipe offers and nobody has added", () => {
+    const html = withFlow(
+      [CRM_DEV],
+      flow({
+        missing: [
+          {
+            kind: "missing-environment",
+            tier: "production",
+            name: "Production",
+            line: "not set up yet",
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('data-zerops-surface="sidebar-environment-missing"');
+    expect(html).toContain(">Production<");
+    expect(html).toContain("not set up yet");
+    expect(html).toContain('data-zerops-primary-action="Set up production"');
+  });
+
+  it("says nothing about missing stops when the recipe offers none", () => {
+    expect(withFlow([CRM_DEV])).not.toContain('data-zerops-surface="sidebar-environment-missing"');
+  });
+
   it("says what Release would put in front of people, in the words they asked for", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE, CRM_PROD],

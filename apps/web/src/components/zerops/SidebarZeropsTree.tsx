@@ -49,6 +49,7 @@ import {
   sidebarPullRequestTitle,
   type EnvironmentRow,
   type FlowPullRequest,
+  type MissingEnvironmentRow,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsPublicRoute,
@@ -102,6 +103,12 @@ export interface SidebarProjectFlow {
   readonly releaseContents?:
     | ReadonlyArray<{ readonly commits: ReadonlyArray<{ sha: string; subject: string }> }>
     | undefined;
+  /**
+   * The stops the group's recipe offers and nobody has added yet. A timeline
+   * that showed only its Mates never said a production was a next step (the
+   * owner, twice, 2026-09-17: "it never asked me to setup production").
+   */
+  readonly missing?: ReadonlyArray<MissingEnvironmentRow> | undefined;
   /** Whether this pull request's *Merge* is running. */
   readonly merging: (pull: FlowPullRequest) => boolean;
   /** Whether the project's *Release* is running. */
@@ -267,8 +274,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             ))}
           </ul>
         )}
-        {others.length > 0 ? (
-          <EnvironmentRows environments={others} flow={flow} groupName={groupName} />
+        {others.length > 0 || (flow?.missing?.length ?? 0) > 0 ? (
+          <EnvironmentRows
+            environments={others}
+            flow={flow}
+            groupName={groupName}
+            onBrowseProjects={onBrowseProjects}
+          />
         ) : null}
       </>
     );
@@ -598,11 +610,14 @@ function EnvironmentRows<T extends RosterCandidate>({
   environments,
   flow,
   groupName,
+  onBrowseProjects,
 }: {
   readonly environments: ReadonlyArray<Entry<T>>;
   readonly flow: SidebarProjectFlow | undefined;
   /** The heading above, so a row never repeats the word already on it. */
   readonly groupName: string | undefined;
+  /** Setting a stop up is the projects screen's — the menu's one way there. */
+  readonly onBrowseProjects: () => void;
 }) {
   return (
     // The stops belong to the project, not to the Mate they happen to follow:
@@ -653,6 +668,22 @@ function EnvironmentRows<T extends RosterCandidate>({
           </li>
         );
       })}
+      {(flow?.missing ?? []).map((row) => (
+        <li
+          className="flex h-7 min-w-0 items-center gap-2 ps-2.5 pe-0.5 text-xs"
+          data-zerops-surface="sidebar-environment-missing"
+          key={`missing:${row.tier}`}
+        >
+          <span className="min-w-0 truncate text-sidebar-muted-foreground">{row.name}</span>
+          {/* The stop is a next step, not a fault: said in the muted hand, and
+              the verb is the invitation rather than a warning. */}
+          <span className="shrink-0 text-[11px] text-sidebar-muted-foreground">{row.line}</span>
+          <ZeropsMateVerb
+            label={`Set up ${row.name.toLocaleLowerCase()}`}
+            onClick={onBrowseProjects}
+          />
+        </li>
+      ))}
     </ul>
   );
 }

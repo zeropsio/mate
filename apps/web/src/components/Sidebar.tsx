@@ -1742,6 +1742,9 @@ export default function Sidebar() {
         releaseOffered: flow.release.gate.allowed,
         // What the verb's hover says it would put in front of people.
         releaseContents: flow.release.contents,
+        // The stops the recipe offers and nobody has added: a next step the
+        // timeline used not to mention at all.
+        missing: flow.missing,
         merging: (pull) =>
           zeropsProjectFlow.pending.has(
             flowVerbKey({
