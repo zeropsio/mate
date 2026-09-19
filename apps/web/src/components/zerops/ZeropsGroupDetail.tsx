@@ -35,7 +35,7 @@ import {
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useAskMate } from "~/zerops/useAskMate";
 import { giteaSessionLogin } from "~/zerops/giteaSession";
@@ -55,6 +55,7 @@ import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { ZeropsChangeConversation } from "./ZeropsChangeConversation";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
+import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsHistoryView } from "./ZeropsHistoryView";
 import { checkDotTone } from "./ZeropsGitBlock";
 import { StatusDot } from "./primitives";
@@ -443,19 +444,36 @@ export function ZeropsChangePane({
   /** What the last verb's refusal said, where one refused. */
   readonly trouble: string | null;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const blocked = pullRequestBlocked(pull);
   const checks = checkDotTone(pull);
   return (
     <DetailShell
       actions={
-        <Button
-          data-zerops-primary-action="Merge"
-          disabled={merging || blocked !== null}
-          onClick={onMerge}
-          size="sm"
-        >
-          {flowVerbLabel("merge", merging)}
-        </Button>
+        <>
+          <Button
+            data-zerops-primary-action="Merge"
+            disabled={merging || blocked !== null}
+            onClick={() => {
+              setConfirming(true);
+            }}
+            size="sm"
+          >
+            {flowVerbLabel("merge", merging)}
+          </Button>
+          {/* The same confirm the menu's verb opens: one verb, one question. */}
+          <ZeropsMergeDialog
+            mateName={mateName}
+            merging={merging}
+            onConfirm={() => {
+              setConfirming(false);
+              onMerge();
+            }}
+            onOpenChange={setConfirming}
+            open={confirming}
+            pull={pull}
+          />
+        </>
       }
       onBack={onBack}
       subtitle={`${slug} · ${pull.repository} · ${pull.baseBranch}`}

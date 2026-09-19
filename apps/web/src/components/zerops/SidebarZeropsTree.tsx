@@ -90,6 +90,7 @@ import {
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
 import { MenuGroup, MenuGroupLabel, MenuSeparator } from "../ui/menu";
@@ -516,12 +517,18 @@ function ProjectHeader({
               <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="start" className="w-56" side="right">
-              <MenuItem onClick={onBrowseProjects}>Open project</MenuItem>
+              {/* The project's own page, which is what the heading opens —
+                  this went to the projects screen instead, so the one item
+                  named after the project was the one that did not open it
+                  (the owner, 2026-09-19). */}
+              <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
               {missing.map((row) => (
                 <MenuItem key={row.tier} onClick={onBrowseProjects}>
                   {`Set up ${row.name.toLocaleLowerCase()}`}
                 </MenuItem>
               ))}
+              {/* Where setting one up happens, and where a project is added. */}
+              <MenuItem onClick={onBrowseProjects}>All projects</MenuItem>
             </MenuPopup>
           </Menu>
         </span>
@@ -867,11 +874,7 @@ function PullRequestRow({
               <TooltipPopup side="right">{pull.checkWord}</TooltipPopup>
             </Tooltip>
           )}
-          <ZeropsMateVerb
-            disabled={merging}
-            label={flowVerbLabel("merge", merging)}
-            onClick={() => onMerge(pull)}
-          />
+          <MergeVerb merging={merging} onMerge={onMerge} pull={pull} />
         </>
       ) : blocked === null ? null : blocked.ask === undefined || onAsk === undefined ? (
         <StatusDot
@@ -926,6 +929,48 @@ function PullRequestRow({
  * is what a person reads instead, and it is written in their own words,
  * because a squash merge carries the task's message.
  */
+/**
+ * *Merge*, which asks first.
+ *
+ * The row this sits on shows as much of the change's title as a 260px column
+ * allows — `…lo by Mat…` — and a squash cannot be taken back the way a
+ * release can be rolled back to the tag before it. So the verb opens the same
+ * kind of confirm *Release* does, with the whole title in it.
+ */
+function MergeVerb({
+  pull,
+  merging,
+  onMerge,
+}: {
+  readonly pull: FlowPullRequest;
+  readonly merging: boolean;
+  readonly onMerge: (pull: FlowPullRequest) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <ZeropsMateVerb
+        disabled={merging}
+        label={flowVerbLabel("merge", merging)}
+        onClick={() => {
+          setConfirming(true);
+        }}
+      />
+      <ZeropsMergeDialog
+        mateName={undefined}
+        merging={merging}
+        onConfirm={() => {
+          setConfirming(false);
+          onMerge(pull);
+        }}
+        onOpenChange={setConfirming}
+        open={confirming}
+        pull={pull}
+      />
+    </>
+  );
+}
+
 function ReleaseVerb({
   contents,
   releasing,

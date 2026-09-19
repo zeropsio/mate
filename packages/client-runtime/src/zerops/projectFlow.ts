@@ -340,6 +340,25 @@ export function pullRequestBlocked(pull: {
 }
 
 /**
+ * What pressing *Merge* actually does, said before it is pressed.
+ *
+ * Merging is a squash, and a squash cannot be taken back the way a release
+ * can be rolled back to the tag before it — so the confirm says where the
+ * change lands and what follows from it landing. A recipe change is the one
+ * that reads differently: it does not deploy an application, it changes what
+ * the environments are made of.
+ */
+export function mergeConsequence(pull: {
+  readonly baseBranch: string;
+  readonly kind: FlowPullRequestKind;
+}): string {
+  const squash = `It squashes onto ${pull.baseBranch}`;
+  return pull.kind === "recipe"
+    ? `${squash}, which changes what this project's environments are made of.`
+    : `${squash}, and the stage runs what ${pull.baseBranch} says.`;
+}
+
+/**
  * How a change merges, in merge's own terms.
  *
  * A page that reports the checks and then reports them again under *Merges*

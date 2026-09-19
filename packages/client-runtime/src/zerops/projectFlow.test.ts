@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
+  mergeConsequence,
   pullRequestBlocked,
   pullRequestMergeLine,
   pullRequestBlockedReason,
@@ -515,5 +516,23 @@ describe("pullRequestMergeLine", () => {
     expect(
       pullRequestMergeLine({ ...base, baseBranch: "trunk", mergeable: true, checks: "passing" }),
     ).toContain("trunk");
+  });
+});
+
+describe("mergeConsequence", () => {
+  it("says where a code change lands and what follows from it landing", () => {
+    expect(mergeConsequence({ baseBranch: "main", kind: "code" })).toBe(
+      "It squashes onto main, and the stage runs what main says.",
+    );
+  });
+
+  it("says a recipe change changes the environments, not what runs in them", () => {
+    expect(mergeConsequence({ baseBranch: "main", kind: "recipe" })).toBe(
+      "It squashes onto main, which changes what this project's environments are made of.",
+    );
+  });
+
+  it("names the branch it lands on rather than assuming main", () => {
+    expect(mergeConsequence({ baseBranch: "trunk", kind: "code" })).toContain("trunk");
   });
 });

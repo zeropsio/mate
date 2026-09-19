@@ -376,6 +376,7 @@ export {
   mateProjectOfLogin,
   pullRequestLineWith,
   pullRequestsByMate,
+  mergeConsequence,
   pullRequestBlocked,
   pullRequestBlockedReason,
   pullRequestMergeLine,
