@@ -50,6 +50,7 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
+  type ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
@@ -97,6 +98,9 @@ import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
 import { MateFace, StatusDot, VERDICT_BORDER_CLASS, VerdictPanel } from "./primitives";
+import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
+import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
+import { useRenameGroup } from "~/zerops/useRenameGroup";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -107,18 +111,90 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
 };
 
 /**
- * What the group is called, from the same derivation the menu names it by
- * (`buildZeropsGroupTree`) — never the raw group id, which is what a page
- * titled by its route parameter shows.
+ * The group behind a route parameter, from the same derivation the menu names
+ * it by (`buildZeropsGroupTree`).
+ *
+ * A page titled by its route parameter shows a raw id; a page that wants to
+ * *rename* the project needs the group itself, because the name lives on every
+ * environment in it.
  */
-function useGroupName(groupId: string): string | undefined {
+function useGroup(groupId: string): ZeropsGroup | undefined {
   const { candidates } = useZeropsCandidates();
   return useMemo(
     () =>
       buildZeropsGroupTree(candidates, {}).groups.find((entry) => entry.group.groupId === groupId)
-        ?.group.name,
+        ?.group,
     [candidates, groupId],
   );
+}
+
+/** What the group is called — never the raw group id. */
+function useGroupName(groupId: string): string | undefined {
+  return useGroup(groupId)?.name;
+}
+
+/**
+ * The project's own quiet actions, on its own page.
+ *
+ * *Rename project* had lived only on the projects screen, so the page whose
+ * whole subject is this project could not name it (the owner, 2026-09-19:
+ * "why isn't there options to rename group?"). The write is `useRenameGroup`'s,
+ * shared with that screen, so one rename means one thing wherever it is
+ * offered.
+ */
+function useGroupActions(groupId: string): {
+  readonly menu: React.ReactNode;
+  readonly trouble: string | null;
+} {
+  const group = useGroup(groupId);
+  const [renaming, setRenaming] = useState(false);
+  const rename = useRenameGroup();
+  if (group === undefined) return { menu: null, trouble: rename.trouble };
+  const unnamed = group.nameSource === "id";
+  return {
+    trouble: rename.trouble,
+    menu: (
+      <>
+        <ZeropsProjectMenu
+          actions={[
+            {
+              id: "rename-group",
+              label: unnamed ? "Name this project" : "Rename project",
+              onSelect: () => {
+                setRenaming(true);
+              },
+              disabled: rename.renaming,
+            },
+          ]}
+          label={`More for ${group.name}`}
+        />
+        {renaming ? (
+          <ZeropsRenameDialog
+            description="The name is written onto every environment in the project."
+            initialValue={unnamed ? "" : group.name}
+            key={`rename-group:${group.groupId}`}
+            label="Project name"
+            onCancel={() => {
+              setRenaming(false);
+            }}
+            onOpenChange={(open) => {
+              if (!open) setRenaming(false);
+            }}
+            onSubmit={(name) => {
+              setRenaming(false);
+              void rename.rename(group, name);
+            }}
+            open
+            submitLabel="Rename"
+            title={unnamed ? "Name this project" : "Rename the project"}
+            validate={(value) =>
+              value.trim().length === 0 ? "Give the project a name." : undefined
+            }
+          />
+        ) : null}
+      </>
+    ),
+  };
 }
 
 /** Every environment of a group, by the whole sha it runs. */
@@ -404,6 +480,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     repo,
   });
   const openProjects = useOpenProjects();
+  const actions = useGroupActions(groupId);
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
   const names = useHistoryNames(groupName);
@@ -434,11 +511,13 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       name={groupName ?? flow.groupId}
       onAct={attention.onAct}
       names={names}
+      menu={actions.menu}
       onAddMate={openProjects}
       onOpenMate={openMate}
       crumbs={crumbs}
       onSetUp={openProjects}
       release={release}
+      trouble={actions.trouble}
       pullRequests={flow.pullRequests}
       readDetail={readDetail}
       repo={repo}
@@ -465,9 +544,11 @@ export function ZeropsGroupPane({
   name,
   names,
   crumbs,
+  menu,
   onAddMate,
   onOpenMate,
   onSetUp,
+  trouble,
   pullRequests,
   readDetail,
   release,
@@ -494,6 +575,10 @@ export function ZeropsGroupPane({
   readonly mates: ReadonlyArray<GroupMate>;
   readonly names: HistoryNames;
   readonly onAddMate: () => void;
+  /** The project's own quiet actions — rename, above all. */
+  readonly menu?: React.ReactNode;
+  /** Why a write from that menu failed, said under the heading it came from. */
+  readonly trouble?: string | null;
   readonly onOpenMate: (projectId: string) => void;
   readonly slug: string;
   readonly waiting: ReleaseContentsSummary;
@@ -505,15 +590,21 @@ export function ZeropsGroupPane({
       // page says a thing once, and the place it says it is the place you act
       // on it. *Add a Mate* stays — it answers nothing the panel raised.
       actions={
-        <Button onClick={onAddMate} size="sm" variant="outline">
-          <PlusIcon aria-hidden="true" className="size-3.5" />
-          Add a Mate
-        </Button>
+        <>
+          <Button onClick={onAddMate} size="sm" variant="outline">
+            <PlusIcon aria-hidden="true" className="size-3.5" />
+            Add a Mate
+          </Button>
+          {menu}
+        </>
       }
       crumbs={crumbs}
       subtitle={groupSubtitle(environments.length, pullRequests.length)}
       title={name}
     >
+      {trouble === null || trouble === undefined ? null : (
+        <p className="mb-4 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+      )}
       <AttentionPanel items={attention} onAct={onAct} release={release} />
 
       <Section title="Who is on it">

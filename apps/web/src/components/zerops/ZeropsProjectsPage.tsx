@@ -125,6 +125,7 @@ import {
   type ZeropsMenuEntry,
 } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
+import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateInGroup } from "~/zerops/brokerGrant";
@@ -774,6 +775,9 @@ function ZeropsProjectsContent() {
     | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
     | null
   >(null);
+  // The same write the project's own page uses, so one rename means one
+  // thing wherever it is offered.
+  const renameGroup = useRenameGroup();
   const runWrite = useCallback(async (write: () => Promise<unknown>) => {
     setToolError(null);
     try {
@@ -836,26 +840,6 @@ function ZeropsProjectsContent() {
         );
       }),
     [activeOrganization, groupTree.groups, projectRef, runWrite, runtime.commands],
-  );
-  const renameGroup = useCallback(
-    (group: ZeropsGroup, name: string) =>
-      runWrite(async () => {
-        if (activeOrganization === null) return;
-        // The name lives on every member; a rename is one write per member.
-        for (const environment of group.environments) {
-          await runZeropsCommand(
-            runtime.commands.updateProjectGroupTags(
-              projectRef(activeOrganization.id, environment.project.id),
-              {
-                groupId: group.groupId,
-                ...(environment.role === undefined ? {} : { role: environment.role }),
-                label: name,
-              },
-            ),
-          );
-        }
-      }),
-    [activeOrganization, projectRef, runWrite, runtime.commands],
   );
   const mintGroupId = useCallback(
     () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
@@ -2458,7 +2442,7 @@ function ZeropsProjectsContent() {
           onSubmit={(name) => {
             const { group } = rowDialog;
             setRowDialog(null);
-            void renameGroup(group, name);
+            void renameGroup.rename(group, name);
           }}
           open
           submitLabel="Rename"
@@ -2562,8 +2546,10 @@ function ZeropsProjectsContent() {
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}
-      {toolError === null ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed-text)]">{toolError}</p>
+      {toolError === null && renameGroup.trouble === null ? null : (
+        <p className="text-sm text-[var(--zerops-status-failed-text)]">
+          {toolError ?? renameGroup.trouble}
+        </p>
       )}
     </div>
   );
