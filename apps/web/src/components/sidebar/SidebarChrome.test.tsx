@@ -34,7 +34,12 @@ vi.mock("../ui/sidebar", async () => {
       ...props
     }: React.ComponentProps<"button"> & { isActive?: boolean; size?: string }) =>
       createElement("button", { ...props, "data-active": isActive }),
-    useSidebar: () => ({ isMobile: false, setOpenMobile: () => {}, toggleSidebar: () => {} }),
+    useSidebar: () => ({
+      isMobile: false,
+      setOpenMobile: () => {},
+      toggleSidebar: () => {},
+      state: "expanded",
+    }),
   };
 });
 
@@ -63,6 +68,17 @@ vi.mock("../../hooks/useSettings", () => ({
 
 vi.mock("../../branding", () => ({
   APP_BASE_NAME: "Injected Product Name",
+}));
+
+vi.mock("~/zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({
+    status: "signed-in",
+    user: { email: "ada@example.com", fullName: "Ada Lovelace", firstName: "Ada" },
+    organizations: [{ id: "o", name: "Zerops", membershipId: "m" }],
+    activeOrganization: { id: "o", name: "Zerops", membershipId: "m" },
+    selectOrganization: () => Promise.resolve(),
+    signOut: () => Promise.resolve(),
+  }),
 }));
 
 import { SidebarChromeHeader, SidebarUtilityMenu } from "./SidebarChrome";
@@ -96,39 +112,37 @@ describe("SidebarChromeHeader", () => {
 });
 
 describe("SidebarUtilityMenu", () => {
-  const UTILITIES = ["Settings", "Zerops", "Usage"] as const;
-
-  function utilities(markup: string) {
-    return UTILITIES.filter((label) => markup.includes(`aria-label="${label}"`));
-  }
-
-  function activeUtility(markup: string) {
-    const active = UTILITIES.filter((label) =>
-      new RegExp(`<button[^>]*aria-label="${label}"[^>]*data-active="true"`, "u").test(markup),
-    );
-    return active.length === 0 ? null : active;
-  }
-
-  // The footer keeps one shape across the routes that own it: the three
-  // utilities everywhere but the two pages that are somewhere else (settings,
-  // usage), where the only sensible control is the way back. The projects
-  // screen is the root of a Zerops account, so it is not "somewhere else" —
-  // it just lights its own icon.
+  // The foot keeps one shape across the routes that own it: the account row
+  // everywhere but the two pages that are somewhere else (settings, usage),
+  // where the only sensible control is the way back. The projects screen is
+  // the root of a Zerops account, so it is not "somewhere else" — the account
+  // row's own menu names it as the page that is open.
   it.each([
-    { pathname: "/", back: false, active: null },
-    { pathname: "/zerops", back: false, active: ["Zerops"] },
-    { pathname: "/zerops/", back: false, active: null },
-    { pathname: "/settings", back: true, active: null },
-    { pathname: "/settings/appearance", back: true, active: null },
-    { pathname: "/usage", back: true, active: null },
-  ])("on $pathname: back=$back, active=$active", ({ pathname, back, active }) => {
+    { pathname: "/", back: false },
+    { pathname: "/zerops", back: false },
+    { pathname: "/zerops/", back: false },
+    { pathname: "/settings", back: true },
+    { pathname: "/settings/appearance", back: true },
+    { pathname: "/usage", back: true },
+  ])("on $pathname: back=$back", ({ pathname, back }) => {
     router.pathname = pathname;
     const markup = renderToStaticMarkup(<SidebarUtilityMenu />);
 
     expect(markup.includes(">Back<")).toBe(back);
-    expect(utilities(markup)).toEqual(back ? [] : [...UTILITIES]);
-    expect(activeUtility(markup)).toEqual(active);
-    // The collapse control is the footer's constant.
+    expect(markup.includes('data-zerops-surface="sidebar-account"')).toBe(!back);
+    // The collapse control is the foot's constant.
     expect(markup).toContain('aria-label="Collapse sidebar"');
+  });
+
+  it("says who is signed in and whose organization the rows above belong to", () => {
+    router.pathname = "/";
+    const markup = renderToStaticMarkup(<SidebarUtilityMenu />);
+
+    expect(markup).toContain('aria-label="Account: Ada"');
+    expect(markup).toContain(">Zerops<");
+    // The four unlabelled glyphs the row replaced are gone from the foot.
+    for (const label of ["Settings", "Zerops", "Usage", "Gitea"]) {
+      expect(markup).not.toContain(`aria-label="${label}"`);
+    }
   });
 });

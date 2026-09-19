@@ -6,6 +6,8 @@ import {
   PanelLeftCloseIcon,
   SettingsIcon,
 } from "lucide-react";
+import type { SidebarAccountDestination } from "../zerops/SidebarZeropsAccount.logic";
+import { SidebarZeropsAccountRow } from "../zerops/SidebarZeropsAccount";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
@@ -97,6 +99,24 @@ function SidebarUtilityItem({
   );
 }
 
+/**
+ * The glyph beside each destination in the account menu. It lives here rather
+ * than in the row: the chrome already owns which icon stands for which place,
+ * and the design system keeps one icon map (design-system.md §3).
+ */
+function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
+  switch (id) {
+    case "projects":
+      return <CloudIcon />;
+    case "gitea":
+      return <GitPullRequestIcon />;
+    case "usage":
+      return <ChartNoAxesColumnIcon />;
+    case "settings":
+      return <SettingsIcon />;
+  }
+}
+
 export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
@@ -115,36 +135,13 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             ? "usage"
             : null,
   });
-  const onZeropsProjects = useLocation({ select: (location) => location.pathname === "/zerops" });
-  // The Gitea overview is a root of its own, like the projects screen: every
-  // repository the person can reach and what is open on it (D26).
-  const onGitea = useLocation({ select: (location) => location.pathname === "/gitea" });
+  // Where each destination goes, and which one is open, is the account row's
+  // now: the four glyphs it replaced were the only readers.
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
     }
   }, [isMobile, setOpenMobile]);
-  const handleSettingsClick = useCallback(() => {
-    closeMobileSidebar();
-    void navigate({ to: "/settings" });
-  }, [closeMobileSidebar, navigate]);
-
-  const handleZeropsClick = useCallback(() => {
-    closeMobileSidebar();
-    void navigate({ to: "/zerops" });
-  }, [closeMobileSidebar, navigate]);
-
-  const handleGiteaClick = useCallback(() => {
-    closeMobileSidebar();
-    void navigate({ to: "/gitea" });
-  }, [closeMobileSidebar, navigate]);
-
-  const handleUsageClick = useCallback(() => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/usage" });
-  }, [isMobile, navigate, setOpenMobile]);
 
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
@@ -165,30 +162,12 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : (
-        <>
-          <SidebarUtilityItem
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={handleSettingsClick}
-          />
-          <SidebarUtilityItem
-            active={onZeropsProjects}
-            icon={<CloudIcon />}
-            label="Zerops"
-            onClick={handleZeropsClick}
-          />
-          <SidebarUtilityItem
-            active={onGitea}
-            icon={<GitPullRequestIcon />}
-            label="Gitea"
-            onClick={handleGiteaClick}
-          />
-          <SidebarUtilityItem
-            icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
-            onClick={handleUsageClick}
-          />
-        </>
+        // One row says who is signed in and whose organization's projects are
+        // listed above it, and folds the four destinations into its menu —
+        // where each has a name rather than an unlabelled glyph.
+        <SidebarMenuItem className="min-w-0 flex-1">
+          <SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />
+        </SidebarMenuItem>
       )}
       <SidebarUpdatePill />
       <SidebarUtilityItem
