@@ -141,15 +141,15 @@ export interface SidebarProjectFlow {
    */
   readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   /**
-   * Opens what has landed on the repository a stop is built from, in the app.
+   * Opens the stop's own page, in place of the thread.
    *
-   * *History* used to be a link into Gitea, and so did the version beside it.
-   * Neither worked: the app holds the only Gitea token, so a person's browser
-   * has no session there and both arrived at a sign-in page (measured
-   * 2026-09-19). Gitea answers this well enough as an API — the answer is
-   * drawn here rather than handed off.
+   * What is running, what is in it, what is not in it yet and where it is —
+   * the questions a 256px row cannot answer. *History* used to be a link into
+   * Gitea, and so did the version beside it; neither worked, because the app
+   * holds the only Gitea token and a person's browser has no session there,
+   * so both arrived at a sign-in page (measured 2026-09-19).
    */
-  readonly onOpenHistory?: ((row: EnvironmentRow) => void) | undefined;
+  readonly onOpenStop?: ((row: EnvironmentRow) => void) | undefined;
   /**
    * The stops the group's recipe offers and nobody has added yet. A timeline
    * that showed only its Mates never said a production was a next step (the
@@ -191,12 +191,15 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * "none". A re-read is not that — the list already read stays up.
    */
   readonly unread?: boolean;
+  /** Opens the group's own page, in place of the thread. */
+  readonly onOpenGroup?: ((groupId: string) => void) | undefined;
 }
 
 export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
   onBrowseProjects,
+  onOpenGroup,
   activeProjectId,
   getActivity,
   getFlow,
@@ -374,6 +377,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               group={group}
               missing={getFlow?.(group.groupId)?.missing ?? []}
               onBrowseProjects={onBrowseProjects}
+              onOpen={
+                onOpenGroup === undefined
+                  ? undefined
+                  : () => {
+                      onOpenGroup(group.groupId);
+                    }
+              }
             />,
             getFlow?.(group.groupId),
             groupNameIsPlaceholder(group) ? undefined : group.name,
@@ -417,12 +427,15 @@ function ProjectHeader({
   muted = false,
   missing = NO_MISSING_TIERS,
   onBrowseProjects,
+  onOpen,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
   readonly onBrowseProjects: () => void;
+  /** Absent for the ungrouped heading, which is not a group and has no page. */
+  readonly onOpen?: (() => void) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameIsPlaceholder(group);
   const title = group?.name ?? name ?? "";
@@ -437,15 +450,24 @@ function ProjectHeader({
           (the owner, 2026-09-19: "shouldn't be uppercased, yet it should have
           bigger visual impact"). 15px, and the only thing in the column set
           that large. */}
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-base leading-6 font-semibold tracking-tight text-sidebar-foreground",
-          muted && "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground",
-          placeholder && "font-normal text-sidebar-muted-foreground italic",
-        )}
-      >
-        {title}
-      </span>
+      {onOpen === undefined ? (
+        <span className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}>
+          {title}
+        </span>
+      ) : (
+        <button
+          className={cn(
+            HEADING_CLASS,
+            "cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+            muted && HEADING_MUTED,
+            placeholder && HEADING_UNNAMED,
+          )}
+          onClick={onOpen}
+          type="button"
+        >
+          {title}
+        </button>
+      )}
       {muted ? null : (
         <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100">
           <Tooltip>
@@ -490,6 +512,11 @@ function ProjectHeader({
 const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
 
 /** The hover affordances on a heading and on a stop: the same control. */
+const HEADING_CLASS =
+  "min-w-0 flex-1 truncate text-base leading-6 font-semibold tracking-tight text-sidebar-foreground";
+const HEADING_MUTED = "text-[13px] font-medium tracking-normal text-sidebar-muted-foreground";
+const HEADING_UNNAMED = "font-normal text-sidebar-muted-foreground italic";
+
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
@@ -998,7 +1025,7 @@ function StopMenu({
   routes,
   waiting,
   onOpenProject,
-  onOpenHistory,
+  onOpenStop,
 }: {
   readonly name: string;
   readonly version: DeployedVersion | undefined;
@@ -1007,7 +1034,7 @@ function StopMenu({
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
-  readonly onOpenHistory: (() => void) | undefined;
+  readonly onOpenStop: (() => void) | undefined;
 }) {
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
   const detail =
@@ -1043,8 +1070,8 @@ function StopMenu({
           {/* The question people actually ask of a version is what came before
               it, and a commit page answers only for one — and, with no Gitea
               session in the browser, answers it with a sign-in page. */}
-          {onOpenHistory === undefined ? null : (
-            <MenuItem onClick={onOpenHistory}>History</MenuItem>
+          {onOpenStop === undefined ? null : (
+            <MenuItem onClick={onOpenStop}>Open this environment</MenuItem>
           )}
         </MenuGroup>
         <MenuSeparator />
@@ -1120,6 +1147,12 @@ function EnvironmentRows<T extends RosterCandidate>({
         const routes = item.routes ?? [];
         const version = declared?.version;
         const links = declared === undefined ? undefined : flow?.versionLinks?.(declared);
+        const openStop =
+          declared === undefined || flow?.onOpenStop === undefined
+            ? undefined
+            : () => {
+                flow.onOpenStop?.(declared);
+              };
         return (
           <li
             className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 transition-colors hover:bg-sidebar-row-hover"
@@ -1139,9 +1172,19 @@ function EnvironmentRows<T extends RosterCandidate>({
               <span className="flex min-w-0 items-center gap-2">
                 {/* A stop is named in the same hand as a Mate: it is a place
                     the work reaches, not a footnote under the ones who did it. */}
-                <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-sidebar-foreground">
-                  {name}
-                </span>
+                {openStop === undefined ? (
+                  <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium text-sidebar-foreground">
+                    {name}
+                  </span>
+                ) : (
+                  <button
+                    className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm leading-5 font-medium text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+                    onClick={openStop}
+                    type="button"
+                  >
+                    {name}
+                  </button>
+                )}
                 {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
                   <ZeropsRoleTag label={tag} />
                 )}
@@ -1165,13 +1208,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                   />
                   <StopMenu
                     name={name}
-                    onOpenHistory={
-                      declared === undefined || flow?.onOpenHistory === undefined
-                        ? undefined
-                        : () => {
-                            flow.onOpenHistory?.(declared);
-                          }
-                    }
+                    onOpenStop={openStop}
                     onOpenProject={onOpenProject}
                     routes={routes}
                     links={links}

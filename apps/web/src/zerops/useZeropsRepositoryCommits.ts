@@ -9,7 +9,11 @@
  * A read that fails answers its reason rather than nothing, because this is
  * the whole of what the surface shows — there is no last-good list to keep.
  */
-import type { GiteaCommit } from "@t3tools/client-runtime/zerops";
+import {
+  GROUP_REPOSITORY,
+  releaseTagsByCommit,
+  type GiteaCommit,
+} from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useEffect, useState } from "react";
 
@@ -21,7 +25,12 @@ export const HISTORY_COMMITS = 30;
 export type ZeropsCommitsState =
   | { readonly kind: "no-gitea" }
   | { readonly kind: "reading" }
-  | { readonly kind: "read"; readonly commits: ReadonlyArray<GiteaCommit> }
+  | {
+      readonly kind: "read";
+      readonly commits: ReadonlyArray<GiteaCommit>;
+      /** `full sha → the release that shipped it`, across the whole group. */
+      readonly releases: ReadonlyMap<string, string>;
+    }
   | { readonly kind: "failed"; readonly reason: string };
 
 export interface ZeropsCommitsRequest {
@@ -50,10 +59,15 @@ export function useZeropsRepositoryCommits(
     }
     let live = true;
     setState({ kind: "reading" });
-    void client
-      .listCommits(owner, repo, { limit: HISTORY_COMMITS })
-      .then((commits) => {
-        if (live) setState({ kind: "read", commits });
+    // The releases come from the group repository, not this one: a tag lists
+    // every service's commit in its message. A failure there is not a failure
+    // of the history — the commits still answer, with no release names on them.
+    void Promise.all([
+      client.listCommits(owner, repo, { limit: HISTORY_COMMITS }),
+      client.listTags(owner, GROUP_REPOSITORY).catch(() => []),
+    ])
+      .then(([commits, tags]) => {
+        if (live) setState({ kind: "read", commits, releases: releaseTagsByCommit(tags) });
       })
       .catch((error: unknown) => {
         if (live) setState({ kind: "failed", reason: zeropsErrorMessage(error) });

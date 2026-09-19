@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupHistory, historyLine } from "./groupHistory.ts";
+import { groupHistory, historyLine, releaseTagsByCommit } from "./groupHistory.ts";
 
 const SHA_A = "3f9c1b2a4d5e6f70819293a4b5c6d7e8f9012345";
 const SHA_B = "aa11bb22cc33dd44ee55ff6677889900aabbccdd";
@@ -43,8 +43,8 @@ describe("a group's history", () => {
       commits: [commit(SHA_A, "Add a footer"), commit(SHA_B, "Rename the heading")],
       deployed: new Map(),
       tags: new Map([
-        ["v1.2.0", SHA_A],
-        ["v1.1.0", SHA_C],
+        [SHA_A, "v1.2.0"],
+        [SHA_C, "v1.1.0"],
       ]),
     });
     expect(history[0]?.tags).toEqual(["v1.2.0"]);
@@ -93,5 +93,53 @@ describe("a group's history", () => {
     it("says nothing rather than moving the rows below it for an empty line", () => {
       expect(historyLine({ ...base, author: undefined, deployedTo: [] })).toBeUndefined();
     });
+  });
+});
+
+describe("the release a commit shipped in", () => {
+  const tag = (name: string, message: string | undefined) => ({ name, message });
+
+  it("matches on the sha in the message, not on what the tag points at", () => {
+    // The tag lives on the group repository; the shas in it are the services'.
+    const byCommit = releaseTagsByCommit([
+      tag("v1.2.0", `app ${SHA_A}\nweb ${SHA_B}`),
+      tag("v1.1.0", `app ${SHA_C}`),
+    ]);
+    expect(byCommit.get(SHA_A)).toBe("v1.2.0");
+    expect(byCommit.get(SHA_B)).toBe("v1.2.0");
+    expect(byCommit.get(SHA_C)).toBe("v1.1.0");
+  });
+
+  it("names the release that first shipped a commit, not the last that still ran it", () => {
+    // A commit stays listed by every release made while it is still deployed.
+    const byCommit = releaseTagsByCommit([
+      tag("v1.3.0", `app ${SHA_A}`),
+      tag("v1.1.0", `app ${SHA_A}`),
+      tag("v1.2.0", `app ${SHA_A}`),
+    ]);
+    expect(byCommit.get(SHA_A)).toBe("v1.1.0");
+  });
+
+  it("ignores a tag that is not one of ours, and a message it cannot read", () => {
+    const byCommit = releaseTagsByCommit([
+      tag("nightly", `app ${SHA_A}`),
+      tag("v2.0.0", "deployed everything, finally"),
+      tag("v2.0.1", `app ${SHA_B.slice(0, 7)}`),
+    ]);
+    expect(byCommit.size).toBe(0);
+  });
+
+  it("folds onto the history as the name a commit went live under", () => {
+    const tags = releaseTagsByCommit([tag("v1.2.0", `app ${SHA_A}`)]);
+    const [first, second] = groupHistory({
+      commits: [
+        { sha: SHA_A, subject: "Add a footer" },
+        { sha: SHA_B, subject: "Rename the heading" },
+      ],
+      deployed: new Map(),
+      tags,
+    });
+    expect(first?.tags).toEqual(["v1.2.0"]);
+    expect(second?.tags).toEqual([]);
   });
 });

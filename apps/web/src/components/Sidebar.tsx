@@ -207,8 +207,6 @@ import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
-import { ZeropsHistoryDialog } from "./zerops/ZeropsHistoryDialog";
-import { useZeropsRepositoryCommits } from "~/zerops/useZeropsRepositoryCommits";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import {
@@ -1826,39 +1824,21 @@ export default function Sidebar() {
     },
     [router, threads, zeropsCandidates, isMobile, setOpenMobile],
   );
-  /**
-   * What a stop is looking at the history of. Held here rather than in the
-   * menu because the read outlives the menu, which closes on the click.
-   */
-  const [historyOf, setHistoryOf] = useState<{
-    readonly owner: string;
-    readonly repo: string;
-    readonly deployed: ReadonlyMap<string, string>;
-  } | null>(null);
-  const openHistory = useCallback(
+  /** A stop's page, in place of the thread — the sidebar stays where it is. */
+  const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
-      const flow = zeropsProjectFlow?.flows.get(groupId);
-      if (flow === undefined || row.versionRepository === undefined) return;
-      // Every environment of the group, so a commit in the list can say which
-      // of them is running it — the whole sha, because a short one never
-      // compares equal.
-      const deployed = new Map<string, string>();
-      for (const environment of flow.environments) {
-        const sha = environment.version.sha;
-        if (sha !== undefined) deployed.set(environment.name, sha);
-      }
-      setHistoryOf({ owner: flow.slug, repo: row.versionRepository, deployed });
+      void router.navigate({
+        to: "/group/$groupId/$projectId",
+        params: { groupId, projectId: row.projectId },
+      });
     },
-    [zeropsProjectFlow],
+    [router],
   );
-  const historyCommits = useZeropsRepositoryCommits(
-    historyOf === null
-      ? null
-      : {
-          giteaOrigin: zeropsProjectFlow?.giteaOrigin,
-          owner: historyOf.owner,
-          repo: historyOf.repo,
-        },
+  const openGroup = useCallback(
+    (groupId: string) => {
+      void router.navigate({ to: "/group/$groupId/flow", params: { groupId } });
+    },
+    [router],
   );
   const zeropsSidebarFlowWithAsk = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
@@ -1868,12 +1848,12 @@ export default function Sidebar() {
         : {
             ...base,
             onAsk: askMate,
-            onOpenHistory: (row) => {
-              openHistory(groupId, row);
+            onOpenStop: (row) => {
+              openStop(groupId, row);
             },
           };
     },
-    [zeropsSidebarFlow, askMate, openHistory],
+    [zeropsSidebarFlow, askMate, openStop],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);
@@ -3935,6 +3915,7 @@ export default function Sidebar() {
               unread={!zeropsCandidatesRead}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
+              onOpenGroup={openGroup}
               getActivity={(candidate) =>
                 candidate.environmentId === undefined
                   ? undefined
@@ -4478,14 +4459,6 @@ export default function Sidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarChromeFooter />
-      <ZeropsHistoryDialog
-        commits={historyCommits}
-        onOpenChange={(next) => {
-          if (!next) setHistoryOf(null);
-        }}
-        open={historyOf !== null}
-        request={historyOf}
-      />
     </>
   );
 }

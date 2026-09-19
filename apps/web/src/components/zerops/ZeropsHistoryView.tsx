@@ -8,6 +8,9 @@
  * drawn here instead of handed off — "we can still make the system available,
  * just give the basic functions our face" (the owner, 2026-09-19).
  *
+ * Mounted by the group's page and the stop's own, both of which stand in place
+ * of the thread rather than over it.
+ *
  * Same language as the left menu: one spine, a node per commit, and the stops
  * that are running a commit wear their name on it. The rows sit flush and the
  * rail is opaque for the same reason they are there.
@@ -18,14 +21,6 @@
 import { groupHistory, historyLine, type HistoryEntry } from "@t3tools/client-runtime/zerops";
 
 import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
-import {
-  Dialog,
-  DialogDescription,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
 
 /** What the dialog is looking at, and what the reads answered. */
 export interface ZeropsHistoryRequest {
@@ -54,10 +49,7 @@ export function ZeropsHistoryView({
   const entries = groupHistory({
     commits: commits.commits,
     deployed: request.deployed,
-    // A release tag lives on the group repository and names each service's
-    // commit in its message, so it cannot be matched to this repository's
-    // history by sha. Folding releases on is its own piece of work.
-    tags: new Map(),
+    tags: commits.releases,
   });
   if (entries.length === 0) {
     return <HistoryNote>Nothing has landed on this repository yet.</HistoryNote>;
@@ -108,6 +100,16 @@ function HistoryRow({
           <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">
             {entry.subject}
           </span>
+          {/* The name it went live under, where a release carried it. */}
+          {entry.tags.map((tag) => (
+            <span
+              className="shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]"
+              data-zerops-surface="zerops-history-release"
+              key={tag}
+            >
+              {tag}
+            </span>
+          ))}
           <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
             {entry.shortSha}
           </span>
@@ -126,33 +128,3 @@ function HistoryNote({ children }: { readonly children: React.ReactNode }) {
 
 const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
 const RAIL_BLANK = "w-px flex-1";
-
-export function ZeropsHistoryDialog({
-  open,
-  onOpenChange,
-  request,
-  commits,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly request: ZeropsHistoryRequest | null;
-  readonly commits: ZeropsCommitsState;
-}) {
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup className="max-w-xl">
-        <DialogPanel>
-          <DialogHeader>
-            <DialogTitle>{request === null ? "History" : request.repo}</DialogTitle>
-            <DialogDescription>
-              What has landed here, newest first, and what is running it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
-            {request === null ? null : <ZeropsHistoryView commits={commits} request={request} />}
-          </div>
-        </DialogPanel>
-      </DialogPopup>
-    </Dialog>
-  );
-}

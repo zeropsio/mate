@@ -24,8 +24,9 @@
  * @module groupHistory
  */
 
-import type { GiteaCommit } from "./giteaClient.ts";
+import type { GiteaCommit, GiteaTag } from "./giteaClient.ts";
 import { shortCommit } from "./groupRows.ts";
+import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
 
 /** One commit on the branch, and what reached it. */
 export interface HistoryEntry {
@@ -41,7 +42,7 @@ export interface HistoryEntry {
    * which is the file's order, stage before production (`groupDeploys.ts`).
    */
   readonly deployedTo: ReadonlyArray<string>;
-  /** Release tags pointing at it, newest first as they were given. */
+  /** The release that shipped it, where one has — at most one, and its name. */
   readonly tags: ReadonlyArray<string>;
 }
 
@@ -57,7 +58,7 @@ export function groupHistory(input: {
   readonly commits: ReadonlyArray<GiteaCommit>;
   /** `environment name → the full sha it runs`. */
   readonly deployed: ReadonlyMap<string, string>;
-  /** `tag name → the full sha it points at`. */
+  /** `full sha → the release that shipped it` ({@link releaseTagsByCommit}). */
   readonly tags: ReadonlyMap<string, string>;
 }): ReadonlyArray<HistoryEntry> {
   const deployedBySha = new Map<string, Array<string>>();
@@ -66,12 +67,6 @@ export function groupHistory(input: {
     if (at === undefined) deployedBySha.set(sha, [environment]);
     else at.push(environment);
   }
-  const tagsBySha = new Map<string, Array<string>>();
-  for (const [tag, sha] of input.tags) {
-    const at = tagsBySha.get(sha);
-    if (at === undefined) tagsBySha.set(sha, [tag]);
-    else at.push(tag);
-  }
   return input.commits.map((commit) => ({
     sha: commit.sha,
     shortSha: shortCommit(commit.sha),
@@ -79,7 +74,10 @@ export function groupHistory(input: {
     author: commit.author,
     at: commit.at,
     deployedTo: deployedBySha.get(commit.sha) ?? [],
-    tags: tagsBySha.get(commit.sha) ?? [],
+    tags: (() => {
+      const tag = input.tags.get(commit.sha);
+      return tag === undefined ? [] : [tag];
+    })(),
   }));
 }
 
@@ -95,4 +93,44 @@ export function historyLine(entry: HistoryEntry): string | undefined {
     (part): part is string => part !== undefined && part.length > 0,
   );
   return parts.length === 0 ? undefined : parts.join(" · ");
+}
+
+/**
+ * `sha → the release that first put it in front of people`, for any repository.
+ *
+ * A release tag lives on the group repository and lists every service's commit
+ * in its message, so it cannot be matched to a service's history by the tag's
+ * own target. It does not have to be: the message carries whole shas, and a
+ * sha is unique across every repository in the org. A sha in the message that
+ * also appears in this repository's commits *is* this repository's service, so
+ * the hostname the entry names is not needed and no tier mapping has to be
+ * threaded through to read it.
+ *
+ * A commit stays listed by every release made while it is still deployed, so
+ * the lowest version that names it is the one that shipped it — that is the
+ * release a person means by "when did this go live". Tags may arrive in any
+ * order; anything that is not a `v{semver}` release of ours is ignored, as is
+ * a message this build cannot read (`readReleaseMessage`).
+ */
+export function releaseTagsByCommit(tags: ReadonlyArray<GiteaTag>): ReadonlyMap<string, string> {
+  const releases = tags
+    .filter((tag) => isReleaseTag(tag.name))
+    .map((tag) => ({ tag, semver: readSemver(tag.name) }))
+    .filter(
+      (entry): entry is { tag: GiteaTag; semver: NonNullable<typeof entry.semver> } =>
+        entry.semver !== undefined,
+    )
+    .sort(
+      (left, right) =>
+        left.semver.major - right.semver.major ||
+        left.semver.minor - right.semver.minor ||
+        left.semver.patch - right.semver.patch,
+    );
+  const byCommit = new Map<string, string>();
+  for (const { tag } of releases) {
+    for (const entry of readReleaseMessage(tag.message ?? "")) {
+      if (!byCommit.has(entry.commit)) byCommit.set(entry.commit, tag.name);
+    }
+  }
+  return byCommit;
 }

@@ -327,7 +327,12 @@ export {
   type GroupEnvironmentService,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
-export { groupHistory, historyLine, type HistoryEntry } from "./groupHistory.ts";
+export {
+  groupHistory,
+  historyLine,
+  releaseTagsByCommit,
+  type HistoryEntry,
+} from "./groupHistory.ts";
 export {
   base64Decode,
   base64Encode,

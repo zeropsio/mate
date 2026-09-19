@@ -31,6 +31,8 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings.appear
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
+import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
 
 const ZeropsRoute = ZeropsRouteImport.update({
   id: '/zerops',
@@ -142,6 +144,17 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatGroupGroupIdFlowRoute = ChatGroupGroupIdFlowRouteImport.update({
+  id: '/group/$groupId/flow',
+  path: '/group/$groupId/flow',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatGroupGroupIdProjectIdRoute =
+  ChatGroupGroupIdProjectIdRouteImport.update({
+    id: '/group/$groupId/$projectId',
+    path: '/group/$groupId/$projectId',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -165,6 +178,8 @@ export interface FileRoutesByFullPath {
   '/zerops/new': typeof ZeropsNewRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
 }
 export interface FileRoutesByTo {
   '/gitea': typeof GiteaRoute
@@ -188,6 +203,8 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -213,6 +230,8 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
+  '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -238,6 +257,8 @@ export interface FileRouteTypes {
     | '/zerops/new'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/group/$groupId/$projectId'
+    | '/group/$groupId/flow'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/gitea'
@@ -261,6 +282,8 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/group/$groupId/$projectId'
+    | '/group/$groupId/flow'
   id:
     | '__root__'
     | '/_chat'
@@ -285,6 +308,8 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/_chat/group/$groupId/$projectId'
+    | '/_chat/group/$groupId/flow'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -456,6 +481,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/group/$groupId/flow': {
+      id: '/_chat/group/$groupId/flow'
+      path: '/group/$groupId/flow'
+      fullPath: '/group/$groupId/flow'
+      preLoaderRoute: typeof ChatGroupGroupIdFlowRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/group/$groupId/$projectId': {
+      id: '/_chat/group/$groupId/$projectId'
+      path: '/group/$groupId/$projectId'
+      fullPath: '/group/$groupId/$projectId'
+      preLoaderRoute: typeof ChatGroupGroupIdProjectIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -463,12 +502,16 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatGroupGroupIdProjectIdRoute: typeof ChatGroupGroupIdProjectIdRoute
+  ChatGroupGroupIdFlowRoute: typeof ChatGroupGroupIdFlowRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatGroupGroupIdProjectIdRoute: ChatGroupGroupIdProjectIdRoute,
+  ChatGroupGroupIdFlowRoute: ChatGroupGroupIdFlowRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
