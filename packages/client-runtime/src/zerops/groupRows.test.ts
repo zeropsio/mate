@@ -67,17 +67,29 @@ describe("deployedVersion", () => {
     {
       name: "a release, which everybody calls by its tag",
       value: `${SHA} v1.2.0 u-jan`,
-      expected: { name: "v1.2.0", commit: "3f9c1b2", taggedBy: "u-jan", label: "v1.2.0" },
+      expected: { name: "v1.2.0", commit: "3f9c1b2", sha: SHA, taggedBy: "u-jan", label: "v1.2.0" },
     },
     {
       name: "a stage deploy, which nobody named, so the commit is the answer",
       value: SHA,
-      expected: { name: undefined, commit: "3f9c1b2", taggedBy: undefined, label: "3f9c1b2" },
+      expected: {
+        name: undefined,
+        commit: "3f9c1b2",
+        sha: SHA,
+        taggedBy: undefined,
+        label: "3f9c1b2",
+      },
     },
     {
       name: "a tag nobody signed",
       value: `${SHA} v1.2.0`,
-      expected: { name: "v1.2.0", commit: "3f9c1b2", taggedBy: undefined, label: "v1.2.0" },
+      expected: {
+        name: "v1.2.0",
+        commit: "3f9c1b2",
+        sha: SHA,
+        taggedBy: undefined,
+        label: "v1.2.0",
+      },
     },
     {
       // Somebody typed this into `zcli`; it is still what is running, and it
@@ -87,6 +99,7 @@ describe("deployedVersion", () => {
       expected: {
         name: "hotfix for the outage",
         commit: undefined,
+        sha: undefined,
         taggedBy: undefined,
         label: "hotfix for the outage",
       },
@@ -94,12 +107,24 @@ describe("deployedVersion", () => {
     {
       name: "nothing deployed",
       value: undefined,
-      expected: { name: undefined, commit: undefined, taggedBy: undefined, label: undefined },
+      expected: {
+        name: undefined,
+        commit: undefined,
+        sha: undefined,
+        taggedBy: undefined,
+        label: undefined,
+      },
     },
     {
       name: "a blank name, which is nothing deployed by another route",
       value: "   ",
-      expected: { name: undefined, commit: undefined, taggedBy: undefined, label: undefined },
+      expected: {
+        name: undefined,
+        commit: undefined,
+        sha: undefined,
+        taggedBy: undefined,
+        label: undefined,
+      },
     },
   ])("reads $name", ({ value, expected }) => {
     expect(deployedVersion(value)).toEqual(expected);
@@ -204,6 +229,7 @@ describe("environmentRow", () => {
     expect(row.version).toEqual({
       name: "v1.2.0",
       commit: "3f9c1b2",
+      sha: SHA,
       taggedBy: "u-jan",
       label: "v1.2.0",
     });

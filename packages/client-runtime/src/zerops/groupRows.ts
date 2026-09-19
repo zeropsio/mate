@@ -204,6 +204,11 @@ export interface DeployedVersion {
   readonly name: string | undefined;
   /** The commit it was built from, short; `undefined` where the name is not one of ours. */
   readonly commit: string | undefined;
+  /**
+   * The whole 40-hex commit, where the version names one. `commit` is what a
+   * person reads; this is what compares equal, because a short sha never does.
+   */
+  readonly sha: string | undefined;
   /** Who tagged the release, where the name carries it. */
   readonly taggedBy: string | undefined;
   /** The one thing a row writes: the name, and the commit only as its fallback. */
@@ -214,6 +219,7 @@ export interface DeployedVersion {
 const NO_VERSION: DeployedVersion = {
   name: undefined,
   commit: undefined,
+  sha: undefined,
   taggedBy: undefined,
   label: undefined,
 };
@@ -229,11 +235,11 @@ export function deployedVersion(appVersionName: string | undefined): DeployedVer
     // Not one of ours: the whole string is the only name it has, and it is a
     // better answer than saying nothing.
     const name = tokens.join(" ");
-    return { name, commit: undefined, taggedBy: undefined, label: name };
+    return { name, commit: undefined, sha: undefined, taggedBy: undefined, label: name };
   }
   const [, name, taggedBy] = tokens;
   const commit = shortCommit(sha);
-  return { name, commit, taggedBy, label: name ?? commit };
+  return { name, commit, sha, taggedBy, label: name ?? commit };
 }
 
 /**

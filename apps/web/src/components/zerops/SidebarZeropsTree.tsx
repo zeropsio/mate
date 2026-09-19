@@ -141,6 +141,16 @@ export interface SidebarProjectFlow {
    */
   readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
   /**
+   * Opens what has landed on the repository a stop is built from, in the app.
+   *
+   * *History* used to be a link into Gitea, and so did the version beside it.
+   * Neither worked: the app holds the only Gitea token, so a person's browser
+   * has no session there and both arrived at a sign-in page (measured
+   * 2026-09-19). Gitea answers this well enough as an API — the answer is
+   * drawn here rather than handed off.
+   */
+  readonly onOpenHistory?: ((row: EnvironmentRow) => void) | undefined;
+  /**
    * The stops the group's recipe offers and nobody has added yet. A timeline
    * that showed only its Mates never said a production was a next step (the
    * owner, twice, 2026-09-17: "it never asked me to setup production").
@@ -988,6 +998,7 @@ function StopMenu({
   routes,
   waiting,
   onOpenProject,
+  onOpenHistory,
 }: {
   readonly name: string;
   readonly version: DeployedVersion | undefined;
@@ -996,6 +1007,7 @@ function StopMenu({
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
+  readonly onOpenHistory: (() => void) | undefined;
 }) {
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
   const detail =
@@ -1029,12 +1041,10 @@ function StopMenu({
             </MenuItem>
           )}
           {/* The question people actually ask of a version is what came before
-              it, and a commit page answers only for one. */}
-          {links === undefined ? null : (
-            <MenuItem render={<a href={links.history} rel="noreferrer" target="_blank" />}>
-              <span className="min-w-0 flex-1 truncate">History</span>
-              <ExternalLinkIcon aria-hidden="true" />
-            </MenuItem>
+              it, and a commit page answers only for one — and, with no Gitea
+              session in the browser, answers it with a sign-in page. */}
+          {onOpenHistory === undefined ? null : (
+            <MenuItem onClick={onOpenHistory}>History</MenuItem>
           )}
         </MenuGroup>
         <MenuSeparator />
@@ -1155,6 +1165,13 @@ function EnvironmentRows<T extends RosterCandidate>({
                   />
                   <StopMenu
                     name={name}
+                    onOpenHistory={
+                      declared === undefined || flow?.onOpenHistory === undefined
+                        ? undefined
+                        : () => {
+                            flow.onOpenHistory?.(declared);
+                          }
+                    }
                     onOpenProject={onOpenProject}
                     routes={routes}
                     links={links}

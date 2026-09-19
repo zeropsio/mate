@@ -97,11 +97,27 @@ export interface GiteaIssueSearchHit {
     | undefined;
 }
 
-/** One commit, as a release's contents need it. */
+/** One commit, as a release's contents and a group's history need it. */
 export interface GiteaCommit {
   readonly sha: string;
   /** The first line of its message — with squash merges, the task's words. */
   readonly subject: string;
+  /** Who Gitea says wrote it. A Mate's squash merge carries the bot. */
+  readonly author?: string | undefined;
+  /** When it landed, ISO-8601. Absent where Gitea sent no date. */
+  readonly at?: string | undefined;
+}
+
+/** Gitea's own shape for a commit in a listing. */
+interface GiteaListCommitWire {
+  readonly sha: string;
+  readonly commit?:
+    | {
+        readonly message?: string | undefined;
+        readonly author?: { readonly name?: string; readonly date?: string } | undefined;
+      }
+    | undefined;
+  readonly author?: { readonly login?: string | undefined } | null | undefined;
 }
 
 /** Gitea's own shape for a commit inside a comparison. */
@@ -323,6 +339,21 @@ export interface GiteaClient {
     repo: string,
     base: string,
     head: string,
+  ): Promise<ReadonlyArray<GiteaCommit>>;
+
+  /**
+   * A branch's commits, newest first — the spine a group's history is drawn on.
+   *
+   * `compareCommits` cannot answer this: it needs two refs and reports what
+   * one has that the other does not, which is the right question for a release
+   * and the wrong one for "what has happened here".
+   */
+  listCommits(
+    owner: string,
+    repo: string,
+    options?:
+      | { readonly ref?: string | undefined; readonly limit?: number | undefined }
+      | undefined,
   ): Promise<ReadonlyArray<GiteaCommit>>;
 
   listActionRuns(
@@ -611,6 +642,26 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       return (answer?.commits ?? []).map((entry) => ({
         sha: entry.sha,
         subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+      }));
+    },
+
+    listCommits: async (owner, repo, listOptions) => {
+      const answer = await optional<ReadonlyArray<GiteaListCommitWire>>(
+        {
+          method: "GET",
+          path: `/repos/${enc(owner)}/${enc(repo)}/commits`,
+          query: {
+            ...(listOptions?.ref === undefined ? {} : { sha: listOptions.ref }),
+            ...(listOptions?.limit === undefined ? {} : { limit: listOptions.limit }),
+          },
+        },
+        "list the commits",
+      );
+      return (answer ?? []).map((entry) => ({
+        sha: entry.sha,
+        subject: (entry.commit?.message ?? "").split("\n")[0]?.trim() ?? "",
+        author: entry.author?.login ?? entry.commit?.author?.name,
+        at: entry.commit?.author?.date,
       }));
     },
 
