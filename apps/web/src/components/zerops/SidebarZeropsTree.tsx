@@ -66,7 +66,8 @@ import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   ArrowUpIcon,
   CheckIcon,
-  ChevronRightIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
   ExternalLinkIcon,
   MinusIcon,
   MoreHorizontalIcon,
@@ -798,10 +799,7 @@ function PullRequestList({
           type="button"
         >
           <RailFork cap={listed ? undefined : railCap} />
-          <ChevronRightIcon
-            aria-hidden="true"
-            className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
-          />
+          <FoldGlyph open={open} />
           <span>{pulls.length} pull requests</span>
         </button>
       ) : null}
@@ -1343,22 +1341,19 @@ function EnvironmentRows<T extends RosterCandidate>({
       <li>
         <button
           aria-expanded={!collapsed}
-          className="flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-sidebar-row-hover"
+          // The same height either way. Folded it drew the compacted stops and
+          // stood 28px tall; unfolded it drew a glyph and stood 16, so every
+          // press shoved everything under it by 12px.
+          className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-sidebar-row-hover"
           data-zerops-surface="sidebar-stops-fold"
           onClick={onToggle}
           type="button"
         >
           <RailCell cap={collapsed ? "end" : undefined}>
-            <ChevronRightIcon
-              aria-hidden="true"
-              className={cn(
-                "size-3 shrink-0 text-sidebar-muted-foreground transition-transform",
-                !collapsed && "rotate-90",
-              )}
-            />
+            <FoldGlyph open={!collapsed} />
           </RailCell>
           {collapsed ? (
-            <span className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5">
+            <span className="flex min-w-0 flex-1 items-center gap-2.5">
               {folded.map((stop) => (
                 <span className="flex min-w-0 items-center gap-1" key={stop.key}>
                   <StopBadge size="xs" tone={stop.tone} word={stop.word} />
@@ -1510,6 +1505,21 @@ function EnvironmentRows<T extends RosterCandidate>({
           })}
     </ul>
   );
+}
+
+/**
+ * The glyph on a row that folds a list away.
+ *
+ * A rotating right-chevron is a tree's disclosure triangle — it says "there is
+ * a level below this". These rows have no level below them: they stand in
+ * place of the rows themselves, which is a different gesture, so they wear the
+ * gesture's own pair. Arrows meeting fold the list shut; arrows parting open
+ * it. Nothing animates: this is pressed dozens of times a day, and a
+ * transition on it only ever reads as lag.
+ */
+function FoldGlyph({ open }: { readonly open: boolean }) {
+  const Glyph = open ? ChevronsDownUpIcon : ChevronsUpDownIcon;
+  return <Glyph aria-hidden="true" className="size-3 shrink-0 text-sidebar-muted-foreground" />;
 }
 
 /**
