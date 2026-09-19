@@ -146,11 +146,12 @@ describe("SidebarZeropsTree", () => {
     expect(snippetAt).toBeGreaterThan(subjectAt);
     expect(html).toContain("give it optimistic updates");
     expect(html).toContain("Deploying and verifying now.");
-    // Three tones: the name, then what it is on, then, quieter, what was said.
+    // Three tones, and only the name is at full strength: what the Mate was
+    // asked and what it said back are both previews and both recede.
     const subject = html.slice(html.lastIndexOf("<span", subjectAt), subjectAt);
     const snippet = html.slice(html.lastIndexOf("<span", snippetAt), snippetAt);
-    expect(subject).toContain("text-sidebar-foreground");
-    expect(snippet).toContain("text-sidebar-muted-foreground");
+    expect(subject).toContain('text-sidebar-muted-foreground"');
+    expect(snippet).toContain("text-sidebar-muted-foreground/70");
   });
 
   it('says nothing while the candidate list is on its first read, rather than "none"', () => {
@@ -527,19 +528,21 @@ describe("the project's flow under it", () => {
   it("draws one spine, and branches a change off it instead of onto it", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     const count = (needle: string) => html.split(needle).length - 1;
-    const onLine =
+    const rows =
       count('data-zerops-surface="sidebar-mate"') +
-      count('data-zerops-surface="sidebar-environment"');
+      count('data-zerops-surface="sidebar-environment"') +
+      count('data-zerops-surface="sidebar-pull-request"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
     const painted = count('class="w-px flex-1 bg-sidebar-border"');
     const blank = count('class="w-px flex-1"');
-    expect(onLine).toBeGreaterThan(0);
+    expect(rows).toBeGreaterThan(0);
     expect(changes).toBeGreaterThan(0);
-    // A row that stands on the line carries both halves wherever it sits on
-    // it. Leaving one out lets the other take the free space, which shoved the
+    // Every row carries both halves wherever it sits on the line, a change
+    // included: its fork builds the spine the same way so it lands on the same
+    // half pixel. Leaving one out lets the other take the free space, which shoved the
     // first face of every group 24px above its row and every last badge 17px
     // below it.
-    expect(painted + blank).toBe(onLine * 2);
+    expect(painted + blank).toBe(rows * 2);
     // Unpainted only at the two ends: the first node of the group and the last.
     expect(blank).toBe(2);
     // A change is not a node on the line — it branches off one. Drawn as a

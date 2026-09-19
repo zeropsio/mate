@@ -536,10 +536,7 @@ function MateRow<T extends RosterCandidate>({
         </span>
         {subject === undefined ? null : (
           <span
-            className={cn(
-              "truncate text-xs leading-4",
-              snippet === undefined ? "text-sidebar-muted-foreground" : "text-sidebar-foreground",
-            )}
+            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
             data-zerops-surface="sidebar-mate-subject"
           >
             {subject}
@@ -547,7 +544,7 @@ function MateRow<T extends RosterCandidate>({
         )}
         {snippet === undefined ? null : (
           <span
-            className="truncate text-xs leading-4 text-sidebar-muted-foreground"
+            className="truncate text-xs leading-4 text-sidebar-muted-foreground/70"
             data-zerops-surface="sidebar-mate-snippet"
           >
             {snippet}
@@ -626,19 +623,20 @@ const RAIL_BLANK = "w-px flex-1";
  */
 function RailFork({ cap }: { readonly cap?: RailCap }) {
   return (
-    <span className="relative w-7 shrink-0 self-stretch">
-      {/* A change does not interrupt the line. It stops here only when there
-          is nothing below it that stands on the line. */}
+    <span className="relative flex w-7 shrink-0 self-stretch">
+      {/* The spine, built exactly as a row that stands on it builds it — two
+          halves centred in the same 20px column — so it lands on the same half
+          pixel. Anchored at a round offset instead it sat 0.5px right of the
+          Mates' line and the column visibly jogged at every change. */}
+      <span className="flex w-5 shrink-0 flex-col items-center self-stretch">
+        <span aria-hidden="true" className={RAIL_LINE} />
+        <span aria-hidden="true" className={cap === "end" ? RAIL_BLANK : RAIL_LINE} />
+      </span>
+      {/* The branch: a bottom border curving up out of the spine. It carries no
+          left border, which would double the line it is leaving. */}
       <span
         aria-hidden="true"
-        className={cn(
-          "absolute start-2.5 top-0 w-px bg-sidebar-border",
-          cap === "end" ? "h-1/2" : "bottom-0",
-        )}
-      />
-      <span
-        aria-hidden="true"
-        className="absolute start-2.5 top-[calc(50%-0.5rem)] h-2 w-3.5 rounded-bl-md border-s border-b border-sidebar-border"
+        className="absolute start-2.5 top-[calc(50%-0.5rem)] h-2 w-3.5 rounded-bl-md border-b border-sidebar-border"
       />
       <span
         aria-hidden="true"
@@ -824,7 +822,12 @@ function ReleaseVerb({
     <Tooltip>
       <TooltipTrigger render={verb} />
       <TooltipPopup side="right">
-        <span className="flex flex-col gap-0.5" data-zerops-surface="sidebar-release-contents">
+        {/* A commit subject is a whole sentence — unbounded, the hover grew to
+            the width of the longest one and floated across the screen. */}
+        <span
+          className="flex max-w-72 flex-col gap-0.5 wrap-anywhere"
+          data-zerops-surface="sidebar-release-contents"
+        >
           <span className="font-medium">
             {summary.total === 1 ? "Going live:" : `Going live — ${summary.total} changes:`}
           </span>
