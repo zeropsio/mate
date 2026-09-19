@@ -96,7 +96,7 @@ import { ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
 import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
-import { MateFace, StatusDot } from "./primitives";
+import { MateFace, StatusDot, VERDICT_BORDER_CLASS, VerdictPanel } from "./primitives";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -1267,35 +1267,22 @@ function ChangeVerdictPanel({
 }) {
   return (
     <div className="mb-8" data-zerops-surface="change-verdict">
-      <div
-        className={cn(
-          "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5",
-          VERDICT_BORDER_CLASS[verdict.tone],
-        )}
-      >
-        <StatusDot
-          className="min-w-0 text-sm text-foreground"
-          label={verdict.text}
-          sentence
-          tone={verdict.tone}
-        />
-        <span className="flex shrink-0 items-center gap-2">
-          {verdict.ask === undefined ? null : (
-            <Button data-zerops-primary-action="Ask" onClick={onAsk} size="sm" variant="outline">
-              {askLabel}
-            </Button>
-          )}
-          <Button
-            aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
-            data-zerops-primary-action="Merge"
-            disabled={merging || !verdict.canMerge}
-            onClick={onMerge}
-            size="sm"
-          >
-            {flowVerbLabel("merge", merging)}
+      <VerdictPanel text={verdict.text} tone={verdict.tone}>
+        {verdict.ask === undefined ? null : (
+          <Button data-zerops-primary-action="Ask" onClick={onAsk} size="sm" variant="outline">
+            {askLabel}
           </Button>
-        </span>
-      </div>
+        )}
+        <Button
+          aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
+          data-zerops-primary-action="Merge"
+          disabled={merging || !verdict.canMerge}
+          onClick={onMerge}
+          size="sm"
+        >
+          {flowVerbLabel("merge", merging)}
+        </Button>
+      </VerdictPanel>
       {/* A verb that refused says so under the verb that refused, not in a
           toast somewhere off the page. */}
       {trouble === null ? null : (
@@ -1304,15 +1291,6 @@ function ChangeVerdictPanel({
     </div>
   );
 }
-
-/** The panel's edge, in the colour of the answer inside it. */
-const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-[var(--zerops-status-ok)]/40",
-  busy: "border-[var(--zerops-status-busy)]/40",
-  attention: "border-[var(--zerops-status-attention)]/40",
-  failed: "border-[var(--zerops-status-failed)]/40",
-  off: "border-border",
-};
 
 /**
  * A halted Mate and a failed deploy are not the same kind of bad — and work

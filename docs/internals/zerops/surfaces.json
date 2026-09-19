@@ -592,6 +592,7 @@
       "title": "Zerops web primitives",
       "components": [
         "apps/web/src/components/zerops/primitives/StatusDot.tsx",
+        "apps/web/src/components/zerops/primitives/VerdictPanel.tsx",
         "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
         "apps/web/src/components/zerops/primitives/Chip.tsx",
         "apps/web/src/components/zerops/primitives/Pill.tsx",
