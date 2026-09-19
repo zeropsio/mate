@@ -17,7 +17,7 @@
  */
 
 import type { GiteaIssueComment } from "./giteaClient.ts";
-import { mateProjectOfLogin } from "./projectFlow.ts";
+import { mateProjectOfLogin } from "./mateIdentity.ts";
 
 /** One turn in a change's conversation, named rather than logged-in-as. */
 export interface ChangeRemark {

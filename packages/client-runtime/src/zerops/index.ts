@@ -292,6 +292,12 @@ export {
 } from "./gitTab.ts";
 export { parseGiteaChangeUrl, type GiteaChangeLink } from "./giteaChangeLink.ts";
 export {
+  branchLabel,
+  mateBotLogin,
+  mateProjectOfBranch,
+  mateProjectOfLogin,
+} from "./mateIdentity.ts";
+export {
   mateReviewOffer,
   MATE_REVIEW_MERGE_LABEL,
   MATE_REVIEW_MERGE_RUNNING,
@@ -390,9 +396,6 @@ export {
   flowVerbKey,
   flowVerbLabel,
   GROUP_REPOSITORY,
-  mateBotLogin,
-  mateProjectOfBranch,
-  mateProjectOfLogin,
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,

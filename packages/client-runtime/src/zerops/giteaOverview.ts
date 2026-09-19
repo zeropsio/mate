@@ -15,7 +15,7 @@
  */
 
 import type { GiteaIssueSearchHit, GiteaRepository } from "./giteaClient.ts";
-import { mateProjectOfLogin } from "./projectFlow.ts";
+import { mateProjectOfLogin } from "./mateIdentity.ts";
 
 export interface GiteaOverviewPullRequest {
   readonly number: number;

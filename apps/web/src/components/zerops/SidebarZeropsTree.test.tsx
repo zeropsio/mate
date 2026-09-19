@@ -321,6 +321,7 @@ describe("the project's flow under it", () => {
     checks: "passing",
     checkWord: "Passing",
     mergeable: true,
+    merged: false,
     headSha: "abc",
     baseBranch: "main",
     line: `appdev #${number}`,

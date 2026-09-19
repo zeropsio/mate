@@ -169,6 +169,18 @@ describe("the line under the name", () => {
     expect(gitCheckoutLine(checkout({ changed: [FILE, OTHER] }))).toContain("2 files changed");
   });
 
+  it("names a Mate's own branch after the Mate, never after its project id", () => {
+    // `mate/mate-PXGYIVK9RLWlE3eTL3Qwow` is a project id inside a bot login
+    // inside a ref: three machine names and nothing a reader can use.
+    const own = checkout({ headRef: "mate/mate-0bPLTRRSSTuV54WMpcLoww" });
+    expect(gitCheckoutLine(own, "Theo")).toBe("Theo's branch");
+    expect(gitCheckoutLine(own)).toBe("the Mate's branch");
+    // A branch a person named means what they named it.
+    expect(gitCheckoutLine(checkout({ headRef: "feature/invoices" }), "Theo")).toBe(
+      "feature/invoices",
+    );
+  });
+
   it("never repeats the repository, which is the name it sits under", () => {
     expect(gitCheckoutLine(checkout())).not.toContain("api");
   });
@@ -745,5 +757,20 @@ describe("what is on disk and not committed", () => {
 
   it("is empty for a clean checkout rather than absent", () => {
     expect(block(checkout()).changed).toEqual([]);
+  });
+});
+
+describe("a Mate's own branch, wherever it is read", () => {
+  it("reaches a block through the name its caller was given", () => {
+    const answer = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-0bPLTRRSSTuV54WMpcLoww" }),
+      forge: forge(),
+      declarations: DECLARATIONS,
+      evidence: EVIDENCE,
+      mateName: "Theo",
+    });
+    expect(answer.checkoutLine).toBe("Theo's branch");
+    // The branch itself is untouched: a verb runs against the ref, not the label.
+    expect(answer.branch).toBe("mate/mate-0bPLTRRSSTuV54WMpcLoww");
   });
 });

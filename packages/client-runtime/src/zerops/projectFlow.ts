@@ -34,31 +34,11 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { checkTone, checkWord, pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
+import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import { releaseWord, type ReleaseVerdict } from "./release.ts";
 
 /** The group repo, whose pull requests are recipe changes and whose tags are the releases. */
 export const GROUP_REPOSITORY = "group";
-
-const BOT_LOGIN_PREFIX = "mate-";
-const MATE_BRANCH_PREFIX = "mate/";
-
-/** The bot login of a Mate's project — what the broker registers it as. */
-export function mateBotLogin(projectId: string): string {
-  return `${BOT_LOGIN_PREFIX}${projectId}`;
-}
-
-/** The Mate's project behind a bot login, or `undefined` for a person. */
-export function mateProjectOfLogin(login: string | undefined): string | undefined {
-  if (login === undefined || !login.startsWith(BOT_LOGIN_PREFIX)) return undefined;
-  const projectId = login.slice(BOT_LOGIN_PREFIX.length);
-  return projectId.length > 0 ? projectId : undefined;
-}
-
-/** The Mate's project behind zcp's branch name, or `undefined` for any other branch. */
-export function mateProjectOfBranch(ref: string | undefined): string | undefined {
-  if (ref === undefined || !ref.startsWith(MATE_BRANCH_PREFIX)) return undefined;
-  return mateProjectOfLogin(ref.slice(MATE_BRANCH_PREFIX.length));
-}
 
 export type FlowPullRequestKind = "code" | "recipe";
 

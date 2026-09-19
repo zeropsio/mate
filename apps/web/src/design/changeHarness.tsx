@@ -77,6 +77,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     headSha: "b21d904cb21d904cb21d904cb21d904cb21d904c",
     url: "https://gitea.example/links/appdev/pulls/5",
     mergeable: true,
+    merged: false,
     checks: "passing",
     checkWord: "checks passed",
     updatedAt: new Date().toISOString(),

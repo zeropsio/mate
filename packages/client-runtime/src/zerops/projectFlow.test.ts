@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
+import { mateBotLogin, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
@@ -15,9 +16,6 @@ import {
   flowPullRequest,
   flowVerbKey,
   flowVerbLabel,
-  mateBotLogin,
-  mateProjectOfBranch,
-  mateProjectOfLogin,
   pullRequestLineWith,
   pullRequestsByMate,
   pullRequestsFolded,

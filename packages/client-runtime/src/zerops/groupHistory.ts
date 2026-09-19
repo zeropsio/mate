@@ -26,7 +26,7 @@
 
 import type { GiteaCommit, GiteaTag } from "./giteaClient.ts";
 import { environmentNameUnderGroup, shortCommit } from "./groupRows.ts";
-import { mateProjectOfLogin } from "./projectFlow.ts";
+import { mateProjectOfLogin } from "./mateIdentity.ts";
 import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
 
 /** One commit on the branch, and what reached it. */

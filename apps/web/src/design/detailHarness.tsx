@@ -151,6 +151,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     checks: "passing",
     checkWord: "Passing",
     mergeable: true,
+    merged: false,
     headSha: sha("b21d904c"),
     baseBranch: "main",
     line: "appdev #5",

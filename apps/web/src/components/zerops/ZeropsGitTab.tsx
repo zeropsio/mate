@@ -246,13 +246,14 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             checks: [],
           },
           declarations: props.declarations,
+          ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
           evidence: {
             remoteReachable: remotes.get(repository)?.reachable,
             remoteDetail: remotes.get(repository)?.detail,
           },
         }),
       ),
-    [checkouts, forges, props.declarations, remotes, repositories],
+    [checkouts, forges, props.declarations, props.mateName, remotes, repositories],
   );
 
   /**

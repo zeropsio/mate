@@ -245,6 +245,7 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
     checks: "passing",
     checkWord: "Passing",
     mergeable: true,
+    merged: false,
     headSha: "3f9c1b2",
     baseBranch: "main",
     line: `appdev #${input.number}`,
@@ -300,6 +301,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           checks: "pending",
           checkWord: "Checking",
           mergeable: false,
+          merged: false,
         }),
         pull({
           number: 5,
@@ -308,6 +310,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           checks: "failing",
           checkWord: "Failing",
           mergeable: false,
+          merged: false,
         }),
         pull({ number: 6, title: "Bump the linter", author: "ada", mateProjectId: undefined }),
       ],
@@ -357,6 +360,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           checks: "pending",
           checkWord: "Checking",
           mergeable: false,
+          merged: false,
         }),
         behindPull({
           number: 38,
@@ -370,6 +374,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           checks: "failing",
           checkWord: "Failing",
           mergeable: false,
+          merged: false,
         }),
         pull({ number: 40, title: "Extract the price formatter", mateProjectId: "shop-mira" }),
         behindPull({

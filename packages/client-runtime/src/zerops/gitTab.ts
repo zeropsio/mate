@@ -51,6 +51,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import { branchLabel } from "./mateIdentity.ts";
 import { foldedStageHostnames } from "./serviceMap.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
@@ -355,9 +356,13 @@ export function pullRequestBlocked(pull: {
  * zeros either: `↑0 ↓0` is the one case where the arrows carry nothing, and a
  * person who reads them learns exactly what their absence would have told them.
  */
-export function gitCheckoutLine(checkout: GitCheckoutState): string {
+export function gitCheckoutLine(
+  checkout: GitCheckoutState,
+  /** Whose checkout it is, so its own branch reads as a name (`branchLabel`). */
+  mateName?: string | undefined,
+): string {
   if (!checkout.isRepo) return "no repository yet";
-  const branch = checkout.headRef ?? "detached";
+  const branch = branchLabel(checkout.headRef, mateName);
   const ahead = checkout.aheadCount > 0 ? ` ↑${String(checkout.aheadCount)}` : "";
   const behind = checkout.behindCount > 0 ? ` ↓${String(checkout.behindCount)}` : "";
   const counts = checkout.hasUpstream ? `${ahead}${behind}` : " · never pushed";
@@ -602,6 +607,8 @@ export function gitBlock(input: {
   readonly forge: GitForgeState;
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly evidence: GitBlockEvidence;
+  /** Whose Mate this is, so its own branch reads as a name rather than an id. */
+  readonly mateName?: string | undefined;
 }): GitBlock {
   const { checkout, forge } = input;
   const state = stateOf(checkout, forge);
@@ -637,7 +644,7 @@ export function gitBlock(input: {
     repository: checkout.repository,
     branch: checkout.headRef ?? FALLBACK_DEFAULT_BRANCH,
     verdict,
-    checkoutLine: gitCheckoutLine(checkout),
+    checkoutLine: gitCheckoutLine(checkout, input.mateName),
     state,
     checks: tone,
     checkWord: checkWord(tone),
