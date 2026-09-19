@@ -1,26 +1,43 @@
 /**
- * The Gitea page — the footer's Gitea button: every repository this person
- * can reach and the pull requests open on it, across the whole account
- * (`giteaOverview.ts`, D26).
+ * The Git page — the footer's *Git*: every repository this person can reach
+ * and the changes open on it, across the whole account (`giteaOverview.ts`,
+ * D26).
  *
  * Not a project's flow, which the left menu draws under each project; this
  * is the one place that answers "what is open, anywhere I can see" — the
- * account-wide view a person used to open Gitea itself for. One section per
- * owner, which here is a project's org; under it a row per repository, its
- * name the way into Gitea and one line with how many pull requests are
- * open; under each, the pull requests themselves, newest first, the title
- * the way to the pull request's page. Nothing here changes anything: a
- * merge is the project's verb, on its own rows.
+ * account-wide view a person used to open a forge for. One section per
+ * project, named the way every other surface names it; under it a row per
+ * repository with how many changes are open; under each, the changes
+ * themselves, newest first.
+ *
+ * Two things it no longer does. It is not called *Gitea*: the menu that
+ * opens it says *Git*, and a page titled after the product behind it makes a
+ * person learn a second name for one thing. And a change's title opens the
+ * change's own page rather than the forge, wherever this account can draw
+ * it — with the same word and the same colour its row wears on the projects
+ * screen and in the left menu (the owner, 2026-09-19: "all pages are unified
+ * in how they look work feel have ux and abilities"). A repository's name
+ * still goes to the forge, because a repository is the one thing here the
+ * app does not draw.
  *
  * Structural: the grouping, the order and every line are
  * `giteaOverview.ts`'s (R5). `ZeropsGiteaPage` composes the account around
  * the view; `ZeropsGiteaOverview` is the view alone.
  */
-import { giteaRepositoryLine, type GiteaOverviewOwner } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  changeState,
+  giteaRepositoryLine,
+  type GiteaOverviewOwner,
+} from "@t3tools/client-runtime/zerops";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { useNavigate } from "@tanstack/react-router";
 import { ExternalLinkIcon } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { Button } from "../ui/button";
+import { StatusDot } from "./primitives";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { useZeropsGiteaOverview } from "~/zerops/useZeropsGiteaOverview";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -37,7 +54,24 @@ export type ZeropsGiteaOverviewState =
   | { readonly kind: "unread" }
   | { readonly kind: "read"; readonly owners: ReadonlyArray<GiteaOverviewOwner> };
 
-export function ZeropsGiteaOverview({ state }: { readonly state: ZeropsGiteaOverviewState }) {
+/** What this account knows about one change beyond the forge's own listing. */
+export interface ZeropsGiteaChange {
+  /** Where it stands, in the words every other surface uses. */
+  readonly state: { readonly word: string; readonly tone: ServiceStatusToneId } | undefined;
+  /** Its own page, when this account can draw it. */
+  readonly open: (() => void) | undefined;
+}
+
+export function ZeropsGiteaOverview({
+  state,
+  ownerName,
+  change,
+}: {
+  readonly state: ZeropsGiteaOverviewState;
+  /** A project's name for a Gitea org; the org itself where none is known. */
+  readonly ownerName?: (owner: string) => string;
+  readonly change?: (owner: string, repository: string, number: number) => ZeropsGiteaChange;
+}) {
   switch (state.kind) {
     case "no-gitea":
       return (
@@ -81,7 +115,7 @@ export function ZeropsGiteaOverview({ state }: { readonly state: ZeropsGiteaOver
               key={owner.owner}
             >
               <h2 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground">
-                {owner.owner}
+                {ownerName?.(owner.owner) ?? owner.owner}
               </h2>
               <ul className="flex flex-col divide-y divide-border/50">
                 {owner.repositories.map((repository) => (
@@ -111,15 +145,23 @@ export function ZeropsGiteaOverview({ state }: { readonly state: ZeropsGiteaOver
                     </div>
                     {repository.pulls.length === 0 ? null : (
                       <ul className="flex flex-col divide-y divide-border/50 border-t border-border/50 ps-4">
-                        {repository.pulls.map((pull) => (
-                          <ZeropsPullRequestRow
-                            key={pull.number}
-                            line={pull.line}
-                            tag="pr"
-                            title={pull.title}
-                            url={pull.url}
-                          />
-                        ))}
+                        {repository.pulls.map((pull) => {
+                          const known = change?.(owner.owner, repository.name, pull.number);
+                          return (
+                            <ZeropsPullRequestRow
+                              key={pull.number}
+                              line={pull.line}
+                              tag="pr"
+                              title={pull.title}
+                              status={
+                                known?.state === undefined ? undefined : (
+                                  <StatusDot label={known.state.word} tone={known.state.tone} />
+                                )
+                              }
+                              {...(known?.open === undefined ? {} : { onOpen: known.open })}
+                            />
+                          );
+                        })}
                       </ul>
                     )}
                   </li>
@@ -145,6 +187,53 @@ export function ZeropsGiteaPage() {
     enabled: flow.signedIn,
     mateName,
   });
+  const navigate = useNavigate();
+  const { candidates } = useZeropsCandidates();
+
+  /** `links` → `Links`: a Gitea org is a group's slug, never its name. */
+  const groupOfOwner = useMemo(() => {
+    const byOwner = new Map<string, { readonly groupId: string; readonly name: string }>();
+    const named = buildZeropsGroupTree(candidates, {}).groups;
+    for (const [groupId, slug] of flow.slugs) {
+      const name = named.find((entry) => entry.group.groupId === groupId)?.group.name;
+      byOwner.set(slug, { groupId, name: name ?? slug });
+    }
+    return byOwner;
+  }, [candidates, flow.slugs]);
+
+  const ownerName = useCallback(
+    (owner: string) => groupOfOwner.get(owner)?.name ?? owner,
+    [groupOfOwner],
+  );
+
+  /**
+   * What this account already knows about a change the forge listed: where it
+   * stands, and the page that draws it. A change in a repository no project of
+   * this account owns is left as the forge gave it.
+   */
+  const change = useCallback(
+    (owner: string, repository: string, number: number): ZeropsGiteaChange => {
+      const group = groupOfOwner.get(owner);
+      const pull = group
+        ? flow.flows
+            .get(group.groupId)
+            ?.pullRequests.find(
+              (entry) => entry.repository === repository && entry.number === number,
+            )
+        : undefined;
+      if (group === undefined || pull === undefined) return { state: undefined, open: undefined };
+      return {
+        state: changeState(pull),
+        open: () => {
+          void navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: { groupId: group.groupId, repository, number: String(number) },
+          });
+        },
+      };
+    },
+    [flow.flows, groupOfOwner, navigate],
+  );
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
   const state: ZeropsGiteaOverviewState =
@@ -180,7 +269,10 @@ export function ZeropsGiteaPage() {
         className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3"
         data-zerops-surface="gitea-header"
       >
-        <h1 className="text-xl font-medium text-foreground">Gitea</h1>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h1 className="text-xl font-medium text-foreground">Git</h1>
+          <p className="text-sm text-muted-foreground">Every change open across your projects.</p>
+        </div>
         {flow.giteaOrigin === undefined ? null : (
           <Button
             render={<a href={flow.giteaOrigin} rel="noopener" target="_blank" />}
@@ -192,7 +284,7 @@ export function ZeropsGiteaPage() {
           </Button>
         )}
       </div>
-      <ZeropsGiteaOverview state={state} />
+      <ZeropsGiteaOverview change={change} ownerName={ownerName} state={state} />
     </ZeropsHostedFrame>
   );
 }

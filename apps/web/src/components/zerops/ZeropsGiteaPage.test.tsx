@@ -30,8 +30,10 @@ const OWNERS: ReadonlyArray<GiteaOverviewOwner> = [
   },
 ];
 
-const render = (state: ZeropsGiteaOverviewState) =>
-  renderToStaticMarkup(<ZeropsGiteaOverview state={state} />);
+const render = (
+  state: ZeropsGiteaOverviewState,
+  props: Partial<React.ComponentProps<typeof ZeropsGiteaOverview>> = {},
+) => renderToStaticMarkup(<ZeropsGiteaOverview state={state} {...props} />);
 
 describe("ZeropsGiteaOverview", () => {
   it("lists each owner, its repositories and the pull requests open on them", () => {
@@ -42,10 +44,34 @@ describe("ZeropsGiteaOverview", () => {
     expect(html).toContain("1 open pull request");
     expect(html).toContain("No open pull request");
     expect(html).toContain("Add a due date to each todo");
-    expect(html).toContain('href="https://gitea.example/todo/appdev/pulls/4"');
     expect(html).toContain("#4 · Vera");
-    // The way in is the title; the page changes nothing.
+    // A change nothing here can draw is a title and a line, never a dead
+    // control and never a way out to the forge.
+    expect(html).not.toContain("https://gitea.example/todo/appdev/pulls/4");
     expect(html).not.toContain("<button");
+  });
+
+  it("names a project the way every other surface names it", () => {
+    // A Gitea org is a group's slug; `todo` is not what the person called it.
+    const html = render({ kind: "read", owners: OWNERS }, { ownerName: () => "Todo" });
+    expect(html).toContain(">Todo</h2>");
+    expect(html).not.toContain(">todo</h2>");
+  });
+
+  it("gives a change this account can draw its own state and its own page", () => {
+    const html = render(
+      { kind: "read", owners: OWNERS },
+      {
+        change: () => ({
+          state: { word: "needs a rebase", tone: "attention" },
+          open: () => {},
+        }),
+      },
+    );
+    expect(html).toContain("needs a rebase");
+    expect(html).toContain('data-zerops-status-tone="attention"');
+    expect(html).toContain('data-zerops-surface="pull-request-title"');
+    expect(html).toContain("<button");
   });
 
   it.each([

@@ -30,17 +30,20 @@ describe("ZeropsPullRequestRow", () => {
 
   it("carries the caller's one verb, and nothing when there is none", () => {
     expect(row({ action: <button type="button">Review</button> })).toContain("Review");
-    expect(row()).not.toContain("<button");
+    expect(row()).not.toContain("Review");
   });
 
-  it("is a code change when the caller says so, its title the way into Gitea", () => {
-    const html = row({ tag: "pr", url: "https://gitea.example/todo/appdev/pulls/4" });
+  it("is a code change when the caller says so, its title the way to its page", () => {
+    const html = row({ tag: "pr", onOpen: () => {} });
     expect(html).toContain(">pr<");
     expect(html).not.toContain(">recipe<");
-    expect(html).toContain('href="https://gitea.example/todo/appdev/pulls/4"');
-    expect(html).toContain('target="_blank"');
-    // Without a URL the title is text, not a dead link.
-    expect(row()).not.toContain("<a ");
+    // The change's own page, never a forge: that page holds its conversation,
+    // its commits and its Merge (the owner, 2026-09-19).
+    expect(html).toContain('data-zerops-surface="pull-request-title"');
+    expect(html).not.toContain('target="_blank"');
+    expect(html).not.toContain("<a ");
+    // Without a way to open it the title is text, not a dead control.
+    expect(row()).not.toContain("<button");
   });
 
   it("carries the caller's dot for the checks beside the verb", () => {

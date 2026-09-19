@@ -10,9 +10,11 @@
  *
  * The same three places as `ZeropsEnvironmentRow`, so the eye runs one column
  * down the page: the title with its kind as a tag, who and where in one
- * line, and at the end the checks as a dot and the one verb — *Merge* where
- * Gitea allows it. The title is the way into Gitea when the caller gives a
- * URL. Structural: every word is the caller's (R5).
+ * line, and at the end where the change stands as a dot and the one verb —
+ * *Merge* where Gitea allows it. The title opens the change's own page, which
+ * is where its conversation, its commits and its *Merge* are; it used to open
+ * Gitea instead (the owner, 2026-09-19). Structural: every word is the
+ * caller's (R5).
  */
 import type { ReactNode } from "react";
 
@@ -21,8 +23,8 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 
 export interface ZeropsPullRequestRowProps {
   readonly title: string;
-  /** The pull request's page in Gitea; with it the title is a link. */
-  readonly url?: string | undefined;
+  /** Opens the change's own page; with it the title is a control. */
+  readonly onOpen?: (() => void) | undefined;
   /** What kind of change it is — `recipe` by default, `pr` for a code change. */
   readonly tag?: string;
   /** `appdev #4 · Vera` — where and whose, phrased by `projectFlow.ts`. */
@@ -36,7 +38,7 @@ export interface ZeropsPullRequestRowProps {
 
 export function ZeropsPullRequestRow({
   title,
-  url,
+  onOpen,
   tag = "recipe",
   line,
   status,
@@ -52,7 +54,7 @@ export function ZeropsPullRequestRow({
       data-zerops-pull-request-row="true"
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        {url === undefined ? (
+        {onOpen === undefined ? (
           <span
             className="min-w-0 truncate text-[13px] text-foreground"
             data-zerops-surface="pull-request-title"
@@ -60,15 +62,14 @@ export function ZeropsPullRequestRow({
             {title}
           </span>
         ) : (
-          <a
-            className="min-w-0 truncate rounded-sm text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          <button
+            className="min-w-0 cursor-pointer truncate rounded-sm text-left text-[13px] text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-surface="pull-request-title"
-            href={url}
-            rel="noopener"
-            target="_blank"
+            onClick={onOpen}
+            type="button"
           >
             {title}
-          </a>
+          </button>
         )}
         <ZeropsRoleTag label={tag} />
       </span>

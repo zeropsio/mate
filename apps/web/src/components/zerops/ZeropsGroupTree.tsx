@@ -102,6 +102,16 @@ export interface ZeropsGroupTreeProps<T> {
   /** A group's own actions, at the end of its heading — shown on hover, like a row's. */
   readonly renderGroupMenu?: (group: ZeropsGroup) => ReactNode;
   /**
+   * What the project needs somebody for, directly under its name and before
+   * anything else in it — the same panel its own page opens with.
+   *
+   * A project's rows are all one weight by design: who you talk to, what is
+   * waiting, where the code runs. That is a good list and a bad answer, and
+   * the screen had no answer at all (the owner, 2026-09-19: "needs to go
+   * through redesign as well so all pages are unified").
+   */
+  readonly renderGroupAnswer?: (group: ZeropsGroup) => ReactNode;
+  /**
    * One line under a group's name, when the group has something to say about
    * itself as a whole — today only that its repositories are still being made
    * (`groupRows.ts`). Empty is the usual answer and renders nothing, so the
@@ -257,6 +267,7 @@ export function ZeropsGroupTree<T>({
   addsOffered,
   roleOffered,
   renderGroupMenu,
+  renderGroupAnswer,
   groupLine,
   className,
 }: ZeropsGroupTreeProps<T>) {
@@ -317,6 +328,7 @@ export function ZeropsGroupTree<T>({
                 <span className="text-xs text-muted-foreground">{groupLine?.(group)}</span>
               ) : null}
             </div>
+            {renderGroupAnswer?.(group)}
             {members(environments, renderGroupRows?.(group), renderWaitingRows?.(group))}
             {missing.length > 0 ? (
               <div

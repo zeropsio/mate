@@ -68,7 +68,9 @@ import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  changeState,
   checkDotTone,
+  environmentNameUnderGroup,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
   botDisplayName,
@@ -134,6 +136,7 @@ import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone, releaseRowTone } from "./ZeropsProjectRow.logic";
+import { ZeropsGroupAnswer } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";
@@ -1498,7 +1501,11 @@ function ZeropsProjectsContent() {
   /** One pull request's row, the same on both ends of the list. */
   const pullRequestRowOf = (group: ZeropsGroup, pull: FlowPullRequest) => {
     const slug = groupDeploys.get(group.groupId)?.slug;
-    const tone = checkDotTone(pull);
+    // One vocabulary down the column, the same one the project's own page and
+    // the left menu use: `changeState` answers a rebase and a passing check in
+    // the same register. `checkDotTone` alone said nothing at all about a
+    // change that no longer merges, which is the one a person needs to see.
+    const state = changeState(pull);
     const merging =
       slug !== undefined &&
       projectFlow.pending.has(
@@ -1519,14 +1526,21 @@ function ZeropsProjectsContent() {
         }
         key={`pull-${group.groupId}-${pull.repository}-${pull.number}`}
         line={pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""))}
+        onOpen={() => {
+          void navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: {
+              groupId: group.groupId,
+              repository: pull.repository,
+              number: String(pull.number),
+            },
+          });
+        }}
         status={
-          tone === undefined || pull.checkWord === undefined ? undefined : (
-            <StatusDot label={pull.checkWord} tone={tone} />
-          )
+          state === undefined ? undefined : <StatusDot label={state.word} tone={state.tone} />
         }
         tag={pull.kind === "recipe" ? "recipe" : "pr"}
         title={pull.title}
-        url={pull.url}
       />
     );
   };
@@ -2108,30 +2122,15 @@ function ZeropsProjectsContent() {
           const declared = declaredEnvironment(candidate.project.id);
           const deployTone = declared === undefined ? undefined : deployRowTone(declared.tone);
           const deployLabel = declared === undefined ? undefined : deployWord(declared.tone);
-          // The production's one verb: Release, when the flow says there is
-          // something to release (`release.ts`). The way back to an earlier
-          // release sits on the release rows below.
-          const releaseFor =
-            declared?.tier === "production" &&
-            tags.groupId !== undefined &&
-            groupDeploys.get(tags.groupId)?.release.gate.allowed === true
-              ? tags.groupId
-              : undefined;
-          const releasing =
-            releaseFor !== undefined &&
-            projectFlow.pending.has(flowVerbKey({ kind: "release", groupId: releaseFor }));
+          // *Release* is the answer panel's, at the head of the project, on
+          // the row that says how many changes are waiting — one element for
+          // the fact and the verb that acts on it. A second copy on the
+          // production row put the same verb on the page twice, one of them
+          // with nothing beside it saying why (the owner, 2026-09-19).
           return (
             <ZeropsEnvironmentRow
               action={
-                releaseFor !== undefined ? (
-                  <ZeropsMateVerb
-                    disabled={releasing}
-                    label={flowVerbLabel("release", releasing)}
-                    onClick={() => {
-                      void projectFlow.release(releaseFor);
-                    }}
-                  />
-                ) : action.kind === "set-up-mate" ? (
+                action.kind === "set-up-mate" ? (
                   <ZeropsMateVerb
                     disabled={busy}
                     label={busy ? "Setting up…" : action.label}
@@ -2151,7 +2150,9 @@ function ZeropsProjectsContent() {
               }
               busy={busy}
               menu={renderEnvironmentMenu(candidate, tags, false)}
-              name={candidate.project.name}
+              // `Links - stage` under a heading that says `Links`: the group's
+              // own page calls it `stage`, and so does the left menu.
+              name={environmentNameUnderGroup(tags.label, candidate.project.name)}
               status={
                 projectTrouble ? (
                   <StatusDot
@@ -2257,6 +2258,9 @@ function ZeropsProjectsContent() {
             (row) => (row.tier === "stage" ? "stage" : "prod") === role,
           )
         }
+        renderGroupAnswer={(group: ZeropsGroup) => (
+          <ZeropsGroupAnswer className="mb-1" groupId={group.groupId} />
+        )}
         renderGroupMenu={(group: ZeropsGroup) => (
           <ZeropsProjectMenu
             actions={[
