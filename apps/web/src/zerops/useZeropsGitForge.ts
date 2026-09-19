@@ -27,7 +27,24 @@ import { giteaClientFor } from "./giteaSession";
 /** How often the forge side is re-read while the tab is open. */
 export const GIT_FORGE_REFRESH_MS = 60_000;
 
-const EMPTY_FORGE: GitForgeState = { repository: undefined, pullRequest: undefined, checks: [] };
+/** The forge answered, and this account owns no such repository. */
+const NO_REPOSITORY: GitForgeState = {
+  read: true,
+  repository: undefined,
+  pullRequest: undefined,
+  checks: [],
+};
+
+/**
+ * The forge did not answer. Not the same thing: a block told "no repository"
+ * says so out loud, and a read that threw is not evidence of anything.
+ */
+const UNREAD_FORGE: GitForgeState = {
+  read: false,
+  repository: undefined,
+  pullRequest: undefined,
+  checks: [],
+};
 
 export type ZeropsGitForgeStates = ReadonlyMap<string, GitForgeState>;
 
@@ -80,7 +97,7 @@ export function useZeropsGitForge(input: {
     void (async () => {
       const forges = new Map<string, GitForgeState>();
       for (const target of input.targets) {
-        const state = await readForge(client, owner, target).catch(() => EMPTY_FORGE);
+        const state = await readForge(client, owner, target).catch(() => UNREAD_FORGE);
         if (controller.signal.aborted) return;
         forges.set(target.repository, state);
       }
@@ -102,8 +119,8 @@ async function readForge(
   target: ZeropsGitForgeTarget,
 ): Promise<GitForgeState> {
   const repository = await client.getRepository(owner, target.repository);
-  if (repository === undefined) return EMPTY_FORGE;
-  if (target.branch === null) return { repository, pullRequest: undefined, checks: [] };
+  if (repository === undefined) return NO_REPOSITORY;
+  if (target.branch === null) return { read: true, repository, pullRequest: undefined, checks: [] };
   // Gitea has no "pull requests by head branch" filter worth trusting across
   // versions, so the open list is matched here — it is a handful of entries.
   const pulls = await client.listPullRequests(owner, target.repository, { state: "all" });
@@ -111,5 +128,5 @@ async function readForge(
   const head = pullRequest?.head?.sha;
   const checks =
     head === undefined ? [] : await client.listCommitStatuses(owner, target.repository, head);
-  return { repository, pullRequest, checks };
+  return { read: true, repository, pullRequest, checks };
 }

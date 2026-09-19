@@ -53,7 +53,7 @@ function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {
 }
 
 function forge(overrides: Partial<GitForgeState> = {}): GitForgeState {
-  return { repository: REPOSITORY, pullRequest: undefined, checks: [], ...overrides };
+  return { read: true, repository: REPOSITORY, pullRequest: undefined, checks: [], ...overrides };
 }
 
 function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
@@ -307,7 +307,7 @@ describe("where the work stands", () => {
       ask: "The checks on pull request #12 are failing. Find out why, fix them, and push.",
     },
   ] as const)("hands $name back in words the Mate can act on", ({ answer, ask }) => {
-    expect(answer.verdict.ask).toBe(ask);
+    expect(answer.verdict?.ask).toBe(ask);
   });
 
   it.each([
@@ -333,7 +333,7 @@ describe("where the work stands", () => {
       ),
     },
   ])("asks nothing of $name", ({ answer }) => {
-    expect(answer.verdict.ask).toBeUndefined();
+    expect(answer.verdict?.ask).toBeUndefined();
   });
 
   it("says what was proved wrong before anything it would have guessed", () => {
@@ -355,8 +355,49 @@ describe("where the work stands", () => {
       checkout({ headRef: "feature/invoices", aheadCount: 2 }),
       checkout({ headRef: "feature/invoices", behindCount: 2 }),
     ]) {
-      expect(block(state).verdict.text).toMatch(/\.$/u);
+      expect(block(state).verdict?.text).toMatch(/\.$/u);
     }
+  });
+
+  it("says nothing at all until the forge has answered", () => {
+    // Measured on the live account, 2026-09-19: the tab opened on "No code
+    // here yet.", listed five of the Mate's commits under that sentence, and
+    // then replaced the whole panel with "#11 · No checks ran. Nothing is
+    // stopping it." and a *Merge*. An unread forge is not an empty one.
+    const unread = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-x", aheadCount: 3 }),
+      forge: forge({ read: false, repository: undefined }),
+      declarations: DECLARATIONS,
+      evidence: { remoteReachable: true },
+    });
+    expect(unread.state).toBe("unread");
+    expect(unread.verdict).toBeUndefined();
+    // Nor a verb, nor a destination: both would be withdrawn a moment later.
+    expect(unread.action).toBeUndefined();
+    expect(unread.destination).toBe("");
+  });
+
+  it("still says a repository is missing once the forge has said so", () => {
+    const answered = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-x" }),
+      forge: forge({ read: true, repository: undefined }),
+      declarations: DECLARATIONS,
+      evidence: { remoteReachable: true },
+    });
+    expect(answered.state).toBe("no-repository");
+    expect(answered.verdict?.text).toBe("No code here yet.");
+  });
+
+  it("says what was proved wrong even before the forge answers", () => {
+    // A remote that refused is a different read, and it is proved. It is the
+    // one thing worth saying while the forge is still out.
+    const refused = gitBlock({
+      checkout: checkout({ headRef: "mate/mate-x" }),
+      forge: forge({ read: false, repository: undefined }),
+      declarations: DECLARATIONS,
+      evidence: { remoteReachable: false, remoteDetail: "remote: access denied" },
+    });
+    expect(refused.verdict?.tone).toBe("failed");
   });
 
   it("says nothing ran rather than calling no signal a good one", () => {
@@ -696,6 +737,7 @@ describe("gitBlock base branch", () => {
     const withRepository = gitBlock({
       checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
       forge: {
+        read: true,
         repository: { ...REPOSITORY, default_branch: "trunk" },
         pullRequest: undefined,
         checks: [],
@@ -706,7 +748,7 @@ describe("gitBlock base branch", () => {
     expect(withRepository.baseBranch).toBe("trunk");
     const unknown = gitBlock({
       checkout: checkout({ headRef: "mate/mate-x", hasUpstream: true }),
-      forge: { repository: undefined, pullRequest: undefined, checks: [] },
+      forge: { read: true, repository: undefined, pullRequest: undefined, checks: [] },
       declarations: DECLARATIONS,
       evidence: { remoteReachable: true },
     });

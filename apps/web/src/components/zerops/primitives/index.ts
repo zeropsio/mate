@@ -18,5 +18,5 @@ export { Avatar } from "./Avatar";
 export type { AvatarProps, AvatarSize } from "./Avatar";
 export { MateFace } from "./MateFace";
 export type { MateFaceProps, MateFaceSize } from "./MateFace";
-export { VERDICT_BORDER_CLASS, VerdictPanel } from "./VerdictPanel";
+export { VERDICT_BORDER_CLASS, VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";
 export type { VerdictPanelProps } from "./VerdictPanel";

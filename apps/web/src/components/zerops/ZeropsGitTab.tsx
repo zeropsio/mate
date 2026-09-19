@@ -240,7 +240,9 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             hasUpstream: false,
             changed: EMPTY_CHANGED,
           },
+          // Nothing in the map yet is nothing asked yet, never "no repository".
           forge: forges.get(repository) ?? {
+            read: false,
             repository: undefined,
             pullRequest: undefined,
             checks: [],
@@ -322,14 +324,17 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
    * whole surface was rebuilt to close.
    */
   const renderBlockVerbs = (block: GitBlock) => {
-    const ask = block.verdict.ask;
+    const verdict = block.verdict;
     const verb = renderBlockAction(block);
-    if (ask === undefined || props.threadRef === null) return verb;
+    // No verdict is no answer yet, and there is nothing to hand back until
+    // the forge has said what is wrong.
+    if (verdict?.ask === undefined || props.threadRef === null) return verb;
+    const ask = verdict.ask;
     return (
       <>
         <ZeropsMateVerb
           label={changeAskLabel(props.mateName)}
-          onClick={() => setAsking({ ask, what: block.verdict.text })}
+          onClick={() => setAsking({ ask, what: verdict.text })}
         />
         {verb}
       </>

@@ -111,7 +111,7 @@ describe("the same change, wherever it is read", () => {
         mergeable: pull.mergeable,
         baseBranch: "main",
         trouble: "",
-      }).tone,
+      })?.tone,
     ).toBe(changeVerdict({ number: 4, ...pull }).tone);
   });
 });

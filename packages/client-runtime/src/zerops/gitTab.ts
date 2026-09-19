@@ -85,6 +85,16 @@ export interface GitChangedFile {
 
 /** What Gitea says about that repository and branch, answering as the person. */
 export interface GitForgeState {
+  /**
+   * Whether the forge answered at all.
+   *
+   * `false` is not an answer about the repository, it is the absence of one.
+   * The field below has always said so in a comment, and `stateOf` read it as
+   * "there is none" anyway: the Git tab opened by telling a person their work
+   * did not exist, listed five of their commits under that sentence, and then
+   * took the whole thing back (measured on the live account, 2026-09-19).
+   */
+  readonly read: boolean;
   /** `undefined` while nothing has been asked — not "it is not there". */
   readonly repository: GiteaRepository | undefined;
   /** The pull request whose head is this branch, open or freshly merged. */
@@ -110,12 +120,8 @@ export interface GitBlockEvidence {
 
 /** What the person is looking at, in one word the block is built around. */
 export type GitBlockState =
-  | "no-repository"
-  | "untouched"
-  | "unpushed"
-  | "behind"
-  | "in-review"
-  | "merged";
+  /** The forge has not answered. Says nothing, and must not be made to. */
+  "unread" | "no-repository" | "untouched" | "unpushed" | "behind" | "in-review" | "merged";
 
 /** How the checks on the branch's head went — a dot's tone, with one word. */
 export type GitCheckTone = "none" | "pending" | "passing" | "failing";
@@ -139,8 +145,12 @@ export interface GitBlock {
   readonly repository: string;
   /** The branch the container is on. `main` for a codebase nobody has touched. */
   readonly branch: string;
-  /** Where this repository's work stands, and in what colour. */
-  readonly verdict: GitVerdict;
+  /**
+   * Where this repository's work stands, and in what colour. `undefined`
+   * while the forge has not answered — the block holds the place open rather
+   * than filling it with a sentence it would have to withdraw.
+   */
+  readonly verdict: GitVerdict | undefined;
   /** `feature/invoices ↑3 · 2 files changed` — the checkout, under the answer. */
   readonly checkoutLine: string;
   readonly state: GitBlockState;
@@ -419,12 +429,18 @@ export function gitVerdict(input: {
   readonly mergeable: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
-}): GitVerdict {
+}): GitVerdict | undefined {
   // Proved beats inferred: a remote that refused is the whole story, and a
   // count of unpushed commits under it would be an invitation to a verb that
   // cannot run.
   if (input.trouble.length > 0) return { tone: "failed", text: input.trouble, ask: undefined };
   switch (input.state) {
+    case "unread":
+      // Nothing has been asked yet, so there is nothing to say. The change's
+      // own page already opens this way — its title, then its panel when the
+      // read lands — and a panel that speaks here is a panel that takes it
+      // back.
+      return undefined;
     case "no-repository":
       return { tone: "off", text: "No code here yet.", ask: undefined };
     case "merged":
@@ -551,6 +567,7 @@ function runsInTheContainer(action: GitBlockAction): boolean {
 }
 
 function stateOf(checkout: GitCheckoutState, forge: GitForgeState): GitBlockState {
+  if (!forge.read) return "unread";
   if (!checkout.isRepo || forge.repository === undefined) return "no-repository";
   if (forge.pullRequest?.merged === true) return "merged";
   if (forge.pullRequest !== undefined && forge.pullRequest.state === "open") return "in-review";
@@ -572,7 +589,7 @@ function actionOf(
   forge: GitForgeState,
   state: GitBlockState,
 ): GitBlockAction | undefined {
-  if (state === "no-repository" || state === "merged") return undefined;
+  if (state === "unread" || state === "no-repository" || state === "merged") return undefined;
   if (state === "unpushed" && checkout.isRepo) {
     return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
   }
@@ -617,7 +634,12 @@ export function gitBlock(input: {
   // itself — which is what a push to a source branch already does.
   const target = forge.pullRequest?.base?.ref ?? checkout.headRef;
   const environment =
-    state === "no-repository" ? undefined : environmentForBranch(input.declarations, target);
+    state === "unread" || state === "no-repository"
+      ? // Where the branch lands is local knowledge, but its wording is not:
+        // the same branch reads "runs this branch" before the forge answers
+        // and "picks it up on merge" after. Said once, when it is settled.
+        undefined
+      : environmentForBranch(input.declarations, target);
   const picksUp =
     environment === undefined
       ? ""

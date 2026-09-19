@@ -32,7 +32,7 @@ import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { StatusDot, VerdictPanel } from "./primitives";
+import { StatusDot, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
@@ -161,9 +161,16 @@ export function ZeropsGitBlock({
             ]}
           />
         </div>
-        <VerdictPanel text={block.verdict.text} tone={block.verdict.tone}>
-          {action === undefined || action === null ? undefined : action}
-        </VerdictPanel>
+        {block.verdict === undefined ? (
+          // The forge has not answered. The place stays open — at the panel's
+          // own height, from the panel's own class — so the commits under it
+          // do not jump when it does.
+          <VerdictPanelWaiting data-zerops-surface="git-verdict-waiting" />
+        ) : (
+          <VerdictPanel text={block.verdict.text} tone={block.verdict.tone}>
+            {action === undefined || action === null ? undefined : action}
+          </VerdictPanel>
+        )}
       </div>
 
       {commits === undefined || commits === null ? null : commits}
