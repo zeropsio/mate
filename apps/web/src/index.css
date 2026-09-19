@@ -1156,6 +1156,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-status-ok-text: #2e7d32;
   --zerops-status-busy: #42a5f5;
   --zerops-status-busy-surface: #eff9fd;
+  /* Light had no busy text colour, so every word that asked for one inherited
+     the body's — a blue chip with black text beside an amber chip with amber
+     text. Same mistake, same fix, as the failed text below. */
+  --zerops-status-busy-text: #1565c0;
   --zerops-status-attention: #ffa726;
   --zerops-status-attention-surface: #fff4e0;
   --zerops-status-attention-text: #a26000;

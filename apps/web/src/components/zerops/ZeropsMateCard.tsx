@@ -36,13 +36,30 @@ const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
   off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
 };
 
+/**
+ * A count, in the colour of what it counts.
+ *
+ * The verb's count used to take a separate `urgent` flag, which one call site
+ * set and never unset — so *Release* counted what it would ship in the same
+ * amber a change that cannot land wears. A verb says one thing, so its count
+ * says it too, and the bubble a folded project wears in its place says the
+ * same thing again: folded and unfolded were two different colours for one
+ * set of changes (the owner, 2026-09-19: "the collapsed version should match").
+ */
+export const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "bg-[var(--zerops-status-ok)]/20 text-[var(--zerops-status-ok-text)]",
+  busy: "bg-[var(--zerops-status-busy)]/20 text-[var(--zerops-status-busy-text)]",
+  attention: "bg-[var(--zerops-status-attention)]/20 text-[var(--zerops-status-attention-text)]",
+  failed: "bg-[var(--zerops-status-failed)]/20 text-[var(--zerops-status-failed-text)]",
+  off: "bg-muted text-muted-foreground",
+};
+
 export function ZeropsMateVerb({
   label,
   onClick,
   disabled = false,
   description,
   count,
-  urgent = false,
   tone,
   action,
   ...rest
@@ -64,8 +81,6 @@ export function ZeropsMateVerb({
    * its cure — two elements for one thing (the owner, 2026-09-19).
    */
   readonly count?: number | undefined;
-  /** Whether that count is something somebody should act on. */
-  readonly urgent?: boolean;
   /**
    * What the verb is about, where that has a state: a change that cannot land
    * and a release that is merely waiting are not the same news, and a row of
@@ -103,9 +118,7 @@ export function ZeropsMateVerb({
         <span
           className={cn(
             "ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
-            urgent
-              ? "bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)]"
-              : "bg-muted text-muted-foreground",
+            tone === undefined ? "bg-muted text-muted-foreground" : COUNT_TONE_CLASS[tone],
           )}
           data-zerops-surface="verb-count"
         >

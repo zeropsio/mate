@@ -127,8 +127,13 @@ export function flowPullRequest(input: {
 /** What a stop needs somebody for, as one number. */
 export interface StopAttention {
   readonly count: number;
-  /** A deploy that failed outranks work merely waiting to go live. */
-  readonly urgent: boolean;
+  /**
+   * What that number is about: a deploy that failed is broken, work merely
+   * waiting to go live is moving. It is a tone rather than an `urgent` flag so
+   * the bubble a folded stop wears and the count on *Release* are decided
+   * once — folded and unfolded said different things about the same changes.
+   */
+  readonly tone: ServiceStatusToneId;
 }
 
 /**
@@ -148,7 +153,7 @@ export function stopAttention(input: {
   const failed = input.failed ? 1 : 0;
   const waiting = input.production ? Math.max(0, Math.trunc(input.waiting)) : 0;
   const count = failed + waiting;
-  return count === 0 ? undefined : { count, urgent: failed > 0 };
+  return count === 0 ? undefined : { count, tone: failed > 0 ? "failed" : "busy" };
 }
 
 /**

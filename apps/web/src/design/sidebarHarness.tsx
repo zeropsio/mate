@@ -334,6 +334,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       releasing: false,
       onMerge: () => {},
       onRelease: () => {},
+      // Without this the menu draws no *Ask* at all, so the harness never
+      // showed the verb a blocked change wears — which is how it came to wear
+      // the same amber as *Release* unnoticed.
+      onAsk: () => {},
     },
   ],
   [
@@ -428,6 +432,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       releasing: false,
       onMerge: () => {},
       onRelease: () => {},
+      // Without this the menu draws no *Ask* at all, so the harness never
+      // showed the verb a blocked change wears — which is how it came to wear
+      // the same amber as *Release* unnoticed.
+      onAsk: () => {},
     },
   ],
   [
@@ -455,6 +463,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       releasing: false,
       onMerge: () => {},
       onRelease: () => {},
+      // Without this the menu draws no *Ask* at all, so the harness never
+      // showed the verb a blocked change wears — which is how it came to wear
+      // the same amber as *Release* unnoticed.
+      onAsk: () => {},
     },
   ],
   [
@@ -489,6 +501,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       releasing: false,
       onMerge: () => {},
       onRelease: () => {},
+      // Without this the menu draws no *Ask* at all, so the harness never
+      // showed the verb a blocked change wears — which is how it came to wear
+      // the same amber as *Release* unnoticed.
+      onAsk: () => {},
     },
   ],
   [
@@ -510,6 +526,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       releasing: false,
       onMerge: () => {},
       onRelease: () => {},
+      // Without this the menu draws no *Ask* at all, so the harness never
+      // showed the verb a blocked change wears — which is how it came to wear
+      // the same amber as *Release* unnoticed.
+      onAsk: () => {},
     },
   ],
 ]);

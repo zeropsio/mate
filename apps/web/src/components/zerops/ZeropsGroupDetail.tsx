@@ -1216,7 +1216,15 @@ function AttentionPanel({
   );
 }
 
-/** A halted Mate and a failed deploy are not the same kind of bad. */
+/**
+ * A halted Mate and a failed deploy are not the same kind of bad — and work
+ * merged and waiting is not bad at all.
+ *
+ * The list is ordered worst first, so the tones run down it as a ladder: red
+ * broken, amber blocked, blue moving. *Release* wears the same blue in the
+ * left menu; one fact does not get two colours depending on which surface
+ * reports it.
+ */
 const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
   "mate-waiting": "attention",
   "deploy-failed": "failed",

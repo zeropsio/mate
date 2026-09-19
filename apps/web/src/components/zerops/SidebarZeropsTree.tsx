@@ -90,7 +90,7 @@ import {
   environmentRoleTagIsRedundant,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
-import { ZeropsMateVerb } from "./ZeropsMateCard";
+import { COUNT_TONE_CLASS, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsMergeDialog } from "./ZeropsMergeDialog";
 import { ZeropsReleaseDialog } from "./ZeropsReleaseDialog";
@@ -1060,8 +1060,12 @@ function ReleaseVerb({
       description={releaseContentsSentence(summary)}
       disabled={releasing}
       label={flowVerbLabel("release", releasing)}
-      tone={summary.total === 0 ? undefined : "attention"}
-      urgent
+      // Blue, not amber: work merged and waiting is in flight, not stuck.
+      // Beside `Needs a rebase` it wore the identical amber chip — "release
+      // doesn't have the same urgency as rebase" (the owner, 2026-09-19) —
+      // which flattened the one ladder this menu has, where amber means
+      // somebody is blocked and green means a thing is already fine.
+      tone={summary.total === 0 ? undefined : "busy"}
       onClick={() => {
         setConfirming(true);
       }}
@@ -1363,10 +1367,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                   </span>
                   {stop.attention === undefined ? null : (
                     <span
-                      className={cn(
-                        BUBBLE_CLASS,
-                        stop.attention.urgent ? BUBBLE_URGENT : BUBBLE_WAITING,
-                      )}
+                      className={cn(BUBBLE_CLASS, COUNT_TONE_CLASS[stop.attention.tone])}
                       data-zerops-surface="sidebar-stop-attention"
                     >
                       {stop.attention.count}
@@ -1511,9 +1512,10 @@ function EnvironmentRows<T extends RosterCandidate>({
   );
 }
 
-/** A folded stop's count of what needs somebody. */
+/**
+ * A folded stop's count of what needs somebody — the shape only; the colour is
+ * `COUNT_TONE_CLASS`, the same table the verb's own count reads, so unfolding
+ * a project never changes what its changes are said to be.
+ */
 const BUBBLE_CLASS =
   "inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums";
-const BUBBLE_WAITING =
-  "bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)]";
-const BUBBLE_URGENT = "bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed)]";
