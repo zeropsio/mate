@@ -171,6 +171,7 @@ import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
+import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsMateReview } from "../zerops/useZeropsMateReview";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
@@ -7553,10 +7554,18 @@ export default function ChatView(props: ChatViewProps) {
   const externalComposerDrawerAttached =
     composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
 
+  /**
+   * A pull request address a Mate wrote into its conversation opens on the
+   * change's own page, not in a Gitea the reader has to sign into. Anything
+   * this account's forge does not own is left exactly as it was.
+   */
+  const resolveChangeLink = useOpenZeropsChange();
+
   return (
     <ServiceBrowserScope
       threadRef={activeThreadRef}
       services={zeropsTopology?.services}
+      resolveAppLink={resolveChangeLink}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}

@@ -465,6 +465,14 @@ describe("ZeropsDataPanel", () => {
       ).toBe("db1");
     });
 
+    it("says a project holds no data service rather than drawing an empty panel", async () => {
+      // A project with only runtimes rendered a label, a Refresh and a void
+      // the height of the panel (seen live, 2026-09-19).
+      const tree = await picker([]);
+      expect(findByAttribute(tree, "data-zerops-data-empty")).not.toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-service")).toBeNull();
+    });
+
     it("a browsable row opens that service's own tab instead of browsing in place", async () => {
       const tree = await picker([SERVICE_SUPPORTED]);
       commandSpy.mockClear();

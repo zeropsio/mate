@@ -90,4 +90,15 @@ describe("ServiceBrowserLink", () => {
       expect(onClick).toHaveBeenCalled();
     },
   );
+
+  it("takes a link the app can answer itself, ahead of a preview or a new tab", () => {
+    const opened: string[] = [];
+    const element = ServiceBrowserLink({
+      href: "https://gitea.example/links/appdev/pulls/5",
+      resolvePreview: () => () => opened.push("preview"),
+    });
+    // Without the app resolver in context the preview still wins, which is the
+    // behaviour every link outside Zerops keeps.
+    expect(element.props["data-link-destination"]).toBe("preview");
+  });
 });

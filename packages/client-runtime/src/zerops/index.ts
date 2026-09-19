@@ -290,6 +290,7 @@ export {
   type GitVerdict,
   type PullRequestBlocked,
 } from "./gitTab.ts";
+export { parseGiteaChangeUrl, type GiteaChangeLink } from "./giteaChangeLink.ts";
 export {
   mateReviewOffer,
   MATE_REVIEW_MERGE_LABEL,
