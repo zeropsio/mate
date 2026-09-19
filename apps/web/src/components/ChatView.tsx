@@ -7582,6 +7582,15 @@ export default function ChatView(props: ChatViewProps) {
 
         <ThreadErrorBanner
           error={visibleThreadError}
+          // An agent that is not signed in is signed in here, not through a
+          // shell on a container nobody has one on.
+          onAuthorize={
+            activeThreadRef === null
+              ? undefined
+              : () => {
+                  useRightPanelStore.getState().open(activeThreadRef, "zerops");
+                }
+          }
           onDismiss={() => {
             setThreadError(activeThread.id, null);
             dismissThreadErrorBannerForSession(threadErrorBannerKey);
