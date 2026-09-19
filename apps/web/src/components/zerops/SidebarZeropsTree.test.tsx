@@ -175,9 +175,11 @@ describe("SidebarZeropsTree", () => {
       html.indexOf("crm-stage"),
     );
     expect(html.indexOf("crm-stage")).toBeLessThan(html.indexOf("crm-prod"));
-    // Nothing to unfold: the stops are the menu's, not a count to click open.
+    // The stops are open, and they are not a count to click open: the fold is
+    // an exception a person asks for, never the state they are handed.
     expect(html).not.toContain("2 environments");
-    expect(html).not.toContain("aria-expanded");
+    expect(html).toContain('data-zerops-surface="sidebar-stops-fold"');
+    expect(html).toContain('aria-expanded="true"');
     // A project whose only environment is its Mate's has no stops to list.
     expect(render([CRM_DEV])).not.toContain("sidebar-environment-rows");
   });
@@ -573,13 +575,23 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("Release");
   });
 
+  it("keeps a stop's own page reachable and its state visible while folded", () => {
+    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
+    // Open by default, and the fold is a verb of its own rather than a state
+    // a project is handed.
+    expect(html).toContain('data-zerops-surface="sidebar-stops-fold"');
+    expect(html).toContain("Hide the stages and the production");
+  });
+
   it("draws one spine, and branches a change off it instead of onto it", () => {
     const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
     const count = (needle: string) => html.split(needle).length - 1;
+    // The fold above the stops stands on the line too.
     const rows =
       count('data-zerops-surface="sidebar-mate"') +
       count('data-zerops-surface="sidebar-environment"') +
-      count('data-zerops-surface="sidebar-pull-request"');
+      count('data-zerops-surface="sidebar-pull-request"') +
+      count('data-zerops-surface="sidebar-stops-fold"');
     const changes = count('data-zerops-surface="sidebar-pull-request"');
     const painted = count('class="w-px flex-1 bg-[var(--zerops-rail)]"');
     const blank = count('class="w-px flex-1"');

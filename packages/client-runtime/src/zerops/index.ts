@@ -375,6 +375,8 @@ export {
   releaseContentsSummary,
   releaseRow,
   sidebarChangeLabel,
+  stopAttention,
+  type StopAttention,
   type FlowPullRequest,
   type FlowPullRequestKind,
   type FlowRelease,

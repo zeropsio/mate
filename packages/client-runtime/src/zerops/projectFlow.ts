@@ -124,6 +124,33 @@ export function flowPullRequest(input: {
   };
 }
 
+/** What a stop needs somebody for, as one number. */
+export interface StopAttention {
+  readonly count: number;
+  /** A deploy that failed outranks work merely waiting to go live. */
+  readonly urgent: boolean;
+}
+
+/**
+ * The bubble a stop wears when its rows are folded away.
+ *
+ * Folded, a project says only that it has a stage and a production — so the
+ * one thing that has to survive the fold is whether either of them needs
+ * somebody. A deploy that failed is one thing to deal with; a production's
+ * waiting changes are one each. Nothing to do is no bubble rather than a
+ * zero: a badge that is always there stops being read.
+ */
+export function stopAttention(input: {
+  readonly failed: boolean;
+  readonly production: boolean;
+  readonly waiting: number;
+}): StopAttention | undefined {
+  const failed = input.failed ? 1 : 0;
+  const waiting = input.production ? Math.max(0, Math.trunc(input.waiting)) : 0;
+  const count = failed + waiting;
+  return count === 0 ? undefined : { count, urgent: failed > 0 };
+}
+
 /**
  * What a change is called on the menu: `#4 Add a due date to each todo`, and
  * `· ada` after it where no Mate's row stands above to say whose it is.

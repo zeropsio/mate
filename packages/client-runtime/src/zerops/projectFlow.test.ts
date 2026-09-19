@@ -19,6 +19,7 @@ import {
   pullRequestsFolded,
   releaseRow,
   sidebarChangeLabel,
+  stopAttention,
   type FlowPullRequest,
   type FlowRelease,
 } from "./projectFlow.ts";
@@ -458,5 +459,34 @@ describe("releaseWaitingLabel", () => {
         ]),
       ),
     ).toBe("2 waiting");
+  });
+});
+
+describe("what a folded stop still has to say", () => {
+  it("counts a production's waiting changes", () => {
+    expect(stopAttention({ failed: false, production: true, waiting: 3 })).toEqual({
+      count: 3,
+      urgent: false,
+    });
+  });
+
+  it("counts a failed deploy as the one thing to deal with, and says it is urgent", () => {
+    expect(stopAttention({ failed: true, production: false, waiting: 0 })).toEqual({
+      count: 1,
+      urgent: true,
+    });
+    // Both at once: the failure outranks the waiting, and neither is dropped.
+    expect(stopAttention({ failed: true, production: true, waiting: 2 })).toEqual({
+      count: 3,
+      urgent: true,
+    });
+  });
+
+  it("gives a stage no bubble for a production's waiting work", () => {
+    expect(stopAttention({ failed: false, production: false, waiting: 4 })).toBeUndefined();
+  });
+
+  it("wears nothing rather than a zero, which would stop being read", () => {
+    expect(stopAttention({ failed: false, production: true, waiting: 0 })).toBeUndefined();
   });
 });
