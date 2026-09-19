@@ -220,6 +220,25 @@ describe("environmentRow", () => {
     expect(row.version.name).toBeUndefined();
   });
 
+  it("names a repository only where the recipe does, never the hostname", () => {
+    // Reading by hostname answered 404 for every stage and production of the
+    // owner's 2026-09-17 run (`DeployStatusRead.repo`), so guessing it here
+    // would mint a link that goes nowhere — worse than plain text.
+    const guessed = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [{ hostname: "app", appVersionName: SHA }],
+    });
+    expect(guessed.versionRepository).toBeUndefined();
+
+    const known = environmentRow({
+      ...base,
+      sources: ["main"],
+      services: [{ hostname: "app", repository: "appdev", appVersionName: SHA }],
+    });
+    expect(known.versionRepository).toBe("appdev");
+  });
+
   it("carries a hand-made deploy's name, which no sha would have told anyone", () => {
     const row = environmentRow({
       ...base,

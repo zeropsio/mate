@@ -68,7 +68,11 @@ export interface EnvironmentRow {
   readonly commit: string | undefined;
   /** What that deploy is called, the commit being only the fallback. */
   readonly version: DeployedVersion;
-  /** The repository the named version was built from — where its commit is read. */
+  /**
+   * The repository the named version was built from, as the tier's
+   * `buildFromGit` names it — never guessed from the hostname, because an
+   * address built on a guess is a link that 404s.
+   */
   readonly versionRepository: string | undefined;
   readonly line: string;
   readonly tone: GroupRowTone;
@@ -343,7 +347,11 @@ export function environmentRow(input: {
     source,
     commit: version.commit,
     version,
-    versionRepository: named?.service.repository ?? named?.service.hostname,
+    // Only what the recipe names. The hostname is the fallback a *status*
+    // read uses, and reading by it answered 404 for every stage and production
+    // of the owner's 2026-09-17 run — a link built on that guess goes nowhere,
+    // which is worse than the plain text it replaced.
+    versionRepository: named?.service.repository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
   };
