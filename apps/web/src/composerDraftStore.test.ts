@@ -129,6 +129,8 @@ function resetComposerDraftStore() {
     draftsByThreadKey: {},
     draftThreadsByThreadKey: {},
     logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+    // A send armed by one test and never taken would fire in the next one.
+    sendRequestsByThreadKey: {},
     stickyModelSelectionByProvider: {},
     stickyActiveProvider: null,
   });
@@ -405,6 +407,69 @@ describe("composerDraftStore setPrompt", () => {
     store.setPrompt(threadRef, "");
 
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+});
+
+describe("composerDraftStore requestSend", () => {
+  // The seam every hand-over to a Mate runs through: *Ask*, the Git tab's
+  // *Ask*, the left menu's. The surface asks the person, quotes the exact
+  // words and presses *Send* for them; this arms the turn and `ChatView`
+  // fires it once the thread is live, because only it knows the model, the
+  // runtime mode and the attachments a turn needs.
+  const threadId = ThreadId.make("thread-request-send");
+  const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
+  const otherThreadId = ThreadId.make("thread-request-send-other");
+  const otherThreadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, otherThreadId);
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("puts the words in the composer and arms the send", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.requestSend(threadRef, "rebase this onto main, then push");
+
+    // Both halves matter: the person must see what was sent in their own
+    // composer, and the turn must actually start.
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.prompt).toBe(
+      "rebase this onto main, then push",
+    );
+    expect(useComposerDraftStore.getState().takeSendRequest(threadRef)).toBe(
+      "rebase this onto main, then push",
+    );
+  });
+
+  it("hands the send over once, so a re-render never sends twice", () => {
+    const store = useComposerDraftStore.getState();
+    store.requestSend(threadRef, "rebase this onto main, then push");
+
+    expect(store.takeSendRequest(threadRef)).toBe("rebase this onto main, then push");
+    // `ChatView` takes on every change of the live thread; the second take is
+    // the same effect running again, and it must find nothing.
+    expect(store.takeSendRequest(threadRef)).toBeNull();
+  });
+
+  it("belongs to the Mate it was asked of", () => {
+    const store = useComposerDraftStore.getState();
+    store.requestSend(threadRef, "rebase this onto main, then push");
+
+    // Opening another conversation must not fire the request waiting on this
+    // one — the words quoted in the confirm named one Mate.
+    expect(store.takeSendRequest(otherThreadRef)).toBeNull();
+    expect(store.takeSendRequest(threadRef)).toBe("rebase this onto main, then push");
+  });
+
+  it("asks again with the newer words when a second request lands first", () => {
+    const store = useComposerDraftStore.getState();
+    store.requestSend(threadRef, "rebase this onto main, then push");
+
+    store.requestSend(threadRef, "never mind the rebase, just fix the failing check");
+
+    expect(store.takeSendRequest(threadRef)).toBe(
+      "never mind the rebase, just fix the failing check",
+    );
+    expect(store.takeSendRequest(threadRef)).toBeNull();
   });
 });
 
