@@ -45,14 +45,18 @@ export interface ZeropsGitPanelProps {
   readonly model: ZeropsGitPanelModel;
   /** The verb under a repository's block — already gated (`gitActionAllowed`). */
   readonly renderBlockAction?: (block: GitBlock) => ReactNode;
-  readonly onOpenPullRequest?: (block: GitBlock) => void;
+  /** Opens a block's change on its own page. */
+  readonly onOpenChange?: (block: GitBlock) => void;
+  /** The commits on a block's branch — read by the caller, drawn by the block. */
+  readonly renderBlockCommits?: (block: GitBlock) => ReactNode;
   readonly className?: string;
 }
 
 export function ZeropsGitPanel({
   model,
   renderBlockAction,
-  onOpenPullRequest,
+  renderBlockCommits,
+  onOpenChange,
   className,
 }: ZeropsGitPanelProps) {
   return (
@@ -70,11 +74,18 @@ export function ZeropsGitPanel({
               <ZeropsGitBlock
                 action={renderBlockAction?.(block)}
                 block={block}
+                commits={renderBlockCommits?.(block)}
                 key={block.repository}
-                onOpenPullRequest={
-                  block.pullRequestNumber === undefined || onOpenPullRequest === undefined
+                onOpenChange={
+                  // A change has a page of its own only while it is open: the
+                  // flow every surface reads holds the open ones, and a merged
+                  // number would land on "not open any more", which is a worse
+                  // dead end than no link at all.
+                  block.state !== "in-review" ||
+                  block.pullRequestNumber === undefined ||
+                  onOpenChange === undefined
                     ? undefined
-                    : () => onOpenPullRequest(block)
+                    : () => onOpenChange(block)
                 }
               />
             ))}

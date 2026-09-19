@@ -81,7 +81,7 @@ describe("the same change, wherever it is read", () => {
     aheadCount: 0,
     behindCount: 0,
     hasUpstream: true,
-    changedFiles: 0,
+    changed: [],
   };
 
   /**

@@ -14,6 +14,8 @@ function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
     state: "in-review",
     checks: "passing",
     checkWord: "Passing",
+    checkRows: [{ name: "ci/test", tone: "ok", word: "Passed" }],
+    changed: [{ path: "server.js", insertions: 12, deletions: 1 }],
     pullRequestNumber: 12,
     pullRequestUrl: "https://gitea.example/acme/api/pulls/12",
     destination: "stage picks it up on merge",
@@ -93,10 +95,51 @@ describe("ZeropsGitBlock", () => {
     expect(render()).not.toContain(">Merge</button>");
   });
 
-  it("makes the pull request the way into Gitea only when the caller opens one", () => {
-    expect(render({ onOpenPullRequest: () => {} })).toContain(
-      'data-zerops-surface="git-pull-request"',
-    );
-    expect(render()).not.toContain('data-zerops-surface="git-pull-request"');
+  it("makes the change's number the way to its own page, never to a forge", () => {
+    const html = render({ onOpenChange: () => {} });
+    expect(html).toContain('data-zerops-surface="git-change"');
+    // The url is still on the block — the change's page uses it — but nothing
+    // here links out to it.
+    expect(html).not.toContain("gitea.example");
+    expect(render()).not.toContain('data-zerops-surface="git-change"');
+  });
+
+  it("names each check rather than collapsing them all into one word", () => {
+    const html = render({
+      block: blockOf({
+        checkRows: [
+          { name: "ci/test", tone: "ok", word: "Passed" },
+          { name: "ci/lint", tone: "failed", word: "Failed" },
+        ],
+      }),
+    });
+    expect(html).toContain("ci/test");
+    expect(html).toContain("ci/lint");
+    expect(html).toContain("Failed");
+  });
+
+  it("says nothing about checks where none ran", () => {
+    expect(render({ block: blockOf({ checkRows: [] }) })).not.toContain("Checks");
+  });
+
+  it("shows what is on disk and not committed, file by file and in total", () => {
+    const html = render({
+      block: blockOf({
+        changed: [
+          { path: "server.js", insertions: 12, deletions: 1 },
+          { path: "public/app.css", insertions: 2, deletions: 2 },
+        ],
+      }),
+    });
+    expect(html).toContain("Not committed · 2");
+    expect(html).toContain("server.js");
+    expect(html).toContain("public/app.css");
+    // The total is the files' own, never a second number from somewhere else.
+    expect(html).toContain("+14");
+    expect(html).toContain("−3");
+  });
+
+  it("says nothing about a clean checkout", () => {
+    expect(render({ block: blockOf({ changed: [] }) })).not.toContain("Not committed");
   });
 });

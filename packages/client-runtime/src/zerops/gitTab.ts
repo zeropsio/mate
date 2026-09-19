@@ -65,8 +65,21 @@ export interface GitCheckoutState {
   readonly aheadCount: number;
   readonly behindCount: number;
   readonly hasUpstream: boolean;
-  /** How many files the working tree has changed. */
-  readonly changedFiles: number;
+  /**
+   * What the Mate has changed and not committed, file by file.
+   *
+   * The count alone used to be all the tab kept of this, which made the one
+   * fact nothing outside the container can prove — what is on disk right
+   * now — into a number with nothing behind it.
+   */
+  readonly changed: ReadonlyArray<GitChangedFile>;
+}
+
+/** One file the working tree has changed, with its diffstat. */
+export interface GitChangedFile {
+  readonly path: string;
+  readonly insertions: number;
+  readonly deletions: number;
 }
 
 /** What Gitea says about that repository and branch, answering as the person. */
@@ -133,6 +146,10 @@ export interface GitBlock {
   readonly checks: GitCheckTone;
   /** `undefined` when no word belongs beside the dot — no checks ran. */
   readonly checkWord: string | undefined;
+  /** Every check on the head, by name — empty where none ran. */
+  readonly checkRows: ReadonlyArray<GitCheckRow>;
+  /** What is changed on disk and not committed — the container's own fact. */
+  readonly changed: ReadonlyArray<GitChangedFile>;
   readonly pullRequestNumber: number | undefined;
   readonly pullRequestUrl: string | undefined;
   /** The branch a pull request from `branch` targets — the repository's default, `main` until Gitea says. */
@@ -202,6 +219,40 @@ export function checkDotTone(input: {
     case "none":
       return undefined;
   }
+}
+
+/** One check on the branch's head, as the tab lists it. */
+export interface GitCheckRow {
+  /** The check's own name, as the forge reports it. */
+  readonly name: string;
+  readonly tone: ServiceStatusToneId;
+  readonly word: string;
+}
+
+const CHECK_STATE: Record<string, { readonly tone: ServiceStatusToneId; readonly word: string }> = {
+  success: { tone: "ok", word: "Passed" },
+  pending: { tone: "busy", word: "Running" },
+  failure: { tone: "failed", word: "Failed" },
+  error: { tone: "failed", word: "Failed" },
+};
+
+/**
+ * Every check on the head, by name.
+ *
+ * One collapsed word answers "can it land"; it does not answer "which one
+ * broke", which is the question a person opens a Git panel with. The broker's
+ * own deploy statuses stay out for the same reason they stay out of
+ * `checkTone`: they are what happened after a change landed, not a verdict on
+ * the change.
+ */
+export function gitChecks(statuses: ReadonlyArray<GiteaCommitStatus>): ReadonlyArray<GitCheckRow> {
+  return statuses
+    .filter((status) => !status.context.startsWith("mate/"))
+    .map((status) => ({
+      name: status.context,
+      tone: CHECK_STATE[status.state]?.tone ?? "off",
+      word: CHECK_STATE[status.state]?.word ?? "Unknown",
+    }));
 }
 
 /** The one word beside the checks' dot (R5). */
@@ -310,10 +361,8 @@ export function gitCheckoutLine(checkout: GitCheckoutState): string {
   const ahead = checkout.aheadCount > 0 ? ` ↑${String(checkout.aheadCount)}` : "";
   const behind = checkout.behindCount > 0 ? ` ↓${String(checkout.behindCount)}` : "";
   const counts = checkout.hasUpstream ? `${ahead}${behind}` : " · never pushed";
-  const changed =
-    checkout.changedFiles === 0
-      ? ""
-      : ` · ${String(checkout.changedFiles)} file${checkout.changedFiles === 1 ? "" : "s"} changed`;
+  const count = checkout.changed.length;
+  const changed = count === 0 ? "" : ` · ${String(count)} file${count === 1 ? "" : "s"} changed`;
   return `${branch}${counts}${changed}`;
 }
 
@@ -592,6 +641,8 @@ export function gitBlock(input: {
     state,
     checks: tone,
     checkWord: checkWord(tone),
+    checkRows: gitChecks(forge.checks),
+    changed: checkout.changed,
     pullRequestNumber: forge.pullRequest?.number,
     pullRequestUrl: forge.pullRequest?.html_url,
     baseBranch,

@@ -8,6 +8,7 @@ import {
   gitActionAllowed,
   gitBlock,
   gitCheckoutLine,
+  gitChecks,
   gitTrouble,
   gitVerdict,
   type GitBlockEvidence,
@@ -46,7 +47,7 @@ function checkout(overrides: Partial<GitCheckoutState> = {}): GitCheckoutState {
     aheadCount: 0,
     behindCount: 0,
     hasUpstream: true,
-    changedFiles: 0,
+    changed: [],
     ...overrides,
   };
 }
@@ -70,6 +71,9 @@ function pull(overrides: Partial<GiteaPullRequest> = {}): GiteaPullRequest {
 function status(context: string, state: GiteaCommitStatus["state"]): GiteaCommitStatus {
   return { context, state };
 }
+
+const FILE = { path: "server.js", insertions: 12, deletions: 1 };
+const OTHER = { path: "public/app.css", insertions: 2, deletions: 2 };
 
 const EVIDENCE = { remoteReachable: true } as const;
 
@@ -122,12 +126,12 @@ describe("the line under the name", () => {
   it.each([
     {
       name: "a branch ahead, with a dirty tree",
-      state: checkout({ headRef: "feature/invoices", aheadCount: 3, changedFiles: 2 }),
+      state: checkout({ headRef: "feature/invoices", aheadCount: 3, changed: [FILE, OTHER] }),
       expected: "feature/invoices ↑3 · 2 files changed",
     },
     {
       name: "one file, singular",
-      state: checkout({ changedFiles: 1 }),
+      state: checkout({ changed: [FILE] }),
       expected: "main · 1 file changed",
     },
     {
@@ -159,6 +163,10 @@ describe("the line under the name", () => {
     },
   ])("writes $name", ({ state, expected }) => {
     expect(gitCheckoutLine(state)).toBe(expected);
+  });
+
+  it("counts the files it was handed rather than a number beside them", () => {
+    expect(gitCheckoutLine(checkout({ changed: [FILE, OTHER] }))).toContain("2 files changed");
   });
 
   it("never repeats the repository, which is the name it sits under", () => {
@@ -691,5 +699,51 @@ describe("gitBlock base branch", () => {
       evidence: { remoteReachable: true },
     });
     expect(unknown.baseBranch).toBe("main");
+  });
+});
+
+describe("the checks, by name", () => {
+  it("lists every check the forge reported, with its own word", () => {
+    expect(
+      gitChecks([
+        status("ci/test", "success"),
+        status("ci/lint", "pending"),
+        status("ci/types", "failure"),
+      ]),
+    ).toEqual([
+      { name: "ci/test", tone: "ok", word: "Passed" },
+      { name: "ci/lint", tone: "busy", word: "Running" },
+      { name: "ci/types", tone: "failed", word: "Failed" },
+    ]);
+  });
+
+  it("keeps the broker's deploy statuses out, as the collapsed word does", () => {
+    // They are what happened after a change landed, not a verdict on it.
+    expect(gitChecks([status("mate/deploy/stage/api", "failure")])).toEqual([]);
+  });
+
+  it("says a state it does not know rather than guessing a colour for it", () => {
+    expect(gitChecks([status("ci/test", "warning" as never)])).toEqual([
+      { name: "ci/test", tone: "off", word: "Unknown" },
+    ]);
+  });
+
+  it("reaches a block, so the panel never has to ask the forge itself", () => {
+    const answer = block(
+      checkout({ headRef: "feature/invoices" }),
+      forge({ pullRequest: pull(), checks: [status("ci/test", "failure")] }),
+    );
+    expect(answer.checkRows).toEqual([{ name: "ci/test", tone: "failed", word: "Failed" }]);
+    expect(answer.checks).toBe("failing");
+  });
+});
+
+describe("what is on disk and not committed", () => {
+  it("reaches a block file by file, not as a number", () => {
+    expect(block(checkout({ changed: [FILE, OTHER] })).changed).toEqual([FILE, OTHER]);
+  });
+
+  it("is empty for a clean checkout rather than absent", () => {
+    expect(block(checkout()).changed).toEqual([]);
   });
 });

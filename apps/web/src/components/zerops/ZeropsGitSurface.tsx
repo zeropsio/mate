@@ -15,6 +15,7 @@ import { botDisplayName, readZeropsGroupTags, type GitBlock } from "@t3tools/cli
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 
 import { useZeropsProjectFlow } from "../../zerops/projectFlowContext";
@@ -24,6 +25,7 @@ import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { ZeropsGitTab } from "./ZeropsGitTab";
 
 export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThreadRef | null }) {
+  const navigate = useNavigate();
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
   const flow = useZeropsProjectFlow();
@@ -107,10 +109,30 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
     [flow, owner],
   );
 
-  const openInGitea = useCallback((url: string | undefined) => {
-    if (url === undefined) return;
-    window.open(url, "_blank", "noopener");
-  }, []);
+  /**
+   * A change opens on its own page, not in Gitea.
+   *
+   * That page carries the change's conversation, its commits and its *Merge*,
+   * all of it already drawn from the same reads this panel uses. Sending a
+   * person out to a forge they have to sign into, for a change the app can
+   * draw, is the long way round to a worse copy (the owner, 2026-09-19: "it
+   * linking to a gitea, when we are supposed to already have a panel tab for
+   * pull requests").
+   */
+  const onOpenChange = useCallback(
+    (block: GitBlock) => {
+      if (groupId === undefined || block.pullRequestNumber === undefined) return;
+      void navigate({
+        to: "/change/$groupId/$repository/$number",
+        params: {
+          groupId,
+          repository: block.repository,
+          number: String(block.pullRequestNumber),
+        },
+      });
+    },
+    [groupId, navigate],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -129,7 +151,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         mateName={mateName}
         onCreatePullRequest={onCreatePullRequest}
         onMergePullRequest={onMergePullRequest}
-        onOpenPullRequest={(block: GitBlock) => openInGitea(block.pullRequestUrl)}
+        onOpenChange={onOpenChange}
         owner={owner}
         signedIn={flow.signedIn}
         signInTrouble={flow.signInTrouble ?? undefined}

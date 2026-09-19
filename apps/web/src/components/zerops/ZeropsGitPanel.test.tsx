@@ -13,6 +13,8 @@ const BLOCK: GitBlock = {
   state: "in-review",
   checks: "passing",
   checkWord: "Passing",
+  checkRows: [],
+  changed: [],
   pullRequestNumber: 12,
   pullRequestUrl: "https://gitea.example/acme/api/pulls/12",
   destination: "stage picks it up on merge",
@@ -78,5 +80,19 @@ describe("ZeropsGitPanel", () => {
 
   it("says nothing about Gitea once signed in", () => {
     expect(render()).not.toContain("Gitea");
+  });
+
+  it("offers a change's page while the change is open", () => {
+    const html = render({ onOpenChange: () => {} });
+    expect(html).toContain('data-zerops-surface="git-change"');
+  });
+
+  it("does not send a merged change to a page that holds only open ones", () => {
+    const html = render({
+      model: model({ blocks: [{ ...BLOCK, state: "merged" }] }),
+      onOpenChange: () => {},
+    });
+    expect(html).toContain("#12");
+    expect(html).not.toContain('data-zerops-surface="git-change"');
   });
 });

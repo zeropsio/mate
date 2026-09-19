@@ -24,9 +24,11 @@
 import {
   changeAskLabel,
   gitActionAllowed,
+  historyAge,
   gitBlock,
   gitCheckoutHostnames,
   type GitBlock,
+  type GitChangedFile,
   type GitCheckoutState,
   type GroupEnvironment,
 } from "@t3tools/client-runtime/zerops";
@@ -34,6 +36,8 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { useZeropsChangeCommits } from "../../zerops/useZeropsRepositoryCommits";
+import { useNowMs } from "../../zerops/useNowMs";
 
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
@@ -44,6 +48,9 @@ import { vcsEnvironment } from "../../state/vcs";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
+
+/** One identity for "nothing changed", so an idle probe reports the same value twice. */
+const EMPTY_CHANGED: ReadonlyArray<GitChangedFile> = [];
 
 /**
  * Subscribes to one mount's VCS status and reports it up. Renders nothing:
@@ -70,7 +77,7 @@ function CheckoutProbe({
       aheadCount: data?.aheadCount ?? 0,
       behindCount: data?.behindCount ?? 0,
       hasUpstream: data?.hasUpstream ?? false,
-      changedFiles: data?.workingTree.files.length ?? 0,
+      changed: data?.workingTree.files ?? EMPTY_CHANGED,
     }),
     [data, hostname],
   );
@@ -81,6 +88,63 @@ function CheckoutProbe({
     // would set state in a loop.
   }, [hostname, key, onState, state]);
   return null;
+}
+
+/**
+ * The commits one branch has that its base does not — the Mate's own work.
+ *
+ * A child per block for the same reason `CheckoutProbe` is one: a hook cannot
+ * be called in a loop, and each read then lives and dies with the block it
+ * belongs to. It is a compare rather than a pull request read, so a branch
+ * with no change open yet still shows what is on it.
+ */
+function BlockCommits({
+  base,
+  branch,
+  giteaOrigin,
+  owner,
+  repository,
+}: {
+  readonly base: string;
+  readonly branch: string;
+  readonly giteaOrigin: string | undefined;
+  readonly owner: string | undefined;
+  readonly repository: string;
+}) {
+  const now = useNowMs();
+  const commits = useZeropsChangeCommits(
+    branch === base ? null : { giteaOrigin, owner, repo: repository, base, head: branch },
+  );
+  // Nothing to say is nothing drawn: a "Reading…" line under every block on
+  // every open would be four words of chrome for a list that is usually short.
+  if (commits.kind !== "read" || commits.commits.length === 0) return null;
+  return (
+    <section className="flex min-w-0 flex-col gap-1" data-zerops-surface="git-commits">
+      <h4 className="text-xs font-medium text-muted-foreground">
+        Commits · {commits.commits.length}
+      </h4>
+      <ul className="flex min-w-0 flex-col">
+        {commits.commits.map((commit) => {
+          const age = historyAge(commit.at, now);
+          return (
+            <li
+              className="flex min-w-0 items-baseline gap-2 py-1 text-xs"
+              data-zerops-surface="git-commit"
+              key={commit.sha}
+            >
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                {commit.sha.slice(0, 7)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-foreground">{commit.subject}</span>
+              {age === undefined ? null : (
+                <span className="shrink-0 tabular-nums text-muted-foreground">{age}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 export interface ZeropsGitTabProps {
@@ -98,7 +162,8 @@ export interface ZeropsGitTabProps {
   readonly signedIn: boolean;
   /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
   readonly signInTrouble?: string | undefined;
-  readonly onOpenPullRequest?: ((block: GitBlock) => void) | undefined;
+  /** Opens a block's change on its own page, which is where its Merge lives. */
+  readonly onOpenChange?: ((block: GitBlock) => void) | undefined;
   /** Opens the pull request in Gitea as the person; the forge is read again once it settles. */
   readonly onCreatePullRequest?: ((block: GitBlock) => Promise<void> | void) | undefined;
   /** Merges it in Gitea as the person; the forge is read again once it settles. */
@@ -173,7 +238,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
             aheadCount: 0,
             behindCount: 0,
             hasUpstream: false,
-            changedFiles: 0,
+            changed: EMPTY_CHANGED,
           },
           forge: forges.get(repository) ?? {
             repository: undefined,
@@ -285,9 +350,16 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       <ZeropsGitPanel
         model={{ blocks, signedIn: props.signedIn, signInTrouble: props.signInTrouble }}
         renderBlockAction={renderBlockVerbs}
-        {...(props.onOpenPullRequest === undefined
-          ? {}
-          : { onOpenPullRequest: props.onOpenPullRequest })}
+        renderBlockCommits={(block) => (
+          <BlockCommits
+            base={block.baseBranch}
+            branch={block.branch}
+            giteaOrigin={props.giteaOrigin}
+            owner={props.owner}
+            repository={block.repository}
+          />
+        )}
+        {...(props.onOpenChange === undefined ? {} : { onOpenChange: props.onOpenChange })}
       />
       <ZeropsAskDialog
         ask={asking?.ask ?? ""}
