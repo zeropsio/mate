@@ -114,7 +114,10 @@ describe("microLabelPresentation", () => {
       }
     }
 
-    expect(absences).toEqual(["busy.light", "failed.light", "off.light", "off.dark"]);
+    // Only `off` withholds a text colour, and it means it: grey is the absence
+    // of a signal, so its word is the body's. `busy` and `failed` withheld
+    // theirs by accident until 2026-09-19.
+    expect(absences).toEqual(["off.light", "off.dark"]);
   });
 
   it.each(
