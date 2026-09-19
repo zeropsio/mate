@@ -1912,12 +1912,13 @@ export class ZeropsApiClient {
    * primer §7.1): one delegation still on the container's own token, and
    * nothing reconciles it afterwards.
    *
-   * **Isolation is not done here**, though the same audit found it missing.
-   * `envIsolation` is the platform's to set: the development-container recipe
-   * writes `none` while the container is being made, over anything written
-   * before it, so a call at this moment is overwritten a few seconds later
-   * (measured 2026-09-19 — the same write sticks once the container answers).
-   * It runs when the container does, in `connectContainer`.
+   * Isolation runs here **and** when the container answers
+   * (`connectContainer`). Not belt and braces for its own sake: `envIsolation`
+   * is the platform's to set, its development-container recipe writes `none`
+   * while the container is being made, and whether that lands before or after
+   * this call is not ours to decide — measured 2026-09-19, it went both ways
+   * across four creations of the same project. The step is idempotent, so the
+   * one that is too early costs a read and the one that is in time wins.
    *
    * Idempotent: a token with no delegation is a read, so a retried creation is
    * safe. The token is the platform's to mint and is looked for once — this
@@ -1948,6 +1949,7 @@ export class ZeropsApiClient {
         );
       }
     }
+    await this.isolateProjectEnvironment(clientId, projectId, signal, beforeWrite);
   }
 
   /**

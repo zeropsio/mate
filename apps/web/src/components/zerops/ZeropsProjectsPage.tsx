@@ -385,24 +385,25 @@ export function useZeropsProjectConnection(orgId: string | null): {
             orgId,
             source: "connect",
           });
-          // Here, and not at the creation call. `envIsolation` is the
-          // platform's to set: its development-container recipe writes `none`
-          // while the container is being made, over anything written before
-          // it. Measured 2026-09-19 — the same write that was overwritten
-          // during creation sticks the moment the container answers, which is
-          // now, because the exchange above only succeeds once it does. A
-          // Mate left un-isolated reads every sibling's environment, its
-          // agent's own login included (`projectIsolation.ts`).
+          // Again here, having already run at the creation call. `envIsolation`
+          // is the platform's to set — its development-container recipe writes
+          // `none` while the container is being made — and whether that lands
+          // before or after the creation call is not ours to decide: measured
+          // 2026-09-19, it went both ways across four creations of the same
+          // project. This moment is the one that cannot be too early, because
+          // the exchange above only succeeds once the container answers. The
+          // step is idempotent, so the redundant one costs a read.
           //
-          // Awaited, but never fatal: the container is up and the person is
-          // about to be taken to it, and a failure here is not a reason to
-          // strand them on this page.
+          // A Mate left un-isolated reads every sibling's environment, its
+          // agent's own login included (`projectIsolation.ts`).
           try {
             await runZeropsCommand(
               runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
             );
           } catch {
-            // The next connect tries again; the plan is empty once it has run.
+            // Never fatal: the person is on their way into a Mate that is up,
+            // and the creation call isolated it too. The next connect tries
+            // again, and the plan is empty once one of them has landed.
           }
         }
         provisioning.cancel();
@@ -1713,7 +1714,13 @@ function ZeropsProjectsContent() {
   // asks for this; it is here because this is where an account is read.
   useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
-    enabled: status === "signed-in",
+    // Not on sign-in alone: deleting a token is a `project-write`, and writes
+    // are refused until the inventory provider has verified access
+    // (`setWritesAllowed`). The sweep ran on mount, was refused, and gave up
+    // for the life of that mount — so four door tokens from deleted projects
+    // were still on the account hours later (measured 2026-09-19). The
+    // account having been read is the window being open.
+    enabled: status === "signed-in" && !inventory.isLoading,
   });
 
   useEffect(() => {
