@@ -5,7 +5,20 @@ import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button } from "./ui/button";
 
-/** Public websites run in the user's browser, independently of the agent's browser session. */
+/**
+ * Public websites run in the user's browser, independently of the agent's
+ * browser session.
+ *
+ * It used to carry a permanent footer — "Page not showing? Some sites block
+ * embedded previews." — under every preview, with a second *Open in new tab*
+ * in it. Whether a frame painted cannot be read from here: measured in Chrome
+ * 2026-09-19, a site that refuses framing and a site that does not both fire
+ * `load` and both throw `SecurityError` on a cross-origin read, so the line
+ * could never become conditional. A sentence that is wrong almost every time
+ * it is shown, under a strip of preview it costs, is worse than the escape
+ * hatch it duplicated — so the escape hatch keeps its words and the apology
+ * goes.
+ */
 export function ServiceBrowserPanel({ service, url }: { service: string; url: string }) {
   const [revision, setRevision] = useState(0);
   if (!isServiceBrowserUrl(url)) return null;
@@ -39,13 +52,17 @@ export function ServiceBrowserPanel({ service, url }: { service: string; url: st
         >
           <RotateCwIcon className="size-4" />
         </Button>
+        {/* The one control that survives a frame the site refused to draw, so
+            it says what it is rather than making a person hover an icon over a
+            blank page to find out. */}
         <Button
           variant="ghost"
-          size="icon-sm"
-          aria-label={`Open ${service} in new tab`}
+          size="compact"
+          className="shrink-0 text-muted-foreground"
           render={<a href={url} target="_blank" rel="noreferrer" />}
         >
-          <ExternalLinkIcon className="size-4" />
+          <ExternalLinkIcon />
+          Open in new tab
         </Button>
       </div>
       <iframe
@@ -56,12 +73,6 @@ export function ServiceBrowserPanel({ service, url }: { service: string; url: st
         sandbox={sandbox}
         referrerPolicy="no-referrer"
       />
-      <p className="border-t px-3 py-2 text-xs text-muted-foreground">
-        Page not showing? Some sites block embedded previews.{" "}
-        <a className="underline underline-offset-2" href={url} target="_blank" rel="noreferrer">
-          Open in new tab
-        </a>
-      </p>
     </section>
   );
 }

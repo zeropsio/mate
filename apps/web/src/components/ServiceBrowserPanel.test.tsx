@@ -38,4 +38,13 @@ describe("restored service previews", () => {
   it("waits for known topology before loading a restored page", () => {
     expect(render(origin, undefined)).not.toContain("<iframe");
   });
+  it("apologises for nothing: the way out is the header's, and it is said once", () => {
+    // A frame a site refused to draw cannot be told from one it drew —
+    // measured in Chrome, both fire `load` and both throw on a cross-origin
+    // read — so the footer that explained it was shown under every working
+    // preview, with a second copy of the control above it.
+    const html = render(origin, services);
+    expect(html).not.toContain("Page not showing");
+    expect(html.match(/Open in new tab/gu)).toHaveLength(1);
+  });
 });
