@@ -612,6 +612,42 @@ function RailCell({ children, cap }: { readonly children?: ReactNode; readonly c
 const RAIL_LINE = "w-px flex-1 bg-sidebar-border";
 const RAIL_BLANK = "w-px flex-1";
 
+/**
+ * A change branches off the line rather than standing on it.
+ *
+ * Drawn as a node in the spine it read as one more Mate — "the merge requests
+ * still blend together with the item" (the owner, 2026-09-19) — because a row
+ * *on* the line and a row *of* the line look alike at a glance, however small
+ * the dot. A pull request is a branch off the Mate's work, so it is drawn as
+ * one: the spine runs through unbroken, an elbow carries the dot out to an
+ * indent of its own, and the title starts from there rather than from the
+ * Mates' left edge. The indent is the point — an earlier pass deliberately
+ * lined the title up with the names above it, which is what made it blend.
+ */
+function RailFork({ cap }: { readonly cap?: RailCap }) {
+  return (
+    <span className="relative w-7 shrink-0 self-stretch">
+      {/* A change does not interrupt the line. It stops here only when there
+          is nothing below it that stands on the line. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute start-2.5 top-0 w-px bg-sidebar-border",
+          cap === "end" ? "h-1/2" : "bottom-0",
+        )}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute start-2.5 top-[calc(50%-0.5rem)] h-2 w-3.5 rounded-bl-md border-s border-b border-sidebar-border"
+      />
+      <span
+        aria-hidden="true"
+        className="absolute start-6 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sidebar-border"
+      />
+    </span>
+  );
+}
+
 /** Where a row sits on its group's spine: the first node, the last, both, or between. */
 type RailCap = "start" | "end" | "only" | undefined;
 
@@ -658,12 +694,11 @@ function PullRequestList({
           onClick={onToggle}
           type="button"
         >
-          <RailCell cap={listed ? undefined : railCap}>
-            <ChevronRightIcon
-              aria-hidden="true"
-              className={cn("size-3 transition-transform", open && "rotate-90")}
-            />
-          </RailCell>
+          <RailFork cap={listed ? undefined : railCap} />
+          <ChevronRightIcon
+            aria-hidden="true"
+            className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
+          />
           <span>{pulls.length} pull requests</span>
         </button>
       ) : null}
@@ -712,13 +747,7 @@ function PullRequestRow({
       className={cn("flex h-7 min-w-0 items-center gap-2.5 px-2.5 text-xs", !underMate && "pe-0.5")}
       data-zerops-surface="sidebar-pull-request"
     >
-      {/* A change is a lesser stop on the same line: the spine runs through it
-          and it wears a small dot where a Mate wears a face. Its title lands
-          on the same left edge the names above it use, because the rail cell
-          and the gap are the ones the other rows are built from. */}
-      <RailCell cap={railCap}>
-        <span aria-hidden="true" className="size-1.5 rounded-full bg-sidebar-border" />
-      </RailCell>
+      <RailFork cap={railCap} />
       {pull.url === undefined ? (
         <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{title}</span>
       ) : (
