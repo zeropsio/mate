@@ -29,6 +29,7 @@ import {
   changeVerdict,
   historyAge,
   deployWord,
+  environmentAttention,
   environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
@@ -454,20 +455,20 @@ export function ZeropsGroupPane({
   const deployed = useMemo(() => deployedShas(environments), [environments]);
   return (
     <DetailShell
+      // *Release* left the header when the panel below got a working one: a
+      // page says a thing once, and the place it says it is the place you act
+      // on it. *Add a Mate* stays — it answers nothing the panel raised.
       actions={
-        <>
-          <Button onClick={onAddMate} size="sm" variant="outline">
-            <PlusIcon aria-hidden="true" className="size-3.5" />
-            Add a Mate
-          </Button>
-          <ReleaseAction release={release} />
-        </>
+        <Button onClick={onAddMate} size="sm" variant="outline">
+          <PlusIcon aria-hidden="true" className="size-3.5" />
+          Add a Mate
+        </Button>
       }
       crumbs={crumbs}
       subtitle={groupSubtitle(environments.length, pullRequests.length)}
       title={name}
     >
-      <AttentionPanel items={attention} onAct={onAct} />
+      <AttentionPanel items={attention} onAct={onAct} release={release} />
 
       <Section title="Who is on it">
         {mates.length === 0 ? (
@@ -668,12 +669,25 @@ export function ZeropsStopPane({
 }) {
   const word = deployWord(stop.tone);
   const dotTone = STOP_DOT_TONE[stop.tone];
+  const attention = environmentAttention({
+    failed: stop.tone === "bad",
+    deployed: stop.version.sha !== undefined,
+    production,
+    notLive: waiting.total,
+    canRelease: release.offered,
+  });
   return (
     <DetailShell
-      actions={production ? <ReleaseAction release={release} /> : undefined}
       crumbs={crumbs}
+      subtitle={stopSourceLine(stop.source)}
       title={environmentNameUnderGroup(groupName, stop.name)}
     >
+      {/* The same opening answer the project's page gives, one zoom in. It
+          carries *Release* too, so the page that lists what is waiting is the
+          page that can send it — it used to say so in a panel and act on it
+          from the header, two elements for one thing. */}
+      <AttentionPanel items={attention} onAct={NO_ACT} release={release} />
+
       <Section title="What is running">
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
           <Fact term="Version">{stop.version.label ?? "Nothing deployed yet"}</Fact>
@@ -692,12 +706,11 @@ export function ZeropsStopPane({
               <StatusDot label={word} sentence tone={dotTone} />
             )}
           </Fact>
-          <Fact term="Follows">{stopSourceLine(stop.source)}</Fact>
         </dl>
       </Section>
 
       {!production || waiting.total === 0 ? null : (
-        <Section title={`Not in it yet · ${String(waiting.total)}`}>
+        <Section title={`Not live yet · ${String(waiting.total)}`}>
           <ul className="flex flex-col gap-1">
             {waiting.subjects.map((subject) => (
               <li className="truncate text-sm text-foreground" key={subject}>
@@ -1004,6 +1017,12 @@ export function ZeropsChangePane({
   );
 }
 
+/**
+ * A stop's panel raises nothing that is dealt with somewhere else: its one
+ * verb brings its own confirm, and the rest are statements.
+ */
+const NO_ACT = (): void => {};
+
 /** Nothing in an unmerged change is running anywhere yet. */
 const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
 
@@ -1140,11 +1159,19 @@ function Empty({
 function AttentionPanel({
   items,
   onAct,
+  release,
 }: {
   readonly items: ReadonlyArray<ProjectAttentionItem>;
   readonly onAct: (item: ProjectAttentionItem) => void;
+  /**
+   * What *Release* would do, for the one item whose verb is not a way
+   * somewhere. Without it that row drew a button with no target, and `onAct`
+   * returned on the spot: the panel's only completing verb did nothing.
+   */
+  readonly release: ReleaseOffer;
 }) {
-  if (items.length === 0) {
+  const [first] = items;
+  if (first === undefined) {
     return (
       <p
         className="mb-8 rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground"
@@ -1154,9 +1181,16 @@ function AttentionPanel({
       </p>
     );
   }
+  const worst = ATTENTION_TONE[first.kind];
   return (
     <ul
-      className="mb-8 flex flex-col overflow-hidden rounded-lg border border-[var(--zerops-status-attention)]/40"
+      // The edge wears the worst thing inside it, and the list is ordered
+      // worst first. It used to be amber whatever it held, so a panel whose
+      // only row was a blue *Release* still had a blocked change's border.
+      className={cn(
+        "mb-8 flex flex-col overflow-hidden rounded-lg border",
+        VERDICT_BORDER_CLASS[worst],
+      )}
       data-zerops-surface="project-attention"
     >
       {items.map((item) => (
@@ -1171,9 +1205,14 @@ function AttentionPanel({
             tone={ATTENTION_TONE[item.kind]}
           />
           {/* One column for the verbs: three buttons stacked with only
-              `justify-end` between them landed on three different edges. */}
-          <span className="flex w-28 shrink-0 justify-end">
-            {item.verb === undefined ? null : (
+              `justify-end` between them landed on three different edges.
+              `min-w`, not `w`: `See the build` is wider than `Open`. */}
+          <span className="flex min-w-28 shrink-0 justify-end">
+            {item.kind === "not-live" ? (
+              // The release asks before it goes, so it brings its own confirm
+              // rather than being a button that reports to `onAct`.
+              <ReleaseAction release={release} />
+            ) : item.verb === undefined ? null : (
               <Button
                 onClick={() => {
                   onAct(item);
@@ -1281,6 +1320,9 @@ const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
   "deploy-failed": "failed",
   "change-blocked": "attention",
   "not-live": "busy",
+  // No signal rather than a bad one: an environment nobody has deployed to is
+  // not broken, it is empty.
+  "never-deployed": "off",
 };
 
 /** One Mate on a project's page: who it is and what it is on. */

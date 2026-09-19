@@ -336,6 +336,7 @@ export {
   type HistoryEntry,
 } from "./groupHistory.ts";
 export {
+  environmentAttention,
   PROJECT_ALL_CLEAR,
   projectAttention,
   type ProjectAttentionItem,
