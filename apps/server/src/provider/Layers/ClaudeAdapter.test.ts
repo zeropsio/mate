@@ -3309,6 +3309,142 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("keeps the conversation's own context window, not a subagent's larger one", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+          [{ id: "contextWindow", value: "standard" }],
+        ),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+
+      for (const index of [1, 2, 3]) {
+        harness.query.emit({
+          type: "assistant",
+          session_id: "sdk-session-subagent-window",
+          uuid: `assistant-subagent-window-${index}`,
+          parent_tool_use_id: null,
+          message: {
+            id: `assistant-message-subagent-window-${index}`,
+            role: "assistant",
+            content: [],
+            usage: { input_tokens: 80 * index, output_tokens: 20 },
+          },
+        } as unknown as SDKMessage);
+      }
+      // A Task ran on a model with a million-token window. The conversation
+      // itself is still on the two hundred thousand it was started with.
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1234,
+        duration_api_ms: 1200,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-subagent-window",
+        usage: { input_tokens: 400, output_tokens: 50 },
+        modelUsage: {
+          [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
+          "claude-synthetic-subagent": { contextWindow: 1000000, maxOutputTokens: 64000 },
+        },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const usageEvent = runtimeEvents.find((event) => event.type === "thread.token-usage.updated");
+      assert.equal(usageEvent?.type, "thread.token-usage.updated");
+      if (usageEvent?.type === "thread.token-usage.updated") {
+        assert.equal(usageEvent.payload.usage.maxTokens, 200000);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("follows the window of the model the person switched to", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+          [{ id: "contextWindow", value: "standard" }],
+        ),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+          [{ id: "contextWindow", value: "expanded" }],
+        ),
+        attachments: [],
+      });
+
+      for (const index of [1, 2, 3]) {
+        harness.query.emit({
+          type: "assistant",
+          session_id: "sdk-session-switched-window",
+          uuid: `assistant-switched-window-${index}`,
+          parent_tool_use_id: null,
+          message: {
+            id: `assistant-message-switched-window-${index}`,
+            role: "assistant",
+            content: [],
+            usage: { input_tokens: 80 * index, output_tokens: 20 },
+          },
+        } as unknown as SDKMessage);
+      }
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1234,
+        duration_api_ms: 1200,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-switched-window",
+        usage: { input_tokens: 400, output_tokens: 50 },
+        modelUsage: {
+          [SYNTHETIC_CLAUDE_CAPABLE_MODEL]: { contextWindow: 200000, maxOutputTokens: 64000 },
+        },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const usageEvent = runtimeEvents.find((event) => event.type === "thread.token-usage.updated");
+      assert.equal(usageEvent?.type, "thread.token-usage.updated");
+      if (usageEvent?.type === "thread.token-usage.updated") {
+        assert.equal(usageEvent.payload.usage.maxTokens, 1000000);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("completes with result usage without querying current context usage", () => {
     const harness = makeHarness();
     let getContextUsageCalls = 0;

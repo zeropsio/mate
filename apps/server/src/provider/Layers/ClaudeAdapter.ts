@@ -441,6 +441,12 @@ interface ClaudeSessionContext {
   /** Task ids that have started and not yet reached a terminal state. */
   readonly liveTaskIds: Set<string>;
   turnState: ClaudeTurnState | undefined;
+  /**
+   * The window the catalog gives for the model this session runs — the
+   * 200k/1m choice that decides the model id itself. Undefined only when the
+   * catalog cannot say, and then the SDK's own report stands in.
+   */
+  selectedContextWindow: number | undefined;
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
@@ -665,6 +671,24 @@ function asRuntimeItemId(value: string): RuntimeItemId {
   return RuntimeItemId.make(value);
 }
 
+/**
+ * The window of the model this conversation runs on, out of a turn's report.
+ *
+ * `modelUsage` carries every model the turn touched — a Task's subagent, a
+ * background helper — so the largest window in it is not the conversation's:
+ * one subagent on a million-token model put `1m` under a conversation the
+ * person had set to 200k (`verified.md`, 2026-09-19). The session's own model
+ * is the one to read, matched by the id the query was started with, allowing
+ * for the SDK naming it more fully (`claude-sonnet-5` →
+ * `claude-sonnet-5-20260901`) and for the `[1m]` marker, which selects a
+ * window rather than naming a model.
+ */
+/**
+ * The largest window any model in the turn reported — the answer of last
+ * resort, for a session whose own model cannot be named (no selection was
+ * made, so there is no id to match). Where the model *is* known, this is the
+ * wrong question: see {@link claudeContextWindowForModel}.
+ */
 function maxClaudeContextWindowFromModelUsage(
   modelUsage: Record<string, ModelUsage> | undefined,
 ): number | undefined {
@@ -677,6 +701,20 @@ function maxClaudeContextWindowFromModelUsage(
   }
 
   return maxContextWindow;
+}
+
+function claudeContextWindowForModel(
+  modelUsage: Record<string, ModelUsage> | undefined,
+  apiModelId: string | undefined,
+): number | undefined {
+  if (!modelUsage || apiModelId === undefined) return undefined;
+  const wanted = apiModelId.replace(/\[[^\]]*\]$/, "");
+  const names = Object.keys(modelUsage);
+  const name =
+    names.find((candidate) => candidate === wanted) ??
+    names.find((candidate) => candidate.startsWith(`${wanted}-`)) ??
+    names.find((candidate) => candidate.includes(wanted));
+  return name === undefined ? undefined : finitePositiveInteger(modelUsage[name]?.contextWindow);
 }
 
 function selectedClaudeContextWindow(
@@ -2579,7 +2617,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     errorMessage?: string,
     result?: SDKResultMessage,
   ) {
-    const resultContextWindow = maxClaudeContextWindowFromModelUsage(result?.modelUsage);
+    const resultContextWindow =
+      context.selectedContextWindow ??
+      claudeContextWindowForModel(result?.modelUsage, context.currentApiModelId) ??
+      maxClaudeContextWindowFromModelUsage(result?.modelUsage);
     if (resultContextWindow !== undefined) {
       context.lastKnownContextWindow = resultContextWindow;
     }
@@ -4942,6 +4983,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         workflowMemberFingerprints,
         liveTaskIds,
         turnState: undefined,
+        selectedContextWindow: initialContextWindow,
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,
         lastKnownTotalProcessedTokens: undefined,
@@ -5065,6 +5107,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...context.session,
         model: modelSelection.model,
       };
+      // A different model is a different window, and the person is shown that
+      // number before the next turn reports anything.
+      const changedContextWindow = selectedClaudeContextWindow(modelCatalog, modelSelection);
+      context.selectedContextWindow = changedContextWindow;
+      if (changedContextWindow !== undefined) {
+        context.lastKnownContextWindow = changedContextWindow;
+      }
       const turnEffort = resolveClaudeCatalogEffort(
         modelCatalog,
         modelSelection.model,
