@@ -7,8 +7,9 @@ import {
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
-  gitHeadLine,
+  gitCheckoutLine,
   gitTrouble,
+  gitVerdict,
   type GitBlockEvidence,
   type GitCheckoutState,
   type GitForgeState,
@@ -117,35 +118,251 @@ describe("the checks on a head", () => {
   });
 });
 
-describe("the first line", () => {
+describe("the line under the name", () => {
   it.each([
     {
       name: "a branch ahead, with a dirty tree",
       state: checkout({ headRef: "feature/invoices", aheadCount: 3, changedFiles: 2 }),
-      expected: "api · feature/invoices ↑3 ↓0 · 2 files changed",
+      expected: "feature/invoices ↑3 · 2 files changed",
     },
     {
       name: "one file, singular",
       state: checkout({ changedFiles: 1 }),
-      expected: "api · main ↑0 ↓0 · 1 file changed",
+      expected: "main · 1 file changed",
     },
     {
-      name: "a clean checkout, which says nothing about files",
+      name: "a branch behind as well as ahead",
+      state: checkout({ headRef: "feature/invoices", aheadCount: 3, behindCount: 2 }),
+      expected: "feature/invoices ↑3 ↓2",
+    },
+    {
+      // `↑0 ↓0` is the one case where the arrows carry nothing: a person reads
+      // two zeros and learns what the absence of arrows would have told them.
+      name: "a checkout level with its remote, which spends no arrows saying so",
       state: checkout(),
-      expected: "api · main ↑0 ↓0",
+      expected: "main",
     },
     {
       name: "a branch that was never pushed",
       state: checkout({ headRef: "feature/invoices", hasUpstream: false }),
-      expected: "api · feature/invoices not pushed",
+      expected: "feature/invoices · never pushed",
     },
     {
       name: "a service with no repository at all",
       state: checkout({ isRepo: false }),
-      expected: "api · no repository yet",
+      expected: "no repository yet",
+    },
+    {
+      name: "a detached head, which is a state and not a branch name",
+      state: checkout({ headRef: null }),
+      expected: "detached",
     },
   ])("writes $name", ({ state, expected }) => {
-    expect(gitHeadLine(state)).toBe(expected);
+    expect(gitCheckoutLine(state)).toBe(expected);
+  });
+
+  it("never repeats the repository, which is the name it sits under", () => {
+    expect(gitCheckoutLine(checkout())).not.toContain("api");
+  });
+});
+
+describe("where the work stands", () => {
+  it.each([
+    {
+      name: "no repository at all",
+      answer: block(
+        checkout({ isRepo: false, hasRemote: false }),
+        forge({ repository: undefined }),
+      ),
+      tone: "off",
+      text: "No code here yet.",
+    },
+    {
+      name: "a codebase nobody has touched",
+      answer: block(checkout()),
+      tone: "off",
+      text: "Nothing new here.",
+    },
+    {
+      name: "a branch that has never been pushed",
+      answer: block(checkout({ headRef: "feature/invoices", hasUpstream: false })),
+      tone: "busy",
+      text: "This branch has never been pushed.",
+    },
+    {
+      name: "commits sitting in the container",
+      answer: block(checkout({ headRef: "feature/invoices", aheadCount: 3 })),
+      tone: "busy",
+      text: "3 commits here are not pushed yet.",
+    },
+    {
+      name: "one commit, singular",
+      answer: block(checkout({ headRef: "feature/invoices", aheadCount: 1 })),
+      tone: "busy",
+      text: "1 commit here is not pushed yet.",
+    },
+    {
+      name: "a branch somebody else has pushed to",
+      answer: block(checkout({ headRef: "feature/invoices", behindCount: 4 })),
+      tone: "attention",
+      text: "4 commits on the remote are not in this checkout yet.",
+    },
+    {
+      name: "a pull request waiting on a person",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }), checks: [status("ci/test", "success")] }),
+      ),
+      tone: "ok",
+      text: "The checks passed. Nothing is stopping it.",
+    },
+    {
+      name: "a pull request whose checks are still going",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }), checks: [status("ci/test", "pending")] }),
+      ),
+      tone: "busy",
+      text: "Its checks are still running.",
+    },
+    {
+      name: "a pull request whose checks went red",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }), checks: [status("ci/test", "failure")] }),
+      ),
+      tone: "failed",
+      text: "Its checks failed.",
+    },
+    {
+      // The state that offers no verb: without a sentence, the row is a change
+      // that looks fine and cannot move, which is the trap `changeVerdict` was
+      // written to close.
+      name: "a pull request the forge will not take",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: false }) }),
+      ),
+      tone: "attention",
+      text: "It no longer merges cleanly.",
+    },
+    {
+      name: "work that has landed",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ state: "closed", merged: true }) }),
+      ),
+      tone: "ok",
+      text: "Merged into main.",
+    },
+  ] as const)("says $name", ({ answer, tone, text }) => {
+    expect(answer.verdict).toMatchObject({ tone, text });
+  });
+
+  it.each([
+    {
+      name: "a branch nobody has pushed",
+      answer: block(checkout({ headRef: "feature/invoices", hasUpstream: false })),
+      ask: "Your work on api has never been pushed. Push the branch.",
+    },
+    {
+      name: "commits sitting in the container",
+      answer: block(checkout({ headRef: "feature/invoices", aheadCount: 3 })),
+      ask: "3 commits on api are not pushed. Push them.",
+    },
+    {
+      name: "a change that no longer merges",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: false }) }),
+      ),
+      ask: "Pull request #12 no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.",
+    },
+    {
+      name: "checks the forge would let through anyway",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }), checks: [status("ci/test", "failure")] }),
+      ),
+      ask: "The checks on pull request #12 are failing. Find out why, fix them, and push.",
+    },
+  ] as const)("hands $name back in words the Mate can act on", ({ answer, ask }) => {
+    expect(answer.verdict.ask).toBe(ask);
+  });
+
+  it.each([
+    {
+      name: "work that has landed",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ state: "closed", merged: true }) }),
+      ),
+    },
+    { name: "a repository nobody has touched", answer: block(checkout()) },
+    {
+      // The verb is right there and it is the person's to press; asking the
+      // Mate to do it as well would be two ways to the same place.
+      name: "a branch the person can update themselves",
+      answer: block(checkout({ headRef: "feature/invoices", behindCount: 4 })),
+    },
+    {
+      name: "a change with nothing wrong with it",
+      answer: block(
+        checkout({ headRef: "feature/invoices" }),
+        forge({ pullRequest: pull({ mergeable: true }), checks: [status("ci/test", "success")] }),
+      ),
+    },
+  ])("asks nothing of $name", ({ answer }) => {
+    expect(answer.verdict.ask).toBeUndefined();
+  });
+
+  it("says what was proved wrong before anything it would have guessed", () => {
+    const answer = block(checkout({ headRef: "feature/invoices", aheadCount: 3 }), forge(), {
+      remoteReachable: false,
+      remoteDetail: "remote: Repository not found.",
+    });
+    expect(answer.verdict).toEqual({
+      tone: "failed",
+      text: "remote: Repository not found.",
+      ask: undefined,
+    });
+  });
+
+  it("is a sentence, so it can be read aloud beside the others", () => {
+    for (const state of [
+      checkout(),
+      checkout({ isRepo: false }),
+      checkout({ headRef: "feature/invoices", aheadCount: 2 }),
+      checkout({ headRef: "feature/invoices", behindCount: 2 }),
+    ]) {
+      expect(block(state).verdict.text).toMatch(/\.$/u);
+    }
+  });
+
+  it("says nothing ran rather than calling no signal a good one", () => {
+    const answer = block(
+      checkout({ headRef: "feature/invoices" }),
+      forge({ pullRequest: pull({ mergeable: true }), checks: [] }),
+    );
+    expect(answer.verdict).toEqual({
+      tone: "off",
+      text: "No checks ran. Nothing is stopping it.",
+      ask: undefined,
+    });
+  });
+
+  it("can be asked directly, without a block around it", () => {
+    expect(
+      gitVerdict({
+        state: "merged",
+        checks: "none",
+        checkout: checkout({ headRef: "feature/invoices" }),
+        pullRequestNumber: 12,
+        mergeable: true,
+        baseBranch: "trunk",
+        trouble: "",
+      }),
+    ).toEqual({ tone: "ok", text: "Merged into trunk.", ask: undefined });
   });
 });
 
@@ -254,7 +471,9 @@ describe("every state of a block", () => {
     );
     expect(answer.state).toBe("merged");
     expect(answer.action).toBeUndefined();
-    expect(answer.destination).toBe("stage runs this branch");
+    // Not "runs this branch": after a merge the branch on the line above is
+    // not what the stage runs, and saying so put two contradictions on one row.
+    expect(answer.destination).toBe("stage runs it");
   });
 });
 

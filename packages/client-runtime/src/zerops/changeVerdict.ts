@@ -28,8 +28,7 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import type { GitCheckTone } from "./gitTab.ts";
-import { pullRequestBlocked } from "./projectFlow.ts";
+import { pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
 
 export type ChangeVerdictKind =
   | "ready"

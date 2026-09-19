@@ -22,6 +22,7 @@
  * verb (`useZeropsGitRemoteProbe`).
  */
 import {
+  changeAskLabel,
   gitActionAllowed,
   gitBlock,
   gitCheckoutHostnames,
@@ -32,12 +33,15 @@ import {
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useMemo, useState } from "react";
 
+import { useComposerDraftStore } from "../../composerDraftStore";
+
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGitForge } from "../../zerops/useZeropsGitForge";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
+import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 
@@ -89,6 +93,8 @@ export interface ZeropsGitTabProps {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   /** Whether this Mate is the viewer's own (D11). */
   readonly isOwner: boolean;
+  /** The Mate whose panel this is, so a request names who it is going to. */
+  readonly mateName?: string | undefined;
   readonly signedIn: boolean;
   /** Why the sign-in was refused, when it was (`ZeropsGitPanelModel`). */
   readonly signInTrouble?: string | undefined;
@@ -184,6 +190,25 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     [checkouts, forges, props.declarations, remotes, repositories],
   );
 
+  /**
+   * The words a block wants handed back, waiting on the person's *Send*.
+   *
+   * The request goes into this Mate's own conversation — the one the panel is
+   * open beside — rather than through `useAskMate`, which exists to find a
+   * Mate from somewhere else in the app and navigate to it. Here there is
+   * nowhere to navigate to: the person is already looking at the Mate they
+   * would be writing to.
+   */
+  const [asking, setAsking] = useState<{ readonly ask: string; readonly what: string } | null>(
+    null,
+  );
+  const sendAsk = useCallback(() => {
+    const threadRef = props.threadRef;
+    if (asking === null || threadRef === null) return;
+    useComposerDraftStore.getState().requestSend(threadRef, asking.ask);
+    setAsking(null);
+  }, [asking, props.threadRef]);
+
   const renderBlockAction = (block: GitBlock) => {
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
@@ -224,6 +249,27 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
     );
   };
 
+  /**
+   * The verbs under one block: the one that runs here, and — where the block
+   * is stuck on something only the agent can undo — the one that hands it
+   * back. A panel that names a problem and offers nothing is the dead end this
+   * whole surface was rebuilt to close.
+   */
+  const renderBlockVerbs = (block: GitBlock) => {
+    const ask = block.verdict.ask;
+    const verb = renderBlockAction(block);
+    if (ask === undefined || props.threadRef === null) return verb;
+    return (
+      <>
+        <ZeropsMateVerb
+          label={changeAskLabel(props.mateName)}
+          onClick={() => setAsking({ ask, what: block.verdict.text })}
+        />
+        {verb}
+      </>
+    );
+  };
+
   return (
     <>
       {environmentId === undefined
@@ -238,10 +284,22 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
           ))}
       <ZeropsGitPanel
         model={{ blocks, signedIn: props.signedIn, signInTrouble: props.signInTrouble }}
-        renderBlockAction={renderBlockAction}
+        renderBlockAction={renderBlockVerbs}
         {...(props.onOpenPullRequest === undefined
           ? {}
           : { onOpenPullRequest: props.onOpenPullRequest })}
+      />
+      <ZeropsAskDialog
+        ask={asking?.ask ?? ""}
+        mateName={props.mateName}
+        onConfirm={sendAsk}
+        onOpenChange={(open) => {
+          if (!open) setAsking(null);
+        }}
+        open={asking !== null}
+        sending={false}
+        tint={undefined}
+        what={asking?.what ?? ""}
       />
     </>
   );

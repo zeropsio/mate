@@ -1,39 +1,25 @@
 /**
- * One code repository in the Git tab: where the work is, and where it goes.
+ * One code repository in the Git tab: where its work stands, and what moves it.
  *
- * Two lines, always the same two, whatever has answered (guide 4.5). The first
- * is the checkout — `api · feature/invoices ↑3 ↓0 · 2 files changed` — which
- * the container streams and nobody else can say. The second is where that
- * branch goes: the pull request open from it, how its checks went, and which
- * environment picks it up. At the end, at most one verb.
+ * The block used to open on `api · feature/invoices ↑0 ↓0` — the repository's
+ * own name spent twice over, a machine-generated branch name, and two zeros
+ * that say exactly what no arrows at all would have said — and left the one
+ * word a person came for in a data attribute nobody reads (the owner,
+ * 2026-09-19: "this tab is pretty shit isn't it").
  *
- * The branch is a name, not a status. The checks are a `StatusDot` and one
- * word, never a sentence (R5). And where a fact has been *proved* wrong — no
- * Gitea access, a remote that did not answer — that is what the block says,
- * instead of a green line about a setup that cannot push.
+ * So it is the anatomy every other surface opens with: the name, the facts
+ * under it in one quiet line, and then the answer in a panel whose edge is the
+ * answer's colour, carrying the verb that acts on it. The order is the order a
+ * person reads in — which repository, what about it, what now.
  *
- * Structural: every word is `gitTab.ts`'s (R5).
+ * Structural: every word is `gitTab.ts`'s (R5), including the sentence, which
+ * a test and a harness can read in every state without a forge behind them.
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { StatusDot } from "./primitives";
-
-/** The checks' tone as a dot's; `undefined` where no check ran and no dot belongs. */
-export function checkDotTone(block: Pick<GitBlock, "checks">): ServiceStatusToneId | undefined {
-  switch (block.checks) {
-    case "passing":
-      return "ok";
-    case "pending":
-      return "busy";
-    case "failing":
-      return "failed";
-    case "none":
-      return undefined;
-  }
-}
+import { VerdictPanel } from "./primitives";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
@@ -44,61 +30,87 @@ export interface ZeropsGitBlockProps {
   readonly className?: string;
 }
 
+/** One fact under the name, keyed by what it is rather than by where it sits. */
+interface Fact {
+  readonly id: string;
+  readonly node: ReactNode;
+}
+
+/**
+ * The facts under the name, separated the way the rest of the client separates
+ * them. Built from nodes rather than from a joined string because the change's
+ * number is the way into Gitea and has to stay a control.
+ */
+function Facts({ facts }: { readonly facts: ReadonlyArray<Fact> }) {
+  return (
+    <span
+      className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
+      data-zerops-surface="git-facts"
+    >
+      {facts.map((fact, index) => (
+        <span className="contents" key={fact.id}>
+          {index === 0 ? null : <span aria-hidden="true">·</span>}
+          {fact.node}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function ZeropsGitBlock({
   block,
   action,
   onOpenPullRequest,
   className,
 }: ZeropsGitBlockProps) {
-  const tone = checkDotTone(block);
   return (
     <li
-      className={cn("flex min-w-0 flex-col gap-0.5 py-2", className)}
+      className={cn("flex min-w-0 flex-col gap-1.5", className)}
       data-zerops-git-block={block.repository}
       data-zerops-git-state={block.state}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <span
-          className="min-w-0 flex-1 truncate text-[13px] text-foreground"
-          data-zerops-surface="git-head"
-        >
-          {block.headLine}
-        </span>
-        {action === undefined || action === null ? null : (
-          <span className="shrink-0">{action}</span>
-        )}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate text-sm font-medium text-foreground">{block.repository}</span>
+        <Facts
+          facts={[
+            ...(block.pullRequestNumber === undefined
+              ? []
+              : [
+                  {
+                    id: "pull-request",
+                    node:
+                      onOpenPullRequest === undefined ? (
+                        <span>#{block.pullRequestNumber}</span>
+                      ) : (
+                        <button
+                          className="rounded-sm text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                          data-zerops-surface="git-pull-request"
+                          onClick={onOpenPullRequest}
+                          type="button"
+                        >
+                          #{block.pullRequestNumber}
+                        </button>
+                      ),
+                  },
+                ]),
+            {
+              id: "checkout",
+              node: <span className="min-w-0 truncate">{block.checkoutLine}</span>,
+            },
+            ...(block.destination.length === 0
+              ? []
+              : [
+                  {
+                    id: "destination",
+                    node: <span className="min-w-0 truncate">{block.destination}</span>,
+                  },
+                ]),
+          ]}
+        />
       </div>
-      <div
-        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
-        data-zerops-surface="git-destination"
-      >
-        {block.pullRequestNumber === undefined ? null : onOpenPullRequest === undefined ? (
-          <span>PR #{block.pullRequestNumber}</span>
-        ) : (
-          <button
-            className="rounded-sm text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            data-zerops-surface="git-pull-request"
-            onClick={onOpenPullRequest}
-            type="button"
-          >
-            PR #{block.pullRequestNumber}
-          </button>
-        )}
-        {tone === undefined || block.checkWord === undefined ? null : (
-          <StatusDot label={block.checkWord} tone={tone} />
-        )}
-        {block.destination.length === 0 ? null : (
-          <span className="min-w-0 truncate">{block.destination}</span>
-        )}
-        {block.trouble.length === 0 ? null : (
-          <span
-            className="min-w-0 truncate text-[var(--zerops-status-failed)]"
-            data-zerops-surface="git-trouble"
-          >
-            {block.trouble}
-          </span>
-        )}
-      </div>
+      <VerdictPanel text={block.verdict.text} tone={block.verdict.tone}>
+        {action === undefined || action === null ? undefined : action}
+      </VerdictPanel>
     </li>
   );
 }

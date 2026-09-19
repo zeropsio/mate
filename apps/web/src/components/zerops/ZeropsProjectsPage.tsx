@@ -68,6 +68,7 @@ import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  checkDotTone,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
   botDisplayName,
@@ -133,7 +134,6 @@ import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { readZeropsResourceOnce } from "~/zerops/useZeropsDeployedVersion";
 import { deployRowTone, releaseRowTone } from "./ZeropsProjectRow.logic";
-import { checkDotTone } from "./ZeropsGitBlock";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import { TOOL_LABEL, ZeropsGroupTree } from "./ZeropsGroupTree";
 import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logic";

@@ -30,6 +30,7 @@
  * where you work; that is where you manage.
  */
 import {
+  checkDotTone,
   assignCandidateMateTints,
   botDisplayName,
   flowVerbLabel,
@@ -85,7 +86,6 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { checkDotTone } from "./ZeropsGitBlock";
 import {
   environmentRoleTag,
   environmentRoleTagIsRedundant,

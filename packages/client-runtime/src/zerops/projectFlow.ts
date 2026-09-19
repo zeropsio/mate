@@ -32,7 +32,7 @@
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import { checkTone, checkWord, type GitCheckTone } from "./gitTab.ts";
+import { checkTone, checkWord, pullRequestBlocked, type GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import { releaseWord, type ReleaseVerdict } from "./release.ts";
 
@@ -264,83 +264,6 @@ export function releaseRow(release: FlowRelease, index: number): FlowReleaseRow 
       release.verdict === "refused" && release.detail !== undefined ? release.detail : release.line,
     word: releaseWord(release.verdict),
     rollBack: index > 0 && release.verdict === "approved",
-  };
-}
-
-/**
- * Why a pull request offers no *Merge*, in the words a row has space for —
- * `null` where Gitea says it merges and the verb speaks for itself.
- *
- * A row that simply dropped its verb was a dead end: Gitea had refused, and
- * the menu said nothing about it, so the person was left to open the request
- * to find out. Gitea's own answer is the only authority here (MU-1's
- * discipline applied to merges): nothing recomputes whether a branch merges.
- *
- * Every refusal has a word, including the red one. A row whose right edge is
- * a verb on one line and a wordless red dot on the next reads as neither, and
- * the dot's own tooltip is not an answer to a question asked by glancing (seen
- * in the harness, 2026-09-19).
- */
-export function pullRequestBlockedReason(pull: {
-  readonly number: number;
-  readonly mergeable: boolean;
-  readonly checks: GitCheckTone;
-}): string | null {
-  return pullRequestBlocked(pull)?.word ?? null;
-}
-
-/** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
-export interface PullRequestBlocked {
-  readonly kind: "checks-running" | "checks-failed" | "behind";
-  readonly word: string;
-  readonly tone: ServiceStatusToneId;
-  /**
-   * What to ask the Mate that wrote the change, where asking is what moves it
-   * — and `undefined` where nothing is waiting on anyone.
-   *
-   * Nobody reading this menu is going to rebase a branch they have not checked
-   * out, in a repository they have no session for. The Mate does it, so the
-   * row that reports the problem is the row that hands it over: "who is going
-   * to deal with it? you still need the agent to take care of it" (the owner,
-   * 2026-09-19). Checks that are merely running are the one refusal with
-   * nothing to ask for — waiting is the correct move.
-   */
-  readonly ask: string | undefined;
-}
-
-/**
- * The same answer with its own tone, because the dot beside the word has to
- * mean the word.
- *
- * Painting the checks' tone under every reason put a **green** dot beside
- * "needs a rebase" — the checks did pass, and the row still said the opposite
- * of what its dot showed (seen in the harness, 2026-09-19). A branch that has
- * fallen behind is nobody's failure and nothing is running: it is the one
- * thing on the row asking for a person, which is what `attention` means.
- */
-export function pullRequestBlocked(pull: {
-  readonly number: number;
-  readonly mergeable: boolean;
-  readonly checks: GitCheckTone;
-}): PullRequestBlocked | null {
-  if (pull.mergeable) return null;
-  const change = `pull request #${pull.number}`;
-  if (pull.checks === "pending")
-    return { kind: "checks-running", word: "checks running", tone: "busy", ask: undefined };
-  if (pull.checks === "failing")
-    return {
-      kind: "checks-failed",
-      word: "checks failed",
-      tone: "failed",
-      ask: `The checks on ${change} are failing. Find out why, fix them, and push.`,
-    };
-  return {
-    kind: "behind",
-    word: "needs a rebase",
-    tone: "attention",
-    // Capitalised: the sentence is shown verbatim on a change's page as well
-    // as written into a composer, and a page does not open mid-sentence.
-    ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
   };
 }
 

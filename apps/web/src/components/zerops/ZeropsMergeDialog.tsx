@@ -15,6 +15,7 @@
  * Structural only: the sentence is `projectFlow.ts`'s (R5).
  */
 import {
+  checkDotTone,
   changeAuthorName,
   mergeConsequence,
   type FlowPullRequest,
@@ -31,7 +32,6 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { checkDotTone } from "./ZeropsGitBlock";
 import { StatusDot } from "./primitives";
 
 export function ZeropsMergeConfirm({

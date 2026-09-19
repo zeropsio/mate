@@ -8,7 +8,8 @@ const BLOCK: GitBlock = {
   repository: "api",
   branch: "feature/invoices",
   baseBranch: "main",
-  headLine: "api · feature/invoices ↑3 ↓0",
+  verdict: { tone: "ok", text: "The checks passed. Nothing is stopping it.", ask: undefined },
+  checkoutLine: "feature/invoices ↑3",
   state: "in-review",
   checks: "passing",
   checkWord: "Passing",
@@ -29,15 +30,19 @@ const render = (props: Partial<React.ComponentProps<typeof ZeropsGitPanel>> = {}
 describe("ZeropsGitPanel", () => {
   it("is this Mate's repositories and nothing of the project's", () => {
     const html = render();
-    expect(html).toContain('data-zerops-git-section="Repositories"');
-    expect(html).toContain("api · feature/invoices");
+    expect(html).toContain('data-zerops-git-block="api"');
+    expect(html).toContain("feature/invoices");
     expect(html).toContain("stage picks it up on merge");
     // The project's stage, production, releases and recipe changes are the
     // left menu's and the projects screen's (D26), never a Mate's tab's.
-    expect(html).not.toContain('data-zerops-git-section="Environments"');
-    expect(html).not.toContain('data-zerops-git-section="Releases"');
-    expect(html).not.toContain('data-zerops-git-section="Recipe changes"');
+    expect(html).not.toContain("Environments");
+    expect(html).not.toContain("Releases");
+    expect(html).not.toContain("Recipe changes");
     expect(html).not.toContain("Release");
+  });
+
+  it("spends no heading on a list whose every row names itself", () => {
+    expect(render()).not.toContain("Repositories");
   });
 
   it("says a Mate has no repository rather than showing an empty list", () => {
@@ -52,7 +57,7 @@ describe("ZeropsGitPanel", () => {
 
   it("keeps the checkout half and says the Gitea half is on its way, with nothing to click", () => {
     const html = render({ model: model({ signedIn: false }) });
-    expect(html).toContain("api · feature/invoices");
+    expect(html).toContain("feature/invoices");
     expect(html).toContain("Signing you in to Gitea");
     expect(html).not.toContain("Sign in to Gitea");
     expect(html).not.toContain("<button");
@@ -72,6 +77,6 @@ describe("ZeropsGitPanel", () => {
   });
 
   it("says nothing about Gitea once signed in", () => {
-    expect(render()).not.toContain('data-zerops-git-section="Gitea"');
+    expect(render()).not.toContain("Gitea");
   });
 });

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { pullRequestBlocked, pullRequestBlockedReason } from "./gitTab.ts";
+
 import type { GitCheckTone } from "./gitTab.ts";
 import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
 import {
   changeAuthorName,
   changeState,
   mergeConsequence,
-  pullRequestBlocked,
   pullRequestMergeLine,
-  pullRequestBlockedReason,
   releaseContentsSentence,
   releaseContentsSummary,
   releaseWaitingLabel,

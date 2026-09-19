@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { changeVerdict } from "./changeVerdict.ts";
-import type { GitCheckTone } from "./gitTab.ts";
+import { gitVerdict, type GitCheckoutState, type GitCheckTone } from "./gitTab.ts";
 
 const change = (over: { mergeable?: boolean; checks?: GitCheckTone } = {}) => ({
   number: 4,
@@ -69,5 +69,49 @@ describe("changeVerdict", () => {
       expect(changeVerdict(change({ mergeable: false, checks })).canMerge).toBe(false);
       expect(changeVerdict(change({ mergeable: true, checks })).canMerge).toBe(true);
     }
+  });
+});
+
+describe("the same change, wherever it is read", () => {
+  const checkout: GitCheckoutState = {
+    repository: "api",
+    isRepo: true,
+    hasRemote: true,
+    headRef: "feature/invoices",
+    aheadCount: 0,
+    behindCount: 0,
+    hasUpstream: true,
+    changedFiles: 0,
+  };
+
+  /**
+   * A pull request open from a Mate's branch is on two surfaces at once: its
+   * own page, which opens with `changeVerdict`, and that Mate's Git tab, which
+   * opens with `gitVerdict`. The words differ — the tab's line above already
+   * carries the number and the branch — but a person who sees green on one and
+   * blue on the other has been told two things about one fact. That is the
+   * mistake a release's amber chip was (2026-09-19), caught here instead.
+   */
+  it.each([
+    { mergeable: true, checks: "passing" },
+    { mergeable: true, checks: "pending" },
+    { mergeable: true, checks: "failing" },
+    { mergeable: true, checks: "none" },
+    { mergeable: false, checks: "passing" },
+    { mergeable: false, checks: "pending" },
+    { mergeable: false, checks: "failing" },
+    { mergeable: false, checks: "none" },
+  ] as const)("agrees on the colour of mergeable=$mergeable checks=$checks", (pull) => {
+    expect(
+      gitVerdict({
+        state: "in-review",
+        checks: pull.checks,
+        checkout,
+        pullRequestNumber: 4,
+        mergeable: pull.mergeable,
+        baseBranch: "main",
+        trouble: "",
+      }).tone,
+    ).toBe(changeVerdict({ number: 4, ...pull }).tone);
   });
 });

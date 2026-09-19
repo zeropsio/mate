@@ -24,14 +24,18 @@
  * A tab that mixes them shows "configured" for a broken setup, which is the one
  * outcome 4.5 names.
  *
- * ## One block per repository, one verb
+ * ## One block per repository, one answer, one verb
  *
- * A block is two lines. The first is the checkout —
- * `api · feature/invoices ↑3 ↓0 · 2 files changed`. The second is where it
- * goes. Under them, at most one verb: you cannot open a pull request for a
- * branch you have not pushed, and updating from `main` before pushing is how a
- * person loses work, so the order the verbs are offered in is the order the
- * work actually happens in.
+ * A block opens with where the work stands — `Open as #12, waiting for
+ * somebody to merge it.` — and carries the verb that moves it. Under the
+ * answer, quietly, the checkout it was read from: the branch, what is unpushed
+ * and what is uncommitted, and which environment the work lands on.
+ *
+ * At most one verb, and it is the one the work needs next: you cannot open a
+ * pull request for a branch you have not pushed, and updating from `main`
+ * before pushing is how a person loses work, so the order the verbs are
+ * offered in is the order the work actually happens in. A state that offers no
+ * verb says why it offers none.
  *
  * Checks are a tone and one word, never a sentence (design system R5). A block
  * whose setup has been *proved* broken says what was proved — git's own line
@@ -43,6 +47,7 @@
  */
 
 import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { GiteaCommitStatus, GiteaPullRequest, GiteaRepository } from "./giteaClient.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -120,8 +125,10 @@ export interface GitBlock {
   readonly repository: string;
   /** The branch the container is on. `main` for a codebase nobody has touched. */
   readonly branch: string;
-  /** `api · feature/invoices ↑3 ↓0 · 2 files changed`. */
-  readonly headLine: string;
+  /** Where this repository's work stands, and in what colour. */
+  readonly verdict: GitVerdict;
+  /** `feature/invoices ↑3 · 2 files changed` — the checkout, under the answer. */
+  readonly checkoutLine: string;
   readonly state: GitBlockState;
   readonly checks: GitCheckTone;
   /** `undefined` when no word belongs beside the dot — no checks ran. */
@@ -173,6 +180,30 @@ export function checkTone(statuses: ReadonlyArray<GiteaCommitStatus>): GitCheckT
   return checks.some((status) => status.state === "success") ? "passing" : "none";
 }
 
+/**
+ * The checks' tone as a status dot's — `undefined` where no check ran and no
+ * dot belongs.
+ *
+ * Here rather than beside a component: four surfaces paint this fact (a
+ * change's row on the projects screen, the merge dialog, the left menu, the
+ * Git tab), and a tone table that lives in one of them is a table the other
+ * three are one edit away from disagreeing with.
+ */
+export function checkDotTone(input: {
+  readonly checks: GitCheckTone;
+}): ServiceStatusToneId | undefined {
+  switch (input.checks) {
+    case "passing":
+      return "ok";
+    case "pending":
+      return "busy";
+    case "failing":
+      return "failed";
+    case "none":
+      return undefined;
+  }
+}
+
 /** The one word beside the checks' dot (R5). */
 export function checkWord(tone: GitCheckTone): string | undefined {
   switch (tone) {
@@ -187,19 +218,254 @@ export function checkWord(tone: GitCheckTone): string | undefined {
   }
 }
 
-/** `api · feature/invoices ↑3 ↓0 · 2 files changed`. */
-export function gitHeadLine(checkout: GitCheckoutState): string {
-  if (!checkout.isRepo) return `${checkout.repository} · no repository yet`;
+/**
+ * Why a pull request offers no *Merge*, in the words a row has space for —
+ * `null` where Gitea says it merges and the verb speaks for itself.
+ *
+ * A row that simply dropped its verb was a dead end: Gitea had refused, and
+ * the menu said nothing about it, so the person was left to open the request
+ * to find out. Gitea's own answer is the only authority here (MU-1's
+ * discipline applied to merges): nothing recomputes whether a branch merges.
+ *
+ * Every refusal has a word, including the red one. A row whose right edge is
+ * a verb on one line and a wordless red dot on the next reads as neither, and
+ * the dot's own tooltip is not an answer to a question asked by glancing (seen
+ * in the harness, 2026-09-19).
+ */
+export function pullRequestBlockedReason(pull: {
+  readonly number: number;
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+}): string | null {
+  return pullRequestBlocked(pull)?.word ?? null;
+}
+
+/** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
+export interface PullRequestBlocked {
+  readonly kind: "checks-running" | "checks-failed" | "behind";
+  readonly word: string;
+  readonly tone: ServiceStatusToneId;
+  /**
+   * What to ask the Mate that wrote the change, where asking is what moves it
+   * — and `undefined` where nothing is waiting on anyone.
+   *
+   * Nobody reading this menu is going to rebase a branch they have not checked
+   * out, in a repository they have no session for. The Mate does it, so the
+   * row that reports the problem is the row that hands it over: "who is going
+   * to deal with it? you still need the agent to take care of it" (the owner,
+   * 2026-09-19). Checks that are merely running are the one refusal with
+   * nothing to ask for — waiting is the correct move.
+   */
+  readonly ask: string | undefined;
+}
+
+/**
+ * The same answer with its own tone, because the dot beside the word has to
+ * mean the word.
+ *
+ * Painting the checks' tone under every reason put a **green** dot beside
+ * "needs a rebase" — the checks did pass, and the row still said the opposite
+ * of what its dot showed (seen in the harness, 2026-09-19). A branch that has
+ * fallen behind is nobody's failure and nothing is running: it is the one
+ * thing on the row asking for a person, which is what `attention` means.
+ */
+export function pullRequestBlocked(pull: {
+  readonly number: number;
+  readonly mergeable: boolean;
+  readonly checks: GitCheckTone;
+}): PullRequestBlocked | null {
+  if (pull.mergeable) return null;
+  const change = `pull request #${pull.number}`;
+  if (pull.checks === "pending")
+    return { kind: "checks-running", word: "checks running", tone: "busy", ask: undefined };
+  if (pull.checks === "failing")
+    return {
+      kind: "checks-failed",
+      word: "checks failed",
+      tone: "failed",
+      ask: `The checks on ${change} are failing. Find out why, fix them, and push.`,
+    };
+  return {
+    kind: "behind",
+    word: "needs a rebase",
+    tone: "attention",
+    // Capitalised: the sentence is shown verbatim on a change's page as well
+    // as written into a composer, and a page does not open mid-sentence.
+    ask: `Pull request #${pull.number} no longer merges cleanly. Rebase it on main, resolve the conflicts, and push.`,
+  };
+}
+
+/**
+ * The quiet line under a repository's name: `feature/invoices ↑3 · 2 files
+ * changed`.
+ *
+ * Not the repository — that is the name this line sits under, and repeating it
+ * spent the first third of every row saying what the row already said. Not two
+ * zeros either: `↑0 ↓0` is the one case where the arrows carry nothing, and a
+ * person who reads them learns exactly what their absence would have told them.
+ */
+export function gitCheckoutLine(checkout: GitCheckoutState): string {
+  if (!checkout.isRepo) return "no repository yet";
   const branch = checkout.headRef ?? "detached";
-  const counts = checkout.hasUpstream
-    ? ` ↑${checkout.aheadCount} ↓${checkout.behindCount}`
-    : " not pushed";
+  const ahead = checkout.aheadCount > 0 ? ` ↑${String(checkout.aheadCount)}` : "";
+  const behind = checkout.behindCount > 0 ? ` ↓${String(checkout.behindCount)}` : "";
+  const counts = checkout.hasUpstream ? `${ahead}${behind}` : " · never pushed";
   const changed =
     checkout.changedFiles === 0
       ? ""
-      : ` · ${checkout.changedFiles} file${checkout.changedFiles === 1 ? "" : "s"} changed`;
-  return `${checkout.repository} · ${branch}${counts}${changed}`;
+      : ` · ${String(checkout.changedFiles)} file${checkout.changedFiles === 1 ? "" : "s"} changed`;
+  return `${branch}${counts}${changed}`;
 }
+
+/** Where one repository's work stands, as the tab opens with it. */
+export interface GitVerdict {
+  readonly tone: ServiceStatusToneId;
+  /** One sentence: what is true of this repository's work right now. */
+  readonly text: string;
+  /**
+   * The exact words that move it, where handing it back to the Mate is what
+   * moves it — `undefined` where nothing is waiting on anybody, or where the
+   * block already offers the verb itself.
+   *
+   * The tab has always said pushing is the agent's ("the tab says what is
+   * unpushed and the person asks their Mate, rather than the app committing
+   * for them") and then offered no way to ask. This is that way.
+   */
+  readonly ask: string | undefined;
+}
+
+/** `3 commits` / `1 commit`, with the verb that agrees with it. */
+function commits(count: number): { readonly subject: string; readonly verb: string } {
+  return count === 1
+    ? { subject: "1 commit", verb: "is" }
+    : { subject: `${String(count)} commits`, verb: "are" };
+}
+
+/**
+ * The sentence the tab opens each repository with.
+ *
+ * The tab used to open on `api · feature/invoices ↑0 ↓0` — a machine-generated
+ * branch name and two zeros — and left the one word that mattered
+ * (`data-zerops-git-state`) in the DOM where nobody reads it. A person came to
+ * this tab to learn where their Mate's work had got to and had to assemble it
+ * from a ref, two arrows and a pull request number (the owner, 2026-09-19:
+ * "this tab is pretty shit isn't it").
+ *
+ * So it answers, worst-first, in the same voice as a change's page: what has
+ * been *proved* wrong beats anything that would have been inferred, and every
+ * state that offers no verb says why it offers none — a pull request that
+ * looks fine and cannot move is the trap `changeVerdict` was written to close.
+ */
+export function gitVerdict(input: {
+  readonly state: GitBlockState;
+  readonly checks: GitCheckTone;
+  readonly checkout: GitCheckoutState;
+  readonly pullRequestNumber: number | undefined;
+  /** Whether the forge would take the merge. Not whether it is a good idea. */
+  readonly mergeable: boolean;
+  readonly baseBranch: string;
+  readonly trouble: string;
+}): GitVerdict {
+  // Proved beats inferred: a remote that refused is the whole story, and a
+  // count of unpushed commits under it would be an invitation to a verb that
+  // cannot run.
+  if (input.trouble.length > 0) return { tone: "failed", text: input.trouble, ask: undefined };
+  switch (input.state) {
+    case "no-repository":
+      return { tone: "off", text: "No code here yet.", ask: undefined };
+    case "merged":
+      return { tone: "ok", text: `Merged into ${input.baseBranch}.`, ask: undefined };
+    case "in-review":
+      // The same pull request has a page of its own, and `changeVerdict` is
+      // what that page opens with. Two surfaces answering the same question in
+      // two colours is how a release came to wear a rebase's amber, so the
+      // tones here are the tones there — held to it by a test that reads both
+      // (`changeVerdict.test.ts`). Only the words are shorter: the number and
+      // the branch are already on the line above this panel.
+      return {
+        ...IN_REVIEW[input.mergeable ? "mergeable" : "refused"][input.checks],
+        ask: inReviewAsk(input),
+      };
+    case "behind": {
+      const { subject, verb } = commits(input.checkout.behindCount);
+      return {
+        tone: "attention",
+        text: `${subject} on the remote ${verb} not in this checkout yet.`,
+        // `Update from main` is right here, and it is the person's to press.
+        ask: undefined,
+      };
+    }
+    case "unpushed": {
+      const what = input.checkout.repository;
+      if (!input.checkout.hasUpstream) {
+        return {
+          tone: "busy",
+          text: "This branch has never been pushed.",
+          ask: `Your work on ${what} has never been pushed. Push the branch.`,
+        };
+      }
+      const { subject, verb } = commits(input.checkout.aheadCount);
+      return {
+        tone: "busy",
+        text: `${subject} here ${verb} not pushed yet.`,
+        ask: `${subject} on ${what} ${verb} not pushed. Push them.`,
+      };
+    }
+    case "untouched":
+      // Grey, not green: a repository nobody has touched is the absence of
+      // news, and a wall of green for idle rows would spend the colour that
+      // says work has actually landed.
+      return { tone: "off", text: "Nothing new here.", ask: undefined };
+  }
+}
+
+/**
+ * What to hand back about a change that is open, and nothing where there is
+ * nothing to hand back.
+ *
+ * A change the forge *would* take and whose checks went red is still worth
+ * somebody's time, so it is offered the same words a refused one is — which is
+ * what `changeVerdict` does, and why the mergeable flag is forced here. A
+ * change with nothing wrong with it asks for nothing: passing it to the Mate
+ * anyway would be work invented by the surface reporting it.
+ */
+function inReviewAsk(input: {
+  readonly checks: GitCheckTone;
+  readonly mergeable: boolean;
+  readonly pullRequestNumber: number | undefined;
+}): string | undefined {
+  if (input.pullRequestNumber === undefined) return undefined;
+  if (input.mergeable && input.checks !== "failing") return undefined;
+  return pullRequestBlocked({
+    number: input.pullRequestNumber,
+    mergeable: false,
+    checks: input.checks,
+  })?.ask;
+}
+
+/**
+ * A pull request's answer, by whether the forge would take it and how its
+ * checks went — the tone table `changeVerdict` uses, in this tab's words.
+ *
+ * A forge refuses a merge when required checks failed, and allows one when
+ * nothing required them; the first says it cannot land, the second says only
+ * that the checks failed, because greying out a verb the forge would accept is
+ * a lie and leaving it lit with no explanation is a trap.
+ */
+const IN_REVIEW: Record<"mergeable" | "refused", Record<GitCheckTone, Omit<GitVerdict, "ask">>> = {
+  mergeable: {
+    failing: { tone: "failed", text: "Its checks failed." },
+    pending: { tone: "busy", text: "Its checks are still running." },
+    none: { tone: "off", text: "No checks ran. Nothing is stopping it." },
+    passing: { tone: "ok", text: "The checks passed. Nothing is stopping it." },
+  },
+  refused: {
+    failing: { tone: "failed", text: "Its checks failed, and it cannot land until they pass." },
+    pending: { tone: "busy", text: "Its checks are still running." },
+    none: { tone: "attention", text: "It no longer merges cleanly." },
+    passing: { tone: "attention", text: "It no longer merges cleanly." },
+  },
+};
 
 /**
  * What is provably wrong with this Mate's Git setup, in the order a person
@@ -301,19 +567,34 @@ export function gitBlock(input: {
       ? ""
       : state === "in-review"
         ? `${environment} picks it up on merge`
-        : `${environment} runs this branch`;
+        : // After a merge "this branch" is not what the stage runs — the base
+          // is — and the row said so directly under the branch it had left.
+          state === "merged"
+          ? `${environment} runs it`
+          : `${environment} runs this branch`;
   const trouble = gitTrouble(input.evidence);
   const action = actionOf(checkout, forge, state);
+  const baseBranch = forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH;
+  const verdict = gitVerdict({
+    state,
+    checks: tone,
+    checkout,
+    pullRequestNumber: forge.pullRequest?.number,
+    mergeable: forge.pullRequest?.mergeable !== false,
+    baseBranch,
+    trouble,
+  });
   return {
     repository: checkout.repository,
     branch: checkout.headRef ?? FALLBACK_DEFAULT_BRANCH,
-    headLine: gitHeadLine(checkout),
+    verdict,
+    checkoutLine: gitCheckoutLine(checkout),
     state,
     checks: tone,
     checkWord: checkWord(tone),
     pullRequestNumber: forge.pullRequest?.number,
     pullRequestUrl: forge.pullRequest?.html_url,
-    baseBranch: forge.repository?.default_branch ?? FALLBACK_DEFAULT_BRANCH,
+    baseBranch,
     destination: picksUp,
     action:
       action !== undefined && trouble.length > 0 && runsInTheContainer(action) ? undefined : action,

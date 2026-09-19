@@ -26,7 +26,8 @@
  * @module projectAttention
  */
 
-import { pullRequestBlocked, type FlowPullRequest } from "./projectFlow.ts";
+import { pullRequestBlocked } from "./gitTab.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
 
 export type ProjectAttentionKind =
   | "mate-waiting"

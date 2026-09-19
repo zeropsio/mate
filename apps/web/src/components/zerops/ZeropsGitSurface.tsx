@@ -11,7 +11,7 @@
  *
  * Signed out of Gitea, only the checkout half can speak; the tab says so.
  */
-import { readZeropsGroupTags, type GitBlock } from "@t3tools/client-runtime/zerops";
+import { botDisplayName, readZeropsGroupTags, type GitBlock } from "@t3tools/client-runtime/zerops";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -46,7 +46,16 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   }, [environmentId]);
 
   const project = inventory.projects.find((entry) => entry.id === projectRef?.projectId);
-  const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
+  const tags = readZeropsGroupTags(project?.tagList ?? []);
+  const groupId = tags.groupId;
+  /**
+   * The Mate this panel belongs to, by the name every other surface calls it —
+   * never its bot login, which is `mate-{projectId}` (`changeAuthorName`).
+   */
+  const mateName =
+    project === undefined
+      ? undefined
+      : botDisplayName({ bot: tags.bot, projectName: project.name });
   const owner = groupId === undefined ? undefined : flow.slugs.get(groupId);
   const projectFlow = groupId === undefined ? undefined : flow.flows.get(groupId);
 
@@ -117,6 +126,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         declarations={projectFlow?.declarations ?? []}
         giteaOrigin={flow.giteaOrigin}
         isOwner={isOwner}
+        mateName={mateName}
         onCreatePullRequest={onCreatePullRequest}
         onMergePullRequest={onMergePullRequest}
         onOpenPullRequest={(block: GitBlock) => openInGitea(block.pullRequestUrl)}

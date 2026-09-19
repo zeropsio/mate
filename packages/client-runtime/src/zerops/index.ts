@@ -265,13 +265,17 @@ export {
 } from "./groupReach.ts";
 export {
   gitCheckoutHostnames,
+  checkDotTone,
   checkTone,
   checkWord,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
-  gitHeadLine,
+  gitCheckoutLine,
   gitTrouble,
+  gitVerdict,
+  pullRequestBlocked,
+  pullRequestBlockedReason,
   type GitBlock,
   type GitBlockAction,
   type GitBlockActionKind,
@@ -280,6 +284,8 @@ export {
   type GitCheckoutState,
   type GitCheckTone,
   type GitForgeState,
+  type GitVerdict,
+  type PullRequestBlocked,
 } from "./gitTab.ts";
 export {
   mateReviewOffer,
@@ -389,10 +395,7 @@ export {
   changeState,
   changeSubtitle,
   mergeConsequence,
-  pullRequestBlocked,
-  pullRequestBlockedReason,
   pullRequestMergeLine,
-  type PullRequestBlocked,
   pullRequestsFolded,
   releaseContentsSentence,
   releaseWaitingLabel,
