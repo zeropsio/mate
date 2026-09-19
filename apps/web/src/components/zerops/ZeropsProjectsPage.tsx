@@ -56,7 +56,6 @@ import {
 } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
 import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
-import { ZeropsAssignMateDialog } from "./ZeropsAssignMateDialog";
 import { useZeropsProvisioning } from "~/zerops/useZeropsProvisioning";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -69,7 +68,6 @@ import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
   changeState,
-  checkDotTone,
   environmentNameUnderGroup,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
@@ -82,15 +80,12 @@ import {
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
-  generateZeropsGroupId,
   GROUP_BEING_SET_UP_LINE,
   hasMate,
   planEnvironmentCreation,
   canWriteRegistry,
   pullRequestLineWith,
   type FlowPullRequest,
-  registerMateVerb,
-  resolveMateRegistration,
   readZeropsGroupTags,
   resolveGroupGitea,
   runEnvironmentCreation,
@@ -116,17 +111,12 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { proposedEnvironmentName, validateBotName } from "./ZeropsEnvironmentCreationDialog.logic";
-import { ZeropsMoveToGroupDialog } from "./ZeropsMoveToGroupDialog";
-import type { MoveMembership } from "./ZeropsMoveToGroupDialog.logic";
-import {
-  ZeropsProjectMenu,
-  type ZeropsMenuAction,
-  type ZeropsMenuEntry,
-} from "./ZeropsProjectMenu";
+import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
+import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { addGroupEnvironment } from "~/zerops/addGroupEnvironment";
 import { registerMateInGroup } from "~/zerops/brokerGrant";
@@ -146,7 +136,6 @@ import {
   type ZeropsRowAction,
   type ZeropsRowInput,
   connectFailureLine,
-  deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
@@ -782,73 +771,6 @@ function ZeropsProjectsContent() {
   // The same write an environment's own page uses, so one way to open a
   // service to the internet means one thing wherever it is offered.
   const route = useEnableRoute();
-  const runWrite = useCallback(async (write: () => Promise<unknown>) => {
-    setToolError(null);
-    try {
-      await write();
-    } catch (cause) {
-      setToolError(zeropsErrorMessage(cause));
-    }
-  }, []);
-  const renameAgent = useCallback(
-    (candidate: ZeropsCandidate, name: string) =>
-      runWrite(() => {
-        if (activeOrganization === null) return Promise.resolve();
-        return runZeropsCommand(
-          runtime.commands.nameProjectAgent(
-            projectRef(activeOrganization.id, candidate.project.id),
-            name,
-          ),
-        );
-      }),
-    [activeOrganization, projectRef, runWrite, runtime.commands],
-  );
-  /**
-   * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
-   * for the person picked. The one write in the app that carries `userRoles`.
-   */
-  const assignMate = useCallback(
-    (candidate: ZeropsCandidate, clientUserId: string) =>
-      runWrite(() => {
-        if (activeOrganization === null) return Promise.resolve();
-        return runZeropsCommand(
-          runtime.commands.setProjectMemberRole(
-            projectRef(activeOrganization.id, candidate.project.id),
-            { clientUserId, roleCode: "OWNER" },
-          ),
-        );
-      }),
-    [activeOrganization, projectRef, runWrite, runtime.commands],
-  );
-  const moveProject = useCallback(
-    (candidate: ZeropsCandidate, membership: MoveMembership) =>
-      runWrite(() => {
-        if (activeOrganization === null) return Promise.resolve();
-        const project = projectRef(activeOrganization.id, candidate.project.id);
-        if (membership.kind === "none") {
-          return runZeropsCommand(runtime.commands.updateProjectGroupTags(project, {}));
-        }
-        // Joining an existing group carries its name along, so the mirror on
-        // this member agrees with the others'.
-        const label =
-          membership.label ??
-          groupTree.groups.find((entry) => entry.group.groupId === membership.groupId)?.group.name;
-        const known = groupTree.groups.find((entry) => entry.group.groupId === membership.groupId);
-        return runZeropsCommand(
-          runtime.commands.updateProjectGroupTags(project, {
-            groupId: membership.groupId,
-            role: membership.role,
-            ...(label !== undefined && known?.group.nameSource !== "id" ? { label } : {}),
-            ...(membership.label !== undefined ? { label: membership.label } : {}),
-          }),
-        );
-      }),
-    [activeOrganization, groupTree.groups, projectRef, runWrite, runtime.commands],
-  );
-  const mintGroupId = useCallback(
-    () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
-    [],
-  );
 
   /**
    * The face a Mate wears: the state of its conversation when its socket is
@@ -860,51 +782,7 @@ function ZeropsProjectsContent() {
       candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
     );
 
-  /**
-   * *Register in {group}* — the write a colleague's Mate is waiting on.
-   *
-   * A member with *can create projects* makes a Mate and cannot write the
-   * registry, so it runs with no group reach and no bot until an owner or an
-   * admin adds it (guide 4.2). Offered to them and to nobody else: the row
-   * already says who it is waiting for.
-   */
-  const registerVerb = (
-    candidate: ZeropsCandidatePresentation,
-    tags: ZeropsGroupTags,
-  ): string | undefined => {
-    if (tags.groupId === undefined || !hasMate(candidate)) return undefined;
-    const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
-    if (group === undefined) return undefined;
-    return registerMateVerb({
-      registration: resolveMateRegistration({
-        registry: registryState.registry,
-        projectId: candidate.project.id,
-      }),
-      viewerRole: activeOrganization?.roleCode,
-      groupName: group.name,
-    });
-  };
-
   /** Writes the group's registry entry for a Mate, as the owner. */
-  const registerMate = async (
-    candidate: ZeropsCandidatePresentation,
-    tags: ZeropsGroupTags,
-  ): Promise<void> => {
-    if (tags.groupId === undefined || giteaProjectId === undefined || !activeOrganization) return;
-    // The broker's rights loop runs off the registry and the grant, so the
-    // Mate gets its bot's access on the loop's next pass rather than on a
-    // step this verb has to sequence.
-    const outstanding = await registerMateInGroup({
-      client,
-      clientId: activeOrganization.id,
-      giteaProjectId,
-      registry: registryState.registry,
-      groupId: tags.groupId,
-      projectId: candidate.project.id,
-    });
-    registryState.refresh();
-    setToolError(outstanding);
-  };
 
   /**
    * The quiet actions of a card or a row: the environment's public access,
@@ -919,113 +797,9 @@ function ZeropsProjectsContent() {
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
-    const verbs = verbsOf(candidate);
-    const restart = deriveZeropsRestartAction(rowInput(candidate));
-    // The server's version, off the card and into the menu: a fact worth
-    // finding, never a line under the Mate's name.
-    const serverVersion = mate ? serverVersions.get(candidate.key) : undefined;
-    const quickActions: ReadonlyArray<ZeropsMenuAction> = mate
-      ? [
-          ...(action?.kind === "start"
-            ? [
-                {
-                  id: "start",
-                  label: "Start",
-                  onSelect: () => {
-                    runRowAction(candidate, "start");
-                  },
-                },
-              ]
-            : []),
-          ...(restart.kind === "restart"
-            ? [
-                {
-                  id: "restart",
-                  label: restart.label,
-                  onSelect: () => {
-                    runRowAction(candidate, "restart");
-                  },
-                },
-              ]
-            : []),
-          ...(updateMenuActions ?? []),
-        ]
-      : [];
     return (
       <ZeropsProjectMenu
-        actions={[
-          ...quickActions,
-          ...(quickActions.length > 0
-            ? [{ id: "quick", separator: true } satisfies ZeropsMenuEntry]
-            : []),
-          ...(mate && verbs.rename
-            ? [
-                {
-                  id: "rename-agent",
-                  label: "Rename Mate",
-                  onSelect: () => {
-                    setRowDialog({ kind: "rename-agent", candidate });
-                  },
-                },
-              ]
-            : []),
-          ...(!mate || registerVerb(candidate, tags) === undefined
-            ? []
-            : [
-                {
-                  id: "register",
-                  label: registerVerb(candidate, tags) ?? "",
-                  onSelect: () => {
-                    void registerMate(candidate, tags);
-                  },
-                },
-              ]),
-          ...(mate && verbs.assign
-            ? [
-                {
-                  id: "assign",
-                  label: "Hand this Mate over",
-                  onSelect: () => {
-                    setRowDialog({ kind: "assign", candidate });
-                  },
-                },
-              ]
-            : []),
-          ...(mate && verbs.move
-            ? [
-                {
-                  id: "move",
-                  label:
-                    tags.groupId === undefined ? "Move to a project" : "Change project or role",
-                  onSelect: () => {
-                    setRowDialog({ kind: "move", candidate });
-                  },
-                },
-              ]
-            : []),
-          ...(!mate || tags.groupId === undefined || !verbs.move
-            ? []
-            : [
-                {
-                  id: "leave",
-                  label: "Leave the project",
-                  onSelect: () => {
-                    void moveProject(candidate, { kind: "none" });
-                  },
-                },
-              ]),
-          ...(serverVersion === undefined
-            ? []
-            : [
-                { id: "version", separator: true } satisfies ZeropsMenuEntry,
-                {
-                  id: "server-version",
-                  label: `Server ${serverVersion}`,
-                  disabled: true,
-                  onSelect: () => {},
-                },
-              ]),
-        ]}
+        actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${candidate.project.name}`}
         offers={candidate.routeOffers}
@@ -1380,6 +1154,10 @@ function ZeropsProjectsContent() {
     giteaProjectId: giteaProjectId,
     enabled: status === "signed-in",
   });
+
+  // Every verb a Mate has, from the one place that defines them — shared with
+  // a project's own page, which listed its Mates and could do nothing to them.
+  const mateActions = useMateActions({ registry: registryState, serverVersions });
 
   // The recipe is the group repo's, read as the person (guide 4.3) — never a
   // sibling's export, which carried service shapes without their build setup
@@ -2382,31 +2160,7 @@ function ZeropsProjectsContent() {
         }}
         view={groupTree}
       />
-      {rowDialog?.kind === "rename-agent" ? (
-        <ZeropsRenameDialog
-          initialValue={readZeropsGroupTags(rowDialog.candidate.project.tagList).bot ?? ""}
-          key={`rename-agent:${rowDialog.candidate.key}`}
-          label="Mate's name"
-          onCancel={() => {
-            setRowDialog(null);
-          }}
-          onOpenChange={(open) => {
-            if (!open) setRowDialog(null);
-          }}
-          onSubmit={(name) => {
-            const { candidate } = rowDialog;
-            setRowDialog(null);
-            void renameAgent(candidate, name);
-          }}
-          open
-          submitLabel="Rename"
-          title={`Rename the Mate in ${rowDialog.candidate.project.name}`}
-          validate={(value) => {
-            const current = readZeropsGroupTags(rowDialog.candidate.project.tagList).bot;
-            return validateBotName(value, takenBotNames, current === undefined ? {} : { current });
-          }}
-        />
-      ) : null}
+      {mateActions.dialogs}
       {rowDialog?.kind === "rename-group" ? (
         <ZeropsRenameDialog
           description="The name is written onto every environment in the project."
@@ -2428,50 +2182,6 @@ function ZeropsProjectsContent() {
           submitLabel="Rename"
           title={rowDialog.group.nameSource === "id" ? "Name this project" : "Rename the project"}
           validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
-        />
-      ) : null}
-      {rowDialog?.kind === "move" ? (
-        <ZeropsMoveToGroupDialog
-          currentGroupId={readZeropsGroupTags(rowDialog.candidate.project.tagList).groupId}
-          currentRole={readZeropsGroupTags(rowDialog.candidate.project.tagList).role}
-          groups={groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name }))}
-          key={`move:${rowDialog.candidate.key}`}
-          mintGroupId={mintGroupId}
-          onCancel={() => {
-            setRowDialog(null);
-          }}
-          onOpenChange={(open) => {
-            if (!open) setRowDialog(null);
-          }}
-          onSubmit={(membership) => {
-            const { candidate } = rowDialog;
-            setRowDialog(null);
-            void moveProject(candidate, membership);
-          }}
-          open
-          projectName={rowDialog.candidate.project.name}
-        />
-      ) : null}
-      {rowDialog?.kind === "assign" ? (
-        <ZeropsAssignMateDialog
-          currentOwnerId={
-            rowDialog.candidate.project.userRoles?.find((entry) => entry.roleCode === "OWNER")
-              ?.clientUserId
-          }
-          key={`assign:${rowDialog.candidate.key}`}
-          members={assignableMembers}
-          onCancel={() => {
-            setRowDialog(null);
-          }}
-          onOpenChange={(open) => {
-            if (!open) setRowDialog(null);
-          }}
-          onSubmit={(clientUserId) => {
-            const { candidate } = rowDialog;
-            setRowDialog(null);
-            void assignMate(candidate, clientUserId);
-          }}
-          projectName={rowDialog.candidate.project.name}
         />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (

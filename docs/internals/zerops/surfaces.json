@@ -706,6 +706,7 @@
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/components/zerops/ZeropsPullRequestRow.tsx",
         "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",

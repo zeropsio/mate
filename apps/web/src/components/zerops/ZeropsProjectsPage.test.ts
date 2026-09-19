@@ -15,6 +15,7 @@ import {
 } from "./ZeropsProjectsPage";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
+import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -407,12 +408,22 @@ describe("hasNoZeropsProject", () => {
 describe("an environment's menu", () => {
   it("carries a Mate's verbs only for a Mate — a stage or a production has none", () => {
     // The audit run, 2026-09-17: a stage's menu offered "Hand this Mate over"
-    // and "Change project or role". Rename was already gated; these are too.
+    // and "Change project or role". The gate used to be repeated on every
+    // entry; now the whole set is withheld at once, which cannot be got half
+    // right.
     expect(projectsPageSource).toContain(
-      "...(!mate || registerVerb(candidate, tags) === undefined",
+      "actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}",
     );
-    expect(projectsPageSource).toContain("...(mate && verbs.assign");
-    expect(projectsPageSource).toContain("...(mate && verbs.move");
-    expect(projectsPageSource).toContain("...(!mate || tags.groupId === undefined || !verbs.move");
+  });
+
+  it("gates each verb on what this person may finish, wherever the menu is drawn", () => {
+    // Guide 0.8: a verb the platform would refuse from this role is not
+    // offered. The gate lives with the verb now, so a second surface cannot
+    // grow a menu without it.
+    expect(mateActionsSource).toContain("resolveMateVerbs({ project: candidate.project, viewer })");
+    expect(mateActionsSource).toContain("...(verbs.assign");
+    expect(mateActionsSource).toContain("...(verbs.move");
+    expect(mateActionsSource).toContain("...(verbs.rename");
+    expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
   });
 });
