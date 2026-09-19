@@ -242,44 +242,6 @@ export function deployedVersion(appVersionName: string | undefined): DeployedVer
   return { name, commit, sha, taggedBy, label: name ?? commit };
 }
 
-/**
- * Where a deployed version can be read: Gitea's own pages for the commit it
- * was built from.
- *
- * A row can say `v1.4.0` and a menu can say `v1.4.0 · 77ab0e1 · tagged by
- * ada`, and neither answers "what is actually in there" — the owner asked
- * twice (2026-09-19: "still can't click on the commit to show whats in there?
- * like the history etc"). The commit page is that answer for one deploy and
- * the log is that answer for the ones before it, and both already exist:
- * nothing here fetches, builds or guesses, it only addresses what Gitea
- * already serves.
- *
- * `undefined` wherever an address cannot be written honestly — nobody signed
- * in to Gitea, a version whose name is not a commit, a service whose
- * repository the recipe does not name.
- */
-export interface DeployedVersionLinks {
-  /** The commit itself: its message, its diff, its checks. */
-  readonly commit: string;
-  /** What came before it — the history, which is the question people ask. */
-  readonly history: string;
-}
-
-export function deployedVersionLinks(input: {
-  /** The Gitea the account is signed in to. */
-  readonly origin: string | undefined;
-  /** The group's org there. */
-  readonly owner: string;
-  /** The service's repository in that org, from the tier's `buildFromGit`. */
-  readonly repository: string | undefined;
-  readonly commit: string | undefined;
-}): DeployedVersionLinks | undefined {
-  const { origin, owner, repository, commit } = input;
-  if (origin === undefined || repository === undefined || commit === undefined) return undefined;
-  const base = `${origin.replace(/\/+$/u, "")}/${owner}/${repository}`;
-  return { commit: `${base}/commit/${commit}`, history: `${base}/commits/commit/${commit}` };
-}
-
 /** The commit status the broker writes for one service of one environment. */
 export function deployStatusContext(environment: string, service: string): string {
   return `mate/deploy/${environment}/${service}`;

@@ -33,6 +33,7 @@ import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draf
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
 import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
+import { Route as ChatChangeGroupIdRepositoryNumberRouteImport } from './routes/_chat.change.$groupId.$repository.$number'
 
 const ZeropsRoute = ZeropsRouteImport.update({
   id: '/zerops',
@@ -155,6 +156,12 @@ const ChatGroupGroupIdProjectIdRoute =
     path: '/group/$groupId/$projectId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatChangeGroupIdRepositoryNumberRoute =
+  ChatChangeGroupIdRepositoryNumberRouteImport.update({
+    id: '/change/$groupId/$repository/$number',
+    path: '/change/$groupId/$repository/$number',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
   '/gitea': typeof GiteaRoute
@@ -205,6 +213,7 @@ export interface FileRoutesByTo {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -232,6 +241,7 @@ export interface FileRoutesById {
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
+  '/_chat/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
+    | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/gitea'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
+    | '/change/$groupId/$repository/$number'
   id:
     | '__root__'
     | '/_chat'
@@ -310,6 +322,7 @@ export interface FileRouteTypes {
     | '/_chat/draft/$draftId'
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
+    | '/_chat/change/$groupId/$repository/$number'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -495,6 +508,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatGroupGroupIdProjectIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/change/$groupId/$repository/$number': {
+      id: '/_chat/change/$groupId/$repository/$number'
+      path: '/change/$groupId/$repository/$number'
+      fullPath: '/change/$groupId/$repository/$number'
+      preLoaderRoute: typeof ChatChangeGroupIdRepositoryNumberRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -504,6 +524,7 @@ interface ChatRouteChildren {
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
   ChatGroupGroupIdProjectIdRoute: typeof ChatGroupGroupIdProjectIdRoute
   ChatGroupGroupIdFlowRoute: typeof ChatGroupGroupIdFlowRoute
+  ChatChangeGroupIdRepositoryNumberRoute: typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -512,6 +533,8 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
   ChatGroupGroupIdProjectIdRoute: ChatGroupGroupIdProjectIdRoute,
   ChatGroupGroupIdFlowRoute: ChatGroupGroupIdFlowRoute,
+  ChatChangeGroupIdRepositoryNumberRoute:
+    ChatChangeGroupIdRepositoryNumberRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)

@@ -210,7 +210,6 @@ import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZero
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import {
-  deployedVersionLinks,
   flowVerbKey,
   type EnvironmentRow,
   resolvePrimaryConversation,
@@ -1745,16 +1744,6 @@ export default function Sidebar() {
         pullRequests: flow.pullRequests,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
-        // What is running is a name until it can be opened: the commit itself,
-        // and the log behind it (the owner, 2026-09-19 — "still can't click on
-        // the commit to show whats in there? like the history etc").
-        versionLinks: (row) =>
-          deployedVersionLinks({
-            origin: zeropsProjectFlow.giteaOrigin,
-            owner: flow.slug,
-            repository: row.versionRepository,
-            commit: row.version.commit,
-          }),
         // What the verb's hover says it would put in front of people.
         releaseContents: flow.release.contents,
         // The stops the recipe offers and nobody has added: a next step the
@@ -1842,6 +1831,20 @@ export default function Sidebar() {
     },
     [router],
   );
+  /** A change's own page: what it carries, and the verb that moves it. */
+  const openChange = useCallback(
+    (groupId: string, pull: { readonly repository: string; readonly number: number }) => {
+      void router.navigate({
+        to: "/change/$groupId/$repository/$number",
+        params: {
+          groupId,
+          repository: pull.repository,
+          number: String(pull.number),
+        },
+      });
+    },
+    [router],
+  );
   const zeropsSidebarFlowWithAsk = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const base = zeropsSidebarFlow(groupId);
@@ -1853,9 +1856,12 @@ export default function Sidebar() {
             onOpenStop: (row) => {
               openStop(groupId, row);
             },
+            onOpenChange: (pull) => {
+              openChange(groupId, pull);
+            },
           };
     },
-    [zeropsSidebarFlow, askMate, openStop],
+    [zeropsSidebarFlow, askMate, openStop, openChange],
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const autoSettleAfterDays = useClientSettings((s) => s.sidebarAutoSettleAfterDays);

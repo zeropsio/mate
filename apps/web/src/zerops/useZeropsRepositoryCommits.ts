@@ -79,3 +79,63 @@ export function useZeropsRepositoryCommits(
 
   return state;
 }
+
+/**
+ * The commits one change carries: what its branch has that the branch it
+ * targets does not.
+ *
+ * `compareCommits` is the right read here and the wrong one for a history —
+ * it takes two refs and reports the difference, which is exactly what a pull
+ * request is. Releases are not folded on: nothing in an unmerged change has
+ * shipped.
+ */
+export function useZeropsChangeCommits(
+  request: {
+    readonly giteaOrigin: string | undefined;
+    readonly owner: string | undefined;
+    readonly repo: string | undefined;
+    readonly base: string | undefined;
+    readonly head: string | undefined;
+  } | null,
+): ZeropsCommitsState {
+  const giteaOrigin = request?.giteaOrigin;
+  const owner = request?.owner;
+  const repo = request?.repo;
+  const base = request?.base;
+  const head = request?.head;
+  const [state, setState] = useState<ZeropsCommitsState>({ kind: "reading" });
+
+  useEffect(() => {
+    if (
+      giteaOrigin === undefined ||
+      owner === undefined ||
+      repo === undefined ||
+      base === undefined ||
+      head === undefined
+    ) {
+      setState({ kind: "no-gitea" });
+      return;
+    }
+    const client = giteaClientFor(giteaOrigin);
+    if (client === null) {
+      setState({ kind: "no-gitea" });
+      return;
+    }
+    let live = true;
+    setState({ kind: "reading" });
+    void client
+      .compareCommits(owner, repo, base, head)
+      .then((commits) => {
+        // Newest first, as a history reads.
+        if (live) setState({ kind: "read", commits: [...commits].reverse(), releases: new Map() });
+      })
+      .catch((error: unknown) => {
+        if (live) setState({ kind: "failed", reason: zeropsErrorMessage(error) });
+      });
+    return () => {
+      live = false;
+    };
+  }, [giteaOrigin, owner, repo, base, head]);
+
+  return state;
+}

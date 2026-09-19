@@ -50,7 +50,6 @@ import {
   sidebarChangeLabel,
   stopAttention,
   type DeployedVersion,
-  type DeployedVersionLinks,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
@@ -113,16 +112,6 @@ export interface SidebarProjectFlow {
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
   /**
-   * Where a stop's running version can be read — Gitea's page for the commit
-   * and the log behind it. Supplied by the caller, because an address needs
-   * the Gitea the account is signed in to and the group's org there, and
-   * neither is the menu's to know. Absent (signed out, a version that is not a
-   * commit) the version is plain text, exactly as it was.
-   */
-  readonly versionLinks?:
-    | ((row: EnvironmentRow) => { readonly commit: string; readonly history: string } | undefined)
-    | undefined;
-  /**
    * What a release would carry, per production service. Rendered as the
    * verb's hover: "Release" names the mechanism, and the tasks name the
    * thing — the one reading a person needs who has never merged a branch.
@@ -152,6 +141,15 @@ export interface SidebarProjectFlow {
    * so both arrived at a sign-in page (measured 2026-09-19).
    */
   readonly onOpenStop?: ((row: EnvironmentRow) => void) | undefined;
+  /**
+   * Opens a change's own page — what it carries, what is stopping it, and the
+   * verb that moves it.
+   *
+   * `#4` used to be a link into Gitea, and Gitea is a sign-in page for
+   * everybody: the app holds the only token. "This links to gitea as well, no
+   * built in interface for PR" (the owner, 2026-09-19).
+   */
+  readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
   /**
    * The stops the group's recipe offers and nobody has added yet. A timeline
    * that showed only its Mates never said a production was a next step (the
@@ -333,6 +331,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   }}
                   open={openLists.has(listKey)}
                   onAsk={flow.onAsk}
+                  onOpenChange={flow.onOpenChange}
                   pulls={pulls}
                   railCap={last ? "end" : undefined}
                 />
@@ -353,6 +352,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 merging={flow.merging(pull)}
                 onAsk={flow.onAsk}
                 onMerge={flow.onMerge}
+                onOpenChange={flow.onOpenChange}
                 pull={pull}
                 railCap={others.length === 0 && index === otherPulls.length - 1 ? "end" : undefined}
                 underMate={false}
@@ -758,6 +758,7 @@ function PullRequestList({
   merging,
   onMerge,
   onAsk,
+  onOpenChange,
   railCap,
 }: {
   readonly pulls: ReadonlyArray<FlowPullRequest>;
@@ -766,6 +767,7 @@ function PullRequestList({
   readonly merging: (pull: FlowPullRequest) => boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
+  readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
   /** Carried to whichever row is last on screen — folded shut, that is the count. */
   readonly railCap?: RailCap;
 }) {
@@ -796,6 +798,7 @@ function PullRequestList({
               merging={merging(pull)}
               onAsk={onAsk}
               onMerge={onMerge}
+              onOpenChange={onOpenChange}
               pull={pull}
               railCap={index === pulls.length - 1 ? railCap : undefined}
             />
@@ -819,11 +822,13 @@ function PullRequestRow({
   underMate = true,
   railCap,
   onAsk,
+  onOpenChange,
 }: {
   readonly pull: FlowPullRequest;
   readonly merging: boolean;
   readonly onMerge: (pull: FlowPullRequest) => void;
   readonly onAsk?: ((pull: FlowPullRequest, ask: string) => void) | undefined;
+  readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
   /** False for a change that is nobody's Mate's, which hangs under nothing. */
   readonly underMate?: boolean;
   readonly railCap?: RailCap;
@@ -837,17 +842,18 @@ function PullRequestRow({
       data-zerops-surface="sidebar-pull-request"
     >
       <RailFork cap={railCap} />
-      {pull.url === undefined ? (
+      {onOpenChange === undefined ? (
         <span className="min-w-0 flex-1 truncate text-sidebar-foreground">{label}</span>
       ) : (
-        <a
-          className="min-w-0 flex-1 truncate rounded-sm text-sidebar-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          href={pull.url}
-          rel="noopener"
-          target="_blank"
+        <button
+          className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sidebar-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          onClick={() => {
+            onOpenChange(pull);
+          }}
+          type="button"
         >
           {label}
-        </a>
+        </button>
       )}
       {/* The right edge is never a wordless dot on its own. Where Gitea
           merges the branch the verb carries the row and the dot adds the
@@ -1082,7 +1088,6 @@ const MENU_CHANGES_SHOWN = 8;
 function StopMenu({
   name,
   version,
-  links,
   routes,
   waiting,
   onOpenProject,
@@ -1090,8 +1095,6 @@ function StopMenu({
 }: {
   readonly name: string;
   readonly version: DeployedVersion | undefined;
-  /** Gitea's pages for what is running, when the account can reach them. */
-  readonly links: DeployedVersionLinks | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
@@ -1120,14 +1123,9 @@ function StopMenu({
       <MenuPopup align="end" className="max-w-[24rem] min-w-56">
         <MenuGroup data-zerops-surface="sidebar-stop-running">
           <MenuGroupLabel>Running</MenuGroupLabel>
-          {links === undefined ? (
-            <MenuItem disabled>{detail}</MenuItem>
-          ) : (
-            <MenuItem render={<a href={links.commit} rel="noreferrer" target="_blank" />}>
-              <span className="min-w-0 flex-1 truncate">{detail}</span>
-              <ExternalLinkIcon aria-hidden="true" />
-            </MenuItem>
-          )}
+          {/* A fact, not a door: the commit's page in Gitea is a sign-in page
+              for everybody, and the environment's own page is right below. */}
+          <MenuItem disabled>{detail}</MenuItem>
           {/* The question people actually ask of a version is what came before
               it, and a commit page answers only for one — and, with no Gitea
               session in the browser, answers it with a sign-in page. */}
@@ -1282,7 +1280,6 @@ function EnvironmentRows<T extends RosterCandidate>({
             const release = flow !== undefined && flow.releaseOffered && production;
             const routes = item.routes ?? [];
             const version = declared?.version;
-            const links = declared === undefined ? undefined : flow?.versionLinks?.(declared);
             const openStop =
               declared === undefined || flow?.onOpenStop === undefined
                 ? undefined
@@ -1348,7 +1345,6 @@ function EnvironmentRows<T extends RosterCandidate>({
                         onOpenStop={openStop}
                         onOpenProject={onOpenProject}
                         routes={routes}
-                        links={links}
                         version={version}
                         waiting={production ? waitingInMenu : undefined}
                       />
@@ -1362,7 +1358,7 @@ function EnvironmentRows<T extends RosterCandidate>({
                     signed in and the version names a commit, it is the way to
                     what is actually in there; otherwise it stays plain text
                     rather than becoming a link that goes nowhere. */}
-                    {links === undefined || version?.label === undefined ? (
+                    {openStop === undefined || version?.label === undefined ? (
                       <span
                         className={cn(
                           "min-w-0 truncate",
@@ -1373,18 +1369,17 @@ function EnvironmentRows<T extends RosterCandidate>({
                         {version?.label ?? NOTHING_DEPLOYED}
                       </span>
                     ) : (
-                      <a
+                      <button
                         className={cn(
-                          "min-w-0 truncate rounded-sm underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+                          "min-w-0 cursor-pointer truncate rounded-sm text-left underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
                           version.name === undefined && "tabular-nums",
                         )}
                         data-zerops-surface="sidebar-environment-version"
-                        href={links.commit}
-                        rel="noreferrer"
-                        target="_blank"
+                        onClick={openStop}
+                        type="button"
                       >
                         {version.label}
-                      </a>
+                      </button>
                     )}
                     {/* Work that is merged but not live is the one thing on this
                     row a person may need to act on, and it was muted text

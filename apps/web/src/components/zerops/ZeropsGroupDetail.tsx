@@ -33,7 +33,10 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
 import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
-import { useZeropsRepositoryCommits } from "~/zerops/useZeropsRepositoryCommits";
+import {
+  useZeropsChangeCommits,
+  useZeropsRepositoryCommits,
+} from "~/zerops/useZeropsRepositoryCommits";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { ZeropsDeployRunView } from "./ZeropsDeployRun";
@@ -276,6 +279,103 @@ export function ZeropsStopDetailPage({
     </DetailShell>
   );
 }
+
+/**
+ * One change's own page: what it carries, what is stopping it, and the verb
+ * that moves it.
+ *
+ * `#4` used to be a link into Gitea, which is a sign-in page for everybody:
+ * the app holds the only Gitea token. The commits come from `compareCommits`,
+ * which is the right read for a change and the wrong one for a history — it
+ * reports what one ref has that another does not, which is what a pull
+ * request is.
+ */
+export function ZeropsChangeDetailPage({
+  groupId,
+  repository,
+  number,
+}: {
+  readonly groupId: string;
+  readonly repository: string;
+  readonly number: number;
+}) {
+  const flowValue = useZeropsProjectFlowOptional();
+  const flow = flowValue?.flows.get(groupId);
+  const pull = flow?.pullRequests.find(
+    (entry) => entry.repository === repository && entry.number === number,
+  );
+  const commits = useZeropsChangeCommits(
+    flow === undefined || pull === undefined
+      ? null
+      : {
+          giteaOrigin: flowValue?.giteaOrigin,
+          owner: flow.slug,
+          repo: pull.repository,
+          base: pull.baseBranch,
+          head: pull.headSha,
+        },
+  );
+  const readDetail = useZeropsCommitDetailReader({
+    giteaOrigin: flowValue?.giteaOrigin,
+    owner: flow?.slug,
+    repo: pull?.repository,
+  });
+
+  if (flow === undefined || pull === undefined) {
+    return (
+      <DetailShell title={`#${String(number)}`}>
+        <Note>This change is not open on {repository} any more.</Note>
+      </DetailShell>
+    );
+  }
+
+  const blocked = pullRequestBlocked(pull);
+  const checks = checkDotTone(pull);
+  return (
+    <DetailShell
+      subtitle={`${flow.slug} · ${pull.repository} · ${pull.baseBranch}`}
+      title={pull.title}
+    >
+      <Section title="Where it stands">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+          <Fact term="Change">#{pull.number}</Fact>
+          {pull.author === undefined ? null : <Fact term="Opened by">{pull.author}</Fact>}
+          <Fact term="Checks">
+            {pull.checkWord === undefined || checks === undefined ? (
+              "Nothing has run yet"
+            ) : (
+              <StatusDot label={pull.checkWord} sentence tone={checks} />
+            )}
+          </Fact>
+          <Fact term="Merges">
+            {blocked === null ? (
+              "Cleanly, into " + pull.baseBranch
+            ) : (
+              <StatusDot label={blocked.word} sentence tone={blocked.tone} />
+            )}
+          </Fact>
+        </dl>
+        {blocked?.ask === undefined ? null : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {/* The Mate that wrote it is the one who can move it. */}
+            {blocked.ask}
+          </p>
+        )}
+      </Section>
+
+      <Section title={`What it carries · ${pull.repository}`}>
+        <ZeropsHistoryView
+          commits={commits}
+          readDetail={readDetail}
+          request={{ repo: pull.repository, deployed: EMPTY_DEPLOYED }}
+        />
+      </Section>
+    </DetailShell>
+  );
+}
+
+/** Nothing in an unmerged change is running anywhere yet. */
+const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
 
 function StopLine({
   environment,

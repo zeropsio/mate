@@ -5,7 +5,6 @@ import {
   buildGroupRows,
   deployedCommit,
   deployedVersion,
-  deployedVersionLinks,
   deployStatusContext,
   deployTone,
   environmentRow,
@@ -487,32 +486,4 @@ describe("environmentNameUnderGroup", () => {
       expect(environmentNameUnderGroup(group, environment)).toBe(expected);
     });
   }
-});
-
-describe("deployedVersionLinks", () => {
-  const base = { origin: "https://git.example", owner: "links", repository: "appdev" };
-
-  it("points at the commit a version was built from, and at what came before it", () => {
-    expect(deployedVersionLinks({ ...base, commit: "3f9c1b2" })).toEqual({
-      commit: "https://git.example/links/appdev/commit/3f9c1b2",
-      history: "https://git.example/links/appdev/commits/commit/3f9c1b2",
-    });
-  });
-
-  it("trims a trailing slash off the origin rather than doubling it", () => {
-    expect(
-      deployedVersionLinks({ ...base, origin: "https://git.example/", commit: "3f9c1b2" })?.commit,
-    ).toBe("https://git.example/links/appdev/commit/3f9c1b2");
-  });
-
-  it.each([
-    { name: "nobody signed in to Gitea", input: { ...base, origin: undefined, commit: "3f9c1b2" } },
-    { name: "a deploy nobody named with a sha", input: { ...base, commit: undefined } },
-    {
-      name: "a service whose repository the recipe does not say",
-      input: { ...base, repository: undefined, commit: "3f9c1b2" },
-    },
-  ])("says nothing where $name", ({ input }) => {
-    expect(deployedVersionLinks(input)).toBeUndefined();
-  });
 });

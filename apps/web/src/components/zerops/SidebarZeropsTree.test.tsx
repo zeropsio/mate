@@ -377,8 +377,10 @@ describe("the project's flow under it", () => {
       html.indexOf("#4 Change 4"),
     );
     expect(html.indexOf("#4 Change 4")).toBeLessThan(html.indexOf("crm-stage"));
-    // The way into Gitea is the title; the checks are a dot, not a word.
-    expect(html).toContain('href="https://gitea.example/crm/appdev/pulls/4"');
+    // Nothing here opens Gitea: the app holds the only token, so every one of
+    // its pages is a sign-in page for the person reading this menu. The title
+    // opens the change's own page. The checks are a dot, not a word.
+    expect(html).not.toContain("gitea.example");
     expect(html).toContain('aria-label="Passing"');
     expect(html).not.toContain(">Passing</span>");
   });
