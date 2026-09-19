@@ -1196,12 +1196,14 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("drops the container's delegation and isolates the project it made", async () => {
+  it("drops the container's delegation, and leaves isolation to the connect", async () => {
     // primer §7.1, measured on a project minutes old (2026-09-19): the wizard's
-    // one-call path created a Mate and left it with `envIsolation: none` and a
-    // delegation still on its own token. `planEnvironmentCreation` has always
-    // ended a with-agent creation on both steps; this path ran neither, and
-    // nothing reconciles them afterwards.
+    // one-call path created a Mate and left a delegation on its own token.
+    //
+    // Isolation is deliberately not here: the platform's container recipe
+    // writes `envIsolation: none` while the container is being made, over
+    // anything written before it (measured — the same write sticks once the
+    // container answers). `connectContainer` does it then.
     const stub = recordingFetch((request) => {
       if (request.url.includes("/integration-token/list")) {
         return jsonResponse(200, {
@@ -1239,33 +1241,26 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
           url.includes("/integration-token/token-1/delegation/delegation-1"),
       ),
     ).toBe(true);
-    // The isolation reads the project's env before it plans anything, so its
-    // having run at all is what the search proves.
-    expect(urls.some((url) => url.includes("/project/search"))).toBe(true);
+    // And nothing tried to isolate: the isolation reads the project's env
+    // first, so a search here would mean it had.
+    expect(urls.some((url) => url.includes("/project/search"))).toBe(false);
   });
 
-  it("still isolates when the container's own token is not there yet", async () => {
-    // The token is the platform's to mint. A creation is never failed over it,
-    // and the half that needs no token is the half that matters.
+  it("does not fail a creation over a token the platform has not minted yet", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.includes("/integration-token/list")) {
         return jsonResponse(200, { list: [] });
       }
-      if (request.url.includes("/project/search")) {
-        return jsonResponse(200, { items: [{ id: "project-1", envList: [] }] });
-      }
-      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
       return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
     client.setWritesAllowed(true);
 
-    await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
+    const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
 
-    const urls = stub.requests.map((request) => request.url);
-    expect(urls.some((url) => url.includes("/delegation"))).toBe(false);
-    expect(urls.some((url) => url.includes("/project/search"))).toBe(true);
+    expect(created.project.id).toBe("project-1");
+    expect(stub.requests.some((request) => request.url.includes("/delegation"))).toBe(false);
   });
 
   it("does not issue the container write after an incomplete project response", async () => {

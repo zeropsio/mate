@@ -351,6 +351,7 @@ export function useZeropsProjectConnection(orgId: string | null): {
   const provisioning = useZeropsProvisioning(creatingIn);
   const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
+  const { projectRef, runtime } = useZeropsData();
   const [connectError, setConnectError] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState<string | undefined>();
   const [upgradeOrigin, setUpgradeOrigin] = useState<string | null>(null);
@@ -384,6 +385,25 @@ export function useZeropsProjectConnection(orgId: string | null): {
             orgId,
             source: "connect",
           });
+          // Here, and not at the creation call. `envIsolation` is the
+          // platform's to set: its development-container recipe writes `none`
+          // while the container is being made, over anything written before
+          // it. Measured 2026-09-19 — the same write that was overwritten
+          // during creation sticks the moment the container answers, which is
+          // now, because the exchange above only succeeds once it does. A
+          // Mate left un-isolated reads every sibling's environment, its
+          // agent's own login included (`projectIsolation.ts`).
+          //
+          // Awaited, but never fatal: the container is up and the person is
+          // about to be taken to it, and a failure here is not a reason to
+          // strand them on this page.
+          try {
+            await runZeropsCommand(
+              runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
+            );
+          } catch {
+            // The next connect tries again; the plan is empty once it has run.
+          }
         }
         provisioning.cancel();
         setCreatingIn(null);
@@ -392,7 +412,7 @@ export function useZeropsProjectConnection(orgId: string | null): {
         setConnectingOrigin(null);
       }
     },
-    [exchangeZeropsIdentity, navigate, orgId, provisioning],
+    [exchangeZeropsIdentity, navigate, orgId, projectRef, provisioning, runtime],
   );
 
   const readyOrigin =

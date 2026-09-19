@@ -1904,27 +1904,26 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The two steps that make a container a Mate rather than a way into the
-   * project it sits in.
+   * Takes back the delegation the platform mints with a Mate's container.
    *
-   * `planEnvironmentCreation` has always ended a with-agent creation on them —
-   * `drop-container-delegation` and `isolate-project-env` — and this one-call
-   * path, which the wizard has taken since 0.11.2, ran neither. Measured on a
-   * project minutes old (2026-09-19, primer §7.1): `envIsolation: none`, so
-   * every service in it reads every other's environment, and one delegation
-   * still on the container's own token. Nothing reconciles either afterwards,
-   * so a Mate made this way stayed that way for its whole life.
+   * `planEnvironmentCreation` has always ended a with-agent creation on
+   * `drop-container-delegation`, and this one-call path — the wizard's since
+   * 0.11.2 — ran it never. Measured on a project minutes old (2026-09-19,
+   * primer §7.1): one delegation still on the container's own token, and
+   * nothing reconciles it afterwards.
    *
-   * Both are idempotent — `isolateProjectEnvironment` plans nothing on a
-   * project already through it, and a token with no delegation is a read — so
-   * this is safe on a retried creation.
+   * **Isolation is not done here**, though the same audit found it missing.
+   * `envIsolation` is the platform's to set: the development-container recipe
+   * writes `none` while the container is being made, over anything written
+   * before it, so a call at this moment is overwritten a few seconds later
+   * (measured 2026-09-19 — the same write sticks once the container answers).
+   * It runs when the container does, in `connectContainer`.
    *
-   * The token is the platform's to mint and is looked for once: this package
-   * holds no timers by design — `runEnvironmentCreation` takes its `sleep`
-   * from the caller — so there is no waiting here. A creation is never failed
-   * over it either: the project and its Mate are up regardless, and the
-   * isolation, which is the half that needs no token and the half that
-   * matters, runs whether the token was found or not.
+   * Idempotent: a token with no delegation is a read, so a retried creation is
+   * safe. The token is the platform's to mint and is looked for once — this
+   * package holds no timers by design, `runEnvironmentCreation` takes its
+   * `sleep` from the caller — and a creation is never failed over one that has
+   * not appeared.
    */
   async #secureMateContainer(
     clientId: string,
@@ -1949,7 +1948,6 @@ export class ZeropsApiClient {
         );
       }
     }
-    await this.isolateProjectEnvironment(clientId, projectId, signal, beforeWrite);
   }
 
   /**
