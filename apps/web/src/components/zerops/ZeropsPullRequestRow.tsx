@@ -80,7 +80,12 @@ export function ZeropsPullRequestRow({
         {line}
       </span>
       <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-end gap-3 sm:col-start-3">
-        {status}
+        {/* The status word's hand is the row's, not each caller's: a
+            `sentence` StatusDot has no size of its own and would inherit the
+            page's 16px here, next to a 13px name. */}
+        {status === undefined ? null : (
+          <span className="text-xs text-muted-foreground">{status}</span>
+        )}
         {action}
       </span>
     </li>

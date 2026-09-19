@@ -155,7 +155,11 @@ export function ZeropsGiteaOverview({
                               title={pull.title}
                               status={
                                 known?.state === undefined ? undefined : (
-                                  <StatusDot label={known.state.word} tone={known.state.tone} />
+                                  <StatusDot
+                                    label={known.state.word}
+                                    sentence
+                                    tone={known.state.tone}
+                                  />
                                 )
                               }
                               {...(known?.open === undefined ? {} : { onOpen: known.open })}

@@ -17,6 +17,8 @@ import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExcha
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
+import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
+import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -435,5 +437,30 @@ describe("an environment's menu", () => {
     // be the one place a Mate's update could not be started from.
     expect(groupDetailSource).toContain("<ZeropsMateUpdateControl environmentId=");
     expect(groupDetailSource).toContain("{({ menuActions }) => menu(menuActions)}");
+  });
+});
+
+describe("a status word's hand", () => {
+  /** Every `<StatusDot …/>` in a file, each as its own opening tag. */
+  const statusDots = (source: string): ReadonlyArray<string> =>
+    [...source.matchAll(/<StatusDot\b[\s\S]*?\/>/gu)].map((match) => match[0]);
+
+  it.each([
+    ["the projects screen", projectsPageSource],
+    ["a project's own page", groupDetailSource],
+    ["the Git page", giteaPageSource],
+    ["the left menu", sidebarTreeSource],
+  ])("writes a state the way client-runtime wrote it, on %s", (_surface, source) => {
+    // `deployWord` answers "Deployed" and `changeState` capitalises its first
+    // letter on purpose. Drawn through the `MicroLabel` that is a StatusDot's
+    // default, the projects screen and the Git page threw that away and said
+    // NEEDS A REBASE where the left menu and the project's own page said
+    // "Needs a rebase" — one fact, two hands, on surfaces a click apart. R5:
+    // the words are the runtime's, and so is their case.
+    const dots = statusDots(source);
+    expect(dots.length).toBeGreaterThan(0);
+    for (const dot of dots) {
+      expect(dot).toMatch(/\bsentence\b|\bdotOnly\b/u);
+    }
   });
 });

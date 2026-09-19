@@ -1303,7 +1303,9 @@ function ZeropsProjectsContent() {
           });
         }}
         status={
-          state === undefined ? undefined : <StatusDot label={state.word} tone={state.tone} />
+          state === undefined ? undefined : (
+            <StatusDot label={state.word} sentence tone={state.tone} />
+          )
         }
         tag={pull.kind === "recipe" ? "recipe" : "pr"}
         title={pull.title}
@@ -1899,13 +1901,14 @@ function ZeropsProjectsContent() {
                 projectTrouble ? (
                   <StatusDot
                     label={presentation.status.label}
+                    sentence
                     tone={presentation.status.tone}
                     {...(presentation.status.pulse === undefined
                       ? {}
                       : { pulse: presentation.status.pulse })}
                   />
                 ) : deployTone !== undefined && deployLabel !== undefined ? (
-                  <StatusDot label={deployLabel} tone={deployTone} />
+                  <StatusDot label={deployLabel} sentence tone={deployTone} />
                 ) : undefined
               }
               // A project the platform failed to create holds nothing; its
@@ -1954,7 +1957,7 @@ function ZeropsProjectsContent() {
                   name={release.tag}
                   status={
                     tone === undefined || release.word === undefined ? undefined : (
-                      <StatusDot label={release.word} tone={tone} />
+                      <StatusDot label={release.word} sentence tone={tone} />
                     )
                   }
                   summary={release.line}
