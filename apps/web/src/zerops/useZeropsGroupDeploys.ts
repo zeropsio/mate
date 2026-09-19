@@ -236,6 +236,9 @@ export function useZeropsGroupDeploys(input: {
           services,
           versions,
           statuses,
+          // Which repository each service is built from, so a row's version can
+          // address the commit it was built from.
+          repositories: onMain.repositories,
         });
 
         // What a project with no stage releases: the head of each production

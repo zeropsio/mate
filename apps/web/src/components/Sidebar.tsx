@@ -209,7 +209,11 @@ import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import { SidebarZeropsTree, type SidebarProjectFlow } from "./zerops/SidebarZeropsTree";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
-import { flowVerbKey, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
+import {
+  deployedVersionLinks,
+  flowVerbKey,
+  resolvePrimaryConversation,
+} from "@t3tools/client-runtime/zerops";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1740,6 +1744,16 @@ export default function Sidebar() {
         pullRequests: flow.pullRequests,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
+        // What is running is a name until it can be opened: the commit itself,
+        // and the log behind it (the owner, 2026-09-19 — "still can't click on
+        // the commit to show whats in there? like the history etc").
+        versionLinks: (row) =>
+          deployedVersionLinks({
+            origin: zeropsProjectFlow.giteaOrigin,
+            owner: flow.slug,
+            repository: row.versionRepository,
+            commit: row.version.commit,
+          }),
         // What the verb's hover says it would put in front of people.
         releaseContents: flow.release.contents,
         // The stops the recipe offers and nobody has added: a next step the

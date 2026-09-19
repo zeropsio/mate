@@ -49,6 +49,7 @@ import {
   selectMateEnvironments,
   sidebarPullRequestTitle,
   type DeployedVersion,
+  type DeployedVersionLinks,
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupRowTone,
@@ -65,6 +66,7 @@ import {
   ArrowUpIcon,
   CheckIcon,
   ChevronRightIcon,
+  ExternalLinkIcon,
   MinusIcon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -108,6 +110,16 @@ export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly environments: ReadonlyMap<string, EnvironmentRow>;
   readonly releaseOffered: boolean;
+  /**
+   * Where a stop's running version can be read — Gitea's page for the commit
+   * and the log behind it. Supplied by the caller, because an address needs
+   * the Gitea the account is signed in to and the group's org there, and
+   * neither is the menu's to know. Absent (signed out, a version that is not a
+   * commit) the version is plain text, exactly as it was.
+   */
+  readonly versionLinks?:
+    | ((row: EnvironmentRow) => { readonly commit: string; readonly history: string } | undefined)
+    | undefined;
   /**
    * What a release would carry, per production service. Rendered as the
    * verb's hover: "Release" names the mechanism, and the tasks name the
@@ -780,12 +792,15 @@ const MENU_CHANGES_SHOWN = 8;
 function StopMenu({
   name,
   version,
+  links,
   routes,
   waiting,
   onOpenProject,
 }: {
   readonly name: string;
   readonly version: DeployedVersion | undefined;
+  /** Gitea's pages for what is running, when the account can reach them. */
+  readonly links: DeployedVersionLinks | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly waiting: ReleaseContentsSummary | undefined;
   readonly onOpenProject: () => void;
@@ -813,7 +828,22 @@ function StopMenu({
       <MenuPopup align="end" className="max-w-[24rem] min-w-56">
         <MenuGroup data-zerops-surface="sidebar-stop-running">
           <MenuGroupLabel>Running</MenuGroupLabel>
-          <MenuItem disabled>{detail}</MenuItem>
+          {links === undefined ? (
+            <MenuItem disabled>{detail}</MenuItem>
+          ) : (
+            <MenuItem render={<a href={links.commit} rel="noreferrer" target="_blank" />}>
+              <span className="min-w-0 flex-1 truncate">{detail}</span>
+              <ExternalLinkIcon aria-hidden="true" />
+            </MenuItem>
+          )}
+          {/* The question people actually ask of a version is what came before
+              it, and a commit page answers only for one. */}
+          {links === undefined ? null : (
+            <MenuItem render={<a href={links.history} rel="noreferrer" target="_blank" />}>
+              <span className="min-w-0 flex-1 truncate">History</span>
+              <ExternalLinkIcon aria-hidden="true" />
+            </MenuItem>
+          )}
         </MenuGroup>
         <MenuSeparator />
         <MenuItem onClick={onOpenProject}>Open in Zerops</MenuItem>
@@ -890,16 +920,18 @@ function EnvironmentRows<T extends RosterCandidate>({
         const release = flow !== undefined && flow.releaseOffered && production;
         const routes = item.routes ?? [];
         const version = declared?.version;
+        const links = declared === undefined ? undefined : flow?.versionLinks?.(declared);
         return (
           <li
-            className="group/stop flex min-w-0 items-start gap-2.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-sidebar-row-hover"
+            className="group/stop flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors hover:bg-sidebar-row-hover"
             data-zerops-project={item.project.id}
             data-zerops-surface="sidebar-environment"
             key={item.project.id}
           >
-            <span className="flex h-5 shrink-0 items-center">
-              <StopBadge tone={tone} word={word} />
-            </span>
+            {/* Centred on the row, because the Mate face directly above it is:
+                two neighbouring rows may not have two rules for their first
+                column. It was pinned to the first line, 11px high of centre. */}
+            <StopBadge tone={tone} word={word} />
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="flex min-w-0 items-center gap-2">
                 {/* A stop is named in the same hand as a Mate: it is a place
@@ -910,33 +942,20 @@ function EnvironmentRows<T extends RosterCandidate>({
                 {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
                   <ZeropsRoleTag label={tag} />
                 )}
-                {release ? (
-                  <ReleaseVerb
-                    contents={flow.releaseContents}
-                    onRelease={flow.onRelease}
-                    releasing={flow.releasing}
-                  />
-                ) : null}
-              </span>
-              <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
-                {/* What is actually running here — the question the row never
-                    answered (the owner, 2026-09-19: "nothing shows what version
-                    they run"). */}
-                <span
-                  className={cn("min-w-0 truncate", version?.name === undefined && "tabular-nums")}
-                  data-zerops-surface="sidebar-environment-version"
-                >
-                  {version?.label ?? NOTHING_DEPLOYED}
-                </span>
-                {production && waitingLabel !== undefined ? (
-                  <span
-                    className="shrink-0 whitespace-nowrap"
-                    data-zerops-surface="sidebar-environment-behind"
-                  >
-                    · {waitingLabel}
-                  </span>
-                ) : null}
-                <span className="ms-auto flex shrink-0 items-center gap-0.5">
+                {/* One cluster at one height on one edge, and on the line with
+                    room for it: the verb used to sit here and the two controls
+                    a line below, three things down a staircase. It rides the
+                    name's line — which is short — so the line under it keeps
+                    its full width for the version, which was truncating to
+                    `v1.…` at 256px while `· 3 waiting` kept every character. */}
+                <span className="flex shrink-0 items-center gap-1">
+                  {release ? (
+                    <ReleaseVerb
+                      contents={flow.releaseContents}
+                      onRelease={flow.onRelease}
+                      releasing={flow.releasing}
+                    />
+                  ) : null}
                   <ZeropsRoutesMenu
                     label={`Public access of ${item.project.name}`}
                     routes={routes}
@@ -945,10 +964,52 @@ function EnvironmentRows<T extends RosterCandidate>({
                     name={name}
                     onOpenProject={onOpenProject}
                     routes={routes}
+                    links={links}
                     version={version}
                     waiting={production ? waitingInMenu : undefined}
                   />
                 </span>
+              </span>
+              <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-sidebar-muted-foreground">
+                {/* What is actually running here — the question the row never
+                    answered (the owner, 2026-09-19: "nothing shows what version
+                    they run"). */}
+                {/* The name is a fact until it can be opened. Where Gitea is
+                    signed in and the version names a commit, it is the way to
+                    what is actually in there; otherwise it stays plain text
+                    rather than becoming a link that goes nowhere. */}
+                {links === undefined || version?.label === undefined ? (
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      version?.name === undefined && "tabular-nums",
+                    )}
+                    data-zerops-surface="sidebar-environment-version"
+                  >
+                    {version?.label ?? NOTHING_DEPLOYED}
+                  </span>
+                ) : (
+                  <a
+                    className={cn(
+                      "min-w-0 truncate rounded-sm underline-offset-2 hover:text-sidebar-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden",
+                      version.name === undefined && "tabular-nums",
+                    )}
+                    data-zerops-surface="sidebar-environment-version"
+                    href={links.commit}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {version.label}
+                  </a>
+                )}
+                {production && waitingLabel !== undefined ? (
+                  <span
+                    className="shrink-0 whitespace-nowrap"
+                    data-zerops-surface="sidebar-environment-behind"
+                  >
+                    · {waitingLabel}
+                  </span>
+                ) : null}
               </span>
             </span>
           </li>

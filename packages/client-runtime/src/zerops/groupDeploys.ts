@@ -194,6 +194,8 @@ export function buildGroupEnvironmentRowInputs(input: {
   readonly services: ReadonlyArray<GroupEnvironmentService>;
   /** The version name each service runs, by service id. */
   readonly versions: ReadonlyMap<string, string>;
+  /** The repository each service is built from, by hostname (the tier's `buildFromGit`). */
+  readonly repositories?: ReadonlyMap<string, string> | undefined;
   /** Every commit status read, by {@link deployStatusKey}. */
   readonly statuses: ReadonlyMap<string, ReadonlyArray<GiteaCommitStatus>>;
 }): ReadonlyArray<GroupEnvironmentRowInput> {
@@ -214,8 +216,10 @@ export function buildGroupEnvironmentRowInputs(input: {
             : input.statuses.get(
                 deployStatusKey({ owner: input.owner, hostname: service.hostname, sha }),
               );
+        const repository = input.repositories?.get(service.hostname);
         return {
           hostname: service.hostname,
+          ...(repository === undefined ? {} : { repository }),
           ...(appVersionName === undefined ? {} : { appVersionName }),
           ...(statuses === undefined ? {} : { statuses }),
         };

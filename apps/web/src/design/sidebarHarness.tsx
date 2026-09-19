@@ -29,6 +29,7 @@ import { createRoot } from "react-dom/client";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   deployedVersion,
+  deployedVersionLinks,
   type EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
@@ -258,13 +259,14 @@ const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
   pull({ mergeable: false, checks: "passing", checkWord: "Passing", ...input });
 
 function environment(
-  input: Partial<Omit<EnvironmentRow, "version">> & {
+  input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
     projectId: string;
     /** The Zerops app-version name, parsed the way the product parses it. */
     appVersionName?: string | undefined;
+    versionRepository?: string | undefined;
   },
 ): EnvironmentRow {
-  const { appVersionName, ...rest } = input;
+  const { appVersionName, versionRepository = "appdev", ...rest } = input;
   const version = deployedVersion(appVersionName);
   const source = rest.source ?? "main";
   return {
@@ -274,11 +276,21 @@ function environment(
     source,
     commit: version.commit,
     version,
+    versionRepository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone: "good",
     ...rest,
   };
 }
+
+/** A made-up Gitea, so the version reads as the link it is in the product. */
+const HARNESS_VERSION_LINKS = (row: EnvironmentRow) =>
+  deployedVersionLinks({
+    origin: "https://gitea.example",
+    owner: "acme",
+    repository: row.versionRepository,
+    commit: row.version.commit,
+  });
 
 /** What a release would put live, as `releaseContents` carries it. */
 const changes = (...subjects: ReadonlyArray<string>) => [
@@ -327,6 +339,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Rename the app in the page title",
         "Cache the link previews",
       ),
+      versionLinks: HARNESS_VERSION_LINKS,
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -421,6 +434,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         "Add a health check to the worker",
         "Drop the unused coupons table",
       ),
+      versionLinks: HARNESS_VERSION_LINKS,
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -448,6 +462,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       missing: [
         { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
       ],
+      versionLinks: HARNESS_VERSION_LINKS,
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -482,6 +497,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         ],
       ]),
       releaseOffered: false,
+      versionLinks: HARNESS_VERSION_LINKS,
       merging: () => false,
       releasing: false,
       onMerge: () => {},
@@ -503,6 +519,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           line: "not set up yet",
         },
       ],
+      versionLinks: HARNESS_VERSION_LINKS,
       merging: () => false,
       releasing: false,
       onMerge: () => {},

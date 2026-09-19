@@ -329,6 +329,7 @@ describe("the project's flow under it", () => {
     source: "main",
     commit: "3f9c1b2",
     version: { name: undefined, commit: "3f9c1b2", taggedBy: undefined, label: "3f9c1b2" },
+    versionRepository: "appdev",
     line: "main · 3f9c1b2",
     tone: "good",
   };
