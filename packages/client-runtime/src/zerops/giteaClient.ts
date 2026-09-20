@@ -804,9 +804,11 @@ export function createGiteaClient(options: GiteaClientOptions): GiteaClient {
       const answer = await optional<GiteaCommitDetailWire>(
         {
           method: "GET",
-          // `files` and `stats` come back on the repository's own commit
-          // endpoint; `git/commits` answers the object without either.
-          path: `/repos/${enc(owner)}/${enc(repo)}/commits/${enc(sha)}`,
+          // Gitea carries one commit under `git/commits`; `/commits/{sha}` is
+          // GitHub's shape and answers 404 here (measured on 1.27.2,
+          // 2026-09-20). `files` and `stats` come back with it when asked for.
+          path: `/repos/${enc(owner)}/${enc(repo)}/git/commits/${enc(sha)}`,
+          query: { stat: "true", files: "true" },
         },
         "read the commit",
       );

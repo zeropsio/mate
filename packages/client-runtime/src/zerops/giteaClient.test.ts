@@ -93,6 +93,29 @@ describe("GiteaClient request shapes", () => {
     expect(calls).toEqual(["Bearer first", "Bearer second"]);
   });
 
+  it("reads one commit on Gitea's own route, with its files and stats", async () => {
+    // `/repos/{o}/{r}/commits/{sha}` is GitHub's; Gitea answers 404 there and
+    // carries the single commit under `git/commits` (measured on 1.27.2,
+    // 2026-09-20).
+    const { client, calls } = fake([
+      {
+        body: {
+          sha: "dc8aabc",
+          commit: { message: "Add the page\n\nbody" },
+          files: [{ filename: "index.html", status: "added" }],
+          stats: { additions: 12, deletions: 0 },
+        },
+      },
+    ]);
+    const detail = await client.commitDetail("harbor", "appdev", "dc8aabc");
+    expect(calls[0]?.url).toBe(
+      `${ORIGIN}/api/v1/repos/harbor/appdev/git/commits/dc8aabc?stat=true&files=true`,
+    );
+    expect(detail?.subject).toBe("Add the page");
+    expect(detail?.files).toEqual([{ filename: "index.html", status: "added" }]);
+    expect(detail?.additions).toBe(12);
+  });
+
   it("reads a repository with the permissions this person has there", async () => {
     const { client, calls } = fake([
       {
