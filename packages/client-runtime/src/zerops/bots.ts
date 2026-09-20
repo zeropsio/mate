@@ -82,6 +82,24 @@ export function generateBotName(taken: ReadonlyArray<string>, randomBytes: Rando
 }
 
 /**
+ * The name a Mate keeps, or a fresh one when it has none.
+ *
+ * Setting up the container of a half-made Mate is a recovery, not a creation:
+ * the Mate already has a name and its Zerops project is named after it.
+ * Generating a new one renamed the row and left the project pointing at the
+ * old name — a `Lighthouse - Enzo` holding a Mate called Dara. A name that
+ * collides with a sibling's is kept too: it is already on the project, and
+ * renaming it behind the person's back is not ours to do.
+ */
+export function keptOrGeneratedBotName(
+  existing: string | undefined,
+  taken: ReadonlyArray<string>,
+  randomBytes: RandomBytes,
+): string {
+  return hasBotName(existing) ? existing.trim() : generateBotName(taken, randomBytes);
+}
+
+/**
  * Rejection sampling, so a pool size that does not divide 256 does not make the
  * first names likelier than the last.
  */
@@ -108,6 +126,6 @@ export function botDisplayName(input: {
 }
 
 /** Whether this row is showing a real agent name or falling back. */
-export function hasBotName(bot: string | undefined): boolean {
+export function hasBotName(bot: string | undefined): bot is string {
   return bot !== undefined && bot.trim().length > 0;
 }

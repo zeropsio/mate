@@ -81,6 +81,7 @@ import {
   rankZeropsCandidateForListing,
   defaultAgentForRole,
   generateBotName,
+  keptOrGeneratedBotName,
   GROUP_BEING_SET_UP_LINE,
   hasMate,
   planEnvironmentCreation,
@@ -775,7 +776,13 @@ function ZeropsProjectsContent() {
         await runZeropsCommand(
           runtime.commands.nameProjectAgent(
             project,
-            generateBotName(taken, (bytes) => crypto.getRandomValues(bytes)),
+            // A recovery keeps the name the Mate already has: the project is
+            // named after it, and a fresh name leaves the two disagreeing.
+            keptOrGeneratedBotName(
+              readZeropsGroupTags(candidate.project.tagList).bot,
+              taken,
+              (bytes) => crypto.getRandomValues(bytes),
+            ),
           ),
         );
         if (!isCurrent()) return;

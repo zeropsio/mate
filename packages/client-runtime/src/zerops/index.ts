@@ -225,7 +225,13 @@ export {
   mateEnvironmentsEmptyReason,
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
-export { botDisplayName, generateBotName, hasBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
+export {
+  botDisplayName,
+  generateBotName,
+  hasBotName,
+  keptOrGeneratedBotName,
+  ZEROPS_BOT_NAME_POOL,
+} from "./bots.ts";
 export {
   deriveGroupSlug,
   formatZeropsRegistryTags,
