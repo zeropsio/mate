@@ -21,6 +21,17 @@ describe("changeVerdict", () => {
     expect(verdict.ask).toBeUndefined();
   });
 
+  it("draws no Merge on a change that has landed, and keeps it on one that could still land", () => {
+    // Disabled is right where the verb is still ahead of the change — it says
+    // what is in the way. A change that has landed has nothing ahead of it, so
+    // the verb is not drawn at all.
+    expect(changeVerdict(change({ merged: true })).offersMerge).toBe(false);
+    const behind = changeVerdict(change({ mergeable: false }));
+    expect(behind.canMerge).toBe(false);
+    expect(behind.offersMerge).toBe(true);
+    expect(changeVerdict(change()).offersMerge).toBe(true);
+  });
+
   it("says a branch that has fallen behind cannot land, and hands it back", () => {
     const verdict = changeVerdict(change({ mergeable: false }));
     expect(verdict.kind).toBe("behind");
@@ -126,6 +137,7 @@ describe("a change that has already landed", () => {
       text: "This change has landed.",
       ask: undefined,
       canMerge: false,
+      offersMerge: false,
     });
   });
 

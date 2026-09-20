@@ -1603,15 +1603,17 @@ function ChangeVerdictPanel({
             {askLabel}
           </Button>
         )}
-        <Button
-          aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
-          data-zerops-primary-action="Merge"
-          disabled={merging || !verdict.canMerge}
-          onClick={onMerge}
-          size="sm"
-        >
-          {flowVerbLabel("merge", merging)}
-        </Button>
+        {verdict.offersMerge ? (
+          <Button
+            aria-label={verdict.canMerge ? undefined : `Merge: ${verdict.text}`}
+            data-zerops-primary-action="Merge"
+            disabled={merging || !verdict.canMerge}
+            onClick={onMerge}
+            size="sm"
+          >
+            {flowVerbLabel("merge", merging)}
+          </Button>
+        ) : null}
       </VerdictPanel>
       {/* A verb that refused says so under the verb that refused, not in a
           toast somewhere off the page. */}

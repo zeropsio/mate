@@ -51,6 +51,15 @@ export interface ChangeVerdict {
   readonly ask: string | undefined;
   /** Whether the forge would take a merge. Not whether it is a good idea. */
   readonly canMerge: boolean;
+  /**
+   * Whether *Merge* is drawn at all.
+   *
+   * Disabled is the right shape while the verb is still ahead of the change:
+   * it names what is in the way, and the change can still land once that is
+   * gone. A change that has landed has nothing ahead of it, so the verb is a
+   * dead control sitting under a sentence that says the work is over.
+   */
+  readonly offersMerge: boolean;
 }
 
 export function changeVerdict(pull: {
@@ -70,6 +79,7 @@ export function changeVerdict(pull: {
       text: "This change has landed.",
       ask: undefined,
       canMerge: false,
+      offersMerge: false,
     };
   }
   const blocked = pullRequestBlocked(pull);
@@ -80,6 +90,7 @@ export function changeVerdict(pull: {
       text: REFUSED_TEXT[blocked.kind],
       ask: blocked.ask,
       canMerge: false,
+      offersMerge: true,
     };
   }
   switch (pull.checks) {
@@ -92,6 +103,7 @@ export function changeVerdict(pull: {
         text: "The checks failed.",
         ask: pullRequestBlocked({ ...pull, mergeable: false })?.ask,
         canMerge: true,
+        offersMerge: true,
       };
     case "pending":
       return {
@@ -100,6 +112,7 @@ export function changeVerdict(pull: {
         text: REFUSED_TEXT["checks-running"],
         ask: undefined,
         canMerge: true,
+        offersMerge: true,
       };
     case "none":
       // No signal is not a good signal, so it is grey rather than green.
@@ -109,6 +122,7 @@ export function changeVerdict(pull: {
         text: "No checks ran here. Nothing is stopping this change.",
         ask: undefined,
         canMerge: true,
+        offersMerge: true,
       };
     case "passing":
       return {
@@ -117,6 +131,7 @@ export function changeVerdict(pull: {
         text: "The checks passed. Nothing is stopping this change.",
         ask: undefined,
         canMerge: true,
+        offersMerge: true,
       };
   }
 }

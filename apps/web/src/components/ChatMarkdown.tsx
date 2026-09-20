@@ -1,4 +1,5 @@
 import { ServiceBrowserLink } from "./ServiceBrowserLink";
+import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
@@ -2079,19 +2080,24 @@ const CHAT_MARKDOWN_COMPONENTS = {
           )}
         </ServiceBrowserLink>
       );
-      if (!faviconHost || !href) {
-        return link;
-      }
+      // The chip wraps whichever link this would have been: it renders that
+      // link back unchanged for every address it cannot claim as a change.
       return (
-        <Tooltip>
-          <TooltipTrigger render={link} />
-          <TooltipPopup
-            side="top"
-            className="max-w-[min(36rem,calc(100vw-2rem))] whitespace-normal leading-tight wrap-anywhere"
-          >
-            {href}
-          </TooltipPopup>
-        </Tooltip>
+        <ZeropsChangeLinkChip href={href}>
+          {!faviconHost || !href ? (
+            link
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={link} />
+              <TooltipPopup
+                side="top"
+                className="max-w-[min(36rem,calc(100vw-2rem))] whitespace-normal leading-tight wrap-anywhere"
+              >
+                {href}
+              </TooltipPopup>
+            </Tooltip>
+          )}
+        </ZeropsChangeLinkChip>
       );
     }
 
