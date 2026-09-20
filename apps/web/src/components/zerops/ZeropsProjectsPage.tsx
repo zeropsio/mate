@@ -2215,7 +2215,7 @@ function ZeropsProjectsContent() {
                 <ZeropsProjectMenu
                   actions={[]}
                   enablingServiceId={route.enablingServiceId}
-                  label={`More for ${TOOL_LABEL[kind]}`}
+                  label={`More for ${candidate.project.name || TOOL_LABEL[kind]}`}
                   offers={candidate.routeOffers}
                   onEnableRoute={(offer) => {
                     void route.enable(candidate.project.id, offer.serviceId);
@@ -2223,7 +2223,15 @@ function ZeropsProjectsContent() {
                   routes={candidate.routes}
                 />
               }
-              name={TOOL_LABEL[kind]}
+              // The project's own name, not the tool's. It is deliberately not
+              // called "Gitea" — it holds the broker and the groups' runners
+              // too (`tools.ts`, the owner 2026-09-18) — and every other card
+              // in this grid carries the name of the thing it opens. A card
+              // that says "Gitea" sends somebody to Zerops looking for a
+              // project by that name and there is none. The kind is still
+              // what the glyph and the heading say, and still what the add
+              // verb offers, where there is no project to name yet.
+              name={candidate.project.name || TOOL_LABEL[kind]}
             />
           );
         }}
