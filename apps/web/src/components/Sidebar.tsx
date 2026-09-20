@@ -199,6 +199,7 @@ import { Input } from "./ui/input";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { useAddMateIntent } from "../zerops/addMateIntent";
 import { composeZeropsFirstPrompt } from "../zerops/composeFirstPrompt";
 import { rememberZeropsEnvironment } from "../zerops/firstPromptStorage";
 import { useAskMate } from "../zerops/useAskMate";
@@ -2194,6 +2195,10 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops/new" });
   }, [isMobile, router, setOpenMobile]);
 
+  // The left menu's add button asks for a Mate on a named project; the dialog
+  // that answers lives on the projects screen, so the ask goes with it.
+  const requestAddMate = useAddMateIntent((state) => state.request);
+
   const navigateToZeropsProjects = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -3902,6 +3907,7 @@ export default function Sidebar() {
               candidates={zeropsCandidates}
               className="mb-2"
               unread={!zeropsCandidatesRead}
+              onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}
               onOpenGroup={openGroup}

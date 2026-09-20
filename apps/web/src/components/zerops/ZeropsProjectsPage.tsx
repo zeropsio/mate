@@ -37,6 +37,7 @@ import {
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
+import { useAddMateIntent } from "~/zerops/addMateIntent";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
 import {
   forgetPendingCreation,
@@ -1412,6 +1413,16 @@ function ZeropsProjectsContent() {
     },
     [creationRunning, takenBotNames],
   );
+
+  // An add asked for from the left menu, which has the project's name and the
+  // verb but not the dialog. Answered once, and only for a group still here.
+  const takeAddMateIntent = useAddMateIntent((state) => state.take);
+  useEffect(() => {
+    const groupId = takeAddMateIntent();
+    if (groupId === null) return;
+    if (!groupTree.groups.some((entry) => entry.group.groupId === groupId)) return;
+    requestEnvironment(groupId, "dev");
+  }, [groupTree.groups, requestEnvironment, takeAddMateIntent]);
 
   const createEnvironment = useCallback(
     async (groupId: string, role: ZeropsEnvironmentRole, choice: EnvironmentCreationChoice) => {

@@ -173,6 +173,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
   readonly onSelect: (candidate: T) => void;
   /** Opens the projects screen — the way out of a menu whose projects have no Mate. */
+  /** Records which project an add was asked for, before navigating to answer it. */
+  readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   readonly activeProjectId?: string | null;
   /**
@@ -203,6 +205,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
 export function SidebarZeropsTree<T extends RosterCandidate>({
   candidates,
   onSelect,
+  onAddMate,
   onBrowseProjects,
   onOpenGroup,
   activeProjectId,
@@ -403,6 +406,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             <ProjectHeader
               group={group}
               missing={getFlow?.(group.groupId)?.missing ?? []}
+              onAddMate={onAddMate}
               onBrowseProjects={onBrowseProjects}
               onOpen={
                 onOpenGroup === undefined
@@ -453,6 +457,7 @@ function ProjectHeader({
   name,
   muted = false,
   missing = NO_MISSING_TIERS,
+  onAddMate,
   onBrowseProjects,
   onOpen,
 }: {
@@ -460,6 +465,8 @@ function ProjectHeader({
   readonly name?: string;
   readonly muted?: boolean;
   readonly missing?: ReadonlyArray<MissingEnvironmentRow>;
+  /** Records which project the add was asked for; absent in the harness. */
+  readonly onAddMate?: ((groupId: string) => void) | undefined;
   readonly onBrowseProjects: () => void;
   /** Absent for the ungrouped heading, which is not a group and has no page. */
   readonly onOpen?: (() => void) | undefined;
@@ -507,7 +514,12 @@ function ProjectHeader({
                   aria-label={`Add a Mate to ${title}`}
                   className={ROW_ACTION_CLASS}
                   data-zerops-surface="sidebar-project-add-mate"
-                  onClick={onBrowseProjects}
+                  onClick={() => {
+                    // The dialog belongs to the projects screen, so the ask
+                    // travels with the navigation rather than being dropped.
+                    if (group !== undefined) onAddMate?.(group.groupId);
+                    onBrowseProjects();
+                  }}
                   type="button"
                 />
               }
