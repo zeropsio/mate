@@ -50,7 +50,11 @@ export interface BuiltCardFields {
   readonly screenshot?: { readonly src: string; readonly width?: number; readonly height?: number };
   /** `browser` only. */
   readonly browserSummary?: ZeropsOperationBrowserSummary;
-  /** Overrides `phaseFor(call.status)` — only `deploy`'s BUILD_TRIGGERED needs this. */
+  /**
+   * Overrides `phaseFor(call.status)`, where the call's own status is not what
+   * happened: `deploy`'s BUILD_TRIGGERED is still running, and a `verify` whose
+   * checks failed is failed however cleanly the tool returned.
+   */
   readonly phaseOverride?: ZeropsOperationPhase;
 }
 

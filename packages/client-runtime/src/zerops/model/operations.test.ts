@@ -814,3 +814,47 @@ function reduceFrom2(thread: { activities: ReadonlyArray<OrchestrationThreadActi
   const calls = collectZeropsCalls(thread.activities, null);
   return reduceZeropsOperations(calls);
 }
+
+describe("a verify whose checks failed", () => {
+  // The tool answers whether it could look; the checks answer what it saw. A
+  // verify that ran to completion over a service that is down came back
+  // `completed`, and the card said HEALTHY above three red steps (measured on
+  // the test account, 2026-09-20).
+  const verifyWith = (checks: ReadonlyArray<{ name: string; status: string }>) =>
+    reduceFrom([
+      {
+        id: "v1",
+        createdAt: "2026-09-20T10:00:00.000Z",
+        toolName: "zerops_verify",
+        input: { serviceHostname: "appdev" },
+        status: "completed",
+        resultText: JSON.stringify({
+          hostname: "appdev",
+          type: "runtime",
+          typeVersion: "alpine/nginx@1.22",
+          runtimeClass: "worker",
+          status: "healthy",
+          checks,
+        }),
+      },
+    ]).operations[0]!;
+
+  it("is failed, whatever the tool call's own status was", () => {
+    const verify = verifyWith([
+      { name: "service_running", status: "fail" },
+      { name: "http_internal", status: "skip" },
+      { name: "http_public", status: "fail" },
+    ]);
+    expect(verify.phase).toBe("failed");
+    expect(verify.statusWord).not.toBe("Healthy");
+    expect(verify.closing).toBe("2 of 3 checks failed.");
+  });
+
+  it("stays healthy when nothing failed, so a skipped check is not a failure", () => {
+    const verify = verifyWith([
+      { name: "service_running", status: "pass" },
+      { name: "http_public", status: "skip" },
+    ]);
+    expect(verify.phase).toBe("done");
+  });
+});

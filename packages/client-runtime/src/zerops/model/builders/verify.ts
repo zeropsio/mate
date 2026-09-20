@@ -20,7 +20,7 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const card = decoded.card?.kind === "verify" ? decoded.card : undefined;
-  const phase = phaseFor(call.status);
+  const callPhase = phaseFor(call.status);
   // `payloads.ts` folds the all-services shape's summary prose into
   // `hostname` when there is no single service — that prose is never a
   // subject, so the only trustworthy source is whether the call itself named
@@ -40,6 +40,17 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
   );
   const passed = steps.filter((s) => s.state === "done").length;
   const failedCount = steps.filter((s) => s.state === "failed").length;
+  /**
+   * The tool answers whether it could look; the checks answer what it saw.
+   *
+   * A verify over a service that was down came back `completed` — the look
+   * succeeded — and the card said HEALTHY above "service running: failed" and
+   * "http public: failed" (measured on the test account, 2026-09-20). A green
+   * word over red steps is the one thing a status line must never do, so a
+   * card with a failed check is a failed verify whatever the call's own status
+   * was. A skipped check is not a failed one.
+   */
+  const phase = callPhase === "done" && failedCount > 0 ? "failed" : callPhase;
 
   const checkHints = isAllServices
     ? []
@@ -85,5 +96,6 @@ export function buildVerifyFields(call: ZeropsCall): BuiltCardFields {
     ]),
     target: { hostname: subject },
     hasResult: decoded.document !== undefined,
+    ...(phase === callPhase ? {} : { phaseOverride: phase }),
   };
 }
