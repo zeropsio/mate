@@ -1379,6 +1379,43 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("lucide-wrench");
   });
 
+  /**
+   * A tool call's result is not its name. The generic row is the fallback for
+   * a Zerops call no card claims, and it was printing the raw payload as the
+   * single truncated line a person reads — unopenable, because the body
+   * deduped against the label it had become (measured on the test account,
+   * 2026-09-20).
+   */
+  it("names a generic-call row after its tool, and keeps the result in the body", () => {
+    const resultText = '{"processes":null,"settled":true,"message":"Service settled."}';
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "zerops:call-devserver-1",
+            kind: "generic-call",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "activity-devserver-1",
+              createdAt: MESSAGE_CREATED_AT,
+              label: "zerops_dev_server",
+              toolTitle: "Dev server",
+              tone: "tool",
+              itemType: "mcp_tool_call",
+              toolLifecycleStatus: "completed",
+              detail: resultText,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Dev server");
+    // The payload belongs in the body the row opens, never on the row itself.
+    expect(markup).toContain("aria-expanded");
+  });
+
   it("renders an operation timeline entry through ZeropsOperationCard", () => {
     const operation: ZeropsOperation = {
       key: "call:deploy-operation",

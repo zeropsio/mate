@@ -2958,11 +2958,15 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
 }
 
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles" | "itemType">,
   workspaceRoot: string | undefined,
 ) {
   if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
+  // A tool call's result is not its name. `detail` carries the raw payload an
+  // MCP tool answered with, which belongs in the body the row opens — as the
+  // label it is a truncated line of machine text, and the body then dedupes
+  // against it and leaves the row with nothing to open.
+  if (workEntry.detail && workEntry.itemType !== "mcp_tool_call") return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
