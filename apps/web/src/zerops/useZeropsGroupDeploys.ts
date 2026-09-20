@@ -242,9 +242,10 @@ export function useZeropsGroupDeploys(input: {
           repositories: onMain.repositories,
         });
 
-        // What a project with no stage releases: the head of each production
-        // service's repository (D28). One read per service, and only for such
-        // a project — a group with a stage never issues it.
+        // What a release would put live: the head of each production service's
+        // repository, whether or not the group has a stage (D28). The comment
+        // here used to say a group with a stage never issued these reads,
+        // which `planMainHeadReads` has not done since D28 landed.
         const mainHeads = new Map<string, string>();
         if (client !== null) {
           for (const read of planMainHeadReads({

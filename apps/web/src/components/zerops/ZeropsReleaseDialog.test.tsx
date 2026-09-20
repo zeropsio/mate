@@ -44,7 +44,10 @@ describe("the release confirm", () => {
 
   it("offers nothing to confirm where nothing is waiting", () => {
     const html = render({ contents: [] });
-    expect(html).toContain("the production already runs what the stage does");
+    expect(html).toContain("production already runs every commit on main");
+    // A release lists what is merged, so the empty case names main, never a
+    // stage the group may not have (D28).
+    expect(html).not.toContain("stage");
     expect(html).not.toContain('data-zerops-surface="release-confirm-contents"');
     // The verb is still there — disabled, so the dialog never cuts an empty tag.
     expect(html).toContain("disabled");

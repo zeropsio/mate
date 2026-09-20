@@ -101,6 +101,23 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("app has nothing deployed yet");
   });
 
+  it("says where a stage's first deploy comes from, rather than sending anyone out", () => {
+    // A stage tracks main and the broker deploys the difference on its own, so
+    // the old sentence — "deploy from the Zerops dashboard or ask an agent to"
+    // — sent the reader out of the product for something already on its way
+    // (measured on the test account, 2026-09-20).
+    const html = render({ tier: "stage", outcome: { kind: "done", undeployed: ["app"] } });
+    expect(html).toContain("app has nothing deployed yet");
+    expect(html).toContain("main lands here on its own");
+    expect(html).not.toContain("Zerops dashboard");
+  });
+
+  it("says a production waits for a release", () => {
+    const html = render({ tier: "production", outcome: { kind: "done", undeployed: ["app"] } });
+    expect(html).toContain("a release names");
+    expect(html).not.toContain("Zerops dashboard");
+  });
+
   it("explains the hand-off to the container wait", () => {
     const html = render({ outcome: { kind: "handed-off" } });
     expect(html).toContain("the wait continues below");

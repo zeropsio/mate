@@ -55,7 +55,11 @@ export function ZeropsReleaseConfirm({
         <DialogTitle>{tag === undefined ? "Release" : `Release ${tag}`}</DialogTitle>
         <DialogDescription>
           {summary.total === 0
-            ? "Nothing is waiting: the production already runs what the stage does."
+            ? // What a release lists is what is merged (D28) — never what a stage
+              // happens to be running, which a group may not even have. The
+              // sentence said "what the stage does" and tied the reader's
+              // decision to a place the tag does not consult.
+              "Nothing is waiting: production already runs every commit on main."
             : summary.total === 1
               ? "One change goes live."
               : `${String(summary.total)} changes go live.`}

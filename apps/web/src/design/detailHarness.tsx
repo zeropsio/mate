@@ -190,7 +190,7 @@ const RELEASE_WAITING: ReleaseOffer = {
   onRelease: () => {},
 };
 
-/** Nothing to release: the production already runs what the stage does. */
+/** Nothing to release: production already runs every commit on main. */
 const RELEASE_NONE: ReleaseOffer = {
   offered: false,
   releasing: false,

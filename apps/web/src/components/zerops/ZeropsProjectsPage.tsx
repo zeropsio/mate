@@ -150,6 +150,8 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 /** One creation in flight, or just finished, on this screen. */
 interface EnvironmentCreationView {
   readonly name: string;
+  /** What was asked for, so the closing line knows where a first deploy comes from. */
+  readonly tier: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["tier"]>;
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
 }
@@ -1440,7 +1442,11 @@ function ZeropsProjectsContent() {
 
       setToolError(null);
       setCreationNowMs(Date.now());
-      setCreation({ name, progress: plan.steps.map((step) => ({ step, state: "queued" })) });
+      setCreation({
+        name,
+        tier: role === "stage" ? "stage" : role === "prod" ? "production" : "mate",
+        progress: plan.steps.map((step) => ({ step, state: "queued" })),
+      });
       const outcome = await runEnvironmentCreation({
         clientId: activeOrganization.id,
         steps: plan.steps,
@@ -2310,6 +2316,7 @@ function ZeropsProjectsContent() {
             setCreation(null);
           }}
           progress={creation.progress}
+          tier={creation.tier}
           {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
         />
       )}

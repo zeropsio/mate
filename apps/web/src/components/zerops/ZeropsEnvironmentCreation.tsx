@@ -26,8 +26,37 @@ export interface ZeropsEnvironmentCreationProps {
     | { readonly kind: "done"; readonly undeployed: ReadonlyArray<string> }
     | { readonly kind: "failed"; readonly error: string; readonly projectExists: boolean };
   readonly onDismiss: () => void;
+  /**
+   * What is being created, so an undeployed service can say where its first
+   * deploy comes from instead of handing the reader to another product.
+   */
+  readonly tier?: "mate" | "stage" | "production";
   /** The clock, so a running step's duration ticks; the caller owns the timer. */
   readonly nowMs: number;
+}
+
+/**
+ * What to say about services an environment came up without.
+ *
+ * Every tier fills itself, and each from somewhere different: a stage tracks
+ * `main` and the broker deploys the difference on its own; a production runs
+ * what a release names; a Mate's own services are the agent's to set up. The
+ * one sentence for all three sent the reader to the Zerops dashboard for work
+ * that was already on its way (measured 2026-09-20).
+ */
+export function undeployedNote(
+  tier: ZeropsEnvironmentCreationProps["tier"],
+  undeployed: ReadonlyArray<string>,
+): string {
+  const subject = `${undeployed.join(", ")} ${undeployed.length === 1 ? "has" : "have"} nothing deployed yet`;
+  switch (tier) {
+    case "stage":
+      return `The environment is up. ${subject} — main lands here on its own, usually within a few minutes.`;
+    case "production":
+      return `The environment is up. ${subject}: a production runs what a release names, so it fills on the next release.`;
+    default:
+      return `The environment is up. ${subject} — the agent sets the application up.`;
+  }
 }
 
 const STATE_LABEL = {
@@ -62,6 +91,7 @@ export function ZeropsEnvironmentCreation({
   progress,
   outcome,
   onDismiss,
+  tier,
   nowMs,
 }: ZeropsEnvironmentCreationProps) {
   return (
@@ -83,9 +113,7 @@ export function ZeropsEnvironmentCreation({
                 ? "The agent's container is on its way — the wait continues below."
                 : outcome.undeployed.length === 0
                   ? "The environment is up."
-                  : `The environment is up. ${outcome.undeployed.join(", ")} ${
-                      outcome.undeployed.length === 1 ? "has" : "have"
-                    } nothing deployed yet: deploy from the Zerops dashboard or ask an agent to.`}
+                  : undeployedNote(tier, outcome.undeployed)}
         </p>
       </div>
       <ProcessSteps
