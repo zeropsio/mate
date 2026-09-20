@@ -159,7 +159,6 @@ export type EnvironmentCreationStep =
    * and so the restarts this step ends with are over one container, not over
    * services that were still being created.
    */
-  | { readonly kind: "isolate-project-env" }
   /**
    * `POST /project/{id}/service-stack/import` with the group's tier for this
    * role, converted to `startWithoutCode` (`recipeTier.ts`).
@@ -270,7 +269,13 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     // one is a deployment target, and the platform mints it nothing.
     steps.push({ kind: "secure-container-token" });
     steps.push({ kind: "drop-container-delegation" });
-    steps.push({ kind: "isolate-project-env" });
+    // No isolation step. The recipe that makes the container opens
+    // `envIsolation` itself so that zcp can see the project (the owner,
+    // 2026-09-20), so closing it from inside the creation writes under a
+    // recipe that is still running — and, planned from an index that has not
+    // caught up, it failed the whole creation. The app closes it once the
+    // container answers, which is the first moment the recipe is provably
+    // done (`ZeropsProjectsPage`).
   }
   if (yaml !== null && !wholeProject) {
     steps.push({ kind: "import-recipe", role: input.role, yaml, sources });
@@ -298,8 +303,6 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Locking the container's access";
     case "drop-container-delegation":
       return "Taking back the container's one-time permit";
-    case "isolate-project-env":
-      return "Closing the project's shared variables";
     case "import-recipe":
       return "Importing the application";
     case "await-ready":

@@ -385,14 +385,13 @@ export function useZeropsProjectConnection(orgId: string | null): {
             orgId,
             source: "connect",
           });
-          // Again here, having already run at the creation call. `envIsolation`
-          // is the platform's to set — its development-container recipe writes
-          // `none` while the container is being made — and whether that lands
-          // before or after the creation call is not ours to decide: measured
-          // 2026-09-19, it went both ways across four creations of the same
-          // project. This moment is the one that cannot be too early, because
-          // the exchange above only succeeds once the container answers. The
-          // step is idempotent, so the redundant one costs a read.
+          // The one place this runs. The recipe that makes the container opens
+          // `envIsolation` itself so that zcp can see the project (the owner,
+          // 2026-09-20), so closing it any earlier writes under a recipe still
+          // running — and, planned from an index that had not caught up, it
+          // failed the whole creation (`createEnvironment.ts`). The exchange
+          // above only succeeds once the container answers, which makes this
+          // the first moment the recipe is provably done.
           //
           // A Mate left un-isolated reads every sibling's environment, its
           // agent's own login included (`projectIsolation.ts`).
@@ -400,10 +399,12 @@ export function useZeropsProjectConnection(orgId: string | null): {
             await runZeropsCommand(
               runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
             );
-          } catch {
-            // Never fatal: the person is on their way into a Mate that is up,
-            // and the creation call isolated it too. The next connect tries
-            // again, and the plan is empty once one of them has landed.
+          } catch (cause) {
+            // Not fatal — the Mate is up and the person is on their way into
+            // it — but not silent either: this is the step that keeps the
+            // agent's own login away from the project's other containers, and
+            // nothing else reconciles it today.
+            console.error("This Mate's project could not be closed off:", cause);
           }
         }
         provisioning.cancel();
@@ -1451,10 +1452,6 @@ function ZeropsProjectsContent() {
                 organization: organizationRef(activeOrganization.id),
                 ...input,
               }),
-            ),
-          isolateProjectEnvironment: ({ projectId }) =>
-            runZeropsCommand(
-              runtime.commands.isolateProjectEnv(projectRef(activeOrganization.id, projectId)),
             ),
           importProject: ({ clientId: _clientId, yaml }) =>
             runZeropsCommand(

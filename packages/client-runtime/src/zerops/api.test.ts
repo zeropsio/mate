@@ -484,34 +484,19 @@ describe("ZeropsApiClient project reads", () => {
     });
   });
 
-  it("updates the isolation variable the platform already has, when the index has not caught up", async () => {
-    let searches = 0;
+  it("writes nothing when the index has not caught up with the project", async () => {
+    // The index trails the write path: a project created a moment ago answers
+    // without the variables the platform gave it at birth. Planning from that
+    // asked for a second `envIsolation`, the platform refused it with
+    // "is not unique", and the refusal failed the creation that called it —
+    // the wizard sat on its form with the platform's words on screen
+    // (measured live 2026-09-20).
     const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/project/search")) {
-        searches += 1;
-        // The index trails the write path: a project created a moment ago
-        // answers without the variables the platform gave it at birth.
-        return jsonResponse(200, {
-          items: [
-            {
-              envList:
-                searches === 1 ? [] : [{ id: "iso-1", key: "envIsolation", content: "none" }],
-            },
-          ],
-        });
-      }
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, { items: [{ envList: [] }] });
       if (request.url.includes("/service-stack")) {
         return jsonResponse(200, {
           list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
-      if (request.method === "POST" && request.url.endsWith("/env")) {
-        return jsonResponse(400, {
-          error: {
-            code: "invalidUserInputWithText",
-            message:
-              "Project environment variable key 'envIsolation' is not unique (case insensitive).",
-          },
         });
       }
       return jsonResponse(200, {});
@@ -519,13 +504,16 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.isolateProjectEnvironment("org-1", "project-1");
+    const error = await client
+      .isolateProjectEnvironment("org-1", "project-1")
+      .catch((cause: unknown) => cause);
 
-    const put = stub.requests.find(
-      (request) => request.method === "PUT" && request.url.includes("/project-env/iso-1"),
-    );
-    expect(put).toBeDefined();
-    expect(JSON.parse(put?.body ?? "{}")).toEqual({ key: "envIsolation", content: "service" });
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect(
+      stub.requests.filter(
+        (request) => request.method !== "GET" && !request.url.endsWith("/project/search"),
+      ),
+    ).toEqual([]);
   });
 
   it("does not hide a non-permission failure behind the project search fallback", async () => {
@@ -1196,13 +1184,14 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
     expect(stub.requests).toHaveLength(1);
   });
 
-  it("drops the container's delegation and isolates the project it made", async () => {
+  it("drops the container's delegation, and closes nothing", async () => {
     // primer §7.1, measured on a project minutes old (2026-09-19): the wizard's
     // one-call path created a Mate and left a delegation on its own token.
     //
-    // Isolation runs here and again when the container answers: whether the
-    // platform's container recipe lands before or after this is not ours to
-    // decide, and the step is idempotent.
+    // Isolation is not here. The recipe that makes the container opens
+    // `envIsolation` itself so that zcp can see the project (the owner,
+    // 2026-09-20), so a creation that closed it wrote under a recipe still
+    // running; the app closes it once the container answers instead.
     const stub = recordingFetch((request) => {
       if (request.url.includes("/integration-token/list")) {
         return jsonResponse(200, {
@@ -1240,9 +1229,9 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
           url.includes("/integration-token/token-1/delegation/delegation-1"),
       ),
     ).toBe(true);
-    // The isolation reads the project's env before it plans anything, so the
-    // search is what proves it ran.
-    expect(urls.some((url) => url.includes("/project/search"))).toBe(true);
+    // The isolation would have read the project's env before planning, so the
+    // absence of the search is what proves it did not run.
+    expect(urls.some((url) => url.includes("/project/search"))).toBe(false);
   });
 
   it("does not fail a creation over a token the platform has not minted yet", async () => {
@@ -1264,8 +1253,7 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     expect(created.project.id).toBe("project-1");
     expect(stub.requests.some((request) => request.url.includes("/delegation"))).toBe(false);
-    // The isolation needs no token, so it runs either way.
-    expect(stub.requests.some((request) => request.url.includes("/project/search"))).toBe(true);
+    expect(stub.requests.some((request) => request.url.includes("/project/search"))).toBe(false);
   });
 
   it("does not issue the container write after an incomplete project response", async () => {

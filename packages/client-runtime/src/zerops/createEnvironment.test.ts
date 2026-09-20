@@ -105,10 +105,22 @@ describe("planEnvironmentCreation", () => {
       "import-container",
       "secure-container-token",
       "drop-container-delegation",
-      "isolate-project-env",
       "import-recipe",
       "await-ready",
     ]);
+  });
+
+  it("never closes the project from inside the creation", () => {
+    // The recipe that makes the container opens `envIsolation` itself so that
+    // zcp can see the project (the owner, 2026-09-20). A creation that closed
+    // it again wrote under a recipe still running, from an index that had not
+    // caught up — the platform refused the duplicate, and the refusal failed
+    // the creation: the wizard sat on its form and no project was ever
+    // connected (measured live 2026-09-20). The app closes it once the
+    // container answers instead.
+    const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
+    if (!plan.ok) throw new Error("expected a plan");
+    expect(stepKinds(plan.steps)).not.toContain("isolate-project-env");
   });
 
   it("plans no token lowering for an environment with no container", () => {
@@ -117,7 +129,6 @@ describe("planEnvironmentCreation", () => {
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).not.toContain("secure-container-token");
     expect(stepKinds(plan.steps)).not.toContain("drop-container-delegation");
-    expect(stepKinds(plan.steps)).not.toContain("isolate-project-env");
   });
 
   it("gives the new container the agents the group is signed in with", () => {
@@ -179,7 +190,6 @@ describe("environmentCreationStepLabel", () => {
       "Adding the agent container",
       "Locking the container's access",
       "Taking back the container's one-time permit",
-      "Closing the project's shared variables",
       "Importing the application",
       "Waiting for the agent",
     ]);
@@ -266,7 +276,6 @@ describe("the recipe choice", () => {
       "import-container",
       "secure-container-token",
       "drop-container-delegation",
-      "isolate-project-env",
       "await-ready",
     ]);
   });
@@ -324,7 +333,6 @@ services:
       "import-container",
       "secure-container-token",
       "drop-container-delegation",
-      "isolate-project-env",
       "await-ready",
     ]);
   });

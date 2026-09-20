@@ -47,9 +47,11 @@
  * 1. `PUT /project-env/{id}` needs `{key, content}`. A body carrying `content`
  *    alone is `400 invalidUserInput` — `{"key": ["field is required"]}` — so
  *    an update step carries the key beside the value.
- * 2. `POST /project/{pid}/env` answers with a **process** id, not the entry's.
- *    The entry's id only ever comes from `POST /project/search` →
- *    `items[0].envList[].id`, and that index trails the write path besides.
+ * 2. The entry's id only ever comes from `POST /project/search` →
+ *    `items[0].envList[].id`, and that index trails the write path. A project
+ *    made a moment ago answers without the variables it was born with, so a
+ *    read that is missing `envIsolation` is refused rather than planned from
+ *    (measured 2026-09-20).
  *
  * Together they mean a delete cannot use an id the plan was built from. So the
  * plan names the **key** to delete and puts a re-read in front of it; the
@@ -101,13 +103,6 @@ export type ProjectIsolationStep =
       readonly key: string;
       readonly content: string;
     }
-  /** `POST /project/{projectId}/env` — answers with a process id, never the entry's. */
-  | {
-      readonly kind: "create-project-env";
-      readonly key: string;
-      readonly content: string;
-      readonly sensitive: boolean;
-    }
   /**
    * The key onto the one service that needs it, as a sensitive service
    * variable. `fromEntryId` names where the caller takes the value from; the
@@ -134,6 +129,17 @@ export interface ProjectIsolationInput {
 }
 
 /**
+ * A plan, or a refusal to make one from a read that cannot be complete.
+ *
+ * `read-incomplete` is not a project in a bad state: the platform writes
+ * `envIsolation` onto every project it makes, so a list without it is a read
+ * that has not caught up. The caller retries; it never writes.
+ */
+export type ProjectIsolationPlan =
+  | { readonly ok: true; readonly steps: ReadonlyArray<ProjectIsolationStep> }
+  | { readonly ok: false; readonly reason: "read-incomplete" };
+
+/**
  * The ordered platform calls that close one project, or an empty list when it
  * is already closed and holds no project-wide key.
  *
@@ -141,20 +147,17 @@ export interface ProjectIsolationInput {
  * projects screen as well as once at creation, and a project that has already
  * been through it must produce no writes and no restarts.
  */
-export function planProjectIsolation(
-  input: ProjectIsolationInput,
-): ReadonlyArray<ProjectIsolationStep> {
+export function planProjectIsolation(input: ProjectIsolationInput): ProjectIsolationPlan {
   const steps: Array<ProjectIsolationStep> = [];
 
   const isolation = input.envList.find((entry) => entry.key === PROJECT_ENV_ISOLATION_KEY);
-  if (isolation === undefined) {
-    steps.push({
-      kind: "create-project-env",
-      key: PROJECT_ENV_ISOLATION_KEY,
-      content: PROJECT_ENV_ISOLATION_SERVICE,
-      sensitive: false,
-    });
-  } else if (isolation.content !== PROJECT_ENV_ISOLATION_SERVICE) {
+  // Absent means the read trails, never that the project is missing it: the
+  // platform gives every project the setting at birth. Writing one from here
+  // asked the platform to create a duplicate, which it refused with
+  // `is not unique`, which failed the creation that called it
+  // (measured 2026-09-20).
+  if (isolation === undefined) return { ok: false, reason: "read-incomplete" };
+  if (isolation.content !== PROJECT_ENV_ISOLATION_SERVICE) {
     steps.push({
       kind: "update-project-env",
       entryId: isolation.id,
@@ -180,7 +183,7 @@ export function planProjectIsolation(
     steps.push({ kind: "delete-project-env", key: ZCP_API_KEY_ENV_KEY });
   }
 
-  if (steps.length === 0) return [];
+  if (steps.length === 0) return { ok: true, steps: [] };
 
   // The container last: it is the Mate itself, so restarting it ends whatever
   // session is watching this, and by then every other container has already
@@ -192,14 +195,13 @@ export function planProjectIsolation(
     steps.push({ kind: "restart-service", serviceName: service.name });
   }
 
-  return steps;
+  return { ok: true, steps };
 }
 
 /** A short, human label per step. Never prints a value (`planProjectIsolation`). */
 export function projectIsolationStepLabel(step: ProjectIsolationStep): string {
   switch (step.kind) {
     case "update-project-env":
-    case "create-project-env":
       return "Closing the project's shared variables";
     case "move-key-to-service":
       return "Moving the container's key onto the container";

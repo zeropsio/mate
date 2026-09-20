@@ -674,10 +674,6 @@ function isProjectWriteAdmissionError(cause: unknown): boolean {
  * there. Its words are the only marker: the code is the generic
  * `invalidUserInput` every bad body gets.
  */
-function isDuplicateProjectEnvKey(cause: unknown): boolean {
-  return cause instanceof ZeropsApiError && /is not unique/i.test(cause.message);
-}
-
 function waitForPromiseOrAbort<T>(
   promise: Promise<T>,
   signal: AbortSignal | null | undefined,
@@ -1898,7 +1894,7 @@ export class ZeropsApiClient {
       );
     }
 
-    await this.#secureMateContainer(input.clientId, project.id, signal, beforeWrite);
+    await this.#dropMateContainerDelegations(input.clientId, project.id, signal, beforeWrite);
 
     return { project, serviceName };
   }
@@ -1912,13 +1908,13 @@ export class ZeropsApiClient {
    * primer §7.1): one delegation still on the container's own token, and
    * nothing reconciles it afterwards.
    *
-   * Isolation runs here **and** when the container answers
-   * (`connectContainer`). Not belt and braces for its own sake: `envIsolation`
-   * is the platform's to set, its development-container recipe writes `none`
-   * while the container is being made, and whether that lands before or after
-   * this call is not ours to decide — measured 2026-09-19, it went both ways
-   * across four creations of the same project. The step is idempotent, so the
-   * one that is too early costs a read and the one that is in time wins.
+   * Isolation is **not** here, and the distinction is the container recipe's:
+   * the recipe that makes a zcp opens `envIsolation` itself, so that zcp can
+   * see the project (the owner, 2026-09-20). Closing it from here writes
+   * either into a read that has not caught up or under a recipe still
+   * running, and it was the second that failed the creation outright. It runs
+   * once the container answers instead (`connectContainer`), which is the
+   * first moment the recipe is provably done.
    *
    * Idempotent: a token with no delegation is a read, so a retried creation is
    * safe. The token is the platform's to mint and is looked for once — this
@@ -1926,7 +1922,7 @@ export class ZeropsApiClient {
    * `sleep` from the caller — and a creation is never failed over one that has
    * not appeared.
    */
-  async #secureMateContainer(
+  async #dropMateContainerDelegations(
     clientId: string,
     projectId: string,
     signal?: AbortSignal,
@@ -1949,7 +1945,6 @@ export class ZeropsApiClient {
         );
       }
     }
-    await this.isolateProjectEnvironment(clientId, projectId, signal, beforeWrite);
   }
 
   /**
@@ -2153,13 +2148,23 @@ export class ZeropsApiClient {
       this.listProjectServices(projectId, signal),
     ]);
     const own = services.filter((service) => service.isSystem !== true);
-    const steps = planProjectIsolation({
+    const plan = planProjectIsolation({
       envList,
       services: own.map((service) => ({
         name: service.name,
         isControlPlane: isZcpService(service),
       })),
     });
+    // The read has not caught up with a project this new. Nothing is written
+    // from a list that cannot be complete; the caller comes back. `uncertain`
+    // is the conservative kind here — nothing was written at all, and the step
+    // is idempotent, so a caller that re-reads loses nothing.
+    if (!plan.ok)
+      throw new ZeropsApiError(
+        "This project's variables have not all appeared yet, so its isolation was left alone.",
+        "uncertain",
+      );
+    const { steps } = plan;
     if (steps.length === 0) return;
 
     const write = {
@@ -2187,46 +2192,6 @@ export class ZeropsApiClient {
             },
             write,
           );
-          break;
-        case "create-project-env":
-          try {
-            await this.#request(
-              `/project/${projectId}/env`,
-              {
-                method: "POST",
-                signal: signal ?? null,
-                body: JSON.stringify({
-                  key: step.key,
-                  content: step.content,
-                  sensitive: step.sensitive,
-                }),
-              },
-              write,
-            );
-          } catch (cause) {
-            // The search this planned from is an index that trails the write
-            // path, so a project made a moment ago answers without the
-            // variables the platform gave it at birth — and the creation is
-            // refused as a duplicate. The entry is there; write it instead of
-            // failing the whole isolation (measured 2026-09-18).
-            if (!isDuplicateProjectEnvKey(cause)) throw cause;
-            fresh = await this.readProjectEnv(clientId, projectId, signal);
-            const existing = fresh.find(
-              (entry) => entry.key.toLowerCase() === step.key.toLowerCase(),
-            );
-            if (existing === undefined) throw cause;
-            if (existing.content !== step.content) {
-              await this.#request(
-                `/project-env/${existing.id}`,
-                {
-                  method: "PUT",
-                  signal: signal ?? null,
-                  body: JSON.stringify({ key: step.key, content: step.content }),
-                },
-                write,
-              );
-            }
-          }
           break;
         case "move-key-to-service": {
           const serviceId = serviceIdByName.get(step.serviceName);

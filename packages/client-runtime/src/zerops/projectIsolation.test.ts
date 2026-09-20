@@ -7,6 +7,7 @@ import {
   PROJECT_ENV_ISOLATION_SERVICE,
   ZCP_API_KEY_ENV_KEY,
   type ProjectEnvEntry,
+  type ProjectIsolationPlan,
   type ProjectIsolationService,
   type ProjectIsolationStep,
 } from "./projectIsolation.ts";
@@ -29,8 +30,13 @@ const KEY: ProjectEnvEntry = {
 };
 const SSH: ProjectEnvEntry = { id: "env-ssh", key: "sshIsolation", content: "vpn service@zcp" };
 
-function kinds(steps: ReadonlyArray<ProjectIsolationStep>): ReadonlyArray<string> {
-  return steps.map((step) => step.kind);
+function stepsOf(plan: ProjectIsolationPlan): ReadonlyArray<ProjectIsolationStep> {
+  if (!plan.ok) throw new Error(`expected a plan, got ${plan.reason}`);
+  return plan.steps;
+}
+
+function kinds(plan: ProjectIsolationPlan): ReadonlyArray<string> {
+  return stepsOf(plan).map((step) => step.kind);
 }
 
 describe("planProjectIsolation", () => {
@@ -41,7 +47,7 @@ describe("planProjectIsolation", () => {
       envList: [OPEN, KEY, SSH],
       services: [APP, DB, ZCP],
     });
-    expect(plan).toEqual([
+    expect(stepsOf(plan)).toEqual([
       {
         kind: "update-project-env",
         entryId: "env-iso",
@@ -64,18 +70,21 @@ describe("planProjectIsolation", () => {
 
   it("plans nothing for a project already isolated and holding no key", () => {
     // The whole reason this is safe on every projects-screen read.
-    expect(planProjectIsolation({ envList: [CLOSED, SSH], services: [APP, ZCP] })).toEqual([]);
+    expect(stepsOf(planProjectIsolation({ envList: [CLOSED, SSH], services: [APP, ZCP] }))).toEqual(
+      [],
+    );
   });
 
-  it("creates the setting when the project has no entry for it", () => {
-    // A POST answers with a process id, never the entry's, which is why the
-    // delete below can only run after a re-read.
-    const plan = planProjectIsolation({ envList: [KEY], services: [ZCP] });
-    expect(plan[0]).toEqual({
-      kind: "create-project-env",
-      key: PROJECT_ENV_ISOLATION_KEY,
-      content: PROJECT_ENV_ISOLATION_SERVICE,
-      sensitive: false,
+  it("refuses to plan from a read that is missing the setting", () => {
+    // The platform puts `envIsolation` on every project it makes, so a list
+    // without it is an incomplete read — `POST /project/search` is an index
+    // that trails the write path, and a project made a moment ago answers
+    // without the variables it was born with (measured 2026-09-20). Planning
+    // from it created a duplicate `envIsolation`, which the platform refused
+    // with `is not unique`, which failed the whole creation.
+    expect(planProjectIsolation({ envList: [KEY], services: [ZCP] })).toEqual({
+      ok: false,
+      reason: "read-incomplete",
     });
   });
 
@@ -90,7 +99,9 @@ describe("planProjectIsolation", () => {
       "restart-service",
       "restart-service",
     ]);
-    expect(plan).not.toContainEqual(expect.objectContaining({ kind: "move-key-to-service" }));
+    expect(stepsOf(plan)).not.toContainEqual(
+      expect.objectContaining({ kind: "move-key-to-service" }),
+    );
   });
 
   it("closes a stage project that is open but carries no key", () => {
@@ -114,14 +125,14 @@ describe("planProjectIsolation", () => {
 
   it("names the key to delete, never an id read before the writes", () => {
     const plan = planProjectIsolation({ envList: [OPEN, KEY], services: [ZCP] });
-    const remove = plan.find((step) => step.kind === "delete-project-env");
+    const remove = stepsOf(plan).find((step) => step.kind === "delete-project-env");
     expect(remove).toEqual({ kind: "delete-project-env", key: ZCP_API_KEY_ENV_KEY });
   });
 
   it("writes the update with its key beside its content", () => {
     // `PUT /project-env/{id}` with content alone is 400 invalidUserInput
     // ("key: field is required"), for the owner too (measured 2026-09-16).
-    const [step] = planProjectIsolation({ envList: [OPEN], services: [APP] });
+    const [step] = stepsOf(planProjectIsolation({ envList: [OPEN], services: [APP] }));
     expect(step).toMatchObject({ key: PROJECT_ENV_ISOLATION_KEY, content: "service" });
   });
 
@@ -130,14 +141,14 @@ describe("planProjectIsolation", () => {
     // sibling variables it captured at start until it restarts.
     const plan = planProjectIsolation({ envList: [OPEN], services: [ZCP, APP, DB] });
     expect(
-      plan
+      stepsOf(plan)
         .filter((step) => step.kind === "restart-service")
         .map((step) => (step.kind === "restart-service" ? step.serviceName : "")),
     ).toEqual(["app", "db", "zcp"]);
   });
 
   it("restarts nothing when there is nothing to write", () => {
-    expect(planProjectIsolation({ envList: [CLOSED], services: [ZCP, APP] })).toEqual([]);
+    expect(stepsOf(planProjectIsolation({ envList: [CLOSED], services: [ZCP, APP] }))).toEqual([]);
   });
 
   it("leaves sshIsolation alone", () => {
@@ -159,7 +170,7 @@ describe("planProjectIsolation", () => {
 describe("projectIsolationStepLabel", () => {
   it("labels every step a plan can contain, and prints no value", () => {
     const plan = planProjectIsolation({ envList: [OPEN, KEY], services: [APP, ZCP] });
-    expect(plan.map(projectIsolationStepLabel)).toEqual([
+    expect(stepsOf(plan).map(projectIsolationStepLabel)).toEqual([
       "Closing the project's shared variables",
       "Moving the container's key onto the container",
       "Re-reading the project's variables",

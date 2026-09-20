@@ -104,7 +104,6 @@ export interface EnvironmentCreationPlatform {
    * platform verb: the decision is the pure planner's and is tested there,
    * and the entry ids the writes need never leave the caller that read them.
    */
-  readonly isolateProjectEnvironment: (input: { readonly projectId: string }) => Promise<void>;
   /** Reads the latest shared-model projection; this callback performs no platform request. */
   readonly readObservedServices: (
     projectId: string,
@@ -328,12 +327,6 @@ export async function runEnvironmentCreation(
             });
             assertCurrent();
           }
-          break;
-        }
-        case "isolate-project-env": {
-          await input.platform.isolateProjectEnvironment({
-            projectId: requireProject(projectId),
-          });
           break;
         }
         case "import-recipe": {
