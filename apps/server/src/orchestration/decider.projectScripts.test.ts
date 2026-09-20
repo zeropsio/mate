@@ -426,6 +426,9 @@ it.layer(NodeServices.layer)("decider project scripts", (it) => {
           ]),
           interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           runtimeMode: "approval-required",
+          // What the Mate has not been told, carried with the turn that wakes
+          // it — never stored on the message.
+          agentNotes: ["appdev #2 landed: Add the Harbor page"],
           createdAt: now,
         },
         readModel,
@@ -442,6 +445,7 @@ it.layer(NodeServices.layer)("decider project scripts", (it) => {
         return;
       }
       expect(turnStartEvent.payload).toMatchObject({
+        agentNotes: ["appdev #2 landed: Add the Harbor page"],
         threadId: ThreadId.make("thread-1"),
         messageId: asMessageId("message-user-1"),
         modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-5.3-codex", [

@@ -1347,7 +1347,6 @@ const make = Effect.gen(function* () {
         }) ?? process.cwd();
       const generationInput = {
         messageText: message.text,
-        ...(event.payload.agentNotes !== undefined ? { agentNotes: event.payload.agentNotes } : {}),
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
       };
@@ -1502,6 +1501,9 @@ const make = Effect.gen(function* () {
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         messageText: message.text,
+        // Only here: a title is written from what the person said, and a note
+        // about somebody else's merge is not part of that.
+        ...(event.payload.agentNotes !== undefined ? { agentNotes: event.payload.agentNotes } : {}),
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: event.payload.modelSelection }
