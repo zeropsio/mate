@@ -219,6 +219,31 @@ export async function removeFailedZeropsProject(input: {
   return { ok: true };
 }
 
+/** How many times a connect asks for its Mate's project to be closed off. */
+const ISOLATION_ATTEMPTS = 3;
+const ISOLATION_RETRY_MS = 1500;
+
+/**
+ * A command refused because the account is mid-verification — not because it
+ * may not run.
+ *
+ * The platform never sees such a command: the runtime holds it back while a
+ * verification round is in flight, and a round is started by anything that
+ * asks for the account to be read again. The reason is a "not yet", and a
+ * caller that treats it as an answer gives up on a write it was allowed to
+ * make (`commands.ts`).
+ */
+export function isAccessNotYetVerified(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "_tag" in cause &&
+    cause._tag === "ZeropsCommandAdmissionError" &&
+    "reason" in cause &&
+    cause.reason === "access-unverified"
+  );
+}
+
 export function retryZeropsProjectConnection(input: {
   readonly connectError: string | null;
   readonly readyOrigin: string | null;
@@ -373,11 +398,6 @@ export function useZeropsProjectConnection(orgId: string | null): {
           setUpgradeOrigin(result.upgradeRequired ? containerOrigin : null);
           return;
         }
-        // The environment is real now. When the lists last reloaded — right
-        // after the creation writes — the project was still NEW with no
-        // container, which the left menu rightly leaves out; here it is ACTIVE
-        // with a zcp, so every mounted list reloads and the row appears.
-        refreshZeropsCandidates();
         const projectId = provisioning.state?.projectId;
         if (projectId && orgId) {
           await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {
@@ -395,18 +415,35 @@ export function useZeropsProjectConnection(orgId: string | null): {
           //
           // A Mate left un-isolated reads every sibling's environment, its
           // agent's own login included (`projectIsolation.ts`).
-          try {
-            await runZeropsCommand(
-              runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
-            );
-          } catch (cause) {
-            // Not fatal — the Mate is up and the person is on their way into
-            // it — but not silent either: this is the step that keeps the
-            // agent's own login away from the project's other containers, and
-            // nothing else reconciles it today.
-            console.error("This Mate's project could not be closed off:", cause);
+          for (let attempt = 1; attempt <= ISOLATION_ATTEMPTS; attempt += 1) {
+            try {
+              await runZeropsCommand(
+                runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
+              );
+              break;
+            } catch (cause) {
+              // "Not yet" is worth coming back for; anything else is the
+              // answer. A verification round is seconds long and the account
+              // starts one on its own schedule, so a connect that lands
+              // inside one must not be the reason a Mate stays open.
+              if (attempt < ISOLATION_ATTEMPTS && isAccessNotYetVerified(cause)) {
+                await new Promise((resolve) => setTimeout(resolve, ISOLATION_RETRY_MS));
+                continue;
+              }
+              // Not fatal — the Mate is up and the person is on their way into
+              // it — but not silent either: this is the step that keeps the
+              // agent's own login away from the project's other containers,
+              // and nothing else reconciles it today.
+              console.error("This Mate's project could not be closed off:", cause);
+              break;
+            }
           }
         }
+        // The lists reload once the project is closed, never before it. A
+        // refresh starts a fresh verification round, and a command issued
+        // while the account is being verified is refused outright — so asking
+        // for the row to appear first was asking the write above to lose.
+        refreshZeropsCandidates();
         provisioning.cancel();
         setCreatingIn(null);
         await navigate({ to: "/", search: { environmentId: String(result.environmentId) } });

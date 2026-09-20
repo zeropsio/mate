@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
+  isAccessNotYetVerified,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
@@ -474,6 +475,26 @@ describe("a status word's hand", () => {
     expect(dots.length).toBeGreaterThan(0);
     for (const dot of dots) {
       expect(dot).toMatch(/\bsentence\b|\bdotOnly\b/u);
+    }
+  });
+});
+
+describe("isAccessNotYetVerified", () => {
+  it("tells a round in flight from an answer", () => {
+    // Only the first is worth waiting out. A denial is the account's answer,
+    // and an expiry needs a new verification, not another go at the same one.
+    expect(
+      isAccessNotYetVerified({
+        _tag: "ZeropsCommandAdmissionError",
+        reason: "access-unverified",
+        message: "Platform write access is not verified.",
+      }),
+    ).toBe(true);
+    for (const reason of ["access-denied", "access-expired"]) {
+      expect(isAccessNotYetVerified({ _tag: "ZeropsCommandAdmissionError", reason })).toBe(false);
+    }
+    for (const cause of [null, undefined, "access-unverified", new Error("access-unverified")]) {
+      expect(isAccessNotYetVerified(cause)).toBe(false);
     }
   });
 });
