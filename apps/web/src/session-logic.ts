@@ -25,7 +25,7 @@ import {
 } from "@t3tools/contracts";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 
-import { TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
+import { humanizeToolName, TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
 import type {
   ZeropsCall,
   ZeropsCallStatus,
@@ -1765,7 +1765,10 @@ function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
     turnId: (call.turnId as TurnId | null) ?? null,
     toolCallId: call.id,
     label: call.toolName,
-    toolTitle: call.toolName,
+    // The row a person reads is named after the tool, not after the wire
+    // name: `zerops_dev_server` is "Dev server". `label` keeps the raw name,
+    // which is what lifecycle-marker identity is keyed on.
+    toolTitle: humanizeToolName(call.toolName),
     tone: "tool",
     itemType: "mcp_tool_call",
     toolInput: call.input,

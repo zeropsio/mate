@@ -2805,6 +2805,52 @@ describe("deriveTimelineEntries — Zerops model entries", () => {
     }
   });
 
+  it.each([
+    { toolName: "zerops_mount", title: "Mount" },
+    { toolName: "zerops_discover", title: "Discover" },
+    { toolName: "zerops_dev_server", title: "Dev server" },
+  ])("names a generic $toolName row for a person, not for a machine", ({ toolName, title }) => {
+    const call: ZeropsCall = {
+      id: "call-generic-1",
+      turnId: null,
+      toolName,
+      input: { action: "status" },
+      status: "completed",
+      truncated: false,
+      startedAt: "2026-02-23T00:00:03.000Z",
+      anchorActivityId: "activity-generic-1",
+      rowIds: new Set(["activity-generic-1"]),
+      agentInternal: false,
+      resultText: '{"processes":null,"settled":true}',
+    };
+
+    const entries = deriveTimelineEntries(
+      [],
+      [],
+      [],
+      [],
+      [
+        {
+          kind: "generic-call",
+          key: call.id,
+          anchorAt: call.startedAt,
+          anchorActivityId: call.anchorActivityId,
+          call,
+        },
+      ],
+    );
+
+    const [entry] = entries;
+    expect(entry?.kind).toBe("generic-call");
+    if (entry?.kind === "generic-call") {
+      // The row is named after the tool. The result stays on `detail`, which
+      // is the expanded body's material — never the line a person reads.
+      expect(entry.entry.toolTitle).toBe(title);
+      expect(entry.entry.label).toBe(toolName);
+      expect(entry.entry.detail).toBe('{"processes":null,"settled":true}');
+    }
+  });
+
   it("keeps existing behavior when no zerops entries are given (default arg)", () => {
     const entries = deriveTimelineEntries(
       [],
