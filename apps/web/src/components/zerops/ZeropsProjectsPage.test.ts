@@ -479,6 +479,17 @@ describe("a status word's hand", () => {
   });
 });
 
+describe("the tools card", () => {
+  it("is named after the project it opens, never after the tool", () => {
+    // `toolProjectName` deliberately does not call it "Gitea" — the project
+    // holds the broker and the groups' runners as well — so a card saying
+    // "Gitea" named something the account does not contain, and sent anybody
+    // who went looking for it in Zerops to a project that is not there.
+    expect(projectsPageSource).toContain("name={candidate.project.name || TOOL_LABEL[kind]}");
+    expect(projectsPageSource).not.toContain("name={TOOL_LABEL[kind]}");
+  });
+});
+
 describe("isAccessNotYetVerified", () => {
   it("tells a round in flight from an answer", () => {
     // Only the first is worth waiting out. A denial is the account's answer,
