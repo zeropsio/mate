@@ -439,10 +439,15 @@ export function useZeropsProjectConnection(orgId: string | null): {
             }
           }
         }
-        // The lists reload once the project is closed, never before it. A
-        // refresh starts a fresh verification round, and a command issued
-        // while the account is being verified is refused outright — so asking
-        // for the row to appear first was asking the write above to lose.
+        // The environment is real now. When the lists last reloaded — right
+        // after the creation writes — the project was still NEW with no
+        // container, which the left menu rightly leaves out; here it is ACTIVE
+        // with a zcp, so every mounted list reloads and the row appears.
+        //
+        // Once the project is closed, though, never before it: a refresh
+        // starts a fresh verification round, and a command issued while the
+        // account is being verified is refused outright — so asking for the
+        // row to appear first was asking the write above to lose.
         refreshZeropsCandidates();
         provisioning.cancel();
         setCreatingIn(null);
