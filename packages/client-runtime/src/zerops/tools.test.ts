@@ -240,13 +240,14 @@ describe("planGiteaProjectSetup", () => {
     {
       name: "the project and the token exist, the import never ran",
       input: { project: { id: "p-1" }, services: [], tokenNames: ["mate-broker"] },
-      // Nobody holds the value of a token minted before a tab closed.
-      expected: ["regenerate-broker-token", "import-services"],
+      // Nobody holds the value of a token minted before a tab closed, and a
+      // regenerate carries no grants, so the tool project is granted again.
+      expected: ["regenerate-broker-token", "grant-broker-token", "import-services"],
     },
     {
       name: "the import was accepted but only half of it appeared",
       input: { project: { id: "p-1" }, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
-      expected: ["regenerate-broker-token", "import-services"],
+      expected: ["regenerate-broker-token", "grant-broker-token", "import-services"],
     },
     {
       name: "all done",
@@ -260,7 +261,12 @@ describe("planGiteaProjectSetup", () => {
     {
       name: "services without a project is not a state, and plans a project",
       input: { project: undefined, services: [{ name: "web" }], tokenNames: ["mate-broker"] },
-      expected: ["create-project", "regenerate-broker-token", "import-services"],
+      expected: [
+        "create-project",
+        "regenerate-broker-token",
+        "grant-broker-token",
+        "import-services",
+      ],
     },
   ];
 

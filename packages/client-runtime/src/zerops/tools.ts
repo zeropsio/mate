@@ -374,6 +374,17 @@ export type ZeropsGiteaSetupAction =
   | "mint-broker-token"
   /** The token exists but nobody holds its value, because the import never ran. */
   | "regenerate-broker-token"
+  /**
+   * `PUT /client/{id}/integration-token/{tokenId}` — the tool project, at
+   * `BASIC_USER`, added to the grants a regenerate left untouched.
+   *
+   * A regenerate replaces a token's value and nothing else, so a token that
+   * outlived the Gitea it was minted for reaches every group environment and
+   * not the new tool project: the broker then reads the project (org
+   * `READ_ONLY`) and every write into it is refused, which is a runner that is
+   * never imported and a job queued for ever.
+   */
+  | "grant-broker-token"
   /** `POST /project/{id}/service-stack/import` with the filled document. */
   | "import-services";
 
@@ -404,11 +415,12 @@ export function planGiteaProjectSetup(
     input.project !== undefined && names.has(GITEA_WEB_SERVICE) && names.has(GITEA_BROKER_SERVICE);
   if (imported) return actions;
 
-  actions.push(
-    input.tokenNames.includes(GITEA_BROKER_TOKEN_NAME)
-      ? "regenerate-broker-token"
-      : "mint-broker-token",
-  );
+  if (input.tokenNames.includes(GITEA_BROKER_TOKEN_NAME)) {
+    actions.push("regenerate-broker-token", "grant-broker-token");
+  } else {
+    // A mint carries the grant in its own body.
+    actions.push("mint-broker-token");
+  }
   actions.push("import-services");
   return actions;
 }

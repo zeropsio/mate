@@ -28,6 +28,7 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
+import { withBrokerProjectGrant } from "./groupEnvironments.ts";
 import {
   withZeropsBotTag,
   withZeropsGroupTags,
@@ -1446,6 +1447,33 @@ export class ZeropsApiClient {
                     beforeWrite,
                   )
                 ).token;
+          break;
+        }
+        case "grant-broker-token": {
+          // A regenerate replaces a value and nothing else, so a token that
+          // outlived an earlier Gitea reaches every group environment and not
+          // this project. Without this the broker reads the project on its org
+          // role and every write into it is refused: no runner is imported and
+          // a job queues for ever (measured 2026-09-20).
+          const target = requireToolProject(project);
+          const broker = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
+          // Nothing to re-grant: the mint above carried the grant in its body.
+          if (broker === undefined) break;
+          const write = withBrokerProjectGrant(broker.projects, target.id);
+          if (!write.ok) throw new ZeropsApiError(write.reason, "uncertain");
+          // The same array back means the broker already reaches the project.
+          if (write.grants === broker.projects) break;
+          await this.setIntegrationTokenProjects(
+            {
+              clientId: input.clientId,
+              tokenId: broker.id,
+              name: GITEA_BROKER_TOKEN_NAME,
+              projects: write.grants,
+              roleCode: broker.roleCode ?? "READ_ONLY",
+            },
+            signal,
+            beforeWrite,
+          );
           break;
         }
         case "import-services": {
