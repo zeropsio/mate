@@ -20,7 +20,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     checkWord: "checks passed",
     mergeable: true,
     merged: false,
-  mergedAt: undefined,
+    mergedAt: undefined,
     headSha: "b21d904c",
     baseBranch: "main",
     line: "appdev #5",
