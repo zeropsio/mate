@@ -26,6 +26,7 @@ import {
   stopAttention,
   type FlowPullRequest,
   type FlowRelease,
+  planReleaseReads,
 } from "./projectFlow.ts";
 
 const VERA = "tsXR3xnURPSvsy4zp1EaYA";
@@ -632,5 +633,48 @@ describe("a change with nothing wrong with it", () => {
       const state = changeState({ number: 4, mergeable: true, checks });
       expect(state?.tone).toBe(changeVerdict({ number: 4, mergeable: true, checks }).tone);
     }
+  });
+});
+
+describe("planReleaseReads", () => {
+  const table: ReadonlyArray<{
+    readonly name: string;
+    readonly heads: ReadonlyArray<readonly [string, string]>;
+    readonly running: ReadonlyArray<readonly [string, string]>;
+    readonly expected: ReadonlyArray<{ service: string; head: string; from: string | undefined }>;
+  }> = [
+    {
+      name: "a service production already runs is not read",
+      heads: [["web", "aaa"]],
+      running: [["web", "aaa"]],
+      expected: [],
+    },
+    {
+      name: "a service production runs behind is read from what it runs",
+      heads: [["web", "bbb"]],
+      running: [["web", "aaa"]],
+      expected: [{ service: "web", head: "bbb", from: "aaa" }],
+    },
+    {
+      // The first release: production runs nothing, so there is no base to
+      // compare against — and the head is exactly what would go live.
+      name: "a service production runs nothing of is read with no base",
+      heads: [["web", "bbb"]],
+      running: [],
+      expected: [{ service: "web", head: "bbb", from: undefined }],
+    },
+    {
+      name: "every service is decided on its own",
+      heads: [
+        ["api", "ccc"],
+        ["web", "bbb"],
+      ],
+      running: [["api", "ccc"]],
+      expected: [{ service: "web", head: "bbb", from: undefined }],
+    },
+  ];
+
+  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
+    expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
   });
 });

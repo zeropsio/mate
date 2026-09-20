@@ -407,6 +407,8 @@ export {
   releaseContentsSentence,
   releaseWaitingLabel,
   type ReleaseContentsSummary,
+  type ReleaseRead,
+  planReleaseReads,
   releaseContentsSummary,
   releaseRow,
   sidebarChangeLabel,

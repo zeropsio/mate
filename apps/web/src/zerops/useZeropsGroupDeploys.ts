@@ -28,6 +28,7 @@ import {
   planDeployedVersionReads,
   planMainHeadReads,
   readGroupEnvironments,
+  planReleaseReads,
   releaseDeploys,
   RECIPE_TIER_PATHS,
   type GiteaCommit,
@@ -265,15 +266,23 @@ export function useZeropsGroupDeploys(input: {
         const running = releaseDeploys(rowInputs).production;
         const releaseContents: Array<ReleaseContent> = [];
         if (client !== null) {
-          for (const [service, head] of mainHeads) {
-            const from = running.get(service);
-            if (from === undefined || from === head) continue;
-            const repo = onMain.repositories.get(service) ?? service;
-            const commits = await client
-              .compareCommits(group.slug, repo, from, head)
-              .catch((): ReadonlyArray<GiteaCommit> => []);
+          for (const read of planReleaseReads(mainHeads, running)) {
+            const repo = onMain.repositories.get(read.service) ?? read.service;
+            // No base is a first release: the head is the whole of what would
+            // go live, so it is named rather than skipped.
+            const commits =
+              read.from === undefined
+                ? await client
+                    .commitDetail(group.slug, repo, read.head)
+                    .then((detail): ReadonlyArray<GiteaCommit> =>
+                      detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }],
+                    )
+                    .catch((): ReadonlyArray<GiteaCommit> => [])
+                : await client
+                    .compareCommits(group.slug, repo, read.from, read.head)
+                    .catch((): ReadonlyArray<GiteaCommit> => []);
             if (controller.signal.aborted) return;
-            if (commits.length > 0) releaseContents.push({ service, commits });
+            if (commits.length > 0) releaseContents.push({ service: read.service, commits });
           }
         }
 

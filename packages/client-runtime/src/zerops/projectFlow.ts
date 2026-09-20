@@ -438,6 +438,42 @@ export function releaseContentsSummary(
 }
 
 /**
+ * One service's read for *what would go live*: the commit production runs, and
+ * the commit `main` is at.
+ *
+ * A service production already runs is not read at all. A service production
+ * runs **nothing** of is read with no base: a first release has no `from` to
+ * compare against, and skipping it is what made a brand-new production answer
+ * "nothing is waiting" while the row went on offering *Release* (measured
+ * 2026-09-20).
+ */
+export interface ReleaseRead {
+  readonly service: string;
+  /** Where `main` is. */
+  readonly head: string;
+  /** What production runs, or `undefined` when it runs nothing yet. */
+  readonly from: string | undefined;
+}
+
+/**
+ * What to read so a release can say what it puts live, service by service.
+ *
+ * Pure: the reads themselves are the caller's (rule R1).
+ */
+export function planReleaseReads(
+  mainHeads: ReadonlyMap<string, string>,
+  running: ReadonlyMap<string, string>,
+): ReadonlyArray<ReleaseRead> {
+  const reads: Array<ReleaseRead> = [];
+  for (const [service, head] of mainHeads) {
+    const from = running.get(service);
+    if (from === head) continue;
+    reads.push({ service, head, from });
+  }
+  return reads;
+}
+
+/**
  * `12 waiting` — what a stop's row has width for at 256px, where the sentence
  * wrapped onto a second line and pushed the route off the row.
  *
