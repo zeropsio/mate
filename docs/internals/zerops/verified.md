@@ -1980,3 +1980,57 @@ token counter and **no `<zerops-update>` block**. A file probe placed in `buildS
 drop is somewhere between the client command and the provider. What shipped is inert rather than
 harmful: an unused optional field on `ThreadTurnStartCommand` and a pure `withAgentNotes` with its
 own tests. **Open: find the real turn path with a probe that survives a restart.**
+
+## The whole chain from an empty organization, on released 0.11.32 — 2026-09-20
+
+The org was wiped to nothing through the API — four projects, the Gitea among them — and the run
+driven from the sign-in screen: project, Mate, agent, application, pull request, merge, stage,
+production, release. Everything below was measured on that run.
+
+| Step        | What happened                                                                                                                                                                                        |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in     | A fresh browser profile, the documented order, first try. **No inventory wedge** — the app rendered the empty state directly.                                                                        |
+| Project     | `Harbor` + its first Mate `Ada` + `Headquarters`, both ACTIVE in **50 s**; services up a few minutes later.                                                                                          |
+| The Mate    | **Server 0.11.32**, the released build.                                                                                                                                                              |
+| Application | One prompt. Ada bootstrapped `appdev`/`appstage`, wrote the app, deployed, verified, pushed, opened **appdev #1**. Worked for **7 m 59 s**.                                                          |
+| Merge       | From the app. The project screen then said _"Nothing open. Every change the Mates made has landed."_                                                                                                 |
+| Stage       | Added from the row. It filled **by itself** — `main · c054699 · Deployed` — with no further action: the broker's catch-up pass.                                                                      |
+| Production  | Added from the row, agent switch off by default (_"an agent with a shell in production is a separate decision"_).                                                                                    |
+| Release     | _"1 change is merged and not live"_ → **"Release v0.1.0 — One change goes live."** naming #1 → `v0.1.0 · RELEASE · app c054699 · Approved` → `production · release · v0.1.0 · Deployed`.             |
+| Live        | Both `app-2ff2-3000.prg1.zerops.app` and `app-2fed-3000.prg1.zerops.app` answer **HTTP 200** with `<title>Harbor</title>`. **No _Publish app_ step was needed** — that open item does not reproduce. |
+
+Five things fixed the day before proved themselves on data none of them had seen:
+
+| Fix                                | The proof                                                                                                                                                                                                                                                                               |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The broker grant (`82c862874`)     | `mate-broker` was minted 2026-09-17 and outlived the wiped Gitea, so this was the **regenerate** path — the one that used to skip the new tool project. It holds `BASIC_USER` on Headquarters and on Harbor - Ada, `READ_ONLY` on the org, and the four dead projects' grants are gone. |
+| The first release (`f9a89bd66`)    | A production running nothing took its first release through the dialog, which named the change instead of disabling itself.                                                                                                                                                             |
+| Gitea's commit route (`c7246e685`) | The confirm listed #1's subject, which is the read that used to 404.                                                                                                                                                                                                                    |
+| The verify status (`240cb05a0`)    | `VERIFY · APPDEV` came back **CHECKS FAILED — 2 of 4 checks failed**, red, over red steps. The same call's own status was `completed`.                                                                                                                                                  |
+| `undeployedNote` (`da14aefbc`)     | The stage said _"main lands here on its own, usually within a few minutes"_ and the production _"a production runs what a release names, so it fills on the next release"_ — each tier told where its code comes from.                                                                  |
+
+The change-landed rows fired on the real timeline — `group #1 landed`, `group #2 landed`,
+`appdev #1 landed`. No chip appeared, because Ada named its pull request in prose rather than by
+url; the chip only claims an address.
+
+The rebuilt Gitea was audited again with a person's session token: **sixteen** secret-shaped
+variables across `web`, `broker` and `db`, every one REDACTED, `DB_ADMIN_PASSWORD` and
+`OIDC_CLIENT_SECRET` included.
+
+## Four things this run found — 2026-09-20
+
+| Finding                                                       | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A tool call's result was its label**                        | Three rows in Ada's conversation read `{"processes":null,"settled":true,…}`, `{"project":{"id":"ff5oT2VA…` and `## Status Phase: develop-active — intent: …` — the last a **28,229-character** workflow envelope, truncated to one line. `workEntryPreview` prefers `detail`, which for an MCP call is the raw payload; the expanded body then dedupes against the label it had become, so the row could not even be opened. An MCP call's result is the body's material now, and the row is named by its tool. |
+| **And the name was the wire's, not the person's**             | With no result to print, the same row read `Zerops_dev_server`. `humanizeToolName` already existed for the error builder and says `Dev server`; the row takes it. `label` keeps the raw name, which is what lifecycle-marker identity is keyed on.                                                                                                                                                                                                                                                              |
+| **A tier being created was still a tier being asked for**     | For **75 seconds** the screen showed `stage · STAGE · No services yet · Preparing` and, one line below, `Stage · STAGE · not set up yet · Add stage`. A tier is offered when the recipe on main has it and no declaration fills it, and the declaration reaches the group repo minutes after the environment exists. The account knows sooner — the project carries its role as a tag from birth — so the held tiers are excluded. The verb was disabled throughout, so nothing could be double-made.           |
+| **A Mate's stale claim survives in the sidebar, unqualified** | Ada's last message ends _"pushed to the appdev repository as a pull request awaiting your merge"_, and an hour later the sidebar row still says so — merged, released, live in production. The chip and the `change-landed` row answer this inside the conversation; **a sidebar snippet can carry neither**. Not fixed: the snippet is a slice of prose, and what would correct it is a fact about a different object.                                                                                         |
+
+Two behaviours worth keeping, both correct:
+
+- The Mate screen appeared, then read _"This environment is not reachable right now. It may be
+  restarting, or it may be gone."_ for about twenty seconds while `zcp` genuinely restarted after
+  its recipe. The message was true and the screen **healed by itself** when the container returned.
+- The Claude Code authorization session lives in the container, not in the local pair. The pair was
+  killed and restarted mid-authorization and the dialog came back as _"Waiting for you to finish
+  signing in"_ with **Continue authorization**, on the same PKCE challenge.
