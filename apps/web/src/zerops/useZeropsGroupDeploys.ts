@@ -23,6 +23,7 @@
 import {
   buildGroupEnvironmentRowInputs,
   deployStatusKey,
+  environmentTierForRole,
   missingEnvironmentRows,
   planDeployStatusReads,
   planDeployedVersionReads,
@@ -40,6 +41,7 @@ import {
   importReadyTier,
   type GroupEnvironmentTier,
   type MissingEnvironmentRow,
+  type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef, useState } from "react";
 
@@ -65,6 +67,8 @@ export interface ZeropsDeployGroup {
   readonly projects: ReadonlyArray<{
     readonly projectId: string;
     readonly name: string;
+    /** Its role tag, which says which tier it fills before any declaration does. */
+    readonly role?: ZeropsEnvironmentRole | undefined;
     /** Its runtime services — the ones that hold code the broker deploys. */
     readonly services: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
   }>;
@@ -115,6 +119,7 @@ function readKey(
       group.slug,
       group.projects.map((project) => [
         project.projectId,
+        project.role ?? "",
         project.services.map((service) => service.serviceId).toSorted(),
       ]),
     ]),
@@ -191,7 +196,13 @@ export function useZeropsGroupDeploys(input: {
             : await readTiersOnMain(client, group.slug).catch((): TiersOnMain => NO_TIERS);
         const tiersOnMain = onMain.tiers;
         if (controller.signal.aborted) return;
-        const missing = missingEnvironmentRows({ tiersOnMain, declarations });
+        // A tier the account already holds a project for is not missing, even
+        // while its declaration is still on its way to the group repo.
+        const filledTiers = group.projects.flatMap((project) => {
+          const tier = environmentTierForRole(project.role);
+          return tier === undefined ? [] : [tier];
+        });
+        const missing = missingEnvironmentRows({ tiersOnMain, declarations, filledTiers });
         if (declarations.length === 0 && pullRequests.length === 0 && missing.length === 0)
           continue;
 

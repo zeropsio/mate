@@ -443,6 +443,25 @@ describe("missingEnvironmentRows", () => {
       declared: [],
       want: ["Stage", "Production"],
     },
+    {
+      // A tier whose environment is being created has no declaration on the
+      // group repo yet — the recipe change lands minutes later. Asking for it
+      // meanwhile put "Stage — not set up yet — Add stage" directly under the
+      // stage it was watching come up (measured on the test account,
+      // 2026-09-20: the row stood for 75 seconds).
+      name: "does not ask for a tier the account already holds a project for",
+      tiersOnMain: ["stage", "production"],
+      declared: [],
+      filled: ["stage"],
+      want: ["Production"],
+    },
+    {
+      name: "asks for nothing once both tiers are held, declared or not",
+      tiersOnMain: ["stage", "production"],
+      declared: ["production"],
+      filled: ["stage"],
+      want: [],
+    },
   ] as const;
 
   for (const tc of cases) {
@@ -450,6 +469,7 @@ describe("missingEnvironmentRows", () => {
       const rows = missingEnvironmentRows({
         tiersOnMain: tc.tiersOnMain,
         declarations: tc.declared.map((tier) => ({ tier })),
+        ...("filled" in tc ? { filledTiers: tc.filled } : {}),
       });
       expect(rows.map((row) => row.name)).toEqual(tc.want);
       for (const row of rows) {

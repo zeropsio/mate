@@ -39,10 +39,21 @@
 
 import type { ZeropsRegistry } from "./groupRegistry.ts";
 import { readZeropsGroupTags } from "./groups.ts";
+import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsProjectGrant } from "./groupReach.ts";
 
 /** What a group environment is: a stage, or the one production. */
 export type GroupEnvironmentTier = "stage" | "production";
+
+/**
+ * The tier a project's role tag puts it in, or `undefined` for a role that is
+ * not an environment of the group — a Mate's own project holds `dev`.
+ */
+export function environmentTierForRole(
+  role: ZeropsEnvironmentRole | undefined,
+): GroupEnvironmentTier | undefined {
+  return role === "stage" ? "stage" : role === "prod" ? "production" : undefined;
+}
 
 /** One entry of `environments.yaml`. */
 export interface GroupEnvironment {
@@ -435,8 +446,7 @@ export function halfMadeGroupEnvironments(input: {
   for (const project of input.projects) {
     const tags = readZeropsGroupTags(project.tagList);
     if (tags.groupId === undefined) continue;
-    const tier: GroupEnvironmentTier | undefined =
-      tags.role === "stage" ? "stage" : tags.role === "prod" ? "production" : undefined;
+    const tier = environmentTierForRole(tags.role);
     if (tier === undefined) continue;
     const group = input.registry.groups.find((entry) => entry.groupId === tags.groupId);
     if (group === undefined) continue;

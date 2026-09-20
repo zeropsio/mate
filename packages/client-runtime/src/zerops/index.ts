@@ -467,6 +467,7 @@ export {
   findBrokerToken,
   NO_BROKER_REASON,
   planBrokerProjectGrant,
+  environmentTierForRole,
   planEnvironmentWrite,
   readGroupEnvironments,
   withBrokerProjectGrant,

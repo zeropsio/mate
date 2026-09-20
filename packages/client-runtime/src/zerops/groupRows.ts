@@ -113,12 +113,20 @@ export function missingEnvironmentRows(input: {
   /** The tiers whose import is on the group repo's `main`. */
   readonly tiersOnMain: ReadonlyArray<GroupEnvironmentTier>;
   readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "tier">>;
+  /**
+   * The tiers the account already holds a project for. A declaration lands on
+   * the group repo minutes after the environment is made, and until it does
+   * the tier is declared nowhere — so the row that asks for it stood directly
+   * under the environment the person was watching come up.
+   */
+  readonly filledTiers?: ReadonlyArray<GroupEnvironmentTier> | undefined;
 }): ReadonlyArray<MissingEnvironmentRow> {
   const declared = new Set(input.declarations.map((entry) => entry.tier));
+  const held = new Set(input.filledTiers ?? []);
   const offered = new Set(input.tiersOnMain);
   const order: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
   return order
-    .filter((tier) => offered.has(tier) && !declared.has(tier))
+    .filter((tier) => offered.has(tier) && !declared.has(tier) && !held.has(tier))
     .map((tier) => ({
       kind: "missing-environment",
       tier,

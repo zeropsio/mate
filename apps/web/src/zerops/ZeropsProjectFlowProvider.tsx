@@ -84,9 +84,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
           .map((project) => {
             const services = inventory.services.get(project.id);
+            const tags = readZeropsGroupTags(project.tagList ?? []);
             return {
               projectId: project.id,
               name: project.name,
+              ...(tags.role === undefined ? {} : { role: tags.role }),
               services:
                 services?.status === "resolved"
                   ? summarizeEnvironmentServices(services.services).deployable
