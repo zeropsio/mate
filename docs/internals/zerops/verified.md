@@ -2017,6 +2017,35 @@ The rebuilt Gitea was audited again with a person's session token: **sixteen** s
 variables across `web`, `broker` and `db`, every one REDACTED, `DB_ADMIN_PASSWORD` and
 `OIDC_CLIENT_SECRET` included.
 
+### The second loop, and the rollback
+
+A second change was put through the same chain, because the first release takes a path the second
+never does — `commitDetail` for a production running nothing, `compareCommits` once it runs
+something.
+
+- Ada opened **appdev #2** and this time wrote the pull request's url into its message, so the chip
+  rendered: `appdev #2 · Unchecked`, inline in the prose. Clicking it **opened a right-panel tab
+  beside the conversation and did not navigate** — the url was unchanged, the tab said
+  `#2 · appdev → main · Ada`, and carried the state, the verb, a comment box offering _Ask Ada_,
+  and the five commits.
+- The merge asks first: _"Merge #2 — It squashes onto main, and the stage runs what main says."_
+- Within **twenty seconds** of the merge all three surfaces had moved: the chip read
+  `appdev #2 · Landed`, the sidebar's pull-request row was gone, and `appdev #2 landed` took its
+  place on the timeline.
+- The stage deployed the merge by itself (`main · 3fbaa7e`), and the confirm read
+  **"Release v0.1.1 — One change goes live."** naming #2 — `compareCommits` between production's
+  `c054699` and main's `3fbaa7e`, the read the first release never makes.
+- `VERIFY · APPDEV` came back **All 4 checks passed**, green. The same builder that said CHECKS
+  FAILED earlier in the run: the status word moves in both directions.
+- **Rollback**: _Roll back to this_ on `v0.1.0` cut **`v0.1.2 · RELEASE · app c054699`** — a new tag
+  carrying an earlier tag's manifest, never a name reused. Production took it and the page lost the
+  line #2 had added, while the stage kept it. A rollback moves the production and leaves what
+  tracks main alone.
+
+Ada also handled the squash-merge branch trap on its own, and said so: _"Pull request #1 was
+squash-merged, so the Mate branch on Gitea still carried the old pre-merge commits and my first push
+was rejected as non-fast-forward. I rebased onto the remote branch, then merged main back in."_
+
 ## Four things this run found — 2026-09-20
 
 | Finding                                                       | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
