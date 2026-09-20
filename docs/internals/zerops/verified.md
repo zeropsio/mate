@@ -1896,3 +1896,26 @@ the first diagnosis was wrong and the test written for it passed.
 | **A deleted project is `400 projectNotFound`, never a 404**    | `GET /project/{id}` on a project that has been deleted answers HTTP **400** with `error.code: "projectNotFound"` and "Project not found." — measured 2026-09-20. `errorKindFor` already separates "gone" from "malformed" by the code rather than the status, so this is handled; it is recorded because a test that reaches for `404` is modelling something the platform never sends.                                                                                                                                                                                                                  |
 | **The round is held by `observing`, not by the project reads** | `verifyOperableProjects` drops a `not-found` project, so the deleted ones never reach the projection at all — a test that put one there passed, and the first diagnosis (a projection deadlock) was wrong. What holds the round is the other half of `complete`: every demanded interest must report `status === "observing"`, and after the projects it had subscribed to vanish underneath it, the organization's interest reports neither `observing` nor blocked. `failedInterest` stays false, so nothing is said. The cause sits in the data runtime's interest registration and is **not fixed**. |
 | **The screen had no way off itself**                           | A round that rejects puts its reason on screen with a retry. One that never settles showed a spinner and no words — `ZeropsLandingWait`'s label is `sr-only` — and the renewal timer is armed only once a round has completed, so nothing retried. After twenty seconds the screen now says it is still checking and offers the retry and sign-out the failure path always had. Measured live: the affordance appeared, and **Try again** recovered the wedge in one click. The symptom is fixed, the cause is not.                                                                                      |
+
+## A draft branch per page load, and none ever removed — 2026-09-20
+
+`createDraftStorage` gives every document its own branch of the composer draft
+(`${key}:tab:${branchId}`) so one tab can never overwrite another's, and a reload resumes from its
+own previous branch. Nothing removes a branch: `removeItem` writes a tombstone rather than
+deleting, and a branch whose tab closed is never visited again. **Measured on the audit browser:
+160 `t3code:composer-drafts:v1:tab:*` keys on one origin.** One per page load, for the life of the
+browser profile, against a ~5MB origin quota — and `accountLocalStorage.setItem` does not catch, so
+the eventual `QuotaExceededError` is thrown at whatever was writing.
+
+Left unfixed on purpose, because every cheap prune can destroy something a person typed:
+
+| Rule                                     | What it costs                                                                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep current, previous and `:latest`     | A second tab open right now is none of those unless it wrote most recently. Pruning takes its unsent draft.                                                         |
+| Keep the N most recent, by an index key  | Same loss beyond N open tabs, and it needs an index that is itself written on every load.                                                                           |
+| Drop branches holding a tombstone        | A tombstone is not inert: it is what stops `getItem` inheriting an older branch. Removing one can resurrect a draft the person cleared.                             |
+| Drop branches whose draft has no content | Safe, and would reclaim most of the 160 — but `draftStorage` is deliberately generic over its value and parsing the draft there couples it to the composer's shape. |
+
+The last is the one worth building; it needs the emptiness test to be handed in rather than
+inferred. Whether a bounded number of tabs may lose an unsent draft is the owner's call, not a
+detail to settle inside a storage adapter.
