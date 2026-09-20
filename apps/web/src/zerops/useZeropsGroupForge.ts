@@ -35,6 +35,8 @@ export const GROUP_FORGE_REFRESH_MS = 60_000;
 
 export interface ZeropsGroupForgeState {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /** The landed ones, newest first as the forge lists them. */
+  readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowRelease>;
   /** Every `v*` tag, so the next one can be suggested without reusing a name. */
@@ -44,6 +46,13 @@ export interface ZeropsGroupForgeState {
 export type ZeropsGroupForges = ReadonlyMap<string, ZeropsGroupForgeState>;
 
 const EMPTY: ZeropsGroupForges = new Map();
+
+/**
+ * How many of a repository's closed changes are read for the landings a
+ * conversation places. A group's closed list only grows, and a change that
+ * landed long before the conversation was opened has nothing to add to it.
+ */
+const MERGED_PER_REPOSITORY = 20;
 
 export function useZeropsGroupForge(input: {
   readonly giteaOrigin: string | undefined;
@@ -116,6 +125,22 @@ async function readForge(client: GiteaClient, slug: string): Promise<ZeropsGroup
     }
   }
 
+  // The landed ones, so a conversation can place its own work landing on its
+  // timeline. No checks are read for them: a change that is over is not waiting
+  // on CI, and the read is per repository already. Capped, because a long-lived
+  // group's closed list is unbounded and only the recent ones sit inside a
+  // conversation anybody still has open.
+  const merged: Array<FlowPullRequest> = [];
+  for (const repository of repositories) {
+    const closed = await client
+      .listPullRequests(slug, repository.name, { state: "closed" })
+      .catch(() => []);
+    for (const pull of closed.slice(0, MERGED_PER_REPOSITORY)) {
+      if (pull.merged !== true) continue;
+      merged.push(flowPullRequest({ repository: repository.name, pull, checks: [] }));
+    }
+  }
+
   const tags = await client.listTags(slug, GROUP_REPOSITORY).catch(() => []);
   const releaseTags = tags.filter((tag) => isReleaseTag(tag.name)).sort(byVersionDescending);
   const releases: Array<FlowRelease> = [];
@@ -135,7 +160,7 @@ async function readForge(client: GiteaClient, slug: string): Promise<ZeropsGroup
     });
   }
 
-  return { pullRequests, releases, tags: releaseTags.map((tag) => tag.name) };
+  return { pullRequests, merged, releases, tags: releaseTags.map((tag) => tag.name) };
 }
 
 /** Newest release first, by version rather than by name. */

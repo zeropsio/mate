@@ -50,6 +50,8 @@ export interface ZeropsProjectFlow {
   readonly missing: ReadonlyArray<MissingEnvironmentRow>;
   /** Every open pull request on the project's repositories, code and recipe. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /** The changes that have landed — what a conversation's timeline places. */
+  readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   readonly release: ZeropsReleaseOffer;

@@ -81,6 +81,7 @@ import {
   GlobeIcon,
   HammerIcon,
   MessageCircleIcon,
+  GitPullRequestArrow,
   Minimize2Icon,
   SearchIcon,
   SquarePenIcon,
@@ -1278,6 +1279,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "activity-group" ||
                   row.kind === "turn-plan" ||
                   row.kind === "operation" ||
+                  row.kind === "change-landed" ||
                   row.kind === "generic-call"
                 ? "pb-2"
                 : "pb-4",
@@ -1299,6 +1301,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
+      {row.kind === "change-landed" ? <ChangeLandedTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1430,6 +1433,40 @@ function ContextCompactionTimelineRow({
       <span className="flex shrink-0 items-center gap-1.5">
         <Minimize2Icon aria-hidden="true" className="size-3" />
         {row.label}
+      </span>
+      <span className="h-px flex-1 bg-border/70" />
+    </div>
+  );
+}
+
+/**
+ * One of this Mate's changes landing.
+ *
+ * A separator, not a card: nothing the agent did caused it, and the person is
+ * reading the work in order — "appdev #1 landed" belongs between the message
+ * that asked for it and whatever came next, at the moment it happened. The
+ * chip inside the message is what is clicked; this is what is scanned.
+ */
+function ChangeLandedTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "change-landed" }>;
+}) {
+  // Named by repository here, never by `line`: a recipe change's line is just
+  // `#2`, because the row it was written for already wears the group's tag.
+  // A timeline has no tag, and "#2 landed" beside "appdev #1 landed" says
+  // nothing about where it landed.
+  const label = `${row.event.repository} #${String(row.event.number)} landed`;
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      className="mx-auto flex w-full max-w-3xl items-center gap-3 py-1 text-muted-foreground text-xs"
+    >
+      <span className="h-px flex-1 bg-border/70" />
+      <span className="flex shrink-0 items-center gap-1.5">
+        <GitPullRequestArrow aria-hidden="true" className="size-3" />
+        {label}
       </span>
       <span className="h-px flex-1 bg-border/70" />
     </div>

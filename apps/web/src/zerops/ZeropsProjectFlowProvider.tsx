@@ -141,6 +141,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         environmentInputs,
         missing: deployed?.missing ?? [],
         pullRequests: forge?.pullRequests ?? [],
+        merged: forge?.merged ?? [],
         releases: (forge?.releases ?? []).map((release, index) => releaseRow(release, index)),
         release: {
           ...releaseOffer({

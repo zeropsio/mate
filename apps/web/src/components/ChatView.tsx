@@ -179,6 +179,7 @@ import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
+import { useZeropsChangeLandedEvents } from "../zerops/useZeropsChangeLandedEvents";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -2810,6 +2811,9 @@ export default function ChatView(props: ChatViewProps) {
     optimisticUserMessages,
     projectHandoffMessagePreviews,
   ]);
+  // A change of this Mate's landing is a fact about the forge, not about the
+  // agent, so it does not come from the activity stream.
+  const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
     projection: TimelineEntriesProjection;
@@ -2823,6 +2827,7 @@ export default function ChatView(props: ChatViewProps) {
       previous?.threadKey === activeThreadKey ? previous.projection : null,
       turnPlans,
       zeropsThreadModel.entries,
+      changeLandedEvents,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     return projection.entries;
@@ -2834,6 +2839,7 @@ export default function ChatView(props: ChatViewProps) {
     turnPlans,
     workLogEntries,
     zeropsThreadModel.entries,
+    changeLandedEvents,
   ]);
   // While the thread detail reloads, repaint this thread's own last timeline
   // instead of an empty pane.

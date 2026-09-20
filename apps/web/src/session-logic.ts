@@ -32,6 +32,7 @@ import type {
   ZeropsOperation,
   ZeropsTimelineEntry,
 } from "@t3tools/client-runtime/zerops/model";
+import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 
 import {
   isImageAttachment,
@@ -227,6 +228,19 @@ export type TimelineEntry =
       kind: "generic-call";
       createdAt: string;
       entry: WorkLogEntry;
+    }
+  | {
+      id: string;
+      /**
+       * One of this Mate's changes landing, placed at the moment it landed.
+       *
+       * Not projected from an activity, because nothing the agent did caused
+       * it: a person merged, or the broker did, and the conversation is where
+       * the person reads the work in order.
+       */
+      kind: "change-landed";
+      createdAt: string;
+      event: ChangeLandedEvent;
     };
 
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
@@ -1812,6 +1826,10 @@ function timelineEntryFromZerops(entry: ZeropsTimelineEntry): TimelineEntry {
       };
 }
 
+function timelineEntryFromChangeLanded(event: ChangeLandedEvent): TimelineEntry {
+  return { id: `zerops:${event.key}`, kind: "change-landed", createdAt: event.landedAt, event };
+}
+
 /** A total order, so merging two sorted runs equals sorting their union. */
 function compareTimelineEntries(left: TimelineEntry, right: TimelineEntry): number {
   return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
@@ -1865,6 +1883,7 @@ export interface TimelineEntriesProjection {
   readonly turnPlans: ReadonlyArray<TurnPlanEntry>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
   readonly zeropsEntries: ReadonlyArray<ZeropsTimelineEntry>;
+  readonly changeEvents: ReadonlyArray<ChangeLandedEvent>;
   readonly entries: TimelineEntry[];
 }
 
@@ -1995,14 +2014,16 @@ export function deriveTimelineEntriesWithState(
   previous: TimelineEntriesProjection | null = null,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
   zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
+  changeEvents: ReadonlyArray<ChangeLandedEvent> = [],
 ): TimelineEntriesProjection {
-  const sources = { messages, proposedPlans, turnPlans, workEntries, zeropsEntries };
+  const sources = { messages, proposedPlans, turnPlans, workEntries, zeropsEntries, changeEvents };
   if (
     previous !== null &&
     hasSameArrayItems(previous.proposedPlans, proposedPlans) &&
     hasSameArrayItems(previous.turnPlans, turnPlans) &&
     hasSameArrayItems(previous.workEntries, workEntries) &&
-    hasSameArrayItems(previous.zeropsEntries, zeropsEntries)
+    hasSameArrayItems(previous.zeropsEntries, zeropsEntries) &&
+    hasSameArrayItems(previous.changeEvents, changeEvents)
   ) {
     const entries = replaceStreamingTimelineMessages(messages, previous);
     if (entries !== null) return { ...sources, entries };
@@ -2013,7 +2034,8 @@ export function deriveTimelineEntriesWithState(
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
     hasExactArrayPrefix(previous.turnPlans, turnPlans) &&
     hasExactArrayPrefix(previous.workEntries, workEntries) &&
-    hasExactArrayPrefix(previous.zeropsEntries, zeropsEntries)
+    hasExactArrayPrefix(previous.zeropsEntries, zeropsEntries) &&
+    hasExactArrayPrefix(previous.changeEvents, changeEvents)
   ) {
     const suffix = [
       ...messages.slice(previous.messages.length).map(timelineEntryFromMessage),
@@ -2021,6 +2043,7 @@ export function deriveTimelineEntriesWithState(
       ...turnPlans.slice(previous.turnPlans.length).map(timelineEntryFromTurnPlan),
       ...workEntries.slice(previous.workEntries.length).map(timelineEntryFromWork),
       ...zeropsEntries.slice(previous.zeropsEntries.length).map(timelineEntryFromZerops),
+      ...changeEvents.slice(previous.changeEvents.length).map(timelineEntryFromChangeLanded),
     ].toSorted(compareTimelineEntries);
     return { ...sources, entries: mergeTimelineEntrySuffix(previous.entries, suffix) };
   }
@@ -2032,6 +2055,7 @@ export function deriveTimelineEntriesWithState(
       ...turnPlans.map(timelineEntryFromTurnPlan),
       ...workEntries.map(timelineEntryFromWork),
       ...zeropsEntries.map(timelineEntryFromZerops),
+      ...changeEvents.map(timelineEntryFromChangeLanded),
     ].toSorted(compareTimelineEntries),
   };
 }
@@ -2042,6 +2066,7 @@ export function deriveTimelineEntries(
   workEntries: ReadonlyArray<WorkLogEntry>,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
   zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
+  changeEvents: ReadonlyArray<ChangeLandedEvent> = [],
 ): TimelineEntry[] {
   return deriveTimelineEntriesWithState(
     messages,
@@ -2050,6 +2075,7 @@ export function deriveTimelineEntries(
     null,
     turnPlans,
     zeropsEntries,
+    changeEvents,
   ).entries;
 }
 

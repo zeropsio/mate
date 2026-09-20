@@ -14,6 +14,7 @@ import {
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@t3tools/contracts";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
@@ -318,6 +319,13 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       entry: WorkLogEntry;
+    }
+  | {
+      /** One of this Mate's changes landing — a fact about the forge, not about the agent. */
+      kind: "change-landed";
+      id: string;
+      createdAt: string;
+      event: ChangeLandedEvent;
     }
   | {
       kind: "working";
@@ -1336,6 +1344,16 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "change-landed") {
+      nextRows.push({
+        kind: "change-landed",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        event: timelineEntry.event,
+      });
+      continue;
+    }
+
     const assistantTurnStillInProgress =
       timelineEntry.message.role === "assistant" &&
       unsettledTurnId !== null &&
@@ -1551,6 +1569,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // it rather than a hand-picked field subset, so a streamed-in
       // `toolInput` (or any other field the row shows) is not missed.
       return a.createdAt === bg.createdAt && Equal.equals(a.entry, bg.entry);
+    }
+
+    case "change-landed": {
+      const bl = b as typeof a;
+      // The event is rebuilt each read, so identity would never hold; what
+      // makes it the same row is the change and the moment it landed.
+      return a.createdAt === bl.createdAt && a.event.key === bl.event.key;
     }
 
     case "work": {

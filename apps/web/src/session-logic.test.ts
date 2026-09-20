@@ -1819,6 +1819,35 @@ describe("deriveTimelineEntries", () => {
     streaming: true,
   };
 
+  it("places a change landing by the moment it landed, not by when it was read", () => {
+    const message = (id: string, createdAt: string) => ({
+      id: MessageId.make(id),
+      role: "assistant" as const,
+      text: id,
+      turnId: TurnId.make("t"),
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const landed = {
+      key: "change-landed:appdev#1",
+      repository: "appdev",
+      number: 1,
+      title: "Add the page",
+      line: "appdev #1",
+      landedAt: "2026-02-23T00:00:02.000Z",
+    };
+    const entries = deriveTimelineEntries(
+      [message("before", "2026-02-23T00:00:01.000Z"), message("after", "2026-02-23T00:00:03.000Z")],
+      [],
+      [],
+      [],
+      [],
+      [landed],
+    );
+    expect(entries.map((entry) => entry.kind)).toEqual(["message", "change-landed", "message"]);
+    expect(entries[1]?.id).toBe("zerops:change-landed:appdev#1");
+  });
+
   it("reuses preview objects while preserving URL and attachment metadata changes", () => {
     const image = {
       type: "image" as const,
