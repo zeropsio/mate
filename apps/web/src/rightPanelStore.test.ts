@@ -519,6 +519,35 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("opens one surface per change, focuses one already open, and leaves Git alone", () => {
+    const change = { groupId: "g-1", repository: "appdev", number: 1 };
+    useRightPanelStore.getState().open(refA, "git");
+    useRightPanelStore.getState().openChange(refA, change);
+    useRightPanelStore.getState().openChange(refA, change);
+    useRightPanelStore.getState().openChange(refA, { ...change, number: 2 });
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "change:g-1:appdev:2",
+      surfaces: [
+        { id: "git", kind: "git" },
+        {
+          id: "change:g-1:appdev:1",
+          kind: "change",
+          groupId: "g-1",
+          repository: "appdev",
+          number: 1,
+        },
+        {
+          id: "change:g-1:appdev:2",
+          kind: "change",
+          groupId: "g-1",
+          repository: "appdev",
+          number: 2,
+        },
+      ],
+    });
+  });
+
   it("drops a persisted per-service data surface whose id and service disagree", () => {
     expect(
       migratePersistedRightPanelState({

@@ -7,6 +7,7 @@ import {
   FileDiff,
   Files,
   GitBranch,
+  GitPullRequestArrow,
   Globe,
   type LucideIcon,
   Plus,
@@ -381,6 +382,8 @@ function surfaceTitle(
       return "service" in surface ? surface.service : "Data";
     case "git":
       return "Git";
+    case "change":
+      return `${surface.repository} #${String(surface.number)}`;
   }
 }
 
@@ -411,6 +414,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Database className="size-3 shrink-0" />;
     case "git":
       return <GitBranch className="size-3 shrink-0" />;
+    case "change":
+      return <GitPullRequestArrow className="size-3 shrink-0" />;
   }
 }
 

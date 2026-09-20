@@ -170,6 +170,7 @@ import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
 import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
+import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useZeropsMateReview } from "../zerops/useZeropsMateReview";
@@ -7506,6 +7507,14 @@ export default function ChatView(props: ChatViewProps) {
                 });
             case "git":
               return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
+            case "change":
+              return (
+                <ZeropsChangeDetailPage
+                  groupId={activeRightPanelSurface.groupId}
+                  number={activeRightPanelSurface.number}
+                  repository={activeRightPanelSurface.repository}
+                />
+              );
             case "files":
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
@@ -7559,7 +7568,7 @@ export default function ChatView(props: ChatViewProps) {
    * change's own page, not in a Gitea the reader has to sign into. Anything
    * this account's forge does not own is left exactly as it was.
    */
-  const resolveChangeLink = useOpenZeropsChange();
+  const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
 
   return (
     <ServiceBrowserScope

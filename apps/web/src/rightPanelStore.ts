@@ -53,6 +53,23 @@ export type RightPanelSurface =
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
   | { id: "data"; kind: "data" }
   | { id: "git"; kind: "git" }
+  /**
+   * One change, drawn where the reader already is.
+   *
+   * A Mate writes a pull request's address into its conversation, and the app
+   * draws that change in full. Following the link out to a forge the reader
+   * has to sign into is the long way round to a worse copy, and so is leaving
+   * the conversation for a page of our own (the owner, 2026-09-19: "it linking
+   * to a gitea, when we are supposed to already have a panel tab for pull
+   * requests").
+   */
+  | {
+      id: `change:${string}`;
+      kind: "change";
+      groupId: string;
+      repository: string;
+      number: number;
+    }
   | { id: `data:${string}`; kind: "data"; service: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
@@ -87,6 +104,11 @@ interface RightPanelStoreState {
   openService: (ref: ScopedThreadRef, service: string, url: string) => void;
   /** One Data tab per service, opened from the service's card or the picker; the singleton `data` picker is replaced when it is the one open. */
   openData: (ref: ScopedThreadRef, service: string) => void;
+  /** One change's own tab, focused when it is already open. */
+  openChange: (
+    ref: ScopedThreadRef,
+    change: { readonly groupId: string; readonly repository: string; readonly number: number },
+  ) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
@@ -435,6 +457,29 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           }),
         }));
       },
+      openChange: (ref, change) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const surface: RightPanelSurface = {
+              id: `change:${change.groupId}:${change.repository}:${String(change.number)}`,
+              kind: "change",
+              groupId: change.groupId,
+              repository: change.repository,
+              number: change.number,
+            };
+            // A change already open is focused rather than opened twice; the
+            // Git tab is left alone, because the list and one change are two
+            // different things to be looking at.
+            if (current.surfaces.some((entry) => entry.id === surface.id)) {
+              return { ...current, isOpen: true, activeSurfaceId: surface.id };
+            }
+            return {
+              isOpen: true,
+              activeSurfaceId: surface.id,
+              surfaces: [...current.surfaces, surface],
+            };
+          }),
+        })),
       openData: (ref, service) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
@@ -738,7 +783,9 @@ export function selectThreadRightPanelState(
 export function selectActiveRightPanel(
   byThreadKey: Record<string, ThreadRightPanelState>,
   ref: ScopedThreadRef | null | undefined,
-): RightPanelKind | null {
+  // A surface kind, not a launchable one: a change is opened by following a
+  // link, never from the launcher, so it is outside `RightPanelKind`.
+): RightPanelSurface["kind"] | null {
   const state = selectThreadRightPanelState(byThreadKey, ref);
   if (!state.isOpen) return null;
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId)?.kind ?? null;
