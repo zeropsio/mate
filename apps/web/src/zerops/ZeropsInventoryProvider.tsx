@@ -223,6 +223,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   } | null>(null);
   const ready = admission !== null;
   const [readWindowExpired, setReadWindowExpired] = useState(false);
+  /** The revision whose grant is on its way to the runtime, or already there. */
+  const grantedRevision = useRef<number | null>(null);
   const lastVerifiedProjects = useRef<ReadonlyArray<VerifiedProject>>([]);
   const selectSnapshot = useMemo(makeInventorySnapshotSelector, []);
 
@@ -513,12 +515,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       return;
     }
     if (admission?.revision === verification.revision) return;
+    if (grantedRevision.current === verification.revision) return;
+    grantedRevision.current = verification.revision;
     const verifiedAtMs = Date.now();
     const deadlineMs = verifiedAtMs + ACCESS_WINDOW_MS;
-    setReadWindowExpired(false);
-    setAdmission({ revision: verification.revision, verifiedAtMs });
-    setAccountActionsAllowed(true, deadlineMs);
-    client.setWritesAllowed(true, deadlineMs);
+    // The grant reaches the runtime *before* the gate opens. `ready` is what
+    // mounts the children, and the first thing some of them do is lease a
+    // resource — which the broker refuses, once and for good, until this
+    // grant has landed. Opening the gate first made `/zerops/new` fail its
+    // locations read on every cold load: "Could not load project locations."
+    // from a route reached directly, and never from one reached through the
+    // projects screen, where the grant was long since applied
+    // (measured 2026-09-20).
     void Effect.runPromise(
       runtime.observeAccess({
         kind: "access-verified",
@@ -543,7 +551,19 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           })),
         },
       }),
-    );
+    )
+      .then(() => {
+        setReadWindowExpired(false);
+        setAdmission({ revision: verification.revision, verifiedAtMs });
+        setAccountActionsAllowed(true, deadlineMs);
+        client.setWritesAllowed(true, deadlineMs);
+      })
+      .catch(() => {
+        // The gate stays shut and the screen keeps saying it is checking.
+        // Letting the next verification try again beats mounting children
+        // onto a runtime that never took the grant.
+        grantedRevision.current = null;
+      });
   }, [
     admission,
     client,

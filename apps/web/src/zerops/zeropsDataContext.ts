@@ -180,8 +180,14 @@ export function useZeropsResource<Request extends ZeropsResourceRequest>(
         }),
       ),
       { signal: controller.signal },
-    ).catch(() => {
+    ).catch((cause: unknown) => {
       if (!controller.signal.aborted) {
+        // Said out loud. A lease refused before the account's grant reaches
+        // the runtime looks exactly like one the platform refused, and this
+        // catch used to discard the difference — which is what left
+        // `/zerops/new` telling a cold visitor to go back to the projects
+        // page with nothing to go on (2026-09-20).
+        console.error(`Zerops resource "${key}" could not be leased:`, cause);
         setCurrent({
           key,
           snapshot: {

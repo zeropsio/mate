@@ -263,9 +263,11 @@ const mountInventory = Effect.fn(function* (ids: ReadonlyArray<string> = ["kept"
   };
   let inventory: Inventory | null = null;
   let inventoryPublications = 0;
+  let grantsWhenChildMounted: number | null = null;
   function Consumer() {
     const value = useZeropsInventory();
     useEffect(() => {
+      grantsWhenChildMounted ??= grants.length;
       inventory = value;
       inventoryPublications++;
     }, [value]);
@@ -308,6 +310,7 @@ const mountInventory = Effect.fn(function* (ids: ReadonlyArray<string> = ["kept"
     projectRef,
     inventory: () => inventory,
     inventoryPublications: () => inventoryPublications,
+    grantsWhenChildMounted: () => grantsWhenChildMounted,
     pushProject: (id: string, name: string) =>
       actEffect(
         Effect.gen(function* () {
@@ -451,6 +454,20 @@ it.live("reverifies command-created projects even while the search index still o
         "created",
       ]);
       expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept", "created"]);
+    }),
+  ),
+);
+
+it.live("has given the runtime its grant before the first child mounts", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      // A child's first act can be to lease a resource, and the broker refuses
+      // one until this grant has landed — once, permanently, because the
+      // lease is keyed and never retried. Opening the gate first made
+      // `/zerops/new` fail its locations read on every cold load
+      // (measured 2026-09-20).
+      const harness = yield* mountInventory();
+      expect(harness.grantsWhenChildMounted()).toBeGreaterThanOrEqual(1);
     }),
   ),
 );
