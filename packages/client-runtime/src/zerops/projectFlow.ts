@@ -73,6 +73,8 @@ export interface FlowPullRequest {
    * merged an hour ago would be lying twice over.
    */
   readonly merged: boolean;
+  /** When it landed — the moment a timeline places it. Absent unless `merged`. */
+  readonly mergedAt: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
   /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
@@ -113,11 +115,63 @@ export function flowPullRequest(input: {
     checkWord: checkWord(tone),
     mergeable: pull.mergeable === true,
     merged: pull.merged === true,
+    mergedAt: pull.merged_at,
     headSha: pull.head?.sha,
     baseBranch: pull.base?.ref ?? FALLBACK_BASE,
     line,
     updatedAt: pull.updated_at,
   };
+}
+
+/**
+ * One of a Mate's changes landing, as a conversation places it.
+ *
+ * A Mate's message is frozen when it is written, so "two pull requests wait
+ * for review" goes on saying so after both have landed (the owner,
+ * 2026-09-20). The chip in the message says where a change stands now; this
+ * says *when* it moved, in the one place a person reads the work in order.
+ */
+export interface ChangeLandedEvent {
+  /** Stable across reads, so a timeline can key on it. */
+  readonly key: string;
+  readonly repository: string;
+  readonly number: number;
+  readonly title: string;
+  /** `appdev #1` — the same line every other surface names a change by. */
+  readonly line: string;
+  readonly landedAt: string;
+}
+
+/**
+ * The landings that belong on one Mate's timeline, oldest first.
+ *
+ * A change with no `mergedAt` has no moment to be placed at and is left out
+ * rather than guessed at. A person's own branch belongs to no conversation, and
+ * another Mate's change belongs to that Mate's.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function changeLandedEvents(
+  changes: ReadonlyArray<FlowPullRequest>,
+  mateProjectId: string | undefined,
+): ReadonlyArray<ChangeLandedEvent> {
+  if (mateProjectId === undefined) return [];
+  const events: Array<ChangeLandedEvent> = [];
+  for (const change of changes) {
+    if (!change.merged || change.mateProjectId !== mateProjectId) continue;
+    const landedAt = change.mergedAt;
+    if (landedAt === undefined) continue;
+    events.push({
+      key: `change-landed:${change.repository}#${String(change.number)}`,
+      repository: change.repository,
+      number: change.number,
+      title: change.title,
+      line: change.line,
+      landedAt,
+    });
+  }
+  // `toSorted` is not in Hermes, so the copy is explicit.
+  return [...events].sort((left, right) => left.landedAt.localeCompare(right.landedAt));
 }
 
 /** What a stop needs somebody for, as one number. */

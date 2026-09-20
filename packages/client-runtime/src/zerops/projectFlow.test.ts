@@ -27,6 +27,7 @@ import {
   type FlowPullRequest,
   type FlowRelease,
   planReleaseReads,
+  changeLandedEvents,
 } from "./projectFlow.ts";
 
 const VERA = "tsXR3xnURPSvsy4zp1EaYA";
@@ -301,6 +302,7 @@ describe("types", () => {
         "mateProjectId",
         "mergeable",
         "merged",
+        "mergedAt",
         "number",
         "repository",
         "title",
@@ -676,5 +678,51 @@ describe("planReleaseReads", () => {
 
   it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
+  });
+});
+
+describe("changeLandedEvents", () => {
+  const landed = (over: Partial<FlowPullRequest>): FlowPullRequest =>
+    ({
+      repository: "appdev",
+      number: 1,
+      title: "Add the page",
+      kind: "code",
+      mateProjectId: "mate-1",
+      author: "otto",
+      url: undefined,
+      checks: "none",
+      checkWord: undefined,
+      mergeable: false,
+      merged: true,
+      mergedAt: "2026-09-20T10:03:00Z",
+      headSha: undefined,
+      baseBranch: "main",
+      line: "appdev #1",
+      updatedAt: undefined,
+      ...over,
+    }) as FlowPullRequest;
+
+  it("places one event per landed change of this Mate, oldest first", () => {
+    const events = changeLandedEvents(
+      [
+        landed({ number: 2, line: "appdev #2", mergedAt: "2026-09-20T11:00:00Z" }),
+        landed({ number: 1, line: "appdev #1", mergedAt: "2026-09-20T10:00:00Z" }),
+      ],
+      "mate-1",
+    );
+    expect(events.map((event) => event.line)).toEqual(["appdev #1", "appdev #2"]);
+    expect(events[0]?.key).toBe("change-landed:appdev#1");
+    expect(events[0]?.landedAt).toBe("2026-09-20T10:00:00Z");
+  });
+
+  it("takes nothing that is another Mate's, still open, or has no moment to place", () => {
+    expect(changeLandedEvents([landed({ mateProjectId: "mate-2" })], "mate-1")).toEqual([]);
+    expect(changeLandedEvents([landed({ merged: false })], "mate-1")).toEqual([]);
+    expect(changeLandedEvents([landed({ mergedAt: undefined })], "mate-1")).toEqual([]);
+    // A person's own branch belongs to no conversation.
+    expect(changeLandedEvents([landed({ mateProjectId: undefined })], "mate-1")).toEqual([]);
+    // A conversation with no Mate of its own claims nothing.
+    expect(changeLandedEvents([landed({})], undefined)).toEqual([]);
   });
 });

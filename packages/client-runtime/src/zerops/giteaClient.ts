@@ -221,6 +221,8 @@ export interface GiteaPullRequest {
   readonly base?: { readonly ref?: string | undefined };
   readonly user?: { readonly login?: string | undefined } | undefined;
   readonly updated_at?: string | undefined;
+  /** When it landed. Absent on a change that is still open, or was closed unmerged. */
+  readonly merged_at?: string | undefined;
 }
 
 /** One tag of a repository — `GET /repos/{o}/{r}/tags`. */

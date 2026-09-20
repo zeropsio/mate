@@ -1111,12 +1111,18 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     const writes = stub.requests.filter((request) => request.method !== "GET");
     // No second project; the token nobody holds the value of is regenerated,
-    // and the import runs with the fresh value.
+    // the tool project is granted to it — a regenerate carries no grants — and
+    // the import runs with the fresh value.
     expect(writes.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual([
       "PUT /api/rest/public/client/org-1/integration-token/tok-b/regenerate",
+      "PUT /api/rest/public/client/org-1/integration-token/tok-b",
       "POST /api/rest/public/project/project-1/service-stack/import",
     ]);
-    expect(writes[1]?.body).toContain("fresh");
+    // The grant keeps the token's org role: writing it away would stop the
+    // broker reading the org at all.
+    expect(writes[1]?.body).toContain('"projectId":"project-1","roleCode":"BASIC_USER"');
+    expect(writes[1]?.body).toContain('"roleCode":"READ_ONLY"');
+    expect(writes[2]?.body).toContain("fresh");
   });
 
   it("does nothing at all for an account whose Gitea is already up", async () => {

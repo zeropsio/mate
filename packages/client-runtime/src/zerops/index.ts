@@ -399,6 +399,8 @@ export {
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,
+  changeLandedEvents,
+  type ChangeLandedEvent,
   changeState,
   changeSubtitle,
   mergeConsequence,

@@ -16,6 +16,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     checkWord: "Passing",
     mergeable: true,
     merged: false,
+    mergedAt: undefined,
     headSha: "abc",
     baseBranch: "main",
     line: "appdev #4",
