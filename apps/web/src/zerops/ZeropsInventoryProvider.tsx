@@ -41,6 +41,16 @@ import {
 export { useZeropsInventory } from "./inventoryContext";
 
 const ACCESS_WINDOW_MS = 15 * 60_000;
+/**
+ * How long the checking screen waits before it offers a way off itself.
+ *
+ * A verification round that rejects puts its reason on screen with a way to
+ * retry; a request that simply never settles used to leave a wordless spinner
+ * and no exit, because the renewal timer is only armed once a round has
+ * completed. Nothing here cancels the round — it may still land, and it wins
+ * if it does.
+ */
+const WAIT_PATIENCE_MS = 20_000;
 const ACCESS_RENEWAL_LEAD_MS = 60_000;
 
 interface VerifiedProject extends OperableProjectAccess {
@@ -223,6 +233,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   } | null>(null);
   const ready = admission !== null;
   const [readWindowExpired, setReadWindowExpired] = useState(false);
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
   /** The revision whose grant is on its way to the runtime, or already there. */
   const grantedRevision = useRef<number | null>(null);
   const lastVerifiedProjects = useRef<ReadonlyArray<VerifiedProject>>([]);
@@ -602,6 +613,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     return () => window.clearTimeout(timeout);
   }, [admission]);
 
+  // Every round starts the patience over, so a retry that is itself slow gets
+  // the same wait rather than the leftovers of the last one.
+  useEffect(() => {
+    setWaitedTooLong(false);
+    if (ready && !readWindowExpired) return;
+    const timeout = window.setTimeout(() => setWaitedTooLong(true), WAIT_PATIENCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [readWindowExpired, ready, verification.revision]);
+
   const visibleError =
     error ?? (readWindowExpired ? "Project access verification expired. Try again." : null);
 
@@ -625,6 +645,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         visibleError !== null ? (
           <div role="alert" className="p-8">
             Could not load your Zerops projects. {visibleError}{" "}
+            <button type="button" onClick={refreshZeropsCandidates}>
+              Try again
+            </button>{" "}
+            <button type="button" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        ) : waitedTooLong ? (
+          <div role="alert" className="p-8">
+            Still checking your Zerops projects.{" "}
             <button type="button" onClick={refreshZeropsCandidates}>
               Try again
             </button>{" "}

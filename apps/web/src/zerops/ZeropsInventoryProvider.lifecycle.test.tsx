@@ -57,11 +57,33 @@ class TestNode {
     this.tagName = this.nodeName;
   }
 
-  set textContent(_value: string) {
+  #text = "";
+
+  set textContent(value: string) {
     this.childNodes = [];
+    this.#text = value;
+  }
+
+  /**
+   * What a person would read off this subtree — the shim's only rendering.
+   * React writes a lone text child straight onto `textContent` rather than
+   * appending a node, so an element with no children still carries its own.
+   */
+  get textContent(): string {
+    if (this.nodeType === 3 || this.childNodes.length === 0) return this.#text;
+    return this.childNodes.map((child) => child.textContent).join("");
+  }
+
+  set nodeValue(value: string) {
+    this.#text = value;
+  }
+
+  get nodeValue(): string {
+    return this.#text;
   }
 
   appendChild(child: TestNode) {
+    this.#text = "";
     child.parentNode = this;
     this.childNodes.push(child);
     return child;
@@ -85,8 +107,10 @@ class TestNode {
   removeEventListener() {}
   setAttribute() {}
   removeAttribute() {}
-  createTextNode(_text: string) {
-    return new TestNode("#text", this, 3);
+  createTextNode(text: string) {
+    const node = new TestNode("#text", this, 3);
+    node.nodeValue = text;
+    return node;
   }
 }
 
@@ -134,7 +158,10 @@ function actEffect<A, E>(work: Effect.Effect<A, E>): Effect.Effect<A, E> {
   });
 }
 
-const mountInventory = Effect.fn(function* (ids: ReadonlyArray<string> = ["kept"]) {
+const mountInventory = Effect.fn(function* (
+  ids: ReadonlyArray<string> = ["kept"],
+  options: { readonly holdFirstRound?: boolean } = {},
+) {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
   vi.setSystemTime(1788825600000);
   installTestDom();
@@ -273,8 +300,12 @@ const mountInventory = Effect.fn(function* (ids: ReadonlyArray<string> = ["kept"
     }, [value]);
     return null;
   }
+  // A first round that never settles — not one that fails. `fetchUser` is
+  // simply left pending, which is the shape a dropped connection leaves.
+  if (options.holdFirstRound === true) fetchGate = new Promise<void>(() => undefined);
   const { createRoot } = yield* Effect.promise(() => import("react-dom/client"));
-  const root = createRoot(document.createElement("div"));
+  const container = document.createElement("div");
+  const root = createRoot(container);
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       yield* Effect.promise(async () => act(async () => root.unmount()));
@@ -300,8 +331,10 @@ const mountInventory = Effect.fn(function* (ids: ReadonlyArray<string> = ["kept"
       await vi.advanceTimersByTimeAsync(0);
     }),
   );
-  yield* Effect.promise(async () => act(async () => admitted.promise));
+  if (options.holdFirstRound !== true)
+    yield* Effect.promise(async () => act(async () => admitted.promise));
   return {
+    container,
     runtime,
     client,
     projects,
@@ -415,6 +448,60 @@ it.live(
         expect(harness.inventory()?.error).toBeNull();
       }),
     ),
+);
+
+it.live("offers a way off the checking screen when the round never settles", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      // A round that rejects puts its reason on screen with a retry. One that
+      // simply never settles used to leave a spinner with no words — the
+      // label is `sr-only` — and no exit, because the renewal timer is armed
+      // only once a round has completed.
+      const harness = yield* mountInventory(["kept"], { holdFirstRound: true });
+      yield* Effect.promise(async () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        }),
+      );
+      expect(harness.container.textContent).not.toContain("Try again");
+      yield* Effect.promise(async () =>
+        act(async () => {
+          await vi.advanceTimersByTimeAsync(20_000);
+        }),
+      );
+      expect(harness.container.textContent).toContain("Still checking your Zerops projects.");
+      expect(harness.container.textContent).toContain("Try again");
+      expect(harness.container.textContent).toContain("Sign out");
+    }),
+  ),
+);
+
+it.live("is not held open by a project the organization still lists and cannot hand over", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      // Deleting a project from outside the app — the Zerops GUI in another
+      // tab, or a script — is not atomic: the organization's list carries it
+      // for seconds after fetching it already answers `not-found`. That
+      // answer is settled knowledge, not an unfinished read, and treating it
+      // as one held the round open forever. Nothing recovers from there: the
+      // renewal timer is only armed once a round has completed, so the screen
+      // said "Checking your Zerops projects…" with no error and no way out
+      // but a reload (measured live 2026-09-20).
+      const harness = yield* mountInventory(["kept", "vanishing"]);
+      harness.client.fetchProject.mockImplementation(async (id: string) => {
+        const project = harness.projects.get(id);
+        if (id === "vanishing" || project === undefined)
+          throw new ZeropsApiError("Gone", "not-found");
+        return project;
+      });
+      const refresh = harness.pauseRefresh();
+      yield* Effect.promise(async () => act(async () => refreshZeropsCandidates()));
+      yield* refresh.verify();
+      yield* refresh.establish();
+      expect(harness.inventory()?.isLoading).toBe(false);
+      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
+    }),
+  ),
 );
 
 it.live("reverifies command-created projects even while the search index still omits them", () =>
