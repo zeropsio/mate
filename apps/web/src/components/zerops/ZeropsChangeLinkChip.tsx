@@ -65,13 +65,24 @@ export function ZeropsChangeLinkChip({
   );
   const pull = open ?? (landed.kind === "read" ? landed.pull : undefined);
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
-  if (pull === undefined) return children;
+  // Drawn from the url while the forge is still answering: the repository and
+  // the number are in the address, so the chip does not have to arrive as a
+  // full-width url that turns into a chip a moment later. Only the word waits.
+  // `gone` and `failed` are answers, not waits: a change this account cannot
+  // read stays the link it was.
+  const reading =
+    pull === undefined &&
+    link !== null &&
+    groupId !== undefined &&
+    (landed.kind === "idle" || landed.kind === "reading");
+  if (pull === undefined && !reading) return children;
 
-  const state = pull.merged ? "Landed" : changeState(pull)?.word;
+  const line = pull?.line ?? `${link?.repository ?? ""} #${String(link?.number ?? 0)}`;
+  const state = pull === undefined ? undefined : pull.merged ? "Landed" : changeState(pull)?.word;
   return (
     <a
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-sm no-underline"
-      data-zerops-change-chip={`${pull.repository}#${String(pull.number)}`}
+      data-zerops-change-chip={`${pull?.repository ?? link?.repository ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
       href={href}
       onClick={(event) => {
         if (
@@ -90,7 +101,7 @@ export function ZeropsChangeLinkChip({
       target="_blank"
     >
       <GitPullRequestArrow aria-hidden="true" className="size-3 shrink-0 self-center" />
-      <span className="font-medium">{pull.line}</span>
+      <span className="font-medium">{line}</span>
       {state === undefined ? null : <span className="text-muted-foreground">{state}</span>}
     </a>
   );
