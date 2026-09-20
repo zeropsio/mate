@@ -28,6 +28,7 @@ import {
   type FlowRelease,
   planReleaseReads,
   changeLandedEvents,
+  agentTurnNotes,
 } from "./projectFlow.ts";
 
 const VERA = "tsXR3xnURPSvsy4zp1EaYA";
@@ -724,5 +725,43 @@ describe("changeLandedEvents", () => {
     expect(changeLandedEvents([landed({ mateProjectId: undefined })], "mate-1")).toEqual([]);
     // A conversation with no Mate of its own claims nothing.
     expect(changeLandedEvents([landed({})], undefined)).toEqual([]);
+  });
+});
+
+describe("agentTurnNotes", () => {
+  const event = (number: number, landedAt: string): ChangeLandedEvent => ({
+    key: `change-landed:appdev#${String(number)}`,
+    repository: "appdev",
+    number,
+    title: "Add the Harbor page",
+    line: `appdev #${String(number)}`,
+    landedAt,
+  });
+
+  it("says only what landed after the agent last spoke", () => {
+    const notes = agentTurnNotes(
+      [event(1, "2026-09-20T10:00:00Z"), event(2, "2026-09-20T12:00:00Z")],
+      "2026-09-20T11:00:00Z",
+    );
+    expect(notes).toEqual(["appdev #2 landed: Add the Harbor page"]);
+  });
+
+  it("says nothing when the agent's last turn is unknown, rather than repeating itself", () => {
+    // Without a moment to compare against, every landing looks new — and a
+    // Mate told the same thing every turn is worse than one told late.
+    expect(agentTurnNotes([event(1, "2026-09-20T10:00:00Z")], undefined)).toEqual([]);
+  });
+
+  it("says nothing when nothing landed since", () => {
+    expect(agentTurnNotes([event(1, "2026-09-20T10:00:00Z")], "2026-09-20T11:00:00Z")).toEqual([]);
+  });
+
+  it("keeps the newest few, so a quiet Mate is not handed a feed", () => {
+    const many = Array.from({ length: 9 }, (_, index) =>
+      event(index + 1, `2026-09-20T1${String(index)}:00:00Z`),
+    );
+    const notes = agentTurnNotes(many, "2026-09-20T09:00:00Z");
+    expect(notes).toHaveLength(5);
+    expect(notes[4]).toContain("#9");
   });
 });

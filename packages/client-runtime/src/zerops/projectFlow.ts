@@ -174,6 +174,38 @@ export function changeLandedEvents(
   return [...events].sort((left, right) => left.landedAt.localeCompare(right.landedAt));
 }
 
+/** How many landings one turn carries. A Mate is being told, not fed. */
+const AGENT_NOTE_LIMIT = 5;
+
+/** How much of a change's title a note carries before it stops being a line. */
+const AGENT_NOTE_TITLE = 80;
+
+/**
+ * What to tell a Mate that it does not know, in the turn that wakes it.
+ *
+ * `since` is when the agent last spoke. Without it nothing is said: with no
+ * moment to compare against every landing looks new, and a Mate told the same
+ * thing every turn is worse off than one told late.
+ *
+ * A Mate cannot merge its own change — that is beyond its token — so every
+ * landing here is genuinely news to it.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ */
+export function agentTurnNotes(
+  events: ReadonlyArray<ChangeLandedEvent>,
+  since: string | undefined,
+): ReadonlyArray<string> {
+  if (since === undefined) return [];
+  const fresh = events.filter((event) => event.landedAt.localeCompare(since) > 0);
+  const kept = fresh.slice(Math.max(0, fresh.length - AGENT_NOTE_LIMIT));
+  return kept.map((event) => {
+    const title = event.title.trim().slice(0, AGENT_NOTE_TITLE);
+    const what = `${event.repository} #${String(event.number)} landed`;
+    return title.length === 0 ? `${what}.` : `${what}: ${title}`;
+  });
+}
+
 /** What a stop needs somebody for, as one number. */
 export interface StopAttention {
   readonly count: number;

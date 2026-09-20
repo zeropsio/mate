@@ -399,6 +399,7 @@ export {
   pullRequestLineWith,
   pullRequestsByMate,
   changeAuthorName,
+  agentTurnNotes,
   changeLandedEvents,
   type ChangeLandedEvent,
   changeState,

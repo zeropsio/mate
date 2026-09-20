@@ -180,6 +180,7 @@ import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveConnectedComposerPlaceholder } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
 import { useZeropsChangeLandedEvents } from "../zerops/useZeropsChangeLandedEvents";
+import { agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -2814,6 +2815,19 @@ export default function ChatView(props: ChatViewProps) {
   // A change of this Mate's landing is a fact about the forge, not about the
   // agent, so it does not come from the activity stream.
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
+  // When the agent last spoke — the line between what it knows and what has
+  // happened since. Without one nothing is said rather than everything.
+  const agentLastSpokeAt = useMemo(() => {
+    for (let index = timelineMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = timelineMessages[index];
+      if (candidate?.role === "assistant") return candidate.createdAt;
+    }
+    return undefined;
+  }, [timelineMessages]);
+  const agentNotes = useMemo(
+    () => agentTurnNotes(changeLandedEvents, agentLastSpokeAt),
+    [agentLastSpokeAt, changeLandedEvents],
+  );
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
     projection: TimelineEntriesProjection;
@@ -6424,6 +6438,9 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
+          // What the Mate has not been told, placed in front of the text for
+          // the provider only: the stored message stays what was typed.
+          ...(agentNotes.length > 0 ? { agentNotes } : {}),
           runtimeMode,
           interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),

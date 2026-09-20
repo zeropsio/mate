@@ -1177,6 +1177,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             ? { modelSelection: command.modelSelection }
             : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
+          // Carried, never stored on the message: what the agent is told and
+          // what the person wrote are two different records.
+          ...(command.agentNotes !== undefined && command.agentNotes.length > 0
+            ? { agentNotes: command.agentNotes }
+            : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),

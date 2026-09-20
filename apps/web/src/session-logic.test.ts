@@ -1827,6 +1827,7 @@ describe("deriveTimelineEntries", () => {
       turnId: TurnId.make("t"),
       createdAt,
       updatedAt: createdAt,
+      streaming: false,
     });
     const landed = {
       key: "change-landed:appdev#1",

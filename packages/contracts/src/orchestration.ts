@@ -1041,6 +1041,25 @@ const ThreadTurnStartBootstrap = Schema.Struct({
 
 export type ThreadTurnStartBootstrap = typeof ThreadTurnStartBootstrap.Type;
 
+/**
+ * Facts the agent has not been told, carried with the turn that wakes it.
+ *
+ * A Mate is a live process whose beliefs are whatever was sent to it, and the
+ * app's own timeline never reaches it: activities are a projection, and the
+ * turn carries only the person's text. So a change that landed while it was
+ * idle leaves it saying "two pull requests wait for review" an hour after both
+ * merged (the owner, 2026-09-20).
+ *
+ * These are placed in front of the person's message for the provider only —
+ * the stored message stays exactly what was typed, because the thread is the
+ * person's record too. Bounded on purpose: a handful of short lines, never a
+ * feed.
+ */
+export const AgentTurnNotes = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(240)),
+).check(Schema.isMaxLength(5));
+export type AgentTurnNotes = typeof AgentTurnNotes.Type;
+
 export const ThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
   commandId: CommandId,
@@ -1053,6 +1072,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  agentNotes: Schema.optional(AgentTurnNotes),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
@@ -1074,6 +1094,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  agentNotes: Schema.optional(AgentTurnNotes),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
@@ -1539,6 +1560,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  agentNotes: Schema.optional(AgentTurnNotes),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
