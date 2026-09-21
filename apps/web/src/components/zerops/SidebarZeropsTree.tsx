@@ -1439,21 +1439,18 @@ function EnvironmentRows<T extends RosterCandidate>({
                     {tag === null || environmentRoleTagIsRedundant(tag, name) ? null : (
                       <ZeropsRoleTag label={tag} />
                     )}
-                    {/* One cluster at one height on one edge, and on the line with
-                    room for it: the verb used to sit here and the two controls
-                    a line below, three things down a staircase. It rides the
-                    name's line — which is short — so the line under it keeps
-                    its full width for the version, which was truncating to
-                    `v1.…` at 256px while `· 3 waiting` kept every character. */}
+                    {/* The two controls ride the name's line; the verb does not.
+                    It was up here too, on the reading that this line "is
+                    short" — true of `stage`, false of `production`, whose name
+                    had 43px for the 68px it needs once a release is waiting and
+                    rendered as `prod…` at the default 238px (measured
+                    2026-09-20). The row carrying the most consequential state
+                    was the one that could not say its own name. The verb moved
+                    to the line below, beside the version it changes; what the
+                    old arrangement avoided — a fact up here and its cure down
+                    there — cannot recur, because the fact is worn by the verb
+                    itself. */}
                     <span className="flex shrink-0 items-center gap-1">
-                      {release ? (
-                        <ReleaseVerb
-                          contents={flow.releaseContents}
-                          onRelease={flow.onRelease}
-                          releaseTag={flow.releaseTag}
-                          releasing={flow.releasing}
-                        />
-                      ) : null}
                       <ZeropsRoutesMenu
                         label={`Public access of ${item.project.name}`}
                         routes={routes}
@@ -1502,7 +1499,16 @@ function EnvironmentRows<T extends RosterCandidate>({
                     {/* What is merged and not live is worn by *Release*, which
                     is the thing that deals with it — it used to be a chip on
                     this line while the verb sat on the one above, a fact and
-                    its cure separated by a globe and a menu. */}
+                    its cure separated by a globe and a menu. The verb carries
+                    both now, on the line with the room for it. */}
+                    {release ? (
+                      <ReleaseVerb
+                        contents={flow.releaseContents}
+                        onRelease={flow.onRelease}
+                        releaseTag={flow.releaseTag}
+                        releasing={flow.releasing}
+                      />
+                    ) : null}
                   </span>
                 </span>
               </li>
