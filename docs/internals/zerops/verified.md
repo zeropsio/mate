@@ -2114,3 +2114,39 @@ read for the same shape — a control that looks live, does nothing, and says no
 | Data-table rows                | A no-op click is not a lie here: the row has no pointer cursor and no button role, so it promises nothing.                                                                                                                                                                                                                                                                                                                                                                        |
 
 The discipline is already in the codebase — `setUpMate` was the outlier, not the rule.
+
+## Production served the platform's placeholder while every surface said Deployed — 2026-09-21
+
+After the third release the stage and the production both answered with Zerops' own
+_"Check if your application is running on a correct port."_ — the page the L7 serves when nothing
+is listening behind it. **Nothing on any surface said so.** The rows read `main · f00e9ef ·
+Deployed` and `release · v0.1.3 · Deployed`, both with a green dot, and the project's answer line
+read _"Production already runs what is merged."_ Every one of those statements was true.
+
+| Finding                                                     | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The group's stage and production deploy the _dev_ setup** | Diagnosed by Ada, from the workflow log rather than from guessing: the import files in `harbor/group` deploy the app with `zeropsSetup: appdev`, and a dev-mode dynamic runtime's `run.start` is `zsc noop --silent` — a keepalive that listens on nothing. The build succeeds, the version goes ACTIVE, and no process serves the port. A dev setup is by definition not the one that should serve a production. **In `gitea-mate`'s recipe, not here.** |
+| **Nothing checks that an environment serves**               | A Mate verifies its own services (`zerops_verify`, four checks including `http_public`). A group's stage and production have no such thing: the row's word comes from the platform's deploy state, and the platform's state was `ACTIVE` with an `ACTIVE` app version throughout. The client cannot tell the difference from what it currently reads, so this is a gap rather than a wrong answer.                                                        |
+| **The words were each true and the whole was misleading**   | "Deployed" means the version is active. "Production already runs what is merged" means main's head is what a release put there. Both held while the site was down. A person reads the pair as "it works".                                                                                                                                                                                                                                                 |
+
+Recovery, driven entirely through the product: Ada was asked why, found it, opened `appdev #5`, the
+merge redeployed the stage (`main · 4f61536`, serving `Harbor is where the fleet is built.`), and
+`v0.1.4` put it in production. Ada also cleared the obvious suspect out loud — _"Nothing in Kai's
+pull request #4 contributed"_ — having checked the workflow log for the exact sha.
+
+**Open, and the owner's call, because it is a design decision about who probes:** whether a group
+environment should carry a reachability check the way a Mate's services do, and whether the row's
+word should be weaker until something has actually answered.
+
+## A verb the person ran now moves the screen they ran it on — 2026-09-21
+
+`run()` bumps a generation after every verb and that reached the forge hook alone, so a merge
+emptied the pull-request row at once while the line beside it went on saying what was waiting to go
+live _before_ the merge — and the environment rows went on naming the commit they ran before it.
+Up to a full minute, on the one screen the person is certainly watching, because they just acted.
+Measured: merged `appdev #4`, and "2 changes are merged and not live" stood still until the clock
+came round.
+
+The generation folds into the read key. **Measured after the fix: a release put its new tag on the
+screen in 2 seconds.** A verb is a discrete bump rather than a moving input, so this stays one
+re-read per change, not the 700 a minute that keying on the groups cost on 2026-09-17.
