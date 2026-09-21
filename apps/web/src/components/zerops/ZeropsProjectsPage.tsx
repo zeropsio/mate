@@ -139,6 +139,7 @@ import {
   type ZeropsRowInput,
   connectFailureLine,
   deriveZeropsRowAction,
+  setUpMateVerb,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   giteaToolLine,
@@ -792,7 +793,12 @@ function ZeropsProjectsContent() {
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
-        if (isCurrent()) setSettingUpKey(null);
+        // Unconditionally: a stale clear only unblocks a verb, while a clear
+        // that does not happen leaves every "Set up Mate" on the account dead
+        // for the rest of the session. `isCurrent()` goes false on any
+        // sign-out or account reset, which is exactly when a setup is most
+        // likely to be interrupted.
+        setSettingUpKey(null);
       }
     },
     [
@@ -1014,19 +1020,26 @@ function ZeropsProjectsContent() {
       // "start" is a trailing button on the card, not a verb on this line —
       // the line only says the detail (e.g. "Stopped").
       case "enable":
-      case "set-up-mate":
+      case "set-up-mate": {
+        // A setup is serialised, so a row waiting its turn is unpressable
+        // rather than pressable-and-ignored.
+        const verb =
+          action.kind === "set-up-mate"
+            ? setUpMateVerb({ candidateKey: candidate.key, settingUpKey })
+            : { disabled: busy, label: action.label };
         return (
           <>
             {detail}
             <ZeropsMateVerb
-              disabled={busy}
-              label={busy && action.kind === "set-up-mate" ? "Setting up…" : action.label}
+              disabled={verb.disabled}
+              label={verb.label}
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
             />
           </>
         );
+      }
       default:
         return detail;
     }

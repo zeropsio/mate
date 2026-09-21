@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   connectFailureLine,
   creationFailedLine,
+  setUpMateVerb,
   giteaToolLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
@@ -746,4 +747,39 @@ describe("a Mate on its way says one thing", () => {
     expect(settled.status.label).toBe("Not available");
     expect(settled.detail).not.toBe("Coming up. A few minutes.");
   });
+});
+
+describe("setUpMateVerb", () => {
+  // A setup is serialised: `setUpMate` refuses a second one while one is in
+  // flight. Only the row being set up was ever disabled, so every OTHER Mate
+  // kept a live-looking "Set up Mate" that did nothing at all when pressed
+  // (measured on the test account, 2026-09-20).
+  const cases = [
+    {
+      name: "offers the verb when nothing is being set up",
+      candidateKey: "a",
+      settingUpKey: null,
+      want: { disabled: false, label: "Set up Mate" },
+    },
+    {
+      name: "says what it is doing on the row it is doing it to",
+      candidateKey: "a",
+      settingUpKey: "a",
+      want: { disabled: true, label: "Setting up…" },
+    },
+    {
+      name: "a row that is waiting its turn says so by being unpressable",
+      candidateKey: "b",
+      settingUpKey: "a",
+      want: { disabled: true, label: "Set up Mate" },
+    },
+  ] as const;
+
+  for (const tc of cases) {
+    it(tc.name, () => {
+      expect(
+        setUpMateVerb({ candidateKey: tc.candidateKey, settingUpKey: tc.settingUpKey }),
+      ).toEqual(tc.want);
+    });
+  }
 });

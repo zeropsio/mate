@@ -88,6 +88,29 @@ export type ZeropsRowAction =
   | { readonly kind: "pending" }
   | { readonly kind: "none" };
 
+/**
+ * How a Mate's "Set up Mate" verb reads while a setup is running.
+ *
+ * Setting up a half-made Mate is serialised — one import at a time, because
+ * the provisioning wait is a single slot. Only the row being set up was
+ * disabled, so every other Mate kept a verb that looked pressable and did
+ * nothing at all: the guard returned before it reached the platform and said
+ * nothing on the way out.
+ *
+ * Serialising is fine. A control that lies about it is not, so a row waiting
+ * its turn is unpressable and keeps its own name — it is not "Setting up…",
+ * because it is not.
+ */
+export function setUpMateVerb(input: {
+  readonly candidateKey: string;
+  readonly settingUpKey: string | null;
+}): { readonly disabled: boolean; readonly label: "Set up Mate" | "Setting up…" } {
+  if (input.settingUpKey === null) return { disabled: false, label: "Set up Mate" };
+  return input.settingUpKey === input.candidateKey
+    ? { disabled: true, label: "Setting up…" }
+    : { disabled: true, label: "Set up Mate" };
+}
+
 export interface ZeropsRowPresentation {
   readonly status: {
     readonly label: string;
