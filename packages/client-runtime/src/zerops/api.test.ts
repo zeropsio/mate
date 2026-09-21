@@ -1274,6 +1274,84 @@ describe("ZeropsApiClient.exchangeWebSocketToken", () => {
 
     expect(stub.requests).toHaveLength(1);
   });
+
+  // `Lighthouse - Enzo`, 2026-09-20: a project with `core` and no `zcp`. Its
+  // process list holds `project.create` at 15:55:08 and then nothing at all
+  // until the recovery ran at 16:00:47 — the platform was never asked for the
+  // container. Both writes of this creation shared one abort budget
+  // (`restAdapter.stageSignal`, one 15 s timer per command), so a project POST
+  // that used it up took the container with it, and the `catch` turned a
+  // request that never left into "could not be confirmed".
+  //
+  // A project that exists is not a call that may be abandoned: what the
+  // caller's signal cancels is the creation, and by here the creation has
+  // happened.
+  it("still asks for the container when the caller's budget runs out on the project", async () => {
+    const budget = new AbortController();
+    const seen: Array<string> = [];
+    const client = new ZeropsApiClient({
+      fetch: async (input: string, init?: RequestInit) => {
+        if (init?.signal?.aborted) {
+          throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+        }
+        seen.push(`${init?.method ?? "GET"} ${input}`);
+        if (input.includes("/integration-token/list")) return jsonResponse(200, { list: [] });
+        if (input.includes("/first-class-recipe/development-container")) {
+          return jsonResponse(200, {});
+        }
+        // The project is made, and the budget both writes share ends here.
+        budget.abort();
+        return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
+      },
+    });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+
+    const created = await client.createProjectWithZeropsMate(
+      { clientId: "org-1", name: "Mate" },
+      budget.signal,
+    );
+
+    expect(created.project.id).toBe("project-1");
+    expect(seen.some((call) => call.includes("/first-class-recipe/development-container"))).toBe(
+      true,
+    );
+  });
+
+  it("does not fail a creation that worked over the tidy-up after it", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/integration-token/list")) {
+        return jsonResponse(503, { error: { message: "Service unavailable." } });
+      }
+      if (request.url.includes("/first-class-recipe/development-container")) {
+        return jsonResponse(200, {});
+      }
+      return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+
+    const created = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" });
+
+    expect(created.project.id).toBe("project-1");
+  });
+
+  it("keeps what the platform said when it is the platform that refused the container", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.includes("/first-class-recipe/development-container")) {
+        return jsonResponse(400, { error: { code: "invalidYaml", message: "Bad recipe." } });
+      }
+      return jsonResponse(200, { id: "project-1", name: "Mate", status: "ACTIVE" });
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    client.setWritesAllowed(true);
+
+    await expect(
+      client.createProjectWithZeropsMate({ clientId: "org-1", name: "Mate" }),
+    ).rejects.toMatchObject({ kind: "uncertain", status: 400, code: "invalidYaml" });
+  });
 });
 
 describe("ZeropsApiClient.adoptPersonalToken", () => {

@@ -1898,7 +1898,19 @@ export class ZeropsApiClient {
         `/project/${project.id}/first-class-recipe/development-container`,
         {
           method: "PUT",
-          signal: signal ?? null,
+          // **Deliberately not the caller's signal.** What that signal cancels
+          // is the creation, and by this line the creation has happened: the
+          // project is on the account, tagged a Mate, named after one. Abandon
+          // the container here and what is left is a Mate with no agent in it,
+          // which nothing reconciles — `Lighthouse - Enzo`, 2026-09-20, whose
+          // process list holds `project.create` and then nothing at all until
+          // a person ran the recovery five minutes later. The adapter gives
+          // both writes one 15 s budget (`restAdapter.stageSignal`), so a slow
+          // project POST spends the container's half of it.
+          //
+          // The session generation above is the one check that still stops
+          // this write, and it should: a signed-out client must send nothing.
+          signal: null,
           body: JSON.stringify(
             buildDevelopmentContainerImportBody({
               serviceImportYaml: buildZcpServiceImportYaml({
@@ -1915,14 +1927,29 @@ export class ZeropsApiClient {
           ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
         },
       );
-    } catch {
-      throw new ZeropsApiError(
-        `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`,
-        "uncertain",
-      );
+    } catch (cause) {
+      // The guidance is the person's; the platform's own status, code and
+      // detail ride along, because a swallowed cause is why the half-made Mate
+      // went undiagnosed for a day.
+      const guidance = `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`;
+      throw cause instanceof ZeropsApiError
+        ? new ZeropsApiError(guidance, "uncertain", cause.status, cause.code, cause.detail)
+        : new ZeropsApiError(guidance, "uncertain");
     }
 
-    await this.#dropMateContainerDelegations(input.clientId, project.id, signal, beforeWrite);
+    // Same rule as the container write, and for the same reason: the Mate is
+    // made, so nothing after this point may either be skipped by a budget that
+    // has run out or turn a creation that worked into one that reports a
+    // failure. This is the only place the wizard's path drops the delegation —
+    // the planned path has its own `drop-container-delegation` step — so it is
+    // run without the caller's signal, and a platform that refuses it leaves a
+    // delegation rather than a person retrying a Mate they already have.
+    try {
+      await this.#dropMateContainerDelegations(input.clientId, project.id, undefined, beforeWrite);
+    } catch {
+      // Deliberately swallowed. A delegation left on the container's own token
+      // is worth less than a completed creation reported as failed.
+    }
 
     return { project, serviceName };
   }
