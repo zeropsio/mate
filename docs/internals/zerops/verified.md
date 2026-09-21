@@ -2081,3 +2081,36 @@ Two readings corrected while looking, both mine rather than the product's: the a
 not vanish during a creation (they are `disabled`; a probe matching exact text missed labels split
 across two spans), and **Set up Mate** is not inert (it was slow — the guard at
 `ZeropsProjectsPage.tsx:757` refuses a second click while the first is still in flight).
+
+## Two Mates on one repository: `needs a rebase` proven, and the sweep for dead buttons — 2026-09-21
+
+Ada and Kai were pointed at the same paragraph of the same file on `harbor/appdev`, which is the
+only honest way to reach the conflicted state — a fixture was rejected for exactly this
+(`live-mate-account-states`). Both opened a change; one was merged; the other conflicted for real.
+
+| Step              | What the app did                                                                                                                                                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two changes open  | `appdev #3 · Ada` and `appdev #4 · Kai`, each with its author on the row.                                                                                                                                                                                                               |
+| #3 merged         | #4 became **Needs a rebase** — an amber pill in the left menu, and at the head of the project an answer panel stacking `#4 needs a rebase` with **Ask Kai** above `2 changes are merged and not live` with **Release**. The thing that needs a person, beside the verb that acts on it. |
+| The change itself | `#4 · appdev → main · Kai`, _"This change no longer merges cleanly."_ **Merge** is disabled and carries the reason on itself; **Comment** is disabled on an empty box.                                                                                                                  |
+| **Ask Kai**       | Opens Kai's conversation with the composer prefilled and **focused**: _"Take #4 … on appdev forward: read it, do what it still needs, and push."_ It stops short of sending, which is right — the person can change it — and the caret is in the box, so nothing is hidden.             |
+| Kai resolved it   | _"Pull request #4 is mergeable again and the rebased branch is pushed."_ #4 went back to **Unchecked** with a live **Merge**.                                                                                                                                                           |
+| #4 merged         | Three changes merged, no change open, and the stage deployed itself to `main · f00e9ef`.                                                                                                                                                                                                |
+
+**The whole loop needed one human decision and two clicks.** Nothing had to be done in Gitea, in
+Zerops, or in a shell.
+
+### The dead-button sweep
+
+The owner named the class: _"it all has to work seamlessly"_. Every verb on the Zerops surfaces was
+read for the same shape — a control that looks live, does nothing, and says nothing.
+
+| Verb                           | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Set up Mate**                | **Two faults, both fixed.** A setup is serialised, but only the row being set up was disabled — every other Mate kept a pressable verb that returned before reaching the platform. And the busy key cleared only `if (isCurrent())`, which goes false on any sign-out or account reset: one interrupted setup left every _Set up Mate_ on the account dead for the session. A row waiting its turn is unpressable now and keeps its own name, and the key clears unconditionally. |
+| **Add a Mate** (left menu)     | Fixed the day before: it navigated instead of adding.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `start` / `restart` / `remove` | Clean — each clears its key in an unconditional `finally`. `start`'s null-write path is unreachable: the verb is only offered when something is stopped, which is what guarantees the service it needs.                                                                                                                                                                                                                                                                           |
+| Public-route **Publish**       | **The model to copy.** The offers are emptied when no handler is supplied (`offered = onEnable === undefined ? [] : offers`), so no item can be pressed into nothing, and one publish disables every offer while naming the one it is doing.                                                                                                                                                                                                                                      |
+| Data-table rows                | A no-op click is not a lie here: the row has no pointer cursor and no button role, so it promises nothing.                                                                                                                                                                                                                                                                                                                                                                        |
+
+The discipline is already in the codebase — `setUpMate` was the outlier, not the rule.
