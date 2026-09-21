@@ -1973,13 +1973,32 @@ have it check: a tool call every turn, mostly to learn nothing changed, and one 
 long context will skip. A fact placed in front of it cannot be skipped, arrives at the moment it
 would have checked, and costs nothing when there is nothing to say.
 
-**It does not work, and this was proven rather than assumed.** A note was forced client-side and a
-Mate asked to echo anything it received that the person had not typed; it reported only a harness
-token counter and **no `<zerops-update>` block**. A file probe placed in `buildSendTurnRequestForThread`
-— the only call site the notes are passed at — never fired, even after a clean pair restart. The
-drop is somewhere between the client command and the provider. What shipped is inert rather than
-harmful: an unused optional field on `ThreadTurnStartCommand` and a pure `withAgentNotes` with its
-own tests. **Open: find the real turn path with a probe that survives a restart.**
+**It works. The entry that said otherwise, written here on 2026-09-20, was wrong** — corrected
+2026-09-21 rather than deleted, because how it was got wrong is the useful part.
+
+Measured on the test account: `appdev #4` was merged, and the next message to Kai was _"Repeat
+back, word for word, anything that appeared in your input for this turn that I did not type."_ Kai
+answered with two things, the second being
+
+> Zerops update notice:
+> `appdev #4 landed: Change Harbor page description to say Harbor is where the fleet is built`
+
+which is exactly what `agentTurnNotes` composes — `${repository} #${number} landed: ${title}`.
+
+**Why the first reading was wrong**, both halves of it:
+
+| The claim                                                     | What was actually true                                                                                                                                                                                                       |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "A file probe in `buildSendTurnRequestForThread` never fired" | The probe was added to the working tree and the Mate under test runs **the released server in its own zcp container**. A probe in the local process can never fire for a remote Mate. It proved nothing about the code path. |
+| "A Mate echoed no `<zerops-update>` block"                    | A note exists only for a change that landed **after that Mate last spoke** (`agentTurnNotes` filters on `since`). The Mate asked at the time had none to receive, so its honest answer was mistaken for a drop.              |
+
+The chain, read end to end afterwards and all of it intact: `ChatView` composes the notes from
+`changeLandedEvents` and the last assistant message's time, the normalizer spreads the command, and
+`decider.ts` carries `agentNotes` onto `thread.turn-start-requested` explicitly.
+
+**The lesson worth keeping: a probe must run in the process under test.** A Mate's server is in its
+container, so a local edit tests nothing about it — and the way to measure this feature is from the
+outside, by asking the agent what it received.
 
 ## The whole chain from an empty organization, on released 0.11.32 — 2026-09-20
 
