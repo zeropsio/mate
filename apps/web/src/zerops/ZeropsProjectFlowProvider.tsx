@@ -108,7 +108,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const readVersion = useZeropsDeployedVersionReader();
   const enabled = signedInToMate && signedIn;
-  const deploys = useZeropsGroupDeploys({ groups, giteaOrigin, readVersion, enabled });
+  const deploys = useZeropsGroupDeploys({ groups, giteaOrigin, readVersion, enabled, generation });
   const forges = useZeropsGroupForge({ giteaOrigin, groups: forgeGroups, generation, enabled });
 
   /**

@@ -108,13 +108,24 @@ export type ZeropsGroupDeploys = ReadonlyMap<string, ZeropsGroupDeployState>;
 
 const EMPTY: ZeropsGroupDeploys = new Map();
 
-/** Serialises what the reads depend on, so an unchanged account is read once. */
-function readKey(
+/**
+ * Serialises what the reads depend on, so an unchanged account is read once.
+ *
+ * `generation` is bumped once by every verb the person runs. Without it the
+ * deploy state moved on the 60s clock alone, so a merge emptied the
+ * pull-request row at once — the forge hook is told — while the line beside
+ * it went on saying what was waiting to go live before the merge, for up to a
+ * minute. A verb is a discrete bump, not a moving input, so this stays one
+ * read per change rather than the 700 a minute that keying on the groups cost.
+ */
+export function readGroupDeploysKey(
   groups: ReadonlyArray<ZeropsDeployGroup>,
   giteaOrigin: string | undefined,
+  generation: number,
 ): string {
   return JSON.stringify([
     giteaOrigin ?? "",
+    generation,
     groups.map((group) => [
       group.slug,
       group.projects.map((project) => [
@@ -136,9 +147,15 @@ export function useZeropsGroupDeploys(input: {
     signal: AbortSignal,
   ) => Promise<string | undefined>;
   readonly enabled: boolean;
+  /** Bumped once per verb the person ran, so the flow is re-read when it settles. */
+  readonly generation?: number | undefined;
 }): ZeropsGroupDeploys {
   const { enabled, giteaOrigin, groups, readVersion } = input;
-  const key = enabled && giteaOrigin !== undefined ? readKey(groups, giteaOrigin) : "";
+  const generation = input.generation ?? 0;
+  const key =
+    enabled && giteaOrigin !== undefined
+      ? readGroupDeploysKey(groups, giteaOrigin, generation)
+      : "";
   const [answer, setAnswer] = useState<{
     readonly key: string;
     readonly deploys: ZeropsGroupDeploys;
