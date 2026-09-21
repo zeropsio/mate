@@ -67,6 +67,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { registryHoldsCreate, type RegistryReadState } from "./ZeropsNewProjectWizard.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { useZeropsProjectConnection } from "./ZeropsProjectsPage";
 
@@ -283,6 +284,9 @@ function ZeropsNewProjectContent() {
   // create button: the slug is derived against the slugs already taken, and a
   // registry read at click time would be a wait where none is expected.
   const [registry, setRegistry] = useState<ZeropsRegistry | null>(null);
+  // Where that read got to. `registry` alone cannot say: null is both "not
+  // back yet" and "could not be read", and only the first may hold the button.
+  const [registryRead, setRegistryRead] = useState<RegistryReadState>("loading");
 
   // The registry lives on the account's Gitea project, and only its owners and
   // admins may write it (D3) — a stricter gate than *can create projects*, and
@@ -335,14 +339,21 @@ function ZeropsNewProjectContent() {
   useEffect(() => {
     if (giteaProjectId === undefined) return;
     const controller = new AbortController();
+    setRegistryRead("loading");
     void client
       .readGroupRegistry(giteaProjectId, controller.signal)
       .then((read) => {
-        if (!controller.signal.aborted) setRegistry(read);
+        if (controller.signal.aborted) return;
+        setRegistry(read);
+        setRegistryRead("ready");
       })
       // A registry that cannot be read is a create that will say so when it is
-      // tried; there is nothing to tell the person about here.
-      .catch(() => undefined);
+      // tried; there is nothing to tell the person about here. That is only
+      // true while the failure still lets it *be* tried — so it is recorded
+      // rather than swallowed, and the button reads it (`registryHoldsCreate`).
+      .catch(() => {
+        if (!controller.signal.aborted) setRegistryRead("failed");
+      });
     return () => {
       controller.abort();
     };
@@ -553,7 +564,7 @@ function ZeropsNewProjectContent() {
           locationStatus === "loading" ||
           locationStatus === "failed" ||
           (locations.length > 0 && !locationId) ||
-          (gitea !== undefined && registry === null)
+          registryHoldsCreate({ giteaKnown: gitea !== undefined, registryRead })
         }
         onClick={createProject}
       >
