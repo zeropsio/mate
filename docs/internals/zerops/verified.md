@@ -2193,3 +2193,38 @@ names the author: `4ac61752e` and `f0c3d9ffa`, both _"recipe: the group's import
 
 Read as the owner through the product's own path: a `gitea-signin` throwaway minted with
 `NO_ACCESS`, exchanged at the broker for the person's Gitea token, deleted after the call.
+
+## The half-made Mate: one abort budget for two writes — 2026-09-21
+
+`Lighthouse - Enzo` came up on 2026-09-20 with `core` and no `zcp`, on an ordinary creation moments
+after another. Chased a day later from the platform's own process list, which settles it: the
+container was never asked for.
+
+| Measured                                         | Value                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /process/search` on the project, ascending | `project.create` FINISHED at 15:55:08, and then **nothing at all** until 16:02 — the next rows are the `stack.create`/`stack.build`/`stack.enableSubdomainAccess` of the recovery a person ran at 16:00:47. No failed process, no error: the platform was never sent the container. |
+| What a creation normally costs                   | `zcp` is created 1–4 s after `core`: Ada 14:22:59 → 14:23:00, Uma 15:48:33 → 15:48:34, Wren 15:48:15 → 15:48:19. Enzo: 15:55:07 → 16:00:47, five minutes and forty seconds, all of it the person's.                                                                                 |
+
+The cause is in the client, and reading it needs both halves at once:
+
+- `restAdapter.executeApi` stages **one** `AbortController` per command, with a single timer of
+  `min(policy.httpDeadlineMs, remaining)` — `httpDeadlineMs` is 15 s.
+- `createProjectWithZeropsMate` makes **two** writes and passed that one signal to both. A project
+  POST that spends the budget takes the container with it, and the container request never leaves
+  the browser.
+- Its `catch` took no argument. An abort that never sent anything and a platform that refused the
+  recipe arrived as the same sentence, _"its container setup could not be confirmed"_ — which is
+  why this sat unexplained for a day. There was nothing to read.
+- The delegation tidy-up after both writes was on the same signal and unguarded, so a cancelled
+  tidy-up **failed a creation that had wholly succeeded** — the worst of the three, because the
+  person is then told to retry a Mate they already have.
+
+Fixed by one rule: **once the project exists, nothing after it may be skipped or turned into a
+failure.** Both the container write and the tidy-up run without the caller's signal, the tidy-up
+cannot fail the creation, and the platform's `status`/`code`/`detail` now ride on the error. The
+session generation is the one check that still stops the container write, and should: a signed-out
+client must send nothing.
+
+Residue worth knowing when reading the test account: `Lighthouse - Enzo` carries `mate:bot:Dara`,
+so the left menu calls it Dara. That is the recovery of 16:00:47 naming a Mate afresh, from before
+`23d560763` taught it to keep the name — left in place as evidence rather than patched by hand.
