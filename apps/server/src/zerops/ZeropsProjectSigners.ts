@@ -54,6 +54,8 @@ import * as NodeOS from "node:os";
 
 import * as ServerConfig from "../config.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { requestWithMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";
 import { readMemberEntries, readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
 import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
@@ -182,12 +184,15 @@ export class ZeropsProjectSigners extends Context.Service<
 export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(function* (input: {
   readonly environment: ZeropsEnvironment;
 }) {
-  const { apiBaseUrl, projectId, apiToken } = input.environment;
-  if (apiToken === undefined) return undefined;
-  const response = yield* zeropsGet({
-    url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`,
-    token: apiToken,
-  }).pipe(Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)));
+  const { apiBaseUrl, projectId } = input.environment;
+  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+  const { response } = yield* requestWithMateKey(mateKey, (token) =>
+    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
+  ).pipe(
+    Effect.catchTag("ZeropsApiUnavailableError", () =>
+      Effect.succeed({ token: undefined, response: undefined }),
+    ),
+  );
   if (response === undefined || response.status !== 200) return undefined;
   const body = yield* readJson(response).pipe(
     Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
@@ -199,16 +204,41 @@ export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(functio
   );
 });
 
-/** Every `ACTIVE` member of the org, or `undefined` when the list is unreadable. */
+/**
+ * Whether `body` claims the member list it carried is the whole thing.
+ *
+ * No paging field on `GET /client/{id}/user/list` has ever been measured
+ * (`docs/internals/zerops/verified.md` — 21 members read back in one
+ * unpaged `clientUserList`, no `nextCursor`, no `totalCount` seen on this
+ * endpoint specifically). So a `totalCount` this build has never observed is
+ * read defensively rather than ignored: present and it must match the row
+ * count read, or the list is partial; absent, the whole array is the whole
+ * list, matching every read measured so far.
+ */
+export function isMemberListComplete(body: unknown, entriesLength: number): boolean {
+  if (typeof body !== "object" || body === null) return true;
+  const totalCount = (body as Record<string, unknown>)["totalCount"];
+  if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return true;
+  return entriesLength >= totalCount;
+}
+
+/**
+ * Every `ACTIVE` member of the org, or `undefined` when the list is
+ * unreadable OR partial (S6) — a page that is not the whole list must not
+ * sign someone out for merely being off it.
+ */
 export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")(function* (input: {
   readonly environment: ZeropsEnvironment;
 }) {
-  const { apiBaseUrl, projectId, apiToken } = input.environment;
-  if (apiToken === undefined) return undefined;
-  const projectResponse = yield* zeropsGet({
-    url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`,
-    token: apiToken,
-  }).pipe(Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)));
+  const { apiBaseUrl, projectId } = input.environment;
+  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
+    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
+  ).pipe(
+    Effect.catchTag("ZeropsApiUnavailableError", () =>
+      Effect.succeed({ token: undefined, response: undefined }),
+    ),
+  );
   if (projectResponse === undefined || projectResponse.status !== 200) return undefined;
   const project = readProjectRoles(
     yield* readJson(projectResponse).pipe(
@@ -217,19 +247,27 @@ export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")
   );
   if (project === null) return undefined;
 
-  const memberResponse = yield* zeropsGet({
-    url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-    token: apiToken,
-  }).pipe(Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)));
-  if (memberResponse === undefined || memberResponse.status !== 200) return undefined;
-  const entries = readMemberEntries(
-    yield* readJson(memberResponse).pipe(
-      Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
+  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
+    zeropsGet({
+      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
+      token,
+    }),
+  ).pipe(
+    Effect.catchTag("ZeropsApiUnavailableError", () =>
+      Effect.succeed({ token: undefined, response: undefined }),
     ),
   );
+  if (memberResponse === undefined || memberResponse.status !== 200) return undefined;
+  const memberBody = yield* readJson(memberResponse).pipe(
+    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
+  );
+  const entries = readMemberEntries(memberBody);
   // An empty list is an outage dressed as an answer, and acting on it would
   // delete every login in the container.
   if (entries === null || entries.length === 0) return undefined;
+  // A partial page changes nothing (S6): a signer merely off this page is
+  // not a signer the org lost.
+  if (!isMemberListComplete(memberBody, entries.length)) return undefined;
   return new Set(
     readOrgMembers(entries)
       .filter((member) => member.status === "ACTIVE")
@@ -247,9 +285,18 @@ export const make = Effect.gen(function* () {
   const cache = yield* Ref.make<{ readonly at: number; readonly value: ProjectSigners } | null>(
     null,
   );
+  // The process-wide reader, shared with the door and the watch — provided
+  // by the layer this service's own layer composes above
+  // (`zeropsFeedsLayer.ts`).
+  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
 
-  const withHttp = <A>(effect: Effect.Effect<A, never, HttpClient.HttpClient>) =>
-    effect.pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+  const withHttp = <A>(
+    effect: Effect.Effect<A, never, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
+  ) =>
+    effect.pipe(
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+      Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+    );
 
   const signers: ZeropsProjectSigners["Service"]["signers"] =
     environment === undefined

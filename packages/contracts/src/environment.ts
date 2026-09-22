@@ -109,6 +109,20 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 
 /**
+ * Whether the Mate's own key currently proves anyone's identity, as of the
+ * last own-project read the door or the membership watch actually made
+ * (never a probe the descriptor triggers on its own). `"unknown"` before
+ * either has run once — briefly at boot, or on a server too old to report
+ * this at all (the whole field is optional for exactly that reason).
+ */
+export const ExecutionEnvironmentZeropsIdentity = Schema.Literals(["unknown", "ok", "failed"]);
+export type ExecutionEnvironmentZeropsIdentity = typeof ExecutionEnvironmentZeropsIdentity.Type;
+
+/** Which of the two places the key that read answered with came from. */
+export const ExecutionEnvironmentZeropsKeySource = Schema.Literals(["store", "snapshot"]);
+export type ExecutionEnvironmentZeropsKeySource = typeof ExecutionEnvironmentZeropsKeySource.Type;
+
+/**
  * The Zerops project this container belongs to — a fact the env contract
  * already owns (`T3CODE_ZEROPS_PROJECT_ID`, spec-mate.md §2.3) and states
  * non-secretly here. Present only in Zerops mode; absent everywhere else,
@@ -116,6 +130,16 @@ export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabi
  */
 export const ExecutionEnvironmentZerops = Schema.Struct({
   projectId: TrimmedNonEmptyString,
+  /** See {@link ExecutionEnvironmentZeropsIdentity}. Never the key itself. */
+  identity: Schema.optionalKey(ExecutionEnvironmentZeropsIdentity),
+  /** ISO instant of the read {@link identity} reports. Absent before the first one. */
+  identityCheckedAt: Schema.optionalKey(TrimmedNonEmptyString),
+  /** See {@link ExecutionEnvironmentZeropsKeySource}. Absent before the first read. */
+  keySource: Schema.optionalKey(ExecutionEnvironmentZeropsKeySource),
+  /** ISO instant this container's env was last captured for that read — today
+      the same instant as {@link identityCheckedAt}, since both come off the
+      one own-project read; a distinct capture step would diverge them later. */
+  envCapturedAt: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type ExecutionEnvironmentZerops = typeof ExecutionEnvironmentZerops.Type;
 

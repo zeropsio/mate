@@ -33,6 +33,7 @@ import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -477,6 +478,16 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
         signers: Effect.succeed({}),
         checkLeaversNow: Effect.succeed(0),
       }),
+    ),
+    // A fixture scene has no live env store either: the reader answers
+    // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
+    // is not provided here — it is supplied once, live or fixture alike, in
+    // `server.ts`'s `RuntimeBaseDependenciesLive`, above the point where
+    // this layer is selected; a second instance here would shadow it for
+    // nothing that needs it.
+    Layer.succeed(
+      ZeropsMateKeyModule.ZeropsMateKey,
+      ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
   );
 };

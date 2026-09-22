@@ -1,10 +1,16 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import { DOOR_THROWAWAY_MAX_AGE_MS, verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
@@ -39,20 +45,29 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
     headers: { "content-type": "application/json", ...headers },
   });
 
-const stub = (route: (url: string, token: string | undefined) => Response) => {
+const stub = (
+  route: (url: string, token: string | undefined) => Response,
+  mateKey: ZeropsMateKeyModule.ZeropsMateKeyReader = ZeropsMateKeyModule.snapshotOnlyReader(
+    MATE_KEY,
+  ),
+) => {
   const seen: Array<SeenRequest> = [];
-  const layer = Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      const authorization = request.headers.authorization;
-      seen.push({ url: request.url, authorization });
-      return Effect.succeed(
-        HttpClientResponse.fromWeb(
-          request,
-          route(request.url, authorization?.replace("Bearer ", "")),
-        ),
-      );
-    }),
+  const layer = Layer.mergeAll(
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        const authorization = request.headers.authorization;
+        seen.push({ url: request.url, authorization });
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            route(request.url, authorization?.replace("Bearer ", "")),
+          ),
+        );
+      }),
+    ),
+    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+    ZeropsIdentityStatusModule.layer,
   );
   return { layer, seen } as const;
 };
@@ -216,7 +231,23 @@ describe("verifyThrowawayCaller", () => {
       { tokenRecord: { ...TOKEN_RECORD, created: "the other day" } },
       "stale",
     ],
-    ["a creator the member list does not know", { members: { clientUserList: [] } }, "not_member"],
+    [
+      "a creator the (non-empty) member list does not know",
+      {
+        members: {
+          clientUserList: [
+            {
+              id: "cu-someone-else",
+              userId: "someone-else",
+              roleCode: "BASIC_USER",
+              status: "ACTIVE",
+              canCreateProjects: false,
+            },
+          ],
+        },
+      },
+      "not_member",
+    ],
     [
       "a creator who is invited but not active",
       {
@@ -345,7 +376,10 @@ describe("verifyThrowawayCaller", () => {
   }
 
   it.effect("answers unavailable when this Mate has no key of its own", () => {
-    const { layer, seen } = scene();
+    const { layer, seen } = stub(
+      () => json({ message: "unexpected route" }, 500),
+      ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+    );
     const keyless = resolveZeropsEnvironment({
       projectId: PROJECT_ID,
       apiHost: undefined,
@@ -396,5 +430,95 @@ describe("verifyThrowawayCaller", () => {
       ),
       Effect.provide(layer),
     );
+  });
+
+  it.effect("an empty member list is an outage at the door, not a refusal", () => {
+    // A Mate's project always has at least its creator: an empty
+    // `clientUserList` is the platform answering nothing usable, the same as
+    // an unreadable list — never grounds to refuse the caller as "not a
+    // member" (S6, matching the watch and the signers gate).
+    const { layer } = scene({ members: { clientUserList: [] } });
+    return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
+      Effect.tap((error) =>
+        Effect.sync(() => assert.strictEqual(error._tag, "ZeropsApiUnavailableError")),
+      ),
+      Effect.provide(layer),
+    );
+  });
+
+  it.effect("a key rotated in the store is picked up on the next door without a restart", () => {
+    // The Mate's own key, as presented on the wire, rotates from `old-key`
+    // to `new-key` in the live store the moment the first own-key read comes
+    // back 401 — mirroring a key moved onto the `zcp` service mid-flight
+    // (spec-mate.md §2 root cause 4). The door must re-resolve and retry
+    // once, never falling back to the boot snapshot it no longer trusts.
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-door-key-rotate-" });
+      const storePath = path.join(dir, "env.json");
+      yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"old-key"}`);
+      const mateKey = yield* makeMateKey({ fs, snapshot: "boot-snapshot", storePath });
+
+      const route = (url: string, token: string | undefined) => {
+        if (url.endsWith(`/project/${PROJECT_ID}`)) {
+          if (token === "new-key") return json({ id: PROJECT_ID, clientId: CLIENT_ID }, 200);
+          return json({}, 401);
+        }
+        if (url.endsWith("/user/info")) return json({ id: TOKEN_ID }, 200);
+        if (url.includes("/integration-token/")) {
+          return json(TOKEN_RECORD, 200, { date: API_NOW });
+        }
+        if (url.endsWith("/user/list")) return json(MEMBERS, 200);
+        return json({ message: "unexpected route" }, 500);
+      };
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.gen(function* () {
+            const token = request.headers.authorization?.replace("Bearer ", "");
+            if (request.url.endsWith(`/project/${PROJECT_ID}`) && token === "old-key") {
+              // The platform rejects the pre-rotation key, and rotates the
+              // store the same instant a real deployment would move the key
+              // onto the `zcp` service — spec-mate.md §2 root cause 4.
+              yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"new-key"}`).pipe(Effect.orDie);
+            }
+            return HttpClientResponse.fromWeb(request, route(request.url, token));
+          }),
+        ),
+      );
+
+      const caller = yield* verifyThrowawayCaller({
+        environment: { ...environment, apiToken: "boot-snapshot" },
+        token: PRESENTED,
+      }).pipe(
+        Effect.provide(layer),
+        Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+        Effect.provide(ZeropsIdentityStatusModule.layer),
+      );
+      assert.strictEqual(caller.userId, USER_ID);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  });
+
+  it.effect("records the identity status of its own-project read", () => {
+    const { layer } = scene();
+    return Effect.gen(function* () {
+      yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+      const status = yield* ZeropsIdentityStatusModule.ZeropsIdentityStatus;
+      const current = yield* status.current;
+      assert.strictEqual(current.identity, "ok");
+      assert.strictEqual(current.keySource, "snapshot");
+      assert.isDefined(current.identityCheckedAt);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("records the identity status as failed when its own-project read fails", () => {
+    const { layer } = scene({ projectStatus: 500 });
+    return Effect.gen(function* () {
+      yield* Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED }));
+      const status = yield* ZeropsIdentityStatusModule.ZeropsIdentityStatus;
+      const current = yield* status.current;
+      assert.strictEqual(current.identity, "failed");
+    }).pipe(Effect.provide(layer));
   });
 });

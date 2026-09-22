@@ -73,6 +73,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
+import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
 import {
   readJson,
   responseDateEpochMs,
@@ -319,17 +321,26 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   readonly environment: ZeropsEnvironment;
   readonly token: string;
 }) {
-  const { apiBaseUrl, projectId, apiToken } = input.environment;
-  if (apiToken === undefined) {
-    return yield* unavailable("This Mate has no Zerops key of its own to check a caller with.");
-  }
+  const { apiBaseUrl, projectId } = input.environment;
+  const mateKey = yield* ZeropsMateKey;
+  const identityStatus = yield* ZeropsIdentityStatus;
 
   // 0. Our own project, with our own key: which org we belong to, and what
-  //    this project says about people.
-  const projectResponse = yield* zeropsGet({
-    url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`,
-    token: apiToken,
+  //    this project says about people. A `401`/`403` here re-resolves the
+  //    key once before giving up — the platform may have moved it since this
+  //    Mate started (spec-mate.md §2 root cause 4). This is also the read the
+  //    descriptor's `identity` field reports (S4): whatever this call decides,
+  //    `ZeropsIdentityStatus` learns it too.
+  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
+    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
+  );
+  yield* identityStatus.record({
+    ok: projectResponse?.status === 200,
+    keySource: yield* mateKey.lastSource,
   });
+  if (projectResponse === undefined) {
+    return yield* unavailable("This Mate has no Zerops key of its own to check a caller with.");
+  }
   switch (projectResponse.status) {
     case 200:
       break;
@@ -418,18 +429,27 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
 
   // 6. Its creator, and whether the org still knows them.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
-  const memberResponse = yield* zeropsGet({
-    url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-    token: apiToken,
-  });
-  if (memberResponse.status !== 200) {
+  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
+    zeropsGet({
+      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
+      token,
+    }),
+  );
+  if (memberResponse === undefined || memberResponse.status !== 200) {
     return yield* unavailable(
-      `The Zerops API answered ${String(memberResponse.status)} for this org's member list.`,
+      `The Zerops API answered ${memberResponse === undefined ? "nothing" : String(memberResponse.status)} for this org's member list.`,
     );
   }
   const entries = readMemberEntries(yield* readJson(memberResponse));
   if (entries === null) {
     return yield* unavailable("This org's member list was not in the expected shape.");
+  }
+  // An empty list is an outage dressed as an answer, never a real org state —
+  // a Mate's project always has at least its creator — so it is read the same
+  // as an unreadable one, matching the watch (`ZeropsMembershipWatch.ts`) and
+  // the signers gate (`ZeropsProjectSigners.ts`).
+  if (entries.length === 0) {
+    return yield* unavailable("This org's member list came back empty.");
   }
   const member = findOrgMember(entries, record.createdByUser);
   if (member === null || member.status !== ZEROPS_ACTIVE_MEMBER_STATUS) {

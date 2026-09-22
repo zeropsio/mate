@@ -1,11 +1,17 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
   planMembershipRecheck,
   readProjectMembership,
@@ -156,14 +162,23 @@ const MEMBERS = {
   ],
 };
 
-const readLayer = (route: (url: string) => Response) => {
+const readLayer = (
+  route: (url: string) => Response,
+  mateKey: ZeropsMateKeyModule.ZeropsMateKeyReader = ZeropsMateKeyModule.snapshotOnlyReader(
+    MATE_KEY,
+  ),
+) => {
   const seen: Array<string | undefined> = [];
-  const layer = Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      seen.push(request.headers.authorization);
-      return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-    }),
+  const layer = Layer.mergeAll(
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        seen.push(request.headers.authorization);
+        return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
+      }),
+    ),
+    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+    ZeropsIdentityStatusModule.layer,
   );
   return { layer, seen } as const;
 };
@@ -220,6 +235,17 @@ describe("readProjectMembership", () => {
     );
   });
 
+  it.effect("records the identity status of its own-project read", () => {
+    const { layer } = readLayer(membershipRoute());
+    return Effect.gen(function* () {
+      yield* readProjectMembership({ environment });
+      const status = yield* ZeropsIdentityStatusModule.ZeropsIdentityStatus;
+      const current = yield* status.current;
+      assert.strictEqual(current.identity, "ok");
+      assert.strictEqual(current.keySource, "snapshot");
+    }).pipe(Effect.provide(layer));
+  });
+
   it.effect("reads an empty member list as an outage, never as a lockout", () => {
     const { layer } = readLayer((url) =>
       url.endsWith("/user/list")
@@ -233,7 +259,10 @@ describe("readProjectMembership", () => {
   });
 
   it.effect("makes no call at all when this Mate has no key of its own", () => {
-    const { layer, seen } = readLayer(membershipRoute());
+    const { layer, seen } = readLayer(
+      membershipRoute(),
+      ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+    );
     const keyless = resolveZeropsEnvironment({
       projectId: PROJECT_ID,
       apiHost: undefined,
@@ -328,5 +357,49 @@ describe("runMembershipRecheck", () => {
       assert.strictEqual(ended, 0);
       assert.deepStrictEqual(seen, []);
     }),
+  );
+
+  it.effect("a rotated key does not end sessions", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-watch-key-rotate-" });
+      const storePath = path.join(dir, "env.json");
+      yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"old-key"}`);
+      const mateKey = yield* makeMateKey({ fs, snapshot: MATE_KEY, storePath });
+
+      const failures = yield* Ref.make(0);
+      const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
+      const seen: Array<string | undefined> = [];
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.gen(function* () {
+            const authorization = request.headers.authorization;
+            seen.push(authorization);
+            const token = authorization?.replace("Bearer ", "");
+            if (token === "old-key") {
+              // Rotated on the platform the instant the old key is rejected —
+              // mirrors the client's hardening step moving the key mid-flight.
+              yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"new-key"}`).pipe(Effect.orDie);
+              return HttpClientResponse.fromWeb(request, json({ message: "unauthorized" }, 401));
+            }
+            return HttpClientResponse.fromWeb(request, membershipRoute()(request.url));
+          }),
+        ),
+      );
+
+      const ended = yield* runMembershipRecheck({ environment, failures }).pipe(
+        Effect.provide(Layer.mergeAll(auth.layer, layer)),
+        Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+        Effect.provide(ZeropsIdentityStatusModule.layer),
+      );
+      assert.strictEqual(ended, 0);
+      assert.deepStrictEqual(auth.revoked, []);
+      assert.strictEqual(yield* Ref.get(failures), 0);
+      // The own-key calls hit the rejected key once each before retrying —
+      // never the presented-token path, and never a third attempt.
+      assert.isTrue(seen.some((header) => header === "Bearer new-key"));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });

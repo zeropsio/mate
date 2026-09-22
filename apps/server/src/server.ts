@@ -31,6 +31,7 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import { ZeropsLayerLive } from "./zerops/zeropsFeedsLayer.ts";
+import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -503,6 +504,15 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProjectFaviconResolverLayerLive),
   Layer.provideMerge(RepositoryIdentityResolverLayerLive),
   Layer.provideMerge(ServerEnvironment.layer),
+  // `ServerEnvironment.getDescriptor` reads this Ref for the `zerops.identity`
+  // fields (S4). Self-sufficient (no deps of its own), so it can be added
+  // once here to satisfy `ServerEnvironment.layer`'s requirement for it — and
+  // because this whole chain (`RuntimeBaseDependenciesLive`) is later used to
+  // satisfy `ZeropsLayerLive`'s requirements in `RuntimeDependenciesLive`
+  // below, the SAME instance also reaches the membership watch and (through
+  // the runtime composition further down) the door — one shared status, one
+  // writer's worth of readers.
+  Layer.provideMerge(ZeropsIdentityStatusModule.layer),
   Layer.provideMerge(AuthLayerLive),
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(

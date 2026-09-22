@@ -15,6 +15,7 @@ import {
   RELAY_URL_SECRET,
 } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
+import * as ZeropsIdentityStatus from "../zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsMateUpdate from "../zerops/ZeropsMateUpdate.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
 
@@ -190,6 +191,104 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
         ),
       );
       expect(insideZerops.zerops).toEqual({ projectId: "nTV3oMB2SS634ImDJnQckg" });
+    }),
+  );
+
+  const zeropsConfigLayer = (baseDir: string) =>
+    Effect.gen(function* () {
+      const config = yield* makeServerConfig(baseDir);
+      return {
+        ...config,
+        zerops: {
+          projectId: "nTV3oMB2SS634ImDJnQckg",
+          apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
+          allowedOrigins: [],
+          publicOrigin: undefined,
+          apiToken: undefined,
+          roleRecheckInterval: Duration.seconds(300),
+          sessionMaxAge: Duration.hours(24),
+        },
+      } satisfies ServerConfig.ServerConfig["Service"];
+    });
+
+  // S4: the descriptor reports the door/watch's last own-project read, never
+  // a probe of its own.
+  it.effect(
+    "the descriptor says the identity check failed after the door could not read its own project",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-server-environment-identity-failed-",
+        });
+        const config = yield* zeropsConfigLayer(baseDir);
+
+        const descriptor = yield* Effect.gen(function* () {
+          const status = yield* ZeropsIdentityStatus.ZeropsIdentityStatus;
+          yield* status.record({ ok: false, keySource: "store" });
+          return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+        }).pipe(
+          Effect.provide(
+            ServerEnvironment.layer.pipe(
+              Layer.provide(ServerSecretStore.layer),
+              Layer.provide(ServerConfig.layer(config)),
+            ),
+          ),
+          Effect.provide(ZeropsIdentityStatus.layer),
+        );
+        expect(descriptor.zerops?.identity).toBe("failed");
+        expect(descriptor.zerops?.identityCheckedAt).toBeDefined();
+      }),
+  );
+
+  it.effect("the descriptor says which source the key came from", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-identity-source-",
+      });
+      const config = yield* zeropsConfigLayer(baseDir);
+
+      const descriptor = yield* Effect.gen(function* () {
+        const status = yield* ZeropsIdentityStatus.ZeropsIdentityStatus;
+        yield* status.record({ ok: true, keySource: "snapshot" });
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+        Effect.provide(ZeropsIdentityStatus.layer),
+      );
+      expect(descriptor.zerops?.identity).toBe("ok");
+      expect(descriptor.zerops?.keySource).toBe("snapshot");
+    }),
+  );
+
+  it.effect("the descriptor says the identity is unknown before any own-project read has run", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-identity-unknown-",
+      });
+      const config = yield* zeropsConfigLayer(baseDir);
+
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+        Effect.provide(ZeropsIdentityStatus.layer),
+      );
+      expect(descriptor.zerops?.identity).toBe("unknown");
+      expect(descriptor.zerops?.identityCheckedAt).toBeUndefined();
+      expect(descriptor.zerops?.keySource).toBeUndefined();
     }),
   );
 

@@ -20,6 +20,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { ZeropsIdentityStatus } from "../zerops/ZeropsIdentityStatus.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
 
 export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
@@ -203,11 +204,42 @@ export const make = Effect.gen(function* () {
       Effect.serviceOption(ZeropsMateUpdate).pipe(
         Effect.flatMap((update) => (update._tag === "None" ? Effect.void : update.value.current)),
       ),
+      // S4: reports the verdict of the last own-project read the door or the
+      // membership watch actually made — never a probe of its own, and never
+      // the key. Absent (not "unknown") when this container is not in Zerops
+      // mode at all, since the whole `zerops` field is then absent too.
+      Effect.serviceOption(ZeropsIdentityStatus).pipe(
+        Effect.flatMap((status) =>
+          status._tag === "None" ? Effect.succeed(undefined) : status.value.current,
+        ),
+      ),
     ]).pipe(
-      Effect.map(([agentActivityPublishing, update]) => ({
+      Effect.map(([agentActivityPublishing, update, identityStatus]) => ({
         ...descriptor,
         capabilities: { ...descriptor.capabilities, agentActivityPublishing },
         ...(update === undefined ? {} : { update }),
+        ...(descriptor.zerops === undefined
+          ? {}
+          : {
+              zerops: {
+                ...descriptor.zerops,
+                ...(identityStatus === undefined
+                  ? {}
+                  : {
+                      identity: identityStatus.identity,
+                      ...(identityStatus.identityCheckedAt === undefined
+                        ? {}
+                        : {
+                            identityCheckedAt: identityStatus.identityCheckedAt,
+                            // Same read, same instant — see the field's doc comment.
+                            envCapturedAt: identityStatus.identityCheckedAt,
+                          }),
+                      ...(identityStatus.keySource === undefined
+                        ? {}
+                        : { keySource: identityStatus.keySource }),
+                    }),
+              },
+            }),
       })),
     ),
   });

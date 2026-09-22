@@ -1,10 +1,16 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
+  isMemberListComplete,
   isTurnStartingCommand,
   mayStartTurn,
   parseSignerTags,
@@ -159,6 +165,21 @@ describe("planAgentSignOut", () => {
   });
 });
 
+describe("isMemberListComplete", () => {
+  for (const [name, body, entriesLength, expected] of [
+    ["no totalCount at all", {}, 3, true],
+    ["body is not an object", null, 0, true],
+    ["totalCount matches the rows read", { totalCount: 2 }, 2, true],
+    ["totalCount is fewer than the rows read", { totalCount: 1 }, 2, true],
+    ["totalCount exceeds the rows read", { totalCount: 5 }, 2, false],
+    ["totalCount is not a finite number", { totalCount: "5" }, 2, true],
+  ] as const) {
+    it(name, () => {
+      assert.strictEqual(isMemberListComplete(body, entriesLength), expected);
+    });
+  }
+});
+
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
 const MATE_KEY = "the-mates-own-zerops-key";
@@ -176,14 +197,22 @@ const json = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-const httpLayer = (route: (url: string) => Response) => {
+const httpLayer = (
+  route: (url: string) => Response,
+  mateKey: ZeropsMateKeyModule.ZeropsMateKeyReader = ZeropsMateKeyModule.snapshotOnlyReader(
+    MATE_KEY,
+  ),
+) => {
   const seen: Array<string | undefined> = [];
-  const layer = Layer.succeed(
-    HttpClient.HttpClient,
-    HttpClient.make((request) => {
-      seen.push(request.headers.authorization);
-      return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
-    }),
+  const layer = Layer.mergeAll(
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) => {
+        seen.push(request.headers.authorization);
+        return Effect.succeed(HttpClientResponse.fromWeb(request, route(request.url)));
+      }),
+    ),
+    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
   );
   return { layer, seen } as const;
 };
@@ -220,7 +249,10 @@ describe("readProjectSigners", () => {
   }
 
   it.effect("makes no call at all when this Mate has no key of its own", () => {
-    const { layer, seen } = httpLayer(() => json({}));
+    const { layer, seen } = httpLayer(
+      () => json({}),
+      ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+    );
     const keyless = resolveZeropsEnvironment({
       projectId: PROJECT_ID,
       apiHost: undefined,
@@ -236,6 +268,44 @@ describe("readProjectSigners", () => {
       Effect.provide(layer),
     );
   });
+
+  it.effect("a key rotated in the store is retried once, not treated as a failure", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-signers-key-rotate-" });
+      const storePath = path.join(dir, "env.json");
+      yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"old-key"}`);
+      const mateKey = yield* makeMateKey({ fs, snapshot: MATE_KEY, storePath });
+
+      const layer = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.gen(function* () {
+            const token = request.headers.authorization?.replace("Bearer ", "");
+            if (token === "old-key") {
+              yield* fs.writeFileString(storePath, `{"ZCP_API_KEY":"new-key"}`).pipe(Effect.orDie);
+              return HttpClientResponse.fromWeb(request, json({}, 401));
+            }
+            return HttpClientResponse.fromWeb(
+              request,
+              json({
+                id: PROJECT_ID,
+                clientId: CLIENT_ID,
+                tagList: [signerTag("claude-code", JAN)],
+              }),
+            );
+          }),
+        ),
+      );
+
+      const signers = yield* readProjectSigners({ environment }).pipe(
+        Effect.provide(layer),
+        Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+      );
+      assert.deepStrictEqual(signers, { "claude-code": JAN });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 });
 
 describe("readActiveMemberIds", () => {
@@ -284,4 +354,35 @@ describe("readActiveMemberIds", () => {
       ),
     );
   }
+
+  // S6: a page is not the whole org, so nobody merely off it counts as gone.
+  it.effect("a partial member list signs nobody out", () =>
+    readActiveMemberIds({ environment }).pipe(
+      Effect.tap((ids) => Effect.sync(() => assert.isUndefined(ids))),
+      Effect.provide(
+        httpLayer(
+          route({
+            clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }],
+            totalCount: 2,
+          }),
+        ).layer,
+      ),
+    ),
+  );
+
+  it.effect("a totalCount that matches the row count is not partial", () =>
+    readActiveMemberIds({ environment }).pipe(
+      Effect.tap((ids) =>
+        Effect.sync(() => assert.deepStrictEqual(ids === undefined ? [] : [...ids], [JAN])),
+      ),
+      Effect.provide(
+        httpLayer(
+          route({
+            clientUserList: [{ id: "cu-jan", userId: JAN, status: "ACTIVE" }],
+            totalCount: 1,
+          }),
+        ).layer,
+      ),
+    ),
+  );
 });

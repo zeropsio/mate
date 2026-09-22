@@ -21,6 +21,7 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
@@ -43,6 +44,16 @@ const liveLayer = Layer.mergeAll(
   // is deliberately absent from the fixture layer — a fixture scene has no
   // platform to re-read.
   ZeropsMembershipWatchModule.layer,
+).pipe(
+  // The process-wide own-key reader: one cache, one invalidation, shared by
+  // the watch and the signers gate above, and (via this layer's own merged
+  // output flowing up through the runtime composition in `server.ts`) by the
+  // door's `verifyThrowawayCaller` too. `ZeropsIdentityStatus` is NOT
+  // provided here — it is provided once, above both this tree and
+  // `ServerEnvironment.layer`, in `server.ts`'s `RuntimeBaseDependenciesLive`
+  // — providing a second instance here would shadow that one for everything
+  // under this tree and break the sharing the descriptor (S4) depends on.
+  Layer.provideMerge(ZeropsMateKeyModule.layer),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

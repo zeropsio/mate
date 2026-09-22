@@ -12,6 +12,8 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { mintZeropsThrowawayPairingCredential, zeropsGrantScopes } from "./ZeropsIdentityGate.ts";
+import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
+import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
@@ -66,6 +68,15 @@ const makeLayer = (route: (url: string) => Response) =>
       ),
     ),
     Layer.provideMerge(httpClientLayer(route)),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.succeed(
+          ZeropsMateKeyModule.ZeropsMateKey,
+          ZeropsMateKeyModule.snapshotOnlyReader(MATE_KEY),
+        ),
+        ZeropsIdentityStatusModule.layer,
+      ),
+    ),
   );
 
 const requestMetadata = {

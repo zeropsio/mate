@@ -155,7 +155,9 @@ import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
+import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
+import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -1059,7 +1061,21 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.browserTraceCollector,
         }),
       ),
-      Layer.provide(otlpSerializationLayer(config.otlpProtocol)),
+      Layer.provide(
+        Layer.mergeAll(
+          otlpSerializationLayer(config.otlpProtocol),
+          // The door (`zerops/http.ts`) requires these two directly, outside
+          // the fixture/feeds bundle the next `Layer.provide` supplies: a
+          // test machine has no live env store either, so the reader
+          // answers the boot snapshot (`undefined`, same as `config.zerops`
+          // being unset) and the status starts `"unknown"`.
+          Layer.succeed(
+            ZeropsMateKeyModule.ZeropsMateKey,
+            ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+          ),
+          ZeropsIdentityStatusModule.layer,
+        ),
+      ),
       Layer.provide(
         options?.fixtureZeropsLayer ??
           Layer.mergeAll(
