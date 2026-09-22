@@ -60,15 +60,30 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
     <Popover>
       <PopoverTrigger
         className={cn(
-          "inline-flex min-w-0 items-center gap-1.5 rounded-sm text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "flex min-w-0 flex-1 flex-col gap-1 rounded-sm text-left text-xs leading-4 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className,
         )}
         data-zerops-surface="birth-line"
       >
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              detailStep === progress.failed && "text-[var(--zerops-status-failed-text)]",
+            )}
+          >
+            {detailStep?.detail ?? ""}
+          </span>
+          {elapsedMs === undefined ? null : (
+            <span className="shrink-0 font-mono text-[11px] tabular-nums">
+              {formatBirthElapsed(elapsedMs)}
+            </span>
+          )}
+        </span>
         <span
           aria-valuemax={progress.total}
           aria-valuenow={progress.doneCount}
-          className="inline-flex shrink-0 items-center gap-0.5"
+          className="flex w-full items-center gap-0.5"
           role="progressbar"
           {...(valueText === undefined ? {} : { "aria-valuetext": valueText })}
         >
@@ -76,7 +91,7 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
             <span
               aria-hidden="true"
               className={cn(
-                "h-1.5 w-2.5 rounded-full",
+                "h-1 flex-1 rounded-full",
                 SEGMENT_TONE_CLASS[BIRTH_STEP_TONE[step.state]],
                 step.state === "active" && "animate-status-pulse motion-reduce:animate-none",
               )}
@@ -85,21 +100,6 @@ export function ZeropsBirthLine({ progress, nowMs, className }: ZeropsBirthLineP
             />
           ))}
         </span>
-        {detailStep?.detail === undefined ? null : (
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate text-left",
-              detailStep === progress.failed && "text-[var(--zerops-status-failed-text)]",
-            )}
-          >
-            {detailStep.detail}
-          </span>
-        )}
-        {elapsedMs === undefined ? null : (
-          <span className="shrink-0 font-mono text-[11px] tabular-nums">
-            {formatBirthElapsed(elapsedMs)}
-          </span>
-        )}
       </PopoverTrigger>
       <PopoverPopup align="start" className="w-80" side="bottom">
         <ZeropsBirthChecklist nowMs={nowMs} progress={progress} />

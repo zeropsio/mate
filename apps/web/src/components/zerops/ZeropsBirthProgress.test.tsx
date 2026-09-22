@@ -34,11 +34,15 @@ function progress(partial: Partial<BirthProgress> = {}): BirthProgress {
 const NOW = Date.parse("2026-09-22T10:01:05Z");
 
 describe("ZeropsBirthLine", () => {
-  it("is the meter, the active step's detail, and the elapsed time, in that order", () => {
+  it("is the active step's detail and the elapsed time, then the meter under them", () => {
+    // The card's line is ~190 px on a narrow group column: a meter beside
+    // the words left them "Building the …", so it runs full width below.
     const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
     expect(html).toContain('data-zerops-surface="birth-line"');
-    expect(html.indexOf("progressbar")).toBeLessThan(html.indexOf("Building the container"));
-    expect(html.indexOf("Building the container")).toBeLessThan(html.indexOf("1:05"));
+    const detail = html.indexOf(">Building the container<");
+    expect(detail).toBeGreaterThan(-1);
+    expect(detail).toBeLessThan(html.indexOf("1:05"));
+    expect(html.indexOf("1:05")).toBeLessThan(html.indexOf('role="progressbar"'));
   });
 
   it("draws one segment per step, six for the six-step birth", () => {
