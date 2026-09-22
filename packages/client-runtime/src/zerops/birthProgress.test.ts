@@ -756,3 +756,44 @@ describe("a wait phase ahead of the processes (measured 2026-09-22, +7 s)", () =
     expect(progress.active?.id).toBe("container");
   });
 });
+
+describe("steps that finish out of order (measured 2026-09-22, a cached container image)", () => {
+  it("keeps the container active when closing off is already done", () => {
+    const facts: BirthFacts = {
+      ...SETTLED,
+      ...NOT_YET,
+      provisioningPhase: "awaiting-health",
+      container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
+      processes: [
+        process({ actionName: "stack.build", status: "RUNNING", serviceIds: ["svc-1"] }),
+        process({ actionName: "stack.updateProjectEnvs", status: "FINISHED" }),
+      ],
+    };
+    const progress = deriveBirthProgress(facts, NOW);
+    expect(stepOf(facts, "hardening").state).toBe("done");
+    expect(stepOf(facts, "container").state).toBe("active");
+    expect(stepOf(facts, "mate").state).toBe("waiting");
+    expect(progress.active?.id).toBe("container");
+    expect(progress.doneCount).toBe(2);
+  });
+
+  it("still backfills everything from a Mate that answers", () => {
+    const facts: BirthFacts = {
+      ...SETTLED,
+      provisioningPhase: null,
+      connection: "none",
+      health: "ready",
+      project: { status: "CREATING" },
+      container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
+    };
+    const progress = deriveBirthProgress(facts, NOW);
+    expect(progress.steps.slice(0, 5).map((step) => step.state)).toEqual([
+      "done",
+      "done",
+      "done",
+      "done",
+      "done",
+    ]);
+    expect(progress.active?.id).toBe("connect");
+  });
+});

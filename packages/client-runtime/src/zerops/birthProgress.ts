@@ -392,7 +392,7 @@ function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): Step
   return { state: "waiting" };
 }
 
-function deriveMateStep(facts: BirthFacts, hardeningDone: boolean): StepDraft {
+function deriveMateStep(facts: BirthFacts, predecessorsDone: boolean): StepDraft {
   const health = facts.health;
 
   if (health === "stalled") {
@@ -403,7 +403,7 @@ function deriveMateStep(facts: BirthFacts, hardeningDone: boolean): StepDraft {
     return { state: "done" };
   }
 
-  if (!hardeningDone) {
+  if (!predecessorsDone) {
     return { state: "waiting" };
   }
 
@@ -430,16 +430,29 @@ function deriveConnectStep(facts: BirthFacts, mateDone: boolean): StepDraft {
 }
 
 /**
- * Forces every step before a `done` one to `done` — never leaves a gap. A
- * later step merely `active` proves nothing about the earlier ones (a wait
- * phase can run ahead of the processes), so it never backfills.
+ * The steps whose being done proves every step before it is done too: a
+ * container runs only in a project that exists, and a Mate that answers or
+ * is open runs in a container that is up, reachable and closed off (B-1:
+ * hardening precedes admission). Public access and closing off prove
+ * nothing about the container — measured 2026-09-22, hardening finished at
+ * +38 s while the container was still deploying — so they never backfill.
+ */
+const PROOF_STEPS: ReadonlySet<BirthStepId> = new Set(["container", "mate", "connect"]);
+
+/**
+ * Forces every step before a proving `done` one to `done` — the inventory
+ * flaps a creating project between buckets, and progress must never go
+ * backwards. A later step merely `active` proves nothing (a wait phase can
+ * run ahead of the processes), so it never backfills either.
  */
 function backfill(steps: ReadonlyArray<BirthStep>): BirthStep[] {
   const next = [...steps];
   for (let i = next.length - 2; i >= 0; i--) {
     const step = next[i]!;
     if (step.state === "failed" || step.state === "done") continue;
-    const laterDone = next.slice(i + 1).some((later) => later.state === "done");
+    const laterDone = next
+      .slice(i + 1)
+      .some((later) => later.state === "done" && PROOF_STEPS.has(later.id));
     if (laterDone) {
       const { detail: _detail, ...rest } = step;
       next[i] = { ...rest, state: "done" };
@@ -467,7 +480,12 @@ export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProg
   const container = deriveContainerStep(facts, project.state === "done", nowMs);
   const publicAccess = derivePublicAccessStep(facts, container.state === "done");
   const hardening = deriveHardeningStep(facts, publicAccess.state === "done");
-  const mate = deriveMateStep(facts, hardening.state === "done");
+  // The steps before it finish in no fixed order (closing off can end before
+  // the container is up), so the Mate is waited on only once all of them are.
+  const mate = deriveMateStep(
+    facts,
+    container.state === "done" && publicAccess.state === "done" && hardening.state === "done",
+  );
   const connect = deriveConnectStep(facts, mate.state === "done");
 
   const raw: BirthStep[] = [
