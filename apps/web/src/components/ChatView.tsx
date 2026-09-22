@@ -312,7 +312,12 @@ import {
   MATE_REVIEW_MERGE_RUNNING,
 } from "@t3tools/client-runtime/zerops";
 import { useZeropsCreationJob } from "~/zerops/useZeropsCreationJob";
-import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
+import {
+  resolveAgentAuthorizer,
+  useLocalAgentSigners,
+  useZeropsAgentSignerRecord,
+  useZeropsEnvironmentProjectId,
+} from "~/zerops/useZeropsAgentSigner";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -3671,6 +3676,14 @@ export default function ChatView(props: ChatViewProps) {
     if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
   }, [activeThreadRef, zeropsTopology]);
   const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
+  // D6: the one place a successful sign-in's signer is recorded, whichever
+  // door it went through (the panel's card, the band's dialog, the empty
+  // conversation); every row reads how it went by environment.
+  useZeropsAgentSignerRecord({
+    environmentId: activeThreadEnvironmentId,
+    snapshot: zeropsAgentAuth ?? null,
+    projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
+  });
   // The agent this composer would actually spend — the selected provider
   // instance, resolved to one of the two agents Mate signs people in to. A
   // driver Mate never signs anybody in to has no signer to speak of.

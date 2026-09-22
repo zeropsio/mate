@@ -24,6 +24,7 @@ import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
+import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { useZeropsMates } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
@@ -56,6 +57,8 @@ export function ZeropsPanel({
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
+  // D6: recorded by the conversation view, whichever door the sign-in used.
+  const signerRecord = useZeropsAgentSignerRecordState(threadRef?.environmentId);
   const view = buildZeropsServiceMap(topology.view, lifecycle, runningToolLabel);
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
@@ -82,7 +85,9 @@ export function ZeropsPanel({
     agentAuthCard === null ? null : (
       <ZeropsAgentAuthCard
         onCancel={cancelAgentLogin}
+        onRetryRecord={signerRecord.retry}
         onSignIn={setAuthorizationAgentId}
+        recordFailed={signerRecord.recordFailed}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
       />

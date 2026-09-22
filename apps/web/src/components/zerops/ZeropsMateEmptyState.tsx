@@ -20,10 +20,7 @@ import { MateMark } from "../MateMark";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
-import {
-  useZeropsAgentSignerRecord,
-  useZeropsEnvironmentProjectId,
-} from "../../zerops/useZeropsAgentSigner";
+import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { FlatCard } from "./primitives";
@@ -41,13 +38,9 @@ export function ZeropsMateEmptyState({
 }) {
   const agentAuth = useZeropsAgentAuth(environmentId);
   const signInRequired = agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth);
-  // D6: a successful sign-in here records its signer on the Mate's project,
-  // written as the person so this container cannot forge it.
-  const projectId = useZeropsEnvironmentProjectId(environmentId);
-  const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecord({
-    snapshot: agentAuth ?? null,
-    projectId,
-  });
+  // D6: the conversation view records the signer of a successful sign-in,
+  // whichever door it went through; a row only shows how that went.
+  const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecordState(environmentId);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);

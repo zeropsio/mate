@@ -1,10 +1,10 @@
-import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
-  agentSignInsJustSucceeded,
+  agentSignersToRecord,
   localSignersSettledBy,
   readLocalAgentSigners,
   rememberLocalAgentSigner,
@@ -23,65 +23,103 @@ vi.mock("./ZeropsSessionProvider", () => ({
 }));
 
 const snapshot = (
-  logins: Readonly<Partial<Record<"claude-code" | "codex", string>>>,
+  logins: Readonly<
+    Partial<
+      Record<
+        "claude-code" | "codex",
+        { readonly phase: "succeeded" | "starting" | "failed"; readonly startedBy: string }
+      >
+    >
+  >,
+  authorizedBy: Readonly<Partial<Record<"claude-code" | "codex", string>>> = {},
 ): ZeropsAgentAuthSnapshot => ({
   available: true,
-  agents: (["claude-code", "codex"] as const).map((agentId) => ({
-    agentId,
-    credPresent: true,
-    flagOAuth: true,
-    flagToken: false,
-    providerAuth: "authenticated" as const,
-    state: "authorized" as const,
-    ...(logins[agentId] === undefined
-      ? {}
-      : {
-          login: {
-            phase: logins[agentId] as "succeeded" | "starting" | "failed",
-            terminalId: "t",
-            startedAt: DateTime.makeUnsafe("2026-09-16T10:00:00.000Z"),
-            startedBy: "user-a",
-          },
-        }),
-  })),
+  agents: (["claude-code", "codex"] as const).map((agentId) => {
+    const login = logins[agentId];
+    const signer = authorizedBy[agentId];
+    return {
+      agentId,
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      providerAuth: "authenticated" as const,
+      state: "authorized" as const,
+      ...(login === undefined
+        ? {}
+        : {
+            login: {
+              phase: login.phase,
+              terminalId: "t",
+              startedAt: DateTime.makeUnsafe("2026-09-16T10:00:00.000Z"),
+              startedBy: login.startedBy,
+            },
+          }),
+      ...(signer === undefined ? {} : { authorizedBy: { subject: signer } }),
+    };
+  }),
 });
 
-describe("agentSignInsJustSucceeded", () => {
-  it("names the agent whose sign-in has just landed", () => {
+// State, not a transition: whichever door the sign-in went through, and after
+// a reload, the person who started a login that succeeded writes its record
+// until the project carries it.
+describe("agentSignersToRecord", () => {
+  it.each([
+    {
+      name: "a success this person started, not yet recorded",
+      logins: { "claude-code": { phase: "succeeded", startedBy: "user-a" } },
+      authorizedBy: {},
+      expected: ["claude-code"],
+    },
+    {
+      name: "a success somebody else started is theirs to record",
+      logins: { "claude-code": { phase: "succeeded", startedBy: "user-b" } },
+      authorizedBy: {},
+      expected: [],
+    },
+    {
+      name: "a record the project already carries",
+      logins: { codex: { phase: "succeeded", startedBy: "user-a" } },
+      authorizedBy: { codex: "user-a" },
+      expected: [],
+    },
+    {
+      name: "a sign-in merely in progress",
+      logins: { codex: { phase: "starting", startedBy: "user-a" } },
+      authorizedBy: {},
+      expected: [],
+    },
+    {
+      name: "a sign-in that failed",
+      logins: { codex: { phase: "failed", startedBy: "user-a" } },
+      authorizedBy: {},
+      expected: [],
+    },
+    {
+      name: "a success over another member's old record: the new login is this person's",
+      logins: { codex: { phase: "succeeded", startedBy: "user-a" } },
+      authorizedBy: { codex: "user-b" },
+      expected: ["codex"],
+    },
+    {
+      name: "both agents at once",
+      logins: {
+        "claude-code": { phase: "succeeded", startedBy: "user-a" },
+        codex: { phase: "succeeded", startedBy: "user-a" },
+      },
+      authorizedBy: {},
+      expected: ["claude-code", "codex"],
+    },
+  ] as const)("$name", ({ logins, authorizedBy, expected }) => {
+    expect(agentSignersToRecord(snapshot(logins, authorizedBy), "user-a")).toEqual(expected);
+  });
+
+  it("names nobody without a signed-in viewer", () => {
     expect(
-      agentSignInsJustSucceeded(
-        snapshot({ "claude-code": "starting" }),
-        snapshot({ "claude-code": "succeeded" }),
+      agentSignersToRecord(
+        snapshot({ codex: { phase: "succeeded", startedBy: "user-a" } }),
+        undefined,
       ),
-    ).toEqual(["claude-code"]);
-  });
-
-  // The snapshot republishes for reasons of its own; a record written on every
-  // republish would be a project write on every repaint.
-  it("names nobody when the success was already there", () => {
-    const already = snapshot({ "claude-code": "succeeded" });
-    expect(agentSignInsJustSucceeded(already, already)).toEqual([]);
-  });
-
-  it("names nobody while a sign-in is merely in progress", () => {
-    expect(agentSignInsJustSucceeded(null, snapshot({ "claude-code": "starting" }))).toEqual([]);
-  });
-
-  it("names nobody when a sign-in failed", () => {
-    expect(agentSignInsJustSucceeded(null, snapshot({ codex: "failed" }))).toEqual([]);
-  });
-
-  // The first snapshot this client ever sees may already carry a success — a
-  // login another tab drove, or one this page missed. Recording it is right:
-  // the write is idempotent and the alternative is a Mate nobody can run.
-  it("records a success already present on the first snapshot", () => {
-    expect(agentSignInsJustSucceeded(null, snapshot({ codex: "succeeded" }))).toEqual(["codex"]);
-  });
-
-  it("names both when two sign-ins land together", () => {
-    expect(
-      agentSignInsJustSucceeded(null, snapshot({ "claude-code": "succeeded", codex: "succeeded" })),
-    ).toEqual(["claude-code", "codex"]);
+    ).toEqual([]);
   });
 });
 
@@ -250,16 +288,20 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
     const { createRoot } = await import("react-dom/client");
     const { useZeropsAgentSignerRecord } = await import("./useZeropsAgentSigner");
     let latest: ReturnType<typeof useZeropsAgentSignerRecord> | undefined;
-    function Probe() {
-      latest = useZeropsAgentSignerRecord({ snapshot, projectId });
+    function Probe({ current }: { readonly current: ZeropsAgentAuthSnapshot }) {
+      latest = useZeropsAgentSignerRecord({ environmentId: null, snapshot: current, projectId });
       return null;
     }
     const root = createRoot(document.createElement("div") as unknown as Element);
     await act(async () => {
-      root.render(createElement(Probe));
+      root.render(createElement(Probe, { current: snapshot }));
     });
     return {
       result: () => latest as ReturnType<typeof useZeropsAgentSignerRecord>,
+      rerender: (next: ZeropsAgentAuthSnapshot) =>
+        act(async () => {
+          root.render(createElement(Probe, { current: next }));
+        }),
       unmount: () => act(async () => root.unmount()),
     };
   }
@@ -279,6 +321,68 @@ describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swall
     expect(readLocalAgentSigners()).toMatchObject({ "claude-code": "user-a" });
 
     await unmount();
+  });
+
+  it("a failed write is tried again on its own, and clears when it lands", async () => {
+    vi.useFakeTimers();
+    try {
+      mock.recordProjectAgentSigner
+        .mockRejectedValueOnce(new Error("network"))
+        .mockResolvedValueOnce(undefined);
+      const { result, unmount } = await render("project-1", succeeded("codex"));
+      expect(result().recordFailed.has("codex")).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      expect(mock.recordProjectAgentSigner).toHaveBeenCalledTimes(2);
+      expect(result().recordFailed.has("codex")).toBe(false);
+      await unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("writes once per login, not on every republish", async () => {
+    mock.recordProjectAgentSigner.mockResolvedValue(undefined);
+    const { rerender, unmount } = await render("project-1", succeeded("codex"));
+    await rerender({ ...succeeded("codex") });
+    await rerender({ ...succeeded("codex") });
+
+    expect(mock.recordProjectAgentSigner).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  // The panel's card and the empty conversation are elsewhere in the tree
+  // than the one recorder: they read how it went by environment.
+  it("publishes its state for the environment's rows, and withdraws it on unmount", async () => {
+    installTestDom();
+    mock.recordProjectAgentSigner.mockRejectedValueOnce(new Error("network"));
+    const { createRoot } = await import("react-dom/client");
+    const { useZeropsAgentSignerRecord, useZeropsAgentSignerRecordState } =
+      await import("./useZeropsAgentSigner");
+    const environmentId = EnvironmentId.make("env-rows");
+    let seen: ReadonlySet<string> = new Set();
+    function Recorder() {
+      useZeropsAgentSignerRecord({ environmentId, snapshot: succeeded("codex"), projectId: "p" });
+      return null;
+    }
+    function Row() {
+      seen = useZeropsAgentSignerRecordState(environmentId).recordFailed;
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement("div", null, createElement(Recorder), createElement(Row)));
+    });
+    expect(seen.has("codex")).toBe(true);
+
+    await act(async () => {
+      root.render(createElement(Row));
+    });
+    expect(seen.size).toBe(0);
+    await act(async () => root.unmount());
   });
 
   it("a successful write never appears as failed", async () => {
