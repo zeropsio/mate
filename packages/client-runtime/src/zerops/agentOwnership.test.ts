@@ -111,8 +111,11 @@ describe("resolveAgentOwnership", () => {
 });
 
 describe("agentOwnershipNotice", () => {
-  it("says nothing about an agent that is the viewer's own", () => {
-    expect(agentOwnershipNotice("mine")).toBeUndefined();
+  // A row that carries account actions (switch, sign out) says whose login
+  // it is quietly, the same as the notices next to it — unlike the composer
+  // notice, this is not a warning, so it stays understated.
+  it("says quietly that the viewer's own agent is theirs", () => {
+    expect(agentOwnershipNotice("mine")).toBe("Signed in by you.");
   });
 
   it("says nothing when there is no credential", () => {

@@ -15,13 +15,15 @@ import { useRightPanelStore } from "../../rightPanelStore";
  * project unread, or read and found without one — does the card stand on its
  * own under a heading.
  */
-import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import type { ScopedThreadRef, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 import { useState } from "react";
 
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useEnvironment } from "~/state/environments";
 import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
+import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
@@ -55,6 +57,11 @@ export function ZeropsPanel({
   >(null);
   const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
+  const agentSignOut = useAgentSignOut(threadRef?.environmentId ?? null);
+  // Absent on an older Mate: missing means unsupported, as for every capability.
+  const signOutSupported =
+    useEnvironment(threadRef?.environmentId ?? null)?.serverConfig?.environment?.capabilities
+      .agentSignOut === true;
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   // D6: recorded by the conversation view, whichever door the sign-in used.
@@ -81,13 +88,28 @@ export function ZeropsPanel({
             ? (activity.get(environmentId)?.face ?? "idle")
             : ("sleep" as const),
         };
+  const signOutPending = new Set<ZeropsAgentId>(
+    (agentAuthCard?.agents ?? [])
+      .filter((agent) => agentSignOut.statusFor(agent.agentId).pending)
+      .map((agent) => agent.agentId),
+  );
+  const signOutError = new Map<ZeropsAgentId, string>(
+    (agentAuthCard?.agents ?? []).flatMap((agent) => {
+      const error = agentSignOut.statusFor(agent.agentId).error;
+      return error === undefined ? [] : [[agent.agentId, error] as const];
+    }),
+  );
   const agents =
     agentAuthCard === null ? null : (
       <ZeropsAgentAuthCard
         onCancel={cancelAgentLogin}
         onRetryRecord={signerRecord.retry}
         onSignIn={setAuthorizationAgentId}
+        onSignOut={agentSignOut.signOut}
         recordFailed={signerRecord.recordFailed}
+        signOutError={signOutError}
+        signOutPending={signOutPending}
+        signOutSupported={signOutSupported}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
       />

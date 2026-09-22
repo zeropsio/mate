@@ -67,31 +67,22 @@ const ONE_OF_TWO: ZeropsAgentAuthSnapshot = {
   agents: [...NO_ATTENTION.agents, ...ATTENTION.agents],
 };
 
+// The feed reports its own container as reachable but tells nothing about
+// any agent (a Zerops environment `zcp studio` has not answered for yet).
+const UNAVAILABLE: ZeropsAgentAuthSnapshot = { available: false, agents: [] };
+
 const AUTH_STATES = [
-  {
-    label: "before agent auth answers",
-    value: undefined,
-    needsAttention: false,
-    signInRequired: false,
-  },
-  {
-    label: "when agent auth needs no attention",
-    value: NO_ATTENTION,
-    needsAttention: false,
-    signInRequired: false,
-  },
+  { label: "before agent auth answers", value: undefined, signInRequired: false },
+  // The card used to disappear here (no agent needs attention); it is the
+  // agents' own home, so it stays as long as the feed itself is available.
+  { label: "when agent auth needs no attention", value: NO_ATTENTION, signInRequired: false },
   {
     label: "when one agent is authorized and the other is not",
     value: ONE_OF_TWO,
-    needsAttention: true,
     signInRequired: false,
   },
-  {
-    label: "when no agent is authorized",
-    value: ATTENTION,
-    needsAttention: true,
-    signInRequired: true,
-  },
+  { label: "when no agent is authorized", value: ATTENTION, signInRequired: true },
+  { label: "when the feed itself is unavailable", value: UNAVAILABLE, signInRequired: false },
 ] as const;
 
 const CASES = THREADS.flatMap((thread) =>
@@ -115,7 +106,8 @@ const CASES = THREADS.flatMap((thread) =>
           : {
               threadRef: thread.value,
               panel: topologyState.panel,
-              agentAuthCard: authState.needsAttention ? authState.value : null,
+              agentAuthCard:
+                authState.value !== undefined && authState.value.available ? authState.value : null,
               agentSignInRequired: authState.signInRequired,
               projectName: null,
             },

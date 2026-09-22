@@ -21,6 +21,7 @@ import {
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
   resolveAgentOwnership,
+  type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
@@ -30,6 +31,7 @@ import {
   agentAuthLabel,
   agentLoginLabel,
   classifyAgentRowLogin,
+  zeropsAgentAuthNeedsAttention,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
@@ -52,6 +54,10 @@ export function ZeropsAgentAuthCard({
   onCancel,
   recordFailed,
   onRetryRecord,
+  signOutSupported,
+  onSignOut,
+  signOutPending,
+  signOutError,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
@@ -61,11 +67,21 @@ export function ZeropsAgentAuthCard({
   /** Agents whose signer-record write this browser tried and watched fail (H13). */
   readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
+  /** Whether the environment advertises `capabilities.agentSignOut`; absent or false hides Sign out (older servers). */
+  readonly signOutSupported?: boolean | undefined;
+  readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly signOutPending?: ReadonlySet<ZeropsAgentId> | undefined;
+  readonly signOutError?: ReadonlyMap<ZeropsAgentId, string> | undefined;
 }) {
+  // This is where agents are managed, so it stays up as long as the feed is
+  // available; the header alone stops demanding once nothing needs it.
+  const needsAttention = zeropsAgentAuthNeedsAttention(snapshot);
   return (
     <FlatCard className="overflow-hidden" data-zerops-agent-auth-card>
       <header className="border-b border-border/60 px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-foreground">Authorize coding agents</h3>
+        <h3 className="text-sm font-semibold text-foreground">
+          {needsAttention ? "Authorize coding agents" : "Coding agents"}
+        </h3>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
           Sign in inside this Zerops Control Plane. Access is shared by this project.
         </p>
@@ -74,7 +90,11 @@ export function ZeropsAgentAuthCard({
         onCancel={onCancel}
         onRetryRecord={onRetryRecord}
         onSignIn={onSignIn}
+        onSignOut={onSignOut}
         recordFailed={recordFailed}
+        signOutError={signOutError}
+        signOutPending={signOutPending}
+        signOutSupported={signOutSupported}
         snapshot={snapshot}
         viewerSubject={viewerSubject}
       />
@@ -94,6 +114,10 @@ export function ZeropsAgentAuthRows({
   onCancel,
   recordFailed,
   onRetryRecord,
+  signOutSupported,
+  onSignOut,
+  signOutPending,
+  signOutError,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   readonly viewerSubject?: string | undefined;
@@ -101,6 +125,10 @@ export function ZeropsAgentAuthRows({
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly signOutSupported?: boolean | undefined;
+  readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly signOutPending?: ReadonlySet<ZeropsAgentId> | undefined;
+  readonly signOutError?: ReadonlyMap<ZeropsAgentId, string> | undefined;
 }) {
   // One authorized agent is enough to work: the other's row is then an
   // offer, not a demand (the audit run, 2026-09-17: Codex's "Action
@@ -118,8 +146,12 @@ export function ZeropsAgentAuthRows({
           onCancel={onCancel}
           onRetryRecord={onRetryRecord}
           onSignIn={onSignIn}
+          onSignOut={onSignOut}
           quiet={anotherAuthorized(agent)}
           recordFailed={recordFailed?.has(agent.agentId) ?? false}
+          signOutError={signOutError?.get(agent.agentId)}
+          signOutPending={signOutPending?.has(agent.agentId) ?? false}
+          signOutSupported={signOutSupported ?? false}
           viewerSubject={viewerSubject}
         />
       ))}
@@ -135,6 +167,10 @@ function ZeropsAgentAuthRow({
   onSignIn,
   onCancel,
   onRetryRecord,
+  signOutSupported,
+  onSignOut,
+  signOutPending,
+  signOutError,
 }: {
   readonly agent: ZeropsAgentAuth;
   readonly viewerSubject?: string | undefined;
@@ -145,6 +181,10 @@ function ZeropsAgentAuthRow({
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly signOutSupported: boolean;
+  readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly signOutPending: boolean;
+  readonly signOutError?: string | undefined;
 }) {
   const login = classifyAgentRowLogin(agent);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
@@ -211,8 +251,13 @@ function ZeropsAgentAuthRow({
           <ZeropsAgentAuthActionSlot
             agent={agent}
             login={login}
-            onSignIn={onSignIn}
             onCancel={onCancel}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            ownership={ownership}
+            signOutError={signOutError}
+            signOutPending={signOutPending}
+            signOutSupported={signOutSupported}
           />
         )}
       </div>
@@ -278,15 +323,35 @@ function ZeropsAgentAuthActionSlot({
   login,
   onSignIn,
   onCancel,
+  onSignOut,
+  ownership,
+  signOutSupported,
+  signOutPending,
+  signOutError,
 }: {
   readonly agent: ZeropsAgentAuth;
   readonly login: ZeropsAgentLoginPresentation;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
+  readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly ownership: ZeropsAgentOwnership;
+  readonly signOutSupported: boolean;
+  readonly signOutPending: boolean;
+  readonly signOutError?: string | undefined;
 }) {
   switch (login.kind) {
     case "none":
-      return <ZeropsAgentAuthActionButton agent={agent} onSignIn={onSignIn} />;
+      return (
+        <ZeropsAgentAuthActionButton
+          agent={agent}
+          onSignIn={onSignIn}
+          onSignOut={onSignOut}
+          ownership={ownership}
+          signOutError={signOutError}
+          signOutPending={signOutPending}
+          signOutSupported={signOutSupported}
+        />
+      );
     case "starting":
     case "menu":
     case "awaiting-browser":
@@ -345,12 +410,31 @@ function CancelLoginButton({
   );
 }
 
+/**
+ * Once an agent is fully authorized (D6 round 5), the row is never a dead
+ * end: a token-authorized agent belongs to the project, not a person, so
+ * there is nothing to switch or sign out (`ZeropsAgentLoginErrorReason`'s
+ * `"token-authorized"` is the server saying the same thing); everyone else
+ * gets an account action (their own login: "Switch account"; anybody
+ * else's, or nobody recorded: "Use my account") and, only where the
+ * environment advertises `capabilities.agentSignOut`, "Sign out".
+ */
 function ZeropsAgentAuthActionButton({
   agent,
   onSignIn,
+  onSignOut,
+  ownership,
+  signOutSupported,
+  signOutPending,
+  signOutError,
 }: {
   readonly agent: ZeropsAgentAuth;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
+  readonly onSignOut?: ((agentId: ZeropsAgentId) => void) | undefined;
+  readonly ownership: ZeropsAgentOwnership;
+  readonly signOutSupported: boolean;
+  readonly signOutPending: boolean;
+  readonly signOutError?: string | undefined;
 }) {
   const action = agentAuthAction(agent);
   if (action === "sign-in") {
@@ -376,5 +460,51 @@ function ZeropsAgentAuthActionButton({
       </Button>
     );
   }
-  return null;
+  if (action !== "none") return null;
+
+  if (agent.state === "authorized-token") {
+    return <p className="text-xs leading-4 text-muted-foreground">Authorized by a project token</p>;
+  }
+
+  if (ownership !== "mine" && ownership !== "someone-else" && ownership !== "unrecorded") {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button
+        {...(ownership === "mine"
+          ? { "data-zerops-agent-switch-account": true }
+          : { "data-zerops-agent-use-my-account": true })}
+        onClick={() => {
+          onSignIn(agent.agentId);
+        }}
+        size="compact"
+        variant="outline"
+      >
+        {ownership === "mine" ? "Switch account" : "Use my account"}
+      </Button>
+      {signOutSupported && onSignOut !== undefined ? (
+        <Button
+          data-zerops-agent-sign-out
+          disabled={signOutPending}
+          onClick={() => {
+            onSignOut(agent.agentId);
+          }}
+          size="compact"
+          variant="ghost"
+        >
+          {signOutPending ? "Signing out…" : "Sign out"}
+        </Button>
+      ) : null}
+      {signOutError === undefined ? null : (
+        <p
+          className="w-full text-right text-xs leading-4 text-destructive"
+          data-zerops-agent-sign-out-error
+        >
+          {signOutError}
+        </p>
+      )}
+    </div>
+  );
 }

@@ -104,8 +104,9 @@ export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsA
 
 /**
  * The one line the UI shows, or `undefined` when there is nothing worth
- * saying. `"mine"` is deliberately silent: telling someone their own agent is
- * theirs is noise on every screen, forever.
+ * saying. `"mine"` states it quietly rather than staying silent — a row that
+ * carries account actions (switch, sign out) needs to say whose login those
+ * actions would touch. `"none"` has no credential to talk about at all.
  */
 export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | undefined {
   switch (ownership) {
@@ -116,6 +117,7 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
     case "record-failed":
       return "Your sign-in could not be recorded.";
     case "mine":
+      return "Signed in by you.";
     case "none":
       return undefined;
   }

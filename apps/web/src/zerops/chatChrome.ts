@@ -5,10 +5,7 @@
  * ChatView reads the snapshots and the consumers keep their own rendering and
  * command wiring.
  */
-import {
-  zeropsAgentAuthNeedsAttention,
-  zeropsAgentSignInRequired,
-} from "@t3tools/client-runtime/zerops/agentLogin";
+import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 
@@ -23,6 +20,12 @@ export interface ZeropsChatChrome {
    * (`docs/spec-mate.md` §9.3).
    */
   readonly panel: "available" | "unknown";
+  /**
+   * The agents' own home: visible whenever the feed itself is available
+   * (this is a Zerops environment that has answered), whether or not any
+   * agent currently needs attention — it is where agents are managed, not
+   * only where a demand for one is raised.
+   */
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   /**
    * Whether the lifecycle band asks for a coding-agent sign-in. Narrower than
@@ -68,8 +71,7 @@ export function resolveZeropsChatChrome(
     projectName,
     // The panel owns the snapshot even while closed. Chat chrome may expose an
     // in-flow entry to that panel, but never render the card over the timeline.
-    agentAuthCard:
-      agentAuth !== undefined && zeropsAgentAuthNeedsAttention(agentAuth) ? agentAuth : null,
+    agentAuthCard: agentAuth !== undefined && agentAuth.available ? agentAuth : null,
     agentSignInRequired: agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth),
   };
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type {
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
+  ZeropsAgentId,
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
 
@@ -57,6 +58,36 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain('data-zerops-status-tone="off"');
     expect(html).not.toContain('data-zerops-status-tone="attention"');
     expect(html).toContain('data-zerops-status-tone="ok"');
+  });
+
+  // The card is the agents' own home now (D6 round 5): it stays up once
+  // nothing demands attention, just with a header that stops demanding.
+  it("keeps the demanding header only while some agent needs attention", () => {
+    const demanding = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([agent({ agentId: "claude-code", state: "not-authorized" })])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(demanding).toContain("Authorize coding agents");
+
+    const settled = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+          }),
+        ])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(settled).not.toContain("Authorize coding agents");
+    expect(settled).toContain("Coding agents");
   });
 
   it("demands a sign-in only while no agent is signed in", () => {
@@ -142,7 +173,9 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain("registering with Zerops");
   });
 
-  it("shows no button at all once authorized and the provider agrees", () => {
+  // A row for a fully-authorized agent now carries account actions (D6
+  // round 5): who runs it is never a dead end, whichever account it is.
+  it("offers to switch accounts once authorized by the viewer and the provider agrees", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
@@ -151,15 +184,19 @@ describe("ZeropsAgentAuthCard", () => {
             state: "authorized",
             credPresent: true,
             providerAuth: "authenticated",
+            authorizedBy: { subject: "user-a" },
           }),
         ])}
+        viewerSubject="user-a"
         onSignIn={noop}
         onCancel={noop}
       />,
     );
 
-    expect(html).not.toContain("<button");
     expect(html).toContain("Authorized");
+    expect(html).toContain("data-zerops-agent-switch-account");
+    expect(html).toContain(">Switch account<");
+    expect(html).not.toContain("data-zerops-agent-sign-out");
   });
 
   it("shows no button at all once authorized via token and the provider agrees", () => {
@@ -180,6 +217,7 @@ describe("ZeropsAgentAuthCard", () => {
 
     expect(html).not.toContain("<button");
     expect(html).toContain("Authorized (token)");
+    expect(html).toContain("Authorized by a project token");
   });
 
   /**
@@ -230,7 +268,9 @@ describe("ZeropsAgentAuthCard", () => {
 
   // The flag decides: a set flag is signed in the moment it lands, whatever
   // the agent's own check has or has not said yet.
-  it("shows Authorized with nothing to click while the agent's own check is still in flight", () => {
+  // Unrecorded (nobody known to own it) rather than a dead end: the flag
+  // decided the moment it was set, and the row offers a way to claim it.
+  it("offers to use my account while the agent's own check is still in flight", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
@@ -247,7 +287,7 @@ describe("ZeropsAgentAuthCard", () => {
     );
 
     expect(html).not.toContain("Sign in to Claude");
-    expect(html).not.toContain("<button");
+    expect(html).toContain("data-zerops-agent-use-my-account");
     expect(html).toContain("Authorized");
   });
 });
@@ -360,7 +400,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     expect(html).toContain(">Cancel<");
   });
 
-  it("shows Authorized with no button once succeeded and verified", () => {
+  it("offers account actions once succeeded and verified, ownership unrecorded", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
@@ -378,7 +418,7 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     );
 
     expect(html).toContain("Authorized");
-    expect(html).not.toContain("<button");
+    expect(html).toContain("data-zerops-agent-use-my-account");
   });
 
   it("confirms, with nothing to click, while a just-succeeded login is checked", () => {
@@ -552,16 +592,18 @@ describe("whose agent it is (D6)", () => {
       />,
     );
 
-  // One notice per ownership, and the one that is silent is the one that
-  // would otherwise be noise on every screen, forever.
-  it("says nothing about the viewer's own agent", () => {
+  // The row carries account actions now, so it says quietly whose login
+  // they would touch instead of staying silent.
+  it("says quietly that the viewer's own agent is theirs", () => {
     const html = card({
       credPresent: true,
       authorizedBy: { subject: "user-a" },
       viewerSubject: "user-a",
     });
     expect(html).toContain('data-agent-id="claude-code"');
-    expect(html).not.toContain("data-zerops-agent-ownership");
+    expect(html).toContain('data-zerops-agent-ownership="mine"');
+    expect(html).toContain("Signed in by you.");
+    expect(html).not.toContain("text-warning");
   });
 
   it("says nothing when there is no credential to own", () => {
@@ -623,7 +665,129 @@ describe("whose agent it is (D6)", () => {
       recordFailed: new Set(),
     });
 
-    expect(html).not.toContain("data-zerops-agent-ownership");
+    expect(html).toContain('data-zerops-agent-ownership="mine"');
     expect(html).not.toContain("Try again");
+  });
+});
+
+describe("account actions once authorized (D6 round 5)", () => {
+  const authorizedCard = (
+    input: {
+      readonly viewerSubject?: string;
+      readonly authorizedBy?: { readonly subject: string };
+      readonly token?: boolean;
+      readonly signOutSupported?: boolean;
+      readonly onSignOut?: (agentId: ZeropsAgentId) => void;
+      readonly signOutPending?: ReadonlySet<ZeropsAgentId>;
+      readonly signOutError?: ReadonlyMap<ZeropsAgentId, string>;
+    } = {},
+  ) =>
+    renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({
+            agentId: "claude-code",
+            state: input.token ? "authorized-token" : "authorized",
+            providerAuth: "authenticated",
+            credPresent: true,
+            ...(input.authorizedBy === undefined ? {} : { authorizedBy: input.authorizedBy }),
+          }),
+        ])}
+        viewerSubject={input.viewerSubject}
+        signOutSupported={input.signOutSupported}
+        onSignOut={input.onSignOut}
+        signOutPending={input.signOutPending}
+        signOutError={input.signOutError}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+
+  it("offers Switch account and Sign out for the viewer's own login", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      authorizedBy: { subject: "user-a" },
+      signOutSupported: true,
+      onSignOut: noop,
+    });
+
+    expect(html).toContain(">Switch account<");
+    expect(html).toContain(">Sign out<");
+    expect(html).not.toContain(">Use my account<");
+  });
+
+  it("offers Use my account and Sign out for someone else's login", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      authorizedBy: { subject: "user-b" },
+      signOutSupported: true,
+      onSignOut: noop,
+    });
+
+    expect(html).toContain(">Use my account<");
+    expect(html).toContain(">Sign out<");
+    expect(html).not.toContain(">Switch account<");
+  });
+
+  it("offers Use my account and Sign out for an unrecorded login", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      signOutSupported: true,
+      onSignOut: noop,
+    });
+
+    expect(html).toContain(">Use my account<");
+    expect(html).toContain(">Sign out<");
+  });
+
+  it("hides Sign out where the environment does not advertise the capability", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      authorizedBy: { subject: "user-a" },
+      signOutSupported: false,
+    });
+
+    expect(html).toContain(">Switch account<");
+    expect(html).not.toContain(">Sign out<");
+  });
+
+  it("hides Sign out by default when the prop is not passed", () => {
+    const html = authorizedCard({ viewerSubject: "user-a", authorizedBy: { subject: "user-a" } });
+
+    expect(html).not.toContain(">Sign out<");
+  });
+
+  it("offers no account action and says the token owns it for a token-authorized agent", () => {
+    const html = authorizedCard({ token: true, signOutSupported: true });
+
+    expect(html).not.toContain(">Switch account<");
+    expect(html).not.toContain(">Use my account<");
+    expect(html).not.toContain(">Sign out<");
+    expect(html).toContain("Authorized by a project token");
+  });
+
+  it("shows Sign out pending inline", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      authorizedBy: { subject: "user-a" },
+      signOutSupported: true,
+      onSignOut: noop,
+      signOutPending: new Set(["claude-code"]),
+    });
+
+    expect(html).toContain('disabled=""');
+    expect(html).toContain("Signing out");
+  });
+
+  it("shows the Sign out error detail inline", () => {
+    const html = authorizedCard({
+      viewerSubject: "user-a",
+      authorizedBy: { subject: "user-a" },
+      signOutSupported: true,
+      signOutError: new Map([["claude-code", "The container could not be reached."]]),
+    });
+
+    expect(html).toContain("data-zerops-agent-sign-out-error");
+    expect(html).toContain("The container could not be reached.");
   });
 });

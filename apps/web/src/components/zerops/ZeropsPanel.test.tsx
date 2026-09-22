@@ -32,7 +32,13 @@ const feedState = vi.hoisted(() => ({
 const actions = vi.hoisted(() => ({
   cancel: vi.fn(),
   signIn: vi.fn(),
+  signOut: vi.fn(),
   terminalSurface: null as string | null,
+}));
+
+const signOutState = vi.hoisted(() => ({
+  supported: false,
+  statuses: new Map<string, { readonly pending: boolean; readonly error: string | undefined }>(),
 }));
 
 vi.mock("../../zerops/useProjectTopology", () => ({
@@ -58,6 +64,22 @@ vi.mock("../../zerops/useAgentLogin", () => ({
 
 vi.mock("../../zerops/useAgentLoginCancel", () => ({
   useAgentLoginCancel: () => actions.cancel,
+}));
+
+vi.mock("../../zerops/useAgentSignOut", () => ({
+  useAgentSignOut: () => ({
+    signOut: actions.signOut,
+    statusFor: (agentId: string) =>
+      signOutState.statuses.get(agentId) ?? { pending: false, error: undefined },
+  }),
+}));
+
+vi.mock("~/state/environments", () => ({
+  useEnvironment: () => ({
+    serverConfig: {
+      environment: { capabilities: { agentSignOut: signOutState.supported } },
+    },
+  }),
 }));
 
 const mateState = vi.hoisted(() => ({
@@ -204,7 +226,10 @@ const CANCELLED: ZeropsAgentAuthSnapshot = {
 beforeEach(() => {
   actions.cancel.mockReset();
   actions.signIn.mockReset();
+  actions.signOut.mockReset();
   actions.terminalSurface = null;
+  signOutState.supported = false;
+  signOutState.statuses.clear();
   buttonState.handlers.clear();
   mateState.mates.clear();
   mateState.faces.clear();
@@ -455,5 +480,44 @@ describe("ZeropsPanel — the Mate's home", () => {
 
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).toContain(">Fen</span>");
+  });
+});
+
+describe("ZeropsPanel — signing an agent out (D6 round 5)", () => {
+  it("hides Sign out where the environment does not advertise the capability", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = false;
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).not.toContain(">Sign out<");
+  });
+
+  it("wires Sign out to the sign-out hook, by agent id, where the capability is advertised", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = true;
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain(">Sign out<");
+    buttonState.handlers.get("Sign out")?.();
+    expect(actions.signOut).toHaveBeenCalledExactlyOnceWith("codex");
+  });
+
+  it("shows this agent's own pending/error status, not another's", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = true;
+    signOutState.statuses.set("codex", {
+      pending: false,
+      error: "The container could not be reached.",
+    });
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain("data-zerops-agent-sign-out-error");
+    expect(html).toContain("The container could not be reached.");
   });
 });
