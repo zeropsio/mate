@@ -27,6 +27,13 @@
  * the user did not ask for; a token the account is not allowed to rewrite, or
  * a network that dropped, must not put an error on a screen that is otherwise
  * fine. The next read tries again.
+ *
+ * This reconcile never restarts a Mate (spec-mate §3 B-1/B-2/B-3): a birth
+ * has exactly one restart and it runs before anyone is admitted, in
+ * `provisioning.ts`'s `hardening` phase. A reach running from a page a
+ * person is already in must not carry that restart along with it —
+ * `isolateProjectEnv` used to run here too and would throw someone already
+ * inside a conversation out of it mid-session.
  */
 
 import type {
@@ -71,7 +78,7 @@ export function useZeropsGroupReach(input: {
   readonly enabled: boolean;
 }): void {
   const { clientId, groups, enabled } = input;
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef, runtime } = useZeropsData();
   const lastKey = useRef<string | null>(null);
   const key = groupsKey(groups);
   const hasMate = groups.some((group) => group.mateProjectIds.length > 0);
@@ -139,18 +146,6 @@ export function useZeropsGroupReach(input: {
             );
           }
         }
-
-        // And the third (guide 0.10): every project in the group, not only its
-        // Mates. A stage or production project made the old way carries the
-        // same `envIsolation: none` and the same project-wide `ZCP_API_KEY`,
-        // with ADMIN on itself, in every one of its containers. A project
-        // already closed makes the call two reads and no writes.
-        for (const projectId of new Set(groups.flatMap((group) => group.projectIds))) {
-          if (cancelled) return;
-          await runZeropsCommand(
-            runtime.commands.isolateProjectEnv(projectRef(clientId, projectId)),
-          );
-        }
       } catch {
         // Background repair: try again on the next read rather than showing
         // the user an error about something they did not ask for.
@@ -170,7 +165,6 @@ export function useZeropsGroupReach(input: {
     hasMate,
     key,
     organizationRef,
-    projectRef,
     runtime.commands,
   ]);
 }

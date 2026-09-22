@@ -136,8 +136,8 @@ const RUNNING_PROCESS_DETAIL: Readonly<
  * verbs: the face is asleep for the whole boot and these only say how long
  * — the container being made takes minutes, Mate answering takes seconds.
  */
-const COMING_UP_LINE = "Coming up. A few minutes.";
-const ALMOST_THERE_LINE = "Almost there.";
+export const COMING_UP_LINE = "Coming up. A few minutes.";
+export const ALMOST_THERE_LINE = "Almost there.";
 
 /**
  * The line under a project the platform failed to create, with the

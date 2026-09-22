@@ -9,11 +9,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
-  isAccessNotYetVerified,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
+import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
 import { exchangeZeropsContainerIdentity } from "~/zerops/useZeropsIdentityExchange";
 import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";

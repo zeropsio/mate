@@ -137,6 +137,8 @@ import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logi
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
+  ALMOST_THERE_LINE,
+  COMING_UP_LINE,
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
@@ -222,31 +224,6 @@ export async function removeFailedZeropsProject(input: {
   input.forgetCreation(input.projectId);
   input.refresh();
   return { ok: true };
-}
-
-/** How many times a connect asks for its Mate's project to be closed off. */
-const ISOLATION_ATTEMPTS = 3;
-const ISOLATION_RETRY_MS = 1500;
-
-/**
- * A command refused because the account is mid-verification — not because it
- * may not run.
- *
- * The platform never sees such a command: the runtime holds it back while a
- * verification round is in flight, and a round is started by anything that
- * asks for the account to be read again. The reason is a "not yet", and a
- * caller that treats it as an answer gives up on a write it was allowed to
- * make (`commands.ts`).
- */
-export function isAccessNotYetVerified(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === "ZeropsCommandAdmissionError" &&
-    "reason" in cause &&
-    cause.reason === "access-unverified"
-  );
 }
 
 export function retryZeropsProjectConnection(input: {
@@ -405,54 +382,23 @@ export function useZeropsProjectConnection(orgId: string | null): {
         }
         const projectId = provisioning.state?.projectId;
         if (projectId && orgId) {
+          // The birth's one restart (`projectIsolation.ts`, spec-mate §3
+          // B-1/B-2/B-3) already ran before this admission, in
+          // `provisioning.ts`'s `hardening` phase: the identity exchange above
+          // only succeeds once `awaiting-health` accepts a `ready` verdict
+          // that postdates it. Nothing here closes the project off again —
+          // doing it here, after the person is already in, would be the
+          // second write sharing the birth's restart budget.
           await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {
             projectId,
             orgId,
             source: "connect",
           });
-          // The one place this runs. The recipe that makes the container opens
-          // `envIsolation` itself so that zcp can see the project (the owner,
-          // 2026-09-20), so closing it any earlier writes under a recipe still
-          // running — and, planned from an index that had not caught up, it
-          // failed the whole creation (`createEnvironment.ts`). The exchange
-          // above only succeeds once the container answers, which makes this
-          // the first moment the recipe is provably done.
-          //
-          // A Mate left un-isolated reads every sibling's environment, its
-          // agent's own login included (`projectIsolation.ts`).
-          for (let attempt = 1; attempt <= ISOLATION_ATTEMPTS; attempt += 1) {
-            try {
-              await runZeropsCommand(
-                runtime.commands.isolateProjectEnv(projectRef(orgId, projectId)),
-              );
-              break;
-            } catch (cause) {
-              // "Not yet" is worth coming back for; anything else is the
-              // answer. A verification round is seconds long and the account
-              // starts one on its own schedule, so a connect that lands
-              // inside one must not be the reason a Mate stays open.
-              if (attempt < ISOLATION_ATTEMPTS && isAccessNotYetVerified(cause)) {
-                await new Promise((resolve) => setTimeout(resolve, ISOLATION_RETRY_MS));
-                continue;
-              }
-              // Not fatal — the Mate is up and the person is on their way into
-              // it — but not silent either: this is the step that keeps the
-              // agent's own login away from the project's other containers,
-              // and nothing else reconciles it today.
-              console.error("This Mate's project could not be closed off:", cause);
-              break;
-            }
-          }
         }
         // The environment is real now. When the lists last reloaded — right
         // after the creation writes — the project was still NEW with no
         // container, which the left menu rightly leaves out; here it is ACTIVE
         // with a zcp, so every mounted list reloads and the row appears.
-        //
-        // Once the project is closed, though, never before it: a refresh
-        // starts a fresh verification round, and a command issued while the
-        // account is being verified is refused outright — so asking for the
-        // row to appear first was asking the write above to lose.
         refreshZeropsCandidates();
         provisioning.cancel();
         setCreatingIn(null);
@@ -963,6 +909,15 @@ function ZeropsProjectsContent() {
           <ZeropsMateVerb disabled={busy} label="Try again" onClick={provisioning.retry} />
         </>
       );
+    }
+    if (state.phase === "awaiting-settled") {
+      // The container answers already; it is not hardened yet. Same words as
+      // "coming up" — nothing about the birth's one restart is a person's to
+      // watch for.
+      return quiet(COMING_UP_LINE);
+    }
+    if (state.phase === "hardening") {
+      return quiet(ALMOST_THERE_LINE);
     }
     if (state.phase === "not-yet-available") {
       return quiet("This container's release does not carry Mate yet.");
@@ -1815,28 +1770,32 @@ function ZeropsProjectsContent() {
 
   // Resumes a creation. The wizard hands its project over and comes here
   // without waiting (`rememberCreationHandoff`); a reload mid-provisioning
-  // lands here too. Either way, the moment a created-and-never-connected
-  // container answers ready this starts the wait that ends in the
-  // conversation — once per project per mount, and never over a wait that
-  // is already running.
+  // lands here too. Either way, the wait is started with `startForProject`,
+  // never `startForContainer` — the birth's one restart (`provisioning.ts`'s
+  // `hardening` phase) has not run yet for a project this fresh, and only
+  // `startForProject`'s `awaiting-container` → `awaiting-settled` →
+  // `hardening` → `awaiting-health` chain runs it. Started as soon as the
+  // project is listed at all (MC-4: `awaiting-container` tolerates its
+  // absence too, so a hand-off is resumed on mount even before the pushed
+  // inventory has it) — once per project per mount, and never over a wait
+  // that is already running or a project already connected.
   const resumedRef = useRef(new Set<string>());
   useEffect(() => {
     if (provisioning.state !== null || connectingOrigin !== null) return;
-    const pending = pendingCreationProjects();
-    if (pending.length === 0) return;
-    const candidate = candidates.find(
-      (entry) =>
-        pending.includes(entry.project.id) &&
-        !resumedRef.current.has(entry.project.id) &&
-        entry.group === "ready" &&
-        entry.connection === undefined &&
-        entry.containerOrigin !== undefined &&
-        candidateHealth.get(entry.key) === "ready",
-    );
-    if (candidate === undefined) return;
-    resumedRef.current.add(candidate.project.id);
-    startWaitFor(candidate);
-  }, [candidateHealth, candidates, connectingOrigin, provisioning.state, startWaitFor]);
+    const projectId = pendingCreationProjects().find((id) => !resumedRef.current.has(id));
+    if (projectId === undefined) return;
+    const existing = candidates.find((entry) => entry.project.id === projectId);
+    // Already connected: this hand-off is done, nothing to resume.
+    if (existing?.connection !== undefined) return;
+    // The wait polls only inside an organization scope; a project the pushed
+    // inventory does not list yet has none of its own, so the active
+    // organization — the one the hand-off was made in — is the scope.
+    const scope = existing?.project.clientId ?? activeOrganization?.id ?? null;
+    if (scope === null) return;
+    resumedRef.current.add(projectId);
+    setCreatingIn(scope);
+    provisioning.startForProject({ projectId });
+  }, [activeOrganization?.id, candidates, connectingOrigin, provisioning, setCreatingIn]);
 
   // A wait on a project the platform failed to create can never end: the
   // container it waits for will not be made. The moment the verdict is in,

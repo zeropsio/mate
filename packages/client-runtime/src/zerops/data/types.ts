@@ -1833,7 +1833,10 @@ export type PlatformCommandResult =
       readonly value: ReadonlyArray<ZeropsTokenDelegation>;
     }
   | { readonly kind: "delete-token-delegation"; readonly value: void }
-  | { readonly kind: "isolate-project-env"; readonly value: void }
+  | {
+      readonly kind: "isolate-project-env";
+      readonly value: { readonly restarted: boolean; readonly steps: number };
+    }
   | { readonly kind: "delete-project"; readonly value: void };
 
 export interface PlatformCommandReceipt {
@@ -2081,7 +2084,10 @@ export interface ZeropsDataCommands {
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
   readonly isolateProjectEnv: (
     project: ProjectRef,
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
+  ) => Effect.Effect<
+    CommandExecution<{ readonly restarted: boolean; readonly steps: number }>,
+    CommandAdmissionError | AdapterError
+  >;
   readonly deleteProject: (
     input: Omit<DeleteProjectCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;

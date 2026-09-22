@@ -15,6 +15,16 @@
  *    container".
  * 3. Every wait says what it is waiting for and how long it will wait, and a
  *    cap that runs out leaves a retryable state rather than an error.
+ *
+ * A birth's one restart (`../projectIsolation.ts`, spec-mate §3 B-1/B-2/B-3)
+ * happens here, in a `hardening` phase gated on a READ proof that the
+ * platform is done creating — never a timer — and BEFORE anyone is admitted:
+ * `awaiting-settled` (R1) waits for the container's own boot process to
+ * report itself finished, so the harden step never races the recipe that is
+ * still opening the project up; `hardening` (R2) is where it runs, and
+ * `awaiting-health` afterwards refuses a `ready` verdict that predates that
+ * restart when one was expected (`restartExpected`/`hardenedAtMs`), so a
+ * stale pre-restart boot is never read as done.
  */
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
@@ -33,6 +43,10 @@ export type ZeropsContainerHealth =
 export type ProvisioningPhase =
   | "awaiting-project"
   | "awaiting-container"
+  /** The container exists; waiting for its own boot process to finish before hardening it. */
+  | "awaiting-settled"
+  /** Closing the project's shared environment off — the birth's one restart. */
+  | "hardening"
   | "awaiting-health"
   | "needs-enable"
   | "ready"
@@ -46,12 +60,18 @@ export type ProvisioningPhase =
   | "not-yet-available";
 
 /**
- * How long each wait is given. The container cap matches the platform GUI's
- * own provisioning timeout. The health cap is measured from when the
- * container's own restart/start process finishes running — not from an
- * arbitrary moment mid-boot — and gives Mate 90 s to answer from there;
- * while a process is still running against the container, this cap does not
- * elapse at all (`advanceProvisioning`'s "process" event resets the clock).
+ * How long each capped wait is given. The container cap matches the
+ * platform GUI's own provisioning timeout. The health cap is measured from
+ * when the container's own restart/start process finishes running — not
+ * from an arbitrary moment mid-boot — and gives Mate 90 s to answer from
+ * there; while a process is still running against the container, this cap
+ * does not elapse at all (`advanceProvisioning`'s "process" event resets
+ * the clock).
+ *
+ * `awaiting-settled` and `hardening` carry no cap of their own (R1/R2): a
+ * cap only changes the words a wait uses, never whether it may act — the
+ * READ proof that the platform is done, not a clock, is what lets either
+ * one move on.
  */
 export const PROVISIONING_CAPS = {
   "awaiting-project": 60_000,
@@ -59,10 +79,22 @@ export const PROVISIONING_CAPS = {
   "awaiting-health": 90_000,
 } as const;
 
-type WaitingPhase = keyof typeof PROVISIONING_CAPS;
+type CappedWaitingPhase = keyof typeof PROVISIONING_CAPS;
+/** Waiting phases with no cap: worth polling, but never time out on their own. */
+type UncappedWaitingPhase = "awaiting-settled" | "hardening";
+type WaitingPhase = CappedWaitingPhase | UncappedWaitingPhase;
+
+const UNCAPPED_WAITING_PHASES: ReadonlySet<UncappedWaitingPhase> = new Set([
+  "awaiting-settled",
+  "hardening",
+]);
 
 function isWaitingPhase(phase: ProvisioningPhase): phase is WaitingPhase {
-  return phase in PROVISIONING_CAPS;
+  return phase in PROVISIONING_CAPS || UNCAPPED_WAITING_PHASES.has(phase as UncappedWaitingPhase);
+}
+
+function capFor(phase: WaitingPhase): number | null {
+  return phase in PROVISIONING_CAPS ? PROVISIONING_CAPS[phase as CappedWaitingPhase] : null;
 }
 
 /** Whether this state is still waiting on something, and so worth polling. */
@@ -70,9 +102,12 @@ export function isProvisioningWaiting(state: ProvisioningState): boolean {
   return isWaitingPhase(state.phase);
 }
 
-const WAITING_LABELS: Readonly<Record<WaitingPhase, string>> = {
+/** One label per phase this state machine can be in while waiting or acting. */
+export const PROVISIONING_PHASE_LABELS: Readonly<Record<WaitingPhase, string>> = {
   "awaiting-project": "Waiting for your project to appear",
   "awaiting-container": "Waiting for the Zerops Mate container to start",
+  "awaiting-settled": "Waiting for the container to finish coming up",
+  hardening: "Closing the project off",
   "awaiting-health": "Waiting for Zerops Mate to answer",
 };
 
@@ -99,6 +134,10 @@ export interface ProvisioningState {
    * cap does not elapse while this is true, and finishing resets its clock.
    */
   readonly processRunning: boolean;
+  /** When the harden step ran, so `awaiting-health` can tell a stale boot from the fresh one. */
+  readonly hardenedAtMs: number | null;
+  /** Whether the harden step's plan actually restarted the container. */
+  readonly restartExpected: boolean;
 }
 
 export type ProvisioningEvent =
@@ -108,13 +147,28 @@ export type ProvisioningEvent =
       readonly project: ZeropsProject;
       readonly services: ReadonlyArray<ZeropsService>;
     }
-  | { readonly kind: "health"; readonly health: ZeropsContainerHealth }
+  | {
+      readonly kind: "health";
+      readonly health: ZeropsContainerHealth;
+      /** The boot's `initAt`, when the probe read one. */
+      readonly initAt?: string;
+    }
   | { readonly kind: "tick" }
   | { readonly kind: "retry" }
   /** The user asked for the older container to be restarted into Zerops Mate. */
   | { readonly kind: "enable" }
-  /** The runtime's own knowledge of a process running against the container. */
-  | { readonly kind: "process"; readonly running: boolean };
+  /**
+   * The runtime's own knowledge of a process running against the container.
+   * `observed` marks a reading actually backed by the activity feed — an
+   * `awaiting-settled` wait leaves only on one, never on the mere absence of
+   * a running process, which a feed that has not caught up would report the
+   * same way as one that never started at all.
+   */
+  | { readonly kind: "process"; readonly running: boolean; readonly observed?: boolean }
+  /** The harden step finished; `restarted` says whether its plan touched anything. */
+  | { readonly kind: "hardened"; readonly restarted: boolean; readonly atMs: number }
+  /** The harden step failed outright — not the retryable "read hasn't caught up" case. */
+  | { readonly kind: "harden-failed"; readonly message: string };
 
 function waiting(
   phase: WaitingPhase,
@@ -128,10 +182,12 @@ function waiting(
     detail: null,
     enabled: false,
     processRunning: false,
+    hardenedAtMs: null,
+    restartExpected: false,
     ...carry,
     phase,
-    waitingFor: WAITING_LABELS[phase],
-    capMs: PROVISIONING_CAPS[phase],
+    waitingFor: PROVISIONING_PHASE_LABELS[phase],
+    capMs: capFor(phase),
     phaseStartedAtMs: nowMs,
     expiredPhase: null,
   };
@@ -176,6 +232,8 @@ export function startProvisioning(input: {
       detail: null,
       enabled: false,
       processRunning: false,
+      hardenedAtMs: null,
+      restartExpected: false,
     };
   }
   return waiting("awaiting-project", input.nowMs);
@@ -184,7 +242,9 @@ export function startProvisioning(input: {
 /**
  * Starts at the health wait for a container the caller already knows about —
  * the picker path, where a project and its container exist and the only
- * question is whether Zerops Mate answers on it.
+ * question is whether Zerops Mate answers on it. This container has already
+ * been through its birth (it is being picked from the projects list, not
+ * just created), so it starts past hardening rather than repeating it.
  */
 export function startProvisioningForContainer(input: {
   readonly projectId: string;
@@ -226,6 +286,13 @@ export function advanceProvisioning(
   nowMs: number,
 ): ProvisioningState {
   if (event.kind === "retry") {
+    if (state.phase === "hardening") {
+      // Not a wait that ran out — a real harden failure. Retrying re-enters
+      // the same phase so the hook's harden effect, keyed on when the phase
+      // began, tries again; it never re-runs `awaiting-settled`, whose READ
+      // proof already stands.
+      return { ...state, detail: null, phaseStartedAtMs: nowMs };
+    }
     const phase = state.expiredPhase ?? "awaiting-project";
     return waiting(phase, nowMs, {
       projectId: state.projectId,
@@ -234,6 +301,8 @@ export function advanceProvisioning(
       // A retry must not forget an enable already tried this wait — otherwise
       // a retry-into-predates-mate loop would offer Enable again forever.
       enabled: state.enabled,
+      hardenedAtMs: state.hardenedAtMs,
+      restartExpected: state.restartExpected,
     });
   }
 
@@ -251,6 +320,23 @@ export function advanceProvisioning(
   }
 
   if (event.kind === "process") {
+    if (state.phase === "awaiting-settled") {
+      // Leaves only on a proof the boot is over — never on the mere absence
+      // of a running process, which an activity feed that has not caught up
+      // reports the same way (R1).
+      if (event.running === false && event.observed === true) {
+        return {
+          ...state,
+          phase: "hardening",
+          waitingFor: PROVISIONING_PHASE_LABELS.hardening,
+          capMs: null,
+          phaseStartedAtMs: nowMs,
+          expiredPhase: null,
+          detail: null,
+        };
+      }
+      return state;
+    }
     if (state.phase !== "awaiting-health") return state;
     if (event.running) return { ...state, processRunning: true };
     // The window has not started until the process finishes: reset the
@@ -260,10 +346,28 @@ export function advanceProvisioning(
     return { ...state, processRunning: false, phaseStartedAtMs: nowMs };
   }
 
+  if (event.kind === "hardened") {
+    if (state.phase !== "hardening") return state;
+    return waiting("awaiting-health", nowMs, {
+      projectId: state.projectId,
+      containerServiceId: state.containerServiceId,
+      containerOrigin: state.containerOrigin,
+      hardenedAtMs: event.atMs,
+      restartExpected: event.restarted,
+    });
+  }
+
+  if (event.kind === "harden-failed") {
+    if (state.phase !== "hardening") return state;
+    return { ...state, detail: event.message };
+  }
+
   if (event.kind === "tick") {
     if (!isWaitingPhase(state.phase)) return state;
     if (state.phase === "awaiting-health" && state.processRunning) return state;
-    if (nowMs - state.phaseStartedAtMs <= PROVISIONING_CAPS[state.phase]) return state;
+    const cap = capFor(state.phase);
+    if (cap === null) return state;
+    if (nowMs - state.phaseStartedAtMs <= cap) return state;
     return { ...state, phase: "timed-out", expiredPhase: state.phase };
   }
 
@@ -273,16 +377,30 @@ export function advanceProvisioning(
     return waiting("awaiting-container", nowMs, { projectId: project.id });
   }
 
-  if (event.kind === "services" && state.phase === "awaiting-container") {
+  if (
+    event.kind === "services" &&
+    (state.phase === "awaiting-container" || state.phase === "awaiting-settled")
+  ) {
     // The candidate derivation already knows how to find a zcp container by
     // type and how to build its origin — including every reason it is not
     // usable yet, which becomes the wait's detail line.
     const candidates = deriveZeropsCandidates(event.project, event.services, new Map());
     const usable = candidates.find((candidate) => candidate.containerOrigin);
     if (!usable?.containerOrigin) {
+      // A container already settling does not regress on a stale read: its
+      // origin is kept, and only `awaiting-container` still waits bare.
+      if (state.phase === "awaiting-settled") return state;
       return { ...state, detail: candidates[0]?.reason ?? null };
     }
-    return waiting("awaiting-health", nowMs, {
+    if (state.phase === "awaiting-settled") {
+      return {
+        ...state,
+        projectId: event.project.id,
+        containerServiceId: usable.service?.id ?? null,
+        containerOrigin: usable.containerOrigin,
+      };
+    }
+    return waiting("awaiting-settled", nowMs, {
       projectId: event.project.id,
       containerServiceId: usable.service?.id ?? null,
       containerOrigin: usable.containerOrigin,
@@ -291,6 +409,14 @@ export function advanceProvisioning(
 
   if (event.kind === "health" && state.phase === "awaiting-health") {
     if (event.health === "ready") {
+      if (state.restartExpected) {
+        // A descriptor that predates the harden restart is not readiness —
+        // it is the boot this wait was told to distrust.
+        const initMs = event.initAt === undefined ? Number.NaN : Date.parse(event.initAt);
+        if (state.hardenedAtMs === null || !(initMs > state.hardenedAtMs)) {
+          return { ...state, detail: "The container is restarting" };
+        }
+      }
       return settled(state, "ready", "Zerops Mate is ready", nowMs);
     }
     if (event.health === "predates-mate") {
@@ -321,7 +447,9 @@ export function advanceProvisioning(
 /**
  * Issues the one read the current phase needs, and returns it as an event.
  * A settled phase reads nothing and answers with a bare tick, so a caller can
- * poll unconditionally.
+ * poll unconditionally. `hardening` also reads nothing here: it acts through
+ * a command the caller runs itself and reports back with `hardened` /
+ * `harden-failed`, never through this function.
  */
 export async function readProvisioning(input: {
   readonly state: ProvisioningState;
@@ -337,7 +465,7 @@ export async function readProvisioning(input: {
   }
 
   if (
-    state.phase === "awaiting-container" &&
+    (state.phase === "awaiting-container" || state.phase === "awaiting-settled") &&
     state.projectId &&
     input.project?.id === state.projectId &&
     input.services !== undefined

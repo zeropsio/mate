@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
@@ -30,6 +31,27 @@ import {
 } from "./zeropsDataContext";
 
 const POLL_INTERVAL_MS = 2000;
+
+/**
+ * A command refused because the account is mid-verification — not because it
+ * may not run.
+ *
+ * The platform never sees such a command: the runtime holds it back while a
+ * verification round is in flight, and a round is started by anything that
+ * asks for the account to be read again. The reason is a "not yet", and a
+ * caller that treats it as an answer gives up on a write it was allowed to
+ * make (`commands.ts`).
+ */
+export function isAccessNotYetVerified(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "_tag" in cause &&
+    cause._tag === "ZeropsCommandAdmissionError" &&
+    "reason" in cause &&
+    cause.reason === "access-unverified"
+  );
+}
 
 export function useZeropsProvisioning(clientId: string | null): {
   readonly state: ProvisioningState | null;
@@ -75,8 +97,11 @@ export function useZeropsProvisioning(clientId: string | null): {
   // The `awaiting-health` cap must not elapse while the platform is still
   // running the restart/start that got us here — its own process knowledge
   // is the ground truth, not a fixed clock started at an arbitrary moment.
+  // `awaiting-settled` reads the same feed: it is what tells the wait the
+  // container's own boot process has finished, which is what lets it move
+  // on to hardening at all (R1).
   const projectRef =
-    phase === "awaiting-health" && state?.projectId
+    (phase === "awaiting-health" || phase === "awaiting-settled") && state?.projectId
       ? findInventoryProjectRef(inventory, state.projectId, clientId ?? undefined)
       : null;
   useZeropsDataInterest(projectRef ? { kind: "project-activity", project: projectRef } : null);
@@ -89,7 +114,7 @@ export function useZeropsProvisioning(clientId: string | null): {
   const activity = activitySelections.get("provisioning-activity");
 
   useEffect(() => {
-    if (phase !== "awaiting-health" || !activity) return;
+    if ((phase !== "awaiting-health" && phase !== "awaiting-settled") || !activity) return;
     const running = activity.running.value.some((entry) => {
       if (entry.knowledge !== "observed") return false;
       const identity = entry.record.identity;
@@ -99,8 +124,41 @@ export function useZeropsProvisioning(clientId: string | null): {
         (identity.fields.serviceIds ?? []).includes(ZeropsServiceId.make(containerServiceId))
       );
     });
-    dispatch({ kind: "process", running });
+    // The activity feed answered, so this reading is backed by it — never a
+    // guess from its mere absence, which `awaiting-settled` must not accept
+    // as proof the boot is over.
+    dispatch({ kind: "process", running, observed: true });
   }, [phase, activity, containerServiceId, dispatch]);
+
+  // Runs the birth's one restart (`projectIsolation.ts`, spec-mate §3
+  // B-1/B-2/B-3): guarded by a ref so an overlapping poll tick never starts a
+  // second attempt, and left to retry on the next tick — never dispatching
+  // anything — for the two refusals that mean "not yet" rather than "no":
+  // the project's own variables not having caught up yet
+  // (`ZeropsApiError` kind `uncertain`) and the account being mid a
+  // verification round (`isAccessNotYetVerified`).
+  const hardenBusyRef = useRef(false);
+  const runHarden = useCallback(async (): Promise<void> => {
+    const live = stateRef.current;
+    if (!live || live.phase !== "hardening" || hardenBusyRef.current) return;
+    const project =
+      live.projectId === null
+        ? null
+        : findInventoryProjectRef(inventoryRef.current, live.projectId, clientId ?? undefined);
+    if (project === null) return;
+    hardenBusyRef.current = true;
+    try {
+      const result = await runZeropsCommand(runtime.commands.isolateProjectEnv(project));
+      dispatch({ kind: "hardened", restarted: result.restarted, atMs: Date.now() });
+    } catch (cause) {
+      const uncertain = cause instanceof ZeropsApiError && cause.kind === "uncertain";
+      if (!uncertain && !isAccessNotYetVerified(cause)) {
+        dispatch({ kind: "harden-failed", message: zeropsErrorMessage(cause) });
+      }
+    } finally {
+      hardenBusyRef.current = false;
+    }
+  }, [clientId, dispatch, runtime.commands]);
 
   useEffect(() => {
     const current = stateRef.current;
@@ -110,10 +168,18 @@ export function useZeropsProvisioning(clientId: string | null): {
     const poll = async () => {
       const live = stateRef.current;
       if (cancelled || !live) return;
+      // `hardening` reads nothing through `readProvisioning` — it acts,
+      // through a command this hook runs itself, and every poll tick is
+      // another chance to retry a "not yet" refusal (`runHarden`).
+      if (live.phase === "hardening") {
+        await runHarden();
+        return;
+      }
       const liveInventory = inventoryRef.current;
       const services =
         live.projectId === null ? undefined : liveInventory.services.get(live.projectId);
       try {
+        let initAt: string | undefined;
         const event = await readProvisioning({
           state: live,
           projects: liveInventory.projects,
@@ -122,10 +188,13 @@ export function useZeropsProvisioning(clientId: string | null): {
               ? undefined
               : liveInventory.projects.find((project) => project.id === live.projectId),
           services: services?.status === "resolved" ? services.services : undefined,
-          probeHealth: (origin) => probeZeropsContainerHealth(origin),
+          probeHealth: (origin) =>
+            probeZeropsContainerHealth(origin, undefined, undefined, (value) => {
+              initAt = value;
+            }),
         });
         if (cancelled) return;
-        dispatch(event);
+        dispatch(event.kind === "health" && initAt !== undefined ? { ...event, initAt } : event);
       } catch (cause) {
         if (cancelled) return;
         // A read that fails is not a verdict: the tick still runs the cap, so
@@ -146,7 +215,7 @@ export function useZeropsProvisioning(clientId: string | null): {
     // Polls on `clientId`/`phase` transitions and the fixed interval only; a
     // native inventory push must not trigger an extra health probe. Latest
     // inventory is read through `inventoryRef` inside the tick.
-  }, [clientId, dispatch, phase]);
+  }, [clientId, dispatch, phase, runHarden]);
 
   return {
     state,

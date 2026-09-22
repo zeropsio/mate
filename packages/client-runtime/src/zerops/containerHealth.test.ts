@@ -53,6 +53,22 @@ function stub(routes: Record<string, () => Response>) {
 }
 
 describe("probeZeropsContainerHealth", () => {
+  it("carries the boot's initAt with a ready verdict, for a caller that asks for it", async () => {
+    const read = stub({
+      [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR),
+      [HEALTHZ]: () => json(LIVE_HEALTHZ),
+    });
+    const onInitAt = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, undefined, onInitAt)).toBe("ready");
+    expect(onInitAt).toHaveBeenCalledWith("2026-08-28T15:21:25Z");
+  });
+
+  it("does not read healthz for the ready verdict when no caller asks for initAt", async () => {
+    const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch)).toBe("ready");
+    expect(read.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+  });
+
   it("reports the actual server version from the existing descriptor read, and no update field absent", async () => {
     const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
     const report = vi.fn();

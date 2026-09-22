@@ -116,7 +116,6 @@ function contextFor(
     readonly list?: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
     readonly onDelete?: (input: unknown) => void;
   } = {},
-  isolated: Array<unknown> = [],
 ) {
   const runtime = {
     scope,
@@ -128,9 +127,12 @@ function contextFor(
       },
       listTokenDelegations: () =>
         Effect.succeed({ attempt: {} as never, value: delegations.list ?? [] }),
-      isolateProjectEnv: (project: unknown) => {
-        isolated.push(project);
-        return Effect.succeed({ attempt: {} as never, value: undefined });
+      // A birth's one restart runs in `provisioning.ts`'s `hardening` phase,
+      // gated on a READ proof and before anyone is admitted — never from a
+      // background reconcile a person may already be inside. If this hook
+      // ever called it again, this command would throw and fail the test.
+      isolateProjectEnv: () => {
+        throw new Error("useZeropsGroupReach must never restart a project");
       },
       deleteTokenDelegation: (input: unknown) => {
         delegations.onDelete?.(input);
@@ -267,12 +269,17 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
-  it("closes every project in the group, not only the ones holding a Mate", async () => {
+  it("a reach reconcile never restarts a project", async () => {
+    // The birth's one restart runs before anyone is admitted
+    // (`provisioning.ts`'s `hardening` phase, spec-mate §3 B-1/B-2/B-3); a
+    // background reconcile that runs on every read of the projects screen,
+    // possibly with the person already inside a conversation, must not carry
+    // it along. `contextFor`'s `isolateProjectEnv` throws if this hook ever
+    // calls it, so this test's pass is itself the assertion.
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
-    const isolated: Array<unknown> = [];
-    const context = contextFor(broker, () => {}, {}, isolated);
+    const context = contextFor(broker, () => {});
 
     function Probe() {
       useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
@@ -294,14 +301,6 @@ describe("useZeropsGroupReach", () => {
         await broker.publish({ status: "success", attempt: 1, value: NARROW_GRANTS });
       });
       await flushEffects();
-
-      // project-b holds no Mate; made the old way it carries the same
-      // project-wide key, with ADMIN on itself, in every one of its
-      // containers.
-      expect(isolated).toEqual([
-        { kind: "project", organization, projectId: "project-a" },
-        { kind: "project", organization, projectId: "project-b" },
-      ]);
     } finally {
       await act(() => root.unmount());
     }

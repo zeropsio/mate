@@ -26,6 +26,18 @@ describe("creationRefreshWanted", () => {
       want: true,
     },
     {
+      name: "a wait still settling before it can be hardened",
+      creationPending: false,
+      waitPhase: "awaiting-settled",
+      want: true,
+    },
+    {
+      name: "a wait running the birth's one restart",
+      creationPending: false,
+      waitPhase: "hardening",
+      want: true,
+    },
+    {
       name: "a wait already probing the container by HTTP",
       creationPending: false,
       waitPhase: "awaiting-health",

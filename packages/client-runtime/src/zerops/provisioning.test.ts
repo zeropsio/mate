@@ -42,6 +42,36 @@ function reachAwaitingContainer(nowMs = 0): ProvisioningState {
   );
 }
 
+/** A container that exists and answers, but has not yet been through hardening. */
+function reachAwaitingSettled(nowMs = 0): ProvisioningState {
+  return advanceProvisioning(
+    reachAwaitingContainer(nowMs),
+    { kind: "services", project: PROJECT, services: [container()] },
+    nowMs,
+  );
+}
+
+/** The container's own boot process reported itself finished. */
+function reachHardening(nowMs = 0): ProvisioningState {
+  return advanceProvisioning(
+    reachAwaitingSettled(nowMs),
+    { kind: "process", running: false, observed: true },
+    nowMs,
+  );
+}
+
+/** The harden step ran and the wait moved on to the ordinary health wait. */
+function reachAwaitingHealth(
+  nowMs = 0,
+  input: { readonly restarted?: boolean } = {},
+): ProvisioningState {
+  return advanceProvisioning(
+    reachHardening(nowMs),
+    { kind: "hardened", restarted: input.restarted ?? true, atMs: nowMs },
+    nowMs,
+  );
+}
+
 describe("provisioning state machine", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -81,10 +111,29 @@ describe("provisioning state machine", () => {
     expect(awaitingContainer.capMs).toBe(PROVISIONING_CAPS["awaiting-container"]);
     expect(awaitingContainer.projectId).toBe("project-1");
 
-    const awaitingHealth = advanceProvisioning(
+    const awaitingSettled = advanceProvisioning(
       awaitingContainer,
       { kind: "services", project: PROJECT, services: [container()] },
       1000,
+    );
+    expect(awaitingSettled.phase).toBe("awaiting-settled");
+    expect(awaitingSettled.waitingFor).toBeTruthy();
+    expect(awaitingSettled.capMs).toBeNull();
+    expect(awaitingSettled.containerOrigin).toBe("https://zcp-24cb-8080.prg1.zerops.app");
+
+    const hardening = advanceProvisioning(
+      awaitingSettled,
+      { kind: "process", running: false, observed: true },
+      2000,
+    );
+    expect(hardening.phase).toBe("hardening");
+    expect(hardening.waitingFor).toBeTruthy();
+    expect(hardening.capMs).toBeNull();
+
+    const awaitingHealth = advanceProvisioning(
+      hardening,
+      { kind: "hardened", restarted: true, atMs: 2000 },
+      3000,
     );
     expect(awaitingHealth.phase).toBe("awaiting-health");
     expect(awaitingHealth.waitingFor).toBeTruthy();
@@ -125,15 +174,11 @@ describe("provisioning state machine", () => {
       { kind: "services", project: PROJECT, services: [container()] },
       6000,
     );
-    expect(ready.phase).toBe("awaiting-health");
+    expect(ready.phase).toBe("awaiting-settled");
   });
 
   it("keeps waiting while the container reports itself as initializing", () => {
-    const awaitingHealth = advanceProvisioning(
-      reachAwaitingContainer(),
-      { kind: "services", project: PROJECT, services: [container()] },
-      1000,
-    );
+    const awaitingHealth = reachAwaitingHealth();
 
     const still = advanceProvisioning(
       awaitingHealth,
@@ -142,17 +187,17 @@ describe("provisioning state machine", () => {
     );
     expect(still.phase).toBe("awaiting-health");
 
-    const ready = advanceProvisioning(still, { kind: "health", health: "ready" }, 5000);
+    const ready = advanceProvisioning(
+      still,
+      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.001Z" },
+      5000,
+    );
     expect(ready.phase).toBe("ready");
     expect(ready.capMs).toBeNull();
   });
 
   it("routes a container that predates Zerops Mate to its own state, not to a timeout", () => {
-    const awaitingHealth = advanceProvisioning(
-      reachAwaitingContainer(),
-      { kind: "services", project: PROJECT, services: [container()] },
-      1000,
-    );
+    const awaitingHealth = reachAwaitingHealth();
 
     const stale = advanceProvisioning(
       awaitingHealth,
@@ -204,11 +249,7 @@ describe("provisioning state machine", () => {
   });
 
   it("does not let the awaiting-health cap elapse while a process is running", () => {
-    const awaitingHealth = advanceProvisioning(
-      reachAwaitingContainer(0),
-      { kind: "services", project: PROJECT, services: [container()] },
-      0,
-    );
+    const awaitingHealth = reachAwaitingHealth(0);
     const running = advanceProvisioning(awaitingHealth, { kind: "process", running: true }, 0);
     expect(running.processRunning).toBe(true);
 
@@ -221,11 +262,7 @@ describe("provisioning state machine", () => {
   });
 
   it("resets the awaiting-health cap's clock to when the process finishes", () => {
-    const awaitingHealth = advanceProvisioning(
-      reachAwaitingContainer(0),
-      { kind: "services", project: PROJECT, services: [container()] },
-      0,
-    );
+    const awaitingHealth = reachAwaitingHealth(0);
     const running = advanceProvisioning(awaitingHealth, { kind: "process", running: true }, 0);
     const finished = advanceProvisioning(running, { kind: "process", running: false }, 50_000);
     expect(finished.processRunning).toBe(false);
@@ -247,14 +284,14 @@ describe("provisioning state machine", () => {
     expect(expired.expiredPhase).toBe("awaiting-health");
   });
 
-  it("the process event only applies to awaiting-health", () => {
+  it("the process event does not affect awaiting-container", () => {
     const awaitingContainer = reachAwaitingContainer(0);
     const unaffected = advanceProvisioning(
       awaitingContainer,
       { kind: "process", running: true },
       0,
     );
-    expect(unaffected).toEqual(awaitingContainer);
+    expect(unaffected).toBe(awaitingContainer);
   });
 
   it("follows the newest project, which is the one a claim just handed over", () => {
@@ -268,6 +305,93 @@ describe("provisioning state machine", () => {
     );
 
     expect(state.projectId).toBe("new");
+  });
+});
+
+describe("awaiting-settled and hardening (the birth's one restart)", () => {
+  it("a wait does not leave awaiting-settled on a timer", () => {
+    const settled = reachAwaitingSettled(0);
+    expect(settled.capMs).toBeNull();
+
+    const muchLater = advanceProvisioning(settled, { kind: "tick" }, 10_000_000);
+    expect(muchLater.phase).toBe("awaiting-settled");
+
+    // Absence of a running process is not enough either — only an observed one.
+    const unobserved = advanceProvisioning(settled, { kind: "process", running: false }, 5000);
+    expect(unobserved.phase).toBe("awaiting-settled");
+  });
+
+  it("a settled project is hardened before its health is asked", () => {
+    const settled = reachAwaitingSettled(0);
+    const hardening = advanceProvisioning(
+      settled,
+      { kind: "process", running: false, observed: true },
+      1000,
+    );
+    expect(hardening.phase).toBe("hardening");
+    expect(hardening.capMs).toBeNull();
+    // The container it is about survives the transition.
+    expect(hardening.containerOrigin).toBe(settled.containerOrigin);
+
+    const afterHarden = advanceProvisioning(
+      hardening,
+      { kind: "hardened", restarted: true, atMs: 1000 },
+      2000,
+    );
+    expect(afterHarden.phase).toBe("awaiting-health");
+    expect(afterHarden.hardenedAtMs).toBe(1000);
+    expect(afterHarden.restartExpected).toBe(true);
+  });
+
+  it("a descriptor from before the restart is not ready", () => {
+    const awaitingHealth = reachAwaitingHealth(0, { restarted: true });
+    expect(awaitingHealth.hardenedAtMs).toBe(0);
+
+    const stale = advanceProvisioning(
+      awaitingHealth,
+      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.000Z" },
+      1000,
+    );
+    expect(stale.phase).toBe("awaiting-health");
+
+    const noInitAt = advanceProvisioning(awaitingHealth, { kind: "health", health: "ready" }, 1000);
+    expect(noInitAt.phase).toBe("awaiting-health");
+
+    const fresh = advanceProvisioning(
+      awaitingHealth,
+      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.001Z" },
+      1000,
+    );
+    expect(fresh.phase).toBe("ready");
+  });
+
+  it("a plan that restarted nothing needs no newer initAt", () => {
+    const awaitingHealth = reachAwaitingHealth(1000, { restarted: false });
+    expect(awaitingHealth.restartExpected).toBe(false);
+
+    const ready = advanceProvisioning(awaitingHealth, { kind: "health", health: "ready" }, 2000);
+    expect(ready.phase).toBe("ready");
+  });
+
+  it("harden read-incomplete keeps waiting, another failure is retryable", () => {
+    const hardening = reachHardening(0);
+
+    // The hook dispatches nothing at all for a retryable "read hasn't caught
+    // up yet" — the state simply stays in hardening for the next poll.
+    expect(hardening.phase).toBe("hardening");
+
+    const failed = advanceProvisioning(
+      hardening,
+      { kind: "harden-failed", message: "The container is no longer in this project." },
+      1000,
+    );
+    expect(failed.phase).toBe("hardening");
+    expect(failed.detail).toBe("The container is no longer in this project.");
+
+    const retried = advanceProvisioning(failed, { kind: "retry" }, 2000);
+    expect(retried.phase).toBe("hardening");
+    expect(retried.detail).toBeNull();
+    expect(retried.phaseStartedAtMs).toBe(2000);
   });
 });
 
@@ -300,14 +424,34 @@ describe("readProvisioning", () => {
     expect(event).toEqual({ kind: "services", project: PROJECT, services: [container()] });
   });
 
+  it("keeps reading the shared observations while awaiting-settled", async () => {
+    const event = await readProvisioning({
+      state: reachAwaitingSettled(),
+      projects: [PROJECT],
+      project: PROJECT,
+      services: [container()],
+      probeHealth: probeNeverCalled,
+    });
+
+    expect(event).toEqual({ kind: "services", project: PROJECT, services: [container()] });
+  });
+
+  it("issues no read at all while hardening — the hook runs the harden command itself", async () => {
+    const event = await readProvisioning({
+      state: reachHardening(),
+      projects: [PROJECT],
+      project: PROJECT,
+      services: [container()],
+      probeHealth: probeNeverCalled,
+    });
+
+    expect(event).toEqual({ kind: "tick" });
+  });
+
   it("probes the container origin once one is known, and calls no API for it", async () => {
     const probed: string[] = [];
 
-    const awaitingHealth = advanceProvisioning(
-      reachAwaitingContainer(),
-      { kind: "services", project: PROJECT, services: [container()] },
-      1000,
-    );
+    const awaitingHealth = reachAwaitingHealth();
 
     const event = await readProvisioning({
       state: awaitingHealth,
@@ -340,11 +484,7 @@ describe("readProvisioning", () => {
 describe("enabling Zerops Mate on an older container", () => {
   function reachNeedsEnable(): ProvisioningState {
     return advanceProvisioning(
-      advanceProvisioning(
-        reachAwaitingContainer(),
-        { kind: "services", project: PROJECT, services: [container()] },
-        1000,
-      ),
+      reachAwaitingHealth(1000),
       { kind: "health", health: "predates-mate" },
       2000,
     );

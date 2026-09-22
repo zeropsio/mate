@@ -484,6 +484,56 @@ describe("ZeropsApiClient project reads", () => {
     });
   });
 
+  it("reports whether its plan restarted anything, for a wait that must not trust a stale boot", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [
+            {
+              envList: [
+                { id: "iso", key: "envIsolation", content: "none" },
+                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
+              ],
+            },
+          ],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.isolateProjectEnvironment("org-1", "project-1");
+
+    expect(result.restarted).toBe(true);
+    expect(result.steps).toBeGreaterThan(0);
+  });
+
+  it("reports no restart for a project already through isolation", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.isolateProjectEnvironment("org-1", "project-1");
+
+    expect(result).toEqual({ restarted: false, steps: 0 });
+  });
+
   it("writes nothing when the index has not caught up with the project", async () => {
     // The index trails the write path: a project created a moment ago answers
     // without the variables the platform gave it at birth. Planning from that

@@ -2190,13 +2190,17 @@ export class ZeropsApiClient {
    * plan, and re-reads the entry ids before the delete because that is the
    * only place they come from. Safe to call on a project that has already been
    * through it: the plan is then empty and nothing, restarts included, runs.
+   *
+   * Returns whether the plan it ran restarted anything, so a caller waiting
+   * on the container (`provisioning.ts`'s `hardening` phase) knows whether
+   * the health wait that follows must distrust a pre-restart boot.
    */
   async isolateProjectEnvironment(
     clientId: string,
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
+  ): Promise<{ readonly restarted: boolean; readonly steps: number }> {
     const generation = this.#generation;
     const [envList, services] = await Promise.all([
       this.readProjectEnv(clientId, projectId, signal),
@@ -2220,7 +2224,8 @@ export class ZeropsApiClient {
         "uncertain",
       );
     const { steps } = plan;
-    if (steps.length === 0) return;
+    const restarted = steps.some((step) => step.kind === "restart-service");
+    if (steps.length === 0) return { restarted: false, steps: 0 };
 
     const write = {
       operationKind: "project-write" as const,
@@ -2287,6 +2292,7 @@ export class ZeropsApiClient {
         }
       }
     }
+    return { restarted, steps: steps.length };
   }
 
   /**

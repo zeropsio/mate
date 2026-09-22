@@ -11,7 +11,11 @@
  * looking for its project or container, the inventory is re-read every
  * `CREATION_REFRESH_MS` as well: a handful of reads for the minutes a creation
  * takes, nothing once it has landed. A wait already probing a container by
- * HTTP needs no push and gets no clock.
+ * HTTP needs no push and gets no clock — except `awaiting-settled`, which
+ * still reads the service list (to catch a container only just turning
+ * usable) and `hardening`, which reads nothing itself but keeps the
+ * inventory current while the birth's one restart runs, for the health wait
+ * that follows it.
  */
 
 import { useEffect } from "react";
@@ -32,7 +36,9 @@ export function creationRefreshWanted(input: {
   return (
     input.creationPending ||
     input.waitPhase === "awaiting-project" ||
-    input.waitPhase === "awaiting-container"
+    input.waitPhase === "awaiting-container" ||
+    input.waitPhase === "awaiting-settled" ||
+    input.waitPhase === "hardening"
   );
 }
 
