@@ -30,7 +30,7 @@ const agent = (
 
 const noop = () => {};
 
-function render(agentAuth: ZeropsAgentAuth, projectName = "todo") {
+function render(agentAuth: ZeropsAgentAuth, projectName = "todo", codeField = true) {
   return renderToStaticMarkup(
     <ZeropsAgentAuthorizationDialogSurface
       agent={agentAuth}
@@ -39,7 +39,7 @@ function render(agentAuth: ZeropsAgentAuth, projectName = "todo") {
       onCancel={noop}
       onClose={noop}
       onStart={noop}
-      onSubmitCode={async () => true}
+      onSubmitCode={codeField ? async () => true : undefined}
     />,
   );
 }
@@ -121,6 +121,16 @@ describe("ZeropsAgentAuthorizationDialogSurface", () => {
     expect(html).toContain("Claude Code is checking the code…");
     expect(html).not.toContain("data-zerops-agent-authorization-code");
     expect(html).toContain(">Cancel<");
+  });
+
+  // A Mate from before `zerops.agentLogin.submitCode` (no `agentLoginCode`
+  // capability) cannot take the code: it goes into the terminal, as before.
+  it("asks for the code in the terminal on a server that cannot take it", () => {
+    const html = render(agent("claude-code", login("awaiting-code")), "todo", false);
+
+    expect(html).not.toContain("data-zerops-agent-authorization-code");
+    expect(html).toContain("Paste the code from your browser directly into the terminal.");
+    expect(html).toContain("Paste into terminal");
   });
 
   it("never offers a code field to Codex's device flow", () => {

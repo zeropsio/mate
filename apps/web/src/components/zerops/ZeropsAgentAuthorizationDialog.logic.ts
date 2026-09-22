@@ -91,7 +91,19 @@ const actionFor = (agent: ZeropsAgentAuth): AgentAuthorizationDialogAction => {
   }
 };
 
-const descriptionFor = (agent: ZeropsAgentAuth): string => {
+/**
+ * Whether the dialog can take Claude's code in a field: a server from before
+ * `zerops.agentLogin.submitCode` (capability `agentLoginCode` absent) cannot,
+ * and the code is pasted into the login terminal instead.
+ */
+export interface AgentAuthorizationDialogOptions {
+  readonly codeField: boolean;
+}
+
+const descriptionFor = (
+  agent: ZeropsAgentAuth,
+  { codeField }: AgentAuthorizationDialogOptions,
+): string => {
   const agentName = ZEROPS_AGENT_NAMES[agent.agentId];
   switch (agent.login?.phase) {
     case undefined:
@@ -103,9 +115,13 @@ const descriptionFor = (agent: ZeropsAgentAuth): string => {
     case "awaiting-browser":
       return agent.agentId === "codex" && agent.login.code !== undefined
         ? "Copy the device code, open the authorization page and approve access. Completion is detected automatically."
-        : "Open the authorization page and approve access. It then shows a code: paste it below.";
+        : codeField
+          ? "Open the authorization page and approve access. It then shows a code: paste it below."
+          : "Open the authorization page and approve access. Return here if the terminal asks for a verification code.";
     case "awaiting-code":
-      return "Paste the code the authorization page showed you.";
+      return codeField
+        ? "Paste the code the authorization page showed you."
+        : "Paste the code from your browser directly into the terminal.";
     case "verifying-code":
       return `${agentName} is checking the code…`;
     case "succeeded":
@@ -117,7 +133,11 @@ const descriptionFor = (agent: ZeropsAgentAuth): string => {
   }
 };
 
-const runningLabel = (agent: ZeropsAgentAuth, stepId: string): string => {
+const runningLabel = (
+  agent: ZeropsAgentAuth,
+  stepId: string,
+  { codeField }: AgentAuthorizationDialogOptions,
+): string => {
   switch (stepId) {
     case "start":
       return "Ready";
@@ -126,7 +146,8 @@ const runningLabel = (agent: ZeropsAgentAuth, stepId: string): string => {
     case "browser":
       return "Open browser";
     case "verify":
-      return agent.login?.phase === "verifying-code" ? "Checking" : "Paste the code";
+      if (agent.login?.phase === "verifying-code") return "Checking";
+      return codeField ? "Paste the code" : "Paste into terminal";
     case "complete":
       return "Complete";
     default:
@@ -136,6 +157,7 @@ const runningLabel = (agent: ZeropsAgentAuth, stepId: string): string => {
 
 export function resolveAgentAuthorizationDialog(
   agent: ZeropsAgentAuth,
+  options: AgentAuthorizationDialogOptions = { codeField: true },
 ): AgentAuthorizationDialogView {
   const definitions = agent.agentId === "claude-code" ? CLAUDE_STEPS : CODEX_STEPS;
   const activeStepId = activeStepFor(agent);
@@ -159,7 +181,7 @@ export function resolveAgentAuthorizationDialog(
             ? "Waiting"
             : state === "failed"
               ? "Failed"
-              : runningLabel(agent, step.id),
+              : runningLabel(agent, step.id, options),
     };
   });
 
@@ -167,7 +189,7 @@ export function resolveAgentAuthorizationDialog(
     action: actionFor(agent),
     activeStepId,
     agentName: ZEROPS_AGENT_NAMES[agent.agentId],
-    description: descriptionFor(agent),
+    description: descriptionFor(agent, options),
     steps,
   };
 }

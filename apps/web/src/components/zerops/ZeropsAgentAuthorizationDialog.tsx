@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { useEnvironment } from "~/state/environments";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { ProcessSteps } from "./primitives";
@@ -29,8 +30,12 @@ interface ZeropsAgentAuthorizationDialogSurfaceProps {
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly onClose: () => void;
   readonly onStart: (agentId: ZeropsAgentId) => void;
-  /** Resolves whether the server took the code (`useAgentLoginSubmitCode`). */
-  readonly onSubmitCode: (agentId: ZeropsAgentId, code: string) => Promise<boolean>;
+  /**
+   * Resolves whether the server took the code (`useAgentLoginSubmitCode`).
+   * Absent where the server cannot take one (no `agentLoginCode`
+   * capability): the code is then pasted into the terminal.
+   */
+  readonly onSubmitCode?: ((agentId: ZeropsAgentId, code: string) => Promise<boolean>) | undefined;
 }
 
 export function ZeropsAgentAuthorizationDialogSurface({
@@ -42,7 +47,7 @@ export function ZeropsAgentAuthorizationDialogSurface({
   onStart,
   onSubmitCode,
 }: ZeropsAgentAuthorizationDialogSurfaceProps) {
-  const view = resolveAgentAuthorizationDialog(agent);
+  const view = resolveAgentAuthorizationDialog(agent, { codeField: onSubmitCode !== undefined });
   const login = agent.login;
 
   return (
@@ -82,7 +87,7 @@ export function ZeropsAgentAuthorizationDialogSurface({
             {login?.phase === "awaiting-browser" ? (
               <BrowserAuthorizationCard agent={agent} />
             ) : null}
-            {agentAcceptsCode(agent) ? (
+            {agentAcceptsCode(agent) && onSubmitCode !== undefined ? (
               <AuthorizationCodeForm agentId={agent.agentId} onSubmitCode={onSubmitCode} />
             ) : null}
           </div>
@@ -130,6 +135,11 @@ export function ZeropsAgentAuthorizationDialog({
   readonly onStart: (agentId: ZeropsAgentId) => void;
 }) {
   const submitCode = useAgentLoginSubmitCode(threadRef);
+  // An older Mate has no `zerops.agentLogin.submitCode`; missing means
+  // unsupported, as for every capability.
+  const codeField =
+    useEnvironment(threadRef?.environmentId ?? null)?.serverConfig?.environment?.capabilities
+      .agentLoginCode === true;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup
@@ -146,7 +156,7 @@ export function ZeropsAgentAuthorizationDialog({
             onOpenChange(false);
           }}
           onStart={onStart}
-          onSubmitCode={submitCode}
+          onSubmitCode={codeField ? submitCode : undefined}
         />
       </DialogPopup>
     </Dialog>

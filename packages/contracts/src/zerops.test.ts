@@ -148,6 +148,7 @@ describe("ZeropsAgentLoginPhase", () => {
       "menu",
       "awaiting-browser",
       "awaiting-code",
+      "verifying-code",
       "succeeded",
       "failed",
       "cancelled",
@@ -193,6 +194,20 @@ describe("ZeropsAgentLoginState", () => {
       startedAt: DateTime.makeUnsafe("2026-08-29T12:00:00.000Z"),
     });
     expect(decoded.message).toBe("Authentication failed.");
+  });
+
+  // A Mate keeps the version it was installed with while the hosted client
+  // moves on: a state from before `startedBy` must still decode, or the whole
+  // agent-auth snapshot fails and the card disappears (seen on localhost
+  // against a 0.11.40 container, 2026-09-22).
+  it("decodes a state from a server that names no starter, and carries one when named", () => {
+    const base = {
+      phase: "awaiting-browser",
+      terminalId: "agent-login-codex",
+      startedAt: DateTime.makeUnsafe("2026-08-29T12:00:00.000Z"),
+    } as const;
+    expect(decodeLoginState(base).startedBy).toBeUndefined();
+    expect(decodeLoginState({ ...base, startedBy: "user-a" }).startedBy).toBe("user-a");
   });
 
   it("rejects a document missing terminalId", () => {

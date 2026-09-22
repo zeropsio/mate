@@ -100,6 +100,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       send the call and offer the Data surface as unsupported under version
       skew. */
   dataConsole: Schema.optionalKey(Schema.Boolean),
+  /** Server understands `zerops.agentLogin.submitCode`, so the sign-in dialog
+      takes Claude's code in a field. Absent on older servers, where the code
+      is pasted into the login terminal instead. */
+  agentLoginCode: Schema.optionalKey(Schema.Boolean),
   /** Server runs repository clones for new projects in the background and
       streams their progress (`projectClone.*`, `subscribeProjectClones`).
       Absent on older servers, where clients must clone with the blocking

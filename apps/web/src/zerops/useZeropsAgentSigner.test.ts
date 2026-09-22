@@ -110,7 +110,31 @@ describe("agentSignersToRecord", () => {
       expected: ["claude-code", "codex"],
     },
   ] as const)("$name", ({ logins, authorizedBy, expected }) => {
-    expect(agentSignersToRecord(snapshot(logins, authorizedBy), "user-a")).toEqual(expected);
+    expect(agentSignersToRecord(snapshot(logins, authorizedBy), "user-a", null)).toEqual(expected);
+  });
+
+  // A Mate from before `startedBy` (0.11.40 and older): the success this
+  // client watched happen is this person's, as before.
+  describe("on a server that names nobody", () => {
+    const legacy = (phase: "succeeded" | "starting"): ZeropsAgentAuthSnapshot => {
+      const base = snapshot({ codex: { phase, startedBy: "x" } });
+      return {
+        ...base,
+        agents: base.agents.map((agent) => {
+          if (agent.login === undefined) return agent;
+          const { startedBy: _startedBy, ...login } = agent.login;
+          return { ...agent, login };
+        }),
+      };
+    };
+
+    it.each([
+      { name: "a success it watched land", previous: legacy("starting"), expected: ["codex"] },
+      { name: "a success on the first snapshot it sees", previous: null, expected: ["codex"] },
+      { name: "a success already there before", previous: legacy("succeeded"), expected: [] },
+    ])("$name", ({ previous, expected }) => {
+      expect(agentSignersToRecord(legacy("succeeded"), "user-a", previous)).toEqual(expected);
+    });
   });
 
   it("names nobody without a signed-in viewer", () => {
@@ -118,6 +142,7 @@ describe("agentSignersToRecord", () => {
       agentSignersToRecord(
         snapshot({ codex: { phase: "succeeded", startedBy: "user-a" } }),
         undefined,
+        null,
       ),
     ).toEqual([]);
   });

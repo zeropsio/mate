@@ -110,19 +110,26 @@ export function resolveAgentAuthorizer(
  * Which agents' signer records this person should write now: a login that
  * succeeded, that this person started, and whose record the snapshot does not
  * carry. State, not a transition — see the module header.
+ *
+ * An older server names nobody (`startedBy` absent). There the success this
+ * client watched happen — a phase that was not `succeeded` in `previous`, or
+ * no previous snapshot at all — is taken as this person's, as before.
  */
 export function agentSignersToRecord(
   snapshot: ZeropsAgentAuthSnapshot,
   viewerId: string | undefined,
+  previous: ZeropsAgentAuthSnapshot | null,
 ): ReadonlyArray<ZeropsAgentId> {
   if (!viewerId) return [];
   return snapshot.agents
-    .filter(
-      (agent) =>
-        agent.login?.phase === "succeeded" &&
-        agent.login.startedBy === viewerId &&
-        agent.authorizedBy?.subject !== viewerId,
-    )
+    .filter((agent) => {
+      if (agent.login?.phase !== "succeeded" || agent.authorizedBy?.subject === viewerId) {
+        return false;
+      }
+      if (agent.login.startedBy !== undefined) return agent.login.startedBy === viewerId;
+      const before = previous?.agents.find((entry) => entry.agentId === agent.agentId);
+      return before?.login?.phase !== "succeeded";
+    })
     .map((agent) => agent.agentId);
 }
 
@@ -223,6 +230,8 @@ export function useZeropsAgentSignerRecord(input: {
     readonly controller: AbortController;
     readonly timers: Set<number>;
     readonly attempted: Set<string>;
+    /** The snapshot last read, for a server that names no `startedBy`. */
+    previous: ZeropsAgentAuthSnapshot | null;
   } | null>(null);
   // Also renewed for another person or project: a retry scheduled for the
   // one before must never write their record under this session.
@@ -232,6 +241,7 @@ export function useZeropsAgentSignerRecord(input: {
       controller: new AbortController(),
       timers: new Set<number>(),
       attempted: new Set<string>(),
+      previous: null,
     };
     lifetime.current = current;
     return () => {
@@ -251,7 +261,9 @@ export function useZeropsAgentSignerRecord(input: {
     ) {
       return;
     }
-    const due = agentSignersToRecord(snapshot, userId).filter((agentId) => {
+    const previous = owner.previous;
+    owner.previous = snapshot;
+    const due = agentSignersToRecord(snapshot, userId, previous).filter((agentId) => {
       const startedAt = snapshot.agents.find((agent) => agent.agentId === agentId)?.login
         ?.startedAt;
       const key = `${projectId}:${agentId}:${startedAt === undefined ? "" : String(startedAt)}`;

@@ -317,9 +317,11 @@ export const ZeropsAgentLoginState = Schema.Struct({
    * The Zerops user id of the person who started this login, from their
    * authenticated session. The client that is that person records the signer
    * (`authorizedBy`) from it once the login succeeds, whichever screen it
-   * started on and whether or not that screen is still open.
+   * started on and whether or not that screen is still open. Absent on older
+   * servers — a Mate keeps its own version while the hosted client moves on —
+   * where the client records on a success it watched happen instead.
    */
-  startedBy: Schema.String,
+  startedBy: Schema.optional(Schema.String),
 });
 export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
 
