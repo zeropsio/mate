@@ -1,7 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef, ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { CheckIcon, CopyIcon, ExternalLinkIcon, TerminalSquareIcon } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { TerminalViewport } from "~/components/ThreadTerminalDrawer";
@@ -16,6 +17,7 @@ import { ProcessSteps } from "./primitives";
 import {
   agentAcceptsCode,
   resolveAgentAuthorizationDialog,
+  resolveEffectiveAgentLogin,
   ZEROPS_AGENT_NAMES,
 } from "./ZeropsAgentAuthorizationDialog.logic";
 
@@ -140,6 +142,17 @@ export function ZeropsAgentAuthorizationDialog({
   const codeField =
     useEnvironment(threadRef?.environmentId ?? null)?.serverConfig?.environment?.capabilities
       .agentLoginCode === true;
+  // Captured once, on this dialog's own mount: mount IS open here (every
+  // caller conditionally mounts rather than hiding), so this is exactly
+  // "when this authorization attempt could first have started."
+  const [openedAt] = useState(() => DateTime.nowUnsafe());
+  const effectiveAgent = useMemo(
+    (): ZeropsAgentAuth => ({
+      ...agent,
+      login: resolveEffectiveAgentLogin({ login: agent.login, openedAt }),
+    }),
+    [agent, openedAt],
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup
@@ -148,9 +161,9 @@ export function ZeropsAgentAuthorizationDialog({
         className="h-[min(1080px,calc(100dvh-3rem))] max-w-[min(1720px,calc(100vw-3rem))] overflow-hidden p-0"
       >
         <ZeropsAgentAuthorizationDialogSurface
-          agent={agent}
+          agent={effectiveAgent}
           projectName={projectName}
-          terminal={<AgentAuthorizationTerminal agent={agent} threadRef={threadRef} />}
+          terminal={<AgentAuthorizationTerminal agent={effectiveAgent} threadRef={threadRef} />}
           onCancel={onCancel}
           onClose={() => {
             onOpenChange(false);

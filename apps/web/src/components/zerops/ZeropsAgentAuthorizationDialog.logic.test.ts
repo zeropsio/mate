@@ -1,10 +1,15 @@
 import type { ZeropsAgentAuth, ZeropsAgentLoginState } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
 
 import {
   agentAcceptsCode,
   resolveAgentAuthorizationDialog,
+  resolveEffectiveAgentLogin,
 } from "./ZeropsAgentAuthorizationDialog.logic";
+
+const at = (iso: string): DateTime.Utc => Option.getOrThrow(DateTime.make(iso));
 
 const login = (
   phase: ZeropsAgentLoginState["phase"],
@@ -130,4 +135,40 @@ describe("resolveAgentAuthorizationDialog", () => {
     ]);
     expect(view.description).toBe("Authentication failed.");
   });
+});
+
+describe("resolveEffectiveAgentLogin", () => {
+  const openedAt = at("2026-09-23T10:00:00.000Z");
+
+  it("passes through when there is no login at all", () => {
+    expect(resolveEffectiveAgentLogin({ login: undefined, openedAt })).toBeUndefined();
+  });
+
+  it.each(["starting", "menu", "awaiting-browser", "awaiting-code", "verifying-code"] as const)(
+    "never hides a non-terminal phase (%s), whenever it started",
+    (phase) => {
+      const staleNonTerminal = login(phase, { startedAt: at("2026-09-23T09:00:00.000Z") });
+      expect(resolveEffectiveAgentLogin({ login: staleNonTerminal, openedAt })).toEqual(
+        staleNonTerminal,
+      );
+    },
+  );
+
+  // The live bug: a fresh open showed "Authorization was cancelled..." from
+  // an attempt that ended before this dialog ever opened.
+  it.each(["cancelled", "failed", "succeeded"] as const)(
+    "hides a terminal phase (%s) whose attempt started before this dialog opened",
+    (phase) => {
+      const stale = login(phase, { startedAt: at("2026-09-23T09:59:59.000Z") });
+      expect(resolveEffectiveAgentLogin({ login: stale, openedAt })).toBeUndefined();
+    },
+  );
+
+  it.each(["cancelled", "failed", "succeeded"] as const)(
+    "keeps a terminal phase (%s) whose attempt started from this dialog's own open",
+    (phase) => {
+      const current = login(phase, { startedAt: at("2026-09-23T10:00:01.000Z") });
+      expect(resolveEffectiveAgentLogin({ login: current, openedAt })).toEqual(current);
+    },
+  );
 });

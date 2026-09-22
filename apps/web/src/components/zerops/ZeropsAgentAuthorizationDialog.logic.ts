@@ -1,6 +1,37 @@
-import type { ZeropsAgentAuth } from "@t3tools/contracts";
+import type { ZeropsAgentAuth, ZeropsAgentLoginState } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 import type { ProcessStep, ProcessStepState } from "./primitives";
+
+const TERMINAL_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+
+/**
+ * What this dialog OPEN should show for a login session: `undefined` (no
+ * session, the "start" screen) instead of a terminal phase whose attempt
+ * ended before this dialog opened. A fresh open must not present a login
+ * left over from an earlier attempt as this session's own outcome — the
+ * server snapshot keeps the last phase across opens, but only an attempt
+ * actually started from THIS open belongs to it.
+ *
+ * Never hides an in-progress phase, however old: a login genuinely still
+ * running (started before the dialog reopened, watched from a different
+ * surface) must keep showing its real progress.
+ */
+export function resolveEffectiveAgentLogin(input: {
+  readonly login: ZeropsAgentLoginState | undefined;
+  readonly openedAt: DateTime.Utc;
+}): ZeropsAgentLoginState | undefined {
+  const { login } = input;
+  if (login === undefined) return undefined;
+  if (!TERMINAL_LOGIN_PHASES.has(login.phase)) return login;
+  return DateTime.toEpochMillis(login.startedAt) < DateTime.toEpochMillis(input.openedAt)
+    ? undefined
+    : login;
+}
 
 export const ZEROPS_AGENT_NAMES = {
   "claude-code": "Claude Code",
