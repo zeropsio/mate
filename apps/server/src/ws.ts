@@ -69,6 +69,7 @@ import {
   type TerminalError,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
+  type ZeropsAgentId,
   WS_METHODS,
   WsRpcGroup,
   agentIdForProviderInstance,
@@ -138,6 +139,7 @@ import { isTurnStartingCommand, turnRefusal } from "./zerops/ZeropsProjectSigner
 import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
+import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
@@ -1333,6 +1335,90 @@ const makeWsRpcLayer = (
         );
       };
 
+      /**
+       * Dispatching `thread.session.stop` only returns once the command is
+       * PERSISTED — the provider process behind it can still be alive for a
+       * moment after (and could still rewrite the credential file the CLI
+       * logout step is about to run against). So each stop, once
+       * dispatched, is followed by a short poll of the SAME thread's
+       * projected session status, capped at 10s: whichever comes first —
+       * confirmed stopped, or the cap — `stopAgentSessions` moves on.
+       */
+      const SESSION_STOP_POLL_INTERVAL = Duration.millis(250);
+      const SESSION_STOP_WAIT_TIMEOUT = Duration.seconds(10);
+      const isThreadSessionLive = (threadId: ThreadId) =>
+        projectionSnapshotQuery.getThreadShellById(threadId).pipe(
+          Effect.map(
+            Option.match({
+              onNone: () => false,
+              onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
+            }),
+          ),
+          Effect.catchCause(() => Effect.succeed(false)),
+        );
+
+      /**
+       * `zerops.agentLogin.signOut`'s step (c): stops every LIVE session
+       * belonging to `agentId`, by dispatching `thread.session.stop` through
+       * the same orchestration path a client's own archive/settle cleanup
+       * uses above — never touching `ProviderService`/`provider/**`
+       * directly (`ZeropsAgentSignOut.ts`'s own "Why `stopAgentSessions` is
+       * a parameter" doc comment). Best-effort end to end: a snapshot read
+       * that fails, or one thread's stop dispatch that fails, is logged and
+       * skipped rather than propagated — sign-out must still clear the
+       * platform flag even when a session stop could not be confirmed.
+       */
+      const stopAgentSessions = (agentId: ZeropsAgentId): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          const shell = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
+            Effect.map(Option.some),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("zerops agent sign-out: could not read the shell snapshot", {
+                agentId,
+                cause,
+              }).pipe(Effect.as(Option.none())),
+            ),
+          );
+          if (Option.isNone(shell)) return;
+
+          const threadIds = threadsToStopForAgent(shell.value.threads, agentId);
+          yield* Effect.forEach(
+            threadIds,
+            (threadId) =>
+              Effect.gen(function* () {
+                // `thread.session.stop` needs no workspace/attachment
+                // normalization (unlike `project.create`/`thread.turn.start`),
+                // so it is built directly rather than through
+                // `normalizeDispatchCommand` — that function unconditionally
+                // pulls in FileSystem/Path/WorkspacePaths for branches this
+                // command never takes, which would leak into this handler's
+                // otherwise fully-resolved (R = never) requirements
+                // (`registerZeropsRpc.ts`'s own `ZeropsRpcHandlers` type
+                // pins every zerops RPC handler to no leftover services).
+                const stopCommand: OrchestrationCommand = {
+                  type: "thread.session.stop",
+                  commandId: yield* serverCommandId(`agent-sign-out:${agentId}`),
+                  threadId,
+                  createdAt: yield* nowIso,
+                };
+                yield* dispatchNormalizedCommand(stopCommand);
+                yield* waitUntilNotLive(isThreadSessionLive(threadId), {
+                  pollInterval: SESSION_STOP_POLL_INTERVAL,
+                  timeout: SESSION_STOP_WAIT_TIMEOUT,
+                });
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("zerops agent sign-out: could not stop a live session", {
+                    agentId,
+                    threadId,
+                    cause,
+                  }),
+                ),
+              ),
+            { discard: true },
+          );
+        });
+
       // On Zerops, whether Claude Code and Codex can be picked is the
       // project's answer (its sign-in flag), not their drivers' — every
       // provider list a client receives goes through this.
@@ -2192,6 +2278,7 @@ const makeWsRpcLayer = (
           zeropsAgentAuth,
           zeropsAgentLogin,
           zeropsAgentSignOut,
+          stopAgentSessions,
           zeropsBrowserStream,
           zeropsCli,
           zeropsMateUpdate,

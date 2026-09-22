@@ -13,6 +13,7 @@ import {
   EnvironmentAuthorizationError,
   ZeropsMateUpdateError,
   type WsRpcGroup,
+  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -63,6 +64,13 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   readonly zeropsAgentSignOut: ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"];
+  /**
+   * Stops `agentId`'s live provider sessions, dispatched through the
+   * orchestration layer `ws.ts` owns — see `ZeropsAgentSignOut.ts`'s own
+   * "Why `stopAgentSessions` is a parameter" doc comment. Never fails: `ws.ts`
+   * catches its own dispatch/read errors before handing this in.
+   */
+  readonly stopAgentSessions: (agentId: ZeropsAgentId) => Effect.Effect<void>;
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -168,6 +176,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsAgentAuth,
     zeropsAgentLogin,
     zeropsAgentSignOut,
+    stopAgentSessions,
     zeropsBrowserStream,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -202,7 +211,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.zeropsAgentLoginSignOut]: (input) =>
       observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSignOut,
-        zeropsAgentSignOut.signOut(input.agentId),
+        zeropsAgentSignOut.signOut(input.agentId, () => stopAgentSessions(input.agentId)),
         { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>

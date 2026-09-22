@@ -2,53 +2,52 @@
  * ZeropsAgentSignOut — `zerops.agentLogin.signOut`: any client (web, later
  * mobile) can sign an agent out of this Mate, everywhere it is reachable.
  *
- * Steps, in order (the deliverable's own list):
+ * Steps, in order:
  *  a. refuse a token-authorized agent — an API key belongs to the project,
  *     not to a person, so there is nobody's sign-in to end (mirrors
  *     `ZeropsProjectSigners.turnRefusal`'s own D6 reasoning).
  *  b. cancel that agent's running server-driven login session, if any
  *     (`ZeropsAgentLogin.cancel`).
- *  c. **GAP, not implemented here — see the module-level note below.**
- *     Stopping the agent's running provider sessions needs a live-session
- *     command capability (list + stop) that `apps/server/src/zerops/**`
- *     is not allowed to reach on its own.
+ *  c. stop that agent's live provider sessions, via the caller-supplied
+ *     `stopAgentSessions` (see below) — required, not optional: measured
+ *     live 2026-09-22 on project 111111, a running turn keeps working after
+ *     its credential file is replaced (the provider holds its token in
+ *     memory), so a sign-out that skipped this would leave the agent
+ *     running on a session nothing else can see.
  *  d. run the CLI's own logout (`claude auth logout` / `codex logout`,
  *     idempotent — exits 0 even when not logged in); if it fails, or the
  *     credential file is still there afterwards, remove the file.
- *  e. `ZeropsAgentAuth.invalidatePendingMark` — an auth probe already in
- *     flight when sign-out started must not re-mark the flag the next step
- *     is about to clear once it finally answers.
- *  f. `ZeropsAgentFlag.clearSignedIn` — deletes the platform flag row(s).
- *  g. `ZeropsAgentAuth.recheckNow` — a prompt re-evaluation. The credential
+ *  e. `ZeropsAgentFlag.clearSignedIn` — deletes the platform flag row(s).
+ *  f. `ZeropsAgentAuth.recheckNow` — a prompt re-evaluation. The credential
  *     watcher (from step d's file removal) and the env-store watcher (from
- *     step f's flag deletion, which the platform's live env store reflects
+ *     step e's flag deletion, which the platform's live env store reflects
  *     within seconds) already reset the `markedOAuth` latch on their own —
  *     see `ZeropsAgentAuth.ts`'s `recomputeEnvStore` (S7 follow-up F2) — so
  *     a later sign-in writes the flag again without any extra code here.
  *
- * ## Step (c) is a known gap, reported rather than improvised
+ * ## Why `stopAgentSessions` is a parameter, not a dependency this module resolves
  *
- * `server.ts`'s own `RuntimeDependenciesLive` doc comment states the rule
- * this module has to honor: "`apps/server/src/zerops/**` depends on
- * `ProviderRuntimeEventBus` (`spi/ProviderRuntimeEventBus.ts`), never on
- * `ProviderService` directly — that is the SPI seam that keeps the Zerops
- * feeds decoupled from `~/provider/**`." (D3, the SPI plan.) That bus is
- * READ-ONLY (`events`/`enrichmentFailures`, no session command). Nothing
- * under `apps/server/src/spi/**` — the one zone allowed to import
- * `~/provider/**` — exposes a "list/stop this agent's live sessions"
- * capability yet, and `apps/server/src/spi/**` is outside this change's
- * write-set. Building that capability (a small addition alongside
- * `ProviderRuntimeEventBus.ts`, exposing `ProviderService.listSessions` /
- * `stopSession` filtered by `agentIdForProviderInstance` — the same
- * agent<->instance vocabulary `ws.ts`'s own D6 turn-refusal already uses)
- * is a follow-up, not something this module does on its own.
+ * `apps/server/src/zerops/**` never imports `ProviderService`
+ * (`server.ts`'s own `RuntimeDependenciesLive` doc comment, D3 SPI plan) and
+ * this module does not touch `apps/server/src/provider/**` either. Stopping
+ * a live session instead goes through the ORCHESTRATION layer — dispatching
+ * `thread.session.stop` the same way a client's own archive/settle cleanup
+ * does (`ws.ts`) — and that dispatch path (`normalizeDispatchCommand`,
+ * the per-connection `dispatchNormalizedCommand`, `ProjectionSnapshotQuery`)
+ * only exists inside `ws.ts`'s own per-connection scope, never as a
+ * standalone service this layer could construct at boot. So `signOut` takes
+ * `stopAgentSessions` as a caller-supplied thunk instead: `ws.ts` builds it
+ * (using {@link threadsToStopForAgent}, the pure "which threads" selection
+ * below, plus `agentIdForProviderInstance` from `@t3tools/contracts` — the
+ * SAME helper the D6 turn-refusal gate in `ws.ts` already uses) and hands it
+ * to `registerZeropsRpc.ts`'s handler, which passes it into this call.
  *
- * Every other step is best-effort: once step (a) has cleared, sign-out must
- * make progress even when a downstream step fails (a login session that
- * refuses to cancel, a CLI logout that errors, a flag delete that cannot
- * reach the API) — never leaving stale state standing because one step
- * stumbled. Every failure is logged, never thrown; only step (a)'s refusal
- * fails the RPC itself.
+ * Every step but (a) is best-effort: once step (a) has cleared, sign-out
+ * must make progress even when a downstream step fails (a login session
+ * that refuses to cancel, a session-stop dispatch that errors, a CLI logout
+ * that errors, a flag delete that cannot reach the API) — never leaving
+ * stale state standing because one step stumbled. Every failure is logged,
+ * never thrown; only step (a)'s refusal fails the RPC itself.
  *
  * Deliberately does NOT touch the D6 signer tag (`mate:signer:*`): the
  * Mate's own key cannot write project tags (`ZeropsProjectSigners.ts`'s own
@@ -57,7 +56,13 @@
  *
  * @module ZeropsAgentSignOut
  */
-import { ZeropsAgentLoginError, type ZeropsAgentId } from "@t3tools/contracts";
+import {
+  agentIdForProviderInstance,
+  ZeropsAgentLoginError,
+  type OrchestrationThreadShell,
+  type ThreadId,
+  type ZeropsAgentId,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -89,10 +94,66 @@ const LOGOUT_COMMAND: Readonly<
   codex: { command: "codex", args: ["logout"] },
 };
 
+/**
+ * Which of `threads`' live sessions belong to `agentId` — by the same
+ * `agentIdForProviderInstance` vocabulary `ws.ts`'s own D6 turn-refusal
+ * already uses, never a second, hand-rolled agent<->instance mapping. A
+ * thread with no session, or one already `"stopped"`, has nothing to stop —
+ * matching the exact liveness check `ws.ts`'s archive/settle cleanup already
+ * uses for the same reason.
+ *
+ * Keyed on the SESSION's own `providerInstanceId`, not the thread's current
+ * `modelSelection` — a thread can be repointed at a different agent while a
+ * session from the previous provider instance is still live, and it is that
+ * live session which must stop. Falls back to `modelSelection.instanceId`
+ * only when the session itself carries none (older/partial snapshots).
+ */
+export const threadsToStopForAgent = (
+  threads: ReadonlyArray<Pick<OrchestrationThreadShell, "id" | "modelSelection" | "session">>,
+  agentId: ZeropsAgentId,
+): ReadonlyArray<ThreadId> =>
+  threads
+    .filter((thread) => thread.session !== null && thread.session.status !== "stopped")
+    .filter(
+      (thread) =>
+        agentIdForProviderInstance(
+          thread.session?.providerInstanceId ?? thread.modelSelection.instanceId,
+        ) === agentId,
+    )
+    .map((thread) => thread.id);
+
+/**
+ * Polls `isLive` until it answers `false`, or `timeout` elapses — whichever
+ * comes first. Never fails: a timeout is swallowed, since sign-out must
+ * always continue best-effort even when a session cannot be confirmed
+ * stopped in time. `ws.ts`'s `stopAgentSessions` supplies the real `isLive`
+ * (a live projection read) and the real interval/timeout; exported here so
+ * this polling behavior has its own test, independent of orchestration I/O.
+ */
+export const waitUntilNotLive = (
+  isLive: Effect.Effect<boolean>,
+  options: { readonly pollInterval: Duration.Duration; readonly timeout: Duration.Duration },
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    while (yield* isLive) {
+      yield* Effect.sleep(options.pollInterval);
+    }
+  }).pipe(Effect.timeout(options.timeout), Effect.ignore);
+
 export class ZeropsAgentSignOut extends Context.Service<
   ZeropsAgentSignOut,
   {
-    readonly signOut: (agentId: ZeropsAgentId) => Effect.Effect<void, ZeropsAgentLoginError>;
+    /**
+     * `stopAgentSessions` is supplied by the caller (`registerZeropsRpc.ts`,
+     * fed from `ws.ts`) — see the module header's "Why `stopAgentSessions`
+     * is a parameter" section. Never fails: the caller catches its own
+     * dispatch errors, since a session already gone, or a dispatch that
+     * errors, must not fail the whole sign-out.
+     */
+    readonly signOut: (
+      agentId: ZeropsAgentId,
+      stopAgentSessions: () => Effect.Effect<void>,
+    ) => Effect.Effect<void, ZeropsAgentLoginError>;
   }
 >()("t3/zerops/ZeropsAgentSignOut") {}
 
@@ -136,7 +197,10 @@ export const make = (options: ZeropsAgentSignOutOptions) => {
     removeCredential,
   } = options;
 
-  const signOut = (agentId: ZeropsAgentId): Effect.Effect<void, ZeropsAgentLoginError> =>
+  const signOut = (
+    agentId: ZeropsAgentId,
+    stopAgentSessions: () => Effect.Effect<void>,
+  ): Effect.Effect<void, ZeropsAgentLoginError> =>
     Effect.gen(function* () {
       const snapshot = yield* zeropsAgentAuth.latest;
       const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
@@ -152,8 +216,14 @@ export const make = (options: ZeropsAgentSignOutOptions) => {
         .cancel(agentId)
         .pipe(Effect.catch(logAndContinue("could not cancel the login session", agentId)));
 
-      // Step (c) — stopping this agent's live provider sessions — is a
-      // known gap; see the module header.
+      // `catchCause`, not `catch`: this is the one step that dispatches
+      // through orchestration for possibly several threads at once, so it
+      // gets the extra defect-safety net the other (simpler) steps don't
+      // need — a session-stop dispatch going wrong must still never lose
+      // the platform-flag clear that follows.
+      yield* stopAgentSessions().pipe(
+        Effect.catchCause(logAndContinue("could not stop live provider sessions", agentId)),
+      );
 
       const logoutOutcome = yield* runLogout(agentId).pipe(
         Effect.catch(() => Effect.succeed({ success: false })),
