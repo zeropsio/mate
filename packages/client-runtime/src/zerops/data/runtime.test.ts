@@ -1667,6 +1667,82 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect(
+    "fails a compound command with the admission's own reason when a verification starts between writes",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const firstWriteFinished = yield* Deferred.make<void>();
+        const allowSecondWrite = yield* Deferred.make<void>();
+        const base = makeAdapterHarness();
+        const adapter: ZeropsDataAdapter = {
+          ...base.adapter,
+          execute: (_command, context) =>
+            Effect.gen(function* () {
+              const beforeWrite = context.beforeProjectWrite;
+              if (beforeWrite === undefined) return yield* Effect.die("missing write guard");
+              const checked = () =>
+                Effect.tryPromise({
+                  try: beforeWrite,
+                  catch: (): AdapterError => ({
+                    _tag: "ZeropsDataAdapterError",
+                    kind: "rejected",
+                    message: "write rejected",
+                    retryable: false,
+                    accountRevocationEvidence: false,
+                  }),
+                });
+              yield* checked();
+              yield* Deferred.succeed(firstWriteFinished, undefined);
+              yield* Deferred.await(allowSecondWrite);
+              yield* checked();
+              return { processRefs: [], observations: [] };
+            }),
+        };
+        const service: ServiceRef = {
+          kind: "service",
+          project: topologyDescriptor.project,
+          serviceId: ZeropsServiceId.make("service-a"),
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          initialAccess: {
+            status: "verified",
+            account: runtimeScope.account,
+            accountEpoch: runtimeScope.epoch,
+            verifiedAtMs: 0,
+            deadlineMs: 10_000,
+            mutationsAllowed: true,
+            organizations: [{ organization: service.project.organization, mutationsAllowed: true }],
+            projects: [{ project: service.project, role: "ADMIN", mutationsAllowed: true }],
+          },
+        });
+        const execution = yield* Effect.forkChild(
+          Effect.flip(runtime.commands.enableZeropsMate(service)),
+        );
+        yield* Deferred.await(firstWriteFinished);
+        yield* runtime.observeAccess({
+          kind: "access-verification-started",
+          accountEpoch: runtimeScope.epoch,
+        });
+        yield* Deferred.succeed(allowSecondWrite, undefined);
+        const failure = yield* Fiber.join(execution);
+        // A round in flight is a "not yet" the caller can wait out
+        // (`useZeropsProvisioning`'s `isAccessNotYetVerified`); the adapter's
+        // own wrapping of the guard's refusal must not turn it into an answer.
+        expect(failure).toMatchObject({
+          _tag: "ZeropsCommandAdmissionError",
+          reason: "access-unverified",
+        });
+
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+  );
+
   it.effect("fences late callbacks when a reused adapter serves a new account epoch", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

@@ -2722,13 +2722,36 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           yield* awaitIngress;
           return yield* Effect.fail(failure);
         }
+        // The guard's refusal between writes reaches the adapter as a thrown
+        // cause it wraps in its own error; kept here so the command fails
+        // with the admission's reason — "not verified yet" is a wait, not an
+        // answer (`commands.ts`).
+        let midWriteAdmission: CommandAdmissionError | null = null;
         const outcome = yield* context(policy.httpDeadlineMs, (requestContext) =>
           options.adapter.execute(command, {
             ...requestContext,
             beforeProjectWrite: () =>
-              Effect.runPromiseWith(runtimeContext)(checkCommandAdmission(command)),
+              Effect.runPromiseWith(runtimeContext)(
+                checkCommandAdmission(command).pipe(
+                  Effect.tapError((admission) =>
+                    Effect.sync(() => {
+                      midWriteAdmission = admission;
+                    }),
+                  ),
+                ),
+              ),
           }),
         ).pipe(Effect.result);
+        if (Result.isFailure(outcome) && midWriteAdmission !== null) {
+          const admission: CommandAdmissionError = midWriteAdmission;
+          yield* enqueue({
+            kind: "command-completion",
+            completion: { kind: "command-rejected", command, reason: admission.message },
+            interest: null,
+          });
+          yield* awaitIngress;
+          return yield* Effect.fail(admission);
+        }
         if (Result.isFailure(outcome)) {
           const uncertain = ["uncertain", "timeout", "network", "server"].includes(
             outcome.failure.kind,
