@@ -1,9 +1,14 @@
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
+import { resolveAgentAuthorizer, type LocalAgentSigners } from "../zerops/useZeropsAgentSigner";
+import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
+  resolveZeropsAgentAvailability,
+  zeropsAgentAvailabilityIsRunnable,
+  type ZeropsAgentAvailability,
+} from "@t3tools/client-runtime/zerops/agentAvailability";
+import {
+  agentIdForProviderInstance,
   ANTIGRAVITY_DEFAULT_MODEL,
-  type AssetCreateUrlInput,
-  type AssetCreateUrlResult,
-  type ChatFileAttachment,
   type EnvironmentId,
   isProviderDriverKind,
   ProjectId,
@@ -17,6 +22,8 @@ import {
   type ScopedThreadRef,
   type ThreadId,
   type TurnId,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import {
   type ChatMessage,
@@ -37,7 +44,6 @@ import {
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import type { ComposerSubmissionIntent } from "../composer-logic";
 import type { TimelineEntry } from "../session-logic";
-import type { RightPanelSurface } from "../rightPanelStore";
 import {
   NO_PROVIDER_MODEL_SELECTION,
   resolveSelectableProviderInstanceEntry,
@@ -315,6 +321,22 @@ export function resolveComposerProviderSelection(input: {
   candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
   lockedProvider: ProviderDriverKind | null;
   lockedInstanceId: ProviderInstanceId | null | undefined;
+  /**
+   * Zerops agent-auth gating for the composer (D6). On an unstarted thread
+   * (`lockedProvider === null`), a candidate instance whose agent this
+   * viewer cannot run right now is skipped entirely — never offered as the
+   * selection, never sent to; `zeropsSignInRequired` comes back `true` when
+   * that is the *only* reason nothing got selected. A started thread keeps
+   * its exact selection regardless — the picker, not the selection, is
+   * where it offers sign-in there. `undefined` (no agent-auth feed for this
+   * environment) behaves exactly as before zerops existed.
+   */
+  zerops?:
+    | {
+        readonly available: boolean;
+        readonly isAgentRunnable: (instanceId: ProviderInstanceId) => boolean;
+      }
+    | undefined;
 }) {
   const requestedInstanceId = input.candidateInstanceIds.find(
     (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
@@ -339,30 +361,124 @@ export function resolveComposerProviderSelection(input: {
       (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
       (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
   );
+  const isZeropsGated = input.lockedProvider === null && (input.zerops?.available ?? false);
+  const passesZeropsGate = (entry: ProviderInstanceEntry): boolean =>
+    !isZeropsGated || input.zerops!.isAgentRunnable(entry.instanceId);
   const selectedProviderEntry =
     input.candidateInstanceIds
       .map((candidate) =>
         compatibleEntries.find(
-          (entry) => entry.instanceId === candidate && entry.enabled && entry.isAvailable,
+          (entry) =>
+            entry.instanceId === candidate &&
+            entry.enabled &&
+            entry.isAvailable &&
+            passesZeropsGate(entry),
         ),
       )
       .find((entry) => entry !== undefined) ??
     resolveSelectableProviderInstanceEntry(
-      compatibleEntries.filter((entry) => entry.driverKind === requestedDriverKind),
+      compatibleEntries.filter(
+        (entry) => entry.driverKind === requestedDriverKind && passesZeropsGate(entry),
+      ),
       undefined,
     ) ??
-    resolveSelectableProviderInstanceEntry(compatibleEntries, undefined);
+    resolveSelectableProviderInstanceEntry(compatibleEntries.filter(passesZeropsGate), undefined);
   const unavailableProviderInstanceId = selectedProviderEntry
     ? undefined
     : input.lockedProvider
       ? (input.lockedInstanceId ?? requestedInstanceId)
       : requestedInstanceId;
+  // True only when zerops sign-in gating is the reason nothing got selected —
+  // an otherwise-selectable candidate existed, but no agent it maps to is
+  // runnable by this viewer right now.
+  const zeropsSignInRequired =
+    isZeropsGated &&
+    selectedProviderEntry === undefined &&
+    compatibleEntries.some((entry) => entry.enabled && entry.isAvailable);
   return {
     selectedProviderEntry,
     requestedDriverKind,
     lockedContinuationGroupKey,
     unavailableProviderInstanceId,
+    zeropsSignInRequired,
   };
+}
+
+/**
+ * Per-instance zerops runnability (D6), derived once from the agent-auth
+ * snapshot so the composer's selection gate and the model picker's panels
+ * read the same answer for the same instance. `undefined` when this is not
+ * a Zerops environment (no feed, or `available: false`) — every caller then
+ * falls back to pre-zerops behavior.
+ */
+export function resolveZeropsProviderAvailability(input: {
+  readonly entries: ReadonlyArray<ProviderInstanceEntry>;
+  readonly agentAuth: ZeropsAgentAuthSnapshot | undefined;
+  readonly viewerSubject: string | undefined;
+  readonly localSigners: LocalAgentSigners;
+  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
+}): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
+  if (input.agentAuth === undefined || !input.agentAuth.available) return undefined;
+  const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
+  for (const entry of input.entries) {
+    const agentId = agentIdForProviderInstance(entry.instanceId);
+    if (agentId === undefined) continue;
+    const agent = input.agentAuth.agents.find((candidate) => candidate.agentId === agentId);
+    if (agent === undefined) continue;
+    map.set(
+      entry.instanceId,
+      resolveZeropsAgentAvailability({
+        credPresent: agent.credPresent,
+        flagToken: agent.flagToken,
+        providerAuth: agent.providerAuth,
+        state: agent.state,
+        loginPhase: agent.login?.phase,
+        authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, input.localSigners),
+        viewerSubject: input.viewerSubject,
+        recordFailed: input.recordFailed.has(agent.agentId),
+      }),
+    );
+  }
+  return map;
+}
+
+/**
+ * Whether the composer's zerops gate should treat `instanceId` as runnable.
+ * An instance with no entry in the map — a non-Zerops environment, or a
+ * driver Mate never signs anybody in to — is always runnable: there is
+ * nothing here to gate it.
+ */
+export function isZeropsInstanceRunnable(
+  availabilityByInstanceId: ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined,
+  instanceId: ProviderInstanceId,
+): boolean {
+  const availability = availabilityByInstanceId?.get(instanceId);
+  return availability === undefined || zeropsAgentAvailabilityIsRunnable(availability);
+}
+
+/**
+ * Why Send is disabled on a started thread whose locked agent this viewer
+ * cannot run (D6) — `undefined` when there is nothing owned to check yet, or
+ * when the owned agent is runnable (`ready`, or `registering`: the server
+ * lets that one through for the signer too, so it must never read as
+ * blocked here). Reuses the picker panel's own status line — one piece of
+ * copy per state, wherever it shows.
+ */
+export function resolveZeropsOwnedAgentSendBlockReason(input: {
+  readonly agentId: ZeropsAgentId | undefined;
+  readonly availability: ZeropsAgentAvailability | undefined;
+}): string | undefined {
+  if (input.agentId === undefined || input.availability === undefined) return undefined;
+  if (
+    input.availability.kind === "ready" ||
+    zeropsAgentAvailabilityIsRunnable(input.availability)
+  ) {
+    return undefined;
+  }
+  return resolveZeropsAgentPickerPanelView({
+    agentId: input.agentId,
+    availability: input.availability,
+  }).statusLine;
 }
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */

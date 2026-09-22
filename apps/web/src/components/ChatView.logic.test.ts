@@ -11,6 +11,7 @@ import {
   type ServerProvider,
   ThreadId,
   TurnId,
+  type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import * as NodeFS from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -20,7 +21,6 @@ import { environmentThreadDetails } from "../state/threads";
 
 import type { Thread, ThreadShell } from "../types";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
-import type { RightPanelSurface } from "../rightPanelStore";
 import {
   MAX_HIDDEN_MOUNTED_PREVIEW_THREADS,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -41,6 +41,7 @@ import {
   hasServerAcknowledgedLocalDispatch,
   shouldRefocusComposerOnWindowFocus,
   isBranchMismatchDismissedForSession,
+  isZeropsInstanceRunnable,
   reconcileMountedTerminalThreadIds,
   reconcileRetainedMountedThreadIds,
   recallCheckoutIsRepo,
@@ -48,6 +49,8 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
+  resolveZeropsOwnedAgentSendBlockReason,
+  resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
@@ -842,6 +845,272 @@ describe("resolveComposerProviderSelection", () => {
     });
 
     expect(selection.selectedProviderEntry).toBeUndefined();
+  });
+
+  describe("zerops sign-in gating (D6)", () => {
+    it("skips a candidate whose agent this viewer cannot run, on an unstarted thread", () => {
+      const claude = entry("claudeAgent");
+      const codex = entry("codex");
+      const selection = resolveComposerProviderSelection({
+        entries: [claude, codex],
+        candidateInstanceIds: [claude.instanceId],
+        lockedProvider: null,
+        lockedInstanceId: null,
+        zerops: { available: true, isAgentRunnable: (id) => id !== claude.instanceId },
+      });
+
+      expect(selection.selectedProviderEntry?.instanceId).toBe(codex.instanceId);
+      expect(selection.zeropsSignInRequired).toBe(false);
+    });
+
+    it("selects nothing, and reports zeropsSignInRequired, when no agent is runnable", () => {
+      const claude = entry("claudeAgent");
+      const codex = entry("codex");
+      const selection = resolveComposerProviderSelection({
+        entries: [claude, codex],
+        candidateInstanceIds: [claude.instanceId],
+        lockedProvider: null,
+        lockedInstanceId: null,
+        zerops: { available: true, isAgentRunnable: () => false },
+      });
+
+      expect(selection.selectedProviderEntry).toBeUndefined();
+      expect(selection.zeropsSignInRequired).toBe(true);
+    });
+
+    it("keeps a started thread's locked selection even when its agent is not runnable", () => {
+      const claude = entry("claudeAgent");
+      const selection = resolveComposerProviderSelection({
+        entries: [claude],
+        candidateInstanceIds: [claude.instanceId],
+        lockedProvider: claude.driverKind,
+        lockedInstanceId: claude.instanceId,
+        zerops: { available: true, isAgentRunnable: () => false },
+      });
+
+      expect(selection.selectedProviderEntry?.instanceId).toBe(claude.instanceId);
+      expect(selection.zeropsSignInRequired).toBe(false);
+    });
+
+    it("behaves exactly as before zerops when no agent-auth feed is passed", () => {
+      const claude = entry("claudeAgent");
+      const withoutZerops = resolveComposerProviderSelection({
+        entries: [claude],
+        candidateInstanceIds: [claude.instanceId],
+        lockedProvider: null,
+        lockedInstanceId: null,
+      });
+
+      expect(withoutZerops.selectedProviderEntry?.instanceId).toBe(claude.instanceId);
+      expect(withoutZerops.zeropsSignInRequired).toBe(false);
+    });
+
+    it("behaves exactly as before zerops on a non-Zerops environment (available: false)", () => {
+      const claude = entry("claudeAgent");
+      const selection = resolveComposerProviderSelection({
+        entries: [claude],
+        candidateInstanceIds: [claude.instanceId],
+        lockedProvider: null,
+        lockedInstanceId: null,
+        zerops: { available: false, isAgentRunnable: () => false },
+      });
+
+      expect(selection.selectedProviderEntry?.instanceId).toBe(claude.instanceId);
+      expect(selection.zeropsSignInRequired).toBe(false);
+    });
+
+    it("is not zeropsSignInRequired when nothing was selectable for an unrelated reason", () => {
+      const disabled = entry("claudeAgent", "claudeAgent", { enabled: false });
+      const selection = resolveComposerProviderSelection({
+        entries: [disabled],
+        candidateInstanceIds: [disabled.instanceId],
+        lockedProvider: null,
+        lockedInstanceId: null,
+        zerops: { available: true, isAgentRunnable: () => true },
+      });
+
+      expect(selection.selectedProviderEntry).toBeUndefined();
+      expect(selection.zeropsSignInRequired).toBe(false);
+    });
+  });
+});
+
+describe("resolveZeropsProviderAvailability", () => {
+  function claudeAgentAuth(
+    overrides: Partial<ZeropsAgentAuthSnapshot["agents"][number]> = {},
+  ): ZeropsAgentAuthSnapshot {
+    return {
+      available: true,
+      agents: [
+        {
+          agentId: "claude-code",
+          credPresent: false,
+          flagOAuth: false,
+          flagToken: false,
+          providerAuth: "unknown",
+          state: "not-authorized",
+          ...overrides,
+        },
+      ],
+    };
+  }
+
+  it("is undefined when there is no agent-auth feed", () => {
+    expect(
+      resolveZeropsProviderAvailability({
+        entries: [],
+        agentAuth: undefined,
+        viewerSubject: "user-a",
+        localSigners: {},
+        recordFailed: new Set(),
+      }),
+    ).toBeUndefined();
+  });
+
+  it("is undefined on a non-Zerops environment (available: false)", () => {
+    expect(
+      resolveZeropsProviderAvailability({
+        entries: [],
+        agentAuth: { available: false, agents: [] },
+        viewerSubject: "user-a",
+        localSigners: {},
+        recordFailed: new Set(),
+      }),
+    ).toBeUndefined();
+  });
+
+  it("maps a configured instance to its agent's availability", () => {
+    const claude = deriveProviderInstanceEntries([
+      {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        enabled: true,
+        installed: true,
+        status: "ready",
+        auth: { status: "authenticated" },
+        version: null,
+        checkedAt: new Date().toISOString(),
+        models: [],
+        slashCommands: [],
+        skills: [],
+      },
+    ])[0]!;
+    const map = resolveZeropsProviderAvailability({
+      entries: [claude],
+      agentAuth: claudeAgentAuth(),
+      viewerSubject: "user-a",
+      localSigners: {},
+      recordFailed: new Set(),
+    });
+
+    expect(map?.get(claude.instanceId)).toEqual({
+      kind: "needs-sign-in",
+      signInKind: "not-authorized",
+    });
+  });
+
+  it("leaves an instance unmapped when its driver has no agent Mate signs people in to", () => {
+    const ollama = deriveProviderInstanceEntries([
+      {
+        driver: ProviderDriverKind.make("ollama"),
+        instanceId: ProviderInstanceId.make("local_models"),
+        enabled: true,
+        installed: true,
+        status: "ready",
+        auth: { status: "authenticated" },
+        version: null,
+        checkedAt: new Date().toISOString(),
+        models: [],
+        slashCommands: [],
+        skills: [],
+      },
+    ])[0]!;
+    const map = resolveZeropsProviderAvailability({
+      entries: [ollama],
+      agentAuth: claudeAgentAuth(),
+      viewerSubject: "user-a",
+      localSigners: {},
+      recordFailed: new Set(),
+    });
+
+    expect(map?.has(ollama.instanceId)).toBe(false);
+  });
+});
+
+describe("isZeropsInstanceRunnable", () => {
+  const instanceId = ProviderInstanceId.make("claudeAgent");
+
+  it("is runnable when the instance is unmapped (non-zerops or unmapped driver)", () => {
+    expect(isZeropsInstanceRunnable(undefined, instanceId)).toBe(true);
+    expect(isZeropsInstanceRunnable(new Map(), instanceId)).toBe(true);
+  });
+
+  it("follows the mapped availability's runnability", () => {
+    const ready = new Map([[instanceId, { kind: "ready" } as const]]);
+    const needsSignIn = new Map([
+      [instanceId, { kind: "needs-sign-in", signInKind: "not-authorized" } as const],
+    ]);
+
+    expect(isZeropsInstanceRunnable(ready, instanceId)).toBe(true);
+    expect(isZeropsInstanceRunnable(needsSignIn, instanceId)).toBe(false);
+  });
+});
+
+describe("resolveZeropsOwnedAgentSendBlockReason", () => {
+  it("is undefined when there is nothing owned to check", () => {
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({ agentId: undefined, availability: undefined }),
+    ).toBeUndefined();
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({ agentId: "codex", availability: undefined }),
+    ).toBeUndefined();
+  });
+
+  it("is undefined when the owned agent is ready", () => {
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "codex",
+        availability: { kind: "ready" },
+      }),
+    ).toBeUndefined();
+  });
+
+  // Regression: `registering` is runnable too — the server lets it through
+  // for the signer — and must never read as a Send block here.
+  it("is undefined when the owned agent is registering", () => {
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "codex",
+        availability: { kind: "registering" },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("names the reason for a not-runnable owned agent, reusing the picker panel's copy", () => {
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "claude-code",
+        availability: { kind: "someone-else", signerId: "eva-user-id" },
+      }),
+    ).toBe("Signed in by another project member — only they can run it.");
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "codex",
+        availability: { kind: "needs-sign-in", signInKind: "not-authorized" },
+      }),
+    ).toBe("Not signed in.");
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "codex",
+        availability: { kind: "signing-in" },
+      }),
+    ).toBe("Signing in…");
+    expect(
+      resolveZeropsOwnedAgentSendBlockReason({
+        agentId: "codex",
+        availability: { kind: "unrecorded" },
+      }),
+    ).toBe("This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.");
   });
 });
 

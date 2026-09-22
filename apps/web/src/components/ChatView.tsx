@@ -301,10 +301,6 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import {
-  ZeropsAgentAuthorizationHost,
-  type ZeropsAgentId,
-} from "./zerops/ZeropsAgentAuthorizationHost";
 import { agentAuthAction } from "@t3tools/client-runtime/zerops/agentLogin";
 import {
   creationJobSendable,
@@ -318,6 +314,7 @@ import {
   useZeropsAgentSignerRecord,
   useZeropsEnvironmentProjectId,
 } from "~/zerops/useZeropsAgentSigner";
+import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -398,9 +395,12 @@ import {
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
+  isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
+  resolveZeropsOwnedAgentSendBlockReason,
+  resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
   rememberReadyThreadTimeline,
   resolveThreadSwitchTimeline,
@@ -2305,6 +2305,53 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [providerStatuses, settings],
   );
+  // Fetched here (rather than beside its other Zerops-agent consumers below)
+  // because the composer's own selection gate needs it: a candidate whose
+  // agent this viewer cannot run must never become the selection (D6).
+  const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
+  const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
+  // The record this client wrote itself counts until the snapshot carries it.
+  const zeropsLocalSigners = useLocalAgentSigners();
+  // The environment, not the thread: a draft has one before it has the other,
+  // and the header names the project either way. This is the writer half of
+  // the topology split (`useProjectTopology`) — the panel mounts the same
+  // ref-counted watcher, so opening it costs nothing extra. Hoisted here
+  // (rather than beside `zeropsChrome` below, which also reads it) so the
+  // sign-in dialog's project-name chip is available from its very first call.
+  const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
+  const zeropsProjectName = zeropsTopology?.project.name.trim() || null;
+  // The one sign-in dialog, shared with the Zerops empty state and the
+  // model picker's per-agent panels — see `useZeropsAgentSignInDialog`. Its
+  // `recordFailed` set (H13) also feeds the availability map below.
+  const zeropsSignInDialog = useZeropsAgentSignInDialog(
+    activeThreadEnvironmentId,
+    activeThreadRef,
+    {
+      projectName: zeropsProjectName,
+    },
+  );
+  const zeropsAgentAvailabilityByInstanceId = useMemo(
+    () =>
+      resolveZeropsProviderAvailability({
+        entries: providerInstanceEntries,
+        agentAuth: zeropsAgentAuth,
+        viewerSubject: zeropsViewerSubject,
+        localSigners: zeropsLocalSigners,
+        recordFailed: zeropsSignInDialog.recordFailed,
+      }),
+    [
+      providerInstanceEntries,
+      zeropsAgentAuth,
+      zeropsLocalSigners,
+      zeropsSignInDialog.recordFailed,
+      zeropsViewerSubject,
+    ],
+  );
+  const zeropsIsAgentRunnable = useCallback(
+    (instanceId: ProviderInstanceId) =>
+      isZeropsInstanceRunnable(zeropsAgentAvailabilityByInstanceId, instanceId),
+    [zeropsAgentAvailabilityByInstanceId],
+  );
   const { selectedProviderEntry, requestedDriverKind } = useMemo(
     () =>
       resolveComposerProviderSelection({
@@ -2318,6 +2365,10 @@ export default function ChatView(props: ChatViewProps) {
         lockedProvider,
         lockedInstanceId:
           activeThread?.session?.providerInstanceId ?? activeThread?.modelSelection.instanceId,
+        zerops:
+          zeropsAgentAvailabilityByInstanceId !== undefined
+            ? { available: true, isAgentRunnable: zeropsIsAgentRunnable }
+            : undefined,
       }),
     [
       activeProjectDefaultModelSelection?.instanceId,
@@ -2326,6 +2377,8 @@ export default function ChatView(props: ChatViewProps) {
       lockedProvider,
       providerInstanceEntries,
       selectedProviderByThreadId,
+      zeropsAgentAvailabilityByInstanceId,
+      zeropsIsAgentRunnable,
     ],
   );
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
@@ -3654,11 +3707,6 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  // The environment, not the thread: a draft has one before it has the other,
-  // and the header names the project either way. This is the writer half of
-  // the topology split (`useProjectTopology`) — the panel mounts the same
-  // ref-counted watcher, so opening it costs nothing extra.
-  const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
   // Browser opens on what the project actually serves: a tab per service with
   // a public route, first one focused. Only a project with nothing public
   // falls back to the empty surface.
@@ -3675,7 +3723,6 @@ export default function ChatView(props: ChatViewProps) {
     const first = tabs[0];
     if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
   }, [activeThreadRef, zeropsTopology]);
-  const zeropsAgentAuth = useZeropsAgentAuth(activeThreadEnvironmentId);
   // D6: the one place a successful sign-in's signer is recorded, whichever
   // door it went through (the panel's card, the band's dialog, the empty
   // conversation); every row reads how it went by environment.
@@ -3684,6 +3731,18 @@ export default function ChatView(props: ChatViewProps) {
     snapshot: zeropsAgentAuth ?? null,
     projectId: useZeropsEnvironmentProjectId(activeThreadEnvironmentId),
   });
+  const zeropsMateReview = useZeropsMateReview(activeThreadRef);
+  const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
+    topology: zeropsTopology,
+    agentAuth: zeropsAgentAuth,
+  });
+  // The band's sign-in request lands here: the first agent that needs a
+  // sign-in gets the dialog, without a detour through the panel.
+  const openAgentAuthDialog = useCallback(() => {
+    const agents = zeropsChrome.agentAuthCard?.agents ?? [];
+    const agent = agents.find((entry) => agentAuthAction(entry) === "sign-in") ?? agents[0];
+    if (agent !== undefined) zeropsSignInDialog.openFor(agent.agentId);
+  }, [zeropsChrome.agentAuthCard, zeropsSignInDialog]);
   // The agent this composer would actually spend — the selected provider
   // instance, resolved to one of the two agents Mate signs people in to. A
   // driver Mate never signs anybody in to has no signer to speak of.
@@ -3694,11 +3753,6 @@ export default function ChatView(props: ChatViewProps) {
         activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
       ),
   );
-  // D6: only the person who signed an agent in runs it. The server refuses
-  // everybody else's turn; this is what says so before they type one.
-  const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
-  // The record this client wrote itself counts until the snapshot carries it.
-  const zeropsLocalSigners = useLocalAgentSigners();
   const zeropsAgentOwnership = resolveAgentOwnership({
     credPresent: zeropsOwnedAgent?.credPresent ?? false,
     authorizedBy:
@@ -3710,20 +3764,23 @@ export default function ChatView(props: ChatViewProps) {
             zeropsLocalSigners,
           ),
     viewerSubject: zeropsViewerSubject,
+    recordFailed:
+      zeropsOwnedAgent !== undefined &&
+      zeropsSignInDialog.recordFailed.has(zeropsOwnedAgent.agentId),
   });
-  const zeropsMateReview = useZeropsMateReview(activeThreadRef);
-  const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
-    topology: zeropsTopology,
-    agentAuth: zeropsAgentAuth,
+  // On a started thread the selection stays locked to the agent the session
+  // began with even when it is not runnable (the picker offers sign-in
+  // there); Send is disabled with that agent's own reason instead — see
+  // `resolveZeropsOwnedAgentSendBlockReason` (ChatView.logic.ts).
+  const zeropsOwnedInstanceId = activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
+  const zeropsOwnedAgentAvailability =
+    zeropsOwnedInstanceId != null
+      ? zeropsAgentAvailabilityByInstanceId?.get(zeropsOwnedInstanceId)
+      : undefined;
+  const zeropsSendBlockReason = resolveZeropsOwnedAgentSendBlockReason({
+    agentId: zeropsOwnedAgent?.agentId,
+    availability: zeropsOwnedAgentAvailability,
   });
-  // The band's sign-in request lands here: the first agent that needs a
-  // sign-in gets the dialog, without a detour through the panel.
-  const [agentAuthDialogAgentId, setAgentAuthDialogAgentId] = useState<ZeropsAgentId | null>(null);
-  const openAgentAuthDialog = useCallback(() => {
-    const agents = zeropsChrome.agentAuthCard?.agents ?? [];
-    const agent = agents.find((entry) => agentAuthAction(entry) === "sign-in") ?? agents[0];
-    if (agent !== undefined) setAgentAuthDialogAgentId(agent.agentId);
-  }, [zeropsChrome.agentAuthCard]);
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -6619,14 +6676,15 @@ export default function ChatView(props: ChatViewProps) {
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
   // onSend bails early on transient gates (environment offline, checkpoint
-  // rewinding, messages loading, no provider yet) and leaves the message
-  // queued. Re-run when any of them clear so a due message does not wait for
-  // an unrelated phase change.
+  // rewinding, messages loading, no provider yet, zerops D6 block) and
+  // leaves the message queued. Re-run when any of them clear so a due
+  // message does not wait for an unrelated phase change.
   const queueSendGate =
     activeEnvironmentUnavailable ||
     isRevertingCheckpoint ||
     threadDetailLoading ||
-    activeProviderStatus === null;
+    activeProviderStatus === null ||
+    zeropsSendBlockReason !== undefined;
   useEffect(() => {
     if (!nextQueuedMessage || isSendBusy || queueBlockedByPendingRequest || queueSendGate) return;
     if (sendInFlightRef.current) return;
@@ -7668,15 +7726,7 @@ export default function ChatView(props: ChatViewProps) {
           threadRef={zeropsChrome.threadRef}
           zeropsPanelOpen={activeRightPanelKind === "zerops"}
         />
-        <ZeropsAgentAuthorizationHost
-          agentId={agentAuthDialogAgentId}
-          onClose={() => {
-            setAgentAuthDialogAgentId(null);
-          }}
-          projectName={zeropsChrome.projectName}
-          snapshot={zeropsAgentAuth ?? zeropsChrome.agentAuthCard}
-          threadRef={zeropsChrome.threadRef}
-        />
+        {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
           error={visibleThreadError}
@@ -7884,8 +7934,9 @@ export default function ChatView(props: ChatViewProps) {
                                 ? "Sending feedback"
                                 : threadDetailLoading
                                   ? "Messages loading"
-                                  : projectCloneSendBlockReason
+                                  : (projectCloneSendBlockReason ?? null)
                             }
+                            zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                             isPreparingWorktree={isPreparingWorktree}
                             // With attachments or contexts aboard the pick just inserts the
                             // text, so it sends as a prompt like the typed path would.
@@ -7918,6 +7969,10 @@ export default function ChatView(props: ChatViewProps) {
                             providerCatalogKnown={serverConfig !== null}
                             activeProjectDefaultModelSelection={activeProjectDefaultModelSelection}
                             activeThreadModelSelection={activeThread?.modelSelection}
+                            zeropsAgentAvailabilityByInstanceId={
+                              zeropsAgentAvailabilityByInstanceId
+                            }
+                            zeropsProjectName={zeropsProjectName}
                             activeContextWindow={activeContextWindow}
                             compactThreadUnavailable={compactThreadUnavailable}
                             compactDisabled={compactDisabled}
