@@ -420,7 +420,7 @@ describe("hardening step", () => {
     expect(stepOf(facts, "hardening").state).toBe("waiting");
   });
 
-  it("is active while awaiting-settled", () => {
+  it("is active while awaiting-settled once public access is done", () => {
     const facts: BirthFacts = {
       ...SETTLED,
       provisioningPhase: "awaiting-settled",
@@ -725,5 +725,34 @@ describe("invariants", () => {
       requestedAt: "2026-09-22T09:59:00Z",
     };
     expect(deriveBirthProgress(onlyRequested, NOW).startedAt).toBe("2026-09-22T09:59:00Z");
+  });
+});
+
+describe("a wait phase ahead of the processes (measured 2026-09-22, +7 s)", () => {
+  it("keeps the container active while awaiting-settled and the build is still queued", () => {
+    const facts: BirthFacts = {
+      ...SETTLED,
+      ...NOT_YET,
+      provisioningPhase: "awaiting-settled",
+      container: { serviceId: "svc-1", status: "READY_TO_DEPLOY", hasOrigin: false },
+      processes: [process({ actionName: "stack.build", status: "PENDING", serviceIds: ["svc-1"] })],
+    };
+    const progress = deriveBirthProgress(facts, NOW);
+    expect(progress.active?.id).toBe("container");
+    expect(stepOf(facts, "hardening").state).toBe("waiting");
+    expect(progress.doneCount).toBe(1);
+  });
+
+  it("never backfills earlier steps from a later step that is only active", () => {
+    const facts: BirthFacts = {
+      ...SETTLED,
+      ...NOT_YET,
+      provisioningPhase: "hardening",
+      container: { serviceId: "svc-1", status: "READY_TO_DEPLOY", hasOrigin: false },
+      processes: [process({ actionName: "stack.build", status: "RUNNING", serviceIds: ["svc-1"] })],
+    };
+    const progress = deriveBirthProgress(facts, NOW);
+    expect(stepOf(facts, "container").state).toBe("active");
+    expect(progress.active?.id).toBe("container");
   });
 });

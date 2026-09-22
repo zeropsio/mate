@@ -16,10 +16,10 @@
  * container's own T0, so `public-access`'s own active condition is gated on
  * `container` being done — not stated as a separate clause in the source
  * rules, but required to keep true the invariant that at most one step is
- * ever active. `hardening` needs no such gate: it only goes active once
- * `provisioningPhase` reaches `awaiting-settled`/`hardening`, and that phase
- * machine (`./provisioning.ts`) cannot reach either before the container is
- * ready, so the ordering is already carried by the phase. Three more
+ * ever active. `hardening` is gated the same way: `awaiting-settled` begins
+ * the moment the container merely exists (measured: the build still queued),
+ * so only the `hardening` phase itself, or `awaiting-settled`/no phase once
+ * public access is done, makes it active. Three more
  * `stack.updateUserData` show up ~90s after hardening is already done
  * (+187…+202s) — that is the Git broker writing GITEA_TOKEN/MATE_BROKER_URL
  * ("Setting up its repositories…"), not hardening, so hardening keys only
@@ -354,11 +354,6 @@ const HARDENING_DONE_PHASES: ReadonlySet<ProvisioningPhase> = new Set([
   "ready",
 ]);
 
-const HARDENING_ACTIVE_PHASES: ReadonlySet<ProvisioningPhase> = new Set([
-  "awaiting-settled",
-  "hardening",
-]);
-
 function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): StepDraft {
   // stack.updateUserData is NOT this step: measured live, the Git broker
   // fires three of them ~90s after hardening's own updateProjectEnvs has
@@ -379,16 +374,18 @@ function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): Step
   }
 
   const processActive = updateEnvs !== undefined && isPendingOrRunning(updateEnvs.status);
-  if ((phase !== null && HARDENING_ACTIVE_PHASES.has(phase)) || processActive) {
+  if (phase === "hardening" || processActive) {
     return { state: "active", detail: "Closing the project off", ...timestamps };
   }
 
-  // No wait slot on this tab (a second tab, or a reload before the resume
-  // seeds one) and no direct process evidence either way: once public access
-  // is done, the platform is already past it and into hardening — the birth
-  // never skips this step — so absent evidence still reads as active rather
+  // `awaiting-settled` starts as soon as the container exists — its build
+  // may not have begun — so it is this step only once public access is done;
+  // before that the container and public-access steps carry the birth. The
+  // same holds with no wait slot on this tab (a second tab, or a reload
+  // before the resume seeds one): once public access is done the platform is
+  // already into hardening, so absent evidence still reads as active rather
   // than leaving neither hardening nor mate showing anything.
-  if (phase === null && publicAccessDone) {
+  if ((phase === null || phase === "awaiting-settled") && publicAccessDone) {
     return { state: "active", detail: "Closing the project off" };
   }
 
@@ -432,16 +429,18 @@ function deriveConnectStep(facts: BirthFacts, mateDone: boolean): StepDraft {
   return { state: "active", detail: "Opening the Mate" };
 }
 
-/** Forces every step before a `done`/`active` one to `done` — never leaves a gap. */
+/**
+ * Forces every step before a `done` one to `done` — never leaves a gap. A
+ * later step merely `active` proves nothing about the earlier ones (a wait
+ * phase can run ahead of the processes), so it never backfills.
+ */
 function backfill(steps: ReadonlyArray<BirthStep>): BirthStep[] {
   const next = [...steps];
   for (let i = next.length - 2; i >= 0; i--) {
     const step = next[i]!;
     if (step.state === "failed" || step.state === "done") continue;
-    const laterActive = next
-      .slice(i + 1)
-      .some((later) => later.state === "done" || later.state === "active");
-    if (laterActive) {
+    const laterDone = next.slice(i + 1).some((later) => later.state === "done");
+    if (laterDone) {
       const { detail: _detail, ...rest } = step;
       next[i] = { ...rest, state: "done" };
     }
