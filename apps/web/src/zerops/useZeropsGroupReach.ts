@@ -34,6 +34,19 @@
  * person is already in must not carry that restart along with it —
  * `isolateProjectEnv` used to run here too and would throw someone already
  * inside a conversation out of it mid-session.
+ *
+ * The delegation drop (guide 0.4) lives in the birth now too
+ * (`ZeropsApiClient.hardenMate`, run from `hardening`) — the one-time mint a
+ * Mate this client never created still needs the reconcile's other half, the
+ * token-widening plan below, but the delegation itself is dropped once, at
+ * birth, never re-read here.
+ *
+ * The re-run key covers the token set, not only the group shape: a token
+ * that appears after a Mate finishes hardening changes nothing about which
+ * projects are in which group, so a key built from `groups` alone never
+ * changed and the reconcile never re-ran for it (measured live 2026-09-22,
+ * a hardened Mate's token still carrying a delegation because its
+ * `lastKey` had not moved).
  */
 
 import type {
@@ -43,7 +56,6 @@ import type {
 import { useEffect, useMemo, useRef } from "react";
 
 import {
-  findAccountMateTokens,
   planAccountGroupReach,
   type ZeropsGroupReachGroup,
   type ZeropsIntegrationToken,
@@ -56,6 +68,25 @@ function groupsKey(groups: ReadonlyArray<ZeropsGroupReachGroup>): string {
     .map(
       (group) =>
         `${[...group.projectIds].sort().join(",")}|${[...group.mateProjectIds].sort().join(",")}`,
+    )
+    .sort()
+    .join(";");
+}
+
+/**
+ * Serialises the token set the plan reads from: which tokens exist and what
+ * they currently grant. A token that appears, disappears, or has its grants
+ * changed by anything other than this reconcile (a hardened birth, a manual
+ * edit) is a reason to re-plan even when the group shape itself did not move.
+ */
+function tokensKey(tokens: ReadonlyArray<ZeropsIntegrationToken>): string {
+  return [...tokens]
+    .map(
+      (token) =>
+        `${token.id}:${(token.projects ?? [])
+          .map((grant) => `${grant.projectId}=${grant.roleCode}`)
+          .sort()
+          .join(",")}`,
     )
     .sort()
     .join(";");
@@ -96,6 +127,12 @@ export function useZeropsGroupReach(input: {
   const grantsResource = useZeropsResource(request);
   const grantMetadata = grantsResource.status === "success" ? grantsResource.value : null;
 
+  const tokens = useMemo(
+    () => (grantMetadata === null ? null : integrationTokensFromGrantMetadata(grantMetadata)),
+    [grantMetadata],
+  );
+  const tokenSetKey = tokens === null ? null : tokensKey(tokens);
+
   useEffect(() => {
     // An account with no Mate has no token of ours to touch.
     if (!enabled || clientId === undefined || !hasMate) return;
@@ -103,14 +140,14 @@ export function useZeropsGroupReach(input: {
       lastKey.current = null;
       return;
     }
-    if (grantMetadata === null) return;
-    if (lastKey.current === `${clientId}:${key}`) return;
-    lastKey.current = `${clientId}:${key}`;
+    if (tokens === null || tokenSetKey === null) return;
+    const runKey = `${clientId}:${key}:${tokenSetKey}`;
+    if (lastKey.current === runKey) return;
+    lastKey.current = runKey;
 
     let cancelled = false;
     void (async () => {
       try {
-        const tokens = integrationTokensFromGrantMetadata(grantMetadata);
         for (const write of planAccountGroupReach({ groups, tokens })) {
           if (cancelled) return;
           await runZeropsCommand(
@@ -119,32 +156,6 @@ export function useZeropsGroupReach(input: {
               ...write,
             }),
           );
-        }
-
-        // The other half of the repair (guide 0.4): the one-time mint the
-        // platform grants every Mate at creation. A Mate this client never
-        // created — the pool's from sign-up, an older account's — is where
-        // this is the only path, and a token whose reach is already right can
-        // still be carrying one, so it runs over every Mate rather than over
-        // the writes above.
-        for (const token of findAccountMateTokens({ groups, tokens })) {
-          if (cancelled) return;
-          const delegations = await runZeropsCommand(
-            runtime.commands.listTokenDelegations({
-              organization: organizationRef(clientId),
-              tokenId: token.id,
-            }),
-          );
-          for (const delegation of delegations) {
-            if (cancelled) return;
-            await runZeropsCommand(
-              runtime.commands.deleteTokenDelegation({
-                organization: organizationRef(clientId),
-                tokenId: token.id,
-                delegationId: delegation.id,
-              }),
-            );
-          }
         }
       } catch {
         // Background repair: try again on the next read rather than showing
@@ -159,7 +170,8 @@ export function useZeropsGroupReach(input: {
   }, [
     clientId,
     enabled,
-    grantMetadata,
+    tokens,
+    tokenSetKey,
     grantsResource.status,
     groups,
     hasMate,

@@ -257,7 +257,6 @@ export {
 } from "./projectIsolation.ts";
 export {
   buildGroupGrants,
-  findAccountMateTokens,
   findMateIntegrationToken,
   MATE_SELF_PROJECT_ROLE,
   planAccountGroupReach,

@@ -160,13 +160,17 @@ export function useZeropsProvisioning(clientId: string | null): {
     };
   }, [phase, phaseStartedAtMs, clientId, runtime]);
 
-  // Runs the birth's one restart (`projectIsolation.ts`, spec-mate §3
-  // B-1/B-2/B-3): guarded by a ref so an overlapping poll tick never starts a
-  // second attempt, and left to retry on the next tick — never dispatching
-  // anything — for the two refusals that mean "not yet" rather than "no":
-  // the project's own variables not having caught up yet
-  // (`ZeropsApiError` kind `uncertain`) and the account being mid a
-  // verification round (`isAccessNotYetVerified`).
+  // Runs the birth's hardening whole (`api.ts`'s `hardenMate`,
+  // `projectIsolation.ts`, spec-mate §3 B-1/B-2/B-3): the Mate's own token
+  // lowered off `ADMIN` and out of the org with every delegation it carries
+  // dropped, then the project's shared environment closed off — the same
+  // "harden-mate" command as before, now doing both (`data/types.ts`
+  // HardenMateCommandIntent's doc comment). Guarded by a ref so an
+  // overlapping poll tick never starts a second attempt, and left to retry
+  // on the next tick — never dispatching anything — for the two refusals
+  // that mean "not yet" rather than "no": the project's own variables not
+  // having caught up yet (`ZeropsApiError` kind `uncertain`) and the account
+  // being mid a verification round (`isAccessNotYetVerified`).
   const hardenBusyRef = useRef(false);
   const runHarden = useCallback(async (): Promise<void> => {
     const live = stateRef.current;

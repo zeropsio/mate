@@ -109,14 +109,7 @@ const GROUP: ZeropsGroupReachGroup = {
 
 type GrantsBroker = FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>;
 
-function contextFor(
-  broker: GrantsBroker,
-  setIntegrationTokenProjects: (input: unknown) => void,
-  delegations: {
-    readonly list?: ReadonlyArray<{ readonly id: string; readonly tokenId: string }>;
-    readonly onDelete?: (input: unknown) => void;
-  } = {},
-) {
+function contextFor(broker: GrantsBroker, setIntegrationTokenProjects: (input: unknown) => void) {
   const runtime = {
     scope,
     resources: { acquire: broker.acquire },
@@ -125,18 +118,20 @@ function contextFor(
         setIntegrationTokenProjects(input);
         return Effect.succeed({ attempt: {} as never, value: undefined });
       },
-      listTokenDelegations: () =>
-        Effect.succeed({ attempt: {} as never, value: delegations.list ?? [] }),
-      // A birth's one restart runs in `provisioning.ts`'s `hardening` phase,
-      // gated on a READ proof and before anyone is admitted — never from a
+      // A birth's one restart, and its delegation drop, both run in
+      // `provisioning.ts`'s `hardening` phase (`ZeropsApiClient.hardenMate`)
+      // — gated on a READ proof and before anyone is admitted, never from a
       // background reconcile a person may already be inside. If this hook
-      // ever called it again, this command would throw and fail the test.
+      // ever called any of these again, the command would throw and fail
+      // the test.
       isolateProjectEnv: () => {
         throw new Error("useZeropsGroupReach must never restart a project");
       },
-      deleteTokenDelegation: (input: unknown) => {
-        delegations.onDelete?.(input);
-        return Effect.succeed({ attempt: {} as never, value: undefined });
+      listTokenDelegations: () => {
+        throw new Error("useZeropsGroupReach must never read a token's delegations");
+      },
+      deleteTokenDelegation: () => {
+        throw new Error("useZeropsGroupReach must never delete a token's delegations");
       },
     },
   } as unknown as ManagedZeropsDataRuntime;
@@ -222,15 +217,16 @@ describe("useZeropsGroupReach", () => {
     }
   });
 
-  it("takes back every Mate's one-time mint, including one whose reach is already right", async () => {
+  it("never reads or drops a token's delegations — the birth owns that now", async () => {
+    // The one-time mint (guide 0.4) is dropped once, at birth
+    // (`ZeropsApiClient.hardenMate`, `provisioning.ts`'s `hardening` phase),
+    // never re-read from a background reconcile. `contextFor`'s
+    // `listTokenDelegations`/`deleteTokenDelegation` throw if this hook ever
+    // calls either, so this test's pass is itself the assertion.
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
-    const deletes: unknown[] = [];
-    const context = contextFor(broker, () => {}, {
-      list: [{ id: "del-1", tokenId: "token-a" }],
-      onDelete: (input) => deletes.push(input),
-    });
+    const context = contextFor(broker, () => {});
     const settled: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
       {
         tokenId: "token-a",
@@ -262,8 +258,63 @@ describe("useZeropsGroupReach", () => {
         await broker.publish({ status: "success", attempt: 1, value: settled });
       });
       await flushEffects();
+    } finally {
+      await act(() => root.unmount());
+    }
+  });
 
-      expect(deletes).toEqual([{ organization, tokenId: "token-a", delegationId: "del-1" }]);
+  it("a reach re-runs when a token appears, even though the group shape did not move", async () => {
+    // Live measurement 2026-09-22: a Mate came up hardened through
+    // `hardenMate`, but its token had not existed yet the last time this
+    // hook's key was built, so `lastKey` (group shape alone) never changed
+    // and the reconcile never re-ran for it.
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const broker = new FakeResourceBroker<OrganizationIntegrationTokenGrantsResourceRequest>();
+    const writes: unknown[] = [];
+    const context = contextFor(broker, (input) => writes.push(input));
+
+    function Probe() {
+      useZeropsGroupReach({ clientId: "org-1", groups: [GROUP], enabled: true });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    try {
+      await act(() => {
+        root.render(
+          <ZeropsDataContext value={context}>
+            <Probe />
+          </ZeropsDataContext>,
+        );
+      });
+      await flushEffects();
+
+      // No token for this Mate yet — nothing to plan.
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 1, value: [] });
+      });
+      await flushEffects();
+      expect(writes).toEqual([]);
+
+      // The token now exists, freshly minted with ADMIN — the group's shape
+      // (`GROUP`) has not changed at all.
+      await act(async () => {
+        await broker.publish({ status: "success", attempt: 2, value: NARROW_GRANTS });
+      });
+      await flushEffects();
+
+      expect(writes).toEqual([
+        {
+          organization,
+          tokenId: "token-a",
+          name: "zcp-a",
+          projects: [
+            { projectId: "project-a", roleCode: "BASIC_USER" },
+            { projectId: "project-b", roleCode: "READ_ONLY" },
+          ],
+        },
+      ]);
     } finally {
       await act(() => root.unmount());
     }

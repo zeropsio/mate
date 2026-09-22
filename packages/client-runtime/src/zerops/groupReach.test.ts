@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildGroupGrants,
-  findAccountMateTokens,
   findMateIntegrationToken,
   planAccountGroupReach,
   planGroupReach,
@@ -251,60 +250,6 @@ describe("planAccountGroupReach", () => {
     expect(
       planAccountGroupReach({
         groups: [{ projectIds: [DEV, PROD], mateProjectIds: [DEV] }],
-        tokens: [DEPLOY_TOKEN],
-      }),
-    ).toEqual([]);
-  });
-});
-
-describe("findAccountMateTokens", () => {
-  const tokens: ReadonlyArray<ZeropsIntegrationToken> = [
-    MATE_TOKEN,
-    DEPLOY_TOKEN,
-    OWNER_TOKEN,
-    { id: "tok-other", name: "zcp-Beviro", projects: [{ projectId: "b-dev", roleCode: "ADMIN" }] },
-  ];
-
-  it("finds every Mate's token and nobody else's", () => {
-    expect(
-      findAccountMateTokens({
-        groups: [
-          { projectIds: [DEV, PROD], mateProjectIds: [DEV] },
-          { projectIds: ["b-dev"], mateProjectIds: ["b-dev"] },
-        ],
-        tokens,
-      }).map((token) => token.id),
-    ).toEqual(["tok-mate", "tok-other"]);
-  });
-
-  it("names a Mate listed by two groups once", () => {
-    // A project mid-move is in both; a repair must not run twice over it.
-    expect(
-      findAccountMateTokens({
-        groups: [
-          { projectIds: [DEV], mateProjectIds: [DEV] },
-          { projectIds: [DEV, PROD], mateProjectIds: [DEV] },
-        ],
-        tokens,
-      }).map((token) => token.id),
-    ).toEqual(["tok-mate"]);
-  });
-
-  it("finds a Mate whose reach is already right", () => {
-    // What separates this from planAccountGroupReach: a token needing no
-    // grant write can still be carrying a delegation.
-    expect(
-      findAccountMateTokens({
-        groups: [{ projectIds: [DEV], mateProjectIds: [DEV] }],
-        tokens: [LOWERED_MATE_TOKEN],
-      }).map((token) => token.id),
-    ).toEqual(["tok-mate"]);
-  });
-
-  it("skips a Mate whose token this client cannot find", () => {
-    expect(
-      findAccountMateTokens({
-        groups: [{ projectIds: [DEV], mateProjectIds: [DEV] }],
         tokens: [DEPLOY_TOKEN],
       }),
     ).toEqual([]);

@@ -21,7 +21,7 @@ import {
   projectProcessSearchBody,
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
-import { findMateIntegrationToken } from "./groupReach.ts";
+import { findMateIntegrationToken, planGroupReach } from "./groupReach.ts";
 import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
@@ -2294,6 +2294,94 @@ export class ZeropsApiClient {
       }
     }
     return { restarted, steps: steps.length };
+  }
+
+  /**
+   * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
+   * and the isolation half, together, for one Mate's own project.
+   *
+   * The token half reuses `planGroupReach`'s per-token rule with a group of
+   * exactly this Mate — the same lowering `planAccountGroupReach` plans for a
+   * solo Mate — so a birth and a later group-reach reconcile agree on what
+   * "reached" means without duplicating the rule. Every delegation the token
+   * carries is then dropped: the one-time mint the platform grants at
+   * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
+   *
+   * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
+   * no wider grant plans nothing, a token with no delegations lists an empty
+   * page, and `isolateProjectEnvironment` is already idempotent on its own.
+   * A hardened Mate re-run through this makes no writes at all.
+   *
+   * `read-incomplete` from the isolation half is not caught here: it is the
+   * same "the read has not caught up yet, come back" signal the caller
+   * already knows from `isolateProjectEnvironment` alone, and swallowing it
+   * here would hide a retryable wait behind a token/delegation write that
+   * already succeeded.
+   */
+  async hardenMate(
+    clientId: string,
+    projectId: string,
+    signal?: AbortSignal,
+    beforeWrite?: () => Promise<void>,
+  ): Promise<{
+    readonly tokenLowered: boolean;
+    readonly delegationsDropped: number;
+    readonly isolationSteps: number;
+    readonly restarted: boolean;
+  }> {
+    const generation = this.#generation;
+    const tokens = await this.listIntegrationTokens(clientId, signal);
+    const token = findMateIntegrationToken(tokens, projectId);
+
+    let tokenLowered = false;
+    let delegationsDropped = 0;
+
+    if (token !== undefined) {
+      this.#assertGeneration(generation);
+      const plan = planGroupReach({
+        token,
+        selfProjectId: projectId,
+        groupProjectIds: [projectId],
+      });
+      if (plan !== undefined) {
+        await this.setIntegrationTokenProjects(
+          { clientId, tokenId: plan.tokenId, name: token.name, projects: plan.projects },
+          signal,
+          beforeWrite,
+        );
+        tokenLowered = true;
+      }
+
+      this.#assertGeneration(generation);
+      const delegations = await this.listIntegrationTokenDelegations(
+        { clientId, tokenId: token.id },
+        signal,
+      );
+      for (const delegation of delegations) {
+        this.#assertGeneration(generation);
+        await this.deleteIntegrationTokenDelegation(
+          { clientId, tokenId: token.id, delegationId: delegation.id },
+          signal,
+          beforeWrite,
+        );
+        delegationsDropped += 1;
+      }
+    }
+
+    this.#assertGeneration(generation);
+    const isolation = await this.isolateProjectEnvironment(
+      clientId,
+      projectId,
+      signal,
+      beforeWrite,
+    );
+
+    return {
+      tokenLowered,
+      delegationsDropped,
+      isolationSteps: isolation.steps,
+      restarted: isolation.restarted,
+    };
   }
 
   /**

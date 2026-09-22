@@ -1384,7 +1384,7 @@ export type PlatformCommandKind =
   | "set-integration-token-projects"
   | "list-token-delegations"
   | "delete-token-delegation"
-  | "isolate-project-env"
+  | "harden-mate"
   | "delete-project";
 
 interface CommandAttemptBase {
@@ -1727,12 +1727,15 @@ export interface DeleteTokenDelegationCommandIntent {
 }
 
 /**
- * Guide 0.10: `envIsolation` to `service`, `ZCP_API_KEY` moved onto the
- * container, the project entry deleted, every service restarted. Idempotent —
- * a project already isolated makes it a read.
+ * The birth's hardening, whole (`ZeropsApiClient.hardenMate`, spec-mate §3
+ * B-1/B-2/B-3): the Mate's own token lowered off `ADMIN` and out of the org,
+ * every delegation it carries dropped, then `envIsolation` to `service`,
+ * `ZCP_API_KEY` moved onto the container, the project entry deleted, every
+ * OTHER service restarted. Idempotent — a hardened Mate makes it a read.
+
  */
-export interface IsolateProjectEnvCommandIntent {
-  readonly kind: "isolate-project-env";
+export interface HardenMateCommandIntent {
+  readonly kind: "harden-mate";
   readonly project: ProjectRef;
 }
 
@@ -1767,7 +1770,7 @@ export type PlatformCommandIntent =
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
   | DeleteTokenDelegationCommandIntent
-  | IsolateProjectEnvCommandIntent
+  | HardenMateCommandIntent
   | DeleteProjectCommandIntent;
 
 export interface RestartServiceCommand extends RestartServiceCommandIntent {
@@ -1834,8 +1837,13 @@ export type PlatformCommandResult =
     }
   | { readonly kind: "delete-token-delegation"; readonly value: void }
   | {
-      readonly kind: "isolate-project-env";
-      readonly value: { readonly restarted: boolean; readonly steps: number };
+      readonly kind: "harden-mate";
+      readonly value: {
+        readonly tokenLowered: boolean;
+        readonly delegationsDropped: number;
+        readonly isolationSteps: number;
+        readonly restarted: boolean;
+      };
     }
   | { readonly kind: "delete-project"; readonly value: void };
 
@@ -2082,10 +2090,13 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly isolateProjectEnv: (
-    project: ProjectRef,
-  ) => Effect.Effect<
-    CommandExecution<{ readonly restarted: boolean; readonly steps: number }>,
+  readonly isolateProjectEnv: (project: ProjectRef) => Effect.Effect<
+    CommandExecution<{
+      readonly tokenLowered: boolean;
+      readonly delegationsDropped: number;
+      readonly isolationSteps: number;
+      readonly restarted: boolean;
+    }>,
     CommandAdmissionError | AdapterError
   >;
   readonly deleteProject: (

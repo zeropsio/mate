@@ -1284,9 +1284,12 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           })),
           Effect.mapError(uncertainCommandError),
         );
-      case "isolate-project-env":
+      case "harden-mate":
+        // The birth's hardening, whole — the token half and the isolation
+        // half together (`ZeropsApiClient.hardenMate`). The kind keeps its
+        // old name; see the intent's doc comment in `types.ts`.
         return executeApi(context, (signal) =>
-          options.client.isolateProjectEnvironment(
+          options.client.hardenMate(
             command.project.organization.organizationId,
             command.project.projectId,
             signal,

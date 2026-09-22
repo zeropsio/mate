@@ -34,7 +34,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "import-development-container":
     case "import-services":
     case "start-project":
-    case "isolate-project-env":
+    case "harden-mate":
       return intent.project;
     case "create-project":
     case "create-project-with-mate":

@@ -534,6 +534,154 @@ describe("ZeropsApiClient project reads", () => {
     expect(result).toEqual({ restarted: false, steps: 0 });
   });
 
+  it("hardening lowers the Mate's token and drops its delegations before health is asked", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            {
+              id: "token-1",
+              name: "zcp-project-1",
+              roleCode: "ADMIN",
+              projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+            },
+          ],
+        });
+      if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
+      if (request.url.endsWith("/integration-token/token-1/delegation/del-1"))
+        return jsonResponse(200, {});
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [
+            {
+              envList: [
+                { id: "iso", key: "envIsolation", content: "none" },
+                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
+              ],
+            },
+          ],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect(result).toEqual({
+      tokenLowered: true,
+      delegationsDropped: 1,
+      isolationSteps: expect.any(Number),
+      restarted: true,
+    });
+    expect(result.isolationSteps).toBeGreaterThan(0);
+    // The token write, the delegation's delete, and the isolation plan's own
+    // writes all happened.
+    expect(
+      stub.requests.some(
+        (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
+      ),
+    ).toBe(true);
+    expect(
+      stub.requests.some(
+        (request) =>
+          request.method === "DELETE" &&
+          request.url.endsWith("/integration-token/token-1/delegation/del-1"),
+      ),
+    ).toBe(true);
+    // The write the platform actually receives never carries a wider role
+    // than the plan: NO_ACCESS at the org, BASIC_USER on the Mate's own
+    // project, and nothing else.
+    const tokenWrite = stub.requests.find(
+      (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
+    );
+    expect(JSON.parse(tokenWrite?.body ?? "{}")).toMatchObject({
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    });
+  });
+
+  it("a hardened Mate is left alone", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, {
+          list: [
+            {
+              id: "token-1",
+              name: "zcp-project-1",
+              roleCode: "NO_ACCESS",
+              projects: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+            },
+          ],
+        });
+      if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect(result).toEqual({
+      tokenLowered: false,
+      delegationsDropped: 0,
+      isolationSteps: 0,
+      restarted: false,
+    });
+    // No write of any kind — only the reads every idempotent re-run makes
+    // (`/project/search` is a read even though it is a POST).
+    expect(
+      stub.requests.every((request) => request.method === "GET" || request.method === "POST"),
+    ).toBe(true);
+    expect(
+      stub.requests.some((request) => request.method === "PUT" || request.method === "DELETE"),
+    ).toBe(false);
+  });
+
+  it("skips the token half when no token matches this project, and still isolates it", async () => {
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list?limit=100"))
+        return jsonResponse(200, { list: [] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack")) {
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      }
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect(result.tokenLowered).toBe(false);
+    expect(result.delegationsDropped).toBe(0);
+    // No delegation read at all — there was no token to ask about.
+    expect(stub.requests.some((request) => request.url.includes("/delegation"))).toBe(false);
+  });
+
   it("writes nothing when the index has not caught up with the project", async () => {
     // The index trails the write path: a project created a moment ago answers
     // without the variables the platform gave it at birth. Planning from that
