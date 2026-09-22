@@ -64,7 +64,6 @@ describe("planProjectIsolation", () => {
       { kind: "delete-project-env", key: ZCP_API_KEY_ENV_KEY },
       { kind: "restart-service", serviceName: "app" },
       { kind: "restart-service", serviceName: "db" },
-      { kind: "restart-service", serviceName: "zcp" },
     ]);
   });
 
@@ -136,15 +135,21 @@ describe("planProjectIsolation", () => {
     expect(step).toMatchObject({ key: PROJECT_ENV_ISOLATION_KEY, content: "service" });
   });
 
-  it("restarts every service, the container last", () => {
+  it("restarts every other service, never the container", () => {
     // The store is rewritten in seconds, but a running process keeps the
-    // sibling variables it captured at start until it restarts.
+    // sibling variables it captured at start until it restarts — the Mate
+    // itself reads its key live and needs none (server commit 7d544119b).
     const plan = planProjectIsolation({ envList: [OPEN], services: [ZCP, APP, DB] });
     expect(
       stepsOf(plan)
         .filter((step) => step.kind === "restart-service")
         .map((step) => (step.kind === "restart-service" ? step.serviceName : "")),
-    ).toEqual(["app", "db", "zcp"]);
+    ).toEqual(["app", "db"]);
+  });
+
+  it("the container is never restarted", () => {
+    const plan = planProjectIsolation({ envList: [OPEN, KEY], services: [APP, DB, ZCP] });
+    expect(stepsOf(plan)).not.toContainEqual({ kind: "restart-service", serviceName: "zcp" });
   });
 
   it("restarts nothing when there is nothing to write", () => {
@@ -176,7 +181,6 @@ describe("projectIsolationStepLabel", () => {
       "Re-reading the project's variables",
       "Removing the project-wide key",
       "Restarting app",
-      "Restarting zcp",
     ]);
   });
 });

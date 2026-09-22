@@ -14,16 +14,15 @@
  * transition into `succeeded` — once per success, never on an attempt that is
  * merely in progress.
  *
- * A write that fails is not reported: the person has just signed in
- * successfully and telling them about a tag would be telling them about our
- * plumbing. The consequence is visible and recoverable on its own — the agent
- * refuses their turn and the card says nobody is recorded, and signing in
- * again writes the tag.
+ * A write that fails is surfaced, never swallowed (H13): `recordFailed`
+ * names the agent and `retry` writes it again — the person has just signed
+ * in successfully, so asking them to sign out and back in only to retry the
+ * same write is not a real recovery, and it used to be the only one offered.
  */
 
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { browserZeropsStorage } from "./storage";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -125,15 +124,47 @@ export function useZeropsAgentSignerRecord(input: {
   readonly snapshot: ZeropsAgentAuthSnapshot | null;
   /** The Zerops project this Mate is, when the client knows which one. */
   readonly projectId: string | undefined;
-}): void {
+}): {
+  /**
+   * Agents whose sign-in succeeded but whose record write did not (H13):
+   * the person is signed in, but the record that lets the door — and D6 —
+   * recognize them never landed. `retry` writes it again.
+   */
+  readonly recordFailed: ReadonlySet<ZeropsAgentId>;
+  readonly retry: (agentId: ZeropsAgentId) => void;
+} {
   const { client, user } = useZeropsSession();
   const previous = useRef<ZeropsAgentAuthSnapshot | null>(null);
   const { snapshot, projectId } = input;
   const userId = user?.id;
+  const [recordFailed, setRecordFailed] = useState<ReadonlySet<ZeropsAgentId>>(new Set());
 
   useEffect(() => {
     if (snapshot !== null) localSignersSettledBy(snapshot);
   }, [snapshot]);
+
+  const writeRecord = useCallback(
+    async (agentId: ZeropsAgentId, signal: AbortSignal): Promise<void> => {
+      if (projectId === undefined || !userId) return;
+      try {
+        await client.recordProjectAgentSigner({ projectId, agentId, userId }, signal);
+        rememberLocalAgentSigner(agentId, userId);
+        setRecordFailed((current) => {
+          if (!current.has(agentId)) return current;
+          const next = new Set(current);
+          next.delete(agentId);
+          return next;
+        });
+      } catch {
+        if (signal.aborted) return;
+        // Surfaced (H13): the card says nobody is recorded and the agent
+        // refuses the turn, and `retry` is how signing in again would have
+        // fixed it anyway — offered without asking the person to sign out.
+        setRecordFailed((current) => new Set(current).add(agentId));
+      }
+    },
+    [client, projectId, userId],
+  );
 
   useEffect(() => {
     if (snapshot === null) return;
@@ -145,20 +176,23 @@ export function useZeropsAgentSignerRecord(input: {
     void (async () => {
       for (const agentId of succeeded) {
         if (controller.signal.aborted) return;
-        try {
-          await client.recordProjectAgentSigner({ projectId, agentId, userId }, controller.signal);
-          rememberLocalAgentSigner(agentId, userId);
-        } catch {
-          // The card says nobody is recorded and the agent refuses the turn;
-          // signing in again writes the tag.
-        }
+        await writeRecord(agentId, controller.signal);
       }
     })();
 
     return () => {
       controller.abort();
     };
-  }, [client, projectId, snapshot, userId]);
+  }, [projectId, snapshot, userId, writeRecord]);
+
+  const retry = useCallback(
+    (agentId: ZeropsAgentId) => {
+      void writeRecord(agentId, new AbortController().signal);
+    },
+    [writeRecord],
+  );
+
+  return { recordFailed, retry };
 }
 
 /**

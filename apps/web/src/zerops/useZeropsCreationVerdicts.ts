@@ -7,6 +7,13 @@
  * such project, only while it is on its way up; a terminal verdict is kept
  * per project id for the page's lifetime and read again only on a refresh,
  * because the platform does not change its mind about a finished process.
+ *
+ * H20: a `running` verdict is never stored (`settledRef` only ever holds a
+ * terminal one), so a project a wait is actively watching is re-asked on
+ * every `activeWaitProjectId` tick as well as on a refresh — otherwise a
+ * creation that fails late, after the page's one read of it came back
+ * `running`, never turns the row's "Coming up." into "Could not be
+ * created." until somebody happens to refresh.
  */
 
 import { projectCreationOutcome, type ZeropsProjectCreation } from "@t3tools/client-runtime/zerops";
@@ -17,6 +24,8 @@ import { useZeropsCandidatesVersion } from "./candidatesRefresh";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const ON_ITS_WAY = new Set(["NEW", "CREATING"]);
+/** Same cadence as `useZeropsProvisioning`'s poll — "every poll tick is fine". */
+const ACTIVE_WAIT_REVERDICT_MS = 2000;
 
 /** The projects whose creation is worth asking about: on their way up, each once. */
 export function creationVerdictTargets(
@@ -31,6 +40,8 @@ export function creationVerdictTargets(
 
 export function useZeropsCreationVerdicts(
   candidates: ReadonlyArray<ZeropsCandidate>,
+  /** The project id a provisioning wait is currently alive for, if any (H20). */
+  activeWaitProjectId: string | null = null,
 ): ReadonlyMap<string, ZeropsProjectCreation> {
   const { activeOrganization, client } = useZeropsSession();
   const clientId = activeOrganization?.id;
@@ -41,6 +52,19 @@ export function useZeropsCreationVerdicts(
     () => new Map(),
   );
   const targets = creationVerdictTargets(candidates).join(",");
+
+  // A wait watches one project; its own poll cadence is reason enough to ask
+  // again, independent of a refresh or a candidate-list change.
+  const [activeWaitTick, setActiveWaitTick] = useState(0);
+  useEffect(() => {
+    if (activeWaitProjectId === null) return;
+    const timer = setInterval(() => {
+      setActiveWaitTick((current) => current + 1);
+    }, ACTIVE_WAIT_REVERDICT_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeWaitProjectId]);
 
   useEffect(() => {
     if (clientId === undefined || targets === "") return;
@@ -75,7 +99,7 @@ export function useZeropsCreationVerdicts(
     return () => {
       controller.abort();
     };
-  }, [client, clientId, targets, version]);
+  }, [client, clientId, targets, version, activeWaitTick]);
 
   return verdicts;
 }

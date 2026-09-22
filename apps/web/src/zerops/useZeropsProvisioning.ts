@@ -178,8 +178,8 @@ export function useZeropsProvisioning(clientId: string | null): {
     if (project === null) return;
     hardenBusyRef.current = true;
     try {
-      const result = await runZeropsCommand(runtime.commands.isolateProjectEnv(project));
-      dispatch({ kind: "hardened", restarted: result.restarted, atMs: Date.now() });
+      await runZeropsCommand(runtime.commands.isolateProjectEnv(project));
+      dispatch({ kind: "hardened" });
     } catch (cause) {
       const uncertain = cause instanceof ZeropsApiError && cause.kind === "uncertain";
       if (!uncertain && !isAccessNotYetVerified(cause)) {
@@ -209,7 +209,6 @@ export function useZeropsProvisioning(clientId: string | null): {
       const services =
         live.projectId === null ? undefined : liveInventory.services.get(live.projectId);
       try {
-        let initAt: string | undefined;
         const event = await readProvisioning({
           state: live,
           projects: liveInventory.projects,
@@ -218,19 +217,11 @@ export function useZeropsProvisioning(clientId: string | null): {
               ? undefined
               : liveInventory.projects.find((project) => project.id === live.projectId),
           services: services?.status === "resolved" ? services.services : undefined,
-          probeHealth: (origin) =>
-            probeZeropsContainerHealth(origin, undefined, undefined, (value) => {
-              initAt = value;
-            }),
+          probeHealth: (origin) => probeZeropsContainerHealth(origin),
         });
         if (cancelled) return;
-        if (event.kind === "health") {
-          const mateEnabled = mateFlagRef.current === true ? true : undefined;
-          dispatch({
-            ...event,
-            ...(initAt === undefined ? {} : { initAt }),
-            ...(mateEnabled === undefined ? {} : { mateEnabled }),
-          });
+        if (event.kind === "health" && mateFlagRef.current === true) {
+          dispatch({ ...event, mateEnabled: true });
         } else {
           dispatch(event);
         }

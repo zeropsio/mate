@@ -3,6 +3,8 @@ import { inventoryCandidates } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { beginEnvironmentIdentityExchange, rememberEnvironment } from "./rememberedEnvironments";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
+import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
+import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -12,6 +14,8 @@ import {
 } from "@t3tools/client-runtime/zerops/identityExchange";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { useCallback } from "react";
+
+import { browserZeropsStorage } from "./storage";
 
 import { appBasePath } from "~/basePath";
 import { connectZeropsIdentity } from "~/connection/onboarding";
@@ -39,6 +43,37 @@ export async function exchangeZeropsContainerIdentity<E>(input: {
     input.containerOrigin,
     { servedApp: { origin: input.appOrigin, basePath: input.basePath } },
   );
+}
+
+/**
+ * Remembers which project and organization a successfully exchanged
+ * environment belongs to — the one write every path that can land an
+ * environment here (connect, auto-connect, restore, repair) must make the
+ * same way (H12): the signer tag (`useZeropsAgentSigner.ts`) reads this ref
+ * to know which project to tag, and a path that skipped it left a second
+ * browser's sign-in succeeding with every turn still refused because the
+ * tag was never written.
+ *
+ * Best-effort and silent on failure: the environment is connected either
+ * way, and a write that failed here is retried the next time anything
+ * reconnects this origin.
+ */
+export async function rememberExchangedProjectRef(
+  storage: ZeropsStorageAdapter,
+  environmentId: EnvironmentId,
+  candidate: { readonly project: { readonly id: string } },
+  clientId: string | undefined,
+): Promise<void> {
+  if (!clientId) return;
+  try {
+    await rememberEnvironmentProjectRef(storage, environmentId, {
+      projectId: candidate.project.id,
+      orgId: clientId,
+      source: "connect",
+    });
+  } catch {
+    // Best effort — see the doc comment above.
+  }
 }
 
 export function useZeropsIdentityExchange() {
@@ -83,6 +118,12 @@ export function useZeropsIdentityExchange() {
           rememberEnvironment({ key: candidate.key, environmentId: String(result.environmentId) });
           rememberZeropsEnvironment(String(result.environmentId));
           promoteCreationHandoff(candidate.project.id, String(result.environmentId));
+          void rememberExchangedProjectRef(
+            browserZeropsStorage,
+            result.environmentId,
+            candidate,
+            clientId,
+          );
         }
         return result;
       } finally {

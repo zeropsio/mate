@@ -69,7 +69,6 @@ import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { registryHoldsCreate, type RegistryReadState } from "./ZeropsNewProjectWizard.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
-import { useZeropsProjectConnection } from "./ZeropsProjectsPage";
 
 const CARD_CLASS = "rounded-[var(--zerops-card-radius)] border border-border/60 bg-card";
 
@@ -167,7 +166,7 @@ export async function submitZeropsNewProject(input: {
   readonly botName: string;
   /** Which half is running, for a button that says so. */
   readonly onPhase?: (phase: ZeropsNewProjectPhase) => void;
-  readonly onStartWaiting: (clientId: string) => void;
+  readonly onStartWaiting: () => void;
   /**
    * The project exists. Called before the wait starts, so what this project is
    * for can be written down while its id is in hand (`creationHandoff.ts`).
@@ -255,7 +254,7 @@ export async function submitZeropsNewProject(input: {
         })
         .catch(() => undefined);
     }
-    input.onStartWaiting(input.clientId);
+    input.onStartWaiting();
   } catch (cause) {
     if (isUncertainCreateFailure(cause)) input.onUncertain?.();
     input.onError(zeropsErrorMessage(cause));
@@ -267,7 +266,6 @@ function ZeropsNewProjectContent() {
     useZeropsSession();
   const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
-  const { setCreatingIn } = useZeropsProjectConnection(activeOrganization?.id ?? null);
 
   const inventory = useContext(InventoryContext);
   const { client } = useZeropsSession();
@@ -506,8 +504,12 @@ function ZeropsNewProjectContent() {
           source: { kind: "none" },
         });
       },
-      onStartWaiting: (clientId) => {
-        setCreatingIn(clientId);
+      // The projects page seeds its own wait from the creation hand-off
+      // (`ZeropsProjectsPage.tsx`'s resume effect, since 87fe752c4) — this
+      // used to also poke a throwaway `useZeropsProjectConnection` instance
+      // just to call its `setCreatingIn`, which did nothing that resume
+      // effect does not already do on its own (H19).
+      onStartWaiting: () => {
         void navigate({ to: "/zerops" });
       },
       onError: setCreateError,

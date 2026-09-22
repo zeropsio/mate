@@ -1,6 +1,7 @@
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vite-plus/test";
+import { act, createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   agentSignInsJustSucceeded,
@@ -10,6 +11,16 @@ import {
   resolveAgentAuthorizer,
   subscribeLocalAgentSigners,
 } from "./useZeropsAgentSigner";
+
+const mock = vi.hoisted(() => ({
+  recordProjectAgentSigner: vi.fn(),
+}));
+vi.mock("./ZeropsSessionProvider", () => ({
+  useZeropsSession: () => ({
+    client: { recordProjectAgentSigner: mock.recordProjectAgentSigner },
+    user: { id: "user-a" },
+  }),
+}));
 
 const snapshot = (
   logins: Readonly<Partial<Record<"claude-code" | "codex", string>>>,
@@ -143,5 +154,137 @@ describe("local agent signers", () => {
     },
   ])("$name", ({ authorizedBy, local, expected }) => {
     expect(resolveAgentAuthorizer("claude-code", authorizedBy, local)).toEqual(expected);
+  });
+});
+
+class TestNode {
+  parentNode: TestNode | null = null;
+  childNodes: TestNode[] = [];
+  readonly nodeName: string;
+  readonly tagName: string;
+  readonly namespaceURI = "http://www.w3.org/1999/xhtml";
+  readonly style = {};
+  constructor(
+    name: string,
+    readonly ownerDocument: TestNode | null = null,
+    readonly nodeType = 1,
+  ) {
+    this.nodeName = name.toUpperCase();
+    this.tagName = this.nodeName;
+  }
+  set textContent(_value: string) {
+    this.childNodes = [];
+  }
+  appendChild(child: TestNode) {
+    child.parentNode = this;
+    this.childNodes.push(child);
+    return child;
+  }
+  removeChild(child: TestNode) {
+    this.childNodes.splice(this.childNodes.indexOf(child), 1);
+    child.parentNode = null;
+    return child;
+  }
+  createElement(name: string) {
+    return new TestNode(name, this);
+  }
+  get activeElement(): null {
+    return null;
+  }
+  addEventListener() {}
+  removeEventListener() {}
+  setAttribute() {}
+  removeAttribute() {}
+  createTextNode(_text: string) {
+    return new TestNode("#text", this, 3);
+  }
+}
+
+function installTestDom(): void {
+  const document = new TestNode("#document", null, 9);
+  const window = {
+    document,
+    HTMLIFrameElement: TestNode,
+    setInterval: globalThis.setInterval,
+    clearInterval: globalThis.clearInterval,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  vi.stubGlobal("document", document);
+  vi.stubGlobal("window", window);
+  vi.stubGlobal("HTMLIFrameElement", window.HTMLIFrameElement);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+}
+
+const succeeded = (agentId: "claude-code" | "codex"): ZeropsAgentAuthSnapshot => ({
+  available: true,
+  agents: [
+    {
+      agentId,
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      providerAuth: "authenticated",
+      state: "authorized",
+      login: {
+        phase: "succeeded",
+        terminalId: "t",
+        startedAt: DateTime.makeUnsafe("2026-09-16T10:00:00.000Z"),
+      },
+    },
+  ],
+});
+
+describe("useZeropsAgentSignerRecord (H13: a failed write is surfaced, not swallowed)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mock.recordProjectAgentSigner.mockReset();
+  });
+
+  async function render(projectId: string, snapshot: ZeropsAgentAuthSnapshot) {
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const { useZeropsAgentSignerRecord } = await import("./useZeropsAgentSigner");
+    let latest: ReturnType<typeof useZeropsAgentSignerRecord> | undefined;
+    function Probe() {
+      latest = useZeropsAgentSignerRecord({ snapshot, projectId });
+      return null;
+    }
+    const root = createRoot(document.createElement("div") as unknown as Element);
+    await act(async () => {
+      root.render(createElement(Probe));
+    });
+    return {
+      result: () => latest as ReturnType<typeof useZeropsAgentSignerRecord>,
+      unmount: () => act(async () => root.unmount()),
+    };
+  }
+
+  it("a sign-in whose record failed says so and can be retried", async () => {
+    mock.recordProjectAgentSigner.mockRejectedValueOnce(new Error("network"));
+    const { result, unmount } = await render("project-1", succeeded("claude-code"));
+
+    expect(result().recordFailed.has("claude-code")).toBe(true);
+
+    mock.recordProjectAgentSigner.mockResolvedValueOnce(undefined);
+    await act(async () => {
+      result().retry("claude-code");
+      await Promise.resolve();
+    });
+    expect(result().recordFailed.has("claude-code")).toBe(false);
+    expect(readLocalAgentSigners()).toMatchObject({ "claude-code": "user-a" });
+
+    await unmount();
+  });
+
+  it("a successful write never appears as failed", async () => {
+    mock.recordProjectAgentSigner.mockResolvedValueOnce(undefined);
+    const { result, unmount } = await render("project-1", succeeded("codex"));
+
+    expect(result().recordFailed.size).toBe(0);
+
+    await unmount();
   });
 });

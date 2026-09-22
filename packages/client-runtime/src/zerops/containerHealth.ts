@@ -128,15 +128,6 @@ export async function probeZeropsContainerHealth(
   origin: string,
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis),
   onServerVersion?: (version: string, update: ExecutionEnvironmentUpdate | undefined) => void,
-  /**
-   * The boot's `initAt`, from `/mate/healthz`, when that read carries one —
-   * consulted only by a caller that needs to tell a pre-restart boot's
-   * readiness from the one that followed a harden restart (`provisioning.ts`
-   * `awaiting-health`'s `restartExpected`). Not folded into the return value:
-   * two callers outside this wait (`useZeropsCandidateHealth.ts`,
-   * mobile's `candidate-loading.ts`) read only the health verdict.
-   */
-  onInitAt?: (initAt: string) => void,
 ): Promise<ZeropsContainerHealth> {
   const base = origin.replace(/\/+$/, "");
 
@@ -147,23 +138,10 @@ export async function probeZeropsContainerHealth(
         descriptor.body.serverVersion,
         parseDescriptorUpdate(descriptor.body.update),
       );
-    // The descriptor is the authority for readiness and answers without
-    // `initAt`, so a caller gating on it (a wait that just hardened the
-    // container) gets one more read for it — never skipped in that case,
-    // since a "ready" with no `initAt` to check would be accepted blind.
-    if (onInitAt) {
-      const health = await read(`${zeropsMateBaseUrl(base)}/healthz`, fetchImpl);
-      if (health.kind === "json" && typeof health.body.initAt === "string") {
-        onInitAt(health.body.initAt);
-      }
-    }
     return "ready";
   }
 
   const health = await read(`${zeropsMateBaseUrl(base)}/healthz`, fetchImpl);
-  if (health.kind === "json" && typeof health.body.initAt === "string") {
-    onInitAt?.(health.body.initAt);
-  }
 
   // A server error anywhere means the container is on its way up, so it can
   // never be read as an old container needing a restart — that would restart

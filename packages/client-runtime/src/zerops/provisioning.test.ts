@@ -61,15 +61,8 @@ function reachHardening(nowMs = 0): ProvisioningState {
 }
 
 /** The harden step ran and the wait moved on to the ordinary health wait. */
-function reachAwaitingHealth(
-  nowMs = 0,
-  input: { readonly restarted?: boolean } = {},
-): ProvisioningState {
-  return advanceProvisioning(
-    reachHardening(nowMs),
-    { kind: "hardened", restarted: input.restarted ?? true, atMs: nowMs },
-    nowMs,
-  );
+function reachAwaitingHealth(nowMs = 0): ProvisioningState {
+  return advanceProvisioning(reachHardening(nowMs), { kind: "hardened" }, nowMs);
 }
 
 describe("provisioning state machine", () => {
@@ -130,11 +123,7 @@ describe("provisioning state machine", () => {
     expect(hardening.waitingFor).toBeTruthy();
     expect(hardening.capMs).toBeNull();
 
-    const awaitingHealth = advanceProvisioning(
-      hardening,
-      { kind: "hardened", restarted: true, atMs: 2000 },
-      3000,
-    );
+    const awaitingHealth = advanceProvisioning(hardening, { kind: "hardened" }, 3000);
     expect(awaitingHealth.phase).toBe("awaiting-health");
     expect(awaitingHealth.waitingFor).toBeTruthy();
     expect(awaitingHealth.capMs).toBe(PROVISIONING_CAPS["awaiting-health"]);
@@ -187,11 +176,7 @@ describe("provisioning state machine", () => {
     );
     expect(still.phase).toBe("awaiting-health");
 
-    const ready = advanceProvisioning(
-      still,
-      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.001Z" },
-      5000,
-    );
+    const ready = advanceProvisioning(still, { kind: "health", health: "ready" }, 5000);
     expect(ready.phase).toBe("ready");
     expect(ready.capMs).toBeNull();
   });
@@ -354,43 +339,14 @@ describe("awaiting-settled and hardening (the birth's one restart)", () => {
     // The container it is about survives the transition.
     expect(hardening.containerOrigin).toBe(settled.containerOrigin);
 
-    const afterHarden = advanceProvisioning(
-      hardening,
-      { kind: "hardened", restarted: true, atMs: 1000 },
-      2000,
-    );
+    const afterHarden = advanceProvisioning(hardening, { kind: "hardened" }, 2000);
     expect(afterHarden.phase).toBe("awaiting-health");
-    expect(afterHarden.hardenedAtMs).toBe(1000);
-    expect(afterHarden.restartExpected).toBe(true);
   });
 
-  it("a descriptor from before the restart is not ready", () => {
-    const awaitingHealth = reachAwaitingHealth(0, { restarted: true });
-    expect(awaitingHealth.hardenedAtMs).toBe(0);
+  it("a ready verdict settles the wait — the container was never restarted, so nothing to distrust", () => {
+    const awaitingHealth = reachAwaitingHealth(0);
 
-    const stale = advanceProvisioning(
-      awaitingHealth,
-      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.000Z" },
-      1000,
-    );
-    expect(stale.phase).toBe("awaiting-health");
-
-    const noInitAt = advanceProvisioning(awaitingHealth, { kind: "health", health: "ready" }, 1000);
-    expect(noInitAt.phase).toBe("awaiting-health");
-
-    const fresh = advanceProvisioning(
-      awaitingHealth,
-      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:00.001Z" },
-      1000,
-    );
-    expect(fresh.phase).toBe("ready");
-  });
-
-  it("a plan that restarted nothing needs no newer initAt", () => {
-    const awaitingHealth = reachAwaitingHealth(1000, { restarted: false });
-    expect(awaitingHealth.restartExpected).toBe(false);
-
-    const ready = advanceProvisioning(awaitingHealth, { kind: "health", health: "ready" }, 2000);
+    const ready = advanceProvisioning(awaitingHealth, { kind: "health", health: "ready" }, 1000);
     expect(ready.phase).toBe("ready");
   });
 
@@ -541,11 +497,7 @@ describe("predates-mate is a read fact, not a browser inference (H9)", () => {
       { kind: "health", health: "predates-mate", mateEnabled: true },
       2000,
     );
-    const ready = advanceProvisioning(
-      stillInit,
-      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:03.000Z" },
-      4000,
-    );
+    const ready = advanceProvisioning(stillInit, { kind: "health", health: "ready" }, 4000);
     expect(ready.phase).toBe("ready");
   });
 });

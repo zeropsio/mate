@@ -2191,9 +2191,10 @@ export class ZeropsApiClient {
    * only place they come from. Safe to call on a project that has already been
    * through it: the plan is then empty and nothing, restarts included, runs.
    *
-   * Returns whether the plan it ran restarted anything, so a caller waiting
-   * on the container (`provisioning.ts`'s `hardening` phase) knows whether
-   * the health wait that follows must distrust a pre-restart boot.
+   * Returns whether the plan it ran restarted anything — the project's OTHER
+   * services, whose running processes still hold the sibling variables they
+   * captured at start; never the Mate's own container, which needs no
+   * restart of its own (server commit 7d544119b, `projectIsolation.ts`).
    */
   async isolateProjectEnvironment(
     clientId: string,

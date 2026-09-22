@@ -34,7 +34,6 @@ import {
   type MateVerbs,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
@@ -44,7 +43,6 @@ import {
   pendingCreationProjects,
   rememberCreationHandoff,
 } from "~/zerops/creationHandoffStorage";
-import { browserZeropsStorage } from "~/zerops/storage";
 import { useZeropsIdentityExchange } from "~/zerops/useZeropsIdentityExchange";
 import {
   useZeropsCandidates,
@@ -333,16 +331,7 @@ export function ZeropsProjectsHeader({
  * waiting" — picking a candidate, filling in the create form — is
  * caller-specific and stays with the caller.
  */
-/**
- * @param orgId The organization scope this connection runs in, so a
- * successful exchange can remember which project and organization the new
- * environment resolves to (`environmentProjectRef.ts`, source `"connect"`) —
- * the client-side service map has no other way to learn this once the read
- * moves off the mate server. `null` while the scope is not yet resolved
- * simply skips remembering; the environment falls back to the one-time
- * origin match later.
- */
-export function useZeropsProjectConnection(orgId: string | null): {
+export function useZeropsProjectConnection(): {
   readonly creatingIn: string | null;
   readonly setCreatingIn: (clientId: string | null) => void;
   readonly provisioning: ReturnType<typeof useZeropsProvisioning>;
@@ -362,7 +351,6 @@ export function useZeropsProjectConnection(orgId: string | null): {
   const provisioning = useZeropsProvisioning(creatingIn);
   const exchangeZeropsIdentity = useZeropsIdentityExchange();
   const navigate = useNavigate();
-  const { projectRef, runtime } = useZeropsData();
   const [connectError, setConnectError] = useState<string | null>(null);
   const [serverVersion, setServerVersion] = useState<string | undefined>();
   const [upgradeOrigin, setUpgradeOrigin] = useState<string | null>(null);
@@ -384,21 +372,18 @@ export function useZeropsProjectConnection(orgId: string | null): {
           setUpgradeOrigin(result.upgradeRequired ? containerOrigin : null);
           return;
         }
-        const projectId = provisioning.state?.projectId;
-        if (projectId && orgId) {
-          // The birth's one restart (`projectIsolation.ts`, spec-mate §3
-          // B-1/B-2/B-3) already ran before this admission, in
-          // `provisioning.ts`'s `hardening` phase: the identity exchange above
-          // only succeeds once `awaiting-health` accepts a `ready` verdict
-          // that postdates it. Nothing here closes the project off again —
-          // doing it here, after the person is already in, would be the
-          // second write sharing the birth's restart budget.
-          await rememberEnvironmentProjectRef(browserZeropsStorage, result.environmentId, {
-            projectId,
-            orgId,
-            source: "connect",
-          });
-        }
+        // `useZeropsIdentityExchange` remembers this connect's project/org
+        // ref itself now (H12) — every path that can land an environment
+        // (connect, auto-connect, restore, repair) writes it the same way,
+        // so it is never skipped again by only one of them doing it here.
+        //
+        // The birth's one restart (`projectIsolation.ts`, spec-mate §3
+        // B-1/B-2/B-3) already ran before this admission, in
+        // `provisioning.ts`'s `hardening` phase: the identity exchange above
+        // only succeeds once `awaiting-health` accepts a `ready` verdict
+        // that postdates it. Nothing here closes the project off again —
+        // doing it here, after the person is already in, would be the
+        // second write sharing the birth's restart budget.
         // The environment is real now. When the lists last reloaded — right
         // after the creation writes — the project was still NEW with no
         // container, which the left menu rightly leaves out; here it is ACTIVE
@@ -411,7 +396,7 @@ export function useZeropsProjectConnection(orgId: string | null): {
         setConnectingOrigin(null);
       }
     },
-    [exchangeZeropsIdentity, navigate, orgId, projectRef, provisioning, runtime],
+    [exchangeZeropsIdentity, navigate, provisioning],
   );
 
   const readyOrigin =
@@ -480,10 +465,28 @@ function ZeropsProjectsContent() {
     inventoryRef.current = inventory;
   }, [inventory]);
   const { candidates: observedCandidates, isLoading, readOnce, error } = useZeropsCandidates();
+  const {
+    creatingIn,
+    setCreatingIn,
+    provisioning,
+    connectError,
+    upgradeRecovery,
+    setConnectError,
+    connectingOrigin,
+    retryProjectConnection,
+    connectContainer,
+    resetConnectingTarget,
+  } = useZeropsProjectConnection();
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
-  // long the page waits, and its row says so instead.
-  const creationVerdicts = useZeropsCreationVerdicts(observedCandidates);
+  // long the page waits, and its row says so instead. H20: also re-asked
+  // periodically for the one project a live provisioning wait is watching,
+  // so a creation that fails late still turns "Coming up." into "Could not
+  // be created." on its own.
+  const creationVerdicts = useZeropsCreationVerdicts(
+    observedCandidates,
+    provisioning.state?.projectId ?? null,
+  );
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
@@ -509,18 +512,6 @@ function ZeropsProjectsContent() {
     candidateHealth,
     activeOrganization?.id,
   );
-  const {
-    creatingIn,
-    setCreatingIn,
-    provisioning,
-    connectError,
-    upgradeRecovery,
-    setConnectError,
-    connectingOrigin,
-    retryProjectConnection,
-    connectContainer,
-    resetConnectingTarget,
-  } = useZeropsProjectConnection(activeOrganization?.id ?? null);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);

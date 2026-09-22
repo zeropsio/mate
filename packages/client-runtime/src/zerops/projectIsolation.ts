@@ -24,10 +24,16 @@
  *
  * `envIsolation` to `service`, the key moved onto the one service that needs
  * it as a sensitive **service** variable, the project-level entry deleted, and
- * then every service restarted with the container last. The restart is not
- * housekeeping: the store is rewritten within seconds of the flip, but a
+ * then every OTHER service restarted — never the container. The restart is
+ * not housekeeping: the store is rewritten within seconds of the flip, but a
  * running process keeps the sibling variables it captured at start until it
  * restarts (measured), and the app's own containers are the ones that matter.
+ * The Mate itself is left running: it reads its own key live from the
+ * platform store, with a retry on 401/403, and zcp's tools already read the
+ * store live too (server commit 7d544119b) — restarting it would only be
+ * this step ending the very session watching it. A Mate on a server older
+ * than that release keeps its boot snapshot until its own next restart;
+ * that is the release's job, not this plan's.
  *
  * A project with no control plane — a stage or production project made the old
  * way, which carries the same `none` and the same key — has nothing to move
@@ -185,13 +191,14 @@ export function planProjectIsolation(input: ProjectIsolationInput): ProjectIsola
 
   if (steps.length === 0) return { ok: true, steps: [] };
 
-  // The container last: it is the Mate itself, so restarting it ends whatever
-  // session is watching this, and by then every other container has already
-  // come back without its siblings' variables.
+  // Every OTHER service, never the container: the app's own containers
+  // captured their siblings' variables at start and only a restart clears
+  // that, but the Mate itself no longer needs one (server commit
+  // 7d544119b) — it reads its own key live from the platform store, with a
+  // retry on 401/403, and zcp's tools already read the store live too. A
+  // Mate on an older release keeps its boot snapshot until its own next
+  // restart; that is the release's job, not this plan's.
   for (const service of input.services.filter((candidate) => !candidate.isControlPlane)) {
-    steps.push({ kind: "restart-service", serviceName: service.name });
-  }
-  for (const service of input.services.filter((candidate) => candidate.isControlPlane)) {
     steps.push({ kind: "restart-service", serviceName: service.name });
   }
 

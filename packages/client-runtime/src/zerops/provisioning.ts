@@ -16,15 +16,17 @@
  * 3. Every wait says what it is waiting for and how long it will wait, and a
  *    cap that runs out leaves a retryable state rather than an error.
  *
- * A birth's one restart (`../projectIsolation.ts`, spec-mate §3 B-1/B-2/B-3)
- * happens here, in a `hardening` phase gated on a READ proof that the
- * platform is done creating — never a timer — and BEFORE anyone is admitted:
- * `awaiting-settled` (R1) waits for the container's own boot process to
- * report itself finished, so the harden step never races the recipe that is
- * still opening the project up; `hardening` (R2) is where it runs, and
- * `awaiting-health` afterwards refuses a `ready` verdict that predates that
- * restart when one was expected (`restartExpected`/`hardenedAtMs`), so a
- * stale pre-restart boot is never read as done.
+ * A birth's one closing-off (`../projectIsolation.ts`, spec-mate §3
+ * B-1/B-2/B-3) happens here, in a `hardening` phase gated on a READ proof
+ * that the platform is done creating — never a timer — and BEFORE anyone is
+ * admitted: `awaiting-settled` (R1) waits for the container's own boot
+ * process to report itself finished, so the harden step never races the
+ * recipe that is still opening the project up; `hardening` (R2) is where it
+ * runs. The Mate's own container is never restarted by it (server commit
+ * 7d544119b: the Mate reads its own key live from the platform store, with
+ * a retry on 401/403), so `awaiting-health` needs no proof a `ready`
+ * verdict postdates anything — the container this wait is about was never
+ * touched.
  */
 
 import type { ZeropsProject, ZeropsService } from "./api.ts";
@@ -138,10 +140,6 @@ export interface ProvisioningState {
    * cap does not elapse while this is true, and finishing resets its clock.
    */
   readonly processRunning: boolean;
-  /** When the harden step ran, so `awaiting-health` can tell a stale boot from the fresh one. */
-  readonly hardenedAtMs: number | null;
-  /** Whether the harden step's plan actually restarted the container. */
-  readonly restartExpected: boolean;
 }
 
 export type ProvisioningEvent =
@@ -154,8 +152,6 @@ export type ProvisioningEvent =
   | {
       readonly kind: "health";
       readonly health: ZeropsContainerHealth;
-      /** The boot's `initAt`, when the probe read one. */
-      readonly initAt?: string;
       /**
        * Whether `ZCP_MATE_ENABLED` reads as on for this container — a read
        * fact (`ZeropsApiClient.isZeropsMateEnabled`), never inferred from
@@ -178,8 +174,8 @@ export type ProvisioningEvent =
    * same way as one that never started at all.
    */
   | { readonly kind: "process"; readonly running: boolean; readonly observed?: boolean }
-  /** The harden step finished; `restarted` says whether its plan touched anything. */
-  | { readonly kind: "hardened"; readonly restarted: boolean; readonly atMs: number }
+  /** The harden step finished. */
+  | { readonly kind: "hardened" }
   /** The harden step failed outright — not the retryable "read hasn't caught up" case. */
   | { readonly kind: "harden-failed"; readonly message: string };
 
@@ -195,8 +191,6 @@ function waiting(
     detail: null,
     enabled: false,
     processRunning: false,
-    hardenedAtMs: null,
-    restartExpected: false,
     overdue: false,
     ...carry,
     phase,
@@ -245,8 +239,6 @@ export function startProvisioning(input: {
       detail: null,
       enabled: false,
       processRunning: false,
-      hardenedAtMs: null,
-      restartExpected: false,
     };
   }
   return waiting("awaiting-project", input.nowMs);
@@ -373,8 +365,6 @@ export function advanceProvisioning(
       projectId: state.projectId,
       containerServiceId: state.containerServiceId,
       containerOrigin: state.containerOrigin,
-      hardenedAtMs: event.atMs,
-      restartExpected: event.restarted,
     });
   }
 
@@ -431,14 +421,6 @@ export function advanceProvisioning(
 
   if (event.kind === "health" && state.phase === "awaiting-health") {
     if (event.health === "ready") {
-      if (state.restartExpected) {
-        // A descriptor that predates the harden restart is not readiness —
-        // it is the boot this wait was told to distrust.
-        const initMs = event.initAt === undefined ? Number.NaN : Date.parse(event.initAt);
-        if (state.hardenedAtMs === null || !(initMs > state.hardenedAtMs)) {
-          return { ...state, detail: "The container is restarting" };
-        }
-      }
       return settled(state, "ready", "Zerops Mate is ready", nowMs);
     }
     if (event.health === "predates-mate") {
