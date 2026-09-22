@@ -19,11 +19,12 @@
  * ever active. `hardening` is gated the same way: `awaiting-settled` begins
  * the moment the container merely exists (measured: the build still queued),
  * so only the `hardening` phase itself, or `awaiting-settled`/no phase once
- * public access is done, makes it active. Three more
- * `stack.updateUserData` show up ~90s after hardening is already done
- * (+187…+202s) — that is the Git broker writing GITEA_TOKEN/MATE_BROKER_URL
- * ("Setting up its repositories…"), not hardening, so hardening keys only
- * off `stack.updateProjectEnvs`.
+ * public access is done, makes it active. No platform process is
+ * hardening's signature: the creation itself writes the project's variables
+ * (a `stack.updateProjectEnvs` at +24 s, measured, before the container
+ * exists), and the Git broker's three `stack.updateUserData` land ~90 s
+ * after hardening (+187…+202s). Hardening is read off the provisioning
+ * phase alone.
  *
  * A project's build helper service (named `build<serviceName>...`) is not
  * the Mate's own container; a caller resolving `BirthFacts.container` from a
@@ -34,8 +35,7 @@
  * "targets the container" only ever requires the container's id to be one of
  * the ids listed, extra ids or not.
  *
- * `hardening`'s own evidence (`provisioningPhase`, `stack.updateProjectEnvs`)
- * is absent whenever this tab's wait slot is not on the project — a second
+ * `hardening`'s own evidence (`provisioningPhase`) is absent whenever this tab's wait slot is not on the project — a second
  * tab, or a reload before the resume seeds one. Without a fallback, that
  * leaves both `hardening` and `mate` sitting on `waiting` once `public-access`
  * is done and before health answers: no step reads as active at all. So with
@@ -355,27 +355,20 @@ const HARDENING_DONE_PHASES: ReadonlySet<ProvisioningPhase> = new Set([
 ]);
 
 function deriveHardeningStep(facts: BirthFacts, publicAccessDone: boolean): StepDraft {
-  // stack.updateUserData is NOT this step: measured live, the Git broker
-  // fires three of them ~90s after hardening's own updateProjectEnvs has
-  // already finished (GITEA_TOKEN/MATE_BROKER_URL, the group's "Setting up
-  // its repositories…"). Keying hardening off it would reopen this step long
-  // after it is actually done.
-  const updateEnvs = findNewest(facts.processes, "stack.updateProjectEnvs");
-  const timestamps = tsOf(updateEnvs);
-
+  // The provisioning phase is this step's only evidence. Neither process that
+  // touches variables is it: the creation's own `stack.updateProjectEnvs`
+  // runs before the container exists, and the Git broker's
+  // `stack.updateUserData` long after hardening is over.
   if (facts.hardenError !== undefined) {
-    return { state: "failed", detail: facts.hardenError, ...timestamps };
+    return { state: "failed", detail: facts.hardenError };
   }
 
   const phase = facts.provisioningPhase;
-  const updateEnvsFinished = updateEnvs !== undefined && isFinished(updateEnvs.status);
-  if ((phase !== null && HARDENING_DONE_PHASES.has(phase)) || updateEnvsFinished) {
-    return { state: "done", ...timestamps };
+  if (phase !== null && HARDENING_DONE_PHASES.has(phase)) {
+    return { state: "done" };
   }
-
-  const processActive = updateEnvs !== undefined && isPendingOrRunning(updateEnvs.status);
-  if (phase === "hardening" || processActive) {
-    return { state: "active", detail: "Closing the project off", ...timestamps };
+  if (phase === "hardening") {
+    return { state: "active", detail: "Closing the project off" };
   }
 
   // `awaiting-settled` starts as soon as the container exists — its build

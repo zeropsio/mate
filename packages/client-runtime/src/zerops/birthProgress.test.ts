@@ -446,15 +446,21 @@ describe("hardening step", () => {
     });
   });
 
-  it("is active while stack.updateProjectEnvs runs, even with no phase tracked", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: null,
-      health: undefined,
-      connection: "none",
-      processes: [process({ actionName: "stack.updateProjectEnvs", status: "RUNNING" })],
-    };
-    expect(stepOf(facts, "hardening").state).toBe("active");
+  it("ignores stack.updateProjectEnvs — the creation writes the project's variables too", () => {
+    // Measured 2026-09-22: one runs at +24 s, while the project itself is
+    // still being created and no container exists; read as hardening, the
+    // checklist showed "Closing off" active beside "Creating the project".
+    for (const status of ["RUNNING", "FINISHED"] as const) {
+      const facts: BirthFacts = {
+        ...SETTLED,
+        ...NOT_YET,
+        project: { status: "CREATING" },
+        container: undefined,
+        processes: [process({ actionName: "stack.updateProjectEnvs", status })],
+      };
+      expect(stepOf(facts, "hardening").state).toBe("waiting");
+      expect(deriveBirthProgress(facts, NOW).active?.id).toBe("project");
+    }
   });
 
   /**
@@ -475,32 +481,10 @@ describe("hardening step", () => {
     expect(stepOf(facts, "hardening").state).toBe("waiting");
   });
 
-  it("is done via a finished stack.updateProjectEnvs alone, even with no phase tracked", () => {
-    const facts: BirthFacts = {
-      ...SETTLED,
-      provisioningPhase: null,
-      health: undefined,
-      connection: "none",
-      processes: [
-        process({
-          actionName: "stack.updateProjectEnvs",
-          status: "FINISHED",
-          startedAt: "2026-09-22T10:01:40Z",
-          finishedAt: "2026-09-22T10:01:43Z",
-        }),
-      ],
-    };
-    expect(stepOf(facts, "hardening")).toMatchObject({
-      state: "done",
-      startedAt: "2026-09-22T10:01:40Z",
-      endedAt: "2026-09-22T10:01:43Z",
-    });
-  });
-
   /**
    * The gap: this tab's provisioning wait slot is not on the project — a
-   * second tab, or a reload before the resume seeds it — so neither
-   * `provisioningPhase` nor a `stack.updateProjectEnvs` fact exists yet. With
+   * second tab, or a reload before the resume seeds it — so there is no
+   * `provisioningPhase` to read hardening off. With
    * public access already done, hardening must still read as the step
    * actually running, not "waiting" alongside mate: the birth never skips it.
    */
@@ -641,12 +625,10 @@ describe("invariants", () => {
     expect(progress.failed).toBeNull();
   });
 
-  it("reads hardening done and mate active with no provisioning wait slot on this tab", () => {
-    // The exact null-phase path: container ACTIVE with an origin,
-    // enableSubdomainAccess and updateProjectEnvs both FINISHED, health
-    // initializing, but provisioningPhase null (this client's wait slot is
-    // not on the project). Hardening must resolve from the finished process
-    // alone, unlocking mate as active rather than leaving both waiting.
+  it("reads closing off active until the Mate answers when this tab has no wait slot", () => {
+    // provisioningPhase null (a second tab, or a reload before the resume
+    // seeds the wait): nothing on the platform says hardening is over, so
+    // the step stays the active one until an answering Mate proves it.
     const facts: BirthFacts = {
       project: { status: "ACTIVE" },
       container: { serviceId: "svc-1", status: "ACTIVE", hasOrigin: true },
@@ -656,19 +638,14 @@ describe("invariants", () => {
           status: "FINISHED",
           serviceIds: ["svc-1"],
         }),
-        process({
-          actionName: "stack.updateProjectEnvs",
-          status: "FINISHED",
-          serviceIds: ["svc-1"],
-        }),
       ],
       health: "initializing",
       provisioningPhase: null,
       connection: "none",
     };
     const progress = deriveBirthProgress(facts, NOW);
-    expect(progress.steps.find((step) => step.id === "hardening")?.state).toBe("done");
-    expect(progress.steps.find((step) => step.id === "mate")?.state).toBe("active");
+    expect(progress.active?.id).toBe("hardening");
+    expect(stepOf({ ...facts, health: "ready" }, "hardening").state).toBe("done");
   });
 
   it("never shows more than one active step", () => {
