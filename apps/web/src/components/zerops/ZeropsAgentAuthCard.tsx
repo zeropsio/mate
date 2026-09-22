@@ -249,6 +249,8 @@ function agentStatusPresentation(
       return { label: "Signing in", tone: "busy" };
     case "verifying-code":
       return { label: "Checking the code", tone: "busy" };
+    case "confirming":
+      return { label: "Confirming", tone: "busy" };
     case "awaiting-browser":
     case "awaiting-code":
       return { label: "Action required", tone: "attention" };
@@ -305,6 +307,7 @@ function ZeropsAgentAuthActionSlot({
           <CancelLoginButton agentId={agent.agentId} onCancel={onCancel} />
         </div>
       );
+    case "confirming":
     case "succeeded":
       return null;
     case "failed":

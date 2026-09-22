@@ -379,13 +379,32 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     expect(html).not.toContain("<button");
   });
 
+  it("confirms, with nothing to click, while a just-succeeded login is checked", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({ agentId: "claude-code", login: loginState({ phase: "succeeded" }) }),
+        ])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+
+    expect(html).toContain("Confirming");
+    expect(html).not.toContain("<button");
+  });
+
   // The succeeded session stays in the feed until the next start; a sign-out
   // since then is what the row has to say.
   it("offers Sign in again when the agent signed out after a successful login", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
-          agent({ agentId: "claude-code", login: loginState({ phase: "succeeded" }) }),
+          agent({
+            agentId: "claude-code",
+            providerAuth: "unauthenticated",
+            login: loginState({ phase: "succeeded" }),
+          }),
         ])}
         onSignIn={noop}
         onCancel={noop}

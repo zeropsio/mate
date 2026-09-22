@@ -124,6 +124,8 @@ export type ZeropsAgentLoginPresentation =
     }
   | { readonly kind: "awaiting-code" }
   | { readonly kind: "verifying-code" }
+  /** The login succeeded and the agent's own check has not answered yet — row only, see {@link classifyAgentRowLogin}. */
+  | { readonly kind: "confirming" }
   | { readonly kind: "succeeded" }
   | { readonly kind: "failed"; readonly message: string | undefined };
 
@@ -156,16 +158,20 @@ export function classifyAgentLogin(
  * still running is what the row is about; a finished one steps aside, or it
  * would outlive the truth — a `succeeded` session stays in the feed until the
  * next start, and the row said "Authorized" long after a sign-out. So
- * `succeeded` shows the verified status itself, and `failed` does too once
- * that status says the agent is signed in after all (the terminal, another
- * browser). The dialog reads the raw phase: it is the one place a finished
+ * `succeeded` shows the verified status itself once the agent's check has
+ * answered (the server resets it to `unknown` when the login succeeds), and
+ * is `confirming` until then — never "signed out" over a login that just
+ * succeeded. `failed` shows the verified status too once that says the agent
+ * is signed in after all (the terminal, another browser). The dialog reads the raw phase: it is the one place a finished
  * attempt is still the subject.
  */
 export function classifyAgentRowLogin(
   agent: AgentAuthFields & Pick<ZeropsAgentAuth, "login">,
 ): ZeropsAgentLoginPresentation {
   const login = classifyAgentLogin(agent.login);
-  if (login.kind === "succeeded") return { kind: "none" };
+  if (login.kind === "succeeded") {
+    return agent.providerAuth === "unknown" ? { kind: "confirming" } : { kind: "none" };
+  }
   if (login.kind === "failed" && classifyAgentAuth(agent).kind === "authorized") {
     return { kind: "none" };
   }
@@ -187,6 +193,8 @@ export function agentLoginLabel(presentation: ZeropsAgentLoginPresentation): str
       return "Paste the code from your browser";
     case "verifying-code":
       return "Checking the code…";
+    case "confirming":
+      return "Confirming the sign-in…";
     case "succeeded":
       return "Authorized";
     case "failed":

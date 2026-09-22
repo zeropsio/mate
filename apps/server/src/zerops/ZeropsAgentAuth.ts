@@ -231,6 +231,13 @@ export const SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
 export const UNKNOWN_AUTH_RECHECK_INTERVAL = Duration.seconds(15);
 
 /**
+ * How many intervals each further consecutive `unknown` waits before the next
+ * re-check — 15 s, 1 min, then every 5 min: a CLI that keeps not answering
+ * (missing, changed its output) is not spawned every 15 s forever.
+ */
+const UNKNOWN_AUTH_RECHECK_BACKOFF: ReadonlyArray<number> = [1, 4, 20];
+
+/**
  * An agent whose login somebody could still turn out to own: it has a
  * credential, is not on a project token (an API key belongs to the project,
  * not a person) and names no signer yet.
@@ -333,6 +340,9 @@ interface FeedState {
    * resetting its own debounce.
    */
   readonly inconclusive: Readonly<Record<ZeropsAgentId, boolean>>;
+  /** Consecutive `unknown` answers, and the re-check intervals still to wait — see UNKNOWN_AUTH_RECHECK_BACKOFF. */
+  readonly unknownStreak: Readonly<Record<ZeropsAgentId, number>>;
+  readonly recheckCountdown: Readonly<Record<ZeropsAgentId, number>>;
   readonly env: ZembedEnv | undefined;
   /** Set once `zcp` is known to be absent: `mark-oauth` is never spawned again. */
   readonly cliOff: boolean;
@@ -431,6 +441,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       markedOAuth: { "claude-code": false, codex: false },
       pendingCredentialCheck: { "claude-code": false, codex: false },
       inconclusive: { "claude-code": false, codex: false },
+      unknownStreak: { "claude-code": 0, codex: 0 },
+      recheckCountdown: { "claude-code": 0, codex: 0 },
       env: undefined,
       cliOff: false,
       lastPublished: undefined,
@@ -549,6 +561,24 @@ export const make = (options: ZeropsAgentAuthOptions) =>
               ? current.pendingCredentialCheck
               : { ...current.pendingCredentialCheck, [agentId]: false },
           inconclusive: { ...current.inconclusive, [agentId]: status === "unknown" },
+          ...(status === "unknown"
+            ? {
+                unknownStreak: {
+                  ...current.unknownStreak,
+                  [agentId]: current.unknownStreak[agentId] + 1,
+                },
+                recheckCountdown: {
+                  ...current.recheckCountdown,
+                  [agentId]:
+                    UNKNOWN_AUTH_RECHECK_BACKOFF[
+                      Math.min(
+                        current.unknownStreak[agentId],
+                        UNKNOWN_AUTH_RECHECK_BACKOFF.length - 1,
+                      )
+                    ] ?? 1,
+                },
+              }
+            : { unknownStreak: { ...current.unknownStreak, [agentId]: 0 } }),
         }));
         if (status === "authenticated" && allowMarkOAuth && !alreadyMarked) {
           yield* markOAuthOnce(agentId);
@@ -738,11 +768,14 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     yield* Effect.gen(function* () {
       const current = yield* Ref.get(state);
       for (const agentId of KNOWN_AGENT_IDS) {
-        if (current.credPresence[agentId] && current.inconclusive[agentId]) {
-          yield* Ref.update(state, (latest) => ({
-            ...latest,
-            inconclusive: { ...latest.inconclusive, [agentId]: false },
-          }));
+        if (!current.credPresence[agentId] || !current.inconclusive[agentId]) continue;
+        const countdown = current.recheckCountdown[agentId] - 1;
+        yield* Ref.update(state, (latest) => ({
+          ...latest,
+          recheckCountdown: { ...latest.recheckCountdown, [agentId]: countdown },
+          inconclusive: { ...latest.inconclusive, [agentId]: countdown > 0 },
+        }));
+        if (countdown <= 0) {
           yield* requestProviderCheck(agentId, { fromCredential: false });
         }
       }
@@ -772,8 +805,18 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       changes: Stream.fromPubSub(changes),
       subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
       // Mark-oauth-eligible, exactly like a credential-file event — see the
-      // Service interface doc comment.
-      recheckNow: (agentId) => requestProviderCheck(agentId, { fromCredential: true }),
+      // Service interface doc comment. What was verified before the login is
+      // no longer an answer: until the check says otherwise the agent is
+      // being checked, never "signed out" (the row would offer Sign in again
+      // over a login that just succeeded).
+      recheckNow: (agentId) =>
+        Ref.update(state, (current) => ({
+          ...current,
+          providerAuth: { ...current.providerAuth, [agentId]: "unknown" },
+        })).pipe(
+          Effect.andThen(publish),
+          Effect.andThen(requestProviderCheck(agentId, { fromCredential: true })),
+        ),
     } satisfies ZeropsAgentAuth["Service"];
   });
 

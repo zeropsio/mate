@@ -29,7 +29,7 @@
 
 import { lookupEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 import type { EnvironmentId, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { browserZeropsStorage } from "./storage";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -217,13 +217,18 @@ export function useZeropsAgentSignerRecord(input: {
   // record lands in it only on the server's next read of the tags — and is
   // per mount, so a remount (StrictMode's included) writes again: the tag
   // write is idempotent.
+  const lifetimeOwner = `${projectId ?? ""}:${userId ?? ""}`;
   const lifetime = useRef<{
+    readonly owner: string;
     readonly controller: AbortController;
     readonly timers: Set<number>;
     readonly attempted: Set<string>;
   } | null>(null);
+  // Also renewed for another person or project: a retry scheduled for the
+  // one before must never write their record under this session.
   useEffect(() => {
     const current = {
+      owner: lifetimeOwner,
       controller: new AbortController(),
       timers: new Set<number>(),
       attempted: new Set<string>(),
@@ -234,11 +239,18 @@ export function useZeropsAgentSignerRecord(input: {
       for (const timer of current.timers) window.clearTimeout(timer);
       lifetime.current = null;
     };
-  }, []);
+  }, [lifetimeOwner]);
 
   useEffect(() => {
     const owner = lifetime.current;
-    if (owner === null || snapshot === null || projectId === undefined) return;
+    if (
+      owner === null ||
+      owner.owner !== lifetimeOwner ||
+      snapshot === null ||
+      projectId === undefined
+    ) {
+      return;
+    }
     const due = agentSignersToRecord(snapshot, userId).filter((agentId) => {
       const startedAt = snapshot.agents.find((agent) => agent.agentId === agentId)?.login
         ?.startedAt;
@@ -261,7 +273,7 @@ export function useZeropsAgentSignerRecord(input: {
     void (async () => {
       for (const agentId of due) await attempt(agentId, SIGNER_RECORD_RETRY_DELAYS_MS);
     })();
-  }, [projectId, snapshot, userId, writeRecord]);
+  }, [lifetimeOwner, projectId, snapshot, userId, writeRecord]);
 
   const retry = useCallback(
     (agentId: ZeropsAgentId) => {
@@ -270,15 +282,27 @@ export function useZeropsAgentSignerRecord(input: {
     [writeRecord],
   );
 
+  // A record the project now carries for this person — another tab wrote it —
+  // is no longer a failure here.
+  const unsettledFailed = useMemo(() => {
+    const settled = (snapshot?.agents ?? []).filter(
+      (agent) => recordFailed.has(agent.agentId) && agent.authorizedBy?.subject === userId,
+    );
+    if (settled.length === 0) return recordFailed;
+    const next = new Set(recordFailed);
+    for (const agent of settled) next.delete(agent.agentId);
+    return next;
+  }, [recordFailed, snapshot, userId]);
+
   useEffect(() => {
     if (environmentId === null) return;
-    publishRecordState(environmentId, { recordFailed, retry });
+    publishRecordState(environmentId, { recordFailed: unsettledFailed, retry });
     return () => {
       publishRecordState(environmentId, null);
     };
-  }, [environmentId, recordFailed, retry]);
+  }, [environmentId, unsettledFailed, retry]);
 
-  return { recordFailed, retry };
+  return { recordFailed: unsettledFailed, retry };
 }
 
 /**

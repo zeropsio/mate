@@ -493,12 +493,24 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         yield* Ref.set(session.bufferRef, "");
         yield* setLoginState(agentId, { ...login, phase: "verifying-code", message: undefined });
         const target = { threadId: session.threadId, terminalId: session.terminalId };
+        // Uninterruptible: a dropped connection between the two writes would
+        // leave the code typed without its Enter and the login stuck here.
         yield* terminalManager.write({ ...target, data: code } satisfies TerminalWriteInput).pipe(
           Effect.andThen(Effect.sleep(CODE_ENTER_DELAY)),
           Effect.andThen(
             terminalManager.write({ ...target, data: "\r" } satisfies TerminalWriteInput),
           ),
-          Effect.tapError(() => setLoginState(agentId, login)),
+          Effect.uninterruptible,
+          // Back to the prompt only if nothing has moved the login on since.
+          Effect.tapError(() =>
+            Ref.get(state).pipe(
+              Effect.flatMap((current) =>
+                current.logins[agentId]?.phase === "verifying-code"
+                  ? setLoginState(agentId, login)
+                  : Effect.void,
+              ),
+            ),
+          ),
         );
       });
 

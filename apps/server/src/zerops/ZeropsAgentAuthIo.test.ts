@@ -549,6 +549,51 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
     );
 
     it.effect(
+      "a login's recheck forgets the status verified before it, until the check answers",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+            const fake = yield* makeFakeCli(() =>
+              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+            );
+            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+              "unauthenticated",
+              "authenticated",
+            ]);
+            const refreshProviderAuth = () =>
+              Effect.gen(function* () {
+                const [next, ...rest] = yield* Ref.get(answers);
+                yield* Ref.set(answers, rest);
+                return next ?? "authenticated";
+              });
+            const fakeWatch = makeFakeWatch();
+            const feed = yield* ZeropsAgentAuth.make({
+              cli: fake.cli,
+              refreshProviderAuth,
+              homeDir,
+              envStorePath,
+              isZeropsEnvironment: true,
+              watch: fakeWatch.watch,
+            });
+            const subscription = yield* feed.subscribe;
+            const codexAuth =
+              (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
+                agentState(snapshot, "codex")?.providerAuth === status;
+
+            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+            fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
+            yield* changeWhere(subscription, codexAuth("unauthenticated"));
+
+            // The login just succeeded: the old "unauthenticated" is no answer.
+            yield* feed.recheckNow("codex");
+            assert.equal(agentState(yield* feed.latest, "codex")?.providerAuth, "unknown");
+            yield* changeWhere(subscription, codexAuth("authenticated"));
+          }),
+        ),
+    );
+
+    it.effect(
       "an inconclusive check is asked again, and the answer that comes still marks the platform flag",
       () =>
         Effect.scoped(

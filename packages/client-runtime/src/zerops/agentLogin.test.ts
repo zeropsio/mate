@@ -254,6 +254,12 @@ describe("classifyAgentRowLogin", () => {
       kind: "none",
     },
     {
+      name: "a success whose check has not answered is confirming, never signed out",
+      phase: "succeeded",
+      auth: { state: "not-authorized", credPresent: false, providerAuth: "unknown" },
+      kind: "confirming",
+    },
+    {
       name: "a failure stays while the agent is still signed out",
       phase: "failed",
       auth: signedOut,
