@@ -253,7 +253,16 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         displayName,
         accentColor,
         enabled,
-        snapshot,
+        // An explicit refresh (the settings button, a sign-in the server just
+        // verified) asks what Claude says now: the snapshot's auth comes from
+        // the capabilities probe, which would otherwise answer from a result
+        // up to CAPABILITIES_PROBE_TTL old.
+        snapshot: {
+          ...snapshot,
+          refresh: Cache.invalidate(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+            Effect.andThen(snapshot.refresh),
+          ),
+        },
         snapshotForCwd,
         adapter,
         textGeneration,
