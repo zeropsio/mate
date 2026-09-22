@@ -18,53 +18,21 @@ import type {
   ZeropsAgentLoginState,
   ZeropsAgentLoginStartResult,
 } from "@t3tools/contracts";
+import {
+  classifyZeropsAgentAuth,
+  type ZeropsAgentAuthFields,
+} from "@t3tools/shared/zeropsAgentAuth";
 
-type AgentAuthFields = Pick<ZeropsAgentAuth, "credPresent" | "providerAuth" | "state">;
+type AgentAuthFields = ZeropsAgentAuthFields;
 
 /**
- * The card's whole decision tree in one place: `agentAuthLabel` and
- * `agentAuthAction` are two views onto the same classification, so a state
- * can never get a label from one branch and a button from another.
- *
- * `state` (the local container/platform-flag matrix) and `providerAuth` (a
- * live check against Claude/Codex's own account endpoint) can disagree — a
- * credential file that is present but expired, revoked, or belongs to a
- * signed-out account. `not-authorized` and `reconnect` have no credential to
- * check, so `providerAuth` is ignored for them; for the three states that
- * imply a credential is present (`authorized`, `authorized-token`,
- * `local-only`), `providerAuth` wins over `state`.
+ * The card's labels and actions are two views onto the one classification
+ * every surface shares (`@t3tools/shared/zeropsAgentAuth`): the platform flag
+ * decides, the agent CLI's own check only refines it. So a state can never get
+ * a label from one branch and a button from another, and the row can never
+ * disagree with the model picker.
  */
-type AgentAuthPresentation =
-  | { readonly kind: "not-authorized" }
-  | { readonly kind: "reconnect" }
-  /** Credential present, but Claude/Codex itself no longer accepts it. */
-  | { readonly kind: "needs-reauth" }
-  /** Credential present; the live provider check hasn't answered yet. */
-  | { readonly kind: "checking" }
-  /** `local-only` with nothing contradicting it: the watcher will flip this within seconds. */
-  | { readonly kind: "registering" }
-  | { readonly kind: "authorized"; readonly token: boolean };
-
-function classifyAgentAuth(agent: AgentAuthFields): AgentAuthPresentation {
-  if (agent.state === "not-authorized") {
-    return { kind: "not-authorized" };
-  }
-  if (agent.state === "reconnect") {
-    return { kind: "reconnect" };
-  }
-  // From here, state is authorized | authorized-token | local-only — a
-  // credential is present locally, and providerAuth is meaningful.
-  if (agent.providerAuth === "unauthenticated") {
-    return { kind: "needs-reauth" };
-  }
-  if (agent.providerAuth === "unknown" && agent.credPresent) {
-    return { kind: "checking" };
-  }
-  if (agent.state === "local-only") {
-    return { kind: "registering" };
-  }
-  return { kind: "authorized", token: agent.state === "authorized-token" };
-}
+const classifyAgentAuth = classifyZeropsAgentAuth;
 
 export function agentAuthLabel(agent: AgentAuthFields): string {
   const presentation = classifyAgentAuth(agent);
@@ -72,20 +40,18 @@ export function agentAuthLabel(agent: AgentAuthFields): string {
     case "not-authorized":
       return "Not signed in";
     case "reconnect":
-      return "Reconnect needed — sign in again";
+      return "This container has no login for it — sign in again";
     case "needs-reauth":
-      return "Signed in on the container, but Claude/Codex reports not authenticated — sign in again";
-    case "checking":
-      return "Checking…";
+      return "Its login no longer works — sign in again";
     case "registering":
-      return "Signed in on the container — registering with Zerops…";
+      return "Signed in — registering with Zerops…";
     case "authorized":
       return presentation.token ? "Authorized (token)" : "Authorized";
   }
 }
 
 /** What the row's action slot should render: an enabled sign-in button, a disabled placeholder, or nothing. */
-export type ZeropsAgentAuthAction = "sign-in" | "registering" | "checking" | "none";
+export type ZeropsAgentAuthAction = "sign-in" | "registering" | "none";
 
 export function agentAuthAction(agent: AgentAuthFields): ZeropsAgentAuthAction {
   const presentation = classifyAgentAuth(agent);
@@ -94,8 +60,6 @@ export function agentAuthAction(agent: AgentAuthFields): ZeropsAgentAuthAction {
     case "reconnect":
     case "needs-reauth":
       return "sign-in";
-    case "checking":
-      return "checking";
     case "registering":
       return "registering";
     case "authorized":
@@ -170,7 +134,9 @@ export function classifyAgentRowLogin(
 ): ZeropsAgentLoginPresentation {
   const login = classifyAgentLogin(agent.login);
   if (login.kind === "succeeded") {
-    return agent.providerAuth === "unknown" ? { kind: "confirming" } : { kind: "none" };
+    return classifyAgentAuth(agent).kind !== "authorized" && agent.providerAuth === "unknown"
+      ? { kind: "confirming" }
+      : { kind: "none" };
   }
   if (login.kind === "failed" && classifyAgentAuth(agent).kind === "authorized") {
     return { kind: "none" };

@@ -114,7 +114,7 @@ describe("ZeropsAgentAuthCard", () => {
     );
 
     expect(html).toContain("Sign in to Codex");
-    expect(html).toContain("Reconnect needed");
+    expect(html).toContain("This container has no login for it");
   });
 
   it("shows a disabled 'Registering…' button while local-only and the provider agrees", () => {
@@ -205,7 +205,7 @@ describe("ZeropsAgentAuthCard", () => {
 
     expect(html).toContain("Sign in to Claude");
     expect(html).not.toContain('disabled=""');
-    expect(html).toContain("Claude/Codex reports not authenticated");
+    expect(html).toContain("Its login no longer works");
   });
 
   it("shows an enabled sign-in button when local-only but the provider disagrees", () => {
@@ -228,7 +228,9 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).not.toContain('disabled=""');
   });
 
-  it("shows a disabled 'Checking…' button while the provider check is still in flight", () => {
+  // The flag decides: a set flag is signed in the moment it lands, whatever
+  // the agent's own check has or has not said yet.
+  it("shows Authorized with nothing to click while the agent's own check is still in flight", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
@@ -245,8 +247,8 @@ describe("ZeropsAgentAuthCard", () => {
     );
 
     expect(html).not.toContain("Sign in to Claude");
-    expect(html).toContain('disabled=""');
-    expect(html).toContain("Checking…");
+    expect(html).not.toContain("<button");
+    expect(html).toContain("Authorized");
   });
 });
 

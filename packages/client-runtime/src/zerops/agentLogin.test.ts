@@ -28,121 +28,29 @@ const agent = (
   ...overrides,
 });
 
+// The platform flag decides (`@t3tools/shared/zeropsAgentAuth`); the agent
+// CLI's own check only turns a set flag into "sign in again".
 describe("agentAuthLabel / agentAuthAction", () => {
-  it("not-authorized: ignores providerAuth entirely", () => {
-    for (const providerAuth of ["authenticated", "unauthenticated", "unknown"] as const) {
-      const a = agent({ agentId: "claude-code", state: "not-authorized", providerAuth });
-      expect(agentAuthLabel(a)).toBe("Not signed in");
-      expect(agentAuthAction(a)).toBe("sign-in");
-    }
-  });
-
-  it("reconnect: ignores providerAuth entirely", () => {
-    for (const providerAuth of ["authenticated", "unauthenticated", "unknown"] as const) {
-      const a = agent({ agentId: "codex", state: "reconnect", providerAuth });
-      expect(agentAuthLabel(a)).toBe("Reconnect needed — sign in again");
-      expect(agentAuthAction(a)).toBe("sign-in");
-    }
-  });
-
-  it("authorized + provider authenticated: the plain success label, no action", () => {
-    const a = agent({
-      agentId: "claude-code",
-      state: "authorized",
-      credPresent: true,
-      providerAuth: "authenticated",
-    });
-    expect(agentAuthLabel(a)).toBe("Authorized");
-    expect(agentAuthAction(a)).toBe("none");
-  });
-
-  it("authorized-token + provider authenticated: the token-flavored success label, no action", () => {
-    const a = agent({
-      agentId: "codex",
-      state: "authorized-token",
-      credPresent: true,
-      providerAuth: "authenticated",
-    });
-    expect(agentAuthLabel(a)).toBe("Authorized (token)");
-    expect(agentAuthAction(a)).toBe("none");
-  });
-
-  it("local-only + provider authenticated: the default registering label, disabled action", () => {
-    const a = agent({
-      agentId: "claude-code",
-      state: "local-only",
-      credPresent: true,
-      providerAuth: "authenticated",
-    });
-    expect(agentAuthLabel(a)).toBe("Signed in on the container — registering with Zerops…");
-    expect(agentAuthAction(a)).toBe("registering");
-  });
-
-  /**
-   * The local state matrix (state) and the live provider check (providerAuth)
-   * can disagree — a credential file that is present but expired, revoked, or
-   * belongs to a signed-out account. providerAuth wins: this is still
-   * something the user must act on, from both `authorized*` and `local-only`.
-   */
-  it("authorized + provider unauthenticated: re-auth label, enabled sign-in", () => {
-    const a = agent({
-      agentId: "claude-code",
-      state: "authorized",
-      credPresent: true,
-      providerAuth: "unauthenticated",
-    });
-    expect(agentAuthLabel(a)).toBe(
-      "Signed in on the container, but Claude/Codex reports not authenticated — sign in again",
-    );
-    expect(agentAuthAction(a)).toBe("sign-in");
-  });
-
-  it("authorized-token + provider unauthenticated: re-auth label, enabled sign-in", () => {
-    const a = agent({
-      agentId: "codex",
-      state: "authorized-token",
-      credPresent: true,
-      providerAuth: "unauthenticated",
-    });
-    expect(agentAuthLabel(a)).toBe(
-      "Signed in on the container, but Claude/Codex reports not authenticated — sign in again",
-    );
-    expect(agentAuthAction(a)).toBe("sign-in");
-  });
-
-  it("local-only + provider unauthenticated: re-auth label, enabled sign-in", () => {
-    const a = agent({
-      agentId: "claude-code",
-      state: "local-only",
-      credPresent: true,
-      providerAuth: "unauthenticated",
-    });
-    expect(agentAuthLabel(a)).toBe(
-      "Signed in on the container, but Claude/Codex reports not authenticated — sign in again",
-    );
-    expect(agentAuthAction(a)).toBe("sign-in");
-  });
-
-  it("authorized + provider unknown, credential present: checking, disabled action", () => {
-    const a = agent({
-      agentId: "claude-code",
-      state: "authorized",
-      credPresent: true,
-      providerAuth: "unknown",
-    });
-    expect(agentAuthLabel(a)).toBe("Checking…");
-    expect(agentAuthAction(a)).toBe("checking");
-  });
-
-  it("local-only + provider unknown, credential present: checking, disabled action", () => {
-    const a = agent({
-      agentId: "codex",
-      state: "local-only",
-      credPresent: true,
-      providerAuth: "unknown",
-    });
-    expect(agentAuthLabel(a)).toBe("Checking…");
-    expect(agentAuthAction(a)).toBe("checking");
+  const REAUTH = "Its login no longer works — sign in again";
+  it.each([
+    ["not-authorized", "authenticated", "Not signed in", "sign-in"],
+    ["not-authorized", "unknown", "Not signed in", "sign-in"],
+    ["reconnect", "authenticated", "This container has no login for it — sign in again", "sign-in"],
+    ["reconnect", "unknown", "This container has no login for it — sign in again", "sign-in"],
+    ["authorized", "authenticated", "Authorized", "none"],
+    // Set flag, check not answered yet: signed in, nothing waits on it.
+    ["authorized", "unknown", "Authorized", "none"],
+    ["authorized", "unauthenticated", REAUTH, "sign-in"],
+    ["authorized-token", "authenticated", "Authorized (token)", "none"],
+    ["authorized-token", "unauthenticated", REAUTH, "sign-in"],
+    // Signed in in the container, the flag not written yet.
+    ["local-only", "authenticated", "Signed in — registering with Zerops…", "registering"],
+    ["local-only", "unknown", "Signed in — registering with Zerops…", "registering"],
+    ["local-only", "unauthenticated", REAUTH, "sign-in"],
+  ] as const)("%s + provider %s: %s", (state, providerAuth, label, action) => {
+    const a = agent({ agentId: "claude-code", state, credPresent: true, providerAuth });
+    expect(agentAuthLabel(a)).toBe(label);
+    expect(agentAuthAction(a)).toBe(action);
   });
 });
 

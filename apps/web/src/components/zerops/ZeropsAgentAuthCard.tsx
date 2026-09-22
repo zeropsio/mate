@@ -265,8 +265,8 @@ function agentStatusPresentation(
           ? { label: agentAuthLabel(agent), tone: "off" }
           : { label: "Action required", tone: "attention" };
       }
-      if (action === "registering" || action === "checking") {
-        return { label: action === "registering" ? "Registering" : "Checking", tone: "busy" };
+      if (action === "registering") {
+        return { label: "Registering", tone: "busy" };
       }
       return { label: agentAuthLabel(agent), tone: "ok" };
     }
@@ -373,15 +373,6 @@ function ZeropsAgentAuthActionButton({
     return (
       <Button disabled size="compact" variant="outline">
         Registering…
-      </Button>
-    );
-  }
-  if (action === "checking") {
-    // The live provider check hasn't answered yet — same idea as
-    // "registering", worded for what is actually pending.
-    return (
-      <Button disabled size="compact" variant="outline">
-        Checking…
       </Button>
     );
   }

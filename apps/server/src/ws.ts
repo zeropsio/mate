@@ -64,6 +64,7 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   ThreadId,
+  type ServerProvider,
   type TerminalAttachStreamEvent,
   type TerminalError,
   type TerminalEvent,
@@ -131,6 +132,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
+import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
 import { isTurnStartingCommand, mayStartTurn } from "./zerops/ZeropsProjectSigners.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
@@ -1329,12 +1331,22 @@ const makeWsRpcLayer = (
         );
       };
 
+      // On Zerops, whether Claude Code and Codex can be picked is the
+      // project's answer (its sign-in flag), not their drivers' — every
+      // provider list a client receives goes through this.
+      const withZeropsAgentAuth = (providers: ReadonlyArray<ServerProvider>) =>
+        zeropsAgentAuth.latest.pipe(
+          Effect.map((snapshot) => overlayZeropsAgentAuth(providers, snapshot)),
+        );
+
       // Only clients that answer /usage-limits themselves see it in the catalogs;
       // an older client would send the injected command to the provider.
       const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
         Effect.gen(function* () {
           const keybindingsConfig = yield* keybindings.loadConfigState;
-          const currentProviders = yield* providerRegistry.getProviders;
+          const currentProviders = yield* providerRegistry.getProviders.pipe(
+            Effect.flatMap(withZeropsAgentAuth),
+          );
           const providers = options.usageLimitsCommand
             ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
             : currentProviders;
@@ -1949,7 +1961,7 @@ const makeWsRpcLayer = (
                   providers = yield* providerRegistry.refreshInstance(instance.instanceId);
                 }
               }
-              return { providers };
+              return { providers: yield* withZeropsAgentAuth(providers) };
             }),
             { "rpc.aggregate": "server" },
           ),
@@ -1970,7 +1982,15 @@ const makeWsRpcLayer = (
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
-            providerMaintenanceRunner.updateProvider(input),
+            providerMaintenanceRunner
+              .updateProvider(input)
+              .pipe(
+                Effect.flatMap((updated) =>
+                  withZeropsAgentAuth(updated.providers).pipe(
+                    Effect.map((providers) => ({ ...updated, providers })),
+                  ),
+                ),
+              ),
             {
               "rpc.aggregate": "server",
             },
@@ -2700,10 +2720,15 @@ const makeWsRpcLayer = (
               const providerStatuses = Stream.zipLatestWith(
                 // The registry stream carries changes only. Seed it with the current
                 // providers so a source refresh that lands before any provider change
-                // still pairs up and reaches the client.
-                Stream.concat(
-                  Stream.fromEffect(providerRegistry.getProviders),
-                  providerRegistry.streamChanges,
+                // still pairs up and reaches the client. On Zerops the agents' sign-in
+                // flag changes what the picker offers, so its feed drives this too.
+                Stream.zipLatestWith(
+                  Stream.concat(
+                    Stream.fromEffect(providerRegistry.getProviders),
+                    providerRegistry.streamChanges,
+                  ),
+                  Stream.concat(Stream.fromEffect(zeropsAgentAuth.latest), zeropsAgentAuth.changes),
+                  overlayZeropsAgentAuth,
                 ),
                 usageLimitSources.streamChanges.pipe(
                   // Quota updates already have their own stream. Republish the model
