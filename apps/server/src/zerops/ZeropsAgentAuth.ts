@@ -223,6 +223,14 @@ const MARK_OAUTH_RETRY_ATTEMPTS = 2;
 export const SIGNER_RECHECK_INTERVAL = Duration.seconds(35);
 
 /**
+ * How often an agent whose credential is present but whose last check could
+ * not answer (`unknown`: the CLI timed out, was missing, printed something
+ * unrecognized) is checked again. Without it nothing re-asks until the next
+ * credential event, and the card sits at "Checking…" with nothing to click.
+ */
+export const UNKNOWN_AUTH_RECHECK_INTERVAL = Duration.seconds(15);
+
+/**
  * An agent whose login somebody could still turn out to own: it has a
  * credential, is not on a project token (an API key belongs to the project,
  * not a person) and names no signer yet.
@@ -289,6 +297,8 @@ export interface ZeropsAgentAuthOptions {
    * disables provenance entirely — every snapshot then omits `authorizedBy`.
    */
   readonly readSigners?: Effect.Effect<Readonly<Partial<Record<ZeropsAgentId, string>>>>;
+  /** Defaults to {@link UNKNOWN_AUTH_RECHECK_INTERVAL}; shortened by tests. */
+  readonly unknownAuthRecheckInterval?: Duration.Duration;
   readonly isZeropsEnvironment: boolean;
   /**
    * Watches `target`, tolerating it not existing yet (falls back to
@@ -313,9 +323,16 @@ interface FeedState {
    * flag appearing. `mark-oauth` is only ever eligible to spawn when this is
    * true: the env-store path keeps `providerAuth` current but never spawns
    * `mark-oauth` itself — that flag is what it would be writing. Consumed
-   * (reset to false) by the check it gates.
+   * (reset to false) by the first check it gates that answers.
    */
   readonly pendingCredentialCheck: Readonly<Record<ZeropsAgentId, boolean>>;
+  /**
+   * The agent's last check answered `unknown` and nothing has asked again
+   * since — what the re-check loop looks for (UNKNOWN_AUTH_RECHECK_INTERVAL).
+   * A check still pending is not inconclusive: re-asking it would only keep
+   * resetting its own debounce.
+   */
+  readonly inconclusive: Readonly<Record<ZeropsAgentId, boolean>>;
   readonly env: ZembedEnv | undefined;
   /** Set once `zcp` is known to be absent: `mark-oauth` is never spawned again. */
   readonly cliOff: boolean;
@@ -384,6 +401,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       envStorePath,
       readSigners,
       watch,
+      unknownAuthRecheckInterval = UNKNOWN_AUTH_RECHECK_INTERVAL,
       isZeropsEnvironment: enabled,
     } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentAuthSnapshot>(4);
@@ -412,6 +430,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       providerAuth: { "claude-code": "unknown", codex: "unknown" },
       markedOAuth: { "claude-code": false, codex: false },
       pendingCredentialCheck: { "claude-code": false, codex: false },
+      inconclusive: { "claude-code": false, codex: false },
       env: undefined,
       cliOff: false,
       lastPublished: undefined,
@@ -523,7 +542,13 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         yield* Ref.update(state, (current) => ({
           ...current,
           providerAuth: { ...current.providerAuth, [agentId]: status },
-          pendingCredentialCheck: { ...current.pendingCredentialCheck, [agentId]: false },
+          // An inconclusive answer does not spend the credential event: the
+          // re-check that answers for it must still be allowed to mark.
+          pendingCredentialCheck:
+            status === "unknown"
+              ? current.pendingCredentialCheck
+              : { ...current.pendingCredentialCheck, [agentId]: false },
+          inconclusive: { ...current.inconclusive, [agentId]: status === "unknown" },
         }));
         if (status === "authenticated" && allowMarkOAuth && !alreadyMarked) {
           yield* markOAuthOnce(agentId);
@@ -707,6 +732,28 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         Effect.forkScoped,
       );
     }
+
+    // A credential whose check could not answer is asked again, until it
+    // does — see UNKNOWN_AUTH_RECHECK_INTERVAL.
+    yield* Effect.gen(function* () {
+      const current = yield* Ref.get(state);
+      for (const agentId of KNOWN_AGENT_IDS) {
+        if (current.credPresence[agentId] && current.inconclusive[agentId]) {
+          yield* Ref.update(state, (latest) => ({
+            ...latest,
+            inconclusive: { ...latest.inconclusive, [agentId]: false },
+          }));
+          yield* requestProviderCheck(agentId, { fromCredential: false });
+        }
+      }
+    }).pipe(
+      Effect.delay(unknownAuthRecheckInterval),
+      Effect.forever,
+      Effect.catchCause((cause) =>
+        Effect.logWarning("zerops agent auth: unknown-auth recheck stopped", { cause }),
+      ),
+      Effect.forkScoped,
+    );
 
     // What was last published, signers included: a subscriber arriving now
     // (a reload) and every recombine `registerZeropsRpc` does on a change

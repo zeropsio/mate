@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -545,6 +546,53 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
         }),
       ),
+    );
+
+    it.effect(
+      "an inconclusive check is asked again, and the answer that comes still marks the platform flag",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+            const fake = yield* makeFakeCli(() =>
+              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+            );
+            // The CLI timed out once, then answered.
+            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+              "unknown",
+              "authenticated",
+            ]);
+            const refreshProviderAuth = () =>
+              Effect.gen(function* () {
+                const [next, ...rest] = yield* Ref.get(answers);
+                yield* Ref.set(answers, rest);
+                return next ?? "authenticated";
+              });
+            const fakeWatch = makeFakeWatch();
+
+            const feed = yield* ZeropsAgentAuth.make({
+              cli: fake.cli,
+              refreshProviderAuth,
+              homeDir,
+              envStorePath,
+              isZeropsEnvironment: true,
+              watch: fakeWatch.watch,
+              unknownAuthRecheckInterval: Duration.millis(300),
+            });
+
+            const subscription = yield* feed.subscribe;
+            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+            fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
+
+            // No second credential event: only the re-check can get here.
+            const published = yield* changeWhere(
+              subscription,
+              (snapshot) => agentState(snapshot, "codex")?.providerAuth === "authenticated",
+            );
+            assert.equal(agentState(published, "codex")?.providerAuth, "authenticated");
+            assert.deepEqual(yield* Ref.get(fake.calls), ["codex"]);
+          }),
+        ),
     );
 
     it.effect(
