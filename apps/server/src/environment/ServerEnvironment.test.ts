@@ -232,9 +232,9 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
             ServerEnvironment.layer.pipe(
               Layer.provide(ServerSecretStore.layer),
               Layer.provide(ServerConfig.layer(config)),
+              Layer.provideMerge(ZeropsIdentityStatus.layer),
             ),
           ),
-          Effect.provide(ZeropsIdentityStatus.layer),
         );
         expect(descriptor.zerops?.identity).toBe("failed");
         expect(descriptor.zerops?.identityCheckedAt).toBeDefined();
@@ -258,9 +258,9 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           ServerEnvironment.layer.pipe(
             Layer.provide(ServerSecretStore.layer),
             Layer.provide(ServerConfig.layer(config)),
+            Layer.provideMerge(ZeropsIdentityStatus.layer),
           ),
         ),
-        Effect.provide(ZeropsIdentityStatus.layer),
       );
       expect(descriptor.zerops?.identity).toBe("ok");
       expect(descriptor.zerops?.keySource).toBe("snapshot");
@@ -282,9 +282,9 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           ServerEnvironment.layer.pipe(
             Layer.provide(ServerSecretStore.layer),
             Layer.provide(ServerConfig.layer(config)),
+            Layer.provideMerge(ZeropsIdentityStatus.layer),
           ),
         ),
-        Effect.provide(ZeropsIdentityStatus.layer),
       );
       expect(descriptor.zerops?.identity).toBe("unknown");
       expect(descriptor.zerops?.identityCheckedAt).toBeUndefined();
