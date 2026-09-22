@@ -1,6 +1,6 @@
 /**
  * Registers the five Zerops feed RPCs (`zerops.lifecycle.get`,
- * `zerops.agentLogin.start`/`cancel`, `subscribeZeropsLifecycle`,
+ * `zerops.agentLogin.start`/`cancel`/`submitCode`, `subscribeZeropsLifecycle`,
  * `subscribeZeropsAgentAuth`) — pulled out of the giant `WsRpcGroup.of({...})`
  * literal in `ws.ts` so the zone owns its own RPC wiring (audit C4). Same
  * handlers, same instrumentation, same scopes — `auth/RpcAuthorization.ts`
@@ -32,6 +32,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsLifecycleGet
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
+  | typeof WS_METHODS.zeropsAgentLoginSubmitCode
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
@@ -186,6 +187,14 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       observeRpcEffect(WS_METHODS.zeropsAgentLoginCancel, zeropsAgentLogin.cancel(input.agentId), {
         "rpc.aggregate": "zerops",
       }),
+    // The code rides only into the login terminal: no span attribute or log
+    // line here names it.
+    [WS_METHODS.zeropsAgentLoginSubmitCode]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.zeropsAgentLoginSubmitCode,
+        zeropsAgentLogin.submitCode(input.agentId, input.code),
+        { "rpc.aggregate": "zerops" },
+      ),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
       observeRpcStream(
         WS_METHODS.subscribeZeropsLifecycle,

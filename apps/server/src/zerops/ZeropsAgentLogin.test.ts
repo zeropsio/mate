@@ -14,7 +14,9 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
@@ -34,14 +36,18 @@ interface WriteRecord {
 interface FakeTerminalManager {
   readonly service: TerminalManagerService;
   readonly writes: Ref.Ref<ReadonlyArray<WriteRecord>>;
-  readonly closed: Ref.Ref<
-    ReadonlyArray<{ readonly threadId: string; readonly terminalId: string }>
-  >;
+  readonly closed: Ref.Ref<ReadonlyArray<CloseRecord>>;
   readonly opened: Ref.Ref<
     ReadonlyArray<{ readonly threadId: string; readonly terminalId: string }>
   >;
   /** Delivers one `output` chunk to whatever session is currently attached to (threadId, terminalId). A no-op if nothing is attached. */
   readonly emit: (threadId: string, terminalId: string, data: string) => Effect.Effect<void>;
+}
+
+interface CloseRecord {
+  readonly threadId: string;
+  readonly terminalId: string;
+  readonly deleteHistory: boolean;
 }
 
 const sessionKey = (threadId: string, terminalId: string): string => `${threadId}::${terminalId}`;
@@ -66,7 +72,7 @@ const fakeSnapshot = (input: {
 const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
   Effect.gen(function* () {
     const writes = yield* Ref.make<ReadonlyArray<WriteRecord>>([]);
-    const closed = yield* Ref.make<ReadonlyArray<{ threadId: string; terminalId: string }>>([]);
+    const closed = yield* Ref.make<ReadonlyArray<CloseRecord>>([]);
     const opened = yield* Ref.make<ReadonlyArray<{ threadId: string; terminalId: string }>>([]);
     const listeners = new Map<string, (event: TerminalAttachStreamEvent) => Effect.Effect<void>>();
 
@@ -94,7 +100,11 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
       close: (input: TerminalCloseInput) =>
         Ref.update(closed, (all) => [
           ...all,
-          { threadId: input.threadId, terminalId: input.terminalId ?? "" },
+          {
+            threadId: input.threadId,
+            terminalId: input.terminalId ?? "",
+            deleteHistory: input.deleteHistory === true,
+          },
         ]).pipe(Effect.asVoid),
     };
 
@@ -349,7 +359,11 @@ it.effect("cancel writes Ctrl-C, closes the terminal, and publishes cancelled", 
       const writes = yield* Ref.get(fakeTerminal.writes);
       assert.equal(writes[writes.length - 1]?.data, "\x03");
       const closed = yield* Ref.get(fakeTerminal.closed);
-      assert.deepEqual(closed, [{ threadId: "thread-1", terminalId: "agent-login-claude-code" }]);
+      assert.deepEqual(closed, [
+        // start's fresh-terminal close, then cancel's own.
+        { threadId: "thread-1", terminalId: "agent-login-claude-code", deleteHistory: true },
+        { threadId: "thread-1", terminalId: "agent-login-claude-code", deleteHistory: false },
+      ]);
 
       const logins = yield* feed.latest;
       assert.equal(loginOf(logins, "claude-code")?.phase, "cancelled");
@@ -393,6 +407,8 @@ it.effect("outside a Zerops environment, start and cancel both fail as unavailab
       assert.instanceOf(startError, ZeropsAgentLoginError);
       const cancelError = yield* Effect.flip(feed.cancel("claude-code"));
       assert.instanceOf(cancelError, ZeropsAgentLoginError);
+      const submitError = yield* Effect.flip(feed.submitCode("claude-code", "abc#def"));
+      assert.equal(reasonOf(submitError), "unavailable");
 
       assert.deepEqual(yield* Ref.get(fakeTerminal.opened), []);
     }),
@@ -469,6 +485,181 @@ it.effect("asks the auth feed to republish when a login succeeds", () =>
       );
 
       assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
+    }),
+  ),
+);
+
+const isLoginError = Schema.is(ZeropsAgentLoginError);
+const reasonOf = (error: unknown): string =>
+  isLoginError(error) ? error.reason : "not a login error";
+
+const CLAUDE_URL_SCREEN =
+  "Browser didn't open? Use the url below to sign in (c to copy)\nhttps://claude.com/cai/oauth/authorize?state=abc\nPaste code here if prompted > ";
+
+/** A Claude login at its code prompt: started, and the URL screen seen. */
+const claudeAtCodePrompt = Effect.gen(function* () {
+  const fakeTerminal = yield* makeFakeTerminalManager();
+  const fakeAuth = yield* makeFakeAuth();
+  const feed = yield* ZeropsAgentLoginModule.make({
+    terminalManager: fakeTerminal.service,
+    zeropsAgentAuth: fakeAuth,
+    isZeropsEnvironment: true,
+  });
+  yield* feed.start("claude-code", "thread-1", "zerops-user:user-1");
+  yield* fakeTerminal.emit("thread-1", "agent-login-claude-code", CLAUDE_URL_SCREEN);
+  assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "awaiting-browser");
+  return { fakeTerminal, fakeAuth, feed };
+});
+
+it.effect(
+  "start begins in a fresh terminal: the previous attempt's is closed with its history",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fakeTerminal = yield* makeFakeTerminalManager();
+        const fakeAuth = yield* makeFakeAuth();
+        const feed = yield* ZeropsAgentLoginModule.make({
+          terminalManager: fakeTerminal.service,
+          zeropsAgentAuth: fakeAuth,
+          isZeropsEnvironment: true,
+        });
+
+        yield* feed.start("claude-code", "thread-1", "user-test");
+
+        assert.deepEqual(yield* Ref.get(fakeTerminal.closed), [
+          { threadId: "thread-1", terminalId: "agent-login-claude-code", deleteHistory: true },
+        ]);
+      }),
+    ),
+);
+
+it.effect("the login carries the Zerops user id of whoever started it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { feed } = yield* claudeAtCodePrompt;
+      assert.equal(loginOf(yield* feed.latest, "claude-code")?.startedBy, "user-1");
+    }),
+  ),
+);
+
+it.effect(
+  "submitCode types the code, then Enter in a later write, and moves to verifying-code",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fakeTerminal, feed } = yield* claudeAtCodePrompt;
+        const before = (yield* Ref.get(fakeTerminal.writes)).length;
+
+        const submit = yield* feed.submitCode("claude-code", "abc123#state").pipe(Effect.forkChild);
+        yield* TestClock.adjust("100 millis");
+        yield* Fiber.join(submit);
+
+        const writes = (yield* Ref.get(fakeTerminal.writes)).slice(before);
+        assert.deepEqual(
+          writes.map((write) => write.data),
+          ["abc123#state", "\r"],
+        );
+        assert.equal(writes[0]?.terminalId, "agent-login-claude-code");
+        const login = loginOf(yield* feed.latest, "claude-code");
+        assert.equal(login?.phase, "verifying-code");
+        assert.equal(login?.startedBy, "user-1");
+      }),
+    ),
+);
+
+it.effect("after a submitted code, the CLI's success line ends the login as succeeded", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { fakeTerminal, fakeAuth, feed } = yield* claudeAtCodePrompt;
+      const submit = yield* feed.submitCode("claude-code", "abc123#state").pipe(Effect.forkChild);
+      yield* TestClock.adjust("100 millis");
+      yield* Fiber.join(submit);
+
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-claude-code",
+        "Login successful. Press Enter to continue\n",
+      );
+
+      assert.equal(loginOf(yield* feed.latest, "claude-code")?.phase, "succeeded");
+      assert.deepEqual(yield* Ref.get(fakeAuth.calls), ["claude-code"]);
+    }),
+  ),
+);
+
+it.effect(
+  "a wrong code fails the login with the CLI's recorded error (Claude 2.1.278, 2026-09-22)",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fakeTerminal, feed } = yield* claudeAtCodePrompt;
+        const submit = yield* feed.submitCode("claude-code", "wrong#code").pipe(Effect.forkChild);
+        yield* TestClock.adjust("100 millis");
+        yield* Fiber.join(submit);
+
+        yield* fakeTerminal.emit(
+          "thread-1",
+          "agent-login-claude-code",
+          "*******ode\nOAuth error: Request failed with status code 400\nPress Enter to retry.\n",
+        );
+
+        const login = loginOf(yield* feed.latest, "claude-code");
+        assert.equal(login?.phase, "failed");
+        assert.isDefined(login?.message);
+      }),
+    ),
+);
+
+it.effect("the code never reaches the published login state", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { feed } = yield* claudeAtCodePrompt;
+      const submit = yield* feed
+        .submitCode("claude-code", "secret-code-value#state")
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("100 millis");
+      yield* Fiber.join(submit);
+
+      const published = Object.values(yield* feed.latest).flatMap((login) =>
+        login === undefined ? [] : Object.values(login).map(String),
+      );
+      assert.isFalse(published.some((value) => value.includes("secret-code-value")));
+    }),
+  ),
+);
+
+it.effect("submitCode is refused when no login waits for a code", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fakeTerminal = yield* makeFakeTerminalManager();
+      const fakeAuth = yield* makeFakeAuth();
+      const feed = yield* ZeropsAgentLoginModule.make({
+        terminalManager: fakeTerminal.service,
+        zeropsAgentAuth: fakeAuth,
+        isZeropsEnvironment: true,
+      });
+
+      // No session at all.
+      const none = yield* Effect.flip(feed.submitCode("claude-code", "abc#def"));
+      assert.equal(reasonOf(none), "not-awaiting-code");
+
+      // A session still in its menu, before any prompt.
+      yield* feed.start("claude-code", "thread-1", "user-test");
+      const early = yield* Effect.flip(feed.submitCode("claude-code", "abc#def"));
+      assert.equal(reasonOf(early), "not-awaiting-code");
+
+      // Codex's device flow never takes a code back.
+      yield* feed.start("codex", "thread-1", "user-test");
+      yield* fakeTerminal.emit(
+        "thread-1",
+        "agent-login-codex",
+        "Open this link\nhttps://auth.openai.com/codex/device\nEnter this one-time code\nABCD-EFGHI\n",
+      );
+      const codex = yield* Effect.flip(feed.submitCode("codex", "abc#def"));
+      assert.equal(reasonOf(codex), "not-awaiting-code");
+
+      const writes = yield* Ref.get(fakeTerminal.writes);
+      assert.isFalse(writes.some((write) => write.data.includes("abc#def")));
     }),
   ),
 );

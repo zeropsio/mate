@@ -27,8 +27,9 @@ export interface ZeropsAgentLoginHandler {
   /**
    * Direction of the OAuth code exchange:
    * - `paste-code` (Claude): browser → terminal. The user opens the URL,
-   *   the browser shows a code, the user pastes that code directly into
-   *   the terminal pane — never into a field this server reads.
+   *   the browser shows a code, the user pastes it into the dialog's field
+   *   (`ZeropsAgentLogin.submitCode` types it into the terminal) or straight
+   *   into the terminal pane.
    * - `device-code` (Codex): terminal → browser. The terminal prints a
    *   device code; the user opens the URL and types the code there. The
    *   CLI polls until success.

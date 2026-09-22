@@ -34,6 +34,23 @@ const CODEX_URL_AND_CODE = `${CODEX_URL}\nEnter this one-time code: ${CODEX_CODE
 const CODEX_SUCCESS = "Successfully logged in\n";
 
 describe("stepLoginOutput — claude-code", () => {
+  // Recorded live, Claude 2.1.278, 2026-09-22: a wrong code answered at the
+  // prompt. The code itself echoes masked.
+  const CLAUDE_WRONG_CODE =
+    "*******ode\nOAuth error: Request failed with status code 400\nPress Enter to retry.\n";
+
+  it.each([
+    { name: "a wrong code fails", buffer: CLAUDE_WRONG_CODE, next: "failed" },
+    { name: "the success line succeeds", buffer: CLAUDE_SUCCESS, next: "succeeded" },
+    { name: "the masked echo alone waits", buffer: "*******ode", next: "verifying-code" },
+  ] as const)("verifying-code: $name", ({ buffer, next }) => {
+    const result = stepLoginOutput({ phase: "verifying-code", handler: claude, buffer });
+    expect(result.nextPhase).toBe(next);
+    // Nothing is typed into a CLI that is exchanging a code.
+    expect(result.write).toBeUndefined();
+    expect(result.armStall).toBe(false);
+  });
+
   it("an unrecognized menu screen arms the stall and stays in menu", () => {
     const result = stepLoginOutput({ phase: "menu", handler: claude, buffer: CLAUDE_MENU });
     expect(result.nextPhase).toBe("menu");

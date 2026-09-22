@@ -8,10 +8,17 @@
  * the CLI's output itself — the same job the Zerops GUI's own
  * `zcp-agent-auth-dialog` walker does, ported to run here instead of in a
  * browser tab (`zeropsAgentLoginOutputParser.ts` / `zeropsAgentLoginWalker.ts`
- * / `zeropsAgentLoginHandlers.ts`). The client never types into the login
- * terminal on the user's behalf, and the server never sees a pasted auth
- * code as a field — once the CLI shows its "paste code here" prompt, the
- * user pastes directly into the terminal pane.
+ * / `zeropsAgentLoginHandlers.ts`).
+ *
+ * Claude's code comes back the way the GUI dialog takes it: the person pastes
+ * it into a field, and {@link ZeropsAgentLogin} `submitCode` types it into the
+ * login terminal, then Enter. Pasting straight into the terminal pane works
+ * just the same. The code is written to the PTY and nowhere else — never the
+ * feed, a span or a log.
+ *
+ * Every `start` begins in a fresh terminal: the previous attempt's CLI may
+ * still be running (a wrong code leaves Claude at "Press Enter to retry"), and
+ * a login command typed into it would land in its prompt.
  *
  * Each agent gets at most one active session at a time (`start` on an agent
  * with a session already running just re-attaches to it — same
@@ -66,6 +73,7 @@ import { TerminalManager } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
 
@@ -74,6 +82,24 @@ const STALL_TIMEOUT_MS = 1000;
 /** Keeps a pathological non-terminating stream from growing the buffer without bound. */
 const MAX_BUFFER_LENGTH = 8000;
 const BUFFER_TRIM_KEEP = 4000;
+
+/**
+ * The gap between a submitted code and its Enter. The GUI dialog measured
+ * that a terminal pipeline can drop an Enter arriving in the same chunk as
+ * the code (frontend-legacy `SEND_CODE_NEWLINE_DELAY_MS`), and Claude's
+ * prompt treats one chunk as a paste.
+ */
+const CODE_ENTER_DELAY = Duration.millis(100);
+
+/** Phases in which a paste-code login's CLI is waiting at its code prompt — Claude prints the prompt right under the URL. */
+const AWAITING_CODE_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
+  "awaiting-browser",
+  "awaiting-code",
+]);
+
+/** The Zerops user id behind a session subject; any other subject is kept whole, and matches no Zerops user. */
+const startedByOf = (subject: string): string =>
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) ? subject.slice(ZEROPS_SUBJECT_PREFIX.length) : subject;
 
 /** The sshfs-mounted project root every mate terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
 const AGENT_LOGIN_CWD = "/var/www";
@@ -116,6 +142,7 @@ export const loginStateEqual = (a: ZeropsAgentLoginState, b: ZeropsAgentLoginSta
   a.code === b.code &&
   a.message === b.message &&
   a.terminalId === b.terminalId &&
+  a.startedBy === b.startedBy &&
   DateTime.Equivalence(a.startedAt, b.startedAt);
 
 export class ZeropsAgentLogin extends Context.Service<
@@ -135,15 +162,23 @@ export class ZeropsAgentLogin extends Context.Service<
       agentId: ZeropsAgentId,
       threadId: string,
       /**
-       * The Zerops user id of the session driving this login, taken from the
+       * The subject of the session driving this login, taken from the
        * authenticated session — never from the client's input, which could
-       * name anyone. Recorded against the agent when the login succeeds so
-       * mate can say whose subscription a turn spends (`agentOwnership.ts`).
+       * name anyone. Published as the login's `startedBy`, so that person's
+       * client records the signer once it succeeds.
        */
       subject: string,
     ) => Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError>;
     readonly cancel: (
       agentId: ZeropsAgentId,
+    ) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>;
+    /**
+     * Types `code` into the agent's login terminal, then Enter. Fails with
+     * `not-awaiting-code` unless a paste-code login (Claude) is at its prompt.
+     */
+    readonly submitCode: (
+      agentId: ZeropsAgentId,
+      code: string,
     ) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>;
   }
 >()("t3/zerops/ZeropsAgentLogin") {}
@@ -169,8 +204,8 @@ interface ActiveSession {
   readonly bufferRef: Ref.Ref<string>;
   readonly stallQueue: Queue.Queue<void>;
   readonly unsubscribeOutput: () => void;
-  /** Who started this login — recorded if it succeeds. */
-  readonly subject: string;
+  /** The Zerops user id of whoever started this login — see `ZeropsAgentLoginState.startedBy`. */
+  readonly startedBy: string;
 }
 
 const appendAndTrim = (buffer: string, chunk: string): string => {
@@ -196,6 +231,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
         start: () => Effect.fail(unavailable),
         cancel: () => Effect.fail(unavailable),
+        submitCode: () => Effect.fail(unavailable),
       } satisfies ZeropsAgentLogin["Service"];
     }
 
@@ -312,6 +348,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           message: result.message,
           terminalId: session.terminalId,
           startedAt: before?.startedAt ?? (yield* DateTime.now),
+          startedBy: session.startedBy,
         });
 
         if (result.armStall) {
@@ -349,10 +386,15 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const terminalId = loginTerminalId(agentId);
         const token = Symbol(agentId);
         const startedAt = yield* DateTime.now;
+        const startedBy = startedByOf(subject);
 
-        yield* setLoginState(agentId, { phase: "starting", terminalId, startedAt });
+        yield* setLoginState(agentId, { phase: "starting", terminalId, startedAt, startedBy });
 
         const attempt = Effect.gen(function* () {
+          // A fresh PTY and no replayed history — see the module header.
+          yield* terminalManager
+            .close({ threadId, terminalId, deleteHistory: true } satisfies TerminalCloseInput)
+            .pipe(Effect.ignore);
           yield* terminalManager.open({
             threadId,
             terminalId,
@@ -380,7 +422,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             bufferRef,
             stallQueue,
             unsubscribeOutput,
-            subject,
+            startedBy,
           });
 
           yield* Stream.fromQueue(stallQueue).pipe(
@@ -391,7 +433,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             Effect.forkDetach,
           );
 
-          yield* setLoginState(agentId, { phase: "menu", terminalId, startedAt });
+          yield* setLoginState(agentId, { phase: "menu", terminalId, startedAt, startedBy });
           // Arms the FIRST countdown too — mirrors the GUI walker sending
           // the command and immediately being subject to the stall timer.
           yield* Queue.offer(stallQueue, undefined);
@@ -417,6 +459,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           phase: "cancelled",
           terminalId: session.terminalId,
           startedAt,
+          startedBy: session.startedBy,
         });
         yield* terminalManager
           .write({ threadId: session.threadId, terminalId: session.terminalId, data: "\x03" })
@@ -427,6 +470,38 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         } satisfies TerminalCloseInput);
       });
 
+    const submitCode = (
+      agentId: ZeropsAgentId,
+      code: string,
+    ): Effect.Effect<void, TerminalError | ZeropsAgentLoginError> =>
+      Effect.gen(function* () {
+        const session = sessions.get(agentId);
+        const login = (yield* Ref.get(state)).logins[agentId];
+        if (
+          session === undefined ||
+          login === undefined ||
+          ZEROPS_AGENT_LOGIN_HANDLERS[agentId].flowMode !== "paste-code" ||
+          !AWAITING_CODE_PHASES.has(login.phase)
+        ) {
+          return yield* new ZeropsAgentLoginError({
+            reason: "not-awaiting-code",
+            detail: "This sign-in is not waiting for a code. Start it again.",
+          });
+        }
+        // What the CLI printed before the code — its prompt, an earlier
+        // attempt's error — must not read as the answer to this one.
+        yield* Ref.set(session.bufferRef, "");
+        yield* setLoginState(agentId, { ...login, phase: "verifying-code", message: undefined });
+        const target = { threadId: session.threadId, terminalId: session.terminalId };
+        yield* terminalManager.write({ ...target, data: code } satisfies TerminalWriteInput).pipe(
+          Effect.andThen(Effect.sleep(CODE_ENTER_DELAY)),
+          Effect.andThen(
+            terminalManager.write({ ...target, data: "\r" } satisfies TerminalWriteInput),
+          ),
+          Effect.tapError(() => setLoginState(agentId, login)),
+        );
+      });
+
     const latest = Ref.get(state).pipe(Effect.map((current) => current.logins));
 
     return {
@@ -435,6 +510,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
       start,
       cancel,
+      submitCode,
     } satisfies ZeropsAgentLogin["Service"];
   });
 

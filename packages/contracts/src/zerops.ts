@@ -283,9 +283,11 @@ export type ZeropsAgentAuthState = typeof ZeropsAgentAuthState.Type;
  * - `awaiting-browser` — an auth URL (and, for Codex, its device code) was
  *   found; the user needs to open it (or copy the code) in their own
  *   browser.
- * - `awaiting-code` — the CLI is now showing a "paste code here" prompt
- *   (Claude only); the user pastes the code directly into the terminal
- *   pane — it never crosses the wire as a field.
+ * - `awaiting-code` — the CLI is showing a "paste code here" prompt and no
+ *   URL was recognized (Claude only). Claude prints its prompt right under
+ *   the URL, so `awaiting-browser` takes a code too.
+ * - `verifying-code` — a code was submitted (`zerops.agentLogin.submitCode`)
+ *   and the CLI is exchanging it with the provider.
  * - `succeeded` / `failed` / `cancelled` — terminal states.
  */
 export const ZeropsAgentLoginPhase = Schema.Literals([
@@ -293,6 +295,7 @@ export const ZeropsAgentLoginPhase = Schema.Literals([
   "menu",
   "awaiting-browser",
   "awaiting-code",
+  "verifying-code",
   "succeeded",
   "failed",
   "cancelled",
@@ -310,6 +313,13 @@ export const ZeropsAgentLoginState = Schema.Struct({
   /** The dedicated terminal this login session runs in (`terminal.attach`/`terminal.write` target). */
   terminalId: Schema.String,
   startedAt: Schema.DateTimeUtc,
+  /**
+   * The Zerops user id of the person who started this login, from their
+   * authenticated session. The client that is that person records the signer
+   * (`authorizedBy`) from it once the login succeeds, whichever screen it
+   * started on and whether or not that screen is still open.
+   */
+  startedBy: Schema.String,
 });
 export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
 
@@ -413,9 +423,28 @@ export const ZeropsAgentLoginCancelInput = Schema.Struct({
 });
 export type ZeropsAgentLoginCancelInput = typeof ZeropsAgentLoginCancelInput.Type;
 
+/**
+ * An authorization code as the provider's page shows it: one run of printable
+ * ASCII, no whitespace. It is typed into the login terminal, so a control
+ * character or a line break could run something else there — the shape
+ * refuses both before the server sees it.
+ */
+export const ZeropsAgentLoginCode = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(4096),
+  Schema.isPattern(/^[\x21-\x7e]+$/),
+);
+
+export const ZeropsAgentLoginSubmitCodeInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+  code: ZeropsAgentLoginCode,
+});
+export type ZeropsAgentLoginSubmitCodeInput = typeof ZeropsAgentLoginSubmitCodeInput.Type;
+
 export const ZeropsAgentLoginErrorReason = Schema.Literals([
   /** This environment does not offer a server-driven login (not a Zerops environment). */
   "unavailable",
+  /** No login of this agent is waiting for a code right now. */
+  "not-awaiting-code",
 ]);
 export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
 

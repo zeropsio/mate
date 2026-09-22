@@ -20,10 +20,10 @@
  * command is written — see `ZeropsAgentLogin.start` — and the two phases
  * are treated identically by the matchers below purely for defensiveness);
  * upstream `url_received`/`waiting_for_code` (browser-side auto-open,
- * unavailable server-side) → here one phase, `awaiting-browser`; upstream
- * `submitting_code` (a dialog-form code submission this design does not
- * have — the user pastes directly into the terminal pane) → here
- * `awaiting-code`; upstream `complete`/`error` → here `succeeded`/`failed`.
+ * unavailable server-side) → here one phase, `awaiting-browser`, or
+ * `awaiting-code` when the prompt came without a recognized URL; upstream
+ * `submitting_code` → here `verifying-code` (set by `submitCode`, never by
+ * this walker); upstream `complete`/`error` → here `succeeded`/`failed`.
  */
 import type { ZeropsAgentLoginPhase } from "@t3tools/contracts";
 
@@ -71,6 +71,13 @@ const TERMINAL_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
   "cancelled",
 ]);
 
+/** Phases after the CLI has shown its sign-in URL or code prompt — where a failure line is the CLI's verdict, not a stray match. */
+const POST_URL_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
+  "awaiting-browser",
+  "awaiting-code",
+  "verifying-code",
+]);
+
 /** Phases where the walker is still auto-navigating unrecognized screens. */
 const NAVIGATING_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set(["starting", "menu"]);
 
@@ -95,10 +102,7 @@ export const stepLoginOutput = (input: LoginWalkerInput): LoginWalkerOutput => {
 
   // Error — only in the post-URL phases, to avoid a false positive while
   // still navigating an unrelated TUI screen.
-  if (
-    (phase === "awaiting-browser" || phase === "awaiting-code") &&
-    handler.authErrorPattern.test(clean)
-  ) {
+  if (POST_URL_PHASES.has(phase) && handler.authErrorPattern.test(clean)) {
     return {
       nextPhase: "failed",
       message: "Authentication failed. The code may be invalid or expired.",

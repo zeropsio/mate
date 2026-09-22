@@ -507,6 +507,7 @@ const PROTECTED_WS_READ_METHODS = new Set([
 const PROTECTED_WS_ALLOWED_COMMAND_METHODS = new Set([
   "zeropsAgentLoginStart",
   "zeropsAgentLoginCancel",
+  "zeropsAgentLoginSubmitCode",
 ]);
 
 const SHARED_RUNTIME_READ_SCOPE_METHODS = new Map<string, ReadonlySet<string>>([

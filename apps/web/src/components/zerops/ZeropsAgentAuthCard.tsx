@@ -4,7 +4,7 @@
  * login session (S7 follow-up F8) is actually running, whatever THAT phase
  * needs: a disabled placeholder while the server navigates the CLI's own
  * menus, an "Open sign-in link" + copy actions once a URL (and, for Codex, a
- * device code) is known, a "paste it into the terminal" prompt, or a retry
+ * device code) is known, a "paste the code" prompt, or a retry
  * button on failure.
  *
  * The button's handler is a prop — this component never reaches the
@@ -29,7 +29,7 @@ import {
   agentAuthAction,
   agentAuthLabel,
   agentLoginLabel,
-  classifyAgentLogin,
+  classifyAgentRowLogin,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer, useLocalAgentSigners } from "~/zerops/useZeropsAgentSigner";
@@ -146,7 +146,7 @@ function ZeropsAgentAuthRow({
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
 }) {
-  const login = classifyAgentLogin(agent.login);
+  const login = classifyAgentRowLogin(agent);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
   const status = agentStatusPresentation(agent, login, quiet);
   // Whose subscription a turn here would spend. Silent for your own agent —
@@ -247,6 +247,8 @@ function agentStatusPresentation(
     case "starting":
     case "menu":
       return { label: "Signing in", tone: "busy" };
+    case "verifying-code":
+      return { label: "Checking the code", tone: "busy" };
     case "awaiting-browser":
     case "awaiting-code":
       return { label: "Action required", tone: "attention" };
@@ -287,6 +289,7 @@ function ZeropsAgentAuthActionSlot({
     case "menu":
     case "awaiting-browser":
     case "awaiting-code":
+    case "verifying-code":
       return (
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Button

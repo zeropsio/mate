@@ -1,7 +1,10 @@
 import type { ZeropsAgentAuth, ZeropsAgentLoginState } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog.logic";
+import {
+  agentAcceptsCode,
+  resolveAgentAuthorizationDialog,
+} from "./ZeropsAgentAuthorizationDialog.logic";
 
 const login = (
   phase: ZeropsAgentLoginState["phase"],
@@ -10,6 +13,7 @@ const login = (
   phase,
   terminalId: "agent-login-codex",
   startedAt: new Date("2026-09-01T12:00:00.000Z") as unknown as ZeropsAgentLoginState["startedAt"],
+  startedBy: "user-a",
   ...overrides,
 });
 
@@ -50,10 +54,48 @@ describe("resolveAgentAuthorizationDialog", () => {
       id: "verify",
       label: "Verify code",
       state: "running",
-      stateLabel: "Paste into terminal",
+      stateLabel: "Paste the code",
     });
     expect(view.action).toBe("paste-code");
   });
+
+  it("checks a submitted code on the verify step, cancellable", () => {
+    const view = resolveAgentAuthorizationDialog(agent("claude-code", login("verifying-code")));
+
+    expect(view.activeStepId).toBe("verify");
+    expect(view.steps.find((step) => step.id === "verify")?.stateLabel).toBe("Checking");
+    expect(view.action).toBe("cancel");
+  });
+
+  it.each([
+    { name: "Claude's wrong code fails the verify step", agentId: "claude-code", step: "verify" },
+    {
+      name: "Codex's expired device code fails the browser step",
+      agentId: "codex",
+      step: "browser",
+    },
+  ] as const)("$name", ({ agentId, step }) => {
+    const view = resolveAgentAuthorizationDialog(
+      agent(agentId, login("failed", { url: "https://example.test/authorize" })),
+    );
+
+    expect(view.activeStepId).toBe(step);
+    expect(view.steps.find((entry) => entry.id === step)?.state).toBe("failed");
+    expect(view.action).toBe("retry");
+  });
+
+  it.each([
+    { phase: "awaiting-browser", agentId: "claude-code", accepts: true },
+    { phase: "awaiting-code", agentId: "claude-code", accepts: true },
+    { phase: "verifying-code", agentId: "claude-code", accepts: false },
+    { phase: "menu", agentId: "claude-code", accepts: false },
+    { phase: "awaiting-browser", agentId: "codex", accepts: false },
+  ] as const)(
+    "a $agentId login in $phase takes a code: $accepts",
+    ({ phase, agentId, accepts }) => {
+      expect(agentAcceptsCode(agent(agentId, login(phase)))).toBe(accepts);
+    },
+  );
 
   it.each([
     ["starting", "initialize", "cancel"],

@@ -161,6 +161,7 @@ import {
   ZeropsAgentLoginError,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
+  ZeropsAgentLoginSubmitCodeInput,
   ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
   ZeropsDataConsoleError,
@@ -310,6 +311,7 @@ export const WS_METHODS = {
   zeropsLifecycleGet: "zerops.lifecycle.get",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
+  zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
@@ -944,6 +946,15 @@ const WsZeropsAgentLoginCancelRpc = Rpc.make(WS_METHODS.zeropsAgentLoginCancel, 
 });
 
 /**
+ * Types an authorization code into `agentId`'s login terminal, the way a
+ * person pasting it there would. Accepted only while that login waits for one.
+ */
+const WsZeropsAgentLoginSubmitCodeRpc = Rpc.make(WS_METHODS.zeropsAgentLoginSubmitCode, {
+  payload: ZeropsAgentLoginSubmitCodeInput,
+  error: Schema.Union([TerminalError, ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
+/**
  * The live view of the container's agent-browser daemon (S8b, spec-mate.md
  * §5 Browser surface): frames and connection state, Ack-flow-controlled like
  * every other feed (§5.5). Connects to the daemon on first subscriber,
@@ -1111,6 +1122,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsAgentAuthRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentLoginCancelRpc,
+  WsZeropsAgentLoginSubmitCodeRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
   WsZeropsMateUpdateRpc,

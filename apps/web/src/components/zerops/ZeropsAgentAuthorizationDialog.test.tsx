@@ -11,6 +11,7 @@ const login = (
   phase,
   terminalId: "agent-login-codex",
   startedAt: new Date("2026-09-01T12:00:00.000Z") as unknown as ZeropsAgentLoginState["startedAt"],
+  startedBy: "user-a",
   ...overrides,
 });
 
@@ -38,6 +39,7 @@ function render(agentAuth: ZeropsAgentAuth, projectName = "todo") {
       onCancel={noop}
       onClose={noop}
       onStart={noop}
+      onSubmitCode={async () => true}
     />,
   );
 }
@@ -79,14 +81,60 @@ describe("ZeropsAgentAuthorizationDialogSurface", () => {
     expect(html).toContain(">Cancel<");
   });
 
-  it("keeps Claude's returned code inside the real terminal path", () => {
+  it("takes Claude's returned code in a field once the CLI asks for it", () => {
     const html = render(agent("claude-code", login("awaiting-code")));
 
     expect(html).toContain("Authorize Claude Code");
-    expect(html).toContain("Paste the code from your browser directly into the terminal");
+    expect(html).toContain("Paste the code the authorization page showed you.");
     expect(html).toContain("Verify code");
+    expect(html).toContain("data-zerops-agent-authorization-code");
+    expect(html).toContain('type="password"');
+    expect(html).toContain('autoComplete="one-time-code"');
+    expect(html).toContain("Submit code");
+    expect(html).toContain("Pasting it into the terminal works too.");
     expect(html).not.toContain("Device code");
     expect(html).toContain(">Cancel<");
+  });
+
+  // Claude prints "Paste code here if prompted" right under its URL (live,
+  // 2.1.278): the field is there as soon as the page can be opened.
+  it("offers Claude's code field next to the authorization page", () => {
+    const html = render(
+      agent(
+        "claude-code",
+        login("awaiting-browser", {
+          terminalId: "agent-login-claude-code",
+          url: "https://claude.com/cai/oauth/authorize?state=abc",
+        }),
+      ),
+    );
+
+    expect(html).toContain("Open authorization page");
+    expect(html).toContain("It then shows a code: paste it below.");
+    expect(html).toContain("data-zerops-agent-authorization-code");
+    expect(html).not.toContain("Waiting for browser confirmation");
+  });
+
+  it("checks a submitted code without offering the field again", () => {
+    const html = render(agent("claude-code", login("verifying-code")));
+
+    expect(html).toContain("Claude Code is checking the code…");
+    expect(html).not.toContain("data-zerops-agent-authorization-code");
+    expect(html).toContain(">Cancel<");
+  });
+
+  it("never offers a code field to Codex's device flow", () => {
+    const html = render(
+      agent(
+        "codex",
+        login("awaiting-browser", {
+          url: "https://auth.openai.com/codex/device",
+          code: "ABCD-12345",
+        }),
+      ),
+    );
+
+    expect(html).not.toContain("data-zerops-agent-authorization-code");
   });
 
   it("offers retry with the server failure detail", () => {

@@ -12,6 +12,7 @@ import {
   agentLoginLabel,
   agentLoginTerminalToFocus,
   classifyAgentLogin,
+  classifyAgentRowLogin,
   zeropsAgentAuthNeedsAttention,
   zeropsAgentSignInRequired,
 } from "./agentLogin.ts";
@@ -150,6 +151,7 @@ const loginState = (
 ): ZeropsAgentLoginState => ({
   terminalId: "agent-login-claude-code",
   startedAt: "2026-08-29T12:00:00.000Z" as unknown as ZeropsAgentLoginState["startedAt"],
+  startedBy: "user-a",
   ...overrides,
 });
 
@@ -183,13 +185,18 @@ describe("classifyAgentLogin / agentLoginLabel", () => {
     });
   });
 
-  it("awaiting-code: its own kind, labeled to paste into the terminal", () => {
+  it("awaiting-code: its own kind, labeled to paste the code", () => {
     expect(classifyAgentLogin(loginState({ phase: "awaiting-code" }))).toEqual({
       kind: "awaiting-code",
     });
-    expect(agentLoginLabel({ kind: "awaiting-code" })).toBe(
-      "Paste the code into the terminal below",
-    );
+    expect(agentLoginLabel({ kind: "awaiting-code" })).toBe("Paste the code from your browser");
+  });
+
+  it("verifying-code: its own kind, labeled as the check it is", () => {
+    expect(classifyAgentLogin(loginState({ phase: "verifying-code" }))).toEqual({
+      kind: "verifying-code",
+    });
+    expect(agentLoginLabel({ kind: "verifying-code" })).toBe("Checking the code…");
   });
 
   it("succeeded: labeled Authorized", () => {
@@ -215,6 +222,58 @@ describe("classifyAgentLogin / agentLoginLabel", () => {
  * RPC result is the part `useAgentLogin.ts` (untested by convention) can
  * delegate to something this file can pin.
  */
+describe("classifyAgentRowLogin", () => {
+  const authorized = {
+    state: "authorized",
+    credPresent: true,
+    providerAuth: "authenticated",
+  } as const;
+  const signedOut = {
+    state: "not-authorized",
+    credPresent: false,
+    providerAuth: "unauthenticated",
+  } as const;
+
+  it.each([
+    {
+      name: "a login still running is the row's subject",
+      phase: "verifying-code",
+      auth: signedOut,
+      kind: "verifying-code",
+    },
+    {
+      name: "a success steps aside for the verified status",
+      phase: "succeeded",
+      auth: authorized,
+      kind: "none",
+    },
+    {
+      name: "a success does not outlive a sign-out",
+      phase: "succeeded",
+      auth: signedOut,
+      kind: "none",
+    },
+    {
+      name: "a failure stays while the agent is still signed out",
+      phase: "failed",
+      auth: signedOut,
+      kind: "failed",
+    },
+    {
+      name: "a failure steps aside once the agent is signed in after all",
+      phase: "failed",
+      auth: authorized,
+      kind: "none",
+    },
+  ] as const)("$name", ({ phase, auth, kind }) => {
+    expect(
+      classifyAgentRowLogin(
+        agent({ agentId: "claude-code", ...auth, login: loginState({ phase }) }),
+      ).kind,
+    ).toBe(kind);
+  });
+});
+
 describe("agentLoginTerminalToFocus", () => {
   it("a successful start focuses the session's own terminalId", () => {
     const result = AsyncResult.success({ terminalId: "agent-login-claude-code" });
@@ -308,6 +367,24 @@ describe("zeropsAgentAuthNeedsAttention", () => {
         ]),
       ),
     ).toBe(true);
+  });
+
+  // A succeeded session stays in the feed until the next start: it must not
+  // keep the card up once the agent is authorized, nor outlive a sign-out.
+  it("is false when the only login session present succeeded and the agent is authorized", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "codex",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+            login: loginState({ phase: "succeeded" }),
+          }),
+        ]),
+      ),
+    ).toBe(false);
   });
 
   it("is false when the only login session present is cancelled and everything else is authorized", () => {

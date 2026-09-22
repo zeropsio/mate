@@ -45,16 +45,31 @@ const activeStepFor = (agent: ZeropsAgentAuth): string => {
       return "start";
     case "starting":
     case "menu":
-    case "failed":
       return "initialize";
+    // A login keeps its URL once it has one, so a failure after it is the
+    // browser step's (Codex) or the code's (Claude), not the session's.
+    case "failed":
+      if (agent.login.url === undefined) return "initialize";
+      return agent.agentId === "claude-code" ? "verify" : "browser";
     case "awaiting-browser":
       return "browser";
     case "awaiting-code":
       return agent.agentId === "claude-code" ? "verify" : "browser";
+    case "verifying-code":
+      return "verify";
     case "succeeded":
       return "complete";
   }
 };
+
+/**
+ * Whether the dialog offers the field for Claude's authorization code. Claude
+ * prints its "Paste code here" prompt right under the URL, so the field is
+ * there from the moment the page can be opened.
+ */
+export const agentAcceptsCode = (agent: ZeropsAgentAuth): boolean =>
+  agent.agentId === "claude-code" &&
+  (agent.login?.phase === "awaiting-browser" || agent.login?.phase === "awaiting-code");
 
 const actionFor = (agent: ZeropsAgentAuth): AgentAuthorizationDialogAction => {
   switch (agent.login?.phase) {
@@ -63,6 +78,7 @@ const actionFor = (agent: ZeropsAgentAuth): AgentAuthorizationDialogAction => {
       return "start";
     case "starting":
     case "menu":
+    case "verifying-code":
       return "cancel";
     case "awaiting-browser":
       return "open-browser";
@@ -87,9 +103,11 @@ const descriptionFor = (agent: ZeropsAgentAuth): string => {
     case "awaiting-browser":
       return agent.agentId === "codex" && agent.login.code !== undefined
         ? "Copy the device code, open the authorization page and approve access. Completion is detected automatically."
-        : "Open the authorization page and approve access. Return here if the terminal asks for a verification code.";
+        : "Open the authorization page and approve access. It then shows a code: paste it below.";
     case "awaiting-code":
-      return "Paste the code from your browser directly into the terminal. The code stays between you and the provider CLI.";
+      return "Paste the code the authorization page showed you.";
+    case "verifying-code":
+      return `${agentName} is checking the code…`;
     case "succeeded":
       return `${agentName} is authorized in this ZCP. You can close the dialog and start working.`;
     case "failed":
@@ -108,7 +126,7 @@ const runningLabel = (agent: ZeropsAgentAuth, stepId: string): string => {
     case "browser":
       return "Open browser";
     case "verify":
-      return "Paste into terminal";
+      return agent.login?.phase === "verifying-code" ? "Checking" : "Paste the code";
     case "complete":
       return "Complete";
     default:

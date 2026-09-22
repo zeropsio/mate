@@ -1,15 +1,19 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ScopedThreadRef, ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
 import { CheckIcon, CopyIcon, ExternalLinkIcon, TerminalSquareIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { TerminalViewport } from "~/components/ThreadTerminalDrawer";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { primaryServerKeybindingsAtom } from "~/state/server";
+import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { ProcessSteps } from "./primitives";
 import {
+  agentAcceptsCode,
   resolveAgentAuthorizationDialog,
   ZEROPS_AGENT_NAMES,
 } from "./ZeropsAgentAuthorizationDialog.logic";
@@ -25,6 +29,8 @@ interface ZeropsAgentAuthorizationDialogSurfaceProps {
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   readonly onClose: () => void;
   readonly onStart: (agentId: ZeropsAgentId) => void;
+  /** Resolves whether the server took the code (`useAgentLoginSubmitCode`). */
+  readonly onSubmitCode: (agentId: ZeropsAgentId, code: string) => Promise<boolean>;
 }
 
 export function ZeropsAgentAuthorizationDialogSurface({
@@ -34,6 +40,7 @@ export function ZeropsAgentAuthorizationDialogSurface({
   onCancel,
   onClose,
   onStart,
+  onSubmitCode,
 }: ZeropsAgentAuthorizationDialogSurfaceProps) {
   const view = resolveAgentAuthorizationDialog(agent);
   const login = agent.login;
@@ -74,6 +81,9 @@ export function ZeropsAgentAuthorizationDialogSurface({
             </p>
             {login?.phase === "awaiting-browser" ? (
               <BrowserAuthorizationCard agent={agent} />
+            ) : null}
+            {agentAcceptsCode(agent) ? (
+              <AuthorizationCodeForm agentId={agent.agentId} onSubmitCode={onSubmitCode} />
             ) : null}
           </div>
         </div>
@@ -119,6 +129,7 @@ export function ZeropsAgentAuthorizationDialog({
   readonly onOpenChange: (open: boolean) => void;
   readonly onStart: (agentId: ZeropsAgentId) => void;
 }) {
+  const submitCode = useAgentLoginSubmitCode(threadRef);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup
@@ -135,6 +146,7 @@ export function ZeropsAgentAuthorizationDialog({
             onOpenChange(false);
           }}
           onStart={onStart}
+          onSubmitCode={submitCode}
         />
       </DialogPopup>
     </Dialog>
@@ -205,10 +217,71 @@ function BrowserAuthorizationCard({ agent }: { readonly agent: ZeropsAgentAuth }
         </div>
       ) : null}
 
-      <p className="text-center text-[11px] italic text-muted-foreground">
-        Waiting for browser confirmation…
-      </p>
+      {agent.agentId === "codex" ? (
+        <p className="text-center text-[11px] italic text-muted-foreground">
+          Waiting for browser confirmation…
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Claude's authorization code, pasted here the way the Zerops GUI dialog
+ * takes it: the server types it into the login terminal, then Enter. Masked
+ * like the CLI's own prompt masks it. Pasting into the terminal still works.
+ */
+function AuthorizationCodeForm({
+  agentId,
+  onSubmitCode,
+}: {
+  readonly agentId: ZeropsAgentId;
+  readonly onSubmitCode: (agentId: ZeropsAgentId, code: string) => Promise<boolean>;
+}) {
+  const id = useId();
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const trimmed = code.trim();
+
+  return (
+    <form
+      className="space-y-1.5"
+      data-zerops-agent-authorization-code
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (trimmed.length === 0 || submitting) return;
+        setSubmitting(true);
+        void onSubmitCode(agentId, trimmed).then((accepted) => {
+          setSubmitting(false);
+          if (accepted) setCode("");
+        });
+      }}
+    >
+      <Label htmlFor={id}>Authorization code</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          autoComplete="one-time-code"
+          id={id}
+          onChange={(event) => {
+            setCode(event.target.value);
+          }}
+          placeholder="Paste the code from the browser"
+          spellCheck={false}
+          type="password"
+          value={code}
+        />
+        <Button
+          className="shrink-0"
+          data-zerops-agent-authorization-submit-code
+          disabled={trimmed.length === 0 || submitting}
+          type="submit"
+          variant="pill"
+        >
+          Submit code
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">Pasting it into the terminal works too.</p>
+    </form>
   );
 }
 

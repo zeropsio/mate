@@ -255,6 +255,7 @@ const loginState = (
 ): ZeropsAgentLoginState => ({
   terminalId: "agent-login-claude-code",
   startedAt: new Date("2026-08-29T12:00:00.000Z") as unknown as ZeropsAgentLoginState["startedAt"],
+  startedBy: "user-a",
   ...overrides,
 });
 
@@ -357,7 +358,30 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
     expect(html).toContain(">Cancel<");
   });
 
-  it("shows Authorized with no button once succeeded", () => {
+  it("shows Authorized with no button once succeeded and verified", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+            login: loginState({ phase: "succeeded" }),
+          }),
+        ])}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+
+    expect(html).toContain("Authorized");
+    expect(html).not.toContain("<button");
+  });
+
+  // The succeeded session stays in the feed until the next start; a sign-out
+  // since then is what the row has to say.
+  it("offers Sign in again when the agent signed out after a successful login", () => {
     const html = renderToStaticMarkup(
       <ZeropsAgentAuthCard
         snapshot={snapshot([
@@ -368,8 +392,8 @@ describe("ZeropsAgentAuthCard — server-driven login session (S7 follow-up F8)"
       />,
     );
 
-    expect(html).toContain("Authorized");
-    expect(html).not.toContain("<button");
+    expect(html).toContain("Sign in to Claude");
+    expect(html).not.toContain(">Authorized<");
   });
 
   it("shows the failure message and a Sign in again button on failure", () => {

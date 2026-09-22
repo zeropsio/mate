@@ -43,7 +43,8 @@
           "url": "https://auth.openai.com/device",
           "code": "ABCD-EFGH",
           "terminalId": "agent-login-codex",
-          "startedAt": "2026-08-30T12:00:00.000Z"
+          "startedAt": "2026-08-30T12:00:00.000Z",
+          "startedBy": "showcase-user"
         }
       }
     ]
@@ -54,7 +55,8 @@
       "url": "https://auth.openai.com/device",
       "code": "ABCD-EFGH",
       "terminalId": "agent-login-codex",
-      "startedAt": "2026-08-30T12:00:00.000Z"
+      "startedAt": "2026-08-30T12:00:00.000Z",
+      "startedBy": "showcase-user"
     }
   },
   "projects": [

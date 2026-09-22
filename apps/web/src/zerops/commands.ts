@@ -3,6 +3,8 @@
  *
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
+ * - `agentLoginSubmitCode` — server scope: `AuthTerminalOperateScope`; types
+ *   Claude's authorization code into its login terminal.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `mateUpdate` — server scope `exec:operate`; offered only where the
  *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
@@ -36,6 +38,11 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsAgentLoginCancel,
   });
 
+  const agentLoginSubmitCode = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:agentLogin:submitCode",
+    tag: WS_METHODS.zeropsAgentLoginSubmitCode,
+  });
+
   const browserInput = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:browserInput",
     tag: WS_METHODS.zeropsBrowserInput,
@@ -61,6 +68,7 @@ export function createZeropsCommandAtoms<R, E>(
   return {
     agentLoginStart,
     agentLoginCancel,
+    agentLoginSubmitCode,
     browserInput,
     mateUpdate,
     mateCheckUpdate,

@@ -283,7 +283,12 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
     const isActive = (agentId: ZeropsAgentId, token: symbol) =>
       Ref.get(activeTokens).pipe(Effect.map((tokens) => tokens.get(agentId) === token));
 
-    const finishLogin = (agentId: ZeropsAgentId, token: symbol, startedAt: DateTime.Utc) =>
+    const finishLogin = (
+      agentId: ZeropsAgentId,
+      token: symbol,
+      startedAt: DateTime.Utc,
+      startedBy: string,
+    ) =>
       Effect.gen(function* () {
         yield* Effect.sleep(Duration.millis(500));
         if (!(yield* isActive(agentId, token))) {
@@ -293,6 +298,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
           phase: "awaiting-browser",
           terminalId: ZeropsAgentLoginModule.loginTerminalId(agentId),
           startedAt,
+          startedBy,
           ...awaitingLoginDetails[agentId],
         });
 
@@ -305,10 +311,11 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
           phase: "succeeded",
           terminalId: ZeropsAgentLoginModule.loginTerminalId(agentId),
           startedAt,
+          startedBy,
         });
       });
 
-    const start = (agentId: ZeropsAgentId, _threadId: string) =>
+    const start = (agentId: ZeropsAgentId, _threadId: string, subject: string) =>
       Effect.gen(function* () {
         if (!scene.agentAuth.available) {
           return yield* unavailable;
@@ -322,8 +329,8 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
         const token = Symbol(agentId);
         const startedAt = yield* DateTime.now;
         yield* Ref.update(activeTokens, (tokens) => new Map(tokens).set(agentId, token));
-        yield* setLogin(agentId, { phase: "starting", terminalId, startedAt });
-        yield* finishLogin(agentId, token, startedAt).pipe(
+        yield* setLogin(agentId, { phase: "starting", terminalId, startedAt, startedBy: subject });
+        yield* finishLogin(agentId, token, startedAt, subject).pipe(
           Effect.forkIn(serviceScope),
           Effect.asVoid,
         );
@@ -345,7 +352,29 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
           phase: "cancelled",
           terminalId: current?.terminalId ?? ZeropsAgentLoginModule.loginTerminalId(agentId),
           startedAt: current?.startedAt ?? (yield* DateTime.now),
+          startedBy: current?.startedBy ?? "",
         });
+      });
+
+    // The scene's login finishes on its own clock; a submitted code only
+    // shows the step it would take.
+    const submitCode = (agentId: ZeropsAgentId, _code: string) =>
+      Effect.gen(function* () {
+        if (!scene.agentAuth.available) {
+          return yield* unavailable;
+        }
+        const current = (yield* publisher.latest)[agentId];
+        if (
+          agentId !== "claude-code" ||
+          current === undefined ||
+          (current.phase !== "awaiting-browser" && current.phase !== "awaiting-code")
+        ) {
+          return yield* new ZeropsAgentLoginError({
+            reason: "not-awaiting-code",
+            detail: "This sign-in is not waiting for a code. Start it again.",
+          });
+        }
+        yield* setLogin(agentId, { ...current, phase: "verifying-code" });
       });
 
     return {
@@ -354,6 +383,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
       subscribe: publisher.subscribe,
       start,
       cancel,
+      submitCode,
     } satisfies ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
   });
 

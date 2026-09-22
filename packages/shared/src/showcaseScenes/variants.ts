@@ -316,6 +316,7 @@ export function withUnknownClosedAgentLoginPhase(scene: ShowcaseScene): unknown 
         phase: UNKNOWN_AGENT_LOGIN_PHASE,
         terminalId: "future-terminal",
         startedAt: "2026-08-30T12:00:00.000Z",
+        startedBy: "showcase-user",
       };
     }
   }

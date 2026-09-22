@@ -5,6 +5,7 @@ import type {
   ZeropsAgentLoginCancelInput,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
+  ZeropsAgentLoginSubmitCodeInput,
   ZeropsGitRemoteProbeInput,
   ZeropsGitRemoteProbeResult,
 } from "@t3tools/contracts";
@@ -24,6 +25,7 @@ const THREAD_ID = ThreadId.make("thread-a");
 const makeHarness = Effect.gen(function* () {
   const startCalls: Array<ZeropsAgentLoginStartInput> = [];
   const cancelCalls: Array<ZeropsAgentLoginCancelInput> = [];
+  const submitCodeCalls: Array<ZeropsAgentLoginSubmitCodeInput> = [];
   const startResult: ZeropsAgentLoginStartResult = { terminalId: "terminal-login-1" };
   const probeCalls: Array<ZeropsGitRemoteProbeInput> = [];
   const probeResult: ZeropsGitRemoteProbeResult = {
@@ -39,6 +41,10 @@ const makeHarness = Effect.gen(function* () {
     },
     [WS_METHODS.zeropsAgentLoginCancel]: (input: ZeropsAgentLoginCancelInput) => {
       cancelCalls.push(input);
+      return Effect.void;
+    },
+    [WS_METHODS.zeropsAgentLoginSubmitCode]: (input: ZeropsAgentLoginSubmitCodeInput) => {
+      submitCodeCalls.push(input);
       return Effect.void;
     },
     [WS_METHODS.zeropsGitProbeRemote]: (input: ZeropsGitRemoteProbeInput) => {
@@ -81,6 +87,7 @@ const makeHarness = Effect.gen(function* () {
     registry,
     startCalls,
     startResult,
+    submitCodeCalls,
   };
 });
 
@@ -124,6 +131,26 @@ describe("createZeropsCommandAtoms", () => {
         // git's own line and drops the verbs that would run against it.
         expect(result.value).toEqual(rig.probeResult);
       }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("submits Claude's authorization code through the RPC", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const input: ZeropsAgentLoginSubmitCodeInput = {
+        agentId: "claude-code",
+        code: "abc123#state",
+      };
+
+      const result = yield* Effect.promise(() =>
+        rig.commands.agentLoginSubmitCode.run(rig.registry, {
+          environmentId: ENVIRONMENT_ID,
+          input,
+        }),
+      );
+
+      expect(result._tag).toBe("Success");
+      expect(rig.submitCodeCalls).toEqual([input]);
     }).pipe(Effect.scoped),
   );
 

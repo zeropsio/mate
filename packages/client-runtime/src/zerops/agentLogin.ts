@@ -123,6 +123,7 @@ export type ZeropsAgentLoginPresentation =
       readonly code: string | undefined;
     }
   | { readonly kind: "awaiting-code" }
+  | { readonly kind: "verifying-code" }
   | { readonly kind: "succeeded" }
   | { readonly kind: "failed"; readonly message: string | undefined };
 
@@ -141,11 +142,34 @@ export function classifyAgentLogin(
       return { kind: "awaiting-browser", url: login.url, code: login.code };
     case "awaiting-code":
       return { kind: "awaiting-code" };
+    case "verifying-code":
+      return { kind: "verifying-code" };
     case "succeeded":
       return { kind: "succeeded" };
     case "failed":
       return { kind: "failed", message: login.message };
   }
+}
+
+/**
+ * The login as an agent's row shows it, next to the verified status. A login
+ * still running is what the row is about; a finished one steps aside, or it
+ * would outlive the truth — a `succeeded` session stays in the feed until the
+ * next start, and the row said "Authorized" long after a sign-out. So
+ * `succeeded` shows the verified status itself, and `failed` does too once
+ * that status says the agent is signed in after all (the terminal, another
+ * browser). The dialog reads the raw phase: it is the one place a finished
+ * attempt is still the subject.
+ */
+export function classifyAgentRowLogin(
+  agent: AgentAuthFields & Pick<ZeropsAgentAuth, "login">,
+): ZeropsAgentLoginPresentation {
+  const login = classifyAgentLogin(agent.login);
+  if (login.kind === "succeeded") return { kind: "none" };
+  if (login.kind === "failed" && classifyAgentAuth(agent).kind === "authorized") {
+    return { kind: "none" };
+  }
+  return login;
 }
 
 /** The text label for every login-session phase except `awaiting-browser`, which renders structured actions instead (see the card). */
@@ -160,7 +184,9 @@ export function agentLoginLabel(presentation: ZeropsAgentLoginPresentation): str
     case "awaiting-browser":
       return "Waiting for you to finish signing in";
     case "awaiting-code":
-      return "Paste the code into the terminal below";
+      return "Paste the code from your browser";
+    case "verifying-code":
+      return "Checking the code…";
     case "succeeded":
       return "Authorized";
     case "failed":
@@ -191,9 +217,10 @@ export function agentLoginTerminalToFocus(
  * authorized AND the live provider check agrees, with no login session
  * actively running) doesn't — notably, an agent whose `state` says
  * `authorized*` but whose `providerAuth` disagrees still counts, or the
- * user would never learn they need to re-auth; likewise an agent mid-login
- * (menu/awaiting-browser/awaiting-code) keeps the card visible even if its
- * baseline `state` still reads "authorized" from a previous session.
+ * user would never learn they need to re-auth; likewise an agent mid-login,
+ * or whose last attempt failed ({@link classifyAgentRowLogin}), keeps the
+ * card visible even if its baseline `state` still reads "authorized" from a
+ * previous session.
  */
 export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot): boolean {
   return (
@@ -201,7 +228,7 @@ export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot)
     snapshot.agents.some(
       (agent) =>
         classifyAgentAuth(agent).kind !== "authorized" ||
-        classifyAgentLogin(agent.login).kind !== "none",
+        classifyAgentRowLogin(agent).kind !== "none",
     )
   );
 }
