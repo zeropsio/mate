@@ -10,7 +10,6 @@ import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
 import { runZeropsMateCheckUpdate, runZeropsMateUpdate } from "./registerZeropsRpc.ts";
 
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
-  markAgentOAuth: () => Effect.die("not used"),
   mateStatus: () => Effect.die("not used"),
   mateUpdate: () => result,
 });

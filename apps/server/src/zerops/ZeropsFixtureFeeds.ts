@@ -211,6 +211,8 @@ const makeAgentAuth = (scene: ShowcaseScene) =>
       changes: publisher.changes,
       subscribe: publisher.subscribe,
       recheckNow: () => publisher.publishCurrent.pipe(Effect.asVoid),
+      // A fixture/showcase run never has a sign-out in flight to invalidate.
+      invalidatePendingMark: () => Effect.void,
     } satisfies ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   });
 
@@ -424,9 +426,6 @@ const zeropsCliFixtureLayer = () =>
   Layer.succeed(
     ZeropsCliModule.ZeropsCli,
     ZeropsCliModule.ZeropsCli.of({
-      markAgentOAuth: () => {
-        throw new Error("ZeropsCli fixture: markAgentOAuth is unreachable");
-      },
       mateStatus: () => {
         throw new Error("ZeropsCli fixture: mateStatus is unreachable");
       },

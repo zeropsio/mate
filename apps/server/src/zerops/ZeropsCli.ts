@@ -1,9 +1,11 @@
 /**
  * The process seam between the mate server and the `zcp` binary.
  *
- * One call: `markAgentOAuth` — `zcp agent mark-oauth <agent>`, spawned once
- * per verified agent login (spec §0 Boundaries: the closed touchpoint list).
- * It is the only `zcp` argv the mate server ever runs.
+ * `mateStatus` / `mateUpdate` — `zcp mate status` / `zcp mate update`
+ * (spec-mate.md §2.9). The platform "agent signed in" flag is no longer
+ * written by spawning `zcp` (the old `agent mark-oauth` call) — see
+ * {@link ../ZeropsAgentFlag.ts}, which writes it directly through the
+ * Zerops API with the Mate's own key.
  *
  * This module runs one attempt and reports what happened.
  */
@@ -15,7 +17,6 @@ import * as Schema from "effect/Schema";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { parseMarkAgentOAuthOutput, type MarkAgentOAuthResult } from "./zeropsAgentAuthParse.ts";
 import {
   parseMateStatusOutput,
   parseMateUpdateOutput,
@@ -25,10 +26,7 @@ import {
 
 /** The binary `zcp init` installs on every Zerops container. */
 const ZCP_COMMAND = "zcp";
-const MARK_OAUTH_TIMEOUT = Duration.seconds(15);
-/** The output is one short JSON line; the cap only guards a pathological answer. */
-const MARK_OAUTH_MAX_OUTPUT_BYTES = 64 * 1024;
-/** `mate status` only reads a cached manifest (spec-mate.md §2.1c); same budget as mark-oauth. */
+/** `mate status` only reads a cached manifest (spec-mate.md §2.1c). */
 const MATE_STATUS_TIMEOUT = Duration.seconds(15);
 const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
 /** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
@@ -74,14 +72,6 @@ export class ZeropsCli extends Context.Service<
   ZeropsCli,
   {
     /**
-     * Runs `zcp agent mark-oauth <agent-id>` — the platform-flag half of the
-     * §3 W-STATE auth matrix (docs/spec-welcome-mode.md §4 W-AUTH). Never
-     * prints or receives a credential value, only the flag key it upserted.
-     */
-    readonly markAgentOAuth: (
-      agentId: string,
-    ) => Effect.Effect<MarkAgentOAuthResult, ZeropsCliError>;
-    /**
      * Runs `zcp mate status --json` (spec-mate.md §2.9): the one place that
      * compares an installed mate with the stable manifest. Never installs.
      * Tolerates an `error` field in the answer — a degraded-but-successful
@@ -118,7 +108,7 @@ const spawnErrorToCliError = (command: string, cause: unknown): ZeropsCliError =
     ? new ZeropsCliNotFound({ command })
     : new ZeropsCliFailed({ command, reason: String(cause) });
 
-/** The first line of stderr, which is where `agent mark-oauth` puts its diagnostic. */
+/** The first line of stderr, which is where a failed `zcp` subcommand puts its diagnostic. */
 const firstDiagnosticLine = (stderr: string, fallback: string): string => {
   const line = stderr.split("\n").find((entry) => entry.trim().length > 0);
   return line === undefined ? fallback : line.trim();
@@ -128,49 +118,6 @@ export const make = (options: ZeropsCliOptions) =>
   Effect.gen(function* () {
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const { command, baseArgs, cwd } = options;
-
-    const markAgentOAuth = (agentId: string): Effect.Effect<MarkAgentOAuthResult, ZeropsCliError> =>
-      processRunner
-        .run({
-          command,
-          args: [...baseArgs, "agent", "mark-oauth", agentId],
-          cwd,
-          timeout: MARK_OAUTH_TIMEOUT,
-          maxOutputBytes: MARK_OAUTH_MAX_OUTPUT_BYTES,
-          outputMode: "truncate",
-        })
-        .pipe(
-          Effect.mapError((cause): ZeropsCliError =>
-            cause._tag === "ProcessSpawnError"
-              ? spawnErrorToCliError(command, cause.cause)
-              : new ZeropsCliFailed({ command, reason: cause.message }),
-          ),
-          Effect.flatMap((result) => {
-            if (result.code !== 0) {
-              return Effect.fail(
-                new ZeropsCliFailed({
-                  command,
-                  reason: firstDiagnosticLine(
-                    result.stderr,
-                    `agent mark-oauth exited ${result.code}`,
-                  ),
-                }),
-              );
-            }
-            const parsed = parseMarkAgentOAuthOutput(result.stdout);
-            return parsed === undefined
-              ? Effect.fail(
-                  new ZeropsCliFailed({
-                    command,
-                    reason: firstDiagnosticLine(
-                      result.stderr,
-                      "agent mark-oauth did not print a result document",
-                    ),
-                  }),
-                )
-              : Effect.succeed(parsed);
-          }),
-        );
 
     const mateStatus = (options?: {
       readonly refresh?: boolean;
@@ -256,7 +203,6 @@ export const make = (options: ZeropsCliOptions) =>
         );
 
     return {
-      markAgentOAuth,
       mateStatus,
       mateUpdate,
     } satisfies ZeropsCli["Service"];

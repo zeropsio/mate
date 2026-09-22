@@ -20,7 +20,7 @@ import {
   toZembedEnv,
 } from "./ZeropsAgentAuth.ts";
 import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
-import { ZeropsCliNotFound } from "./ZeropsCli.ts";
+import { ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import { SIGNERS_CACHE_TTL } from "./ZeropsProjectSigners.ts";
 
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
@@ -222,7 +222,9 @@ describe("signer catch-up", () => {
       const answer = yield* Ref.make(input.signers);
       const calls = yield* Ref.make(0);
       const feed = yield* make({
-        cli: { markAgentOAuth: () => Effect.fail(new ZeropsCliNotFound({ command: "zcp" })) },
+        agentFlag: {
+          markSignedIn: () => Effect.fail(new ZeropsAgentFlagError({ reason: "not used" })),
+        },
         refreshProviderAuth: () => Effect.succeed("unauthenticated" as const),
         homeDir,
         envStorePath,

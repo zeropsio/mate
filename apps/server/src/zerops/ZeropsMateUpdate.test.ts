@@ -25,7 +25,6 @@ const stubCli = (
     readonly refresh?: boolean;
   }) => Effect.Effect<MateStatusResult, ZeropsCliNotFound | ZeropsCliFailed>,
 ) => ({
-  markAgentOAuth: () => Effect.die("not used"),
   mateStatus,
   mateUpdate: () => Effect.die("not used"),
 });

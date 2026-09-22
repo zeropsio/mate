@@ -1153,7 +1153,6 @@ const buildAppUnderTest = (options?: {
             // spawns a doomed child process, matching MU-3: outside a Zerops
             // environment ZeropsMateUpdate holds nothing.
             Layer.mock(ZeropsCliModule.ZeropsCli)({
-              markAgentOAuth: () => Effect.die("ZeropsCli mock: markAgentOAuth is unreachable"),
               mateStatus: () => Effect.die("ZeropsCli mock: mateStatus is unreachable"),
               mateUpdate: () => Effect.die("ZeropsCli mock: mateUpdate is unreachable"),
               ...options?.layers?.zeropsCli,
