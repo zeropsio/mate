@@ -219,6 +219,10 @@
       "types": "./src/zerops/agentLogin.ts",
       "default": "./src/zerops/agentLogin.ts"
     },
+    "./zerops/agentAvailability": {
+      "types": "./src/zerops/agentAvailability.ts",
+      "default": "./src/zerops/agentAvailability.ts"
+    },
     "./zerops/autoEnterProvisioning": {
       "types": "./src/zerops/autoEnterProvisioning.ts",
       "default": "./src/zerops/autoEnterProvisioning.ts"

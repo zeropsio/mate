@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  resolveZeropsAgentAvailability,
+  zeropsAgentAvailabilityIsRunnable,
+  type ZeropsAgentAvailability,
+  type ZeropsAgentAvailabilityInput,
+} from "./agentAvailability.ts";
+
+const JAN = "jan-user-id";
+const EVA = "eva-user-id";
+
+const signedIn = {
+  state: "authorized",
+  providerAuth: "authenticated",
+  credPresent: true,
+  flagToken: false,
+} as const;
+const tokenAgent = {
+  state: "authorized-token",
+  providerAuth: "unknown",
+  credPresent: false,
+  flagToken: true,
+} as const;
+
+function input(
+  agent: Pick<ZeropsAgentAvailabilityInput, "state" | "providerAuth" | "credPresent" | "flagToken">,
+  signer: string | undefined,
+  subject: string | undefined,
+): ZeropsAgentAvailabilityInput {
+  return {
+    ...agent,
+    authorizedBy: signer === undefined ? undefined : { subject: signer },
+    viewerSubject: subject,
+  };
+}
+
+// Mirrors apps/server/src/zerops/ZeropsProjectSigners.test.ts's `turnRefusal`
+// table row for row (turnRefusal's `undefined`/refusal kind mapped onto this
+// module's richer client answer) — see agentAvailability.ts's module doc for
+// why the "unidentified viewer" row disagrees with `resolveAgentOwnership`.
+describe("resolveZeropsAgentAvailability — agrees with turnRefusal", () => {
+  it.each([
+    ["my own agent", signedIn, JAN, JAN, { kind: "ready" }],
+    [
+      "an agent somebody else signed in",
+      signedIn,
+      EVA,
+      JAN,
+      { kind: "someone-else", signerId: EVA },
+    ],
+    [
+      "an agent nobody's sign-in was recorded for",
+      signedIn,
+      undefined,
+      JAN,
+      { kind: "unrecorded" },
+    ],
+    ["an agent whose recorded signer is blank", signedIn, "", JAN, { kind: "unrecorded" }],
+    [
+      "a caller the session could not name",
+      signedIn,
+      JAN,
+      undefined,
+      { kind: "someone-else", signerId: JAN },
+    ],
+    ["a token-authorized agent somebody else signed in", tokenAgent, EVA, JAN, { kind: "ready" }],
+    [
+      "a token-authorized agent with no record at all",
+      tokenAgent,
+      undefined,
+      JAN,
+      { kind: "ready" },
+    ],
+    // turnRefusal classifies FIRST: a token agent whose own CLI probe says
+    // unauthenticated is refused as not-signed-in before flagToken is ever
+    // consulted — the token bypasses ownership, never the sign-in check itself.
+    [
+      "a token-authorized agent whose own check says its login no longer works",
+      { ...tokenAgent, providerAuth: "unauthenticated" },
+      JAN,
+      JAN,
+      { kind: "needs-sign-in", signInKind: "needs-reauth" },
+    ],
+    [
+      "my agent still being registered",
+      { ...signedIn, state: "local-only" },
+      JAN,
+      JAN,
+      { kind: "registering" },
+    ],
+    [
+      "an agent nobody signed in",
+      {
+        state: "not-authorized",
+        providerAuth: "unauthenticated",
+        credPresent: false,
+        flagToken: false,
+      },
+      undefined,
+      JAN,
+      { kind: "needs-sign-in", signInKind: "not-authorized" },
+    ],
+    [
+      "an agent the project signed in but this container has no login for",
+      { ...signedIn, credPresent: false, state: "reconnect" },
+      JAN,
+      JAN,
+      { kind: "needs-sign-in", signInKind: "reconnect" },
+    ],
+    [
+      "an agent whose own check says its login no longer works",
+      { ...signedIn, providerAuth: "unauthenticated" },
+      JAN,
+      JAN,
+      { kind: "needs-sign-in", signInKind: "needs-reauth" },
+    ],
+  ] satisfies ReadonlyArray<
+    [
+      string,
+      Pick<ZeropsAgentAvailabilityInput, "state" | "providerAuth" | "credPresent" | "flagToken">,
+      string | undefined,
+      string | undefined,
+      ZeropsAgentAvailability,
+    ]
+  >)("%s", (_name, agent, signer, subject, expected) => {
+    expect(resolveZeropsAgentAvailability(input(agent, signer, subject))).toEqual(expected);
+  });
+});
+
+describe("resolveZeropsAgentAvailability — client-only states", () => {
+  it("a login session in progress is signing-in even over a stale not-authorized state", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        state: "not-authorized",
+        providerAuth: "unknown",
+        credPresent: false,
+        flagToken: false,
+        viewerSubject: JAN,
+        loginPhase: "awaiting-browser",
+      }),
+    ).toEqual({ kind: "signing-in" });
+  });
+
+  it("a token-authorized agent is ready even mid-login (token wins over an in-progress session)", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...tokenAgent,
+        viewerSubject: JAN,
+        loginPhase: "awaiting-code",
+      }),
+    ).toEqual({ kind: "ready" });
+  });
+
+  it("a cancelled login session falls back to the baseline classification", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        state: "not-authorized",
+        providerAuth: "unknown",
+        credPresent: false,
+        flagToken: false,
+        viewerSubject: JAN,
+        loginPhase: "cancelled",
+      }),
+    ).toEqual({ kind: "needs-sign-in", signInKind: "not-authorized" });
+  });
+
+  it("recordFailed never overrides an authorizedBy tag the server already reads (naming the viewer)", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...signedIn,
+        authorizedBy: { subject: JAN },
+        viewerSubject: JAN,
+        recordFailed: true,
+      }),
+    ).toEqual({ kind: "ready" });
+  });
+
+  it("recordFailed never overrides an authorizedBy tag naming someone else", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...signedIn,
+        authorizedBy: { subject: EVA },
+        viewerSubject: JAN,
+        recordFailed: true,
+      }),
+    ).toEqual({ kind: "someone-else", signerId: EVA });
+  });
+
+  it("recordFailed with nothing recorded at all is still unrecorded", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...signedIn,
+        authorizedBy: undefined,
+        viewerSubject: JAN,
+        recordFailed: true,
+      }),
+    ).toEqual({ kind: "unrecorded" });
+  });
+
+  it("a login in progress does not override an agent this viewer can already run (5a)", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...signedIn,
+        authorizedBy: { subject: JAN },
+        viewerSubject: JAN,
+        loginPhase: "awaiting-browser",
+      }),
+    ).toEqual({ kind: "ready" });
+  });
+
+  it("a login in progress still overrides an agent this viewer cannot otherwise run", () => {
+    expect(
+      resolveZeropsAgentAvailability({
+        ...signedIn,
+        authorizedBy: { subject: EVA },
+        viewerSubject: JAN,
+        loginPhase: "awaiting-browser",
+      }),
+    ).toEqual({ kind: "signing-in" });
+  });
+});
+
+describe("zeropsAgentAvailabilityIsRunnable", () => {
+  it.each([
+    [{ kind: "ready" }, true],
+    [{ kind: "registering" }, true],
+    [{ kind: "signing-in" }, false],
+    [{ kind: "needs-sign-in", signInKind: "not-authorized" }, false],
+    [{ kind: "someone-else", signerId: undefined }, false],
+    [{ kind: "unrecorded" }, false],
+  ] satisfies ReadonlyArray<[ZeropsAgentAvailability, boolean]>)(
+    "%o → %s",
+    (availability, expected) => {
+      expect(zeropsAgentAvailabilityIsRunnable(availability)).toBe(expected);
+    },
+  );
+});

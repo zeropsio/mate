@@ -58,7 +58,11 @@ const AGENT_NAMES: Readonly<Record<ZeropsAgentId, string>> = {
 
 /**
  * What an agent that cannot be picked says about it — the model picker's
- * tooltip. Each names the one thing to do, where it is done.
+ * tooltip, and (since D6's `turnRefusal` reuses this classification) the
+ * server's own refusal text for the same agent. Neither names a specific
+ * place to act: the model picker itself offers sign-in per agent now, the
+ * Zerops panel's card still does too, and a future client may offer it
+ * somewhere else again — the text says what to do, not where.
  */
 export function zeropsAgentUnavailableReason(
   agentId: ZeropsAgentId,
@@ -69,10 +73,10 @@ export function zeropsAgentUnavailableReason(
     case "registering":
       return `${name} is signed in and being registered with Zerops. It will be ready in a moment.`;
     case "reconnect":
-      return `${name} is signed in on this project, but this container has no login for it (it was rebuilt). Sign in again from the Zerops panel.`;
+      return `${name} is signed in on this project, but this container has no login for it (it was rebuilt). Sign in again.`;
     case "needs-reauth":
-      return `${name}'s login on this project no longer works. Sign in again from the Zerops panel.`;
+      return `${name}'s login on this project no longer works. Sign in again.`;
     case "not-authorized":
-      return `${name} is not signed in on this project. Sign in from the Zerops panel.`;
+      return `${name} is not signed in on this project. Sign it in to use it.`;
   }
 }

@@ -23,11 +23,29 @@ describe("classifyZeropsAgentAuth", () => {
 
 describe("zeropsAgentUnavailableReason", () => {
   it.each(["registering", "reconnect", "needs-reauth", "not-authorized"] as const)(
-    "%s names the agent and where to act",
+    "%s names the agent and never a specific place to act",
     (kind) => {
       const reason = zeropsAgentUnavailableReason("codex", kind);
       expect(reason).toContain("Codex");
-      if (kind !== "registering") expect(reason).toContain("Zerops panel");
+      // The model picker offers sign-in itself now, so the copy that also
+      // doubles as the server's own turnRefusal text must not send everyone
+      // to a specific surface.
+      expect(reason).not.toContain("Zerops panel");
     },
   );
+
+  it.each([
+    [
+      "registering",
+      "Codex is signed in and being registered with Zerops. It will be ready in a moment.",
+    ],
+    [
+      "reconnect",
+      "Codex is signed in on this project, but this container has no login for it (it was rebuilt). Sign in again.",
+    ],
+    ["needs-reauth", "Codex's login on this project no longer works. Sign in again."],
+    ["not-authorized", "Codex is not signed in on this project. Sign it in to use it."],
+  ] as const)("%s reads exactly", (kind, expected) => {
+    expect(zeropsAgentUnavailableReason("codex", kind)).toBe(expected);
+  });
 });
