@@ -89,8 +89,9 @@ driven end to end_, _The backbone's first live run_, _A real Mate through the ba
    project with its `zcp` container, and grants the broker the Mate project. The projects page
    carries the boot on the Mate's card; a creation the platform failed reads "Could not be created."
 2. **The Mate is up** 40–100 s after registration; Gitea's four services in about three minutes.
-   The group-reach reconcile lowers the Mate's key; the delegation and the isolation steps do not run
-   on this path (open, §7).
+   The birth wait (spec §4.4) hardens it before anyone is admitted — `envIsolation: service`, the
+   key on the `zcp` service, the app containers restarted, the `zcp` container never — and the
+   group-reach reconcile lowers the key and drops the delegation from any page (0.11.39).
 3. **The broker's first pass** once Gitea answers: the Gitea org, its three teams, the group repo
    with `main` protected, the org hook, the Mate's restricted bot, its token, and the three variables
    on the Mate's `zcp` service — 328 s after registration in the last run, nothing restarted.
@@ -276,10 +277,14 @@ ledger row or a test.
 
 In the order the owner ranked them, then the rest:
 
-1. **A Mate made by _New project_ keeps its delegation and runs un-isolated** (0.4, 0.10). The
-   two steps exist only in `createEnvironment.ts`, which the wizard's one-call path skips since
-   0.11.2, and no page reconcile applies them; measured 2026-09-17 on Zane. Fix: run both right after
-   the create, before the container's first boot, so nothing restarts.
+1. **A Mate made by _New project_ keeps its delegation and runs un-isolated** (0.4, 0.10). Closed
+   in steps: the delegation drop at creation and in the reach reconcile (0.11.28–0.11.29); the
+   isolation moved to the connect (0.11.29–0.11.30), where it restarted the Mate seconds after the
+   door admitted the person and threw them out (the owner's run, 2026-09-22); since 0.11.39 it is
+   the birth wait's `hardening` level, gated on the platform's processes observed finished, run
+   before admission, and it never restarts the `zcp` container because the server reads its key
+   live (`ZeropsMateKey`). The reading behind it: `../zcp/plans/mate-birth-2026-09-22/`. Unmeasured
+   live until the next creation on 0.11.39.
 2. **The projects page card stays at "Almost there." after the Mate is up** (owner's run
    2026-09-17). The row gets its origin, its probe and its wait from the pushed inventory, so a
    missed push leaves the card waiting while the Mate answers; a reload redirects to the
