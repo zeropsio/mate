@@ -16,6 +16,7 @@ import {
   carryForwardServiceOutcome,
   inventoryProjectRefs,
   isInterestBlocked,
+  isPausedOnlyRound,
   supplementalAccessFor,
 } from "./ZeropsInventoryProvider";
 
@@ -161,6 +162,49 @@ describe("isInterestBlocked", () => {
       progress,
     };
     expect(isInterestBlocked(state, 8_000 + GRACE_MS + 1_000_000, true)).toBe(false);
+  });
+});
+
+describe("isPausedOnlyRound", () => {
+  const identity = {} as InterestIdentity;
+  const paused: InterestState = { status: "paused", identity, reason: "background" };
+  const observing: InterestState = {
+    status: "observing",
+    identity,
+    guarantee: "source-order-unverified",
+    sinceReceiptOrdinal: 0 as never,
+  };
+  const recovering: InterestState = {
+    status: "recovering",
+    identity,
+    reason: "disconnect",
+    attempt: 1,
+    nextRetryAtMs: 0,
+    progress: {
+      requiredRegistrations: 1,
+      completedRegistrations: 0,
+      requiredReads: 1,
+      completedReads: 0,
+      crossedReceiptOrdinal: 0 as never,
+    } as InterestState extends { readonly progress: infer P } ? P : never,
+  };
+
+  it("is false when there is no demand", () => {
+    expect(isPausedOnlyRound([])).toBe(false);
+  });
+
+  it("is false when every demanded interest is already observing", () => {
+    expect(isPausedOnlyRound([observing, observing])).toBe(false);
+  });
+
+  it("is true when the only interests not yet observing are paused", () => {
+    expect(isPausedOnlyRound([observing, paused])).toBe(true);
+    expect(isPausedOnlyRound([paused, paused])).toBe(true);
+  });
+
+  it("is false when any demanded interest is stuck for a reason other than background pause", () => {
+    expect(isPausedOnlyRound([paused, recovering])).toBe(false);
+    expect(isPausedOnlyRound([paused, undefined])).toBe(false);
   });
 });
 

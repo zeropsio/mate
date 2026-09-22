@@ -937,6 +937,29 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const current = yield* Ref.get(model);
         const desired = current.interests.get(identity.key);
         if (desired === undefined || desired.interest.identity !== identity) return;
+        // A background tab already tore down every receiver (pauseForBackground): a
+        // failure signal that was in flight when that happened must not flip this
+        // interest from "paused" back to "recovering" against a receiver that no
+        // longer exists — scheduleRecovery would then silently decline to run a
+        // cycle for it (receivers.get(...) mismatch) and resumeFromBackground would
+        // never see it either, since it only looks for "paused"/"failed". Leave it
+        // paused; resume re-establishes it like any other paused interest.
+        if ((yield* Ref.get(currentVisibility)) === "hidden") {
+          if (desired.interest.status === "paused") return;
+          const reduction = reduceZeropsDataState(
+            current,
+            {
+              kind: "interest-upserted",
+              interest: {
+                ...desired,
+                interest: { status: "paused", identity, reason: "background" },
+              },
+            },
+            policy,
+          );
+          if (reduction.state !== current) yield* publish(reduction.state);
+          return;
+        }
         const priorProgress =
           desired.interest.status === "establishing" || desired.interest.status === "recovering"
             ? desired.interest.progress
@@ -2385,6 +2408,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.gen(function* () {
         if (yield* Ref.get(closed)) return;
         const organizationKey = organizationKeyOf(organization);
+        // A recovery cycle already owns this organization's receiver and is retrying
+        // on its own backoff. An independent replacement here would race it: each
+        // one's in-flight establishInterest call loses to the other's receiver swap
+        // (the identity/receiver mismatch guards abort it), so neither ever survives
+        // long enough to complete a registration — a livelock. Wake the existing
+        // cycle instead, which pulls its next retry forward to now.
+        const activeRecoveryWake = recoveringOrganizations.get(organizationKey);
+        if (activeRecoveryWake !== undefined) {
+          yield* Deferred.succeed(activeRecoveryWake, undefined);
+          return;
+        }
         const state = yield* Ref.get(model);
         const held = [...interests.values()].filter(
           (runtimeInterest) =>

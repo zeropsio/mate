@@ -130,6 +130,20 @@ export function carryForwardServiceOutcome(
   return prior?.status === "resolved" ? prior : computed;
 }
 
+/**
+ * Whether the inventory round is incomplete only because the tab is
+ * backgrounded: every demanded interest that hasn't reached `observing` is
+ * `paused` on purpose (`pauseForBackground`), not stuck or failed. It
+ * resolves on its own the moment the tab is visible again, so the wait
+ * screen should read as "waiting for the tab", not "still checking".
+ */
+export function isPausedOnlyRound(demanded: ReadonlyArray<InterestState | undefined>): boolean {
+  return (
+    demanded.some((interest) => interest?.status === "paused") &&
+    demanded.every((interest) => interest?.status === "paused" || interest?.status === "observing")
+  );
+}
+
 function InterestDemand({ descriptor }: { readonly descriptor: RuntimeInterestDescriptor }) {
   useZeropsDataInterest(descriptor);
   return null;
@@ -417,6 +431,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   const projected = useMemo(() => {
     const projects: ZeropsProject[] = [];
     const services = new Map<string, InventoryServiceOutcome>();
+    // A project that has not (yet, or ever) become ACTIVE gets an empty-services
+    // placeholder below, written straight into `services` for this render only.
+    // It must never enter the carry-forward cache: `resolvedOrCarried` treats any
+    // cached "resolved" entry as trustworthy, and once the project turns ACTIVE
+    // this placeholder would otherwise be handed back as its outcome before that
+    // project's own services have ever actually been read — reading as "no Zerops
+    // Mate container in this project" instead of "still reading".
+    const carryableOutcomes = new Map<string, InventoryServiceOutcome>();
     const projectRefs = new Map<string, ProjectRef>();
     const previousOutcomes = prevServiceOutcomesRef.current;
     const resolvedOrCarried = (projectId: string, computed: InventoryServiceOutcome) =>
@@ -447,12 +469,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       const serviceRead = serviceReads.get(key);
       if (serviceRead === undefined) {
         complete = false;
-        services.set(dto.id, resolvedOrCarried(dto.id, { status: "failed" }));
+        const outcome = resolvedOrCarried(dto.id, { status: "failed" });
+        services.set(dto.id, outcome);
+        carryableOutcomes.set(dto.id, outcome);
         continue;
       }
       if (serviceRead.query.status !== "observed") {
         complete = false;
-        services.set(dto.id, resolvedOrCarried(dto.id, { status: "failed" }));
+        const outcome = resolvedOrCarried(dto.id, { status: "failed" });
+        services.set(dto.id, outcome);
+        carryableOutcomes.set(dto.id, outcome);
         continue;
       }
       const decoded: ZeropsService[] = [];
@@ -469,15 +495,14 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           serviceComplete = false;
         } else decoded.push(service);
       }
-      services.set(
+      const outcome = resolvedOrCarried(
         dto.id,
-        resolvedOrCarried(
-          dto.id,
-          serviceComplete ? { status: "resolved", services: decoded } : { status: "failed" },
-        ),
+        serviceComplete ? { status: "resolved", services: decoded } : { status: "failed" },
       );
+      services.set(dto.id, outcome);
+      carryableOutcomes.set(dto.id, outcome);
     }
-    prevServiceOutcomesRef.current = services;
+    prevServiceOutcomesRef.current = carryableOutcomes;
     const demanded = [
       ...organizationDescriptors.map((descriptor) =>
         demandedInterest(organizationReads.get(interestKeyOf(descriptor))?.observation, descriptor),
@@ -494,7 +519,15 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       isInterestBlocked(interest, Date.now(), documentHidden),
     );
     const observing = demanded.every((interest) => interest?.status === "observing");
-    return { projects, services, projectRefs, complete: complete && observing, failedInterest };
+    const pausedOnly = isPausedOnlyRound(demanded);
+    return {
+      projects,
+      services,
+      projectRefs,
+      complete: complete && observing,
+      failedInterest,
+      pausedOnly,
+    };
   }, [
     organizationDescriptors,
     organizationReads,
@@ -652,6 +685,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               Sign out
             </button>
           </div>
+        ) : projected.pausedOnly ? (
+          <ZeropsLandingWait label="Paused while this tab is in the background…" />
         ) : waitedTooLong ? (
           <div role="alert" className="p-8">
             Still checking your Zerops projects.{" "}

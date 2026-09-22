@@ -852,6 +852,200 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect("a failure signal that lands after background pause stays paused, not recovering", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const events = yield* Queue.unbounded<ReceiverEvent>();
+      let processSubscriptionName: string | undefined;
+      let opens = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) => {
+          opens += 1;
+          return Effect.succeed({
+            identity,
+            organization,
+            delivery: "hot-single-consumer-buffered-before-open-resolves",
+            events: Stream.fromQueue(events),
+          });
+        },
+        register: (_receiver, request) => {
+          if (
+            request.descriptor.kind === "entity-updates" &&
+            request.descriptor.entity === "process"
+          )
+            processSubscriptionName = request.subscriptionName;
+          return Effect.succeed({ responseObservations: [] });
+        },
+        read: () => Effect.succeed({ observations: [] }),
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+      const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({ hiddenReceiverPauseAfterMs: 50 }),
+        visibility: {
+          current: Ref.get(visibilityState),
+          changes: Stream.fromQueue(visibilityChanges),
+        },
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const activityDescriptor: RuntimeInterestDescriptor = {
+        kind: "project-activity",
+        project: topologyDescriptor.project,
+      };
+      const leaseScope = yield* Scope.make();
+      const lease = yield* runtime.acquire(activityDescriptor).pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      expect(processSubscriptionName).toBeDefined();
+      const opensBeforePause = opens;
+
+      // Background pause tears every receiver down and marks the interest paused.
+      yield* Ref.set(visibilityState, "hidden");
+      yield* Queue.offer(visibilityChanges, "hidden");
+      yield* TestClock.adjust("50 millis");
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "paused",
+      );
+
+      // A malformed-frame signal from the old (already-torn-down) receiver's
+      // still-running consumer fiber arrives after the pause. It must not flip the
+      // interest from "paused" back to "recovering" against a receiver that no
+      // longer exists in `receivers` — that would silently start no recovery cycle
+      // (scheduleRecovery declines) and resumeFromBackground would never see it
+      // either, since it only looks for "paused"/"failed".
+      yield* Queue.offer(events, {
+        kind: "malformed",
+        subscriptionName: processSubscriptionName as never,
+      });
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const stateAfterStray = registry.get(runtime.stateAtom);
+      expect(stateAfterStray.interests.get(lease.interest)?.interest.status).toBe("paused");
+
+      // Foreground resume still recovers cleanly.
+      yield* Ref.set(visibilityState, "visible");
+      yield* Queue.offer(visibilityChanges, "visible");
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      expect(opens).toBeGreaterThan(opensBeforePause);
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
+  it.effect(
+    "refresh joins an in-progress recovery cycle for the organization instead of racing it",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        let opens = 0;
+        let shouldFailOpen = true;
+        const adapter: ZeropsDataAdapter = {
+          openReceiver: (_scope, organization, identity) => {
+            opens += 1;
+            if (shouldFailOpen)
+              return Effect.fail({
+                _tag: "ZeropsDataAdapterError",
+                kind: "network",
+                message: "connect refused",
+                retryable: true,
+                accountRevocationEvidence: false,
+              } satisfies AdapterError);
+            return Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.never,
+            } satisfies ReceiverHandle);
+          },
+          register: () => Effect.succeed({ responseObservations: [] }),
+          read: () => Effect.succeed({ observations: [] }),
+          execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+          closeReceiver: () => Effect.void,
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          policy: makeZeropsDataPolicy({
+            recoveryBackoffStartMs: 1000,
+            recoveryBackoffMaxMs: 1000,
+          }),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+          Queue.offerUnsafe(states, state);
+        });
+        const leaseScope = yield* Scope.make();
+        const lease = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "recovering",
+        );
+        // Let the org's own recovery cycle finish its prepare step (receiver
+        // replacement, identity bump, backoff computation) and settle into its sleep
+        // before refresh joins it — otherwise this would race that unrelated,
+        // legitimate identity bump instead of the one under test.
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        const opensAfterFirstFailure = opens;
+        const epochWhileRecovering = registry.get(runtime.stateAtom).interests.get(lease.interest)!
+          .interest.identity.interestEpoch;
+
+        // A refresh call lands while the org's own recovery cycle is already asleep,
+        // waiting out its backoff. It must not open a competing receiver or bump the
+        // interest's identity again — that would race the sleeping cycle's own retry,
+        // and each side's receiver swap would abort the other's in-flight attempt
+        // before it ever completes a registration.
+        yield* runtime.refresh(topologyDescriptor.project.organization);
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        expect(opens).toBe(opensAfterFirstFailure);
+        expect(
+          registry.get(runtime.stateAtom).interests.get(lease.interest)!.interest.identity
+            .interestEpoch,
+        ).toBe(epochWhileRecovering);
+
+        // The organization's own cycle still recovers once its backoff elapses.
+        shouldFailOpen = false;
+        yield* TestClock.adjust("1000 millis");
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+
+        yield* runtime.shutdown("application-close");
+        yield* Scope.close(leaseScope, Exit.void);
+        unsubscribe();
+        registry.dispose();
+      }),
+  );
+
   it.effect(
     "interrupts an in-flight hydration on background pause and releases the shared read",
     () =>
