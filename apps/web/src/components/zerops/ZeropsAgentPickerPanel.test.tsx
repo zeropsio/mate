@@ -13,6 +13,7 @@ describe("ZeropsAgentPickerPanel", () => {
         availability={{ kind: "needs-sign-in", signInKind: "not-authorized" }}
         onCancel={noop}
         onOpenDialog={noop}
+        requestClosePicker={noop}
       />,
     );
 
@@ -30,6 +31,7 @@ describe("ZeropsAgentPickerPanel", () => {
         availability={{ kind: "signing-in" }}
         onCancel={noop}
         onOpenDialog={noop}
+        requestClosePicker={noop}
       />,
     );
 
@@ -44,6 +46,7 @@ describe("ZeropsAgentPickerPanel", () => {
         availability={{ kind: "someone-else", signerId: "user-b" }}
         onCancel={noop}
         onOpenDialog={noop}
+        requestClosePicker={noop}
         signerName="Jan"
       />,
     );
@@ -59,10 +62,43 @@ describe("ZeropsAgentPickerPanel", () => {
         availability={{ kind: "registering" }}
         onCancel={noop}
         onOpenDialog={noop}
+        requestClosePicker={noop}
       />,
     );
 
     expect(html).toContain("Registering…");
     expect(html).toContain("disabled");
+  });
+
+  it("says nothing about a session lock when the instance is not locked out", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentPickerPanel
+        agentId="codex"
+        availability={{ kind: "needs-sign-in", signInKind: "not-authorized" }}
+        onCancel={noop}
+        onOpenDialog={noop}
+        requestClosePicker={noop}
+      />,
+    );
+
+    expect(html).not.toContain("New session");
+  });
+
+  // The live bug: signing in is project-wide, not per session, so the panel
+  // still offers it while locked out, but says where it will actually run.
+  it("names the locked agent and New session when locked out of the current session", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentPickerPanel
+        agentId="codex"
+        availability={{ kind: "needs-sign-in", signInKind: "not-authorized" }}
+        lockedToAgentName="Claude Code"
+        onCancel={noop}
+        onOpenDialog={noop}
+        requestClosePicker={noop}
+      />,
+    );
+
+    expect(html).toContain("This session runs on Claude Code. Codex is used in a New session.");
+    expect(html).toContain("Sign in to Codex");
   });
 });

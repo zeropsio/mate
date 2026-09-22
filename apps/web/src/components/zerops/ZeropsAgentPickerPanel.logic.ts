@@ -28,6 +28,13 @@ export interface ZeropsAgentPickerPanelView {
   /** Every non-`ready` kind has one action — disabled for `registering`, which can only wait. */
   readonly primaryAction: ZeropsAgentPickerPanelPrimaryAction;
   readonly showCancel: boolean;
+  /**
+   * Shown when this instance is ALSO locked out of the current session (a
+   * started thread locked to a different agent): signing in here is
+   * project-wide, not per session, so the panel still offers it, but says
+   * where it will actually run. `undefined` otherwise.
+   */
+  readonly sessionLockNotice?: string | undefined;
 }
 
 /**
@@ -65,9 +72,19 @@ export function resolveZeropsAgentPickerPanelView(input: {
   readonly availability: Exclude<ZeropsAgentAvailability, { readonly kind: "ready" }>;
   /** The recorded signer's display name, for `someone-else`. `undefined` when unknown. */
   readonly signerName?: string | undefined;
+  /**
+   * When this instance is ALSO locked out of the current session (a started
+   * thread locked to a different agent), that agent's display name.
+   * `undefined` on an unstarted thread, or when this IS the locked agent.
+   */
+  readonly lockedToAgentName?: string | undefined;
 }): ZeropsAgentPickerPanelView {
   const agentName = ZEROPS_AGENT_NAMES[input.agentId];
   const { availability } = input;
+  const sessionLockNotice =
+    input.lockedToAgentName === undefined
+      ? undefined
+      : `This session runs on ${input.lockedToAgentName}. ${agentName} is used in a New session.`;
 
   switch (availability.kind) {
     case "registering":
@@ -76,6 +93,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: "Signed in — registering with Zerops…",
         primaryAction: { kind: "continue", label: "Registering…", disabled: true },
         showCancel: false,
+        sessionLockNotice,
       };
     case "signing-in":
       return {
@@ -83,6 +101,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: "Signing in…",
         primaryAction: { kind: "continue", label: "Continue authorization", disabled: false },
         showCancel: true,
+        sessionLockNotice,
       };
     case "needs-sign-in":
       return {
@@ -94,6 +113,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
           disabled: false,
         },
         showCancel: false,
+        sessionLockNotice,
       };
     case "someone-else":
       return {
@@ -101,6 +121,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: zeropsAgentPickerSomeoneElseStatus(input.signerName),
         primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
         showCancel: false,
+        sessionLockNotice,
       };
     case "unrecorded":
       return {
@@ -108,6 +129,23 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
         primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
         showCancel: false,
+        sessionLockNotice,
       };
   }
+}
+
+/**
+ * The panel's primary-action click: close the picker popover before opening
+ * the sign-in dialog, so the dialog never renders underneath it (the
+ * popover otherwise stays mounted on top, covering the dialog's own
+ * footer). Mirrors the upstream provider-setup link's
+ * `props.onRequestClose?.()` before `onOpenProviderSetup`.
+ */
+export function invokeZeropsAgentPickerPrimaryAction(input: {
+  readonly agentId: ZeropsAgentId;
+  readonly requestClosePicker: () => void;
+  readonly onOpenDialog: (agentId: ZeropsAgentId) => void;
+}): void {
+  input.requestClosePicker();
+  input.onOpenDialog(input.agentId);
 }

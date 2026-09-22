@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  invokeZeropsAgentPickerPrimaryAction,
   resolveZeropsAgentPickerPanelView,
   zeropsAgentPickerSomeoneElseStatus,
   type ZeropsAgentPickerPanelView,
@@ -108,6 +109,65 @@ describe("resolveZeropsAgentPickerPanelView", () => {
     expect(resolveZeropsAgentPickerPanelView({ agentId, availability, signerName })).toEqual(
       expected,
     );
+  });
+});
+
+describe("resolveZeropsAgentPickerPanelView — session lock notice", () => {
+  it("says nothing when the thread is unstarted, or this IS the locked agent", () => {
+    expect(
+      resolveZeropsAgentPickerPanelView({
+        agentId: "codex",
+        availability: { kind: "needs-sign-in", signInKind: "not-authorized" },
+      }).sessionLockNotice,
+    ).toBeUndefined();
+  });
+
+  // The live bug: signing in is project-wide, not per session, so the panel
+  // still offers it even while locked out — but says where it will run.
+  it("names the locked agent and 'New session' (the header button's own name)", () => {
+    expect(
+      resolveZeropsAgentPickerPanelView({
+        agentId: "codex",
+        availability: { kind: "needs-sign-in", signInKind: "not-authorized" },
+        lockedToAgentName: "Claude Code",
+      }).sessionLockNotice,
+    ).toBe("This session runs on Claude Code. Codex is used in a New session.");
+  });
+
+  it("applies to every non-ready kind, not just needs-sign-in", () => {
+    expect(
+      resolveZeropsAgentPickerPanelView({
+        agentId: "claude-code",
+        availability: { kind: "someone-else", signerId: "user-b" },
+        lockedToAgentName: "Codex",
+      }).sessionLockNotice,
+    ).toBe("This session runs on Codex. Claude Code is used in a New session.");
+  });
+});
+
+describe("invokeZeropsAgentPickerPrimaryAction", () => {
+  // The live bug: the dialog opened on top of the still-mounted picker
+  // popover, covering its own footer. The picker must close FIRST.
+  it("closes the picker before opening the dialog", () => {
+    const calls: string[] = [];
+    invokeZeropsAgentPickerPrimaryAction({
+      agentId: "codex",
+      requestClosePicker: () => calls.push("close"),
+      onOpenDialog: () => calls.push("open"),
+    });
+    expect(calls).toEqual(["close", "open"]);
+  });
+
+  it("opens the dialog for the given agent", () => {
+    let openedFor: string | null = null;
+    invokeZeropsAgentPickerPrimaryAction({
+      agentId: "claude-code",
+      requestClosePicker: () => {},
+      onOpenDialog: (agentId) => {
+        openedFor = agentId;
+      },
+    });
+    expect(openedFor).toBe("claude-code");
   });
 });
 

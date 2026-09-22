@@ -71,6 +71,19 @@ type ModelPickerItem = {
   isUnavailable?: boolean | undefined;
 };
 
+/**
+ * Zerops sign-in gating (`ChatComposer`'s `renderZeropsInstancePanel`): a
+ * non-null result makes `entry`'s rail icon selectable and swaps the list
+ * area for the returned panel. `requestClose` lets that panel's own action
+ * close this popover before it opens anything on top of it (the sign-in
+ * dialog) — the same thing the provider-setup link below already does with
+ * `props.onRequestClose`.
+ */
+export type ModelPickerRenderInstancePanel = (
+  entry: ProviderInstanceEntry,
+  requestClose: () => void,
+) => ReactNode | null;
+
 export function resolveModelPickerSelectedModel(input: {
   driverKind: ProviderDriverKind | undefined;
   model: string;
@@ -107,6 +120,9 @@ export function shouldIncludeModelPickerOption(input: {
   );
 }
 
+/** A no-op `requestClose` for callers that only need to know whether a panel exists, never render it. */
+function noopRequestClose(): void {}
+
 /**
  * Whether `entry`'s models should be excluded from the picker's
  * cross-instance listings (favorites, search) because it renders a panel
@@ -117,9 +133,9 @@ export function shouldIncludeModelPickerOption(input: {
  */
 export function isModelPickerEntryPaneled(
   entry: ProviderInstanceEntry,
-  renderInstancePanel: ((entry: ProviderInstanceEntry) => ReactNode | null) | undefined,
+  renderInstancePanel: ModelPickerRenderInstancePanel | undefined,
 ): boolean {
-  return renderInstancePanel?.(entry) != null;
+  return renderInstancePanel?.(entry, noopRequestClose) != null;
 }
 
 export function shouldOfferModelPickerSetup(
@@ -209,7 +225,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
    * the whole list area for the returned panel instead of that instance's
    * models. `undefined`/`null` for every entry is exactly today's behavior.
    */
-  renderInstancePanel?: (entry: ProviderInstanceEntry) => ReactNode | null;
+  renderInstancePanel?: ModelPickerRenderInstancePanel;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
 }) {
   const {
@@ -356,7 +372,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     }
     if (props.renderInstancePanel) {
       for (const entry of instanceEntries) {
-        if (props.renderInstancePanel(entry) != null) {
+        if (props.renderInstancePanel(entry, noopRequestClose) != null) {
           instanceIds.add(entry.instanceId);
         }
       }
@@ -370,6 +386,21 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     props.onOpenProviderSetup,
     props.renderInstancePanel,
   ]);
+
+  // Narrower than `selectableUnavailableInstanceIds`: only an actual zerops
+  // panel may override a session lock (`lockOverridableInstanceIds` below) —
+  // an entry reachable for another reason (a persisted selection, a setup
+  // offer) still must not be picked while the session is locked elsewhere.
+  const panelInstanceIds = useMemo(() => {
+    if (!props.renderInstancePanel) return undefined;
+    const instanceIds = new Set<ProviderInstanceId>();
+    for (const entry of instanceEntries) {
+      if (props.renderInstancePanel(entry, noopRequestClose) != null) {
+        instanceIds.add(entry.instanceId);
+      }
+    }
+    return instanceIds.size > 0 ? instanceIds : undefined;
+  }, [instanceEntries, props.renderInstancePanel]);
 
   // Flatten models into a searchable array. One pass over the
   // instance-keyed map; each model carries its instance id + driver kind
@@ -597,7 +628,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const selectedEntry =
     selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
   const selectedInstancePanel =
-    selectedEntry !== undefined ? (props.renderInstancePanel?.(selectedEntry) ?? null) : null;
+    selectedEntry !== undefined
+      ? (props.renderInstancePanel?.(selectedEntry, () => props.onRequestClose?.()) ?? null)
+      : null;
   const providerSetupEntries =
     !isSearching && props.onOpenProviderSetup
       ? instanceEntries.filter(
@@ -844,6 +877,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             instanceEntries={sidebarInstanceEntries}
             showFavorites
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
+            {...(panelInstanceIds ? { lockOverridableInstanceIds: panelInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
               ? {
                   disabledInstanceIds: lockedDisabledInstanceIds,

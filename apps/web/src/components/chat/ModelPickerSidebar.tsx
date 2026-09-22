@@ -10,6 +10,7 @@ import {
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
+import { resolveModelPickerRailButtonState } from "./ModelPickerSidebar.logic";
 
 /**
  * Build the hover tooltip for an instance button. Mirrors the old
@@ -58,6 +59,14 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   /** Non-ready instances whose selected unavailable model remains reachable. */
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  /**
+   * Instances with a zerops panel (`ModelPickerContent`'s `renderInstancePanel`)
+   * — the one thing allowed to override `disabledInstanceIds`'s session lock,
+   * so an agent Zerops can still offer sign-in for is never stuck disabled
+   * with a stale "Unavailable" tooltip just because the session is locked to
+   * a different one.
+   */
+  lockOverridableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
   /**
    * Instance id values that should render the "new" sparkle badge. Callers
@@ -155,20 +164,26 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
             const unavailableSelectionIsReachable =
               props.selectableUnavailableInstanceIds?.has(entry.instanceId) ?? false;
-            const isDisabled =
-              (isUnavailable && !unavailableSelectionIsReachable) || isContextDisabled;
+            const lockOverridden = props.lockOverridableInstanceIds?.has(entry.instanceId) ?? false;
+            const { isDisabled, tooltipKind } = resolveModelPickerRailButtonState({
+              isUnavailable,
+              isContextDisabled,
+              unavailableSelectionIsReachable,
+              lockOverridden,
+            });
             const isSelected = props.selectedInstanceId === entry.instanceId;
             const isHovered = hoveredInstanceId === entry.instanceId;
             const showNewBadge = props.newBadgeInstanceIds?.has(entry.instanceId) ?? false;
             const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
 
-            const tooltip = isUnavailable
-              ? describeUnavailableInstance(entry)
-              : isContextDisabled
-                ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
-                : showNewBadge
-                  ? `${entry.displayName} — New`
-                  : entry.displayName;
+            const tooltip =
+              tooltipKind === "unavailable"
+                ? describeUnavailableInstance(entry)
+                : tooltipKind === "lock"
+                  ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+                  : showNewBadge
+                    ? `${entry.displayName} — New`
+                    : entry.displayName;
 
             const button = (
               <Toolbar.Button

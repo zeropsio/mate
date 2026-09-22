@@ -15,7 +15,10 @@ import type { ZeropsAgentId } from "@t3tools/contracts";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Button } from "~/components/ui/button";
-import { resolveZeropsAgentPickerPanelView } from "./ZeropsAgentPickerPanel.logic";
+import {
+  invokeZeropsAgentPickerPrimaryAction,
+  resolveZeropsAgentPickerPanelView,
+} from "./ZeropsAgentPickerPanel.logic";
 
 function ZeropsAgentPickerLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
   return (
@@ -37,6 +40,8 @@ export function ZeropsAgentPickerPanel({
   agentId,
   availability,
   signerName,
+  lockedToAgentName,
+  requestClosePicker,
   onOpenDialog,
   onCancel,
 }: {
@@ -44,12 +49,21 @@ export function ZeropsAgentPickerPanel({
   readonly availability: Exclude<ZeropsAgentAvailability, { readonly kind: "ready" }>;
   /** The recorded signer's display name, for `someone-else`. `undefined` when unknown. */
   readonly signerName?: string | undefined;
+  /** This instance is ALSO locked out of the current session — that agent's display name. */
+  readonly lockedToAgentName?: string | undefined;
+  /** Closes the picker popover before `onOpenDialog` opens the sign-in dialog on top of it. */
+  readonly requestClosePicker: () => void;
   /** "Sign in to X" / "Sign in again" / "Continue authorization" / "Use my account" — all open the same dialog. */
   readonly onOpenDialog: (agentId: ZeropsAgentId) => void;
   /** `signing-in`'s "Cancel" — stops the in-progress server-driven login session. */
   readonly onCancel: (agentId: ZeropsAgentId) => void;
 }) {
-  const view = resolveZeropsAgentPickerPanelView({ agentId, availability, signerName });
+  const view = resolveZeropsAgentPickerPanelView({
+    agentId,
+    availability,
+    signerName,
+    lockedToAgentName,
+  });
 
   return (
     <div
@@ -62,7 +76,9 @@ export function ZeropsAgentPickerPanel({
       <p className="text-xs leading-snug text-muted-foreground">{view.statusLine}</p>
       <Button
         disabled={view.primaryAction.disabled}
-        onClick={() => onOpenDialog(agentId)}
+        onClick={() =>
+          invokeZeropsAgentPickerPrimaryAction({ agentId, requestClosePicker, onOpenDialog })
+        }
         size="sm"
       >
         {view.primaryAction.label}
@@ -71,6 +87,9 @@ export function ZeropsAgentPickerPanel({
         <Button onClick={() => onCancel(agentId)} size="sm" variant="outline">
           Cancel
         </Button>
+      ) : null}
+      {view.sessionLockNotice ? (
+        <p className="text-xs leading-snug text-muted-foreground/80">{view.sessionLockNotice}</p>
       ) : null}
     </div>
   );

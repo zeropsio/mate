@@ -28,6 +28,7 @@ import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import { isZeropsInstanceRunnable } from "../ChatView.logic";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
+import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentAuthorizationDialog.logic";
 import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
 import {
   memo,
@@ -958,22 +959,42 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const cancelZeropsAgentLogin = useAgentLoginCancel(routeThreadRef);
   const openZeropsAgentSignIn = zeropsSignInDialog.openFor;
+  // Signing an agent in is project-wide, not per session, so the panel must
+  // stay reachable even for an instance the session is locked out of — the
+  // locked-agent name lets it say where the sign-in will actually run.
+  const lockedZeropsAgentName = useMemo(() => {
+    if (lockedProvider === null) return undefined;
+    const lockedAgentId = agentIdForProviderInstance(lockedProvider);
+    return lockedAgentId === undefined ? undefined : ZEROPS_AGENT_NAMES[lockedAgentId];
+  }, [lockedProvider]);
   const renderZeropsInstancePanel = useCallback(
-    (entry: ProviderInstanceEntry): ReactNode | null => {
+    (entry: ProviderInstanceEntry, requestClosePicker: () => void): ReactNode | null => {
       const availability = zeropsAgentAvailabilityByInstanceId?.get(entry.instanceId);
       if (availability === undefined || availability.kind === "ready") return null;
       const agentId = agentIdForProviderInstance(entry.instanceId);
       if (agentId === undefined) return null;
+      const lockedToAgentName =
+        lockedZeropsAgentName !== undefined && entry.driverKind !== lockedProvider
+          ? lockedZeropsAgentName
+          : undefined;
       return (
         <ZeropsAgentPickerPanel
           agentId={agentId}
           availability={availability}
+          lockedToAgentName={lockedToAgentName}
           onCancel={cancelZeropsAgentLogin}
           onOpenDialog={openZeropsAgentSignIn}
+          requestClosePicker={requestClosePicker}
         />
       );
     },
-    [cancelZeropsAgentLogin, openZeropsAgentSignIn, zeropsAgentAvailabilityByInstanceId],
+    [
+      cancelZeropsAgentLogin,
+      lockedProvider,
+      lockedZeropsAgentName,
+      openZeropsAgentSignIn,
+      zeropsAgentAvailabilityByInstanceId,
+    ],
   );
   const selectedInstanceId =
     selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
