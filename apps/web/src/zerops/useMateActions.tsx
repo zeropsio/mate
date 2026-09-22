@@ -46,6 +46,7 @@ import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialo
 import { registerMateInGroup } from "./brokerGrant";
 import { findAccountGitea } from "./giteaProject";
 import { captureAccountLifetime } from "./accountLifetime";
+import { useProjectOrderPreference } from "./projectOrderPreference";
 import { useZeropsCandidates, type ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsOrganizationMembers } from "./useZeropsMateOwners";
@@ -104,14 +105,22 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const [dialog, setDialog] = useState<MateDialog | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
+  // The same preference the projects screen's sort control writes — the
+  // "move to" dialog's group choices should read the way the person set up
+  // their own list, not a fixed order of their own.
+  const [projectOrder] = useProjectOrderPreference();
 
   const giteaProjectId = useMemo(
     () => findAccountGitea(inventory, activeOrganization?.id)?.projectId,
     [activeOrganization?.id, inventory],
   );
   const groupTree = useMemo(
-    () => buildZeropsGroupTree(candidates, { rank: rankZeropsCandidateForListing }),
-    [candidates],
+    () =>
+      buildZeropsGroupTree(candidates, {
+        rank: rankZeropsCandidateForListing,
+        order: projectOrder,
+      }),
+    [candidates, projectOrder],
   );
   const takenBotNames = useMemo(
     () =>

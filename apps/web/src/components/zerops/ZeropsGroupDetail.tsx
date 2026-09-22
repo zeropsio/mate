@@ -135,9 +135,11 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
 function useGroup(groupId: string): ZeropsGroup | undefined {
   const { candidates } = useZeropsCandidates();
   return useMemo(
+    // Order is irrelevant here — a lookup by groupId, not a listing.
     () =>
-      buildZeropsGroupTree(candidates, {}).groups.find((entry) => entry.group.groupId === groupId)
-        ?.group,
+      buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
+        (entry) => entry.group.groupId === groupId,
+      )?.group,
     [candidates, groupId],
   );
 }
@@ -316,7 +318,8 @@ function useGroupMates(groupId: string): ReadonlyArray<GroupMate> {
   const activity = useZeropsAgentActivity();
   return useMemo(() => {
     const tints = assignCandidateMateTints(candidates);
-    const group = buildZeropsGroupTree(candidates, {}).groups.find(
+    // Order is irrelevant here — a lookup by groupId, not a listing.
+    const group = buildZeropsGroupTree(candidates, { order: "name" }).groups.find(
       (entry) => entry.group.groupId === groupId,
     );
     // A group's `environments` is every project in it — the stage and the

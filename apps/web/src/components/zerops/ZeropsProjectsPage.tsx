@@ -18,11 +18,13 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { PlayIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowDownUpIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import {
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -100,6 +102,7 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupTags,
+  type ZeropsProjectOrder,
 } from "@t3tools/client-runtime/zerops";
 import { refreshZeropsCandidates } from "~/zerops/candidatesRefresh";
 import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/creationRefresh";
@@ -310,7 +313,11 @@ export function hasNoZeropsProject(input: {
 }): boolean {
   if (input.creationPending === true) return false;
   if (input.unread && input.candidates.length === 0) return false;
-  const view = buildZeropsGroupTree(input.candidates, { rank: rankZeropsCandidateForListing });
+  // Emptiness does not depend on how the tree orders what it holds.
+  const view = buildZeropsGroupTree(input.candidates, {
+    rank: rankZeropsCandidateForListing,
+    order: "name",
+  });
   return view.groups.length === 0 && view.ungrouped.length === 0;
 }
 
@@ -325,6 +332,52 @@ function SignedOutNotice({ message }: { readonly message: string }) {
  * thing should be the Mate. No sentence under the title either: the
  * projects below say what the page is.
  */
+
+const PROJECT_ORDER_OPTIONS: ReadonlyArray<{
+  readonly value: ZeropsProjectOrder;
+  readonly label: string;
+}> = [
+  { value: "newest", label: "Newest first" },
+  { value: "name", label: "Name" },
+];
+
+/**
+ * How the page and the left sidebar tree (`SidebarZeropsTree.tsx`) order
+ * their projects — a per-browser preference, not project state
+ * (`projectOrderPreference.ts`), read and written live so both surfaces turn
+ * around together the moment it changes.
+ */
+function ZeropsProjectOrderControl() {
+  const [order, setOrder] = useProjectOrderPreference();
+  return (
+    <Select
+      onValueChange={(value) => {
+        if (value) setOrder(value as ZeropsProjectOrder);
+      }}
+      value={order}
+    >
+      <SelectTrigger
+        aria-label="Sort projects"
+        className="w-auto min-w-0"
+        size="sm"
+        variant="ghost"
+      >
+        <ArrowDownUpIcon className="size-3.5" />
+        <SelectValue>
+          {PROJECT_ORDER_OPTIONS.find((option) => option.value === order)?.label}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectPopup align="end">
+        {PROJECT_ORDER_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
 export function ZeropsProjectsHeader({
   onRefresh,
   refreshing = false,
@@ -339,6 +392,7 @@ export function ZeropsProjectsHeader({
     >
       <h1 className="text-xl font-medium text-foreground">Projects</h1>
       <div className="flex items-center gap-2">
+        <ZeropsProjectOrderControl />
         {onRefresh === undefined ? null : (
           <Tooltip>
             <TooltipTrigger
@@ -714,7 +768,11 @@ function ZeropsProjectsContent() {
       clearInterval(timer);
     };
   }, [creationRunning]);
-  const groupTree = buildZeropsGroupTree(candidates, { rank: rankZeropsCandidateForListing });
+  const [projectOrder] = useProjectOrderPreference();
+  const groupTree = buildZeropsGroupTree(candidates, {
+    rank: rankZeropsCandidateForListing,
+    order: projectOrder,
+  });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   const activity = useZeropsAgentActivity();
   // What this person may do with each Mate, from the one role function the

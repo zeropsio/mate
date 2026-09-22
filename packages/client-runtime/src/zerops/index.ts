@@ -92,6 +92,7 @@ export {
   type ZeropsGroupEnvironment,
   type ZeropsGroupTags,
   type ZeropsGroupTree,
+  type ZeropsProjectOrder,
 } from "./groups.ts";
 export {
   ENVIRONMENTS_DOCUMENT_PATH,

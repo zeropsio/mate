@@ -80,6 +80,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { useProjectOrderPreference } from "~/zerops/projectOrderPreference";
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { MateFace, StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
@@ -220,6 +221,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // reason, and a menu that unfolds everything on every boot makes them do it
   // again (the owner, 2026-09-19). Per-browser, so it never leaves the device.
   const [collapsedStops, setCollapsedStops] = useState<ReadonlySet<string>>(readCollapsedStops);
+  // Same preference the projects screen's sort control writes
+  // (`projectOrderPreference.ts`) — read here too so the two surfaces stay in
+  // step without either one owning the other.
+  const [projectOrder] = useProjectOrderPreference();
 
   // Nothing read yet is not nothing: an empty state that shows for the first
   // second of every reload and then gives way to the roster sends the whole
@@ -264,7 +269,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
   ];
-  const view = buildZeropsGroupTree(everyEnvironment, { rank: rankZeropsCandidateForListing });
+  const view = buildZeropsGroupTree(everyEnvironment, {
+    rank: rankZeropsCandidateForListing,
+    order: projectOrder,
+  });
   const tints = assignCandidateMateTints(candidates);
 
   const toggle = (key: string) => {

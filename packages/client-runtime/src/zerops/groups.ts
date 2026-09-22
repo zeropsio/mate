@@ -318,9 +318,20 @@ export interface ZeropsGroupTree {
   readonly ungrouped: ReadonlyArray<ZeropsProject>;
 }
 
+/**
+ * How the tree orders its groups and its ungrouped projects.
+ *
+ * `newest` groups by creation time (a group's is the earliest among its
+ * members — the moment it was born, unmoved by a stage added later) and
+ * ungroups the same way, newest first; `name` is today's order, display name
+ * then id. There is no default: every caller states which one a viewer sees.
+ */
+export type ZeropsProjectOrder = "newest" | "name";
+
 export interface DeriveZeropsGroupsOptions {
   /** Group id → display name, as read from the recipe store. */
   readonly names?: Readonly<Record<string, string>>;
+  readonly order: ZeropsProjectOrder;
 }
 
 function roleRank(role: ZeropsEnvironmentRole | undefined): number {
@@ -329,6 +340,31 @@ function roleRank(role: ZeropsEnvironmentRole | undefined): number {
 
 /** The shared listing order (`listingOrder.ts`): locale-aware, case- and numeric-aware. */
 const byName = compareZeropsHostnames;
+
+/**
+ * Descending by `created` (an ISO timestamp, lexically sortable — the same
+ * assumption `autoEnterProvisioning.ts` and `provisioning.ts` make), missing
+ * always last regardless of which side of the comparison it is on.
+ */
+function byCreatedNewestFirst(left: string | undefined, right: string | undefined): number {
+  if (left === undefined) return right === undefined ? 0 : 1;
+  if (right === undefined) return -1;
+  return right.localeCompare(left);
+}
+
+/**
+ * A group's birth moment: the earliest `created` among its members, ignoring
+ * ones that carry none. `undefined` when none of them do.
+ */
+function earliestCreated(environments: ReadonlyArray<ZeropsGroupEnvironment>): string | undefined {
+  let earliest: string | undefined;
+  for (const { project } of environments) {
+    const { created } = project;
+    if (created === undefined) continue;
+    if (earliest === undefined || created < earliest) earliest = created;
+  }
+  return earliest;
+}
 
 /**
  * The label most of a group's members agree on.
@@ -360,7 +396,7 @@ function consensusLabel(labels: ReadonlyArray<string>): string | undefined {
  */
 export function deriveZeropsGroups(
   projects: ReadonlyArray<ZeropsProject>,
-  options: DeriveZeropsGroupsOptions = {},
+  options: DeriveZeropsGroupsOptions,
 ): ZeropsGroupTree {
   const members = new Map<string, Array<ZeropsGroupEnvironment>>();
   const labels = new Map<string, Array<string>>();
@@ -407,10 +443,31 @@ export function deriveZeropsGroups(
     } satisfies ZeropsGroup;
   });
 
-  groups.sort(
-    (left, right) => byName(left.name, right.name) || byName(left.groupId, right.groupId),
-  );
-  ungrouped.sort((left, right) => byName(left.name, right.name));
+  if (options.order === "newest") {
+    const earliestByGroupId = new Map(
+      groups.map((group) => [group.groupId, earliestCreated(group.environments)]),
+    );
+    groups.sort(
+      (left, right) =>
+        byCreatedNewestFirst(
+          earliestByGroupId.get(left.groupId),
+          earliestByGroupId.get(right.groupId),
+        ) ||
+        byName(left.name, right.name) ||
+        byName(left.groupId, right.groupId),
+    );
+    ungrouped.sort(
+      (left, right) =>
+        byCreatedNewestFirst(left.created, right.created) ||
+        byName(left.name, right.name) ||
+        byName(left.id, right.id),
+    );
+  } else {
+    groups.sort(
+      (left, right) => byName(left.name, right.name) || byName(left.groupId, right.groupId),
+    );
+    ungrouped.sort((left, right) => byName(left.name, right.name));
+  }
 
   return { groups, ungrouped };
 }

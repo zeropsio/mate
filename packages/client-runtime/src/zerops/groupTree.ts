@@ -69,7 +69,7 @@ export interface BuildZeropsGroupTreeOptions<T> extends DeriveZeropsGroupsOption
 
 export function buildZeropsGroupTree<T extends ZeropsProjectCarrier>(
   items: ReadonlyArray<T>,
-  options: BuildZeropsGroupTreeOptions<T> = {},
+  options: BuildZeropsGroupTreeOptions<T>,
 ): ZeropsGroupTreeView<T> {
   // Last carrier wins for a duplicated project id: two candidates for one
   // project means the newer read, not two rows for the same environment.

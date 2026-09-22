@@ -197,7 +197,8 @@ export function ZeropsGiteaPage() {
   /** `links` → `Links`: a Gitea org is a group's slug, never its name. */
   const groupOfOwner = useMemo(() => {
     const byOwner = new Map<string, { readonly groupId: string; readonly name: string }>();
-    const named = buildZeropsGroupTree(candidates, {}).groups;
+    // Order is irrelevant here — a lookup by groupId, not a listing.
+    const named = buildZeropsGroupTree(candidates, { order: "name" }).groups;
     for (const [groupId, slug] of flow.slugs) {
       const name = named.find((entry) => entry.group.groupId === groupId)?.group.name;
       byOwner.set(slug, { groupId, name: name ?? slug });

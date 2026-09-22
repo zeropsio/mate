@@ -20,8 +20,15 @@ function project(
   name: string,
   tagList: ReadonlyArray<string> | undefined = [],
   id = name,
+  created?: string,
 ): ZeropsProject {
-  return { id, name, status: "ACTIVE", ...(tagList === undefined ? {} : { tagList }) };
+  return {
+    id,
+    name,
+    status: "ACTIVE",
+    ...(tagList === undefined ? {} : { tagList }),
+    ...(created === undefined ? {} : { created }),
+  };
 }
 
 describe("tag format", () => {
@@ -229,12 +236,15 @@ describe("generateZeropsGroupId", () => {
 
 describe("deriveZeropsGroups", () => {
   it("groups environments by their group tag and leaves the rest ungrouped", () => {
-    const result = deriveZeropsGroups([
-      project("crm-dev", ["mate:g:aaa", "mate:role:dev"]),
-      project("crm-prod", ["mate:g:aaa", "mate:role:prod"]),
-      project("shop-dev", ["mate:g:bbb", "mate:role:dev"]),
-      project("loose", []),
-    ]);
+    const result = deriveZeropsGroups(
+      [
+        project("crm-dev", ["mate:g:aaa", "mate:role:dev"]),
+        project("crm-prod", ["mate:g:aaa", "mate:role:prod"]),
+        project("shop-dev", ["mate:g:bbb", "mate:role:dev"]),
+        project("loose", []),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups.map((group) => group.groupId)).toEqual(["aaa", "bbb"]);
     expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
@@ -245,12 +255,15 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("orders environments dev → devstage → stage → prod, then by name", () => {
-    const result = deriveZeropsGroups([
-      project("d", ["mate:g:aaa", "mate:role:prod"]),
-      project("c", ["mate:g:aaa", "mate:role:stage"]),
-      project("b", ["mate:g:aaa", "mate:role:devstage"]),
-      project("a", ["mate:g:aaa", "mate:role:dev"]),
-    ]);
+    const result = deriveZeropsGroups(
+      [
+        project("d", ["mate:g:aaa", "mate:role:prod"]),
+        project("c", ["mate:g:aaa", "mate:role:stage"]),
+        project("b", ["mate:g:aaa", "mate:role:devstage"]),
+        project("a", ["mate:g:aaa", "mate:role:dev"]),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups[0]?.environments.map((environment) => environment.role)).toEqual([
       "dev",
@@ -261,11 +274,14 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("sorts a roleless environment last, and ties by name", () => {
-    const result = deriveZeropsGroups([
-      project("zzz", ["mate:g:aaa"]),
-      project("bbb", ["mate:g:aaa", "mate:role:prod"]),
-      project("aaa", ["mate:g:aaa"]),
-    ]);
+    const result = deriveZeropsGroups(
+      [
+        project("zzz", ["mate:g:aaa"]),
+        project("bbb", ["mate:g:aaa", "mate:role:prod"]),
+        project("aaa", ["mate:g:aaa"]),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
       "bbb",
@@ -277,6 +293,7 @@ describe("deriveZeropsGroups", () => {
   it("names a group from the store record when there is one", () => {
     const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa", "mate:name:Stale"])], {
       names: { aaa: "Beviro CRM" },
+      order: "name",
     });
 
     expect(result.groups[0]?.name).toBe("Beviro CRM");
@@ -284,38 +301,52 @@ describe("deriveZeropsGroups", () => {
   });
 
   it("falls back to the label tag when the store knows nothing — the tree names itself with no store at all", () => {
-    const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa", "mate:name:Beviro CRM"])]);
+    const result = deriveZeropsGroups(
+      [project("crm-dev", ["mate:g:aaa", "mate:name:Beviro CRM"])],
+      {
+        order: "name",
+      },
+    );
 
     expect(result.groups[0]?.name).toBe("Beviro CRM");
     expect(result.groups[0]?.nameSource).toBe("tag");
   });
 
   it("falls back to the group id when nothing names it, and says so", () => {
-    const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa"])]);
+    const result = deriveZeropsGroups([project("crm-dev", ["mate:g:aaa"])], { order: "name" });
 
     expect(result.groups[0]?.name).toBe("aaa");
     expect(result.groups[0]?.nameSource).toBe("id");
   });
 
   it("takes the majority label when a rename only half-applied", () => {
-    const result = deriveZeropsGroups([
-      project("a", ["mate:g:aaa", "mate:name:New"]),
-      project("b", ["mate:g:aaa", "mate:name:New"]),
-      project("c", ["mate:g:aaa", "mate:name:Old"]),
-    ]);
+    const result = deriveZeropsGroups(
+      [
+        project("a", ["mate:g:aaa", "mate:name:New"]),
+        project("b", ["mate:g:aaa", "mate:name:New"]),
+        project("c", ["mate:g:aaa", "mate:name:Old"]),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups[0]?.name).toBe("New");
   });
 
   it("breaks a label tie deterministically rather than by list order", () => {
-    const forward = deriveZeropsGroups([
-      project("a", ["mate:g:aaa", "mate:name:Zebra"]),
-      project("b", ["mate:g:aaa", "mate:name:Apple"]),
-    ]);
-    const backward = deriveZeropsGroups([
-      project("b", ["mate:g:aaa", "mate:name:Apple"]),
-      project("a", ["mate:g:aaa", "mate:name:Zebra"]),
-    ]);
+    const forward = deriveZeropsGroups(
+      [
+        project("a", ["mate:g:aaa", "mate:name:Zebra"]),
+        project("b", ["mate:g:aaa", "mate:name:Apple"]),
+      ],
+      { order: "name" },
+    );
+    const backward = deriveZeropsGroups(
+      [
+        project("b", ["mate:g:aaa", "mate:name:Apple"]),
+        project("a", ["mate:g:aaa", "mate:name:Zebra"]),
+      ],
+      { order: "name" },
+    );
 
     expect(forward.groups[0]?.name).toBe("Apple");
     expect(backward.groups[0]?.name).toBe("Apple");
@@ -328,47 +359,64 @@ describe("deriveZeropsGroups", () => {
         project("two", ["mate:g:bbb"]),
         project("three", ["mate:g:ccc"]),
       ],
-      { names: { aaa: "zebra", bbb: "Apple", ccc: "mango" } },
+      { names: { aaa: "zebra", bbb: "Apple", ccc: "mango" }, order: "name" },
     );
 
     expect(result.groups.map((group) => group.name)).toEqual(["Apple", "mango", "zebra"]);
   });
 
   it("reports the production environment of a group, and none when there is not exactly one", () => {
-    const [single] = deriveZeropsGroups([
-      project("p", ["mate:g:aaa", "mate:role:prod"]),
-      project("d", ["mate:g:aaa", "mate:role:dev"]),
-    ]).groups;
+    const [single] = deriveZeropsGroups(
+      [
+        project("p", ["mate:g:aaa", "mate:role:prod"]),
+        project("d", ["mate:g:aaa", "mate:role:dev"]),
+      ],
+      { order: "name" },
+    ).groups;
     expect(single?.production?.project.name).toBe("p");
 
-    const [ambiguous] = deriveZeropsGroups([
-      project("p1", ["mate:g:aaa", "mate:role:prod"]),
-      project("p2", ["mate:g:aaa", "mate:role:prod"]),
-    ]).groups;
+    const [ambiguous] = deriveZeropsGroups(
+      [
+        project("p1", ["mate:g:aaa", "mate:role:prod"]),
+        project("p2", ["mate:g:aaa", "mate:role:prod"]),
+      ],
+      { order: "name" },
+    ).groups;
     expect(ambiguous?.production).toBeUndefined();
 
-    const [none] = deriveZeropsGroups([project("d", ["mate:g:aaa", "mate:role:dev"])]).groups;
+    const [none] = deriveZeropsGroups([project("d", ["mate:g:aaa", "mate:role:dev"])], {
+      order: "name",
+    }).groups;
     expect(none?.production).toBeUndefined();
   });
 
   it("orders group names numerically, not lexically: env2 < env10", () => {
-    const result = deriveZeropsGroups([
-      project("env10", ["mate:g:aaa", "mate:name:env10"]),
-      project("env2", ["mate:g:bbb", "mate:name:env2"]),
-    ]);
+    const result = deriveZeropsGroups(
+      [
+        project("env10", ["mate:g:aaa", "mate:name:env10"]),
+        project("env2", ["mate:g:bbb", "mate:name:env2"]),
+      ],
+      { order: "name" },
+    );
 
     expect(result.groups.map((group) => group.name)).toEqual(["env2", "env10"]);
   });
 
   it("breaks an environment name tie by project id, deterministically", () => {
-    const forward = deriveZeropsGroups([
-      project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
-      project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
-    ]);
-    const backward = deriveZeropsGroups([
-      project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
-      project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
-    ]);
+    const forward = deriveZeropsGroups(
+      [
+        project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
+        project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
+      ],
+      { order: "name" },
+    );
+    const backward = deriveZeropsGroups(
+      [
+        project("dev", ["mate:g:aaa", "mate:role:dev"], "a"),
+        project("dev", ["mate:g:aaa", "mate:role:dev"], "z"),
+      ],
+      { order: "name" },
+    );
 
     expect(forward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
     expect(backward.groups[0]?.environments.map((entry) => entry.project.id)).toEqual(["a", "z"]);
@@ -380,17 +428,100 @@ describe("deriveZeropsGroups", () => {
       project("shop-dev", ["mate:g:bbb", "mate:role:dev"]),
       project("crm-dev", ["mate:g:aaa", "mate:role:dev"]),
     ];
-    const forward = deriveZeropsGroups(projects);
-    const backward = deriveZeropsGroups(projects.toReversed());
+    const forward = deriveZeropsGroups(projects, { order: "name" });
+    const backward = deriveZeropsGroups(projects.toReversed(), { order: "name" });
 
     expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
   });
 
   it("treats a project with no tagList field as ungrouped rather than throwing", () => {
-    const result = deriveZeropsGroups([project("legacy", undefined)]);
+    const result = deriveZeropsGroups([project("legacy", undefined)], { order: "name" });
 
     expect(result.groups).toEqual([]);
     expect(result.ungrouped.map((entry) => entry.name)).toEqual(["legacy"]);
+  });
+});
+
+describe("deriveZeropsGroups — newest first", () => {
+  it("orders groups by their earliest member's created time, newest first", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
+        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+        project("blog-dev", ["mate:g:ccc"], "blog-dev", "2024-02-01T00:00:00Z"),
+      ],
+      { order: "newest" },
+    );
+
+    expect(result.groups.map((group) => group.groupId)).toEqual(["bbb", "ccc", "aaa"]);
+  });
+
+  it("takes a group's birth from its earliest member — a later stage must not reorder it", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
+        // aaa's prod is added after bbb was born; if the group's birth were
+        // taken from its newest member instead of its earliest, aaa would
+        // wrongly jump ahead of bbb.
+        project("crm-prod", ["mate:g:aaa"], "crm-prod", "2024-06-01T00:00:00Z"),
+        project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+      ],
+      { order: "newest" },
+    );
+
+    expect(result.groups.map((group) => group.groupId)).toEqual(["bbb", "aaa"]);
+  });
+
+  it("sorts a group with no created member last, and ties by name then id", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("zzz", ["mate:g:aaa", "mate:name:Zzz"]),
+        project("bbb", ["mate:g:bbb", "mate:name:Bbb"], "bbb", "2024-01-01T00:00:00Z"),
+        project("aaa", ["mate:g:ccc", "mate:name:Aaa"]),
+      ],
+      { order: "newest" },
+    );
+
+    // bbb has a created time so it leads; aaa and ccc both have none, tied,
+    // broken by name (Aaa < Zzz).
+    expect(result.groups.map((group) => group.groupId)).toEqual(["bbb", "ccc", "aaa"]);
+  });
+
+  it("orders ungrouped projects by their own created time, newest first, missing created last", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("old", [], "old", "2024-01-01T00:00:00Z"),
+        project("new", [], "new", "2024-06-01T00:00:00Z"),
+        project("undated", []),
+      ],
+      { order: "newest" },
+    );
+
+    expect(result.ungrouped.map((entry) => entry.name)).toEqual(["new", "old", "undated"]);
+  });
+
+  it("breaks an ungrouped created tie by name, then id", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("b", [], "z", "2024-01-01T00:00:00Z"),
+        project("a", [], "a", "2024-01-01T00:00:00Z"),
+      ],
+      { order: "newest" },
+    );
+
+    expect(result.ungrouped.map((entry) => entry.id)).toEqual(["a", "z"]);
+  });
+
+  it("is stable regardless of the order projects arrive in", () => {
+    const projects = [
+      project("crm-dev", ["mate:g:aaa"], "crm-dev", "2024-01-01T00:00:00Z"),
+      project("shop-dev", ["mate:g:bbb"], "shop-dev", "2024-03-01T00:00:00Z"),
+      project("loose", [], "loose", "2024-02-01T00:00:00Z"),
+    ];
+    const forward = deriveZeropsGroups(projects, { order: "newest" });
+    const backward = deriveZeropsGroups(projects.toReversed(), { order: "newest" });
+
+    expect(JSON.stringify(forward)).toBe(JSON.stringify(backward));
   });
 });
 
