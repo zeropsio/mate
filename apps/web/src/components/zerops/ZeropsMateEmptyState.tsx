@@ -9,23 +9,20 @@
  * Who the Mate is comes from `useZeropsMates` (the caller resolves it, so a
  * conversation nobody lives in keeps upstream's empty line); whether a
  * sign-in is required is `zeropsAgentSignInRequired` over the environment's
- * agent-auth feed; the sign-in itself is the same dialog and login hooks the
- * service map's card uses.
+ * agent-auth feed; the sign-in itself is `useZeropsAgentSignInDialog`, the
+ * one dialog every sign-in surface shares.
  */
 import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin";
-import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
-import { useState } from "react";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 
 import { MateMark } from "../MateMark";
 import { mateQuestion, type ZeropsMateIdentity } from "../../zerops/mateIdentities";
-import { useAgentLogin } from "../../zerops/useAgentLogin";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
-import { useZeropsAgentSignerRecordState } from "../../zerops/useZeropsAgentSigner";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
+import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { FlatCard } from "./primitives";
 import { ZeropsAgentAuthRows } from "./ZeropsAgentAuthCard";
-import { ZeropsAgentAuthorizationDialog } from "./ZeropsAgentAuthorizationDialog";
 
 export function ZeropsMateEmptyState({
   environmentId,
@@ -38,16 +35,17 @@ export function ZeropsMateEmptyState({
 }) {
   const agentAuth = useZeropsAgentAuth(environmentId);
   const signInRequired = agentAuth !== undefined && zeropsAgentSignInRequired(agentAuth);
-  // D6: the conversation view records the signer of a successful sign-in,
-  // whichever door it went through; a row only shows how that went.
-  const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecordState(environmentId);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const startAgentLogin = useAgentLogin(threadRef, { terminalSurface: "embedded" });
+  // D6: the conversation view (`ChatView`) is the one place that records the
+  // signer of a successful sign-in, whichever door it went through; this
+  // hook only reads how that went and owns the dialog itself.
+  const {
+    openFor: openAuthorizationDialog,
+    dialog: authorizationDialog,
+    recordFailed,
+    retryRecord,
+  } = useZeropsAgentSignInDialog(environmentId, threadRef, { projectName: mate.project ?? null });
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
-  const [authorizationAgentId, setAuthorizationAgentId] = useState<ZeropsAgentId | null>(null);
-  const authorizationAgent = agentAuth?.agents.find(
-    (agent) => agent.agentId === authorizationAgentId,
-  );
 
   return (
     <div
@@ -67,7 +65,7 @@ export function ZeropsMateEmptyState({
             <ZeropsAgentAuthRows
               onCancel={cancelAgentLogin}
               onRetryRecord={retryRecord}
-              onSignIn={setAuthorizationAgentId}
+              onSignIn={openAuthorizationDialog}
               recordFailed={recordFailed}
               snapshot={agentAuth}
               viewerSubject={viewerSubject}
@@ -75,19 +73,7 @@ export function ZeropsMateEmptyState({
           </FlatCard>
         </section>
       ) : null}
-      {authorizationAgent === undefined ? null : (
-        <ZeropsAgentAuthorizationDialog
-          agent={authorizationAgent}
-          onCancel={cancelAgentLogin}
-          onOpenChange={(open) => {
-            if (!open) setAuthorizationAgentId(null);
-          }}
-          onStart={startAgentLogin}
-          open
-          projectName={mate.project ?? null}
-          threadRef={threadRef}
-        />
-      )}
+      {authorizationDialog}
     </div>
   );
 }

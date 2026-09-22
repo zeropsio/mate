@@ -4,7 +4,7 @@ import {
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { VariantProps } from "class-variance-authority";
 import { Badge } from "../ui/badge";
 import { buttonVariants } from "../ui/button";
@@ -44,9 +44,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
   triggerAriaLabel?: string;
+  /**
+   * Replaces the trigger's visible text (e.g. "Sign in an agent" when
+   * nothing is selected because no agent is runnable, D6) without touching
+   * the icon or badge, which already render nothing for an unmatched
+   * `activeInstanceId`.
+   */
+  triggerLabelOverride?: string;
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
+  /** See `ModelPickerContent`'s `renderInstancePanel` — passed straight through. */
+  renderInstancePanel?: (entry: ProviderInstanceEntry) => ReactNode | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
 }) {
   const [uncontrolledIsMenuOpen, setUncontrolledIsMenuOpen] = useState(false);
@@ -73,14 +82,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     (activeEntry?.driverKind === "opencode" || activeEntry?.driverKind === "antigravity"
       ? undefined
       : selectedInstanceOptions[0]);
-  const triggerTitle = selectedModel
-    ? getTriggerDisplayModelName(selectedModel)
-    : props.model === ANTIGRAVITY_DEFAULT_MODEL
-      ? "Choose model"
-      : props.model || "Choose model";
-  const triggerLabel = selectedModel
-    ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
-    : triggerTitle;
+  const triggerTitle =
+    props.triggerLabelOverride ??
+    (selectedModel
+      ? getTriggerDisplayModelName(selectedModel)
+      : props.model === ANTIGRAVITY_DEFAULT_MODEL
+        ? "Choose model"
+        : props.model || "Choose model");
+  const triggerLabel =
+    props.triggerLabelOverride ??
+    (selectedModel
+      ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
+      : triggerTitle);
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
@@ -227,6 +240,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {...(props.getModelDisabledReason
             ? { getModelDisabledReason: props.getModelDisabledReason }
             : {})}
+          {...(props.renderInstancePanel ? { renderInstancePanel: props.renderInstancePanel } : {})}
           onInstanceModelChange={handleInstanceModelChange}
         />
       </PopoverPopup>

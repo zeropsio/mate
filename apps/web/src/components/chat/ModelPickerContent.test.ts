@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
   adjacentModelPickerProvider,
+  isModelPickerEntryPaneled,
   resolveModelPickerSelectedModel,
   shouldIncludeModelPickerOption,
   shouldOfferModelPickerSetup,
@@ -31,6 +32,25 @@ function entry(status: ServerProvider["status"], driver = "opencode") {
     },
   ])[0]!;
 }
+
+describe("isModelPickerEntryPaneled", () => {
+  it("is false without a renderInstancePanel callback", () => {
+    expect(isModelPickerEntryPaneled(entry("ready"), undefined)).toBe(false);
+  });
+
+  it("is false when the callback finds nothing to show for this entry", () => {
+    expect(isModelPickerEntryPaneled(entry("ready"), () => null)).toBe(false);
+  });
+
+  // Regression: after the zerops overlay, an agent signed in by someone else
+  // (or unrecorded) can still read status "ready" — the entry looks pickable
+  // by every existing check, but picking one of its models would silently
+  // do nothing. Favorites/search must exclude it whenever a panel exists.
+  it("is true when the callback has a panel for this entry, even though it reads ready", () => {
+    const readyButSomeoneElses = entry("ready");
+    expect(isModelPickerEntryPaneled(readyButSomeoneElses, () => "panel")).toBe(true);
+  });
+});
 
 describe("shouldIncludeModelPickerOption", () => {
   it.each(["ready", "error"] as const)(
