@@ -74,6 +74,34 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
     [allowed, candidates, environments, identityVersion],
   );
 
+  // The exact candidate keys a fresh inventory read still produces — a zcp
+  // service reporting `RESTARTING`, or any other still-provisioning status,
+  // keeps the same `project:service` key, so this alone already answers "is
+  // this remembered registration's container still there" without reading
+  // its group.
+  const candidateKeys = useMemo(
+    () => new Set(candidates.map((candidate) => candidate.key)),
+    [candidates],
+  );
+  // A project whose services could not be read at all falls back to a
+  // project-level candidate with no service in its key (candidates.ts), so a
+  // remembered `project:service` key never matches it by equality — that is
+  // exactly the transient read H10 warns about, not proof the service is
+  // gone, so it is checked by project id instead.
+  const projectsWithUnreadServices = useMemo(
+    () =>
+      new Set(
+        candidates
+          .filter(
+            (candidate) =>
+              candidate.group === "unavailable" &&
+              candidate.reason === "this project's services could not be read",
+          )
+          .map((candidate) => candidate.project.id),
+      ),
+    [candidates],
+  );
+
   useEffect(() => {
     const alive = captureAccountLifetime();
     let cancelled = false;
@@ -127,6 +155,21 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
         hasPendingEnvironmentIdentityExchange(environment.displayUrl)
       )
         continue;
+      const remembered = readRememberedEnvironments().find(
+        (entry) => entry.environmentId === String(environment.environmentId),
+      );
+      if (remembered) {
+        // E12/H10: a restarting container, or services the inventory has
+        // not read yet, must not eject a working registration — and a read
+        // still in flight, or one that failed, proves nothing about
+        // whether the project is actually gone.
+        const projectId = remembered.key.split(":")[0];
+        const stillThere =
+          candidateKeys.has(remembered.key) ||
+          (projectId !== undefined && projectsWithUnreadServices.has(projectId));
+        if (stillThere) continue;
+        if (inventory.isLoading || inventory.error !== null) continue;
+      }
       // Local disposal must run even when an unrelated scope has blocked writes.
       void runAtomCommand(registry, environmentCatalog.remove, environment.environmentId, {
         reportFailure: false,
@@ -135,11 +178,13 @@ export function ZeropsEnvironmentLifetime({ children }: { readonly children: Rea
   }, [
     allowed,
     availableEnvironmentIds,
+    candidateKeys,
     candidates,
     environments,
     inventory.error,
     inventory.isLoading,
     identityVersion,
+    projectsWithUnreadServices,
     registry,
   ]);
 

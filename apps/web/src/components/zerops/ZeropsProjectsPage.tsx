@@ -50,7 +50,11 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { useZeropsCandidateHealth } from "~/zerops/useZeropsCandidateHealth";
+import {
+  useZeropsCandidateHealth,
+  useZeropsCandidateMateFlags,
+  useZeropsCandidateProcessRunning,
+} from "~/zerops/useZeropsCandidateHealth";
 import {
   integrationTokensFromGrantMetadata,
   useZeropsGroupReach,
@@ -487,7 +491,24 @@ function ZeropsProjectsContent() {
       ),
     [creationVerdicts, observedCandidates],
   );
-  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates);
+  // The same platform-process ground truth `provisioning.ts`'s wait reads,
+  // given to the row probes too (H7/R9) — a legitimately long restart must
+  // not read as `stalled` here while the provisioning machine, watching the
+  // same fact, knows it is still running.
+  const candidateProcessRunning = useZeropsCandidateProcessRunning(
+    candidates,
+    activeOrganization?.id,
+  );
+  const { health: candidateHealth, serverVersions } = useZeropsCandidateHealth(candidates, {
+    isProcessRunning: candidateProcessRunning,
+  });
+  // H9: the one read fact `predates-mate` is gated on — read only for a
+  // candidate the health probe has actually put there.
+  const candidateMateFlags = useZeropsCandidateMateFlags(
+    candidates,
+    candidateHealth,
+    activeOrganization?.id,
+  );
   const {
     creatingIn,
     setCreatingIn,
@@ -637,9 +658,11 @@ function ZeropsProjectsContent() {
     const waiting =
       candidate.group !== "connected" &&
       (waitedOn(candidate) || pendingCreations.has(candidate.project.id));
+    const mateFlag = candidateMateFlags.get(candidate.key);
     return {
       candidate,
       health: candidateHealth.get(candidate.key),
+      ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
       can: {
         open: openable,
@@ -910,26 +933,41 @@ function ZeropsProjectsContent() {
         </>
       );
     }
+    // B-2: a cap running out is words, never a stop — the wait stays in its
+    // phase (a missed push still resumes it) and only grows this line's
+    // "Taking longer than usual." plus the two verbs that end a wait for
+    // good (H4/H5): "Keep waiting" clears it and restarts the phase's own
+    // clock, "Stop waiting" cancels and leaves the row to its own words.
+    const overdueLine = state.overdue ? (
+      <>
+        {quiet("Taking longer than usual.")}
+        <ZeropsMateVerb disabled={busy} label="Keep waiting" onClick={provisioning.retry} />
+        <ZeropsMateVerb label="Stop waiting" onClick={provisioning.cancel} />
+      </>
+    ) : null;
     if (state.phase === "awaiting-settled") {
       // The container answers already; it is not hardened yet. Same words as
       // "coming up" — nothing about the birth's one restart is a person's to
       // watch for.
-      return quiet(COMING_UP_LINE);
+      return overdueLine ?? quiet(COMING_UP_LINE);
     }
     if (state.phase === "hardening") {
-      return quiet(ALMOST_THERE_LINE);
+      return overdueLine ?? quiet(ALMOST_THERE_LINE);
     }
     if (state.phase === "not-yet-available") {
-      return quiet("This container's release does not carry Mate yet.");
-    }
-    if (state.phase === "timed-out") {
+      // H4/H5: no wait dead-ends. "Keep waiting" asks the platform again
+      // (the container it was about survives the ask); "Stop waiting" leaves
+      // the hand-off in place and lets the row fall back to its own words.
+      // A settled verdict, not a cap: `overdue` cannot be true here.
       return (
         <>
-          {quiet("Taking longer than usual.")}
+          {quiet("This container's release does not carry Mate yet.")}
           <ZeropsMateVerb disabled={busy} label="Keep waiting" onClick={provisioning.retry} />
+          <ZeropsMateVerb label="Stop waiting" onClick={provisioning.cancel} />
         </>
       );
     }
+    if (overdueLine) return overdueLine;
     return undefined;
   };
 
@@ -995,6 +1033,20 @@ function ZeropsProjectsContent() {
           </>
         );
       }
+      // A re-probe, nothing that writes (H9) — never disabled by any
+      // in-flight platform write, since it starts none.
+      case "retry-probe":
+        return (
+          <>
+            {detail}
+            <ZeropsMateVerb
+              label={action.label}
+              onClick={() => {
+                runRowAction(candidate, action.kind);
+              }}
+            />
+          </>
+        );
       default:
         return detail;
     }
@@ -1019,6 +1071,12 @@ function ZeropsProjectsContent() {
         return;
       case "set-up-mate":
         void setUpMate(candidate);
+        return;
+      // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
+      // apart from `predates-mate` by a browser, so nothing here writes;
+      // this only asks the inventory (and so the health probe) to run again.
+      case "retry-probe":
+        refreshZeropsCandidates();
         return;
       case "enable": {
         const serviceId = candidate.service?.id;

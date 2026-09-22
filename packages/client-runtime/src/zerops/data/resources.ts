@@ -55,10 +55,23 @@ export interface ServiceDeployedVersionResourceRequest {
   readonly service: ServiceRef;
 }
 
+/**
+ * `ZCP_MATE_ENABLED` on a service — the one read fact that tells a container
+ * not serving Zerops Mate apart from one that is merely away (spec-mate
+ * §4.5, H9): a browser cannot, and `predates-mate` reads identically either
+ * way. Read per service, same as the agent and deployed-version reads.
+ */
+export interface ServiceMateFlagResourceRequest {
+  readonly kind: "service-mate-flag";
+  readonly account: AccountScope;
+  readonly service: ServiceRef;
+}
+
 export type ZeropsResourceRequest =
   | OrganizationLocationsResourceRequest
   | ServiceAuthorizedAgentsResourceRequest
   | ServiceDeployedVersionResourceRequest
+  | ServiceMateFlagResourceRequest
   | OrganizationIntegrationTokenGrantsResourceRequest;
 
 export type ZeropsResourceKind = ZeropsResourceRequest["kind"];
@@ -75,6 +88,12 @@ export interface ZeropsResourceValues {
   readonly "service-authorized-agents": ReadonlyArray<ZeropsAgentType>;
   /** `undefined` for a service nothing has ever been deployed to. */
   readonly "service-deployed-version": string | undefined;
+  /**
+   * `"unknown"` for a read that failed rather than answered — never folded
+   * into `false`, which is itself a fact a caller may act on (H9): a row
+   * offering Enable off an `"unknown"` flag would be back to inferring.
+   */
+  readonly "service-mate-flag": { readonly enabled: boolean | "unknown" };
   readonly "organization-integration-token-grants": ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
 }
 
@@ -133,6 +152,10 @@ export interface ZeropsResourceAdapter {
     request: ServiceDeployedVersionResourceRequest,
     context: ZeropsResourceRequestContext,
   ) => Effect.Effect<ZeropsResourceValues["service-deployed-version"], ZeropsResourceSourceError>;
+  readonly readServiceMateFlag: (
+    request: ServiceMateFlagResourceRequest,
+    context: ZeropsResourceRequestContext,
+  ) => Effect.Effect<ZeropsResourceValues["service-mate-flag"], ZeropsResourceSourceError>;
   readonly readOrganizationIntegrationTokenGrants: (
     request: OrganizationIntegrationTokenGrantsResourceRequest,
     context: ZeropsResourceRequestContext,
@@ -234,6 +257,7 @@ const organizationOf = (request: ZeropsResourceRequest): OrganizationRef => {
       return request.organization;
     case "service-authorized-agents":
     case "service-deployed-version":
+    case "service-mate-flag":
       return request.service.project.organization;
   }
 };
@@ -253,6 +277,7 @@ export function zeropsResourceKeyOf(request: ZeropsResourceRequest): ZeropsResou
       return JSON.stringify(prefix) as ZeropsResourceKey;
     case "service-authorized-agents":
     case "service-deployed-version":
+    case "service-mate-flag":
       return JSON.stringify([
         ...prefix,
         request.service.project.projectId,
@@ -308,7 +333,9 @@ function resourceAdmission(
     return admissionError("access-denied");
   }
   if (
-    (request.kind === "service-authorized-agents" || request.kind === "service-deployed-version") &&
+    (request.kind === "service-authorized-agents" ||
+      request.kind === "service-deployed-version" ||
+      request.kind === "service-mate-flag") &&
     !projectRoleGrantsAccess(grant, request.service.project, "any-role")
   ) {
     return admissionError("access-denied");
@@ -328,6 +355,8 @@ function readResource(
       return adapter.readServiceAuthorizedAgents(request, context);
     case "service-deployed-version":
       return adapter.readServiceDeployedVersion(request, context);
+    case "service-mate-flag":
+      return adapter.readServiceMateFlag(request, context);
     case "organization-integration-token-grants":
       return adapter.readOrganizationIntegrationTokenGrants(request, context);
   }
@@ -576,6 +605,7 @@ export const makeZeropsResourceBroker = Effect.fn("ZeropsResourceBroker.make")(f
         "organization-locations": 0,
         "service-authorized-agents": 0,
         "service-deployed-version": 0,
+        "service-mate-flag": 0,
         "organization-integration-token-grants": 0,
       };
       let loading = 0;

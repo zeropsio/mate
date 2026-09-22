@@ -55,6 +55,14 @@ export interface ZeropsRowInput {
    */
   readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
   /**
+   * `ZCP_MATE_ENABLED`'s own read (`ZeropsApiClient.isZeropsMateEnabled`),
+   * for a `predates-mate` row only — the fact that tells this container
+   * apart from one merely away (spec-mate §4.5, H9). `"unknown"` for a read
+   * that failed; absent for one not yet made (or made for any other
+   * health), read the same conservative way as `false`.
+   */
+  readonly mateFlag?: boolean | "unknown" | undefined;
+  /**
    * This client is waiting on the container itself — the wait a creation
    * started, resumed after a reload, or the identity exchange in flight. The
    * row then offers no verb and says only how long is left; the wait ends in
@@ -84,6 +92,13 @@ export type ZeropsRowAction =
   | { readonly kind: "remove"; readonly label: "Remove" }
   /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
   | { readonly kind: "restart"; readonly label: "Restart" }
+  /**
+   * A re-probe, nothing that writes (H9) — offered for `unreachable` and
+   * `stalled`, which a browser cannot tell apart from a container that
+   * simply predates Zerops Mate (spec-mate §4.5). Only a read fact, never
+   * this inference, may justify the restart `enable` performs.
+   */
+  | { readonly kind: "retry-probe"; readonly label: "Try again" }
   /** The container is on its way, the probe or the socket still busy: no verb yet. */
   | { readonly kind: "pending" }
   | { readonly kind: "none" };
@@ -355,13 +370,29 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
   }
   switch (health) {
     case "predates-mate":
+      // The flag reads on: this is a container mid-init, not one waiting on
+      // Enable — `ZCP_MATE_ENABLED` is what zcp keys every mate-shaped
+      // effect off, so an install not finished yet answers exactly like a
+      // container that never had it (H9).
+      if (input.mateFlag === true) {
+        return {
+          detail: "Zerops Mate is starting.",
+          status: { label: "Starting", pulse: true, tone: "busy" },
+        };
+      }
+      if (input.mateFlag === "unknown") {
+        return {
+          detail: "Could not tell whether Zerops Mate is enabled here.",
+          status: { label: "Not answering", tone: "attention" },
+        };
+      }
       return {
         detail: "Zerops Mate is not enabled on this container yet.",
         status: { label: "Needs Zerops Mate", tone: "attention" },
       };
     case "unreachable":
       return {
-        detail: "The container is not answering.",
+        detail: "Not answering right now.",
         status: { label: "Not answering", tone: "attention" },
       };
     case "initializing":
@@ -374,7 +405,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       };
     case "stalled":
       return {
-        detail: "The container is up but Zerops Mate did not answer.",
+        detail: "Not answering right now.",
         status: { label: "Not answering", tone: "attention" },
       };
     case "ready":
@@ -436,12 +467,23 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   }
 
   // A container from before Zerops Mate answers no route with a CORS header,
-  // so from a browser it looks exactly like one that is away — and the
-  // platform says the service is ACTIVE. A restart helps in both cases, so it
-  // is offered in both, even while a socket is still trying.
-  // A wait that outlasted its bound (`stalled`) gets the same recovery: it
-  // writes the flag (a no-op if already on) and restarts.
-  if (health === "predates-mate" || health === "unreachable" || health === "stalled") {
+  // so from a browser it looks exactly like one that is merely away — the
+  // platform still says the service is ACTIVE. Only `predates-mate` offers
+  // the restart: `unreachable` and `stalled` get a harmless re-probe instead
+  // (H9) — a browser cannot justify a restart from an inferred state, only
+  // from a read fact (spec-mate §4.5).
+  if (health === "unreachable" || health === "stalled") {
+    return { kind: "retry-probe", label: "Try again" };
+  }
+  if (health === "predates-mate") {
+    // The flag says this container is mid-init, or the flag could not be
+    // read at all: neither is "not enabled", so neither offers the restart
+    // — only a harmless re-probe (H9). Enable is offered on the one read
+    // fact that means it: the flag off.
+    if (input.mateFlag === true || input.mateFlag === "unknown") {
+      return { kind: "retry-probe", label: "Try again" };
+    }
+    if (input.mateFlag === undefined) return { kind: "pending" };
     return can.enable ? { kind: "enable", label: "Enable Zerops Mate" } : { kind: "none" };
   }
   if (isConnectionInFlight(candidate) || health === undefined || health === "initializing") {

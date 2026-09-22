@@ -23,7 +23,12 @@ import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { probeZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { ZeropsServiceId, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
+import * as Effect from "effect/Effect";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
+import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { useZeropsAtomSelections, useZeropsData } from "./zeropsDataContext";
 
 const PROBE_CONCURRENCY = 4;
 const REPROBE_INTERVAL_MS = 5_000;
@@ -293,4 +298,152 @@ export function useZeropsCandidateHealth(
   }, [targetKey, refreshVersion, isProcessRunning]);
 
   return snapshot;
+}
+
+/**
+ * The same ground truth `provisioning.ts`'s `awaiting-health` wait uses to
+ * keep its own 90 s cap from elapsing mid-restart (`useZeropsProvisioning`'s
+ * activity effect), given here to the projects page's row probes as well
+ * (H7/R9): two callers reading one platform-process fact instead of one
+ * knowing it and the other guessing from a bare clock.
+ *
+ * Subscribes to the account's project-activity feed for every project a
+ * probeable candidate belongs to — the same set `useZeropsCandidateHealth`
+ * probes — for as long as this candidate list is passed in; a caller with a
+ * large picker may want to narrow that to candidates whose health is still
+ * pending, at the cost of the subscription flapping as rows settle and
+ * un-settle.
+ */
+export function useZeropsCandidateProcessRunning(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+  clientId: string | undefined,
+): (candidateKey: string) => boolean {
+  const { runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
+
+  const projectRefs = useMemo(() => {
+    const byProjectId = new Map<string, ProjectRef>();
+    for (const candidate of candidates) {
+      if (!candidate.containerOrigin || byProjectId.has(candidate.project.id)) continue;
+      const ref = findInventoryProjectRef(inventory, candidate.project.id, clientId);
+      if (ref) byProjectId.set(candidate.project.id, ref);
+    }
+    return byProjectId;
+  }, [candidates, inventory, clientId]);
+  const projectIdsKey = [...projectRefs.keys()].sort().join(",");
+
+  // One subscription per distinct project, opened and closed exactly like
+  // `useZeropsDataInterest` does for a single one — there is no plural form
+  // of that hook to call in a loop over a list whose length changes between
+  // renders.
+  useEffect(() => {
+    const controllers = [...projectRefs.values()].map((project) => {
+      const controller = new AbortController();
+      void Effect.runPromise(
+        Effect.scoped(
+          runtime.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
+        ),
+        { signal: controller.signal },
+      ).catch(() => undefined);
+      return controller;
+    });
+    return () => {
+      for (const controller of controllers) controller.abort();
+    };
+    // `projectIdsKey` is `projectRefs`'s identity; depending on the map
+    // itself would tear the subscriptions down and rebuild them every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectIdsKey, runtime]);
+
+  const activityEntries = useMemo(
+    () =>
+      [...projectRefs.entries()].map(
+        ([projectId, ref]) => [projectId, runtime.reads.activity(ref)] as const,
+      ),
+    [projectRefs, runtime.reads],
+  );
+  const activitySelections = useZeropsAtomSelections(activityEntries);
+
+  return useMemo(() => {
+    const running = new Set<string>();
+    for (const candidate of candidates) {
+      const activity = activitySelections.get(candidate.project.id);
+      if (!activity) continue;
+      const isRunning = activity.running.value.some((entry) => {
+        if (entry.knowledge !== "observed") return false;
+        const identity = entry.record.identity;
+        if (identity.knowledge !== "observed") return false;
+        return (
+          candidate.service === undefined ||
+          (identity.fields.serviceIds ?? []).includes(ZeropsServiceId.make(candidate.service.id))
+        );
+      });
+      if (isRunning) running.add(candidate.key);
+    }
+    return (candidateKey: string) => running.has(candidateKey);
+  }, [candidates, activitySelections]);
+}
+
+/**
+ * `ZCP_MATE_ENABLED`'s own read, for every candidate whose health has
+ * answered `predates-mate` — never inferred from `health` alone, which
+ * cannot tell that container apart from one merely away (spec-mate §4.5,
+ * H9). Read once per candidate while it stays `predates-mate`; a candidate
+ * that leaves and returns to it (a re-probe) is read again.
+ */
+export function useZeropsCandidateMateFlags(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+  health: ReadonlyMap<string, ZeropsContainerHealth>,
+  clientId: string | undefined,
+): ReadonlyMap<string, boolean | "unknown"> {
+  const { runtime } = useZeropsData();
+  const inventory = useZeropsInventory();
+  const [flags, setFlags] = useState<ReadonlyMap<string, boolean | "unknown">>(new Map());
+  const requestedRef = useRef<Set<string>>(new Set());
+
+  const predatesMateKey = candidates
+    .filter((candidate) => health.get(candidate.key) === "predates-mate")
+    .map((candidate) => candidate.key)
+    .sort()
+    .join(",");
+
+  useEffect(() => {
+    // A candidate that left `predates-mate` gets a fresh read if it ever
+    // returns to it — its answer may no longer hold.
+    for (const key of [...requestedRef.current]) {
+      if (health.get(key) !== "predates-mate") requestedRef.current.delete(key);
+    }
+    let cancelled = false;
+    for (const candidate of candidates) {
+      if (health.get(candidate.key) !== "predates-mate") continue;
+      if (requestedRef.current.has(candidate.key) || !candidate.service) continue;
+      const project = findInventoryProjectRef(inventory, candidate.project.id, clientId);
+      if (!project) continue;
+      requestedRef.current.add(candidate.key);
+      const candidateKey = candidate.key;
+      void readZeropsResourceOnce(runtime.resources, {
+        kind: "service-mate-flag",
+        account: runtime.scope,
+        service: {
+          kind: "service",
+          project,
+          serviceId: ZeropsServiceId.make(candidate.service.id),
+        },
+      }).then((value) => {
+        if (cancelled) return;
+        setFlags((current) =>
+          new Map(current).set(candidateKey, value === undefined ? "unknown" : value.enabled),
+        );
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // `predatesMateKey` is the identity of which candidates are (still)
+    // `predates-mate`; depending on `candidates`/`health` directly would
+    // re-run this on every incremental render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [predatesMateKey, clientId, runtime]);
+
+  return flags;
 }

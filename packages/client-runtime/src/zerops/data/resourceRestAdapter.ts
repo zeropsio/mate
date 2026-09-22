@@ -37,6 +37,20 @@ export function makeZeropsResourceRestAdapter(client: ZeropsApiClient): ZeropsRe
       request(() => client.readAuthorizedAgents(input.service.serviceId, context.abortSignal)),
     readServiceDeployedVersion: (input, context) =>
       request(() => client.readDeployedVersionName(input.service.serviceId, context.abortSignal)),
+    // A failed read is folded into `"unknown"` here, not left to fail the
+    // resource: this flag exists to replace an inference (H9), and a read
+    // that could not be made is exactly the case a caller must not treat as
+    // a fact either way.
+    readServiceMateFlag: (input, context) =>
+      request(async () => {
+        try {
+          return {
+            enabled: await client.isZeropsMateEnabled(input.service.serviceId, context.abortSignal),
+          };
+        } catch {
+          return { enabled: "unknown" as const };
+        }
+      }),
     readOrganizationIntegrationTokenGrants: (input, context) =>
       request(async () =>
         (

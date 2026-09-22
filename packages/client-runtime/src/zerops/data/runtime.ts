@@ -561,6 +561,7 @@ const unavailableResourceAdapter: ZeropsResourceAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
   readServiceDeployedVersion: unavailableResource,
+  readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
 };
 

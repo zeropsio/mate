@@ -23,6 +23,7 @@ import {
   type ProvisioningState,
 } from "@t3tools/client-runtime/zerops/provisioning";
 import { findInventoryProjectRef, useZeropsInventory } from "./inventoryContext";
+import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
 import {
   runZeropsCommand,
   useZeropsAtomSelections,
@@ -130,6 +131,35 @@ export function useZeropsProvisioning(clientId: string | null): {
     dispatch({ kind: "process", running, observed: true });
   }, [phase, activity, containerServiceId, dispatch]);
 
+  // `ZCP_MATE_ENABLED` — the read fact `predates-mate` is gated on (H9): read
+  // once per entry into `awaiting-health` (this effect is keyed on when that
+  // phase began) and again after `enable()`, which starts a fresh
+  // `awaiting-health` with its own `phaseStartedAtMs`. Never on every poll
+  // tick: the flag does not change on its own mid-wait.
+  const mateFlagRef = useRef<boolean | "unknown" | null>(null);
+  const phaseStartedAtMs = phase === "awaiting-health" ? (state?.phaseStartedAtMs ?? null) : null;
+  useEffect(() => {
+    mateFlagRef.current = null;
+    if (phase !== "awaiting-health" || phaseStartedAtMs === null) return;
+    const live = stateRef.current;
+    const projectId = live?.projectId ?? null;
+    const serviceId = live?.containerServiceId ?? null;
+    if (projectId === null || serviceId === null) return;
+    const project = findInventoryProjectRef(inventoryRef.current, projectId, clientId ?? undefined);
+    if (project === null) return;
+    let cancelled = false;
+    void readZeropsResourceOnce(runtime.resources, {
+      kind: "service-mate-flag",
+      account: runtime.scope,
+      service: { kind: "service", project, serviceId: ZeropsServiceId.make(serviceId) },
+    }).then((value) => {
+      if (!cancelled) mateFlagRef.current = value === undefined ? "unknown" : value.enabled;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, phaseStartedAtMs, clientId, runtime]);
+
   // Runs the birth's one restart (`projectIsolation.ts`, spec-mate §3
   // B-1/B-2/B-3): guarded by a ref so an overlapping poll tick never starts a
   // second attempt, and left to retry on the next tick — never dispatching
@@ -194,7 +224,16 @@ export function useZeropsProvisioning(clientId: string | null): {
             }),
         });
         if (cancelled) return;
-        dispatch(event.kind === "health" && initAt !== undefined ? { ...event, initAt } : event);
+        if (event.kind === "health") {
+          const mateEnabled = mateFlagRef.current === true ? true : undefined;
+          dispatch({
+            ...event,
+            ...(initAt === undefined ? {} : { initAt }),
+            ...(mateEnabled === undefined ? {} : { mateEnabled }),
+          });
+        } else {
+          dispatch(event);
+        }
       } catch (cause) {
         if (cancelled) return;
         // A read that fails is not a verdict: the tick still runs the cap, so

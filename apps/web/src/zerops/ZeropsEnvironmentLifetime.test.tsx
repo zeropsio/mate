@@ -116,6 +116,8 @@ const inventory = (): Inventory => ({
   isLoading: false,
   error: null,
 });
+/** Mutated by a test that needs `render()` to pick up a new inventory snapshot. */
+let liveInventory: Inventory = inventory();
 let unmount: (() => Promise<void>) | undefined;
 let restorePending = false;
 function ObserveRestore() {
@@ -140,6 +142,7 @@ beforeEach(() => {
     },
   });
   openAccountLifetime("account");
+  liveInventory = inventory();
   mock.environments = [];
   mock.exchange.mockReset().mockResolvedValue({ _tag: "Failure", error: "Unavailable" });
   mock.remove.mockReset();
@@ -157,7 +160,7 @@ async function mount() {
     act(async () => {
       root.render(
         <StrictMode>
-          <InventoryContext value={inventory()}>
+          <InventoryContext value={liveInventory}>
             <ZeropsEnvironmentLifetime>
               <ObserveRestore />
             </ZeropsEnvironmentLifetime>
@@ -233,6 +236,57 @@ it("disposes an obsolete server history once a replacement is remembered at its 
   });
   expect(mock.remove.mock.calls.map((call) => call[2])).toContain(environmentId);
   expect(mock.remove.mock.calls.map((call) => call[2])).not.toContain(replacement);
+});
+
+it("a Mate restarting keeps its environment", async () => {
+  rememberEnvironment({ key: "project:service", environmentId });
+  mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
+  const render = await mount();
+  expect(mock.remove).not.toHaveBeenCalled();
+
+  // A fresh inventory push landing the service as RESTARTING: the row is no
+  // longer `allowed`, but the candidate is still there under the same
+  // `project:service` key (candidates.ts).
+  liveInventory = {
+    ...inventory(),
+    services: new Map([
+      [
+        project.id,
+        { status: "resolved" as const, services: [{ ...service, status: "RESTARTING" }] },
+      ],
+    ]),
+  };
+  await render();
+
+  expect(mock.remove).not.toHaveBeenCalled();
+});
+
+it("services not yet read keep the environment", async () => {
+  rememberEnvironment({ key: "project:service", environmentId });
+  mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
+  const render = await mount();
+  expect(mock.remove).not.toHaveBeenCalled();
+
+  // Inventory carries the project forward but its services outcome is
+  // absent — the momentarily-unread window H10 describes.
+  liveInventory = { ...inventory(), services: new Map() };
+  await render();
+
+  expect(mock.remove).not.toHaveBeenCalled();
+});
+
+it("a deleted project loses it", async () => {
+  rememberEnvironment({ key: "project:service", environmentId });
+  mock.environments = [{ environmentId, displayUrl: origin + "/mate" }];
+  const render = await mount();
+  expect(mock.remove).not.toHaveBeenCalled();
+
+  // A settled read (not loading, no error) whose project list no longer has
+  // the project at all — the platform actually deleted it.
+  liveInventory = { ...inventory(), projects: [], services: new Map() };
+  await render();
+
+  expect(mock.remove.mock.calls.map((call) => call[2])).toContain(environmentId);
 });
 
 it("releases an unremembered registration when its identity exchange ends unsuccessfully", async () => {

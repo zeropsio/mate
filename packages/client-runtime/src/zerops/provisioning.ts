@@ -50,7 +50,6 @@ export type ProvisioningPhase =
   | "awaiting-health"
   | "needs-enable"
   | "ready"
-  | "timed-out"
   | "pool-exhausted"
   /**
    * A restart was already tried and the container still predates Zerops
@@ -122,8 +121,13 @@ export interface ProvisioningState {
   readonly projectId: string | null;
   readonly containerServiceId: string | null;
   readonly containerOrigin: string | null;
-  /** Set on `timed-out`: which wait ran out. */
-  readonly expiredPhase: WaitingPhase | null;
+  /**
+   * True once this phase's own cap has run out (B-2): words, not a stop.
+   * The wait stays in its phase and keeps polling — a missed push still
+   * resumes it — and "Keep waiting" only clears the flag and restarts the
+   * cap's clock; "Stop waiting" is the caller cancelling outright.
+   */
+  readonly overdue: boolean;
   /** Why the current wait is still going, when the platform said something useful. */
   readonly detail: string | null;
   /** True once the user has asked for the container to be restarted this wait. */
@@ -152,6 +156,15 @@ export type ProvisioningEvent =
       readonly health: ZeropsContainerHealth;
       /** The boot's `initAt`, when the probe read one. */
       readonly initAt?: string;
+      /**
+       * Whether `ZCP_MATE_ENABLED` reads as on for this container — a read
+       * fact (`ZeropsApiClient.isZeropsMateEnabled`), never inferred from
+       * `health` alone: a browser cannot tell a pre-Mate container from one
+       * merely away (spec-mate §4.5, H9). Consulted only when `health` is
+       * `predates-mate`; absent is read the conservative way, as off, so a
+       * caller that has not wired the read yet keeps today's behavior.
+       */
+      readonly mateEnabled?: boolean;
     }
   | { readonly kind: "tick" }
   | { readonly kind: "retry" }
@@ -184,12 +197,12 @@ function waiting(
     processRunning: false,
     hardenedAtMs: null,
     restartExpected: false,
+    overdue: false,
     ...carry,
     phase,
     waitingFor: PROVISIONING_PHASE_LABELS[phase],
     capMs: capFor(phase),
     phaseStartedAtMs: nowMs,
-    expiredPhase: null,
   };
 }
 
@@ -205,7 +218,7 @@ function settled(
     waitingFor,
     capMs: null,
     phaseStartedAtMs: nowMs,
-    expiredPhase: null,
+    overdue: false,
   };
 }
 
@@ -228,7 +241,7 @@ export function startProvisioning(input: {
       projectId: null,
       containerServiceId: null,
       containerOrigin: null,
-      expiredPhase: null,
+      overdue: false,
       detail: null,
       enabled: false,
       processRunning: false,
@@ -293,17 +306,25 @@ export function advanceProvisioning(
       // proof already stands.
       return { ...state, detail: null, phaseStartedAtMs: nowMs };
     }
-    const phase = state.expiredPhase ?? "awaiting-project";
-    return waiting(phase, nowMs, {
-      projectId: state.projectId,
-      containerServiceId: state.containerServiceId,
-      containerOrigin: state.containerOrigin,
-      // A retry must not forget an enable already tried this wait — otherwise
-      // a retry-into-predates-mate loop would offer Enable again forever.
-      enabled: state.enabled,
-      hardenedAtMs: state.hardenedAtMs,
-      restartExpected: state.restartExpected,
-    });
+    if (state.phase === "not-yet-available") {
+      // A verdict this wait settled on, not a cap that ran out. "Keep
+      // waiting" (H4/H5) asks the same question again rather than
+      // restarting from scratch: the container it was about, and the
+      // restart already tried against it, both survive.
+      return waiting("awaiting-health", nowMs, {
+        projectId: state.projectId,
+        containerServiceId: state.containerServiceId,
+        containerOrigin: state.containerOrigin,
+        enabled: state.enabled,
+      });
+    }
+    if (isWaitingPhase(state.phase)) {
+      // B-2: a cap running out is words, never a stop. "Keep waiting" only
+      // clears the flag and restarts this phase's own clock — the phase
+      // itself, and everything it already knows, is untouched.
+      return { ...state, overdue: false, phaseStartedAtMs: nowMs };
+    }
+    return state;
   }
 
   if (event.kind === "enable") {
@@ -331,7 +352,7 @@ export function advanceProvisioning(
           waitingFor: PROVISIONING_PHASE_LABELS.hardening,
           capMs: null,
           phaseStartedAtMs: nowMs,
-          expiredPhase: null,
+          overdue: false,
           detail: null,
         };
       }
@@ -365,10 +386,11 @@ export function advanceProvisioning(
   if (event.kind === "tick") {
     if (!isWaitingPhase(state.phase)) return state;
     if (state.phase === "awaiting-health" && state.processRunning) return state;
+    if (state.overdue) return state;
     const cap = capFor(state.phase);
     if (cap === null) return state;
     if (nowMs - state.phaseStartedAtMs <= cap) return state;
-    return { ...state, phase: "timed-out", expiredPhase: state.phase };
+    return { ...state, overdue: true };
   }
 
   if (event.kind === "projects" && state.phase === "awaiting-project") {
@@ -420,6 +442,14 @@ export function advanceProvisioning(
       return settled(state, "ready", "Zerops Mate is ready", nowMs);
     }
     if (event.health === "predates-mate") {
+      // The flag reads as on: this container is not a stale one waiting on
+      // Enable, it is one mid-init — `ZCP_MATE_ENABLED` is the input zcp
+      // keys every mate-shaped effect off, so an install that has not
+      // finished yet answers exactly like a container that never had the
+      // flag at all. Never a restart from this, only more waiting.
+      if (event.mateEnabled === true) {
+        return { ...state, detail: "Almost there." };
+      }
       // A restart was already tried this wait and the container still
       // predates Zerops Mate: it is not a stale container, it is a zcp
       // release that does not carry mate yet — restarting again changes nothing.

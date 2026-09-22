@@ -208,7 +208,7 @@ describe("provisioning state machine", () => {
     expect(stale.containerServiceId).toBe("service-1");
   });
 
-  it("turns a cap expiry into a retryable state, never an error", () => {
+  it("turns a cap expiry into overdue words, never a stop (B-2)", () => {
     const state = reachAwaitingContainer(0);
 
     const beforeCap = advanceProvisioning(
@@ -217,23 +217,44 @@ describe("provisioning state machine", () => {
       PROVISIONING_CAPS["awaiting-container"] - 1,
     );
     expect(beforeCap.phase).toBe("awaiting-container");
+    expect(beforeCap.overdue).toBe(false);
 
     const expired = advanceProvisioning(
       state,
       { kind: "tick" },
       PROVISIONING_CAPS["awaiting-container"] + 1,
     );
-    expect(expired.phase).toBe("timed-out");
-    expect(expired.expiredPhase).toBe("awaiting-container");
+    // The wait stays in its phase — it never stops, and a missed push still
+    // resumes it — only `overdue` says the cap ran out.
+    expect(expired.phase).toBe("awaiting-container");
+    expect(expired.overdue).toBe(true);
     // It still says what it had been waiting for, so the panel can explain.
     expect(expired.waitingFor).toBe(state.waitingFor);
 
     const retried = advanceProvisioning(expired, { kind: "retry" }, 999_999);
     expect(retried.phase).toBe("awaiting-container");
+    expect(retried.overdue).toBe(false);
     expect(retried.phaseStartedAtMs).toBe(999_999);
     expect(advanceProvisioning(retried, { kind: "tick" }, 1_000_000).phase).toBe(
       "awaiting-container",
     );
+  });
+
+  it("an overdue wait still applies every ordinary event — a missed push resumes it on its own", () => {
+    const state = reachAwaitingContainer(0);
+    const overdue = advanceProvisioning(
+      state,
+      { kind: "tick" },
+      PROVISIONING_CAPS["awaiting-container"] + 1,
+    );
+    expect(overdue.overdue).toBe(true);
+
+    const settled = advanceProvisioning(
+      overdue,
+      { kind: "services", project: PROJECT, services: [container()] },
+      PROVISIONING_CAPS["awaiting-container"] + 2,
+    );
+    expect(settled.phase).toBe("awaiting-settled");
   });
 
   it("measures each cap from the moment its phase started, not from the beginning", () => {
@@ -280,8 +301,8 @@ describe("provisioning state machine", () => {
       { kind: "tick" },
       50_000 + PROVISIONING_CAPS["awaiting-health"] + 1,
     );
-    expect(expired.phase).toBe("timed-out");
-    expect(expired.expiredPhase).toBe("awaiting-health");
+    expect(expired.phase).toBe("awaiting-health");
+    expect(expired.overdue).toBe(true);
   });
 
   it("the process event does not affect awaiting-container", () => {
@@ -481,6 +502,54 @@ describe("readProvisioning", () => {
   });
 });
 
+describe("predates-mate is a read fact, not a browser inference (H9)", () => {
+  // `predates-mate` × the platform's own `ZCP_MATE_ENABLED` read — the only
+  // health verdict this flag changes anything for.
+  const cases = [
+    { mateEnabled: false, want: "needs-enable" },
+    { mateEnabled: true, want: "awaiting-health" },
+    { mateEnabled: undefined, want: "needs-enable" },
+  ] as const;
+
+  it.each(cases)("predates-mate, mateEnabled=$mateEnabled -> $want", ({ mateEnabled, want }) => {
+    const awaitingHealth = reachAwaitingHealth(1000);
+    const next = advanceProvisioning(
+      awaitingHealth,
+      mateEnabled === undefined
+        ? { kind: "health", health: "predates-mate" }
+        : { kind: "health", health: "predates-mate", mateEnabled },
+      2000,
+    );
+    expect(next.phase).toBe(want);
+  });
+
+  it("a container mid-init (flag on) never offers Enable, and says so", () => {
+    const awaitingHealth = reachAwaitingHealth(1000);
+    const stillInit = advanceProvisioning(
+      awaitingHealth,
+      { kind: "health", health: "predates-mate", mateEnabled: true },
+      2000,
+    );
+    expect(stillInit.phase).toBe("awaiting-health");
+    expect(stillInit.detail).toBe("Almost there.");
+  });
+
+  it("the flag reading on still lets a later ready verdict settle the wait", () => {
+    const awaitingHealth = reachAwaitingHealth(1000);
+    const stillInit = advanceProvisioning(
+      awaitingHealth,
+      { kind: "health", health: "predates-mate", mateEnabled: true },
+      2000,
+    );
+    const ready = advanceProvisioning(
+      stillInit,
+      { kind: "health", health: "ready", initAt: "1970-01-01T00:00:03.000Z" },
+      4000,
+    );
+    expect(ready.phase).toBe("ready");
+  });
+});
+
 describe("enabling Zerops Mate on an older container", () => {
   function reachNeedsEnable(): ProvisioningState {
     return advanceProvisioning(
@@ -536,7 +605,26 @@ describe("enabling Zerops Mate on an older container", () => {
     expect(stillOld.containerServiceId).toBe("service-1");
   });
 
-  it("also lands on not-yet-available when the post-enable health wait times out", () => {
+  it("not-yet-available has a real exit: retry re-asks the same health question (H4/H5)", () => {
+    const enabled = advanceProvisioning(reachNeedsEnable(), { kind: "enable" }, 50_000);
+    const stillOld = advanceProvisioning(
+      enabled,
+      { kind: "health", health: "predates-mate" },
+      60_000,
+    );
+
+    const retried = advanceProvisioning(stillOld, { kind: "retry" }, 70_000);
+    expect(retried.phase).toBe("awaiting-health");
+    expect(retried.phaseStartedAtMs).toBe(70_000);
+    expect(retried.capMs).toBe(PROVISIONING_CAPS["awaiting-health"]);
+    expect(retried.containerServiceId).toBe("service-1");
+    expect(retried.containerOrigin).toBe("https://zcp-24cb-8080.prg1.zerops.app");
+    // A restart was already tried this wait; a container still old after
+    // this re-ask lands back on not-yet-available, not needs-enable again.
+    expect(retried.enabled).toBe(true);
+  });
+
+  it("a post-enable health wait that outlasts its cap stays waiting, overdue", () => {
     const enabled = advanceProvisioning(reachNeedsEnable(), { kind: "enable" }, 0);
     const expired = advanceProvisioning(
       enabled,
@@ -544,8 +632,8 @@ describe("enabling Zerops Mate on an older container", () => {
       PROVISIONING_CAPS["awaiting-health"] + 1,
     );
 
-    expect(expired.phase).toBe("timed-out");
-    expect(expired.expiredPhase).toBe("awaiting-health");
+    expect(expired.phase).toBe("awaiting-health");
+    expect(expired.overdue).toBe(true);
     expect(expired.enabled).toBe(true);
   });
 });

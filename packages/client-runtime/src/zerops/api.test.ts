@@ -1778,3 +1778,33 @@ describe("ZeropsApiClient.deleteProject", () => {
     });
   });
 });
+
+describe("ZeropsApiClient.isZeropsMateEnabled", () => {
+  it("reads true from the platform's own flag, case- and space-insensitively", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { items: [{ id: "e1", key: "ZCP_MATE_ENABLED", content: " True " }] }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(true);
+  });
+
+  it("reads false when the flag is present but not on", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(200, { items: [{ id: "e1", key: "ZCP_MATE_ENABLED", content: "0" }] }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(false);
+  });
+
+  it("reads false when the flag is absent entirely", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(client.isZeropsMateEnabled("svc-1")).resolves.toBe(false);
+  });
+});

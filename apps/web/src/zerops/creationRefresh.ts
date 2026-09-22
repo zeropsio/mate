@@ -16,6 +16,11 @@
  * usable) and `hardening`, which reads nothing itself but keeps the
  * inventory current while the birth's one restart runs, for the health wait
  * that follows it.
+ *
+ * A wait's own cap running out (`overdue`, B-2) never changes its phase, so
+ * it never falls out of this set either (H4): a `awaiting-container` wait
+ * that outlasted its cap is still `awaiting-container`, still on this clock,
+ * so a missed push still resumes it without anyone clicking "Keep waiting".
  */
 
 import { useEffect } from "react";

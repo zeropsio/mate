@@ -134,12 +134,32 @@ describe("deriveZeropsRowAction", () => {
     });
   });
 
-  it.each(["predates-mate", "unreachable", "stalled"] as const)(
-    "offers Enable Zerops Mate when the container answered %s",
+  it("offers Enable Zerops Mate only for predates-mate with the flag read off", () => {
+    expect(deriveZeropsRowAction({ ...input(READY, "predates-mate"), mateFlag: false })).toEqual({
+      kind: "enable",
+      label: "Enable Zerops Mate",
+    });
+  });
+
+  // H9: health × the platform's own `ZCP_MATE_ENABLED` read — the flag,
+  // never the health verdict alone, decides whether Enable is offered.
+  it.each([
+    { mateFlag: false, want: { kind: "enable", label: "Enable Zerops Mate" } },
+    { mateFlag: true, want: { kind: "retry-probe", label: "Try again" } },
+    { mateFlag: "unknown", want: { kind: "retry-probe", label: "Try again" } },
+    { mateFlag: undefined, want: { kind: "pending" } },
+  ] as const)("predates-mate, mateFlag=$mateFlag -> $want.kind", ({ mateFlag, want }) => {
+    expect(deriveZeropsRowAction({ ...input(READY, "predates-mate"), mateFlag })).toEqual(want);
+  });
+
+  // H9: a browser cannot tell a pre-Mate container from one merely away, so
+  // neither gets the restart `enable` performs — only a harmless re-probe.
+  it.each(["unreachable", "stalled"] as const)(
+    "offers only a re-probe, never Enable, when the container answered %s",
     (health) => {
       expect(deriveZeropsRowAction(input(READY, health))).toEqual({
-        kind: "enable",
-        label: "Enable Zerops Mate",
+        kind: "retry-probe",
+        label: "Try again",
       });
     },
   );
@@ -154,7 +174,9 @@ describe("deriveZeropsRowAction", () => {
       connection: { phase: "reconnecting", error: "boom", traceId: null },
     };
     expect(deriveZeropsRowAction(input(connecting, "ready"))).toEqual({ kind: "pending" });
-    expect(deriveZeropsRowAction(input(connecting, "predates-mate"))).toEqual({
+    expect(
+      deriveZeropsRowAction({ ...input(connecting, "predates-mate"), mateFlag: false }),
+    ).toEqual({
       kind: "enable",
       label: "Enable Zerops Mate",
     });
@@ -288,6 +310,17 @@ describe("deriveZeropsRowAction", () => {
 });
 
 describe("deriveZeropsRowPresentation", () => {
+  it.each([
+    { mateFlag: false, want: "Needs Zerops Mate" },
+    { mateFlag: undefined, want: "Needs Zerops Mate" },
+    { mateFlag: true, want: "Starting" },
+    { mateFlag: "unknown", want: "Not answering" },
+  ] as const)("predates-mate, mateFlag=$mateFlag -> $want (H9)", ({ mateFlag, want }) => {
+    expect(
+      deriveZeropsRowPresentation({ ...input(READY, "predates-mate"), mateFlag }).status.label,
+    ).toBe(want);
+  });
+
   it("phrases each health answer for a ready container", () => {
     expect(deriveZeropsRowPresentation(input(READY, undefined)).status.label).toBe("Checking");
     expect(deriveZeropsRowPresentation(input(READY, "ready")).status.label).toBe("Ready");
@@ -341,7 +374,7 @@ describe("deriveZeropsRowPresentation", () => {
   it("says the container did not answer, once stalled", () => {
     const presentation = deriveZeropsRowPresentation(input(READY, "stalled"));
     expect(presentation.status).toEqual({ label: "Not answering", tone: "attention" });
-    expect(presentation.detail).toBe("The container is up but Zerops Mate did not answer.");
+    expect(presentation.detail).toBe("Not answering right now.");
   });
 
   it("lets a socket failure override the probe, and keeps its reason", () => {

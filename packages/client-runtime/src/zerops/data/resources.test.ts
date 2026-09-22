@@ -96,6 +96,7 @@ const unusedAdapter = (overrides: Partial<ZeropsResourceAdapter> = {}): ZeropsRe
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
   readServiceDeployedVersion: () => Effect.sync(() => undefined),
+  readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
   ...overrides,
 });
