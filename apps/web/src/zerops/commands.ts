@@ -5,6 +5,10 @@
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginSubmitCode` — server scope: `AuthTerminalOperateScope`; types
  *   Claude's authorization code into its login terminal.
+ * - `agentSignOut` — server scope: `AuthTerminalOperateScope`; offered only
+ *   where the descriptor's `capabilities.agentSignOut` is true. Stops the
+ *   agent's live provider sessions, runs the CLI's own logout and clears the
+ *   platform flag — any client may end any agent's project sign-in.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `mateUpdate` — server scope `exec:operate`; offered only where the
  *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
@@ -43,6 +47,11 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsAgentLoginSubmitCode,
   });
 
+  const agentSignOut = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:agentLogin:signOut",
+    tag: WS_METHODS.zeropsAgentLoginSignOut,
+  });
+
   const browserInput = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:browserInput",
     tag: WS_METHODS.zeropsBrowserInput,
@@ -69,6 +78,7 @@ export function createZeropsCommandAtoms<R, E>(
     agentLoginStart,
     agentLoginCancel,
     agentLoginSubmitCode,
+    agentSignOut,
     browserInput,
     mateUpdate,
     mateCheckUpdate,

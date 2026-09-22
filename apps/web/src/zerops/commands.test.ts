@@ -6,6 +6,7 @@ import type {
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
   ZeropsAgentLoginSubmitCodeInput,
+  ZeropsAgentSignOutInput,
   ZeropsGitRemoteProbeInput,
   ZeropsGitRemoteProbeResult,
 } from "@t3tools/contracts";
@@ -26,6 +27,7 @@ const makeHarness = Effect.gen(function* () {
   const startCalls: Array<ZeropsAgentLoginStartInput> = [];
   const cancelCalls: Array<ZeropsAgentLoginCancelInput> = [];
   const submitCodeCalls: Array<ZeropsAgentLoginSubmitCodeInput> = [];
+  const signOutCalls: Array<ZeropsAgentSignOutInput> = [];
   const startResult: ZeropsAgentLoginStartResult = { terminalId: "terminal-login-1" };
   const probeCalls: Array<ZeropsGitRemoteProbeInput> = [];
   const probeResult: ZeropsGitRemoteProbeResult = {
@@ -45,6 +47,10 @@ const makeHarness = Effect.gen(function* () {
     },
     [WS_METHODS.zeropsAgentLoginSubmitCode]: (input: ZeropsAgentLoginSubmitCodeInput) => {
       submitCodeCalls.push(input);
+      return Effect.void;
+    },
+    [WS_METHODS.zeropsAgentLoginSignOut]: (input: ZeropsAgentSignOutInput) => {
+      signOutCalls.push(input);
       return Effect.void;
     },
     [WS_METHODS.zeropsGitProbeRemote]: (input: ZeropsGitRemoteProbeInput) => {
@@ -85,6 +91,7 @@ const makeHarness = Effect.gen(function* () {
     probeCalls,
     probeResult,
     registry,
+    signOutCalls,
     startCalls,
     startResult,
     submitCodeCalls,
@@ -167,6 +174,26 @@ describe("createZeropsCommandAtoms", () => {
       );
 
       expect(rig.cancelCalls).toEqual([input]);
+      expect(result._tag).toBe("Success");
+      if (result._tag === "Success") {
+        expect(result.value).toBeUndefined();
+      }
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("signs an agent out through the RPC", () =>
+    Effect.gen(function* () {
+      const rig = yield* makeHarness;
+      const input: ZeropsAgentSignOutInput = { agentId: "codex" };
+
+      const result = yield* Effect.promise(() =>
+        rig.commands.agentSignOut.run(rig.registry, {
+          environmentId: ENVIRONMENT_ID,
+          input,
+        }),
+      );
+
+      expect(rig.signOutCalls).toEqual([input]);
       expect(result._tag).toBe("Success");
       if (result._tag === "Success") {
         expect(result.value).toBeUndefined();
