@@ -13,6 +13,7 @@ import {
   nextZeropsBirthRetryDelayMs,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
+  showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
 import { isAccessNotYetVerified } from "~/zerops/useZeropsProvisioning";
@@ -354,6 +355,20 @@ describe("nextZeropsBirthRetryDelayMs", () => {
     [10, 15_000],
   ])("waits %ims after attempt %i", (attempt, delayMs) => {
     expect(nextZeropsBirthRetryDelayMs(attempt)).toBe(delayMs);
+  });
+});
+
+// Opening a Mate that exists runs a wait and a connect too; the checklist
+// flashed on every click with a clock from the project's creation.
+describe("showsZeropsBirthLine", () => {
+  it.each([
+    { name: "a Mate this browser is creating", pending: ["p1"], expected: true },
+    { name: "a Mate that exists, being opened", pending: [], expected: false },
+    { name: "another project's creation", pending: ["p2"], expected: false },
+  ])("$name: $expected", ({ pending, expected }) => {
+    expect(
+      showsZeropsBirthLine({ projectId: "p1", pendingCreationProjectIds: new Set(pending) }),
+    ).toBe(expected);
   });
 });
 

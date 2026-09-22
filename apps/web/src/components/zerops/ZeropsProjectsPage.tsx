@@ -284,6 +284,21 @@ export function isZeropsBirthConnectTarget(input: {
 }
 
 /**
+ * Whether a Mate's card shows its birth checklist: only while it is being born
+ * in this browser — a creation hand-off still pending for its project, the
+ * same test `isZeropsBirthConnectTarget` makes. Opening a Mate that exists
+ * also runs a wait and a connect, and the checklist then flashed on every
+ * click, "Opening the Mate" with a clock counting from the project's creation
+ * (28 min on a day-old Mate, 2026-09-22); there the face carries the boot.
+ */
+export function showsZeropsBirthLine(input: {
+  readonly projectId: string;
+  readonly pendingCreationProjectIds: ReadonlySet<string>;
+}): boolean {
+  return input.pendingCreationProjectIds.has(input.projectId);
+}
+
+/**
  * Whether this account has no project to show — the state the projects screen
  * answers with an invitation rather than a list.
  *
@@ -1195,7 +1210,12 @@ function ZeropsProjectsContent() {
     // A Mate on its way up shows how far it has come — the birth's own
     // checklist (`birthProgress.ts`), read off the platform's processes and
     // statuses — whenever the wait has nothing more pressing to say.
-    if (pendingCreations.has(candidate.project.id) || waitedOn(candidate)) {
+    if (
+      showsZeropsBirthLine({
+        projectId: candidate.project.id,
+        pendingCreationProjectIds: pendingCreations,
+      })
+    ) {
       const waited = waitedOn(candidate) ? provisioning.state : null;
       return (
         <ZeropsMateBirthLine
