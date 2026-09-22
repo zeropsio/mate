@@ -546,6 +546,67 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         }),
       ),
     );
+
+    it.effect(
+      "hands every CHANGE of the verified status to the model picker's reconcile, and only a change",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+            const fake = yield* makeFakeCli(() =>
+              Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
+            );
+            // Signed out, then a sign-in, then the token file rewritten.
+            const answers = yield* Ref.make<ReadonlyArray<ServerProviderAuthStatus>>([
+              "unauthenticated",
+              "authenticated",
+              "authenticated",
+            ]);
+            const refreshProviderAuth = () =>
+              Effect.gen(function* () {
+                const [next, ...rest] = yield* Ref.get(answers);
+                yield* Ref.set(answers, rest);
+                return next ?? "authenticated";
+              });
+            const reconciled = yield* Ref.make<
+              ReadonlyArray<readonly [ZeropsAgentId, ServerProviderAuthStatus]>
+            >([]);
+            const fakeWatch = makeFakeWatch();
+
+            const feed = yield* ZeropsAgentAuth.make({
+              cli: fake.cli,
+              refreshProviderAuth,
+              reconcileProviderAuth: (agentId, verified) =>
+                Ref.update(reconciled, (all) => [...all, [agentId, verified] as const]),
+              homeDir,
+              envStorePath,
+              isZeropsEnvironment: true,
+              watch: fakeWatch.watch,
+            });
+
+            const subscription = yield* feed.subscribe;
+            const target = credWatchTarget(homeDir, "codex");
+            const codexAuth =
+              (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
+                agentState(snapshot, "codex")?.providerAuth === status;
+
+            yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
+            fakeWatch.trigger(target);
+            yield* changeWhere(subscription, codexAuth("unauthenticated"));
+            fakeWatch.trigger(target);
+            yield* changeWhere(subscription, codexAuth("authenticated"));
+            // The rewrite's check reads the same status: nothing to reconcile.
+            fakeWatch.trigger(target);
+            yield* Effect.sleep("1600 millis");
+
+            assert.deepEqual(yield* Ref.get(answers), []);
+            assert.deepEqual(yield* Ref.get(reconciled), [
+              ["codex", "unauthenticated"],
+              ["codex", "authenticated"],
+            ]);
+          }),
+        ),
+    );
   },
 );
 

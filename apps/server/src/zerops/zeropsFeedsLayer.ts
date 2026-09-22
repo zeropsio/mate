@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
+import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
@@ -26,13 +27,21 @@ import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 
+/**
+ * `ZeropsAgentAuth.layer` reaches the provider registry only through
+ * `ProviderInstances` (`spi/providerInstances.ts`), discharged here so
+ * `ProviderRegistry` bubbles up to the one shared instance `server.ts`
+ * provides everywhere else — never a second registry.
+ */
+const ZeropsAgentAuthLive = ZeropsAgentAuth.layer.pipe(Layer.provide(providerInstancesLayer));
+
 const liveLayer = Layer.mergeAll(
   ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
   // reads who signed each agent in for its snapshot, and `ws.ts` asks the same
   // service before it lets a turn start (D6). One reader, one cache.
   ZeropsAgentLoginModule.layer.pipe(
-    Layer.provideMerge(ZeropsAgentAuth.layer),
+    Layer.provideMerge(ZeropsAgentAuthLive),
     Layer.provideMerge(ZeropsProjectSignersModule.layer),
   ),
   ZeropsBrowserStreamModule.layer,

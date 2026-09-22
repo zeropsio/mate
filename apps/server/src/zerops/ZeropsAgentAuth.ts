@@ -30,10 +30,18 @@
  * CLI's OWN status command (`ZeropsAgentAuthVerify.verifyAgentAuth` —
  * `claude auth status` / `codex login status`, the same argv-list spawn
  * shape {@link ZeropsCli} uses for `zcp`) and reduces its answer to
- * `providerAuth`; that is what gates `mark-oauth`. Nothing else runs
- * alongside that probe (audit C3): the provider driver picker's own cache
- * may lag up to `CAPABILITIES_PROBE_TTL` (~5 min) behind a logout, and that
- * lag is upstream's own concern, accepted as-is — spec-mate.md §8.1.
+ * `providerAuth`; that is what gates `mark-oauth`.
+ *
+ * ## What the model picker sees
+ *
+ * The picker reads the provider registry's snapshot, which re-probes only on
+ * its own background interval — minutes, and only while a client is in the
+ * foreground (measured 2026-09-22: a Codex sign-in stayed "not authenticated"
+ * in the picker for 7 minutes while this feed said Authorized). So whenever
+ * the verified status CHANGES, it is handed to `reconcileProviderAuth`
+ * (`spi/providerInstances.ts`), which re-probes the agent's provider instance
+ * if its snapshot contradicts it. The registry's answer never feeds back into
+ * this feed — spec-mate.md §8.1.
  */
 import * as NodeOS from "node:os";
 
@@ -62,6 +70,7 @@ import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
@@ -258,6 +267,15 @@ export interface ZeropsAgentAuthOptions {
    * own job (see `PROVIDER_CHECK_DEBOUNCE_MS`), not this function's.
    */
   readonly refreshProviderAuth: (agentId: ZeropsAgentId) => Effect.Effect<ServerProviderAuthStatus>;
+  /**
+   * Told every time an agent's verified status changes, so the model picker's
+   * provider snapshot can catch up (`ProviderInstances.reconcileAgentAuth` at
+   * {@link layer}). Absent, nothing outside this feed hears of the change.
+   */
+  readonly reconcileProviderAuth?: (
+    agentId: ZeropsAgentId,
+    verified: ServerProviderAuthStatus,
+  ) => Effect.Effect<void>;
   /** Resolved the same way the provider drivers do by default: `os.homedir()`, never `CLAUDE_CONFIG_DIR`. */
   readonly homeDir: string;
   readonly envStorePath: string;
@@ -361,6 +379,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     const {
       cli,
       refreshProviderAuth,
+      reconcileProviderAuth,
       homeDir,
       envStorePath,
       readSigners,
@@ -510,6 +529,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
           yield* markOAuthOnce(agentId);
         }
         yield* publish;
+        // After the publish: the card flips now, the picker's re-probe (a
+        // Claude probe takes seconds) follows on this agent's own queue.
+        if (reconcileProviderAuth !== undefined && status !== before.providerAuth[agentId]) {
+          yield* reconcileProviderAuth(agentId, status);
+        }
       });
 
     // One coalescing queue per agent (plan correction D2): a burst of
@@ -708,10 +732,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
 
 /**
  * The layer's real verification collaborator: each agent's own CLI status
- * probe (`ZeropsAgentAuthVerify.verifyAgentAuth`), nothing else (audit C3 —
- * the provider registry's `refreshInstance` used to run alongside it as a
- * best-effort picker-cache warm; dropped, since the picker's own cache may
- * lag and that lag is accepted as-is, spec-mate.md §8.1). Exported
+ * probe (`ZeropsAgentAuthVerify.verifyAgentAuth`), never the provider
+ * registry's probe (see the module header's "How it verifies"). Exported
  * separately from {@link layer} so this composition is directly testable
  * against a fake {@link AgentAuthProbeSpawn} without standing up
  * `ZeropsCli`/`ProcessRunner` layers.
@@ -728,11 +750,13 @@ export const layer = Layer.effect(
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const config = yield* ServerConfig;
     const projectSigners = yield* ZeropsProjectSignersModule.ZeropsProjectSigners;
+    const providerInstances = yield* ProviderInstances;
     const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
 
     return yield* make({
       cli,
       refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
+      reconcileProviderAuth: providerInstances.reconcileAgentAuth,
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
       readSigners: projectSigners.signers,
