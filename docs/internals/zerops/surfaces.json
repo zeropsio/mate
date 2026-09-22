@@ -689,6 +689,7 @@
         "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+        "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
         "apps/web/src/components/zerops/MateUpdateLine.tsx",
         "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
         "apps/web/src/components/zerops/ZeropsGroupTree.logic.ts",

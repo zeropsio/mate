@@ -106,6 +106,7 @@ import { creationRefreshWanted, useCreationInventoryRefresh } from "~/zerops/cre
 
 import { StatusDot } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
+import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsMateCard, ZeropsMateVerb, ZeropsToolCard } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { cn } from "~/lib/utils";
@@ -140,8 +141,6 @@ import { environmentRoleLabel, environmentRoleTag } from "./ZeropsGroupTree.logi
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
-  ALMOST_THERE_LINE,
-  COMING_UP_LINE,
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
@@ -1092,15 +1091,6 @@ function ZeropsProjectsContent() {
         <ZeropsMateVerb label="Stop waiting" onClick={provisioning.cancel} />
       </>
     ) : null;
-    if (state.phase === "awaiting-settled") {
-      // The container answers already; it is not hardened yet. Same words as
-      // "coming up" — nothing about the birth's one restart is a person's to
-      // watch for.
-      return overdueLine ?? quiet(COMING_UP_LINE);
-    }
-    if (state.phase === "hardening") {
-      return overdueLine ?? quiet(ALMOST_THERE_LINE);
-    }
     if (state.phase === "not-yet-available") {
       // H4/H5: no wait dead-ends. "Keep waiting" asks the platform again
       // (the container it was about survives the ask); "Stop waiting" leaves
@@ -1144,6 +1134,26 @@ function ZeropsProjectsContent() {
     }
     const waitLine = renderWaitLine(candidate);
     if (waitLine !== undefined) return waitLine;
+    // A Mate on its way up shows how far it has come — the birth's own
+    // checklist (`birthProgress.ts`), read off the platform's processes and
+    // statuses — whenever the wait has nothing more pressing to say.
+    if (pendingCreations.has(candidate.project.id) || waitedOn(candidate)) {
+      const waited = waitedOn(candidate) ? provisioning.state : null;
+      return (
+        <ZeropsMateBirthLine
+          input={{
+            candidate,
+            health: candidateHealth.get(candidate.key),
+            provisioningPhase: waited?.phase ?? null,
+            hardenError: waited?.phase === "hardening" ? (waited.detail ?? undefined) : undefined,
+            connecting:
+              connectingOrigin !== null &&
+              candidate.containerOrigin !== undefined &&
+              normalizeOrigin(connectingOrigin) === normalizeOrigin(candidate.containerOrigin),
+          }}
+        />
+      );
+    }
     const detail =
       presentation.detail === undefined ? null : (
         <span
