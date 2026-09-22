@@ -150,6 +150,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
+import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsProjectSignersModule from "./zerops/ZeropsProjectSigners.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
@@ -536,6 +537,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
     | ZeropsAgentLoginModule.ZeropsAgentLogin
+    | ZeropsAgentSignOutModule.ZeropsAgentSignOut
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
@@ -590,6 +592,7 @@ const buildAppUnderTest = (options?: {
     zeropsLifecycle?: Partial<ZeropsLifecycle.ZeropsLifecycle["Service"]>;
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
+    zeropsAgentSignOut?: Partial<ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"]>;
     zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
@@ -602,7 +605,8 @@ const buildAppUnderTest = (options?: {
       options?.fixtureZeropsLayer !== undefined &&
       (options.layers?.zeropsLifecycle !== undefined ||
         options.layers?.zeropsAgentAuth !== undefined ||
-        options.layers?.zeropsAgentLogin !== undefined)
+        options.layers?.zeropsAgentLogin !== undefined ||
+        options.layers?.zeropsAgentSignOut !== undefined)
     ) {
       return yield* Effect.die(
         new Error("fixtureZeropsLayer cannot be combined with per-feed Zerops layer overrides"),
@@ -1134,6 +1138,19 @@ const buildAppUnderTest = (options?: {
                   }),
                 ),
               ...options?.layers?.zeropsAgentLogin,
+            }),
+            // Same "unavailable" shape start/cancel report outside a Zerops
+            // environment — sign-out is a real action against a container
+            // this test suite never has.
+            Layer.mock(ZeropsAgentSignOutModule.ZeropsAgentSignOut)({
+              signOut: () =>
+                Effect.fail(
+                  new ZeropsAgentLoginError({
+                    reason: "unavailable",
+                    detail: "This environment does not offer a server-driven sign-out.",
+                  }),
+                ),
+              ...options?.layers?.zeropsAgentSignOut,
             }),
             // A test machine has no Mate project to read signer tags off, so
             // nobody signed anything in and nothing is ever signed out.

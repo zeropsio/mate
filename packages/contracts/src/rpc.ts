@@ -162,6 +162,7 @@ import {
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
   ZeropsAgentLoginSubmitCodeInput,
+  ZeropsAgentSignOutInput,
   ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
   ZeropsDataConsoleError,
@@ -312,6 +313,7 @@ export const WS_METHODS = {
   zeropsAgentLoginStart: "zerops.agentLogin.start",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
+  zeropsAgentLoginSignOut: "zerops.agentLogin.signOut",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
@@ -955,6 +957,18 @@ const WsZeropsAgentLoginSubmitCodeRpc = Rpc.make(WS_METHODS.zeropsAgentLoginSubm
 });
 
 /**
+ * Signs `agentId` out everywhere this Mate can reach: cancels a running
+ * login session, stops its live provider sessions, runs the CLI's own
+ * logout, and clears the Zerops platform flag. Refuses a token-authorized
+ * agent (`ZeropsAgentLoginError` with `reason: "token-authorized"`) — a
+ * project API key is not a person's login to end.
+ */
+const WsZeropsAgentLoginSignOutRpc = Rpc.make(WS_METHODS.zeropsAgentLoginSignOut, {
+  payload: ZeropsAgentSignOutInput,
+  error: Schema.Union([ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
+/**
  * The live view of the container's agent-browser daemon (S8b, spec-mate.md
  * §5 Browser surface): frames and connection state, Ack-flow-controlled like
  * every other feed (§5.5). Connects to the daemon on first subscriber,
@@ -1123,6 +1137,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentLoginCancelRpc,
   WsZeropsAgentLoginSubmitCodeRpc,
+  WsZeropsAgentLoginSignOutRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
   WsZeropsMateUpdateRpc,

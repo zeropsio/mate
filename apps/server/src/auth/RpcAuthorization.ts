@@ -98,6 +98,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.zeropsAgentLoginStart]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginCancel]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginSubmitCode]: AuthTerminalOperateScope,
+  // Signs an agent out everywhere this Mate can reach — the same authority
+  // as starting or cancelling a login, not a read.
+  [WS_METHODS.zeropsAgentLoginSignOut]: AuthTerminalOperateScope,
   // Viewing the container's browser is a read, like every other Zerops feed;
   // clicking/typing into it is a real action on the user's behalf — the same
   // authority as any other environment-mutating RPC.

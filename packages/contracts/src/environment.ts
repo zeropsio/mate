@@ -109,6 +109,12 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       Absent on older servers, where clients must clone with the blocking
       `sourceControl.cloneRepository` call instead. */
   projectCloneTracking: Schema.optionalKey(Schema.Boolean),
+  /** Server understands `zerops.agentLogin.signOut`: inside a Zerops project,
+      any client can sign an agent out (cancel its login session, stop its
+      live provider sessions, run the CLI's own logout, clear the platform
+      flag). Absent everywhere else, so a client offers the action only
+      where the RPC would actually work. */
+  agentSignOut: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

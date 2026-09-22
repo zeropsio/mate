@@ -6,7 +6,9 @@
  * failure in one never blanks the other. `ZeropsAgentLogin` is the one
  * exception: it calls `ZeropsAgentAuth.recheckNow` on a login success, so its
  * layer retains the authorization service it receives. `ws.ts` and the login
- * module therefore share the SAME `ZeropsAgentAuth` instance.
+ * module therefore share the SAME `ZeropsAgentAuth` instance. `ZeropsAgentSignOut`
+ * shares that same instance too, plus the same `ZeropsAgentLogin` instance —
+ * see its own branch below for why.
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,7 +17,9 @@ import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
+import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
@@ -43,6 +47,21 @@ const liveLayer = Layer.mergeAll(
   ZeropsAgentLoginModule.layer.pipe(
     Layer.provideMerge(ZeropsAgentAuthLive),
     Layer.provideMerge(ZeropsProjectSignersModule.layer),
+  ),
+  // `ZeropsAgentSignOut` declares `ZeropsAgentLogin`/`ZeropsAgentAuth` as
+  // REQUIREMENTS it locally `Layer.provide`s from the SAME `.layer` values
+  // referenced above — Effect memoizes a layer by reference across one
+  // build, so this is the one running instance of each, not a second copy.
+  // A sibling `Layer.mergeAll(...)` branch would NOT do this: layers merged
+  // as siblings are built independently against the ambient context and
+  // never see each other's output, which is what leaked `ZeropsAgentLogin`
+  // as an unmet requirement all the way up to `server.ts` the first time
+  // this was tried — see `ZeropsAgentSignOut.ts`'s own layer doc comment.
+  ZeropsAgentSignOutModule.layer.pipe(
+    Layer.provide(ZeropsAgentLoginModule.layer),
+    Layer.provide(ZeropsAgentAuthLive),
+    Layer.provide(ZeropsAgentFlagModule.layer),
+    Layer.provide(ZeropsProjectSignersModule.layer),
   ),
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateModule.layer.pipe(Layer.provideMerge(ZeropsCliModule.layer)),

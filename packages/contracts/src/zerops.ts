@@ -442,11 +442,23 @@ export const ZeropsAgentLoginSubmitCodeInput = Schema.Struct({
 });
 export type ZeropsAgentLoginSubmitCodeInput = typeof ZeropsAgentLoginSubmitCodeInput.Type;
 
+/** `zerops.agentLogin.signOut` — any client (web, later mobile) can sign an agent out. */
+export const ZeropsAgentSignOutInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+});
+export type ZeropsAgentSignOutInput = typeof ZeropsAgentSignOutInput.Type;
+
 export const ZeropsAgentLoginErrorReason = Schema.Literals([
   /** This environment does not offer a server-driven login (not a Zerops environment). */
   "unavailable",
   /** No login of this agent is waiting for a code right now. */
   "not-awaiting-code",
+  /**
+   * `zerops.agentLogin.signOut` refused a token-authorized agent: a project
+   * API key belongs to the project, not to a person, so there is nobody's
+   * sign-in to end.
+   */
+  "token-authorized",
 ]);
 export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
 

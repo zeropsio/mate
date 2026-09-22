@@ -1,11 +1,11 @@
 /**
- * Registers the five Zerops feed RPCs (`zerops.lifecycle.get`,
- * `zerops.agentLogin.start`/`cancel`/`submitCode`, `subscribeZeropsLifecycle`,
- * `subscribeZeropsAgentAuth`) — pulled out of the giant `WsRpcGroup.of({...})`
- * literal in `ws.ts` so the zone owns its own RPC wiring (audit C4). Same
- * handlers, same instrumentation, same scopes — `auth/RpcAuthorization.ts`
- * still owns the scope table, unchanged. S8b adds its stream and input RPC
- * here when it lands.
+ * Registers the Zerops feed RPCs (`zerops.lifecycle.get`,
+ * `zerops.agentLogin.start`/`cancel`/`submitCode`/`signOut`,
+ * `subscribeZeropsLifecycle`, `subscribeZeropsAgentAuth`) — pulled out of the
+ * giant `WsRpcGroup.of({...})` literal in `ws.ts` so the zone owns its own
+ * RPC wiring (audit C4). Same handlers, same instrumentation, same scopes —
+ * `auth/RpcAuthorization.ts` still owns the scope table, unchanged. S8b adds
+ * its stream and input RPC here when it lands.
  */
 import {
   AuthExecOperateScope,
@@ -23,6 +23,7 @@ import type { ZeropsCli } from "./ZeropsCli.ts";
 import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import type * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
@@ -33,6 +34,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
   | typeof WS_METHODS.zeropsAgentLoginSubmitCode
+  | typeof WS_METHODS.zeropsAgentLoginSignOut
   | typeof WS_METHODS.subscribeZeropsLifecycle
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
@@ -60,6 +62,7 @@ export interface RegisterZeropsRpcDeps {
   readonly zeropsLifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
+  readonly zeropsAgentSignOut: ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"];
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -164,6 +167,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsLifecycle,
     zeropsAgentAuth,
     zeropsAgentLogin,
+    zeropsAgentSignOut,
     zeropsBrowserStream,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -193,6 +197,12 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSubmitCode,
         zeropsAgentLogin.submitCode(input.agentId, input.code),
+        { "rpc.aggregate": "zerops" },
+      ),
+    [WS_METHODS.zeropsAgentLoginSignOut]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.zeropsAgentLoginSignOut,
+        zeropsAgentSignOut.signOut(input.agentId),
         { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>

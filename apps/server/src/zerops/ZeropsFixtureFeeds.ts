@@ -32,6 +32,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
+import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
@@ -399,6 +400,25 @@ const agentLoginLayer = (scene: ShowcaseScene) =>
   Layer.effect(ZeropsAgentLoginModule.ZeropsAgentLogin, makeAgentLogin(scene));
 
 /**
+ * A fixture/showcase run has no container to sign anything out of — unlike
+ * `start`/`cancel`, sign-out is never simulated for a scene, it just
+ * reports the same "unavailable" a real, non-Zerops server would.
+ */
+const agentSignOutFixtureLayer = () =>
+  Layer.succeed(
+    ZeropsAgentSignOutModule.ZeropsAgentSignOut,
+    ZeropsAgentSignOutModule.ZeropsAgentSignOut.of({
+      signOut: () =>
+        Effect.fail(
+          new ZeropsAgentLoginError({
+            reason: "unavailable",
+            detail: "This environment does not offer a server-driven sign-out.",
+          }),
+        ),
+    }),
+  );
+
+/**
  * A fixture/showcase run never has a real agent-browser daemon and must
  * never touch the real filesystem or open a real socket (determinism) — this
  * always reports `no-browser`. Reuses {@link ZeropsBrowserStreamModule.make}
@@ -481,6 +501,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   return Layer.mergeAll(
     lifecycleLayer(scene),
     agentLoginLayer(scene).pipe(Layer.provideMerge(auth)),
+    agentSignOutFixtureLayer(),
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),

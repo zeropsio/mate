@@ -137,6 +137,7 @@ import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
 import { isTurnStartingCommand, turnRefusal } from "./zerops/ZeropsProjectSigners.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
+import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
@@ -642,6 +643,7 @@ const makeWsRpcLayer = (
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const projectSigners = yield* ZeropsProjectSigners.ZeropsProjectSigners;
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
+      const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
@@ -2189,6 +2191,7 @@ const makeWsRpcLayer = (
           zeropsLifecycle,
           zeropsAgentAuth,
           zeropsAgentLogin,
+          zeropsAgentSignOut,
           zeropsBrowserStream,
           zeropsCli,
           zeropsMateUpdate,
