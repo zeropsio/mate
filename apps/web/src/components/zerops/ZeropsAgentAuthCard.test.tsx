@@ -483,6 +483,8 @@ describe("whose agent it is (D6)", () => {
     readonly credPresent: boolean;
     readonly authorizedBy?: { readonly subject: string };
     readonly viewerSubject?: string;
+    readonly recordFailed?: ReadonlySet<"claude-code">;
+    readonly onRetryRecord?: (agentId: string) => void;
   }) =>
     renderToStaticMarkup(
       <ZeropsAgentAuthCard
@@ -498,6 +500,8 @@ describe("whose agent it is (D6)", () => {
           }),
         ])}
         viewerSubject={input.viewerSubject}
+        recordFailed={input.recordFailed}
+        onRetryRecord={input.onRetryRecord}
         onSignIn={noop}
         onCancel={noop}
       />,
@@ -545,5 +549,36 @@ describe("whose agent it is (D6)", () => {
   it("never accuses a colleague when the viewer is unknown", () => {
     const html = card({ credPresent: true, authorizedBy: { subject: "user-b" } });
     expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
+  });
+
+  it("a sign-in whose record failed says so and can be retried", () => {
+    const html = card({
+      credPresent: true,
+      authorizedBy: { subject: "user-a" },
+      viewerSubject: "user-a",
+      recordFailed: new Set(["claude-code"]),
+      onRetryRecord: noop,
+    });
+
+    expect(html).toContain('data-zerops-agent-ownership="record-failed"');
+    expect(html).toContain("Your sign-in could not be recorded.");
+    expect(html).toContain("text-warning");
+    expect(html).toContain("data-zerops-agent-retry-record");
+    expect(html).toContain(">Try again<");
+    // The failure outranks a same-subject recorded tag: this browser's own
+    // just-tried write is what happened here, whatever the tag says.
+    expect(html).not.toContain('data-zerops-agent-ownership="mine"');
+  });
+
+  it("returns to mine once the record is no longer failed", () => {
+    const html = card({
+      credPresent: true,
+      authorizedBy: { subject: "user-a" },
+      viewerSubject: "user-a",
+      recordFailed: new Set(),
+    });
+
+    expect(html).not.toContain("data-zerops-agent-ownership");
+    expect(html).not.toContain("Try again");
   });
 });

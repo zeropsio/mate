@@ -17,6 +17,7 @@
  */
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts";
 import {
+  AGENT_OWNERSHIP_RETRY_RECORD_LABEL,
   agentOwnershipNeedsAttention,
   agentOwnershipNotice,
   resolveAgentOwnership,
@@ -49,12 +50,17 @@ export function ZeropsAgentAuthCard({
   viewerSubject,
   onSignIn,
   onCancel,
+  recordFailed,
+  onRetryRecord,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
+  /** Agents whose signer-record write this browser tried and watched fail (H13). */
+  readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
+  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
 }) {
   return (
     <FlatCard className="overflow-hidden" data-zerops-agent-auth-card>
@@ -66,7 +72,9 @@ export function ZeropsAgentAuthCard({
       </header>
       <ZeropsAgentAuthRows
         onCancel={onCancel}
+        onRetryRecord={onRetryRecord}
         onSignIn={onSignIn}
+        recordFailed={recordFailed}
         snapshot={snapshot}
         viewerSubject={viewerSubject}
       />
@@ -84,11 +92,15 @@ export function ZeropsAgentAuthRows({
   viewerSubject,
   onSignIn,
   onCancel,
+  recordFailed,
+  onRetryRecord,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
+  readonly recordFailed?: ReadonlySet<ZeropsAgentId> | undefined;
+  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
 }) {
   // One authorized agent is enough to work: the other's row is then an
   // offer, not a demand (the audit run, 2026-09-17: Codex's "Action
@@ -103,9 +115,11 @@ export function ZeropsAgentAuthRows({
         <ZeropsAgentAuthRow
           key={agent.agentId}
           agent={agent}
-          onSignIn={onSignIn}
           onCancel={onCancel}
+          onRetryRecord={onRetryRecord}
+          onSignIn={onSignIn}
           quiet={anotherAuthorized(agent)}
+          recordFailed={recordFailed?.has(agent.agentId) ?? false}
           viewerSubject={viewerSubject}
         />
       ))}
@@ -117,15 +131,20 @@ function ZeropsAgentAuthRow({
   agent,
   viewerSubject,
   quiet,
+  recordFailed,
   onSignIn,
   onCancel,
+  onRetryRecord,
 }: {
   readonly agent: ZeropsAgentAuth;
   readonly viewerSubject?: string | undefined;
   /** Another agent is signed in, so this one's sign-in is an offer. */
   readonly quiet: boolean;
+  /** This browser's own signer-record write for this agent failed (H13). */
+  readonly recordFailed: boolean;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
+  readonly onRetryRecord?: ((agentId: ZeropsAgentId) => void) | undefined;
 }) {
   const login = classifyAgentLogin(agent.login);
   const label = login.kind === "none" ? agentAuthLabel(agent) : agentLoginLabel(login);
@@ -138,6 +157,7 @@ function ZeropsAgentAuthRow({
     credPresent: agent.credPresent,
     authorizedBy: resolveAgentAuthorizer(agent.agentId, agent.authorizedBy, localSigners),
     viewerSubject,
+    recordFailed,
   });
   const ownershipNotice = agentOwnershipNotice(ownership);
 
@@ -176,12 +196,25 @@ function ZeropsAgentAuthRow({
             {ownershipNotice}
           </p>
         )}
-        <ZeropsAgentAuthActionSlot
-          agent={agent}
-          login={login}
-          onSignIn={onSignIn}
-          onCancel={onCancel}
-        />
+        {ownership === "record-failed" && onRetryRecord !== undefined ? (
+          <Button
+            data-zerops-agent-retry-record
+            onClick={() => {
+              onRetryRecord(agent.agentId);
+            }}
+            size="compact"
+            variant="pill"
+          >
+            {AGENT_OWNERSHIP_RETRY_RECORD_LABEL}
+          </Button>
+        ) : (
+          <ZeropsAgentAuthActionSlot
+            agent={agent}
+            login={login}
+            onSignIn={onSignIn}
+            onCancel={onCancel}
+          />
+        )}
       </div>
     </div>
   );

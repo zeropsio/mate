@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
+  AGENT_OWNERSHIP_RETRY_RECORD_LABEL,
   agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   agentOwnershipNeedsAttention,
@@ -66,6 +67,32 @@ describe("resolveAgentOwnership", () => {
     expect(resolveAgentOwnership(input)).toBe(expected);
   });
 
+  it("a sign-in whose record failed says so and can be retried (H13)", () => {
+    // The viewer's own just-tried write failing outranks whatever the
+    // recorded tag currently says — even a stale someone-else read.
+    expect(
+      resolveAgentOwnership({
+        credPresent: true,
+        authorizedBy: { subject: "user-b", at: AT },
+        viewerSubject: "user-a",
+        recordFailed: true,
+      }),
+    ).toBe("record-failed");
+    expect(
+      resolveAgentOwnership({
+        credPresent: true,
+        viewerSubject: "user-a",
+        recordFailed: true,
+      }),
+    ).toBe("record-failed");
+  });
+
+  it("no credential still means nobody, even mid-retry", () => {
+    expect(
+      resolveAgentOwnership({ credPresent: false, viewerSubject: "user-a", recordFailed: true }),
+    ).toBe("none");
+  });
+
   it("never reports someone-else without both a record and an identified viewer", () => {
     // The failure this guards against is accusing a colleague on missing data.
     const withoutRecord = resolveAgentOwnership({
@@ -105,6 +132,10 @@ describe("agentOwnershipNotice", () => {
       "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
     );
   });
+
+  it("says the record failed, not that the agent belongs to someone else", () => {
+    expect(agentOwnershipNotice("record-failed")).toBe("Your sign-in could not be recorded.");
+  });
 });
 
 describe("the composer notice and the gate (D6)", () => {
@@ -113,6 +144,7 @@ describe("the composer notice and the gate (D6)", () => {
     ["none", true],
     ["someone-else", false],
     ["unrecorded", false],
+    ["record-failed", false],
   ] as const)("%s may start a turn: %s", (ownership, allowed) => {
     expect(agentOwnershipAllowsTurns(ownership)).toBe(allowed);
   });
@@ -138,6 +170,14 @@ describe("the composer notice and the gate (D6)", () => {
   it("offers one recovery, and it is the person's own sign-in", () => {
     expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Sign in with your own account");
   });
+
+  it("record-failed replaces the composer with its own line and a retry, never Sign in again", () => {
+    expect(agentOwnershipComposerNotice("record-failed")).toBe(
+      "Your sign-in could not be recorded.",
+    );
+    expect(agentOwnershipAllowsTurns("record-failed")).toBe(false);
+    expect(AGENT_OWNERSHIP_RETRY_RECORD_LABEL).toBe("Try again");
+  });
 });
 
 describe("agentOwnershipNeedsAttention", () => {
@@ -146,6 +186,7 @@ describe("agentOwnershipNeedsAttention", () => {
     { ownership: "unrecorded", expected: false },
     { ownership: "mine", expected: false },
     { ownership: "none", expected: false },
+    { ownership: "record-failed", expected: true },
   ] satisfies ReadonlyArray<{ ownership: ZeropsAgentOwnership; expected: boolean }>)(
     "$ownership → $expected",
     ({ ownership, expected }) => {

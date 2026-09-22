@@ -64,7 +64,14 @@ export type ZeropsAgentOwnership =
   /** Someone else did, and we know it. */
   | "someone-else"
   /** A credential exists but no authorizer was recorded. */
-  | "unrecorded";
+  | "unrecorded"
+  /**
+   * The viewer just signed this agent in themselves, but the write that
+   * records it (`mate:signer:{agent}:{userId}`) failed (H13) — distinct from
+   * `unrecorded`, which says nothing about whose fault it is: this one
+   * knows, because it is the write this browser just tried and watched fail.
+   */
+  | "record-failed";
 
 export interface ZeropsAgentOwnershipInput {
   /** Whether a credential artifact exists at all (`ZeropsAgentAuth.credPresent`). */
@@ -72,10 +79,18 @@ export interface ZeropsAgentOwnershipInput {
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
   readonly viewerSubject: string | undefined;
+  /**
+   * True when this browser's own attempt to write the signer record for this
+   * agent has failed and not yet succeeded (`useZeropsAgentSignerRecord`'s
+   * `recordFailed`). Checked before the recorded tag: the viewer's own
+   * failed attempt is what happened here, whatever the tag currently says.
+   */
+  readonly recordFailed?: boolean | undefined;
 }
 
 export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsAgentOwnership {
   if (!input.credPresent) return "none";
+  if (input.recordFailed === true) return "record-failed";
 
   const recorded = input.authorizedBy?.subject;
   if (recorded === undefined || recorded.length === 0) return "unrecorded";
@@ -98,6 +113,8 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
       return "Signed in by another project member — only they can run this agent.";
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
+    case "record-failed":
+      return "Your sign-in could not be recorded.";
     case "mine":
     case "none":
       return undefined;
@@ -106,7 +123,7 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
 
 /** Whether the notice deserves attention rather than a quiet aside. */
 export function agentOwnershipNeedsAttention(ownership: ZeropsAgentOwnership): boolean {
-  return ownership === "someone-else";
+  return ownership === "someone-else" || ownership === "record-failed";
 }
 
 /**
@@ -138,6 +155,8 @@ export function agentOwnershipComposerNotice(
         : `Signed in by ${name} — only they can run this agent.`;
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
+    case "record-failed":
+      return "Your sign-in could not be recorded.";
     case "mine":
     case "none":
       return undefined;
@@ -146,3 +165,5 @@ export function agentOwnershipComposerNotice(
 
 /** The one action the notice offers. */
 export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Sign in with your own account";
+/** `record-failed`'s one action: the write itself, tried again — no need to sign in again. */
+export const AGENT_OWNERSHIP_RETRY_RECORD_LABEL = "Try again";

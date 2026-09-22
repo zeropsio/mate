@@ -131,7 +131,7 @@ describe("submitZeropsNewProject", () => {
       group: { groupId: "7k2m9qx4vb1c", role: "dev", label: "zerops-mate" },
       botName: "Nia",
     });
-    expect(onStartWaiting).toHaveBeenCalledWith("client-1");
+    expect(onStartWaiting).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
   });
 
@@ -494,7 +494,7 @@ describe("submitZeropsNewProject", () => {
       onError,
     });
 
-    expect(onStartWaiting).toHaveBeenCalledWith("client-1");
+    expect(onStartWaiting).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
   });
 });

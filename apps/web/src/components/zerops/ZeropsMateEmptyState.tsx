@@ -44,7 +44,7 @@ export function ZeropsMateEmptyState({
   // D6: a successful sign-in here records its signer on the Mate's project,
   // written as the person so this container cannot forge it.
   const projectId = useZeropsEnvironmentProjectId(environmentId);
-  useZeropsAgentSignerRecord({
+  const { recordFailed, retry: retryRecord } = useZeropsAgentSignerRecord({
     snapshot: agentAuth ?? null,
     projectId,
   });
@@ -73,7 +73,9 @@ export function ZeropsMateEmptyState({
           <FlatCard className="overflow-hidden">
             <ZeropsAgentAuthRows
               onCancel={cancelAgentLogin}
+              onRetryRecord={retryRecord}
               onSignIn={setAuthorizationAgentId}
+              recordFailed={recordFailed}
               snapshot={agentAuth}
               viewerSubject={viewerSubject}
             />
