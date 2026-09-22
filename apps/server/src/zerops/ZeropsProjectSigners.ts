@@ -39,7 +39,12 @@
  *
  * @module ZeropsProjectSigners
  */
-import type { ZeropsAgentId } from "@t3tools/contracts";
+import type { ZeropsAgentAuth, ZeropsAgentId } from "@t3tools/contracts";
+import {
+  classifyZeropsAgentAuth,
+  type ZeropsAgentAuthFields,
+  type ZeropsAgentAuthKind,
+} from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -108,13 +113,26 @@ export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): Pro
   return signers;
 }
 
+/** Why a turn may not start on an agent, or `undefined` when it may. */
+export type TurnRefusal =
+  /** The agent is not signed in on this project: the turn would only fail inside its CLI. */
+  | {
+      readonly kind: "not-signed-in";
+      readonly auth: Exclude<ZeropsAgentAuthKind["kind"], "authorized" | "registering">;
+    }
+  /** Signed in, but no signer was recorded for it. */
+  | { readonly kind: "unrecorded" }
+  /** Signed in by somebody other than this session's person. */
+  | { readonly kind: "someone-else" };
+
 /**
- * Whether this session may start a turn on this agent (D6).
+ * Whether this session may start a turn on this agent.
  *
+ * - an agent that is **not signed in** (never, or its login no longer works)
+ *   is refused first: nothing it would run can succeed;
  * - a **token**-authorized agent is nobody's personal login, so it is
- *   unaffected: `flagToken` means the container was given an API key, and an
- *   API key belongs to the project;
- * - an agent with **no credential** has no identity to protect;
+ *   unaffected by D6: `flagToken` means the container was given an API key,
+ *   and an API key belongs to the project;
  * - an agent whose recorded signer **is** this session's subject: yes;
  * - anything else — someone else's, or no record at all — no. D6 keeps no
  *   backward compatibility here: a login with no recorded signer (an older
@@ -122,16 +140,18 @@ export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): Pro
  *   through Mate, because "unrecorded" and "somebody else's" are the same
  *   thing to everyone but the person who knows.
  */
-export function mayStartTurn(input: {
+export function turnRefusal(input: {
+  readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
   readonly signer: string | undefined;
   readonly subject: string | undefined;
-  readonly credPresent: boolean;
-  readonly tokenAuthorized: boolean;
-}): boolean {
-  if (input.tokenAuthorized) return true;
-  if (!input.credPresent) return true;
-  if (input.signer === undefined || input.signer.length === 0) return false;
-  return input.subject !== undefined && input.subject === input.signer;
+}): TurnRefusal | undefined {
+  const auth = classifyZeropsAgentAuth(input.agent).kind;
+  if (auth !== "authorized" && auth !== "registering") {
+    return { kind: "not-signed-in", auth };
+  }
+  if (input.agent.flagToken) return undefined;
+  if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
+  return input.subject === input.signer ? undefined : { kind: "someone-else" };
 }
 
 /**

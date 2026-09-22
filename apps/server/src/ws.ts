@@ -134,7 +134,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import * as ZeropsProjectSigners from "./zerops/ZeropsProjectSigners.ts";
-import { isTurnStartingCommand, mayStartTurn } from "./zerops/ZeropsProjectSigners.ts";
+import { isTurnStartingCommand, turnRefusal } from "./zerops/ZeropsProjectSigners.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./zerops/ZeropsMembershipWatch.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -174,6 +174,7 @@ import { makeZeropsOriginAllowlist } from "./zerops/origin.ts";
 import { runExecCommand } from "./zerops/ExecService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
+import { zeropsAgentUnavailableReason } from "@t3tools/shared/zeropsAgentAuth";
 import { zeropsPolicy } from "./zerops/ZeropsPolicy.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
@@ -1237,7 +1238,8 @@ const makeWsRpcLayer = (
         });
 
       /**
-       * D6: only the person who signed an agent in runs it.
+       * A turn starts only on an agent that is signed in on this project, and
+       * (D6) only for the person who signed it in.
        *
        * The agent is resolved from the command's own model selection, or from
        * the thread's when the command names none. An agent Mate never signs
@@ -1250,7 +1252,7 @@ const makeWsRpcLayer = (
        * unknown, and unknown refuses: "nobody recorded it" and "somebody
        * else's" are the same thing to everyone but the person who knows.
        */
-      const refuseTurnOnSomebodyElsesAgent = Effect.fnUntraced(function* (
+      const refuseTurnTheAgentCannotRun = Effect.fnUntraced(function* (
         normalizedCommand: OrchestrationCommand,
       ) {
         if (!isTurnStartingCommand(normalizedCommand.type)) return;
@@ -1278,23 +1280,21 @@ const makeWsRpcLayer = (
         const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
         if (agent === undefined) return;
         const signers = yield* projectSigners.signers;
-        if (
-          mayStartTurn({
-            signer: signers[agentId],
-            subject: currentSession.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
-              ? currentSession.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
-              : undefined,
-            credPresent: agent.credPresent,
-            tokenAuthorized: agent.flagToken,
-          })
-        ) {
-          return;
-        }
+        const refusal = turnRefusal({
+          agent,
+          signer: signers[agentId],
+          subject: currentSession.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+            ? currentSession.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
+            : undefined,
+        });
+        if (refusal === undefined) return;
         return yield* new OrchestrationDispatchCommandError({
           message:
-            signers[agentId] === undefined
-              ? "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first."
-              : "This agent was signed in by another project member — only they can run it. Sign in with your own account first.",
+            refusal.kind === "not-signed-in"
+              ? zeropsAgentUnavailableReason(agentId, refusal.auth)
+              : refusal.kind === "unrecorded"
+                ? "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first."
+                : "This agent was signed in by another project member — only they can run it. Sign in with your own account first.",
         });
       });
 
@@ -1318,7 +1318,7 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        return refuseTurnOnSomebodyElsesAgent(normalizedCommand).pipe(
+        return refuseTurnTheAgentCannotRun(normalizedCommand).pipe(
           Effect.andThen(
             startup
               .enqueueCommand(dispatchEffect)

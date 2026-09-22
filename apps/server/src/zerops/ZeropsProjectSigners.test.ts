@@ -12,12 +12,12 @@ import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import {
   isMemberListComplete,
   isTurnStartingCommand,
-  mayStartTurn,
   parseSignerTags,
   planAgentSignOut,
   readActiveMemberIds,
   readProjectSigners,
   signerTag,
+  turnRefusal,
 } from "./ZeropsProjectSigners.ts";
 
 const JAN = "jan-user-id";
@@ -56,57 +56,104 @@ describe("parseSignerTags", () => {
   });
 });
 
-describe("mayStartTurn", () => {
-  // mine / someone else's / unrecorded / a token agent, across the two things
-  // an agent can be.
-  for (const [name, input, allowed] of [
-    [
-      "my own agent",
-      { signer: JAN, subject: JAN, credPresent: true, tokenAuthorized: false },
-      true,
-    ],
+describe("turnRefusal", () => {
+  const signedIn = {
+    state: "authorized",
+    providerAuth: "authenticated",
+    credPresent: true,
+    flagToken: false,
+  } as const;
+  const tokenAgent = {
+    state: "authorized-token",
+    providerAuth: "unknown",
+    credPresent: false,
+    flagToken: true,
+  } as const;
+  // Is the agent signed in at all, then whose is it: mine / someone else's /
+  // unrecorded / a token agent.
+  for (const [name, input, refusal] of [
+    ["my own agent", { agent: signedIn, signer: JAN, subject: JAN }, undefined],
     [
       "an agent somebody else signed in",
-      { signer: EVA, subject: JAN, credPresent: true, tokenAuthorized: false },
-      false,
+      { agent: signedIn, signer: EVA, subject: JAN },
+      { kind: "someone-else" },
     ],
     // D6 keeps no backward compatibility: an older login, a terminal login or
     // a copied credential file runs for nobody until someone signs in here.
     [
       "an agent nobody's sign-in was recorded for",
-      { signer: undefined, subject: JAN, credPresent: true, tokenAuthorized: false },
-      false,
+      { agent: signedIn, signer: undefined, subject: JAN },
+      { kind: "unrecorded" },
     ],
     [
       "an agent whose recorded signer is blank",
-      { signer: "", subject: JAN, credPresent: true, tokenAuthorized: false },
-      false,
+      { agent: signedIn, signer: "", subject: JAN },
+      { kind: "unrecorded" },
+    ],
+    [
+      "a caller the session could not name",
+      { agent: signedIn, signer: JAN, subject: undefined },
+      { kind: "someone-else" },
     ],
     // An API key belongs to the project, not to a person.
     [
       "a token-authorized agent somebody else signed in",
-      { signer: EVA, subject: JAN, credPresent: true, tokenAuthorized: true },
-      true,
+      { agent: tokenAgent, signer: EVA, subject: JAN },
+      undefined,
     ],
     [
       "a token-authorized agent with no record at all",
-      { signer: undefined, subject: JAN, credPresent: true, tokenAuthorized: true },
-      true,
+      { agent: tokenAgent, signer: undefined, subject: JAN },
+      undefined,
     ],
-    // No credential, no identity to protect — the turn fails on its own terms.
+    // Signed in inside the container, the project flag seconds away: the CLI
+    // works, so only whose it is decides.
     [
-      "an agent with no credential",
-      { signer: undefined, subject: JAN, credPresent: false, tokenAuthorized: false },
-      true,
+      "my agent still being registered",
+      {
+        agent: { ...signedIn, state: "local-only" },
+        signer: JAN,
+        subject: JAN,
+      },
+      undefined,
+    ],
+    // Not signed in is refused before anything else: the turn would only fail
+    // inside the agent CLI.
+    [
+      "an agent nobody signed in",
+      {
+        agent: {
+          state: "not-authorized",
+          providerAuth: "unauthenticated",
+          credPresent: false,
+          flagToken: false,
+        },
+        signer: undefined,
+        subject: JAN,
+      },
+      { kind: "not-signed-in", auth: "not-authorized" },
     ],
     [
-      "a caller the session could not name",
-      { signer: JAN, subject: undefined, credPresent: true, tokenAuthorized: false },
-      false,
+      "an agent the project signed in but this container has no login for",
+      {
+        agent: { ...signedIn, credPresent: false, state: "reconnect" },
+        signer: JAN,
+        subject: JAN,
+      },
+      { kind: "not-signed-in", auth: "reconnect" },
+    ],
+    [
+      "an agent whose own check says its login no longer works",
+      {
+        agent: { ...signedIn, providerAuth: "unauthenticated" },
+        signer: JAN,
+        subject: JAN,
+      },
+      { kind: "not-signed-in", auth: "needs-reauth" },
     ],
   ] as const) {
-    it(`${allowed ? "allows" : "refuses"} a turn on ${name}`, () => {
-      assert.strictEqual(mayStartTurn(input), allowed);
+    it(`${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`, () => {
+      assert.deepStrictEqual(turnRefusal(input), refusal);
     });
   }
 });
