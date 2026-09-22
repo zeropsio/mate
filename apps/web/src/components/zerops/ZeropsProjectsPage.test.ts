@@ -9,6 +9,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   autoConnectServedZeropsEnvironment,
   hasNoZeropsProject,
+  isZeropsBirthConnectTarget,
+  nextZeropsBirthRetryDelayMs,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   ZeropsProjectsHeader,
@@ -303,6 +305,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(result).toEqual({
       _tag: "Failure",
       error: "Could not connect to this container. Session token expired.",
+      retryable: false,
     });
   });
 
@@ -321,6 +324,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(result).toEqual({
       _tag: "Failure",
       error: "Sign in to Zerops again to connect this container.",
+      retryable: false,
     });
   });
 
@@ -337,6 +341,73 @@ describe("same-origin Zerops identity bootstrap", () => {
     });
 
     expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+});
+
+describe("nextZeropsBirthRetryDelayMs", () => {
+  it.each([
+    [0, 2_000],
+    [1, 4_000],
+    [2, 8_000],
+    [3, 15_000],
+    [4, 15_000],
+    [10, 15_000],
+  ])("waits %ims after attempt %i", (attempt, delayMs) => {
+    expect(nextZeropsBirthRetryDelayMs(attempt)).toBe(delayMs);
+  });
+});
+
+describe("isZeropsBirthConnectTarget", () => {
+  const ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
+
+  it("is the birth's own connect: the provisioning wait's own origin, with a hand-off still pending", () => {
+    expect(
+      isZeropsBirthConnectTarget({
+        containerOrigin: ORIGIN,
+        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
+        pendingCreationProjectIds: new Set(["proj-1"]),
+      }),
+    ).toBe(true);
+  });
+
+  it("is not a birth when nothing is waited on", () => {
+    expect(
+      isZeropsBirthConnectTarget({
+        containerOrigin: ORIGIN,
+        waited: null,
+        pendingCreationProjectIds: new Set(["proj-1"]),
+      }),
+    ).toBe(false);
+  });
+
+  it("is not a birth for a different origin than the one being waited on", () => {
+    expect(
+      isZeropsBirthConnectTarget({
+        containerOrigin: "https://another-container.example",
+        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
+        pendingCreationProjectIds: new Set(["proj-1"]),
+      }),
+    ).toBe(false);
+  });
+
+  it("is not a birth when the waited project has no pending creation hand-off — Enable/Start on an existing candidate", () => {
+    expect(
+      isZeropsBirthConnectTarget({
+        containerOrigin: ORIGIN,
+        waited: { containerOrigin: ORIGIN, projectId: "proj-1" },
+        pendingCreationProjectIds: new Set(),
+      }),
+    ).toBe(false);
+  });
+
+  it("is not a birth when the wait carries no project id", () => {
+    expect(
+      isZeropsBirthConnectTarget({
+        containerOrigin: ORIGIN,
+        waited: { containerOrigin: ORIGIN, projectId: null },
+        pendingCreationProjectIds: new Set(["proj-1"]),
+      }),
+    ).toBe(false);
   });
 });
 

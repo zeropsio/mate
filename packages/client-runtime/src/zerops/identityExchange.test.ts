@@ -1,10 +1,12 @@
 import { ConnectionBlockedError } from "../connection/model.ts";
+import { RemoteEnvironmentAuthFetchError, RemoteEnvironmentAuthTimeoutError } from "../rpc/http.ts";
 import * as Cause from "effect/Cause";
 import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
+import { ZeropsApiError } from "./api.ts";
 import { exchangeZeropsContainerIdentity, type ZeropsDoorThrowaway } from "./identityExchange.ts";
 
 const CONTAINER_ORIGIN = "https://zcp-demo-8080.prg1.zerops.app";
@@ -61,6 +63,7 @@ describe("exchangeZeropsContainerIdentity", () => {
     expect(result).toEqual({
       _tag: "Failure",
       error: "Sign in to Zerops again to connect this container.",
+      retryable: false,
     });
     expect(connected).toBe(false);
   });
@@ -201,6 +204,80 @@ describe("exchangeZeropsContainerIdentity", () => {
     );
 
     expect(result).toEqual({ _tag: "Success", environmentId });
+  });
+
+  it.each([
+    ["network", false],
+    ["expired-session", false],
+    ["forbidden", false],
+    ["uncertain", true],
+  ] as const)("marks a door-mint failure of kind %s as retryable: %s", async (kind, retryable) => {
+    const platform: ZeropsThrowawayPlatform = {
+      mint: async () => {
+        throw new ZeropsApiError("Something went wrong.", kind);
+      },
+      remove: async () => undefined,
+    };
+    const result = await exchangeZeropsContainerIdentity(
+      {
+        throwaway: throwaway(platform),
+        connect: async () => AsyncResult.success("e" as EnvironmentId),
+      },
+      CONTAINER_ORIGIN,
+    );
+    expect(result).toMatchObject({ _tag: "Failure", retryable });
+  });
+
+  it.each([
+    [
+      "the descriptor read timed out",
+      new RemoteEnvironmentAuthTimeoutError("https://example/env", 10_000),
+      true,
+    ],
+    [
+      "the fetch itself never reached the network",
+      new RemoteEnvironmentAuthFetchError({
+        message: "Failed to fetch",
+        cause: new Error("network"),
+      }),
+      true,
+    ],
+    [
+      "the environment answered its own internal error",
+      { _tag: "EnvironmentInternalError", reason: "unexpected" },
+      true,
+    ],
+    [
+      "the door refused on permission",
+      new ConnectionBlockedError({ reason: "permission", detail: "no" }),
+      false,
+    ],
+    [
+      "the door refused as read-only",
+      new ConnectionBlockedError({ reason: "read-only", detail: "no" }),
+      false,
+    ],
+    [
+      "the door refused on authentication",
+      new ConnectionBlockedError({ reason: "authentication", detail: "no" }),
+      false,
+    ],
+    [
+      "the door said the server is too old",
+      new ConnectionBlockedError({ reason: "unsupported", detail: "no" }),
+      false,
+    ],
+    ["an ordinary error, with no tag at all", new Error("boom"), false],
+  ] as const)("marks a door failure retryable when %s: %s", async (_case, cause, retryable) => {
+    const { platform } = recordingPlatform();
+    const result = await exchangeZeropsContainerIdentity(
+      {
+        throwaway: throwaway(platform),
+        connect: async () => AsyncResult.failure(Cause.fail(cause)),
+      },
+      CONTAINER_ORIGIN,
+    );
+    expect(result).toMatchObject({ _tag: "Failure", retryable });
   });
 
   it("carries a typed upgrade action instead of asking the UI to parse the message", async () => {

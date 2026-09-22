@@ -45,9 +45,20 @@ export function selectAutoConnectTargets(input: {
   readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
   /** Origins this session already tried, successfully or not. */
   readonly attempted: ReadonlySet<string>;
+  /**
+   * Projects a birth is watching (the page's own provisioning wait, or a
+   * hand-off this browser wrote — `creationHandoffStorage.ts`). Skipped here
+   * so exactly one connector runs on a birth: the page's own, which schedules
+   * a retry, sets a `connectError`, and lands the person in the conversation
+   * on success. This connector never navigates by design; racing it against
+   * the birth's own connect either wastes an attempt or, worse, spends the
+   * hand-off out from under a card still waiting for it.
+   */
+  readonly birthProjectIds?: ReadonlySet<string>;
   readonly limit?: number;
 }): ReadonlyArray<AutoConnectTarget> {
   const limit = input.limit ?? ZEROPS_AUTO_CONNECT_LIMIT;
+  const birthProjectIds = input.birthProjectIds ?? new Set<string>();
 
   // Registered environments count against the ceiling whether or not their
   // socket is up right now; a reconnecting one is still one of ours.
@@ -68,6 +79,7 @@ export function selectAutoConnectTargets(input: {
     if (candidate.connection !== undefined || candidate.environmentId !== undefined) continue;
     if (input.health.get(candidate.key) !== "ready") continue;
     if (input.attempted.has(origin) || seen.has(origin)) continue;
+    if (birthProjectIds.has(candidate.project.id)) continue;
     seen.add(origin);
     targets.push({
       key: candidate.key,

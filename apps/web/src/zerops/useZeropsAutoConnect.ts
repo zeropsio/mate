@@ -16,6 +16,7 @@ import { selectAutoConnectTargets } from "@t3tools/client-runtime/zerops";
 import { rememberEnvironmentProjectRef } from "@t3tools/client-runtime/zerops/environmentProjectRef";
 
 import { browserZeropsStorage } from "./storage";
+import { pendingCreationProjects } from "./creationHandoffStorage";
 import { useZeropsIdentityExchange } from "./useZeropsIdentityExchange";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
@@ -39,6 +40,12 @@ export function useZeropsAutoConnect(input: {
       candidates: input.candidates,
       health: input.health,
       attempted: attemptedRef.current,
+      // The projects screen's own connect owns a birth end to end — its
+      // retry loop, its `connectError`, its navigate to the conversation.
+      // This connector never navigates, so racing it in would either waste
+      // an attempt or spend the birth's hand-off with nobody there to catch
+      // the environment it lands on.
+      birthProjectIds: new Set(pendingCreationProjects()),
     });
     if (targets.length === 0) return;
 

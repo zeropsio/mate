@@ -16,6 +16,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
 import { squashAtomCommandFailure, type AtomCommandResult } from "../state/runtime.ts";
+import { ZeropsApiError } from "./api.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import { connectThroughThrowaway } from "./doorThrowaway.ts";
 import { zeropsErrorMessage } from "./errors.ts";
@@ -27,9 +28,44 @@ export type ZeropsIdentityExchangeResult =
   | {
       readonly _tag: "Failure";
       readonly error: string;
+      /**
+       * Whether trying the same connect again, unchanged, might succeed — a
+       * transient fault (the descriptor read timed out or the fetch itself
+       * failed, an internal error, an uncertain door-mint) rather than a
+       * verdict (`ConnectionBlockedError`'s permission/read-only/
+       * authentication/unsupported, or anything else the door said no to).
+       * The birth's own connect loop (`ZeropsProjectsPage.tsx`) is the only
+       * reader; every other caller shows `error` and stops.
+       */
+      readonly retryable: boolean;
       readonly upgradeRequired?: boolean;
       readonly serverVersion?: string;
     };
+
+/**
+ * The failure tags a retry might clear on its own — the descriptor read
+ * timing out or never reaching the network, and the environment's own
+ * internal error. Named by tag rather than `instanceof`: `RemoteEnvironment-
+ * Auth*Error` are `Data.TaggedError`s from a package this one does not
+ * depend on, and `EnvironmentInternalError` is a `Schema.TaggedError` from
+ * the wire contract — the tag is the one thing both carry.
+ */
+const RETRYABLE_IDENTITY_FAILURE_TAGS: ReadonlySet<string> = new Set([
+  "RemoteEnvironmentAuthTimeoutError",
+  "RemoteEnvironmentAuthFetchError",
+  "EnvironmentInternalError",
+]);
+
+function isRetryableIdentityFailure(cause: unknown): boolean {
+  // A verdict, never a fault to retry past: the door knows the caller and
+  // said no on purpose.
+  if (isConnectionBlockedError(cause)) return false;
+  const tag =
+    typeof cause === "object" && cause !== null && "_tag" in cause && typeof cause._tag === "string"
+      ? cause._tag
+      : undefined;
+  return tag !== undefined && RETRYABLE_IDENTITY_FAILURE_TAGS.has(tag);
+}
 
 /**
  * What it takes to mint one throwaway: the two platform calls, the org that
@@ -69,6 +105,7 @@ export async function exchangeZeropsContainerIdentity<E>(
     return {
       _tag: "Failure",
       error: "Sign in to Zerops again to connect this container.",
+      retryable: false,
     };
   }
   const httpBaseUrl = zeropsMateBaseUrl(containerOrigin, options.servedApp);
@@ -85,10 +122,13 @@ export async function exchangeZeropsContainerIdentity<E>(
   } catch (cause) {
     // The mint itself failed — the account is signed out, the platform is
     // down, or the org refused. The door was never reached, so there is
-    // nothing to report about it.
+    // nothing to report about it. Only an "uncertain" mint (the write's own
+    // outcome was never learned) is worth trying again; every other kind is
+    // the platform's settled word.
     return {
       _tag: "Failure",
       error: `Could not connect to this container. ${zeropsErrorMessage(cause)}`,
+      retryable: cause instanceof ZeropsApiError && cause.kind === "uncertain",
     };
   }
   if (result._tag === "Failure") {
@@ -97,6 +137,7 @@ export async function exchangeZeropsContainerIdentity<E>(
     return {
       _tag: "Failure",
       error: `Could not connect to this container. ${reason}`,
+      retryable: isRetryableIdentityFailure(failure),
       ...(isConnectionBlockedError(failure) && failure.reason === "unsupported"
         ? {
             upgradeRequired: true,

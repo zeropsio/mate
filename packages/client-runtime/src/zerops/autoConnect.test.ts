@@ -92,6 +92,29 @@ describe("selectAutoConnectTargets", () => {
     expect(targets.map((target) => target.projectId)).toEqual(["two"]);
   });
 
+  it("skips a project a birth is watching, leaving the birth's own connect as the only one", () => {
+    const targets = selectAutoConnectTargets({
+      candidates: [candidate("born"), candidate("other")],
+      health: health([
+        ["born", "ready"],
+        ["other", "ready"],
+      ]),
+      attempted: new Set(),
+      birthProjectIds: new Set(["born"]),
+    });
+    expect(targets.map((target) => target.projectId)).toEqual(["other"]);
+  });
+
+  it("connects normally when no project is a birth", () => {
+    const targets = selectAutoConnectTargets({
+      candidates: [candidate("a")],
+      health: health([["a", "ready"]]),
+      attempted: new Set(),
+      birthProjectIds: new Set(),
+    });
+    expect(targets.map((target) => target.projectId)).toEqual(["a"]);
+  });
+
   it("targets an origin once even when a project has two containers", () => {
     const targets = selectAutoConnectTargets({
       candidates: [

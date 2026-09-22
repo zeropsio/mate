@@ -8,6 +8,7 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  */
 
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
+import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   ZeropsServiceId,
@@ -241,6 +242,45 @@ export function retryZeropsProjectConnection(input: {
   input.retryProvisioning();
 }
 
+/** The birth's connect retry cadence: 2s, 4s, 8s, then every 15s. */
+const ZEROPS_BIRTH_RETRY_DELAYS_MS = [2_000, 4_000, 8_000] as const;
+const ZEROPS_BIRTH_RETRY_STEADY_MS = 15_000;
+
+/**
+ * B-2: "overdue is not a state." A retryable failure inside a birth never
+ * dead-ends — it loops, slowing down until it settles at once every 15s,
+ * for as long as the hand-off stays pending.
+ */
+export function nextZeropsBirthRetryDelayMs(attempt: number): number {
+  return ZEROPS_BIRTH_RETRY_DELAYS_MS[attempt] ?? ZEROPS_BIRTH_RETRY_STEADY_MS;
+}
+
+/**
+ * Whether a connect attempt is the birth's own: the container this page's
+ * provisioning wait is on, for the project that wait names, with a creation
+ * hand-off still pending for it (`creationHandoffStorage.ts`). Only there does
+ * a retryable identity-exchange failure loop silently instead of landing on
+ * the card as an error — a click-triggered connect on an ordinary candidate
+ * (Enable, Start, the same-origin bootstrap) keeps today's one-shot behavior.
+ */
+export function isZeropsBirthConnectTarget(input: {
+  readonly containerOrigin: string;
+  readonly waited: {
+    readonly containerOrigin: string | null;
+    readonly projectId: string | null;
+  } | null;
+  readonly pendingCreationProjectIds: ReadonlySet<string>;
+}): boolean {
+  const waited = input.waited;
+  if (waited === null || waited.containerOrigin === null || waited.projectId === null) {
+    return false;
+  }
+  if (normalizeOrigin(waited.containerOrigin) !== normalizeOrigin(input.containerOrigin)) {
+    return false;
+  }
+  return input.pendingCreationProjectIds.has(waited.projectId);
+}
+
 /**
  * Whether this account has no project to show — the state the projects screen
  * answers with an invitation rather than a list.
@@ -346,6 +386,14 @@ export function useZeropsProjectConnection(): {
    * fresh wait that settles back on that same origin connects again instead
    * of being read as already handled. */
   readonly resetConnectingTarget: () => void;
+  /**
+   * Ends a birth on an admitted environment, from wherever it was admitted:
+   * this hook's own `connectContainer`, or a late success this page only
+   * observed (the sidebar's own connector reached the door first). Cancels
+   * the wait, clears any scheduled birth retry, and lands the person in the
+   * conversation — exactly what a successful `connectContainer` always did.
+   */
+  readonly finishBirth: (environmentId: EnvironmentId) => Promise<void>;
 } {
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
   const provisioning = useZeropsProvisioning(creatingIn);
@@ -357,6 +405,72 @@ export function useZeropsProjectConnection(): {
   const [connectingOrigin, setConnectingOrigin] = useState<string | null>(null);
   // One connect per settled provisioning wait, however many renders that takes.
   const connectingRef = useRef<string | null>(null);
+  // The birth's own retry loop: a timer plus how many attempts it has made,
+  // so the backoff (`nextZeropsBirthRetryDelayMs`) is read once per schedule
+  // and not restarted by an unrelated render. Kept in refs, not state — a
+  // scheduled retry is not something any render needs to show; the wait's
+  // own words ("Coming up.", "Almost there.") already carry it.
+  const birthRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const birthRetryAttemptRef = useRef(0);
+
+  const clearBirthRetry = useCallback(() => {
+    if (birthRetryTimerRef.current !== null) {
+      clearTimeout(birthRetryTimerRef.current);
+      birthRetryTimerRef.current = null;
+    }
+    birthRetryAttemptRef.current = 0;
+  }, []);
+
+  // Every scheduled retry unmounts through this, whatever ended it first —
+  // the tab closing, the component unmounting mid-birth, or (via the effect
+  // below) the wait itself being cancelled.
+  useEffect(() => clearBirthRetry, [clearBirthRetry]);
+
+  const finishBirth = useCallback(
+    async (environmentId: EnvironmentId) => {
+      clearBirthRetry();
+      // `useZeropsIdentityExchange` remembers this connect's project/org
+      // ref itself now (H12) — every path that can land an environment
+      // (connect, auto-connect, restore, repair) writes it the same way,
+      // so it is never skipped again by only one of them doing it here.
+      //
+      // The birth's one restart (`projectIsolation.ts`, spec-mate §3
+      // B-1/B-2/B-3) already ran before this admission, in
+      // `provisioning.ts`'s `hardening` phase: the identity exchange above
+      // only succeeds once `awaiting-health` accepts a `ready` verdict
+      // that postdates it. Nothing here closes the project off again —
+      // doing it here, after the person is already in, would be the
+      // second write sharing the birth's restart budget.
+      // The environment is real now. When the lists last reloaded — right
+      // after the creation writes — the project was still NEW with no
+      // container, which the left menu rightly leaves out; here it is ACTIVE
+      // with a zcp, so every mounted list reloads and the row appears.
+      refreshZeropsCandidates();
+      provisioning.cancel();
+      setCreatingIn(null);
+      setConnectError(null);
+      await navigate({ to: "/", search: { environmentId: String(environmentId) } });
+    },
+    [clearBirthRetry, navigate, provisioning],
+  );
+
+  // Fed by `scheduleBirthRetry` below and read by the timer it sets — a ref
+  // so the timer always calls this hook's latest `connectContainer`, whatever
+  // its own identity is doing (`provisioning` is a fresh object every render,
+  // per `useZeropsProvisioning`, so `connectContainer` is too).
+  const connectContainerRef = useRef<(containerOrigin: string) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
+
+  const scheduleBirthRetry = useCallback((containerOrigin: string) => {
+    if (birthRetryTimerRef.current !== null) clearTimeout(birthRetryTimerRef.current);
+    const attempt = birthRetryAttemptRef.current;
+    birthRetryAttemptRef.current = attempt + 1;
+    birthRetryTimerRef.current = setTimeout(() => {
+      birthRetryTimerRef.current = null;
+      void connectContainerRef.current(containerOrigin);
+    }, nextZeropsBirthRetryDelayMs(attempt));
+  }, []);
 
   const connectContainer = useCallback(
     async (containerOrigin: string) => {
@@ -367,37 +481,36 @@ export function useZeropsProjectConnection(): {
       try {
         const result = await exchangeZeropsIdentity(containerOrigin);
         if (result._tag === "Failure") {
+          const isBirth = isZeropsBirthConnectTarget({
+            containerOrigin,
+            waited: provisioning.state,
+            pendingCreationProjectIds: new Set(pendingCreationProjects()),
+          });
+          if (result.retryable && isBirth) {
+            // B-2: "overdue is not a state." A fault a retry might clear on
+            // its own never dead-ends the card while its hand-off is still
+            // pending — no `connectError`, so the card stays on its
+            // progress and this loops until it settles or the wait ends.
+            scheduleBirthRetry(containerOrigin);
+            return;
+          }
+          clearBirthRetry();
           setConnectError(result.error);
           setServerVersion(result.serverVersion);
           setUpgradeOrigin(result.upgradeRequired ? containerOrigin : null);
           return;
         }
-        // `useZeropsIdentityExchange` remembers this connect's project/org
-        // ref itself now (H12) — every path that can land an environment
-        // (connect, auto-connect, restore, repair) writes it the same way,
-        // so it is never skipped again by only one of them doing it here.
-        //
-        // The birth's one restart (`projectIsolation.ts`, spec-mate §3
-        // B-1/B-2/B-3) already ran before this admission, in
-        // `provisioning.ts`'s `hardening` phase: the identity exchange above
-        // only succeeds once `awaiting-health` accepts a `ready` verdict
-        // that postdates it. Nothing here closes the project off again —
-        // doing it here, after the person is already in, would be the
-        // second write sharing the birth's restart budget.
-        // The environment is real now. When the lists last reloaded — right
-        // after the creation writes — the project was still NEW with no
-        // container, which the left menu rightly leaves out; here it is ACTIVE
-        // with a zcp, so every mounted list reloads and the row appears.
-        refreshZeropsCandidates();
-        provisioning.cancel();
-        setCreatingIn(null);
-        await navigate({ to: "/", search: { environmentId: String(result.environmentId) } });
+        await finishBirth(result.environmentId);
       } finally {
         setConnectingOrigin(null);
       }
     },
-    [exchangeZeropsIdentity, navigate, provisioning],
+    [clearBirthRetry, exchangeZeropsIdentity, finishBirth, provisioning.state, scheduleBirthRetry],
   );
+
+  useEffect(() => {
+    connectContainerRef.current = connectContainer;
+  }, [connectContainer]);
 
   const readyOrigin =
     provisioning.state?.phase === "ready" ? provisioning.state.containerOrigin : null;
@@ -424,9 +537,18 @@ export function useZeropsProjectConnection(): {
     void connectContainer(readyOrigin);
   }, [connectContainer, readyOrigin]);
 
+  // The wait ending — "Stop waiting", a settled creation failure, a fresh
+  // wait replacing this one — always cancels a birth retry along with it:
+  // nothing should still be reaching for a container nobody is waiting on.
+  const waitedState = provisioning.state;
+  useEffect(() => {
+    if (waitedState === null) clearBirthRetry();
+  }, [waitedState, clearBirthRetry]);
+
   const resetConnectingTarget = useCallback(() => {
     connectingRef.current = null;
-  }, []);
+    clearBirthRetry();
+  }, [clearBirthRetry]);
 
   return {
     creatingIn,
@@ -440,6 +562,7 @@ export function useZeropsProjectConnection(): {
     retryProjectConnection,
     connectContainer,
     resetConnectingTarget,
+    finishBirth,
   };
 }
 
@@ -476,6 +599,7 @@ function ZeropsProjectsContent() {
     retryProjectConnection,
     connectContainer,
     resetConnectingTarget,
+    finishBirth,
   } = useZeropsProjectConnection();
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
@@ -494,6 +618,38 @@ function ZeropsProjectsContent() {
       ),
     [creationVerdicts, observedCandidates],
   );
+  // A late success still ends the birth. The sidebar's own connector
+  // (`useZeropsAutoConnect`) can reach the door before this page's retry
+  // does — it never navigates by design — so this watches for the project
+  // this page is itself waiting on, or one this browser wrote a creation
+  // hand-off for, turning up connected, and finishes the birth from here
+  // instead. Gated strictly on this browser's own wait/hand-off: an ordinary
+  // auto-connected environment that is neither must never pull anyone into a
+  // thread. `provisioning.state?.projectId` is read on its own — not only
+  // through the pending hand-off — because a successful exchange on either
+  // path promotes the hand-off (`promoteCreationHandoff`) as its very first
+  // write, which would otherwise empty `pendingCreationProjects()` out from
+  // under this check before it ever got to run.
+  const finishedBirthProjectsRef = useRef(new Set<string>());
+  useEffect(() => {
+    // A connect this page's own `connectContainer` is mid-flight on will
+    // reach `finishBirth` itself; racing in here would only navigate twice.
+    if (connectingOrigin !== null) return;
+    const watchedProjectIds = new Set(pendingCreationProjects());
+    const waitedProjectId = provisioning.state?.projectId ?? null;
+    if (waitedProjectId !== null) watchedProjectIds.add(waitedProjectId);
+    if (watchedProjectIds.size === 0) return;
+    const admitted = candidates.find(
+      (candidate) =>
+        watchedProjectIds.has(candidate.project.id) &&
+        candidate.group === "connected" &&
+        candidate.environmentId !== undefined &&
+        !finishedBirthProjectsRef.current.has(candidate.project.id),
+    );
+    if (admitted?.environmentId === undefined) return;
+    finishedBirthProjectsRef.current.add(admitted.project.id);
+    void finishBirth(admitted.environmentId);
+  }, [candidates, connectingOrigin, finishBirth, provisioning.state?.projectId]);
   // The same platform-process ground truth `provisioning.ts`'s wait reads,
   // given to the row probes too (H7/R9) — a legitimately long restart must
   // not read as `stalled` here while the provisioning machine, watching the

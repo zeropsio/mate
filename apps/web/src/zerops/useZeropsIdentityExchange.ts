@@ -93,6 +93,7 @@ export function useZeropsIdentityExchange() {
         return {
           _tag: "Failure",
           error: "This environment is not in your verified Zerops projects.",
+          retryable: false,
         };
       // The token is minted in the org that owns the Mate's project — the
       // active organization only stands in when the project read carried none.
