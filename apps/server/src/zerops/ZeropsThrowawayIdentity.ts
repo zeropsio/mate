@@ -69,8 +69,10 @@ import {
   type RoleMateVisibility,
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { HttpClientResponse } from "effect/unstable/http";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
@@ -91,6 +93,23 @@ export const DOOR_THROWAWAY_PREFIX = "mate-door";
 
 /** How far a throwaway's `created` may be from the API's own clock. */
 export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
+
+/**
+ * How many times step 6's member-list read is attempted before this Mate
+ * gives up on it, and how long it waits between attempts.
+ *
+ * Measured 2026-09-22 on a live Mate container, with the Mate's own valid
+ * key: `GET /client/{org}/user/list` answered `200` seven times out of eight
+ * and once `400 userNotFound` — a platform flake, not a verdict, since the
+ * very next call was `200`. Before this retry, that flake turned into a 500
+ * at the door for whoever's throwaway happened to land on it. `401`/`403`
+ * are never worth a second attempt here — they already get their own
+ * re-resolve-and-retry-once in {@link requestWithMateKey}.
+ */
+export const DOOR_MEMBER_LIST_RETRY_ATTEMPTS = 3;
+
+/** The delay between member-list retries — short enough that a caller who is really waiting barely notices it. */
+export const DOOR_MEMBER_LIST_RETRY_DELAY = Duration.millis(300);
 
 /**
  * Which rule the presented credential broke.
@@ -427,14 +446,25 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("stale");
   }
 
-  // 6. Its creator, and whether the org still knows them.
+  // 6. Its creator, and whether the org still knows them. Retried up to
+  //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS times when the platform's answer is
+  //    neither 200 nor 401/403 — a live flake must not read as "not a
+  //    member" (see DOOR_MEMBER_LIST_RETRY_ATTEMPTS).
   if (record.createdByUser.length === 0) return yield* refused("not_member");
-  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({
-      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-      token,
-    }),
-  );
+  let memberResponse: HttpClientResponse.HttpClientResponse | undefined;
+  for (let attempt = 1; attempt <= DOOR_MEMBER_LIST_RETRY_ATTEMPTS; attempt++) {
+    const { response } = yield* requestWithMateKey(mateKey, (token) =>
+      zeropsGet({
+        url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
+        token,
+      }),
+    );
+    memberResponse = response;
+    const status = response?.status;
+    const isFlake = status === undefined || (status !== 200 && status !== 401 && status !== 403);
+    if (!isFlake || attempt === DOOR_MEMBER_LIST_RETRY_ATTEMPTS) break;
+    yield* Effect.sleep(DOOR_MEMBER_LIST_RETRY_DELAY);
+  }
   if (memberResponse === undefined || memberResponse.status !== 200) {
     return yield* unavailable(
       `The Zerops API answered ${memberResponse === undefined ? "nothing" : String(memberResponse.status)} for this org's member list.`,
