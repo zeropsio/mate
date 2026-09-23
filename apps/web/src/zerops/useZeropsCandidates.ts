@@ -34,6 +34,7 @@ import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
   candidateMembers,
+  candidatesComplete,
   presentCandidates,
   selectCandidates,
   type CandidateRow,
@@ -44,9 +45,9 @@ import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
 import { writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
-import { zeropsMateIdentities } from "./mateIdentities";
+import { zeropsMateIdentities, type ZeropsMateIdentity } from "./mateIdentities";
 import { inventoryProjectRefKey } from "./inventoryContext";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsSession, type ZeropsSessionStatus } from "./ZeropsSessionProvider";
 import {
   useZeropsAtomSelections,
   useZeropsData,
@@ -204,6 +205,59 @@ const EMPTY_PROJECTS_READ_ATOM = Atom.make<StampedRead<CollectionRead<ProjectRec
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
+/**
+ * What `useZeropsCandidates` publishes for the readers that never load
+ * candidates (`useZeropsEnvironmentNames`, `useZeropsMates`): nothing, or each
+ * environment's name and who lives in it.
+ */
+export type CandidatesPublication =
+  | { readonly kind: "hold" }
+  | {
+      readonly kind: "publish";
+      readonly names: ReadonlyMap<EnvironmentId, string>;
+      readonly mates: ReadonlyMap<EnvironmentId, ZeropsMateIdentity>;
+    };
+
+/** The names and Mates the readers hold now; Mates are `null` until first known. */
+export interface PublishedCandidates {
+  readonly names: ReadonlyMap<EnvironmentId, string>;
+  readonly mates: ReadonlyMap<EnvironmentId, ZeropsMateIdentity> | null;
+}
+
+const HOLD: CandidatesPublication = { kind: "hold" };
+
+/**
+ * Names and Mates are read off a known listing only. One that is unread,
+ * being read or failed publishes nothing, so what the readers had stays up: an
+ * empty answer then is a guess, and the surfaces that wait on `zeropsMatesAtom`
+ * would paint their other look. A listing known in full (`candidatesComplete`)
+ * replaces what was published; one known in part adds the names and Mates it
+ * has read and drops none, since it cannot say nobody lives where it has not
+ * read. A session still being checked publishes nothing either; one with no
+ * Zerops account holds no environment and no Mate.
+ */
+export function candidatesPublication(input: {
+  readonly status: ZeropsSessionStatus;
+  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
+  readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
+  readonly published: PublishedCandidates;
+}): CandidatesPublication {
+  if (input.status === "signed-out" || input.status === "unavailable") {
+    return { kind: "publish", names: new Map(), mates: new Map() };
+  }
+  if (input.status !== "signed-in" || input.listing.state !== "known") return HOLD;
+  const candidates = candidateMembers(input.listing);
+  const names = zeropsEnvironmentNames(candidates);
+  const mates = zeropsMateIdentities(candidates, input.registeredOrigins);
+  if (candidatesComplete(input.listing)) return { kind: "publish", names, mates };
+  if (names.size === 0 && mates.size === 0) return HOLD;
+  return {
+    kind: "publish",
+    names: new Map([...input.published.names, ...names]),
+    mates: new Map([...(input.published.mates ?? []), ...mates]),
+  };
+}
+
 export function useZeropsCandidates(): {
   /**
    * The rows the listing holds (`candidateMembers`): none while it is unread,
@@ -318,25 +372,23 @@ export function useZeropsCandidates(): {
   ]);
   const candidates = candidateMembers(listing);
 
-  // Publish the environments' names, and who lives in each, for readers that
-  // never load candidates (`useZeropsEnvironmentNames`, `useZeropsMates`). A
-  // reload starts from an empty list; what they had stays up until the new
-  // list carries some. Nothing is published while the session is still being
-  // checked or the organisation picked: an empty answer then would be a
-  // guess, and the surfaces that wait on `zeropsMatesAtom` would paint their
-  // other look for the first second of every reload.
   useEffect(() => {
-    if (status === "loading" || status === "totp-required") return;
-    if (status === "signed-in" && !canLoad) return;
-    const names = zeropsEnvironmentNames(candidates);
-    if (isLoading && names.size === 0) return;
-    const mates = zeropsMateIdentities(candidates, registeredOrigins);
-    appAtomRegistry.set(zeropsEnvironmentNamesAtom, names);
-    appAtomRegistry.set(zeropsMatesAtom, mates);
+    const publication = candidatesPublication({
+      status,
+      listing,
+      registeredOrigins,
+      published: {
+        names: appAtomRegistry.get(zeropsEnvironmentNamesAtom),
+        mates: appAtomRegistry.get(zeropsMatesAtom),
+      },
+    });
+    if (publication.kind === "hold") return;
+    appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
+    appAtomRegistry.set(zeropsMatesAtom, publication.mates);
     // Remembered across reloads, so the next one knows who lives where from
     // its first frame (`zeropsMatesAtom` starts from this).
-    writeCachedZeropsMates(mates);
-  }, [candidates, canLoad, isLoading, registeredOrigins, status]);
+    writeCachedZeropsMates(publication.mates);
+  }, [listing, registeredOrigins, status]);
 
   const refresh = useCallback(() => {
     refreshZeropsCandidates();
