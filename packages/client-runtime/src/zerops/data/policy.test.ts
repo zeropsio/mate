@@ -1,5 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import { DEFAULT_ZEROPS_DATA_POLICY, makeZeropsDataPolicy } from "./policy.ts";
+import {
+  DEFAULT_ZEROPS_DATA_POLICY,
+  DEFAULT_ZEROPS_GRANT_POLICY,
+  makeZeropsDataPolicy,
+  renewalLeadMs,
+  roundDeadlineMs,
+} from "./policy.ts";
 
 describe("Zerops data runtime policy", () => {
   it("keeps every queue, retry, retention and deadline budget finite", () => {
@@ -60,5 +66,67 @@ describe("Zerops data runtime policy", () => {
         registrationAttemptsPerReceiver: 4,
       }),
     ).toThrow("desiredInterestsPerReceiver cannot exceed registrationAttemptsPerReceiver");
+  });
+});
+
+describe("Zerops access grant policy", () => {
+  const MINUTE = 60_000;
+  const SECOND = 1_000;
+
+  it("renews at start + 12 min while rounds stay typical, never with less than a 3 min lead (G13, D5)", () => {
+    for (const p95RoundMs of [0, 2 * SECOND, 30 * SECOND, 90 * SECOND]) {
+      expect(renewalLeadMs(DEFAULT_ZEROPS_GRANT_POLICY, p95RoundMs)).toBe(3 * MINUTE);
+    }
+    expect(
+      DEFAULT_ZEROPS_GRANT_POLICY.windowMs - renewalLeadMs(DEFAULT_ZEROPS_GRANT_POLICY, 0),
+    ).toBe(12 * MINUTE);
+  });
+
+  it("widens the lead past the floor once a slow round no longer fits inside it (G13)", () => {
+    // 60 s hidden-timer alignment + the round itself + 30 s for one retry.
+    expect(renewalLeadMs(DEFAULT_ZEROPS_GRANT_POLICY, 100 * SECOND)).toBe(190 * SECOND);
+    expect(renewalLeadMs(DEFAULT_ZEROPS_GRANT_POLICY, 5 * MINUTE)).toBe(6 * MINUTE + 30 * SECOND);
+  });
+
+  it.each([
+    [0, 30 * SECOND],
+    [1, 45 * SECOND],
+    [4, 45 * SECOND],
+    [5, 60 * SECOND],
+    [8, 60 * SECOND],
+    [40, 180 * SECOND],
+  ])("gives a round of %i projects %i ms: 30 s plus 15 s per batch of 4 (G7)", (projects, ms) => {
+    expect(roundDeadlineMs(DEFAULT_ZEROPS_GRANT_POLICY, projects)).toBe(ms);
+  });
+
+  it("names every grant ladder of §4.2 and keeps each rung inside the access window", () => {
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.windowMs).toBe(15 * MINUTE);
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.dormantAfterHiddenMs).toBe(60 * MINUTE);
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.wallJumpBackToleranceMs).toBe(60 * SECOND);
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.denialConfirmationDelayMs).toBe(5 * SECOND);
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs).toEqual(
+      [2, 4, 8, 15, 30, 60].map((s) => s * SECOND),
+    );
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs).toEqual(
+      [10, 20, 40, 60].map((s) => s * SECOND),
+    );
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs).toEqual(
+      [2, 5, 15, 30, 60].map((s) => s * SECOND),
+    );
+    expect(DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs).toEqual(
+      [10, 20, 40, 60].map((s) => s * SECOND),
+    );
+    for (const ladder of [
+      DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs,
+      DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs,
+      DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs,
+      DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs,
+    ]) {
+      expect(ladder.length).toBeGreaterThan(0);
+      for (const rung of ladder) {
+        expect(rung).toBeGreaterThan(0);
+        expect(rung).toBeLessThan(DEFAULT_ZEROPS_GRANT_POLICY.windowMs);
+      }
+    }
   });
 });
