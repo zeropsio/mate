@@ -60,6 +60,18 @@ describe("ComposerBannerStack", () => {
     expect(markup).toContain("transform:none");
     expect(markup).not.toContain("will-change:transform");
   });
+  // The front banner's drawer surface rounds its top at 16px; a banner
+  // stacked above it once the stack expands used 22px, so the two corners
+  // visibly disagreed one above the other.
+  it("rounds a stacked banner like the front banner's drawer corners", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerBannerStack items={[banner("front"), banner("stacked")]} />,
+    );
+
+    expect(markup).toContain("alert-glass rounded-2xl");
+    expect(markup).not.toContain("rounded-[22px]");
+  });
+
   it("applies item-specific surface and action layout classes", () => {
     const markup = renderToStaticMarkup(
       <ComposerBannerStack
