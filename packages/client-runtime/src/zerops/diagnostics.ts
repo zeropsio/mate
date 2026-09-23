@@ -26,6 +26,7 @@
  */
 
 import { ZeropsApiError } from "./api.ts";
+import type { RouteGate } from "./environments/gate.ts";
 
 /** What a string field becomes when it looks like a secret. */
 export const REDACTED = "[redacted]";
@@ -127,9 +128,10 @@ export type MateDiagnosticEvent =
       readonly change: "added" | "removed";
       readonly environmentId: string;
     }
+  /** What the route gate rendered for the route's environment (DESIGN §4.8). */
   | {
       readonly kind: "route-gate";
-      readonly verdict: "restoring" | "unavailable" | "outlet";
+      readonly verdict: RouteGate["kind"];
       readonly environmentId: string | null;
     }
   /** A thread route rendered its conversation. */

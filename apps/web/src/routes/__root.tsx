@@ -2,11 +2,7 @@ import { rememberAccountRoute } from "../zerops/navigationStorage";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import {
-  routeGatePhrase,
-  selectRouteGate,
-  type RouteGate,
-} from "@t3tools/client-runtime/zerops/environments";
+import { routeGatePhrase, selectRouteGate } from "@t3tools/client-runtime/zerops/environments";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -131,17 +127,16 @@ function SignedInRootRouteView() {
   const gate = selectRouteGate(gateInputs.target);
   const nowMs = useNowMs();
   const gatePhrase = routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
-  const diagnosedVerdict = DIAGNOSED_VERDICT[gate.kind];
   useEffect(() => {
     rememberAccountRoute(pathname);
   }, [pathname]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",
-      verdict: diagnosedVerdict,
+      verdict: gate.kind,
       environmentId: routeEnvironmentId,
     });
-  }, [diagnosedVerdict, routeEnvironmentId]);
+  }, [gate.kind, routeEnvironmentId]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -197,14 +192,6 @@ function SignedInRootRouteView() {
     </ToastProvider>
   );
 }
-
-/** The route gate's verdict as the diagnostics ring records it. */
-const DIAGNOSED_VERDICT: Record<RouteGate["kind"], "restoring" | "unavailable" | "outlet"> = {
-  outlet: "outlet",
-  wait: "restoring",
-  "choose-organization": "restoring",
-  unavailable: "unavailable",
-};
 
 function ContrastAppearanceSync() {
   const appearanceContrast = useClientSettings((settings) => settings.appearanceContrast);

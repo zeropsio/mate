@@ -9,6 +9,7 @@ import {
   type DiagnosticFailure,
   type MateDiagnosticEvent,
 } from "./diagnostics.ts";
+import type { RouteGate } from "./environments/gate.ts";
 
 function clock(start = 0) {
   let now = start;
@@ -38,7 +39,7 @@ describe("the diagnostics ring", () => {
     time.advance(250);
     diagnostics.record({
       kind: "route-gate",
-      verdict: "restoring",
+      verdict: "wait",
       environmentId: "0b6b7d0e-3c56-4a36-9d1c-6f4f0c1d2e3f",
     });
     time.advance(50);
@@ -50,11 +51,27 @@ describe("the diagnostics ring", () => {
       {
         t: 1_250,
         kind: "route-gate",
-        verdict: "restoring",
+        verdict: "wait",
         environmentId: "0b6b7d0e-3c56-4a36-9d1c-6f4f0c1d2e3f",
       },
       { t: 1_300, kind: "catalog", change: "disposed" },
     ]);
+  });
+
+  it("records the route gate's verdict as the gate's own kind", () => {
+    const diagnostics = createMateDiagnostics({ now: clock().now, enabled: true });
+    const verdicts: ReadonlyArray<RouteGate["kind"]> = [
+      "outlet",
+      "wait",
+      "choose-organization",
+      "unavailable",
+    ];
+    for (const verdict of verdicts) {
+      diagnostics.record({ kind: "route-gate", verdict, environmentId: null });
+    }
+    expect(
+      diagnostics.snapshot().map((entry) => (entry.kind === "route-gate" ? entry.verdict : null)),
+    ).toEqual(verdicts);
   });
 
   it("hands a reader a copy, never the ring", () => {
