@@ -345,7 +345,10 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { environmentConnectionBannerItem } from "./chat/EnvironmentConnectionBanner";
+import {
+  environmentConnectionBannerItem,
+  environmentRetryFailureToast,
+} from "./chat/EnvironmentConnectionBanner";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
@@ -1371,7 +1374,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
-  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
+  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow);
   const environmentById = useMemo(
     () => new Map(environments.map((environment) => [environment.environmentId, environment])),
     [environments],
@@ -2067,17 +2070,8 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeEnvironment, activeEnvironmentUnavailable, activeEnvironmentUnavailableLabel]);
   const handleReconnectActiveEnvironment = useCallback(
     async (environmentId: EnvironmentId) => {
-      const result = await retryEnvironment(environmentId);
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not reconnect environment",
-            description: error instanceof Error ? error.message : "Failed to reconnect.",
-          }),
-        );
-      }
+      const toast = environmentRetryFailureToast(await retryEnvironment(environmentId));
+      if (toast !== null) toastManager.add(stackedThreadToast({ type: "error", ...toast }));
     },
     [retryEnvironment],
   );

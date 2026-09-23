@@ -1,10 +1,15 @@
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { EnvironmentId } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ComposerBannerStack } from "./ComposerBannerStack";
-import { environmentConnectionBannerItem } from "./EnvironmentConnectionBanner";
+import {
+  environmentConnectionBannerItem,
+  environmentRetryFailureToast,
+} from "./EnvironmentConnectionBanner";
 
 // What a zcp restart put on screen (gate CD, zcp-restart/03-during-2.png).
 const RAW_ERROR =
@@ -77,5 +82,29 @@ describe("environmentConnectionBannerItem", () => {
 
   it("has no banner for a connected Mate", () => {
     expect(render(connection("connected", null), "Wren")).toBeNull();
+  });
+});
+
+describe("environmentRetryFailureToast", () => {
+  it.each([
+    { name: "a typed failure", result: AsyncResult.failure(Cause.fail(new Error(RAW_ERROR))) },
+    { name: "a defect", result: AsyncResult.failure(Cause.die(new Error(RAW_ERROR))) },
+  ])("$name: says what to do, never the failure's words", ({ result }) => {
+    const toast = environmentRetryFailureToast(result);
+    expect(toast).toEqual({
+      title: "Couldn't reconnect",
+      description: "Reload the page to try again.",
+    });
+    const text = `${toast?.title}\n${toast?.description}`;
+    for (const leak of LEAKS) {
+      expect(text).not.toMatch(leak);
+    }
+  });
+
+  it.each([
+    { name: "a retry that ran", result: AsyncResult.success(undefined) },
+    { name: "an interrupted retry", result: AsyncResult.failure(Cause.interrupt(0)) },
+  ])("$name: says nothing", ({ result }) => {
+    expect(environmentRetryFailureToast(result)).toBeNull();
   });
 });
