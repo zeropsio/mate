@@ -7,11 +7,11 @@ import {
   serviceRecordToZeropsService,
   type AccessState,
   type Evidence,
+  type GrantFailure,
   type GrantMachine,
   type InterestState,
   type OrganizationRef,
   type ProjectRef,
-  type Renewal,
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
   type ViewObservation,
@@ -245,18 +245,17 @@ function makeInventorySnapshotSelector() {
 
 /**
  * What a lapse says (DESIGN §3.4, R-K3): one sentence that names its cause
- * only, beside "Try now" when a round failed. A round after a failure keeps
- * the failure's words, so they change only when the cause does.
+ * only, beside "Try now" once a renewal failed. The grant keeps that failure
+ * until the next grant, so the rounds a wake or "Try now" starts keep the
+ * failure's words, and no countdown changes them.
  */
-export function accessLapseCopy(renewal: Renewal): {
+export function accessLapseCopy(failure: GrantFailure | null): {
   readonly sentence: string;
   readonly retry: boolean;
 } {
-  const failed =
-    renewal.status === "backoff" || (renewal.status === "running" && renewal.round.failures > 0);
-  return failed
-    ? { sentence: "Zerops isn't answering.", retry: true }
-    : { sentence: "Checking your Zerops access…", retry: false };
+  return failure === null
+    ? { sentence: "Checking your Zerops access…", retry: false }
+    : { sentence: "Zerops isn't answering.", retry: true };
 }
 
 /**
@@ -573,7 +572,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   }, [grantedRound]);
 
   /** What covers the mounted product while its grant is lapsed, until the next grant. */
-  const lapse = ready && phase.phase === "lapsed" ? accessLapseCopy(phase.renewal) : null;
+  const lapse = ready && phase.phase === "lapsed" ? accessLapseCopy(phase.failure) : null;
   const lapsed = lapse !== null;
   const visibleError = lapse?.sentence ?? error;
   const retry = () => {

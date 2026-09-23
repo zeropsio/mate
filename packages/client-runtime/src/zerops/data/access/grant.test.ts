@@ -20,8 +20,10 @@ import {
   transitionGrant,
   type GrantEffect,
   type GrantEvent,
+  type GrantFailure,
   type GrantMachine,
   type GrantOp,
+  type GrantWithholdingCause,
   type Instant,
   type ProjectOutcome,
 } from "./grant.ts";
@@ -763,6 +765,96 @@ describe("access grant reducer", () => {
     sim.elapse(10 * SECOND);
     sim.send({ type: "WAKE", visible: true });
     expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
+  });
+
+  const unavailable: GrantFailure = { kind: "server", status: 503 };
+  /** A lapse whose first round failed, one second into its backoff. */
+  const failedLapse = (): GrantSim => {
+    const sim = grantedSim();
+    sim.elapse(20 * MINUTE);
+    sim.send({ type: "TICK" });
+    sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
+    sim.elapse(SECOND);
+    return sim;
+  };
+  it.each<{
+    readonly name: string;
+    readonly lapse: () => GrantSim;
+    readonly cause: GrantWithholdingCause;
+  }>([
+    {
+      name: "a visible wake starts a round after the lapse's failure",
+      lapse: () => {
+        const sim = failedLapse();
+        sim.send({ type: "WAKE", visible: true });
+        return sim;
+      },
+      cause: { failure: unavailable, retryAtMs: null },
+    },
+    {
+      name: "Try now starts a round after the lapse's failure",
+      lapse: () => {
+        const sim = failedLapse();
+        sim.send({ type: "USER_RETRY" });
+        return sim;
+      },
+      cause: { failure: unavailable, retryAtMs: null },
+    },
+    {
+      name: "the network's return starts a round after the lapse's failure",
+      lapse: () => {
+        const sim = failedLapse();
+        sim.send({ type: "OFFLINE" });
+        sim.elapse(10 * SECOND);
+        sim.send({ type: "TICK" });
+        sim.send({ type: "ONLINE" });
+        return sim;
+      },
+      cause: { failure: unavailable, retryAtMs: null },
+    },
+    {
+      name: "the lapse starts during a round a wake began after a failed renewal",
+      lapse: () => {
+        const sim = grantedSim();
+        sim.elapse(12 * MINUTE);
+        sim.send({ type: "TICK" });
+        sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
+        sim.elapse(3 * MINUTE - 10 * SECOND);
+        sim.send({ type: "WAKE", visible: true });
+        sim.elapse(10 * SECOND);
+        sim.send({ type: "TICK" });
+        return sim;
+      },
+      cause: { failure: unavailable, retryAtMs: null },
+    },
+    {
+      name: "the lapse follows a verified round after a failed renewal",
+      lapse: () => {
+        const sim = grantedSim();
+        sim.elapse(12 * MINUTE);
+        sim.send({ type: "TICK" });
+        sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
+        sim.elapse(10 * SECOND);
+        sim.send({ type: "TICK" });
+        sim.answerRound([
+          [A, verified(A)],
+          [B, verified(B)],
+        ]);
+        sim.elapse(20 * MINUTE);
+        sim.send({ type: "TICK" });
+        return sim;
+      },
+      cause: null,
+    },
+  ])("a lapse keeps its renewal's failure until a round verifies: $name", ({ lapse, cause }) => {
+    const sim = lapse();
+    expect(grantRoundInFlight(sim.state)?.startedAt.mono).toBeLessThanOrEqual(sim.now.mono);
+    expect(sim.state.phase.phase).toBe("lapsed");
+    expect(sim.state.published.account).toEqual({
+      kind: "withheld",
+      reason: "access-lapsed",
+      cause,
+    });
   });
 
   it("goes dormant after 60 min hidden, lapses at the deadline and starts a round on the visible wake (D5)", () => {

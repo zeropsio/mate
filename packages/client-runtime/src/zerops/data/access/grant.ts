@@ -128,8 +128,22 @@ export type GrantState =
       readonly retryAt: Instant;
       readonly attempt: number;
     }
-  | { readonly phase: "granted"; readonly evidence: Evidence; readonly renewal: Renewal }
-  | { readonly phase: "lapsed"; readonly last: Evidence; readonly renewal: Renewal }
+  /**
+   * `failure` is the renewal's last failure since its evidence was admitted: a wake, `online`, a
+   * user retry or the lapse itself starts a round without clearing it, so only a grant does.
+   */
+  | {
+      readonly phase: "granted";
+      readonly evidence: Evidence;
+      readonly renewal: Renewal;
+      readonly failure: GrantFailure | null;
+    }
+  | {
+      readonly phase: "lapsed";
+      readonly last: Evidence;
+      readonly renewal: Renewal;
+      readonly failure: GrantFailure | null;
+    }
   | { readonly phase: "closed" };
 
 /** A read of one project outside a round: a per-project retry, or a denial's confirmation. */
@@ -524,14 +538,17 @@ const failRound = (
       after(ctx.now, rung(ctx.policy.renewalRetryMs, attempt)),
       after(phase.evidence.account.startedAt, ctx.policy.windowMs),
     );
-    return withRenewal(machine, { status: "backoff", failure, retryAt, attempt });
+    return {
+      ...machine,
+      phase: { ...phase, renewal: { status: "backoff", failure, retryAt, attempt }, failure },
+    };
   }
-  return withRenewal(machine, {
-    status: "backoff",
-    failure,
-    retryAt: after(ctx.now, rung(ctx.policy.lapsedRetryMs, attempt)),
-    attempt,
-  });
+  if (phase.phase !== "lapsed") return machine;
+  const retryAt = after(ctx.now, rung(ctx.policy.lapsedRetryMs, attempt));
+  return {
+    ...machine,
+    phase: { ...phase, renewal: { status: "backoff", failure, retryAt, attempt }, failure },
+  };
 };
 
 const closeProject = (
@@ -699,6 +716,7 @@ const completeRound = (
       phase: "granted",
       evidence,
       renewal: { status: "idle", dueAt: after(round.startedAt, ctx.policy.windowMs - lead) },
+      failure: null,
     },
   };
 };
@@ -969,6 +987,7 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
           renewal.status === "running"
             ? { status: "running", round: { ...renewal.round, failures: 0 } }
             : { status: "idle", dueAt: ctx.now },
+        failure: next.phase.failure,
       },
     };
   }
@@ -1096,9 +1115,12 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
   const evidence = heldEvidence(machine)!;
   const lapsed = phase.phase === "lapsed";
   const lapseCause: GrantWithholdingCause =
-    phase.renewal.status === "backoff"
-      ? { failure: phase.renewal.failure, retryAtMs: phase.renewal.retryAt.wall }
-      : null;
+    phase.failure === null
+      ? null
+      : {
+          failure: phase.failure,
+          retryAtMs: phase.renewal.status === "backoff" ? phase.renewal.retryAt.wall : null,
+        };
   const account = lapsed ? withheld("access-lapsed", lapseCause) : AUTHORIZED;
 
   const scopes = new Map<ZeropsProjectId, ProjectRef>();

@@ -5,11 +5,10 @@ import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   type AccessState,
-  type GrantRound,
+  type GrantFailure,
   type InterestIdentity,
   type InterestState,
   type ProjectRef,
-  type Renewal,
 } from "@t3tools/client-runtime/zerops/data";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -291,35 +290,15 @@ describe("carryForwardServiceOutcome", () => {
 });
 
 describe("accessLapseCopy", () => {
-  const at = { wall: 0, mono: 0 };
-  const round = (failures: number): GrantRound => ({
-    id: 1,
-    startedAt: at,
-    deadline: at,
-    failures,
-    organizations: null,
-    targets: null,
-    outcomes: new Map(),
-  });
   const CHECKING = { sentence: "Checking your Zerops access…", retry: false };
   const NOT_ANSWERING = { sentence: "Zerops isn't answering.", retry: true };
   // One row per lapse reason (DESIGN §3.4): no cause yet, or a failure cause.
-  it.each<readonly [string, Renewal, typeof CHECKING]>([
-    ["a round is due", { status: "idle", dueAt: at }, CHECKING],
-    ["the lapse's first round runs", { status: "running", round: round(0) }, CHECKING],
-    ["hidden too long", { status: "dormant" }, CHECKING],
-    [
-      "a round failed",
-      { status: "backoff", failure: { kind: "timeout", afterMs: 30_000 }, retryAt: at, attempt: 1 },
-      NOT_ANSWERING,
-    ],
-    [
-      "a round failed offline",
-      { status: "backoff", failure: { kind: "offline" }, retryAt: at, attempt: 2 },
-      NOT_ANSWERING,
-    ],
-    ["the round after a failure runs", { status: "running", round: round(1) }, NOT_ANSWERING],
-  ])("%s", (_case, renewal, copy) => {
-    expect(accessLapseCopy(renewal)).toEqual(copy);
+  it.each<readonly [string, GrantFailure | null, typeof CHECKING]>([
+    ["no renewal failed since the grant", null, CHECKING],
+    ["a round timed out", { kind: "timeout", afterMs: 30_000 }, NOT_ANSWERING],
+    ["a round failed offline", { kind: "offline" }, NOT_ANSWERING],
+    ["Zerops answered 503", { kind: "server", status: 503 }, NOT_ANSWERING],
+  ])("%s", (_case, failure, copy) => {
+    expect(accessLapseCopy(failure)).toEqual(copy);
   });
 });

@@ -1,9 +1,11 @@
 import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
 import { CAPABILITY_WAIT_MS } from "@t3tools/client-runtime/zerops/data";
+import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsLandingWait: ({ label }: { readonly label: string }) => label,
@@ -211,8 +213,8 @@ describe("ZeropsInventoryProvider renewal", () => {
 
     await pass(16 * MINUTE_MS);
 
-    expect(tab.text().match(/Zerops isn't answering\./g)).toHaveLength(1);
-    expect(tab.text().match(/Try now/g)).toHaveLength(1);
+    expect(tab.readable().match(/Zerops isn't answering\./g)).toHaveLength(1);
+    expect(tab.readable().match(/Try now/g)).toHaveLength(1);
   });
 
   // `online` is a wake (DESIGN §6.4): the lapse ends as soon as Zerops answers again.
@@ -236,20 +238,36 @@ describe("ZeropsInventoryProvider renewal", () => {
 
   // One cause-only sentence for the whole lapse, beside its one affordance (DESIGN §3.4, R-K3).
   it("the overlay copy does not change while the lapse reason is unchanged", async () => {
-    const { harness, tab, pass } = await admittedProduct();
+    const { harness, tab, pass, rounds } = await admittedProduct();
     harness.rest.hang("GET /user/info");
-    await pass(16 * MINUTE_MS);
+    // The renewals fail before the deadline, so the lapse's first round runs after a failure.
+    await pass(15 * MINUTE_MS + 1_000);
     const seen = [tab.readable()];
-    // Back after 2 min hidden, the organizations' reads stall past their grace while the rounds
-    // keep failing: the inventory's own error appears beneath the overlay (gate CD).
+    await pass(MINUTE_MS);
+    seen.push(tab.readable());
+    // Back after 2 min hidden, the visible wake starts a round at once, and the organizations'
+    // reads stall past their grace while the rounds keep failing: the inventory's own error
+    // appears beneath the overlay (gate CD).
     tab.tab.signals.hide();
     await pass(2 * MINUTE_MS);
     harness.datastream.holdRegistrations();
     tab.tab.signals.show();
+    await pass(0);
+    seen.push(tab.readable());
     for (let step = 0; step < 6; step++) {
       await pass(30_000);
       seen.push(tab.readable());
     }
+    // "Try now" joins a running round; pressed between rounds, it starts one at once, and it
+    // stays beside the sentence while that round runs.
+    const before = rounds();
+    for (let second = 0; second < 2 * MINUTE_MS && rounds() === before; second += 1_000) {
+      await tab.run(() => press(buttonsLabelled(tab.container(), "Try now")[0]!));
+      await pass(INVALIDATION_COALESCE_MS);
+      seen.push(tab.readable());
+      await pass(1_000 - INVALIDATION_COALESCE_MS);
+    }
+    expect(rounds()).toBe(before + 1);
 
     expect(new Set(seen).size).toBe(1);
     expect(seen[0]).not.toContain(CHILD);
