@@ -1125,3 +1125,71 @@ describe("the datastream's deploy frames", () => {
     );
   });
 });
+
+describe("a service read's active version name (A14)", () => {
+  const SHA = "ec3d2cb9ea02144b23300dd8cd16ae02bbcb321c";
+  const directService: ReadTicket = {
+    kind: "direct",
+    requestId: ZeropsRequestId.make("service-read"),
+    owner: { kind: "interest", identity: interest },
+    target: {
+      kind: "service",
+      ref: { kind: "service", project, serviceId: ZeropsServiceId.make("service") },
+    },
+    receiptOrdinalAtStart: ReceiptOrdinal.make(0),
+    readStartOrdinal: ReadStartOrdinal.make(1),
+    dispatchOrdinal: DispatchOrdinal.make(1),
+    startedAtMs: 0,
+  };
+  const userData = (appVersionId: string) => [
+    { key: "appVersionId", content: appVersionId },
+    { key: "appVersionName", content: `${SHA} v1.4.0 ada` },
+    { key: "hostname", content: "app" },
+  ];
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly userData: ReadonlyArray<{ readonly key: string; readonly content: string }> | null;
+    readonly expected: string | null;
+  }> = [
+    {
+      name: "names it from userData while userData's version is the active one",
+      userData: userData("app-version"),
+      expected: `${SHA} v1.4.0 ada`,
+    },
+    {
+      // A build that started names the version it builds, ~63 s before it is active.
+      name: "leaves it unstated while userData names a version still building",
+      userData: userData("app-version-building"),
+      expected: null,
+    },
+    { name: "leaves it unstated without userData", userData: null, expected: null },
+  ];
+
+  it.each(cases)("$name", ({ userData, expected }) => {
+    const decoded = decodeEntityDirectResponse(directService, {
+      id: "service",
+      projectId: "project",
+      name: "app",
+      status: "ACTIVE",
+      activeAppVersion: {
+        id: "app-version",
+        status: "ACTIVE",
+        source: "CLI",
+        created: "2026-09-23T13:59:24Z",
+        lastUpdate: "2026-09-23T14:01:27Z",
+      },
+      ...(userData === null ? {} : { userData }),
+    });
+
+    expect(decoded.issues).toEqual([]);
+    expect(decoded.observations).toContainEqual(
+      expect.objectContaining({
+        kind: "service-deployment-observed",
+        observation: expect.objectContaining({
+          fields: { activeDeploy: expect.objectContaining({ id: "app-version", name: expected }) },
+        }),
+      }),
+    );
+  });
+});

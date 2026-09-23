@@ -141,6 +141,9 @@ const ServiceRow = Schema.Struct({
   mode: OptionalNullableString,
   activeAppVersion: Schema.optionalKey(Schema.Union([AppVersionRow, Schema.Null])),
   currentAutoscaling: Schema.optionalKey(Schema.Union([AutoscalingRow, Schema.Null])),
+  userData: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ key: OptionalString, content: OptionalNullableString })),
+  ),
   ...SourceMetadataRow,
 });
 
@@ -499,6 +502,22 @@ const scalingRange = (minimum: number | null | undefined, maximum: number | null
     ? null
     : { min: nullable(minimum), max: nullable(maximum) };
 
+/**
+ * The active version's name. The app-version API never returns one; the
+ * service's `appVersionName` variable does, but it names the newest STARTED
+ * build — the active version only while `appVersionId` beside it is that
+ * version's id (A14, measured 2026-09-23).
+ */
+function activeVersionName(raw: typeof ServiceRow.Type): string | null {
+  const version = raw.activeAppVersion;
+  if (version === null || version === undefined) return null;
+  if (version.name !== undefined && version.name !== null) return version.name;
+  const variable = (key: string) =>
+    raw.userData?.find((entry) => entry.key === key)?.content?.trim() || null;
+  const id = version.id ?? null;
+  return id !== null && variable("appVersionId") === id ? variable("appVersionName") : null;
+}
+
 function serviceObservations(
   ref: ServiceRef,
   raw: typeof ServiceRow.Type,
@@ -597,7 +616,7 @@ function serviceObservations(
                         source: raw.activeAppVersion.source ?? null,
                         activatedAt:
                           raw.activeAppVersion.lastUpdate || raw.activeAppVersion.created || null,
-                        name: raw.activeAppVersion.name ?? null,
+                        name: activeVersionName(raw),
                         branch:
                           raw.activeAppVersion.githubIntegration?.branchName ??
                           raw.activeAppVersion.gitlabIntegration?.branchName ??
