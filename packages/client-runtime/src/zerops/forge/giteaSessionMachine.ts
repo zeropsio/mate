@@ -59,10 +59,14 @@ export type GiteaAcquireFailure =
   /** Zerops answered the mint 401; the Zerops session machine owns what follows. */
   | { readonly kind: "zerops-session" };
 
-/** Where a liveness check returns to when the broker does not answer. */
+/**
+ * The wait an acquisition was started from: where a liveness check returns to when the broker does
+ * not answer, and what the regions go on saying until the answer lands.
+ */
 export type GiteaRetrying =
   | { readonly kind: "pending" }
-  | { readonly kind: "unavailable"; readonly source: "broker" | "zerops" };
+  | { readonly kind: "unavailable"; readonly source: "broker" | "zerops" }
+  | { readonly kind: "refused"; readonly reason: string };
 
 export type GiteaRenewal =
   | { readonly kind: "none" }
@@ -226,6 +230,8 @@ function retry(machine: GiteaSessionMachine, out: Effects): GiteaSessionMachine 
       return start(machine, "liveness", { kind: "pending" }, out);
     case "unavailable":
       return start(machine, "liveness", { kind: "unavailable", source: phase.source }, out);
+    case "refused":
+      return start(machine, "mint", { kind: "refused", reason: phase.reason }, out);
     default:
       return start(machine, "mint", null, out);
   }
@@ -316,12 +322,15 @@ function apply(
         out.push({ kind: "run", attempt: phase.attempt, op: "acquire" });
         return { ...machine, phase: { ...phase, step: "mint" } };
       }
-      const retrying = phase.retrying ?? { kind: "unavailable", source: "broker" };
+      const retrying = phase.retrying;
       return failed(
         machine,
-        retrying.kind === "pending"
+        retrying?.kind === "pending"
           ? { kind: "setting-up" }
-          : { kind: "unreachable", source: retrying.source },
+          : {
+              kind: "unreachable",
+              source: retrying?.kind === "unavailable" ? retrying.source : "broker",
+            },
         ctx,
       );
     }
@@ -543,6 +552,7 @@ const RETRYING_CAUSE = {
 } as const;
 
 function retryingCause(machine: GiteaSessionMachine, retrying: GiteaRetrying): string | null {
+  if (retrying.kind === "refused") return retrying.reason;
   if (machine.failures < FAILURES_BEFORE_CAUSE) return null;
   return retrying.kind === "pending" ? RETRYING_CAUSE.pending : RETRYING_CAUSE[retrying.source];
 }

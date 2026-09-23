@@ -299,6 +299,17 @@ describe("the Gitea session machine (DESIGN §4.6)", () => {
       ]);
     });
 
+    it("keeps saying the refusal while it is asked again, until the answer lands", () => {
+      for (const [event, atMs] of [
+        [TICK, 5 * MIN],
+        [{ type: "USER_RETRY" }, 1 * MIN],
+      ] as ReadonlyArray<Step>) {
+        const asking = play([[event, atMs]], refused.machine);
+        expect(asking.machine.phase.kind).toBe("acquiring");
+        expect(giteaSessionView(asking.machine).trouble).toBe(NOT_A_MEMBER.reason);
+      }
+    });
+
     it("stays at or under 12 asks an hour", () => {
       let run = refused;
       let asks = 0;
