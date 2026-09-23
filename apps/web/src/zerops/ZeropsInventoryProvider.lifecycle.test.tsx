@@ -928,7 +928,7 @@ it.live("a renewal reverifies a command-created project the search index still o
       yield* harness.advance(1_000);
       yield* renewal.verify();
       yield* renewal.establish();
-      expect(harness.client.fetchProject).toHaveBeenCalledWith("created");
+      expect(harness.client.fetchProject).toHaveBeenCalledWith("created", expect.any(AbortSignal));
       expect(harness.grants.at(-1)?.projects.map(({ project }) => project.projectId)).toEqual([
         "kept",
         "created",

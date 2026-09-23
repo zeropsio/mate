@@ -1,15 +1,10 @@
-import {
-  zeropsClientsFromUser,
-  type ZeropsApiClient,
-  type ZeropsOrganization,
-  type ZeropsProject,
-  type ZeropsService,
-} from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient, ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
   DEFAULT_ZEROPS_GRANT_POLICY,
   grantRoundInFlight,
   initialGrant,
   interestKeyOf,
+  makeRestAccessVerifier,
   organizationKeyOf,
   projectKeyOf,
   projectRecordToZeropsProject,
@@ -30,12 +25,7 @@ import {
   type VerifiedAccessGrant,
   type ViewObservation,
 } from "@t3tools/client-runtime/zerops/data";
-import {
-  diagnosticFailure,
-  mateDiagnostics,
-  type MateDiagnosticSpan,
-} from "@t3tools/client-runtime/zerops/diagnostics";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -44,7 +34,6 @@ import { APP_DISPLAY_NAME } from "../branding";
 import { PortalGate } from "../components/ui/portal-gate";
 import { ZeropsLandingWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { dismissContextMenu } from "../contextMenuFallback";
-import { grantFailure, readProjectAccess, runAccessRound } from "./accessRounds";
 import { setAccountActionsAllowed } from "./accountLifetime";
 import { invalidateZerops, onZeropsInvalidation } from "./accountInvalidations";
 import {
@@ -401,7 +390,7 @@ function AccessLapse({
  */
 export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
   const { client, organizations, updateVerifiedMemberships, signOut } = useZeropsSession();
-  const { runtime, organizationRef, projectRef } = useZeropsData();
+  const { runtime, organizationRef } = useZeropsData();
   const [grant, setGrant] = useState<GrantMachine>(() =>
     initialGrant({ hidden: false, online: true }, now()),
   );
@@ -416,8 +405,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   const [roundFailure, setRoundFailure] = useState<string | null>(null);
   /** Hands the evidence held now to the data runtime; `null` when none is held then. */
   const publishGrant = useRef<() => Promise<Evidence | null>>(async () => null);
-  /** Each project's status as its last read gave it, until the runtime has read it. */
-  const [readStatuses, setReadStatuses] = useState<ReadonlyMap<string, string>>(new Map());
   /** Each project's authority, as the grant's withhold and restore effects last said (G12). */
   const [authority, setAuthority] = useState<ReadonlyMap<string, ScopeAuthority>>(new Map());
   const selectSnapshot = useMemo(makeInventorySnapshotSelector, []);
@@ -436,14 +423,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     let timer: number | undefined;
     const policy = DEFAULT_ZEROPS_GRANT_POLICY;
     const hidden = () => document.visibilityState === "hidden";
-    /** The memberships the last round read, to judge a project read between rounds. */
-    let memberships: ReadonlyArray<ZeropsOrganization> = [];
-    const readStatus = (project: ZeropsProject) =>
-      setReadStatuses((statuses) =>
-        statuses.get(project.id) === project.status
-          ? statuses
-          : new Map(statuses).set(project.id, project.status),
-      );
+    /** Rounds and project reads run until the effect's run ends; one cut off is dropped. */
+    const aborted = new AbortController();
+    const verifier = makeRestAccessVerifier({
+      client,
+      account: runtime.scope.account,
+      concurrency: policy.roundProjectConcurrency,
+      onUser: (user) => {
+        if (alive) updateVerifiedMemberships(user);
+      },
+    });
     let machine = initialGrant(
       {
         hidden: hidden(),
@@ -489,12 +478,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       if (grantKey(phase.evidence) !== grantedKey) void publishGrant.current();
     };
 
-    /** The round in flight; one cut off by the epoch's end is dropped, never verified. */
-    let roundSpan: MateDiagnosticSpan<"access-round"> | null = null;
     const runRound = (round: number, carried: ReadonlyArray<ProjectRef>, first: boolean) => {
-      const span = mateDiagnostics.span("access-round", { round });
-      roundSpan = span;
-      let reads = 1;
       setRoundFailure(null);
       if (first) {
         void Effect.runPromise(
@@ -510,31 +494,20 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         // Projects a command established since are the grant's too: read them.
         const state = await Effect.runPromise(runtime.state);
         const established = inventoryProjectRefs([], state.access);
-        const outcome = await runAccessRound({
-          client,
-          round,
-          carried: [...carried, ...established],
-          concurrency: policy.roundProjectConcurrency,
-          organizationRef,
-          projectRef,
-          onUser: (user) => {
-            if (!alive) return;
-            memberships = zeropsClientsFromUser(user);
-            updateVerifiedMemberships(user);
-          },
-          onProject: (project) => {
-            if (alive) readStatus(project);
-          },
-          dispatch: send,
-        });
-        reads = outcome.reads;
-        span.end({ outcome: "verified", reads });
-      })().catch((cause: unknown) => {
-        if (!alive) return;
-        const error = zeropsErrorMessage(cause);
-        span.end({ outcome: "failed", reads, ...diagnosticFailure(cause) });
-        setRoundFailure(error);
-        send({ type: "ROUND_FAILED", round, failure: grantFailure(cause) });
+        const outcome = await Effect.runPromise(
+          Effect.result(
+            verifier.verifyRound({
+              round,
+              carried: [...carried, ...established],
+              report: (event) => Effect.sync(() => send(event)),
+            }),
+          ),
+          { signal: aborted.signal },
+        );
+        if (!alive || outcome._tag === "Success") return;
+        const { failure, message } = outcome.failure;
+        setRoundFailure(message);
+        send({ type: "ROUND_FAILED", round, failure });
         if (first) {
           void Effect.runPromise(
             runtime.observeAccess({
@@ -542,21 +515,18 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
               accountEpoch: runtime.scope.epoch,
               failedAtMs: Date.now(),
               retryable: true,
-              reason: error,
+              reason: message,
             }),
           );
         }
-      });
+      })().catch(() => undefined);
     };
 
     const readProject = (attempt: number, project: ProjectRef) => {
-      const membership = memberships.find(({ id }) => id === project.organization.organizationId);
-      if (membership === undefined) return;
-      void readProjectAccess(client, project, membership, (read) => {
-        if (alive) readStatus(read);
-      }).then((outcome) => {
-        send({ type: "PROJECT_RESULT", attempt, project, outcome });
-      });
+      void Effect.runPromise(verifier.verifyProject(project), { signal: aborted.signal }).then(
+        (outcome) => send({ type: "PROJECT_RESULT", attempt, project, outcome }),
+        () => undefined,
+      );
     };
 
     const interpret = (effect: GrantEffect) => {
@@ -689,7 +659,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       stopListening();
       send({ type: "EPOCH_CLOSED" });
       alive = false;
-      roundSpan?.drop();
+      aborted.abort();
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("resume", wake);
@@ -697,7 +667,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [client, organizationRef, projectRef, runtime, updateVerifiedMemberships]);
+  }, [client, runtime, updateVerifiedMemberships]);
 
   // An inventory intent re-reads that organization on a fresh receiver while
   // the rows already read stay up (`runtime.refresh`). The leases are never
@@ -765,13 +735,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
           knowledge?.knowledge === "observed"
             ? projectRecordToZeropsProject(knowledge.record)
             : null;
-        const status = observed?.status ?? readStatuses.get(ref.projectId);
+        const status = observed?.status;
         // A project withheld until its denial is confirmed is not demanded (G6).
         return !denied.has(key) && (status === undefined || status === "ACTIVE")
           ? [{ kind: "project-inventory" as const, project: ref }]
           : [];
       }),
-    [denied, knownProjectRefs, projectReads, readStatuses],
+    [denied, knownProjectRefs, projectReads],
   );
   const serviceReadEntries = useMemo(
     () =>

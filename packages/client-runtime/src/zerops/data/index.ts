@@ -1,4 +1,5 @@
 export * from "./access/grant.ts";
+export * from "./access/verifier.ts";
 export * from "./dto.ts";
 export * from "./known.ts";
 export * from "./atoms.ts";
