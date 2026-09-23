@@ -1,21 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { identity, project, service, stamp } from "../data/__fixtures__/index.ts";
-import type {
-  CollectionRead,
-  FacetAdmission,
-  InterestState,
-  QueryCoverage,
-  ServiceDeployInfo,
-  ServiceRecord,
-} from "../data/types.ts";
-import {
-  AccountEpoch,
-  DispatchOrdinal,
-  ReadStartOrdinal,
-  ReceiptOrdinal,
-  queryKeyOf,
-} from "../data/types.ts";
+import { identity, project, service } from "../data/__fixtures__/index.ts";
+import type { CollectionRead, ServiceDeployInfo, ServiceRecord } from "../data/types.ts";
+import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import type { EnvironmentRow } from "../groupRows.ts";
 import type { Freshness, Shown, WithheldReason } from "../knowledge/known.ts";
@@ -24,18 +11,20 @@ import {
   CHECKING_WHAT_RUNS,
   NOTHING_DEPLOYED,
   stopDeployment,
+  stopServices,
   stopView,
   type Deployment,
 } from "./deployment.ts";
+import {
+  deployed,
+  record,
+  servicesRead,
+  UNAVAILABLE_DEPLOYMENT,
+  UNRESOLVED_DEPLOYMENT,
+} from "./__fixtures__/services.ts";
 
 const NOW = 100_000;
 const SHA = "3f9c1b2000000000000000000000000000000000";
-
-const admission: FacetAdmission = {
-  lastNativeReceiptOrdinal: null,
-  lastAppliedAuthoritativeDispatchOrdinal: null,
-  hasAuthoritativeObservation: true,
-};
 
 const RUNNING: Deployment = {
   kind: "running",
@@ -194,129 +183,6 @@ describe("stopView", () => {
     expect(view).toMatchObject({ tone: "good", word: "Deployed", line: "3f9c1b2", afterMs: 0 });
   });
 });
-
-function deployed(activeDeploy: ServiceDeployInfo | null): ServiceRecord["deployment"] {
-  return {
-    knowledge: "observed",
-    fields: { versionNumber: null, mode: null, activeDeploy },
-    unresolvedRequiredFields: [],
-    source: "direct-read",
-    stamp: stamp(4),
-    admission,
-  };
-}
-
-const UNRESOLVED_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unresolved",
-  fields: {},
-  unresolvedRequiredFields: [],
-  admission,
-};
-
-const UNAVAILABLE_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unavailable",
-  reason: "forbidden",
-  previousFields: {},
-  stamp: stamp(5),
-  fence: {
-    accountEpoch: AccountEpoch.make(1),
-    readStartOrdinal: ReadStartOrdinal.make(1),
-    dispatchOrdinal: DispatchOrdinal.make(1),
-    verifiedAccessDeadlineMs: 0,
-  },
-  admission,
-};
-
-function record(
-  id: string,
-  hostname: string,
-  deployment: ServiceRecord["deployment"],
-  options: { readonly isSystem?: boolean; readonly type?: string } = {},
-): ServiceRecord {
-  return {
-    ref: service(id),
-    identity: {
-      knowledge: "observed",
-      fields: {
-        hostname,
-        isSystem: options.isSystem ?? false,
-        type: { versionName: options.type ?? "nodejs@22", displayName: null, category: null },
-      },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    lifecycle: {
-      knowledge: "observed",
-      fields: { status: "ACTIVE", createdAt: null, updatedAt: null },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    routing: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-    deployment,
-    scaling: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-  };
-}
-
-const COMPLETE: QueryCoverage = {
-  kind: "exhausted-traversal",
-  traversedPages: 1,
-  observedTotal: null,
-  guarantee: "non-atomic",
-};
-
-function servicesRead(
-  records: ReadonlyArray<ServiceRecord | "unresolved">,
-  options: { readonly coverage?: QueryCoverage; readonly interest?: InterestState } = {},
-): CollectionRead<ServiceRecord> {
-  const coverage = options.coverage ?? COMPLETE;
-  const descriptor = {
-    kind: "services-of-project" as const,
-    project: project(),
-    schemaVersion: 1 as const,
-  };
-  const common = {
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    membershipOperations: new Map(),
-  };
-  return {
-    value: records.map((entry, index) =>
-      entry === "unresolved"
-        ? { knowledge: "unresolved", ref: service(`unresolved-${index}`) }
-        : { knowledge: "observed", record: entry },
-    ),
-    observation: {
-      required: [
-        options.interest ?? {
-          status: "observing",
-          identity: identity(),
-          guarantee: "source-order-unverified",
-          sinceReceiptOrdinal: ReceiptOrdinal.make(1),
-        },
-      ],
-      optional: [],
-      access: { status: "unverified" },
-    },
-    query:
-      coverage.kind === "none" || coverage.kind === "partial"
-        ? { ...common, status: "unresolved", coverage, lastAppliedReadStartOrdinal: null }
-        : {
-            ...common,
-            status: "observed",
-            coverage,
-            observedTotal: records.length,
-            source: "direct-read",
-            stamp: stamp(2),
-            lastAppliedReadStartOrdinal: ReadStartOrdinal.make(1),
-          },
-  };
-}
 
 const PUSHED: ServiceDeployInfo = {
   id: "app-version",
@@ -556,5 +422,80 @@ describe("stopDeployment", () => {
       NOW,
     );
     expect(deployment).toMatchObject({ state: "failed", attempt: 3, retryAtMs: NOW + 8_000 });
+  });
+});
+
+describe("stopServices", () => {
+  const PROJECT = project("project-stage");
+  const listed = (
+    records: ReadonlyArray<ServiceRecord | "unresolved">,
+    options: Parameters<typeof servicesRead>[1] = {},
+  ) => servicesRead(records, { project: PROJECT, ...options });
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly read: CollectionRead<ServiceRecord> | undefined;
+    /** The list's state, else each listed service's hostname and deployment. */
+    readonly expected: string | ReadonlyArray<readonly [string, string]>;
+  }> = [
+    { name: "nothing read for the project", read: undefined, expected: "unread" },
+    {
+      name: "a listing still being read",
+      read: listed([], { coverage: { kind: "none" } }),
+      expected: "unread",
+    },
+    {
+      name: "a listed service not yet identified holds the list",
+      read: listed([record("s1", "app", deployed(PUSHED)), "unresolved"]),
+      expected: "unread",
+    },
+    {
+      name: "each service answers for itself, by hostname",
+      read: listed([
+        record("s2", "web", UNRESOLVED_DEPLOYMENT),
+        record("s1", "app", deployed(PUSHED)),
+        record("s3", "worker", deployed(null)),
+        record("s4", "api", UNAVAILABLE_DEPLOYMENT),
+      ]),
+      expected: [
+        ["api", "failed"],
+        ["app", "running"],
+        ["web", "unread"],
+        ["worker", "none"],
+      ],
+    },
+    {
+      name: "the Mate's container and a system service are no stop",
+      read: listed([
+        record("s1", "zcp", deployed(PUSHED), { type: "zcp@1" }),
+        record("s2", "core", deployed(PUSHED), { isSystem: true }),
+      ]),
+      expected: [],
+    },
+  ];
+
+  it.each(cases)("$name", ({ read, expected }) => {
+    const stops = stopServices(read, NOW);
+    if (typeof expected === "string") {
+      expect(stops.state).toBe(expected);
+      return;
+    }
+    expect(stops.state).toBe("known");
+    expect(
+      (stops.state === "known" ? stops.value : []).map(({ hostname, deployment }) => [
+        hostname,
+        deployment.state === "known" ? deployment.value.kind : deployment.state,
+      ]),
+    ).toEqual(expected);
+  });
+
+  it("names each service by its ref", () => {
+    const stops = stopServices(
+      listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.service : undefined).toEqual(
+      service("s1", PROJECT),
+    );
   });
 });

@@ -24,6 +24,7 @@ import type {
   InterestState,
   ServiceDeployInfo,
   ServiceRecord,
+  ServiceRef,
 } from "../data/types.ts";
 import { deployWord } from "../groupDeploys.ts";
 import {
@@ -202,8 +203,8 @@ function freshnessOf(source: SourceState, nowMs: number): Freshness {
   }
 }
 
-/** What a stop is while no value is known for it (DESIGN §3.5). */
-function notYetKnown(source: SourceState, nowMs: number): Known<Deployment> {
+/** What a stop, or its list of services, is while no value is known for it (DESIGN §3.5). */
+function notYetKnown<T>(source: SourceState, nowMs: number): Known<T> {
   switch (source.kind) {
     case "observing":
       return { state: "unread", waitingFor: null };
@@ -281,6 +282,96 @@ export function stopDeployment(
     state: "known",
     value: { kind: "none" },
     asOf: asOf ?? { ordinal: 0, atMs: 0 },
+    coverage: "complete",
+    freshness: freshnessOf(source, nowMs),
+  };
+}
+
+/** One runtime service of a stop, and what it runs: the deployment is a fact per service (D6). */
+export interface StopService {
+  readonly service: ServiceRef;
+  readonly hostname: string;
+  readonly deployment: Shown<Deployment>;
+}
+
+/** What one listed service contributes to its stop's list. */
+type ListedService =
+  | { readonly kind: "not-a-stop" }
+  /** Listed, but not read far enough to say whether it is a runtime service. */
+  | { readonly kind: "unidentified" }
+  | { readonly kind: "stop"; readonly stop: StopService };
+
+function listedService(
+  knowledge: CollectionRead<ServiceRecord>["value"][number],
+  source: SourceState,
+  nowMs: number,
+): ListedService {
+  const answer = serviceAnswer(knowledge);
+  if (answer.kind === "not-a-stop") return answer;
+  if (knowledge.knowledge !== "observed") return { kind: "unidentified" };
+  const service = serviceRecordToZeropsService(knowledge.record);
+  if (service === null) return { kind: "unidentified" };
+  const deployment: Shown<Deployment> =
+    answer.kind === "running"
+      ? {
+          state: "known",
+          value: {
+            kind: "running",
+            activatedAt: answer.deploy.activatedAt,
+            version: pushedVersion(answer.deploy),
+          },
+          asOf: answer.asOf,
+          coverage: "complete",
+          freshness: freshnessOf(source, nowMs),
+        }
+      : answer.kind === "none"
+        ? {
+            state: "known",
+            value: { kind: "none" },
+            asOf: answer.asOf,
+            coverage: "complete",
+            freshness: freshnessOf(source, nowMs),
+          }
+        : answer.kind === "withheld"
+          ? {
+              state: "failed",
+              failure: { kind: "refused", code: answer.reason, words: "" },
+              atMs: answer.atMs,
+              attempt: 1,
+              retryAtMs: null,
+            }
+          : notYetKnown(source, nowMs);
+  return {
+    kind: "stop",
+    stop: { service: knowledge.record.ref, hostname: service.name, deployment },
+  };
+}
+
+/**
+ * A stop's runtime services, by hostname, each with its own deployment. The list is known once the
+ * project's listing is complete and every listed service is identified; one service still being
+ * read holds its own deployment, never its neighbours'.
+ */
+export function stopServices(
+  read: CollectionRead<ServiceRecord> | undefined,
+  nowMs: number,
+): Known<ReadonlyArray<StopService>> {
+  if (read === undefined) return { state: "unread", waitingFor: null };
+  const source = worstSource(read.observation.required);
+  const listed = read.value.map((knowledge) => listedService(knowledge, source, nowMs));
+  if (
+    read.query.status !== "observed" ||
+    read.query.coverage.kind !== "exhausted-traversal" ||
+    listed.some((entry) => entry.kind === "unidentified")
+  ) {
+    return notYetKnown(source, nowMs);
+  }
+  return {
+    state: "known",
+    value: listed
+      .flatMap((entry) => (entry.kind === "stop" ? [entry.stop] : []))
+      .sort((left, right) => left.hostname.localeCompare(right.hostname)),
+    asOf: toStamp(read.query.stamp),
     coverage: "complete",
     freshness: freshnessOf(source, nowMs),
   };
