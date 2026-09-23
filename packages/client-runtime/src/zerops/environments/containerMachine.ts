@@ -37,6 +37,17 @@ export type ContainerIntent =
 
 export type IntentKind = ContainerIntent["kind"];
 
+/**
+ * The `/healthz` `initAt` a restart started from, so a re-init reads as a change and never as a
+ * comparison of the container's clock with the browser's: `held` (another value is a re-init),
+ * `absent` (the container served no `/mate/healthz`: any value is), or `unread` (the first value
+ * read after the restart began becomes `held`, unless it is plainly later than the start).
+ */
+export type InitAtBaseline =
+  | { readonly kind: "held"; readonly initAt: string }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unread" };
+
 // ── Levels ────────────────────────────────────────────────────────────────────────────────────
 
 export type ContainerLevel =
@@ -49,8 +60,7 @@ export type ContainerLevel =
       readonly level: "restarting";
       readonly by: "platform" | "you";
       readonly since: Instant;
-      /** The `/healthz` `initAt` held when the restart began: a different one is a re-init. */
-      readonly initAt: string | null;
+      readonly baseline: InitAtBaseline;
       /** When the platform reported its restart process over; null while it has not. */
       readonly platformEnded: Instant | null;
     }
@@ -262,11 +272,13 @@ const readingSince = (machine: ContainerMachine, since: Instant): ProbeReading |
     ? machine.reading.reading
     : null;
 
-const heldInitAt = (machine: ContainerMachine): string | null => {
+/** The baseline a restart beginning now starts from, out of the reading held. */
+const baselineOf = (machine: ContainerMachine): InitAtBaseline => {
   const reading = machine.reading?.reading;
-  return reading !== undefined && (reading.kind === "ready" || reading.kind === "initializing")
-    ? reading.initAt
-    : null;
+  if (reading?.kind === "predates-mate") return { kind: "absent" };
+  return (reading?.kind === "ready" || reading?.kind === "initializing") && reading.initAt !== null
+    ? { kind: "held", initAt: reading.initAt }
+    : { kind: "unread" };
 };
 
 /**
@@ -305,13 +317,28 @@ const restartOver = (
   if (state.platformEnded !== null && notBefore(machine.reading!.sentAt, state.platformEnded)) {
     return reading;
   }
-  if (reading.kind !== "ready" && reading.kind !== "initializing") return null;
-  if (reading.initAt === null) return null;
+  const initAt = readInitAt(reading);
+  if (initAt === null) return null;
+  const baseline = state.baseline;
   const reinitialized =
-    state.initAt !== null
-      ? reading.initAt !== state.initAt
-      : Date.parse(reading.initAt) > state.since.wall;
+    baseline.kind === "absent" ||
+    (baseline.kind === "held" ? initAt !== baseline.initAt : Date.parse(initAt) > state.since.wall);
   return reinitialized ? reading : null;
+};
+
+const readInitAt = (reading: ProbeReading): string | null =>
+  reading.kind === "ready" || reading.kind === "initializing" ? reading.initAt : null;
+
+/** A restart still on: the first `initAt` read after it began is the one it started from. */
+const withBaseline = (
+  machine: ContainerMachine,
+  state: Extract<ContainerLevel, { readonly level: "restarting" }>,
+): ContainerMachine => {
+  const reading = readingSince(machine, state.since);
+  const initAt = reading === null ? null : readInitAt(reading);
+  return state.baseline.kind !== "unread" || initAt === null
+    ? machine
+    : moveTo(machine, { ...state, baseline: { kind: "held", initAt } });
 };
 
 const updateOver = (
@@ -373,7 +400,7 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
         level: "restarting",
         by: intent === null ? "platform" : "you",
         since: intent === null ? now : intent.since,
-        initAt: heldInitAt(machine),
+        baseline: baselineOf(machine),
         platformEnded: null,
       });
     }
@@ -395,7 +422,7 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
   switch (state.level) {
     case "restarting": {
       const over = restartOver(machine, state);
-      if (over === null) return machine;
+      if (over === null) return withBaseline(machine, state);
       const settled: ContainerMachine = {
         ...machine,
         restartTried: machine.intent !== null || machine.restartTried,
@@ -429,7 +456,7 @@ const intend = (machine: ContainerMachine, intent: ContainerIntent): ContainerMa
     level: "restarting",
     by: "you",
     since: intent.since,
-    initAt: heldInitAt(machine),
+    baseline: baselineOf(machine),
     platformEnded: null,
   });
 };

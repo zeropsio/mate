@@ -311,4 +311,54 @@ describe("container machine (DESIGN §4.5)", () => {
     );
     expect(containerVerdict(reinit.machine)).toEqual({ level: "booting", overdue: false });
   });
+
+  // The browser's clock runs months ahead of the container's here (START_MS is 2027-01-15T08:00Z):
+  // only the last row, ten minutes after it, may lean on comparing the two.
+  const REINIT_ROWS: ReadonlyArray<{
+    readonly name: string;
+    readonly held: ReadonlyArray<ContainerEvent>;
+    readonly intent: "restart" | "enable";
+    readonly after: ReadonlyArray<ProbeReading>;
+  }> = [
+    {
+      name: "a container predating Mate had no /mate/healthz: any initAt it shows is new",
+      held: [
+        active,
+        probed({ kind: "predates-mate" }, START_MS),
+        { type: "MATE_FLAG", flag: false },
+      ],
+      intent: "enable",
+      after: [{ kind: "initializing", initAt: "2026-09-23T09:00:00Z" }],
+    },
+    {
+      name: "no initAt held: the first one read is the old server's, a different one is new",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      after: [
+        { ...READY, initAt: "2026-09-23T08:00:00Z" },
+        { kind: "initializing", initAt: "2026-09-23T09:00:00Z" },
+      ],
+    },
+    {
+      name: "no initAt held: one later than the restart's start is new at once",
+      held: [active, probed(READY, START_MS)],
+      intent: "restart",
+      after: [{ kind: "initializing", initAt: "2027-01-15T08:10:00.000Z" }],
+    },
+  ];
+
+  for (const row of REINIT_ROWS) {
+    it(`a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`, () => {
+      const up = drive(row.held);
+      let run = drive(
+        [{ type: "INTENT", intent: { kind: row.intent, since: instant(up.nowMs + 1_000) } }],
+        up,
+      );
+      for (const reading of row.after) {
+        expect(containerVerdict(run.machine).level).toBe("restarting");
+        run = drive([probed(reading, run.nowMs)], run);
+      }
+      expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+    });
+  }
 });

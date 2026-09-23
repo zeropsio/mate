@@ -59,7 +59,13 @@ const ROWS: ReadonlyArray<{
   {
     name: "our restart, on its way back",
     machine: machine(
-      { level: "restarting", by: "you", since: SINCE, initAt: null, platformEnded: null },
+      {
+        level: "restarting",
+        by: "you",
+        since: SINCE,
+        baseline: { kind: "unread" },
+        platformEnded: null,
+      },
       read({ kind: "unreachable" }),
     ),
     health: "initializing",
