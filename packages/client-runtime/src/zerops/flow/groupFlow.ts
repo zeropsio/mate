@@ -77,8 +77,11 @@ import { CHECKING_RELEASE } from "./release.ts";
 export interface GroupFlowMember {
   readonly projectId: string;
   readonly name: string;
-  /** Its role tag, which says which tier it fills before any declaration does. */
-  readonly role?: ZeropsEnvironmentRole | undefined;
+  /**
+   * Its role tag, which says which tier it fills before any declaration does; stated by every
+   * binding, since a project left without one reads as filling no tier.
+   */
+  readonly role: ZeropsEnvironmentRole | undefined;
 }
 
 /** A pull request as the forge holds it, and how it merges. */

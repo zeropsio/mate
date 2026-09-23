@@ -62,8 +62,8 @@ const DECLARATIONS: ReadonlyArray<GroupEnvironment> = [
 ];
 
 const MEMBERS: ReadonlyArray<GroupFlowMember> = [
-  { projectId: "p-stage", name: "harbor stage" },
-  { projectId: "p-prod", name: "harbor production" },
+  { projectId: "p-stage", name: "harbor stage", role: undefined },
+  { projectId: "p-prod", name: "harbor production", role: undefined },
 ];
 
 const version = (sha: string) => ({
@@ -293,8 +293,8 @@ describe("groupFlow (DESIGN §4.7)", () => {
     const flow = groupFlow(
       inputs({
         members: known([
-          { projectId: "p-stage", name: "harbor stage" },
-          { projectId: "p-extra", name: "harbor extra" },
+          { projectId: "p-stage", name: "harbor stage", role: undefined },
+          { projectId: "p-extra", name: "harbor extra", role: undefined },
         ]),
       }),
       RELEASER,
@@ -315,7 +315,7 @@ describe("groupFlow (DESIGN §4.7)", () => {
 
   it("a stop missing its project has nothing to read, so it waits on nothing", () => {
     const flow = groupFlow(
-      inputs({ members: known([{ projectId: "p-stage", name: "harbor stage" }]) }),
+      inputs({ members: known([{ projectId: "p-stage", name: "harbor stage", role: undefined }]) }),
       RELEASER,
       NOW,
     );

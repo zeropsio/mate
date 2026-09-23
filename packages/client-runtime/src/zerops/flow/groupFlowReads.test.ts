@@ -51,7 +51,9 @@ const repo = (name: string) => ({ origin: GITEA, owner: "harbor", repo: name });
 const SOURCE: GroupFlowSource = {
   entry: { groupId: "g1", slug: "harbor", projects: [], matesMayRelease: false },
   giteaOrigin: GITEA,
-  members: known([{ projectId: "p-prod", name: "harbor production", project: PROD }]),
+  members: known([
+    { projectId: "p-prod", name: "harbor production", role: undefined, project: PROD },
+  ]),
 };
 
 const PRODUCTION_STOP = known([
