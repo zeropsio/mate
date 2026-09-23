@@ -308,12 +308,6 @@ export {
 } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
-  mateReviewOffer,
-  MATE_REVIEW_MERGE_LABEL,
-  MATE_REVIEW_MERGE_RUNNING,
-  type MateReviewOffer,
-} from "./mateReview.ts";
-export {
   compareForRelease,
   isReleaseTag,
   newestReleaseTag,
