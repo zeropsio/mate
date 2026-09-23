@@ -286,6 +286,14 @@ function stopsOf(inputs: GroupFlowInputs): Shown<ReadonlyArray<StopRow>> {
   ]);
 }
 
+/** The version a service runs now, a build of it running or not; `null` while it runs none. */
+function runningOf(
+  deployment: Deployment,
+): Extract<Deployment, { readonly kind: "running" }> | null {
+  const runs = deployment.kind === "deploying" ? deployment.previous : deployment;
+  return runs?.kind === "running" ? runs : null;
+}
+
 /**
  * The release offer, and what it is measured from: the declarations name the production, each of
  * its services runs a commit, and `main` of the repository it is built from holds the candidate.
@@ -319,14 +327,9 @@ function releaseOf(
       // A service with no repository of its name (or none on Gitea at all) has no candidate:
       // it is left out of the release, never a reason to hold the others.
       if (head.state !== "gone") parts.push({ shown: head, source: "gitea" });
-      // A production mid-deploy is measured against what it deploys: that is what it will run.
-      if (
-        isKnown(deployment) &&
-        deployment.value.kind !== "none" &&
-        deployment.value.version.sha !== undefined
-      ) {
-        production.set(hostname, deployment.value.version.sha);
-      }
+      // A production mid-deploy is measured against what it runs: its build may yet fail.
+      const runs = isKnown(deployment) ? runningOf(deployment.value) : null;
+      if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
       if (isKnown(head)) candidate.set(hostname, head.value);
     }
   }

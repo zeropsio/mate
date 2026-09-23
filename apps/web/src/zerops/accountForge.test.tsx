@@ -247,6 +247,7 @@ describe("the account's project flow in the web", () => {
         taggedBy: undefined,
         label: "3f9c1b2",
       },
+      previous: null,
     };
     /** Every answer the rows rendered, the latest last. */
     const answers: Array<ReadonlyMap<string, Shown<Deployment>>> = [];

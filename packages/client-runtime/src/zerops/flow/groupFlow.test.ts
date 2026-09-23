@@ -7,7 +7,7 @@ import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
 import { RELEASE_NOTHING_NEW_ON_MAIN } from "../release.ts";
 import { CHECKING_RELEASE } from "./release.ts";
-import type { Deployment, StopService } from "./deployment.ts";
+import type { Deployment, SettledDeployment, StopService } from "./deployment.ts";
 import {
   groupFlow,
   pullKey,
@@ -67,13 +67,17 @@ const version = (sha: string) => ({
   label: sha.slice(0, 7),
 });
 
-const running = (sha: string): Deployment => ({
+const running = (sha: string): SettledDeployment => ({
   kind: "running",
   activatedAt: "2026-09-23T09:00:00Z",
   version: version(sha),
 });
 
-const deploying = (sha: string): Deployment => ({ kind: "deploying", version: version(sha) });
+const deploying = (sha: string, previous: SettledDeployment | null = null): Deployment => ({
+  kind: "deploying",
+  version: version(sha),
+  previous,
+});
 
 const stopService = (
   projectId: string,
@@ -355,19 +359,28 @@ describe("groupFlow (DESIGN §4.7)", () => {
     });
   });
 
-  it("a production mid-deploy is measured against the version it deploys", () => {
-    const flow = groupFlow(
-      inputs({
-        stops: new Map([
-          ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
-          ["p-prod", known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA)))])],
-        ]),
-      }),
-      RELEASER,
-      NOW,
-    );
+  it("a production mid-deploy is measured against what it runs until its build activates", () => {
+    const midDeploy = (previous: SettledDeployment | null) =>
+      groupFlow(
+        inputs({
+          stops: new Map([
+            ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
+            [
+              "p-prod",
+              known([stopService("p-prod", "appdev", known(deploying(MAIN_SHA, previous)))]),
+            ],
+          ]),
+        }),
+        RELEASER,
+        NOW,
+      );
 
-    expect(flow.releaseGate).toEqual({ allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN });
+    // The build may fail: what production runs is still the release's other side.
+    expect(midDeploy(running(PRODUCTION_SHA)).releaseGate).toEqual({ allowed: true });
+    expect(midDeploy(running(MAIN_SHA)).releaseGate).toEqual({
+      allowed: false,
+      reason: RELEASE_NOTHING_NEW_ON_MAIN,
+    });
   });
 
   it("a merge into a repository feeds the stages that run it, never production", () => {

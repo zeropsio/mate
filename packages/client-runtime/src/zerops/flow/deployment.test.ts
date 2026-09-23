@@ -100,7 +100,10 @@ const STATES: ReadonlyArray<{ readonly name: string; readonly shown: Shown<Deplo
     }),
   },
   { name: "known running", shown: known(RUNNING) },
-  { name: "known deploying", shown: known({ kind: "deploying", version: RUNNING.version }) },
+  {
+    name: "known deploying",
+    shown: known({ kind: "deploying", version: RUNNING.version, previous: null }),
+  },
 ];
 
 const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): EnvironmentRow => ({
@@ -183,7 +186,7 @@ describe("stopView", () => {
   });
 
   it("says what a running build deploys, over what the deploy half read before it", () => {
-    const deploying = known({ kind: "deploying", version: RUNNING.version });
+    const deploying = known({ kind: "deploying", version: RUNNING.version, previous: null });
     for (const entry of ROWS) {
       expect(
         stopView({ deployment: deploying, row: entry.row, nowMs: NOW }),
@@ -199,6 +202,7 @@ describe("stopView", () => {
         taggedBy: undefined,
         label: undefined,
       },
+      previous: null,
     });
     expect(stopView({ deployment: unnamed, row: undefined, nowMs: NOW })).toMatchObject({
       line: "Deploying",
@@ -537,6 +541,72 @@ describe("stopServices", () => {
         deployment.state === "known" ? deployment.value.kind : deployment.state,
       ]),
     ).toEqual(expected);
+  });
+
+  describe("a running build keeps what ran when it started (DESIGN §4.7)", () => {
+    const previousCases: ReadonlyArray<{
+      readonly name: string;
+      readonly deploy: ServiceDeployInfo;
+      readonly names?: ReadonlyMap<string, string>;
+      readonly previous: unknown;
+    }> = [
+      {
+        name: "a version the platform named",
+        deploy: PUSHED,
+        previous: { kind: "running", version: { name: "v1.4.0", label: "v1.4.0" } },
+      },
+      {
+        name: "a version an earlier build named",
+        deploy: UNSTATED,
+        names: new Map([[UNSTATED.id!, SHA]]),
+        previous: { kind: "running", version: { sha: SHA, label: "3f9c1b2" } },
+      },
+      {
+        name: "a never-deployed runtime's NONE version",
+        deploy: { ...PUSHED, source: "NONE", name: null },
+        previous: { kind: "none" },
+      },
+      { name: "a version nobody named or sourced", deploy: UNSTATED, previous: null },
+    ];
+
+    it.each(previousCases)("$name", ({ deploy, names, previous }) => {
+      const stops = stopServices(
+        {
+          services: listed([record("s1", "app", deployed(deploy))]),
+          processes: processesRead([build({ id: "next", name: SHA })], { project: PROJECT }),
+          names: names ?? new Map(),
+          refused: null,
+        },
+        NOW,
+      );
+      const deployment = stops.state === "known" ? stops.value[0]?.deployment : undefined;
+      expect(deployment).toMatchObject({ state: "known", value: { kind: "deploying" } });
+      if (previous === null) {
+        expect(deployment).toMatchObject({ value: { previous: null } });
+      } else {
+        expect(deployment).toMatchObject({ value: { previous } });
+      }
+    });
+  });
+
+  it("a build that ends without activating keeps what ran before it, by its name", () => {
+    // The build named `next`, the service still runs `app-version`, and the build is gone.
+    const stops = stopServices(
+      {
+        services: listed([record("s1", "app", deployed(UNSTATED))]),
+        processes: NO_PROCESSES,
+        names: new Map([
+          [UNSTATED.id!, "1a2b3c4000000000000000000000000000000000"],
+          ["next", SHA],
+        ]),
+        refused: null,
+      },
+      NOW,
+    );
+    expect(stops.state === "known" ? stops.value[0]?.deployment : undefined).toMatchObject({
+      state: "known",
+      value: { kind: "running", version: { commit: "1a2b3c4" } },
+    });
   });
 
   it("names each service by its ref", () => {

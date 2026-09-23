@@ -56,8 +56,18 @@ export type Deployment =
       /** The pushed name, and the commit only where the platform named none. */
       readonly version: DeployedVersion;
     }
-  /** A build for the service runs: the version it builds, named by the build (A11). */
-  | { readonly kind: "deploying"; readonly version: DeployedVersion };
+  /**
+   * A build for the service runs: the version it builds, named by the build (A11), and what ran
+   * when it started — `null` while nothing states that — which runs on if the build fails.
+   */
+  | {
+      readonly kind: "deploying";
+      readonly version: DeployedVersion;
+      readonly previous: SettledDeployment | null;
+    };
+
+/** What a service runs with no build of it in the way. */
+export type SettledDeployment = Exclude<Deployment, { readonly kind: "deploying" }>;
 
 export const NOTHING_DEPLOYED = "Nothing deployed yet";
 export const CHECKING_WHAT_RUNS = "Checking what runs here…";
@@ -342,6 +352,39 @@ interface StopContext extends StopBuilds {
   readonly nowMs: number;
 }
 
+/**
+ * What the service's active version is, as far as anything states it: a build's name for it first,
+ * else what the platform pushed; `null` while nothing names or sources it (A14).
+ */
+function activeDeployment(
+  answer: ServiceAnswer,
+  names: ReadonlyMap<string, string>,
+): SettledDeployment | null {
+  switch (answer.kind) {
+    case "none":
+      return { kind: "none" };
+    case "running":
+    case "unstated": {
+      const named = answer.deploy.id === null ? undefined : names.get(answer.deploy.id);
+      if (named !== undefined)
+        return {
+          kind: "running",
+          activatedAt: answer.deploy.activatedAt,
+          version: deployedVersion(named),
+        };
+      return answer.kind === "running"
+        ? {
+            kind: "running",
+            activatedAt: answer.deploy.activatedAt,
+            version: pushedVersion(answer.deploy),
+          }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
 function serviceDeployment(
   answer: Exclude<ServiceAnswer, { readonly kind: "not-a-stop" }>,
   serviceId: string,
@@ -356,6 +399,7 @@ function serviceDeployment(
     freshness: freshnessOf(source, nowMs),
   });
   const active = activeVersionId(answer);
+  const settled = activeDeployment(answer, names);
   // A build whose version is already the active one has deployed: the service runs it.
   const build = builds.find(
     ({ serviceIds, appVersionId }) =>
@@ -363,33 +407,13 @@ function serviceDeployment(
   );
   if (build !== undefined)
     return known(
-      { kind: "deploying", version: deployedVersion(build.name ?? undefined) },
+      { kind: "deploying", version: deployedVersion(build.name ?? undefined), previous: settled },
       build.asOf,
     );
   switch (answer.kind) {
     case "running":
-    case "unstated": {
-      const named = active === null ? undefined : names.get(active);
-      if (named !== undefined)
-        return known(
-          {
-            kind: "running",
-            activatedAt: answer.deploy.activatedAt,
-            version: deployedVersion(named),
-          },
-          answer.asOf,
-        );
-      return answer.kind === "running"
-        ? known(
-            {
-              kind: "running",
-              activatedAt: answer.deploy.activatedAt,
-              version: pushedVersion(answer.deploy),
-            },
-            answer.asOf,
-          )
-        : notYetKnown(source, nowMs);
-    }
+    case "unstated":
+      return settled === null ? notYetKnown(source, nowMs) : known(settled, answer.asOf);
     case "none":
       // Nothing active is no proof while a build for it may be running unseen.
       return complete ? known({ kind: "none" }, answer.asOf) : notYetKnown(source, nowMs);
