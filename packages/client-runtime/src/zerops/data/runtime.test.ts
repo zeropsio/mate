@@ -2663,6 +2663,119 @@ describe("makeZeropsDataRuntime", () => {
       }),
   );
 
+  it.effect("recovers a failed interest whose own retry fails while a sibling's cycle sleeps", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const opened = yield* Queue.unbounded<Queue.Queue<ReceiverEvent>>();
+      const registrations: RegistrationRequest[] = [];
+      let serviceFailures = 0;
+      const adapter: ZeropsDataAdapter = {
+        openReceiver: (_scope, organization, identity) =>
+          Effect.gen(function* () {
+            const events = yield* Queue.unbounded<ReceiverEvent>();
+            yield* Queue.offer(opened, events);
+            return {
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            } satisfies ReceiverHandle;
+          }),
+        register: (_receiver, request) => {
+          registrations.push(request);
+          // The first establishment, its one backoff retry and its scheduled retry out of
+          // `failed` are refused; the next attempt is accepted.
+          if (
+            request.descriptor.kind === "entity-updates" &&
+            request.descriptor.entity === "service" &&
+            serviceFailures < 3
+          ) {
+            serviceFailures += 1;
+            return Effect.fail({
+              _tag: "ZeropsDataAdapterError",
+              kind: "registration",
+              message: "service feed refused",
+              retryable: true,
+              accountRevocationEvidence: false,
+            } satisfies AdapterError);
+          }
+          return Effect.succeed({ responseObservations: [] });
+        },
+        read: () => Effect.succeed({ observations: [] }),
+        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
+        closeReceiver: () => Effect.void,
+      };
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+        policy: makeZeropsDataPolicy({
+          recoveryAttemptLimit: 1,
+          recoveryBackoffStartMs: 10,
+          recoveryBackoffMaxMs: 40,
+        }),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
+        Queue.offerUnsafe(states, state);
+      });
+      const leaseScope = yield* Scope.make();
+
+      // t=0 refused, t=10 refused again past the attempt limit: `failed`, retry at t=30.
+      const topology = yield* runtime.acquire(topologyDescriptor).pipe(Scope.provide(leaseScope));
+      for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+      yield* TestClock.adjust("10 millis");
+      const failed = yield* waitForState(
+        states,
+        (state) => state.interests.get(topology.interest)?.interest.status === "failed",
+      );
+      expect(failed.interests.get(topology.interest)?.interest).toMatchObject({ retryAtMs: 30 });
+
+      // A sibling observes on the same receiver; at t=25 a malformed frame on its own
+      // subscription starts a recovery cycle that sleeps until the sibling is due at t=35.
+      const organization = yield* runtime
+        .acquire({
+          kind: "organization-inventory",
+          organization: topologyDescriptor.project.organization,
+        })
+        .pipe(Scope.provide(leaseScope));
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(organization.interest)?.interest.status === "observing",
+      );
+      let events = yield* Queue.take(opened);
+      while ((yield* Queue.size(opened)) > 0) events = yield* Queue.take(opened);
+      yield* TestClock.adjust("15 millis");
+      const siblingSubscription = registrations.findLast(
+        (request) =>
+          request.descriptor.kind === "query-membership" &&
+          request.descriptor.query.kind === "projects-of-organization",
+      )!.subscriptionName;
+      yield* Queue.offer(events, { kind: "malformed", subscriptionName: siblingSubscription });
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(organization.interest)?.interest.status === "recovering",
+      );
+
+      // t=30 the scheduled retry is refused while the cycle sleeps; the cycle still owes it
+      // an exit, so both interests observe once the sibling is due.
+      for (let elapsed = 0; elapsed < 100; elapsed += 5) {
+        yield* TestClock.adjust("5 millis");
+        for (let index = 0; index < 20; index++) yield* Effect.yieldNow;
+      }
+      expect(serviceFailures).toBe(3);
+      const settled = yield* runtime.state;
+      expect(settled.interests.get(organization.interest)?.interest.status).toBe("observing");
+      expect(settled.interests.get(topology.interest)?.interest.status).toBe("observing");
+
+      yield* runtime.shutdown("application-close");
+      yield* Scope.close(leaseScope, Exit.void);
+      unsubscribe();
+      registry.dispose();
+    }),
+  );
+
   it.effect(
     "retries a low-attempt interest on its own backoff without replacing the receiver while a higher-attempt sibling is not yet due",
     () =>

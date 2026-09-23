@@ -2260,19 +2260,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         ),
       );
 
+  // The retry leaves `failed` under a fresh identity, so its own failure enters `recovering`
+  // and the organization's recovery cycle owns its exit; a failure still arriving under the
+  // failed identity is late and changes nothing.
   scheduleFailedRetry = (runtimeInterest, identity, retryAtMs) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       yield* Effect.sleep(Duration.millis(Math.max(0, retryAtMs - now)));
-      if (yield* Ref.get(closed)) return;
-      if (runtimeInterest.leases.size === 0) return;
-      if (runtimeInterest.identity !== identity) return;
-      if ((yield* Ref.get(currentVisibility)) === "hidden") return;
-      const state = yield* Ref.get(model);
-      const desired = state.interests.get(identity.key);
-      if (desired === undefined || desired.interest.status !== "failed") return;
-      runtimeInterest.recoveryAttempts = 0;
-      yield* establishInterest(runtimeInterest);
+      const retrying = yield* lifecycleLock.withPermit(
+        Effect.gen(function* () {
+          if (yield* Ref.get(closed)) return false;
+          if (runtimeInterest.leases.size === 0) return false;
+          if (runtimeInterest.identity !== identity) return false;
+          if ((yield* Ref.get(currentVisibility)) === "hidden") return false;
+          const state = yield* Ref.get(model);
+          if (state.interests.get(identity.key)?.interest.status !== "failed") return false;
+          runtimeInterest.recoveryAttempts = 0;
+          const desired = yield* updateInterestIdentity(
+            runtimeInterest,
+            receiverFor(organizationOfInterest(runtimeInterest.descriptor)),
+          );
+          yield* applyControl({ kind: "interest-upserted", interest: desired });
+          return true;
+        }),
+      );
+      if (retrying) yield* establishInterest(runtimeInterest);
     }).pipe(forkOwned, Effect.asVoid);
 
   const pauseForBackground = lifecycleLock.withPermit(

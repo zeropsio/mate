@@ -386,9 +386,9 @@ const interestProgress = (state: DesiredInterestState): InterestProgress => {
 
 /**
  * Whether a failure moves this interest into `recovering`. A paused interest leaves through
- * the foreground resume and a failed one through its own `retryAtMs`; a late failure of work
- * started before either state brings nothing new, and `recovering` would give the interest
- * no scheduled exit (I7).
+ * the foreground resume and a failed one through its own `retryAtMs`, each under a fresh
+ * identity; a late failure under the paused or failed identity brings nothing new, and
+ * `recovering` would give the interest no scheduled exit (I7).
  */
 const recoversOnFailure = (interest: InterestState): boolean =>
   interest.status !== "paused" && interest.status !== "failed";
