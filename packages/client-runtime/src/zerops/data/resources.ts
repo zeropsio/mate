@@ -124,7 +124,11 @@ export interface ZeropsResourceSourceError {
 }
 
 export interface ZeropsResourceRequestContext {
-  /** Withholding, the final release and interruption all abort this signal. */
+  /**
+   * Withholding, shutdown and the end of the entry abort this signal. The final
+   * release ends an entry that holds no value; an entry that holds one is
+   * retained, and its revalidation in flight runs on into the retention window.
+   */
   readonly abortSignal: AbortSignal;
 }
 
