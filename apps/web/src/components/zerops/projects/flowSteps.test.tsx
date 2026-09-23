@@ -159,6 +159,24 @@ describe("a production's state", () => {
     );
   });
 
+  it("draws its verb, the release and its menu as one keyed list", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const html = renderToStaticMarkup(
+      <ProductionStep
+        density="box"
+        entry={brokenProduction()}
+        menu={<i data-test="menu" />}
+        releaseVerb={<button data-test="release" type="button" />}
+        verb={<button data-test="fix" type="button" />}
+      />,
+    );
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+    const order = ["fix", "release", "menu"].map((name) => html.indexOf(`data-test="${name}"`));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+  });
+
   it("never goes under a word beside its verb: its lines keep a floor", () => {
     const tree = mount(
       <ProductionStep

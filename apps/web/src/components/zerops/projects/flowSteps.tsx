@@ -16,7 +16,7 @@ import type {
   GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 import { ExternalLinkIcon } from "lucide-react";
-import { Children, type ReactNode } from "react";
+import { Children, Fragment, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { StatusDot } from "../primitives";
@@ -340,6 +340,7 @@ export function ProductionStep<T>({
   readonly menu?: ReactNode;
 }) {
   const cell = productionCell(entry.flow);
+  const menuSlot = drawn(menu) ? <span className="flex">{menu}</span> : null;
   return (
     <Cell
       density={density}
@@ -357,11 +358,17 @@ export function ProductionStep<T>({
       }
       step="production"
       // Keyed and without the empties, so a cell with nothing to press has no slot.
-      verbs={Children.toArray([
-        verb,
-        releaseVerb,
-        drawn(menu) ? <span className="flex">{menu}</span> : null,
-      ])}
+      verbs={(
+        [
+          ["verb", verb],
+          ["release", releaseVerb],
+          ["menu", menuSlot],
+        ] as const
+      )
+        .filter(([, node]) => drawn(node))
+        .map(([key, node]) => (
+          <Fragment key={key}>{node}</Fragment>
+        ))}
     />
   );
 }
