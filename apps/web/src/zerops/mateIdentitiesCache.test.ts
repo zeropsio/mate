@@ -3,9 +3,9 @@ import * as Schema from "effect/Schema";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { removeLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 import {
-  forgetCachedZeropsMates,
   readCachedZeropsMates,
   writeCachedZeropsMates,
   ZEROPS_MATES_STORAGE_KEY,
@@ -113,11 +113,14 @@ describe("mateIdentitiesCache", () => {
     expect(readCachedZeropsMates()?.has(FEN)).toBe(false);
   });
 
-  it("is forgotten on sign-out, so the next reload knows of nobody rather than that nobody lives anywhere", () => {
+  it("is forgotten when the account closes, so its next sign-in knows of nobody rather than that nobody lives anywhere", () => {
+    openAccountLifetime("user-a");
     writeCachedZeropsMates(
       new Map([[FEN, mate({ name: "Fen", tint: "coral", project: undefined })]]),
     );
-    forgetCachedZeropsMates();
+    closeAccountLifetime();
+    openAccountLifetime("user-a");
     expect(readCachedZeropsMates()).toBeNull();
+    closeAccountLifetime();
   });
 });

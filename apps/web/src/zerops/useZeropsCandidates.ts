@@ -42,7 +42,7 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
-import { forgetCachedZeropsMates, writeCachedZeropsMates } from "./mateIdentitiesCache";
+import { writeCachedZeropsMates } from "./mateIdentitiesCache";
 import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import {
@@ -275,6 +275,34 @@ export function candidatesPublication(input: {
   };
 }
 
+/**
+ * The names and Mates the readers hold now. They live in the account's atom
+ * registry, which starts over when the account closes (`atomRegistry.ts`), so
+ * another account signing in here reads none of the last one's.
+ */
+export function publishedCandidates(): PublishedCandidates {
+  return {
+    names: appAtomRegistry.get(zeropsEnvironmentNamesAtom),
+    mates: appAtomRegistry.get(zeropsMatesAtom),
+  };
+}
+
+export function applyCandidatesPublication(publication: CandidatesPublication): void {
+  if (publication.kind === "hold") return;
+  if (publication.kind === "forget") {
+    appAtomRegistry.set(zeropsEnvironmentNamesAtom, null);
+    appAtomRegistry.set(zeropsMatesAtom, MATES_UNREAD);
+    return;
+  }
+  appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
+  appAtomRegistry.set(zeropsMatesAtom, publication.mates);
+  // Remembered across reloads, so the next one knows who lives where from
+  // its first frame (`zeropsMatesAtom` starts from this). The cache says
+  // nobody lives where it names no Mate, so only a directory that can say
+  // so is remembered.
+  if (publication.mates.complete) writeCachedZeropsMates(zeropsMatesOf(publication.mates));
+}
+
 export function useZeropsCandidates(): {
   /**
    * The rows the listing holds (`candidateMembers`): none while it is unread,
@@ -390,29 +418,14 @@ export function useZeropsCandidates(): {
   const candidates = candidateMembers(listing);
 
   useEffect(() => {
-    const publication = candidatesPublication({
-      status,
-      listing,
-      registeredOrigins,
-      published: {
-        names: appAtomRegistry.get(zeropsEnvironmentNamesAtom),
-        mates: appAtomRegistry.get(zeropsMatesAtom),
-      },
-    });
-    if (publication.kind === "hold") return;
-    if (publication.kind === "forget") {
-      appAtomRegistry.set(zeropsEnvironmentNamesAtom, null);
-      appAtomRegistry.set(zeropsMatesAtom, MATES_UNREAD);
-      forgetCachedZeropsMates();
-      return;
-    }
-    appAtomRegistry.set(zeropsEnvironmentNamesAtom, publication.names);
-    appAtomRegistry.set(zeropsMatesAtom, publication.mates);
-    // Remembered across reloads, so the next one knows who lives where from
-    // its first frame (`zeropsMatesAtom` starts from this). The cache says
-    // nobody lives where it names no Mate, so only a directory that can say
-    // so is remembered.
-    if (publication.mates.complete) writeCachedZeropsMates(zeropsMatesOf(publication.mates));
+    applyCandidatesPublication(
+      candidatesPublication({
+        status,
+        listing,
+        registeredOrigins,
+        published: publishedCandidates(),
+      }),
+    );
   }, [listing, registeredOrigins, status]);
 
   const refresh = useCallback(() => {

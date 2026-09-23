@@ -14,6 +14,7 @@ import {
   removeLocalStorageItem,
   setLocalStorageItem,
 } from "../hooks/useLocalStorage";
+import { onAccountLifetimeClose } from "./accountLifetime";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
 export const ZEROPS_MATES_STORAGE_KEY = "zerops:mates";
@@ -74,11 +75,16 @@ export function writeCachedZeropsMates(
   }
 }
 
-/** Nothing remembered: the next reload starts with every Zerops environment unknown. */
-export function forgetCachedZeropsMates(): void {
+/**
+ * An account that closes — sign-out, or another account signing in here —
+ * leaves nothing remembered: its next sign-in starts with every Zerops
+ * environment unknown. The key is the account's own (`accountLocalStorage`),
+ * so it is removed while the closing account still owns it.
+ */
+onAccountLifetimeClose(() => {
   try {
     removeLocalStorageItem(ZEROPS_MATES_STORAGE_KEY);
   } catch {
     // Storage unavailable: the next list read in full overwrites what is left.
   }
-}
+});

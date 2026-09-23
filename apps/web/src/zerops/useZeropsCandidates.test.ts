@@ -15,9 +15,12 @@ import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { identity, organization, project, scope } from "./__fixtures__/platformData";
 import { MATES_UNREAD, zeropsMateAt, type ZeropsMateIdentity } from "./mateIdentities";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
+  applyCandidatesPublication,
   authenticatedZeropsOrigins,
   candidatesPublication,
+  publishedCandidates,
   sameProjectsRead,
   sameServicesRead,
   withZeropsConnection,
@@ -287,5 +290,24 @@ describe("candidatesPublication", () => {
 
   it("a signed-out session forgets every name and Mate rather than saying nobody lives anywhere", () => {
     expect(publication({ status: "signed-out", listing: known([]) })).toEqual({ kind: "forget" });
+  });
+
+  it("a list read after another account signed in here publishes nothing of the last account's", () => {
+    openAccountLifetime("user-a");
+    applyCandidatesPublication(publication({ listing: known([CONNECTED_MATE]) }));
+    openAccountLifetime("user-b");
+
+    const published = publication({
+      listing: known([CONNECTED_NOBODY, PRESENCE_UNKNOWN]),
+      published: publishedCandidates(),
+    });
+
+    expect(published).toMatchObject({
+      kind: "publish",
+      names: new Map([[otherEnvironmentId, "api"]]),
+      mates: { complete: false },
+    });
+    expect(whoLivesAt(published, environmentId)).toBe("unknown");
+    closeAccountLifetime();
   });
 });
