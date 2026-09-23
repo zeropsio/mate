@@ -15,15 +15,17 @@
  * - A descriptor serves an environment only for the target whose project it states
  *   (`zerops.projectId`): an origin answering for another project's Mate, or for no project, has
  *   answered and serves nothing here.
- * - A present target's descriptor has answered once its origin was read: as Mate (`ready`), as
- *   serving no Mate at all (`predates-mate`), or as failed — still coming up, or unreachable, a
- *   network or CORS failure included. A failed read names no environment, and the sweep reads it
- *   again. An environment nothing names stays undecided while any present target is unread: "not
- *   in your projects" is earned once every present target answered with another environment or
- *   failed.
+ * - A present target's descriptor has answered once its origin was read as Mate (`ready`), as
+ *   serving no Mate at all (`predates-mate`), or as failed: unreachable — a network or CORS
+ *   failure included — on the read the sweep asked for as well as on the one before it. A Mate
+ *   still coming up has not answered: it is there, and its descriptor is on its way. A failed read
+ *   names no environment, and the sweep reads it again. An environment nothing names stays
+ *   undecided while any present target has not answered: "not in your projects" is earned once
+ *   every present target answered with another environment or failed.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
+import type { Instant } from "../data/access/grant.ts";
 import type { ContainerMachine } from "./containerMachine.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
 import type { TargetKey } from "./exchangeDriver.ts";
@@ -35,21 +37,28 @@ export interface DescriptorIndex {
   /** Each present target whose descriptor answered as Mate, to the environment it reports. */
   readonly reported: ReadonlyMap<TargetKey, EnvironmentId>;
   /**
-   * Present targets whose descriptor has not been read yet: each is on its way — the container
-   * store reads every target it lists.
+   * Present targets whose descriptor has not answered: unread — the container store reads every
+   * target it lists —, still coming up, or unreachable on a read older than the sweep's.
    */
   readonly unanswered: ReadonlyArray<TargetKey>;
-  /** Present targets whose read failed, coming up or unreachable: the ones a sweep reads again. */
+  /** Present targets whose last read failed, coming up or unreachable: the ones a sweep reads again. */
   readonly failed: ReadonlyArray<TargetKey>;
 }
 
 /** The Zerops project of a `projectId:serviceId` target. */
 const projectOf = (key: TargetKey): string => key.split(":")[0] ?? key;
 
-/** Every present target's descriptor as the container store last read it. */
+const sentSince = (sentAt: Instant, since: Instant): boolean =>
+  sentAt.wall >= since.wall && sentAt.mono >= since.mono;
+
+/**
+ * Every present target's descriptor as the container store last read it; `reread` holds when the
+ * sweep asked for each target it reads again.
+ */
 export function indexDescriptors(
   environments: ReadonlyMap<TargetKey, EnvironmentMachine>,
   containers: ReadonlyMap<TargetKey, ContainerMachine>,
+  reread: ReadonlyMap<TargetKey, Instant>,
 ): DescriptorIndex {
   const serving = new Map<EnvironmentId, TargetKey>();
   const reported = new Map<TargetKey, EnvironmentId>();
@@ -57,15 +66,26 @@ export function indexDescriptors(
   const failed: Array<TargetKey> = [];
   for (const [key, machine] of environments) {
     if (machine.presence.kind !== "present") continue;
-    const reading = containers.get(key)?.reading?.reading;
-    if (reading?.kind === "ready") {
+    const probed = containers.get(key)?.reading ?? null;
+    if (probed === null) {
+      unanswered.push(key);
+      continue;
+    }
+    const { reading, sentAt } = probed;
+    if (reading.kind === "ready") {
       if (reading.projectId !== projectOf(key)) continue;
       serving.set(reading.descriptor.environmentId, key);
       reported.set(key, reading.descriptor.environmentId);
       continue;
     }
-    if (reading?.kind === "predates-mate") continue;
-    (reading === undefined ? unanswered : failed).push(key);
+    if (reading.kind === "predates-mate") continue;
+    failed.push(key);
+    const rereadAt = reread.get(key);
+    // Unreachable on the sweep's read as well as on the one before it: failed, and answered.
+    if (reading.kind === "unreachable" && rereadAt !== undefined && sentSince(sentAt, rereadAt)) {
+      continue;
+    }
+    unanswered.push(key);
   }
   return { serving, reported, unanswered, failed };
 }

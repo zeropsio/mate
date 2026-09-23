@@ -40,9 +40,12 @@ const ready = (
   initAt: null,
 });
 
-const read = (reading: ProbeReading): ContainerMachine => ({
+const at = (ms: number) => ({ wall: ms, mono: ms });
+
+/** A container whose probe, sent at `sentMs`, read this. */
+const read = (reading: ProbeReading, sentMs = 0): ContainerMachine => ({
   ...initialContainer(),
-  reading: { reading, sentAt: { wall: 0, mono: 0 } },
+  reading: { reading, sentAt: at(sentMs) },
 });
 
 const HELD_A = {
@@ -58,6 +61,8 @@ describe("indexDescriptors", () => {
     readonly name: string;
     readonly machine: EnvironmentMachine;
     readonly container: ContainerMachine | undefined;
+    /** When the sweep asked for `KEY` to be read again, if it did. */
+    readonly rereadMs?: number;
     readonly index: DescriptorIndex;
   }> = [
     {
@@ -102,15 +107,36 @@ describe("indexDescriptors", () => {
       index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
     },
     {
-      name: "a Mate still coming up failed to answer: settled for the sweep, read again",
+      name: "a Mate still coming up has not answered: read again",
       machine: present(KEY),
       container: read({ kind: "initializing", initAt: null }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
     },
     {
-      name: "an unreachable origin (a network or CORS failure) failed: settled for the sweep, read again",
+      name: "a Mate still coming up when the sweep read it again has not answered",
+      machine: present(KEY),
+      container: read({ kind: "initializing", initAt: null }, 5),
+      rereadMs: 5,
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+    },
+    {
+      name: "an unreachable origin (a network or CORS failure) read once has not answered: read again",
       machine: present(KEY),
       container: read({ kind: "unreachable" }),
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+    },
+    {
+      name: "an unreachable origin whose reading left before the sweep's re-read has not answered",
+      machine: present(KEY),
+      container: read({ kind: "unreachable" }, 4),
+      rereadMs: 5,
+      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+    },
+    {
+      name: "an unreachable origin the sweep read again, failing again, answered as failed",
+      machine: present(KEY),
+      container: read({ kind: "unreachable" }, 5),
+      rereadMs: 5,
       index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [KEY] },
     },
     {
@@ -123,8 +149,9 @@ describe("indexDescriptors", () => {
 
   it.each(ROWS.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     const containers = new Map(row.container === undefined ? [] : [[KEY, row.container]]);
+    const reread = new Map(row.rereadMs === undefined ? [] : [[KEY, at(row.rereadMs)]]);
 
-    expect(indexDescriptors(new Map([[KEY, row.machine]]), containers)).toEqual(row.index);
+    expect(indexDescriptors(new Map([[KEY, row.machine]]), containers, reread)).toEqual(row.index);
   });
 });
 

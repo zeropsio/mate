@@ -56,6 +56,8 @@ const shell = vi.hoisted(() => ({
   containers: null as unknown,
   /** Every route the gate handed the account runtime, in order. */
   routes: [] as Array<string | null>,
+  /** When the account runtime's sweep asked for each target it reads again. */
+  reread: new Map() as ReadonlyMap<string, { readonly wall: number; readonly mono: number }>,
 }));
 
 vi.mock("../state/environments", () => ({
@@ -82,6 +84,7 @@ function shellStage(): AccountEnvironments {
   let indexed: {
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
     readonly containers: ReadonlyMap<string, ContainerMachine>;
+    readonly reread: typeof shell.reread;
     readonly index: DescriptorIndex;
   } | null = null;
   return {
@@ -89,9 +92,22 @@ function shellStage(): AccountEnvironments {
     containers: () => containers().machines(),
     records: () => shell.records as unknown as ReadonlyArray<RegistrationRecord>,
     index: () => {
-      const [machines, readings] = [driver().machines(), containers().machines()];
-      if (indexed?.machines !== machines || indexed.containers !== readings) {
-        indexed = { machines, containers: readings, index: indexDescriptors(machines, readings) };
+      const [machines, readings, reread] = [
+        driver().machines(),
+        containers().machines(),
+        shell.reread,
+      ];
+      if (
+        indexed?.machines !== machines ||
+        indexed.containers !== readings ||
+        indexed.reread !== reread
+      ) {
+        indexed = {
+          machines,
+          containers: readings,
+          reread,
+          index: indexDescriptors(machines, readings, reread),
+        };
       }
       return indexed.index;
     },
@@ -158,6 +174,7 @@ beforeEach(() => {
   shell.environments = [];
   shell.records = [];
   shell.routes = [];
+  shell.reread = new Map();
   shell.organization = "selected";
   shell.driver = publishing(new Map());
   shell.containers = descriptorRig([]).containers;
@@ -531,8 +548,10 @@ describe("useRouteGateInputs", () => {
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
     readonly records?: ReadonlyArray<{ targetKey: string; environmentId: string }>;
     readonly inventory?: Inventory;
-    /** What the probes last read at each target's origin. */
+    /** What the probes last read at each target's origin, sent at 0. */
     readonly readings?: ReadonlyMap<string, ProbeReading>;
+    /** The targets the sweep asked to read again, at 0. */
+    readonly reread?: ReadonlyArray<string>;
     readonly gate: RouteGate;
   }> = [
     {
@@ -574,7 +593,7 @@ describe("useRouteGateInputs", () => {
       gate: { kind: "wait", reachability: null },
     },
     {
-      name: "the only present Mate's descriptor read failed (a network or CORS failure)",
+      name: "a present Mate's descriptor read failed once (a network or CORS failure)",
       machines: other({
         kind: "backoff",
         retryAt: { wall: 5_000, mono: 5_000 },
@@ -583,7 +602,27 @@ describe("useRouteGateInputs", () => {
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
+      gate: { kind: "wait", reachability: null },
+    },
+    {
+      name: "the only present Mate's descriptor failed the sweep's read too",
+      machines: other({
+        kind: "backoff",
+        retryAt: { wall: 5_000, mono: 5_000 },
+        last: { kind: "network" },
+        reconnect: false,
+      }),
+      records: [{ targetKey: OTHER, environmentId: ENV_B }],
+      readings: new Map([[OTHER, { kind: "unreachable" }]]),
+      reread: [OTHER],
       gate: { kind: "unavailable", reachability: null },
+    },
+    {
+      name: "a present Mate is still coming up when the sweep reads it",
+      machines: other({ kind: "none", reconnect: false }),
+      readings: new Map([[OTHER, { kind: "initializing", initAt: null }]]),
+      reread: [OTHER],
+      gate: { kind: "wait", reachability: null },
     },
     {
       name: "every exchange has settled and every present descriptor named another",
@@ -617,6 +656,7 @@ describe("useRouteGateInputs", () => {
       shell.driver = publishing(row.machines);
       shell.containers = reading(row.readings ?? new Map());
       shell.records = [...(row.records ?? [])];
+      shell.reread = new Map((row.reread ?? []).map((key) => [key, { wall: 0, mono: 0 }]));
 
       expect(await gateOnRoute(row.inventory ?? inventory("ACTIVE"))).toEqual(row.gate);
     },
@@ -727,6 +767,16 @@ function descriptorRig(
       probe.resolve(reading);
       await settle();
     },
+    /**
+     * Reads these targets again the way the account runtime's sweep does for a route nothing
+     * names: it records when it asked, then asks.
+     */
+    sweep: async (keys: ReadonlyArray<string>) => {
+      nowMs += 1_000;
+      shell.reread = new Map([...shell.reread, ...keys.map((key) => [key, clock.now()] as const)]);
+      for (const key of keys) containers.request(key);
+      await settle();
+    },
     /** Fails the probe in flight for this origin the way a dead origin's CORS refusal does. */
     fail: async (origin: string) => {
       const probe = pending.get(origin);
@@ -826,21 +876,28 @@ describe("the descriptor index", () => {
   });
 
   it("a made-up envId reaches RG3 once every present candidate answered or failed", async () => {
-    const mates = [mate(1), mate(2), mate(3)];
-    const rig = descriptorRig(mates);
+    const [named, dead, alsoDead] = [mate(1), mate(2), mate(3)];
+    const rig = descriptorRig([named, dead, alsoDead]);
     shell.driver = rig.driver;
     shell.containers = rig.containers;
     await settle();
-    const made = EnvironmentId.make("env-made-up");
-    const routed = routeTo(made);
-    const gates: Array<RouteGate["kind"]> = [selectRouteGate(routed.read().target).kind];
+    const routed = routeTo(EnvironmentId.make("env-made-up"));
+    const gates: Array<RouteGate["kind"]> = [];
+    const look = () => gates.push(selectRouteGate(routed.read().target).kind);
 
-    await rig.answer(mates[0]!.origin, answering(ENV_B, mates[0]!.projectId));
-    gates.push(selectRouteGate(routed.read().target).kind);
-    // Two dead origins: their descriptor reads fail on CORS and never answer as Mate.
-    await rig.fail(mates[1]!.origin);
-    gates.push(selectRouteGate(routed.read().target).kind);
-    await rig.fail(mates[2]!.origin);
+    await rig.answer(named.origin, answering(ENV_B, named.projectId));
+    // Two dead origins: their descriptor reads fail on CORS, and each is read again at once.
+    await rig.fail(dead.origin);
+    await rig.fail(alsoDead.origin);
+    look();
+    await rig.sweep([dead.key, alsoDead.key]);
+    // The reads in flight left before the sweep asked: they do not answer for it.
+    await rig.fail(dead.origin);
+    await rig.fail(alsoDead.origin);
+    look();
+    await rig.fail(dead.origin);
+    look();
+    await rig.fail(alsoDead.origin);
 
     expect(gates).toEqual(["wait", "wait", "wait"]);
     expect(selectRouteGate(routed.read().target)).toEqual({

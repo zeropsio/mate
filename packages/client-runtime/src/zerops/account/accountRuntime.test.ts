@@ -1165,6 +1165,41 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
+  it.effect(
+    "a route nothing names is answered once each unreachable Mate failed the sweep's read too, never while one comes up",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const [named, down, coming] = [mate("1"), mate("2"), mate("3")];
+          const { clock, rig, environments } = yield* granted([], [named, down, coming]);
+          yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
+          // Unreachable, it boots and is read again at once; a Mate still coming up answers /healthz only.
+          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+          yield* clock.advance(SECOND);
+          const unanswered = () => environments.index().unanswered;
+
+          environments.setRoute(ENV_A);
+          yield* settle;
+          const swept = unanswered();
+          // The read in flight left before the sweep asked: it does not answer for it.
+          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+          const olderRead = unanswered();
+          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
+          const sweptRead = unanswered();
+          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
+
+          expect({ swept, olderRead, sweptRead, comingUp: unanswered() }).toEqual({
+            swept: [down.key, coming.key],
+            olderRead: [down.key, coming.key],
+            sweptRead: [coming.key],
+            comingUp: [coming.key],
+          });
+          expect(environments.index().failed).toEqual([down.key, coming.key]);
+        }),
+      ),
+  );
+
   it.effect.each([
     {
       name: "a ready Mate of the organization the tab has open",

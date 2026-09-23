@@ -27,7 +27,7 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { selectAutoConnectTargets } from "../autoConnect.ts";
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
-import type { Evidence, GrantMachine } from "../data/access/grant.ts";
+import type { Evidence, GrantMachine, Instant } from "../data/access/grant.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import { knownProjectsOf, knownServicesOf } from "../data/known.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
@@ -255,11 +255,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
   const exchangedAt = new Map<TargetKey, string>();
-  /** The route a sweep read targets for, and the targets it read. */
-  let swept: { readonly route: EnvironmentId | null; readonly keys: Set<TargetKey> } = {
-    route: null,
-    keys: new Set(),
-  };
+  /** The route a sweep read targets for, and when it asked for each target it read. */
+  let swept: {
+    readonly route: EnvironmentId | null;
+    readonly keys: ReadonlyMap<TargetKey, Instant>;
+  } = { route: null, keys: new Map() };
   /** The activity feed of each booting target's project: its lease and its subscription. */
   const activity = new Map<
     string,
@@ -470,11 +470,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /**
    * The route's target, wanted first: the one its record remembers, else the one the descriptor
    * index finds. While nothing names the route's environment, each present target read without
-   * an answer is read once more, once per route (§4.8's sweep).
+   * an answer is read once more, once per route (§4.8's sweep): an unreachable one that fails
+   * that read too has answered for the index.
    */
   const updateRoute = () => {
     if (stores === null || closed) return;
-    if (swept.route !== route) swept = { route, keys: new Set() };
+    if (swept.route !== route) swept = { route, keys: new Map() };
     if (route === null) {
       stores.driver.setDemand("route", []);
       return;
@@ -487,11 +488,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       resolved?.key;
     stores.driver.setDemand("route", key === undefined ? [] : [key]);
     if (resolved !== undefined) return;
-    for (const failed of index.failed) {
-      if (swept.keys.has(failed)) continue;
-      swept.keys.add(failed);
-      stores.containers.request(failed);
-    }
+    const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
+    if (unswept.length === 0) return;
+    const asked = ports.clock.now();
+    swept = {
+      route,
+      keys: new Map([...swept.keys, ...unswept.map((key) => [key, asked] as const)]),
+    };
+    for (const failed of unswept) stores.containers.request(failed);
   };
 
   /**
@@ -558,13 +562,24 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let indexed: {
     readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
     readonly containers: ReadonlyMap<TargetKey, ContainerMachine>;
+    readonly reread: ReadonlyMap<TargetKey, Instant>;
     readonly index: DescriptorIndex;
   } | null = null;
   const indexOf = (): DescriptorIndex => {
     const machines = stores!.driver.machines();
     const containers = stores!.containers.machines();
-    if (indexed?.machines !== machines || indexed.containers !== containers) {
-      indexed = { machines, containers, index: indexDescriptors(machines, containers) };
+    const reread = swept.keys;
+    if (
+      indexed?.machines !== machines ||
+      indexed.containers !== containers ||
+      indexed.reread !== reread
+    ) {
+      indexed = {
+        machines,
+        containers,
+        reread,
+        index: indexDescriptors(machines, containers, reread),
+      };
     }
     return indexed.index;
   };
