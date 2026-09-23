@@ -146,9 +146,9 @@ const tabMintBudgets = makeThrowawayMintBudgets();
  *
  * `mintThrowaway` mints `NO_ACCESS` with no projects and refuses to set a
  * flag of any kind, which is what makes what it mints a throwaway rather than
- * something a door has to argue with. A mint first takes a slot from this
- * tab's budget for its kind, and waits for a closed account window rather
- * than refusing; `signal` ends both waits and the mint — never the delete,
+ * something a door has to argue with, and why a closed account window does
+ * not hold it up. A mint first takes a slot from this tab's budget for its
+ * kind; `signal` ends that wait and the mint — never the delete,
  * which runs on its own deadline with the token the mint carried and is tried
  * once more after {@link THROWAWAY_DELETE_RETRY_MS} when Zerops could not
  * answer.

@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
 import {
-  ACCOUNT_WINDOW_WAIT_MS,
   ZeropsApiClient,
   ZeropsApiError,
   type FetchImplementation,
@@ -241,11 +240,7 @@ describe("throwaway hygiene", () => {
     vi.useRealTimers();
   });
 
-  // The client's half of T-L6: requests in flight never hold a mint while the
-  // window is open. It pins the client only: the inventory provider closes
-  // the window at the start of every round, so in the app a mint during a
-  // round waits for that round's grant. The end-to-end row, with the window
-  // kept open through a renewal, belongs to slice 0.6.
+  // The client's half of T-L6: requests in flight never hold a mint.
   it("mint during a round proceeds", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
@@ -266,48 +261,111 @@ describe("throwaway hygiene", () => {
     await renewal;
   });
 
-  it("mint during a lapse waits, then runs on the new grant", async () => {
-    vi.useFakeTimers();
-    const tab = signedInTab();
-    tab.client.setWritesAllowed(false);
+  // T-L6's lapse half under C6: a throwaway carries no rights, so closed
+  // project writes do not hold it up; a mint that grants anything keeps them.
+  describe("a door throwaway mints while project writes are closed; a project-granting mint is refused", () => {
+    type Tab = ReturnType<typeof signedInTab>;
+    for (const row of [
+      {
+        mint: "a door throwaway",
+        minted: true,
+        run: (tab: Tab) => tab.throwaways().mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
+      },
+      {
+        mint: "a Gitea sign-in throwaway",
+        minted: true,
+        run: (tab: Tab) =>
+          tab.throwaways().mint({ clientId: "org-1", name: "gitea-signin:git.example:n1" }),
+      },
+      {
+        mint: "a NO_ACCESS token granting a project",
+        minted: false,
+        run: (tab: Tab) =>
+          tab.client.mintIntegrationToken({
+            clientId: "org-1",
+            name: "deploy-p1",
+            roleCode: "NO_ACCESS",
+            projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
+          }),
+      },
+      {
+        mint: "a READ_ONLY token with no projects",
+        minted: false,
+        run: (tab: Tab) =>
+          tab.client.mintIntegrationToken({
+            clientId: "org-1",
+            name: "reader",
+            roleCode: "READ_ONLY",
+            projects: [],
+          }),
+      },
+      {
+        mint: "a NO_ACCESS token that sends no project list",
+        minted: false,
+        run: (tab: Tab) =>
+          tab.client.mintIntegrationToken({
+            clientId: "org-1",
+            name: "bare",
+            roleCode: "NO_ACCESS",
+          }),
+      },
+    ] as const) {
+      it(`${row.mint} ${row.minted ? "mints" : "is refused"}`, async () => {
+        vi.useFakeTimers();
+        const tab = signedInTab();
+        tab.client.setWritesAllowed(false);
 
-    const minting = tab.throwaways().mint({
-      clientId: "org-1",
-      name: "mate-door:p1:n1",
-    });
-    await vi.advanceTimersByTimeAsync(20_000);
-    expect(tab.mints()).toHaveLength(0);
+        let outcome: unknown = "pending";
+        void row.run(tab).then(
+          () => {
+            outcome = "minted";
+          },
+          (cause: unknown) => {
+            outcome = cause;
+          },
+        );
+        await settle();
 
-    tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
-
-    await expect(minting).resolves.toMatchObject({ id: "integration-1" });
-    expect(tab.mints()).toHaveLength(1);
+        if (row.minted) {
+          expect(outcome).toBe("minted");
+          expect(tab.mints()).toHaveLength(1);
+        } else {
+          expect(outcome).toMatchObject({
+            kind: "unexpected",
+            message: "Project access could not be verified.",
+          });
+          expect(tab.mints()).toEqual([]);
+        }
+      });
+    }
   });
 
-  it("bound elapses → retryable", async () => {
+  // AL-12: the account-write admission changes nothing about a lost answer.
+  // Zerops may hold the token, so the mint is uncertain, never a network
+  // failure a caller would read as "nothing happened".
+  it("a rights-less mint whose answer is lost is uncertain", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
-    tab.client.setWritesAllowed(false);
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        const response = await tab.rest.fetch(input, init);
+        if (init?.method === "POST") throw new TypeError("Failed to fetch");
+        return response;
+      },
+      now: () => Date.now(),
+    });
+    client.restoreSession(tab.session);
+    client.setWritesAllowed(false);
 
-    const minting = tab
-      .throwaways()
+    const failure = await zeropsThrowawayPlatform(client, undefined, makeThrowawayMintBudgets())
       .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
       .then(
         () => null,
         (cause: unknown) => cause,
       );
-    await vi.advanceTimersByTimeAsync(ACCOUNT_WINDOW_WAIT_MS - 1);
-    expect(tab.mints()).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(1);
 
-    const failure = await minting;
-    expect(failure).toBeInstanceOf(ZeropsApiError);
-    expect((failure as ZeropsApiError).kind).toBe("access-unverified");
-    expect(tab.mints()).toHaveLength(0);
-    // A grant after the attempt gave up mints nothing on its behalf.
-    tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
-    await settle();
-    expect(tab.mints()).toHaveLength(0);
+    expect(failure).toMatchObject({ kind: "uncertain" });
+    expect(tab.rest.integrationTokens()).toHaveLength(1);
   });
 
   it("aborting the exchange after the mint still deletes the token", async () => {
@@ -382,57 +440,6 @@ describe("throwaway hygiene", () => {
       }
     });
   }
-
-  // T-L16: a mint parked on a closed window belongs to the account that asked
-  // for it, and a grant for whoever signed in since never carries it out.
-  for (const row of [
-    { next: "another person", email: "user-2@example.test", password: "two" },
-    { next: "the same person", email: "user-1@example.test", password: "one" },
-  ] as const) {
-    it(`a mint waiting on a closed window is dropped when ${row.next} signs in meanwhile, and the grant mints nothing`, async () => {
-      vi.useFakeTimers();
-      const tab = signedInTab();
-      tab.client.setWritesAllowed(false);
-      const minting = tab
-        .throwaways()
-        .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
-        .then(
-          () => null,
-          (cause: unknown) => cause,
-        );
-      await settle();
-
-      await tab.client.signOutLocally();
-      const signedInAgain = (await tab.client.login(row.email, row.password)).auth;
-      tab.client.setWritesAllowed(true, Date.now() + ACCESS_WINDOW_MS);
-      await settle();
-
-      expect(await minting).toMatchObject({ kind: "expired-session" });
-      expect(tab.mints()).toEqual([]);
-      expect(tab.rest.integrationTokens()).toEqual([]);
-      expect(tab.client.session?.accessToken).toBe(signedInAgain.accessToken);
-    });
-  }
-
-  it("a sign-out ends a mint's wait for the window at once", async () => {
-    vi.useFakeTimers();
-    const tab = signedInTab();
-    tab.client.setWritesAllowed(false);
-    let failure: unknown = null;
-    void tab
-      .throwaways()
-      .mint({ clientId: "org-1", name: "mate-door:p1:n1" })
-      .catch((cause: unknown) => {
-        failure = cause;
-      });
-    await settle();
-
-    await tab.client.signOutLocally();
-    await settle();
-
-    expect(failure).toMatchObject({ kind: "expired-session" });
-    expect(tab.mints()).toEqual([]);
-  });
 
   // CM-3: the organization's write flag would lock these members out, and
   // the door and the broker are what decide their roles.

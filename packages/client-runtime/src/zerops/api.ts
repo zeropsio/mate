@@ -74,9 +74,6 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
-/** How long a throwaway mint waits for a closed account window to open (DESIGN §4.3). */
-export const ACCOUNT_WINDOW_WAIT_MS = 30_000;
-
 /** A throwaway delete's own deadline; it never runs on a caller's signal. */
 export const THROWAWAY_DELETE_TIMEOUT_MS = 15_000;
 
@@ -652,6 +649,25 @@ interface RequestOptions {
   readonly clearSessionOnUnauthorized?: boolean;
   /** Told the access token each attempt carries, just before it is sent. */
   readonly sentWith?: (accessToken: string) => void;
+  /**
+   * Whether a request lost in transport may still have been carried out, so
+   * its failure is `uncertain` rather than `network`. Defaults to whether it
+   * writes a project.
+   */
+  readonly mayHaveWritten?: boolean;
+}
+
+/**
+ * Whether a mint carries no rights at all: `NO_ACCESS` and an empty project
+ * list, with the flags every mint here sends as false (spec-mate C6). Such a
+ * mint is an `account-write`; one that names no project list is left to the
+ * platform's default and stays a `project-write`, as does every grant.
+ */
+function grantsNothing(mint: {
+  readonly roleCode: ZeropsProjectRole;
+  readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
+}): boolean {
+  return mint.roleCode === "NO_ACCESS" && mint.projects?.length === 0;
 }
 
 function isProjectWriteAdmissionError(cause: unknown): boolean {
@@ -744,11 +760,6 @@ async function readProjectPages<T extends { readonly id: string }>(
 export class ZeropsApiClient {
   #writesAllowedUntilMs = Number.POSITIVE_INFINITY;
   /**
-   * Everything {@link awaitAccountWindow} holds: opened by the next grant, or
-   * ended with the account epoch it was asked in.
-   */
-  readonly #windowWaiters = new Set<{ readonly open: () => void; readonly end: () => void }>();
-  /**
    * Installs the verified account write window. The request path checks this
    * absolute deadline itself, so browser timer throttling cannot extend it.
    */
@@ -757,65 +768,6 @@ export class ZeropsApiClient {
     deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
   ): void {
     this.#writesAllowedUntilMs = allowed ? deadlineMs : 0;
-    if (!this.#accountWindowOpen()) return;
-    for (const waiter of this.#windowWaiters) waiter.open();
-  }
-
-  #accountWindowOpen(): boolean {
-    return this.#now() < this.#writesAllowedUntilMs;
-  }
-
-  /**
-   * Resolves once the account window is open (DESIGN §4.3 `identityMint`):
-   * at once while it is, otherwise when the next grant opens it, for at most
-   * {@link ACCOUNT_WINDOW_WAIT_MS}. Past that it fails with the retryable
-   * `access-unverified`. An epoch that ends meanwhile — a sign-out, another
-   * session adopted — ends the wait with `expired-session`: a grant after it
-   * is somebody else's.
-   *
-   * The window is the account's alone. No organization or project role is
-   * checked: a throwaway carries no rights, and the door and the broker decide
-   * roles with their own keys — a BASIC_USER or a READ_ONLY member with a
-   * project override mints like an owner.
-   */
-  awaitAccountWindow(signal?: AbortSignal): Promise<void> {
-    if (this.#accountWindowOpen()) return Promise.resolve();
-    const aborted = () =>
-      new ZeropsApiError("The request was cancelled before it reached Zerops.", "network");
-    if (signal?.aborted === true) return Promise.reject(aborted());
-    return new Promise<void>((resolve, reject) => {
-      const waiter = {
-        open: () => {
-          done();
-          resolve();
-        },
-        end: () => {
-          done();
-          reject(new ZeropsApiError("This account session has ended.", "expired-session", 401));
-        },
-      };
-      const done = () => {
-        clearTimeout(bound);
-        this.#windowWaiters.delete(waiter);
-        signal?.removeEventListener("abort", abort);
-      };
-      const abort = () => {
-        done();
-        reject(aborted());
-      };
-      // @effect-diagnostics-next-line globalTimers:off -- a plain-promise client bounding its own wait.
-      const bound = setTimeout(() => {
-        done();
-        reject(
-          new ZeropsApiError(
-            "Zerops access is still being checked. Try again in a moment.",
-            "access-unverified",
-          ),
-        );
-      }, ACCOUNT_WINDOW_WAIT_MS);
-      this.#windowWaiters.add(waiter);
-      signal?.addEventListener("abort", abort, { once: true });
-    });
   }
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
@@ -1026,7 +978,6 @@ export class ZeropsApiClient {
   /** Ends the account epoch: nothing asked for in it runs in the next. */
   #nextGeneration(): number {
     this.#generation += 1;
-    for (const waiter of this.#windowWaiters) waiter.end();
     return this.#generation;
   }
 
@@ -1605,6 +1556,10 @@ export class ZeropsApiClient {
    * No flags, ever: `canCreateProjects` and the finance flags are what turn a
    * token into something that can name a person at a door (3.2), and nothing
    * this client mints needs them.
+   *
+   * A mint that grants anything is a `project-write`, admitted by the account
+   * window and `beforeWrite`; one that grants nothing is an `account-write`,
+   * which neither holds up.
    */
   async mintIntegrationToken(
     input: {
@@ -1624,13 +1579,13 @@ export class ZeropsApiClient {
    * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door or
    * one Gitea sign-in (`authorization/zeropsThrowaway.ts`).
    *
-   * A closed account window is waited for rather than refused
-   * ({@link awaitAccountWindow}, spec-mate C5a): a mint that lands in a lapse
-   * runs on the grant that ends it. The write stays `project-write` until C6.
+   * It carries no rights, so it is an `account-write` that a closed account
+   * window does not hold up (spec-mate C6): the door and the broker decide
+   * what it opens, with their own keys, when it is presented.
    *
    * `beforeMint` is a wait of the caller's own — a rate budget — that the
-   * mint queues behind. Every wait on the way belongs to the account epoch
-   * the mint was asked in: one that ends meanwhile refuses the mint with
+   * mint queues behind. The wait belongs to the account epoch the mint was
+   * asked in: one that ends meanwhile refuses the mint with
    * `expired-session`, so nothing is minted as whoever signed in since.
    *
    * `mintingToken` is the session access token the mint carried. The
@@ -1648,7 +1603,7 @@ export class ZeropsApiClient {
     return this.#mintIntegrationToken(
       { clientId: input.clientId, name: input.name, roleCode: "NO_ACCESS", projects: [] },
       options.signal,
-      () => this.awaitAccountWindow(options.signal),
+      undefined,
     );
   }
 
@@ -1678,8 +1633,10 @@ export class ZeropsApiClient {
         }),
       },
       {
-        operationKind: "project-write",
+        operationKind: grantsNothing(input) ? "account-write" : "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+        // A token exists whether or not its answer arrives.
+        mayHaveWritten: true,
         sentWith: (accessToken) => {
           mintingToken = accessToken;
         },
@@ -3008,6 +2965,7 @@ export class ZeropsApiClient {
     const method = init.method ?? "GET";
     const operationKind = options.operationKind ?? (method === "GET" ? "read" : "project-write");
     const mutatesProject = operationKind === "project-write";
+    const mayHaveWritten = options.mayHaveWritten ?? mutatesProject;
     const generation = this.#generation;
     const authenticated = options.authenticated ?? true;
     const retryAfterRefresh = options.retryAfterRefresh ?? true;
@@ -3056,7 +3014,7 @@ export class ZeropsApiClient {
     } catch (cause) {
       if (cause instanceof ZeropsApiError) throw cause;
       if (isProjectWriteAdmissionError(cause)) throw cause;
-      if (mutatesProject)
+      if (mayHaveWritten)
         throw new ZeropsApiError(
           "Zerops may have accepted this operation, but its response was lost. Check the project and its services before starting another operation.",
           "uncertain",
