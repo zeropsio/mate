@@ -63,6 +63,14 @@ export interface ZeropsEnvironmentRowProps {
   readonly className?: string;
 }
 
+/**
+ * The row's three places as a grid — name, what it holds, the trailing end —
+ * for any line that should run down the same columns (the projects page's
+ * tools line).
+ */
+export const ENVIRONMENT_ROW_GRID_CLASS =
+  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0";
+
 export function ZeropsEnvironmentRow({
   name,
   tag,
@@ -76,10 +84,7 @@ export function ZeropsEnvironmentRow({
   return (
     <li
       aria-busy={busy || undefined}
-      className={cn(
-        "group/row grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0",
-        className,
-      )}
+      className={cn("group/row", ENVIRONMENT_ROW_GRID_CLASS, className)}
       data-zerops-environment-row="true"
     >
       <span className="flex min-w-0 items-center gap-2.5">

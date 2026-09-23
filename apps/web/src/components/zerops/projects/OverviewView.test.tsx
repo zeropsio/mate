@@ -21,6 +21,7 @@ import {
   WREN,
   type Item,
 } from "./flowTestFixtures";
+import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 describe("the Overview", () => {
@@ -281,5 +282,34 @@ describe("the Overview", () => {
     const html = render({ groups: [entry([UMA], {}, false)] });
     expect(html).not.toContain('data-zerops-surface="only-a-mate"');
     expect(html).toContain('data-zerops-surface="flow-rows"');
+  });
+});
+
+describe("the quiet end", () => {
+  const GITEA = item("mate-gitea", ["mate:tool:gitea"], false);
+
+  it("sets the tools line on the environment rows' grid, one list with them", () => {
+    const html = render({
+      groups: [MERGING],
+      tools: [{ item: GITEA, kind: "gitea" }],
+      ungrouped: [{ item: item("zerops-ads", [], false), action: "set-up-mate" }],
+      renderEnvironment: (value) => (
+        <li className={ENVIRONMENT_ROW_GRID_CLASS} data-test-environment={value.project.id} />
+      ),
+    });
+    const end = html.slice(html.indexOf('data-zerops-surface="quiet-end"'));
+    expect(end.match(/<ul/gu)).toHaveLength(1);
+    expect(end).toMatch(/px-3/u);
+    const tools = end.slice(end.lastIndexOf("<li", end.indexOf('data-zerops-tools="true"')));
+    expect(tools).toContain(`class="${ENVIRONMENT_ROW_GRID_CLASS}`);
+    expect(tools).toContain(">Tools<");
+    expect(tools).toContain('data-test-tool="mate-gitea"');
+  });
+
+  it("is only the tools line where every project has a Mate", () => {
+    const html = render({ groups: [MERGING], onCreateTool: () => {} });
+    const end = html.slice(html.indexOf('data-zerops-surface="quiet-end"'));
+    expect(end.match(/<li/gu)).toHaveLength(1);
+    expect(end).toContain("Add Gitea");
   });
 });

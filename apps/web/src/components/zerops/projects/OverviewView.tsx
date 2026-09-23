@@ -17,6 +17,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "../../ui/button";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
+import { ENVIRONMENT_ROW_GRID_CLASS } from "../ZeropsEnvironmentRow";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import {
   drawn,
@@ -494,35 +495,36 @@ export function QuietEnd<T>({
   const offerGitea =
     props.onCreateTool !== undefined && props.tools.every((tool) => tool.kind !== "gitea");
   if (withoutMate.length === 0 && props.tools.length === 0 && !offerGitea) return null;
+  // One list on the environment rows' grid, so the tools line runs down the
+  // same columns as the projects above it.
   return (
-    <section className="flex flex-col gap-2" data-zerops-surface="quiet-end">
-      {withoutMate.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-border/50" data-zerops-surface="without-mate">
-          {withoutMate.map(({ item }) => (
-            <Fragment key={props.getKey(item)}>{props.renderEnvironment(item, undefined)}</Fragment>
-          ))}
-        </ul>
-      ) : null}
-      <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
-        data-zerops-tools="true"
-      >
-        <span>Tools:</span>
-        {props.tools.map(({ item, kind }) => (
-          <Fragment key={props.getKey(item)}>{props.renderTool(item, kind)}</Fragment>
+    <section data-zerops-surface="quiet-end">
+      <ul className="flex flex-col divide-y divide-border/50 px-3">
+        {withoutMate.map(({ item }) => (
+          <Fragment key={props.getKey(item)}>{props.renderEnvironment(item, undefined)}</Fragment>
         ))}
-        {offerGitea ? (
-          <button
-            className={QUIET_BUTTON_CLASS}
-            disabled={props.creating}
-            onClick={props.onCreateTool}
-            type="button"
-          >
-            <span aria-hidden="true">+</span>
-            <span>Add {TOOL_LABEL.gitea}</span>
-          </button>
-        ) : null}
-      </div>
+        <li className={ENVIRONMENT_ROW_GRID_CLASS} data-zerops-tools="true">
+          <MicroLabel className="text-muted-foreground">Tools</MicroLabel>
+          <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-3 text-xs sm:col-span-1">
+            {props.tools.map(({ item, kind }) => (
+              <Fragment key={props.getKey(item)}>{props.renderTool(item, kind)}</Fragment>
+            ))}
+          </span>
+          <span className="col-start-2 row-start-1 flex justify-end sm:col-start-3">
+            {offerGitea ? (
+              <button
+                className={QUIET_BUTTON_CLASS}
+                disabled={props.creating}
+                onClick={props.onCreateTool}
+                type="button"
+              >
+                <span aria-hidden="true">+</span>
+                <span>Add {TOOL_LABEL.gitea}</span>
+              </button>
+            ) : null}
+          </span>
+        </li>
+      </ul>
     </section>
   );
 }
