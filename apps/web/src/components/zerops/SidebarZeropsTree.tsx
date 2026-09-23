@@ -196,10 +196,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getFlow?: ((groupId: string) => SidebarProjectFlow | undefined) | undefined;
   readonly className?: string;
   /**
-   * Nothing has been read for this organization yet: say nothing rather than
+   * The listing is known and complete, and every row's presence is read
+   * (`candidatesComplete`). Until then the tree says nothing rather than
    * "none". A re-read is not that — the list already read stays up.
    */
-  readonly unread?: boolean;
+  readonly complete: boolean;
   /** Opens the group's own page, in place of the thread. */
   readonly onOpenGroup?: ((groupId: string) => void) | undefined;
 }
@@ -213,7 +214,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   activeProjectId,
   getActivity,
   getFlow,
-  unread = false,
+  complete,
   className,
 }: SidebarZeropsTreeProps<T>) {
   const emptyReason = mateEnvironmentsEmptyReason(candidates);
@@ -227,13 +228,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // step without either one owning the other.
   const [projectOrder] = useProjectOrderPreference();
 
-  // Nothing read yet is not nothing: an empty state that shows for the first
-  // second of every reload and then gives way to the roster sends the whole
-  // menu jumping. Say nothing until the list has been read once.
-  if (unread && candidates.length === 0) {
-    return null;
-  }
-
   // No project at all: nothing to list and nothing to say — the header's
   // "+ New project" is the one affordance, and the projects screen already
   // makes the invitation. A second "New project" here would be the same verb
@@ -244,7 +238,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
   // edge, where every other row starts, and the way to the projects screen.
+  // Only once the list is complete: unread is not none, and a line that shows
+  // for the first second of every reload sends the whole menu jumping.
   if (emptyReason !== undefined) {
+    if (!complete) return null;
     return (
       <div
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}

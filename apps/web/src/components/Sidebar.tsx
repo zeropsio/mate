@@ -217,6 +217,7 @@ import {
   type EnvironmentRow,
   resolvePrimaryConversation,
 } from "@t3tools/client-runtime/zerops";
+import { candidatesComplete } from "@t3tools/client-runtime/zerops/projections";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
@@ -1724,7 +1725,7 @@ export default function Sidebar() {
   // else about the account is the projects screen's job.
   const { status: zeropsStatus } = useZeropsSession();
   const zeropsSignedIn = zeropsStatus === "signed-in";
-  const { candidates: zeropsCandidates, readOnce: zeropsCandidatesRead } = useZeropsCandidates();
+  const { candidates: zeropsCandidates, listing: zeropsListing } = useZeropsCandidates();
   // The roster says what every agent is doing, and the only thing that knows
   // is the environment's own server. So every container that answers the
   // health probe is registered on the user's behalf; from then on its socket
@@ -3908,7 +3909,7 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               candidates={zeropsCandidates}
               className="mb-2"
-              unread={!zeropsCandidatesRead}
+              complete={candidatesComplete(zeropsListing)}
               onAddMate={requestAddMate}
               onBrowseProjects={navigateToZeropsProjects}
               getFlow={zeropsSidebarFlowWithAsk}

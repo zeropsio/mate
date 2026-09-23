@@ -19,14 +19,17 @@ import {
 } from "@t3tools/client-runtime/zerops";
 
 import { useEnvironments } from "../state/environments";
-import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { projectZeropsCandidates } from "@t3tools/client-runtime/zerops/candidateLoading";
+import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  knownProjectsOf,
+  knownServicesOf,
   projectKeyOf,
   type CollectionRead,
   type ProjectRecord,
   type ServiceRecord,
 } from "@t3tools/client-runtime/zerops/data";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { selectCandidates, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/unstable/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { zeropsEnvironmentNamesAtom, zeropsMatesAtom } from "../state/zerops";
@@ -35,6 +38,7 @@ import { refreshZeropsCandidates } from "./candidatesRefresh";
 import { zeropsEnvironmentNames } from "./environmentNames";
 import { zeropsMateIdentities } from "./mateIdentities";
 import { inventoryProjectRefKey } from "./inventoryContext";
+import { useNowMs } from "./useNowMs";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
   stabilizeZeropsAtom,
@@ -43,7 +47,7 @@ import {
   zeropsKnowledgeArraysEqual,
 } from "./zeropsDataContext";
 
-export interface ZeropsCandidatePresentation extends ZeropsCandidate {
+export interface ZeropsCandidatePresentation extends CandidateRow {
   readonly connection?: EnvironmentConnectionPresentation;
   /**
    * Where the environment is reachable from outside, read off the same
@@ -77,6 +81,21 @@ export function authenticatedZeropsOrigins(
     if (origin) byOrigin.set(origin, environment.environmentId);
   }
   return byOrigin;
+}
+
+/**
+ * A ready candidate whose origin a connected environment serves is connected
+ * to it. `selectCandidates` mixes no socket phase in; this is the join.
+ */
+export function withZeropsConnection(
+  row: CandidateRow,
+  connectedOrigins: ReadonlyMap<string, EnvironmentId>,
+): CandidateRow {
+  if (row.group !== "ready" || row.containerOrigin === undefined) return row;
+  const environmentId = connectedOrigins.get(
+    normalizeOrigin(row.containerOrigin) ?? row.containerOrigin,
+  );
+  return environmentId === undefined ? row : { ...row, group: "connected", environmentId };
 }
 
 /** Every registered environment keyed by origin, socket up or not — who lives where is known before it connects. */
@@ -120,17 +139,20 @@ const EMPTY_PROJECTS_READ_ATOM = Atom.make<CollectionRead<ProjectRecord> | null>
   Atom.withLabel("zerops:candidates-projects-empty"),
 );
 
+const UNREAD: Known<never> = { state: "unread", waitingFor: null };
+const NO_CANDIDATES: ReadonlyArray<ZeropsCandidatePresentation> = [];
+
 export function useZeropsCandidates(): {
+  /** The rows of a known listing; none while it is unread, being read or failed. */
   readonly candidates: ReadonlyArray<ZeropsCandidatePresentation>;
+  /**
+   * The active organization's candidates as knowledge (DESIGN §3): "no
+   * projects" is only ever read off a known, complete listing, and a re-read
+   * keeps the list already read up while the fresh baseline lands.
+   */
+  readonly listing: Known<ReadonlyArray<ZeropsCandidatePresentation>>;
   /** A read is in flight: the header's spinner, never a reason to paint less. */
   readonly isLoading: boolean;
-  /**
-   * The active organization's list has been read at least once. A re-read
-   * keeps it true — the list already read stays up while the fresh baseline
-   * lands. Until the first read, an empty list says nothing: "no projects"
-   * would be a guess the roster then takes back.
-   */
-  readonly readOnce: boolean;
   readonly error: string | null;
   readonly refresh: () => void;
 } {
@@ -159,7 +181,7 @@ export function useZeropsCandidates(): {
     [activeOrganizationRef, runtime],
   );
   const rawProjects = useAtomValue(projectsReadAtom);
-  const readOnce = canLoad && rawProjects !== null && rawProjects.query.status === "observed";
+  const nowMs = useNowMs();
   const serviceReadEntries = useMemo(
     () =>
       activeOrganizationRef === null
@@ -191,57 +213,69 @@ export function useZeropsCandidates(): {
   );
   const registeredOrigins = useMemo(() => registeredZeropsOrigins(environments), [environments]);
 
-  const candidates = useMemo(() => {
-    if (activeOrganization === null || rawProjects === null) return [];
-    const allowedProjects: CollectionRead<ProjectRecord> = {
-      ...rawProjects,
-      value: rawProjects.value.filter((knowledge) => {
-        const ref = knowledge.knowledge === "observed" ? knowledge.record.ref : knowledge.ref;
-        const allowed = inventory.projectRefs.get(inventoryProjectRefKey(ref));
-        return (
-          allowed !== undefined &&
-          projectKeyOf(allowed) === projectKeyOf(ref) &&
-          serviceReads.has(projectKeyOf(ref))
-        );
+  const listing = useMemo((): Known<ReadonlyArray<ZeropsCandidatePresentation>> => {
+    if (!canLoad || activeOrganization === null || rawProjects === null) return UNREAD;
+    const projects = knownProjectsOf(rawProjects, nowMs);
+    const allowedProjects: Known<ReadonlyArray<ProjectRecord>> =
+      projects.state !== "known"
+        ? projects
+        : {
+            ...projects,
+            value: projects.value.filter((record) => {
+              const allowed = inventory.projectRefs.get(inventoryProjectRefKey(record.ref));
+              return (
+                allowed !== undefined &&
+                projectKeyOf(allowed) === projectKeyOf(record.ref) &&
+                serviceReads.has(projectKeyOf(record.ref))
+              );
+            }),
+          };
+    const selected = selectCandidates(allowedProjects, (ref) => {
+      const read = serviceReads.get(projectKeyOf(ref));
+      return read === undefined ? UNREAD : knownServicesOf(read, nowMs);
+    });
+    if (selected.state !== "known") return selected;
+    return {
+      ...selected,
+      value: selected.value.map((row): ZeropsCandidatePresentation => {
+        const candidate = withZeropsConnection(row, connectedOrigins);
+        const project = inventory.projects.find((entry) => entry.id === candidate.project.id);
+        const outcome = services.get(candidate.project.id);
+        const resolved = outcome?.status === "resolved" ? outcome.services : null;
+        const routes =
+          project === undefined || resolved === null
+            ? undefined
+            : derivePublicRoutes(project, resolved);
+        const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
+        const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
+        const origin = candidate.containerOrigin
+          ? normalizeOrigin(candidate.containerOrigin)
+          : null;
+        const connection = origin === null ? undefined : connectionsByOrigin.get(origin);
+        return {
+          ...candidate,
+          ...(candidate.project.status === "ACTIVE"
+            ? routes === undefined || held === undefined
+              ? {}
+              : { routes, routeOffers: routeOffers ?? [], services: held }
+            : { routes: [], services: NO_SERVICES }),
+          ...(connection === undefined ? {} : { connection }),
+        };
       }),
     };
-    const projection = projectZeropsCandidates(
-      allowedProjects,
-      (project) => serviceReads.get(projectKeyOf(project.ref))!,
-      connectedOrigins,
-    );
-    return projection.candidates.map((candidate): ZeropsCandidatePresentation => {
-      const project = inventory.projects.find((entry) => entry.id === candidate.project.id);
-      const outcome = services.get(candidate.project.id);
-      const resolved = outcome?.status === "resolved" ? outcome.services : null;
-      const routes =
-        project === undefined || resolved === null
-          ? undefined
-          : derivePublicRoutes(project, resolved);
-      const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
-      const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
-      const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;
-      const connection = origin === null ? undefined : connectionsByOrigin.get(origin);
-      return {
-        ...candidate,
-        ...(candidate.project.status === "ACTIVE"
-          ? routes === undefined || held === undefined
-            ? {}
-            : { routes, routeOffers: routeOffers ?? [], services: held }
-          : { routes: [], services: NO_SERVICES }),
-        ...(connection === undefined ? {} : { connection }),
-      };
-    });
   }, [
     activeOrganization,
+    canLoad,
     connectedOrigins,
     connectionsByOrigin,
     inventory.projectRefs,
     inventory.projects,
+    nowMs,
     rawProjects,
     serviceReads,
     services,
   ]);
+  const candidates = listing.state === "known" ? listing.value : NO_CANDIDATES;
 
   // Publish the environments' names, and who lives in each, for readers that
   // never load candidates (`useZeropsEnvironmentNames`, `useZeropsMates`). A
@@ -267,5 +301,5 @@ export function useZeropsCandidates(): {
     refreshZeropsCandidates();
   }, []);
 
-  return { candidates, isLoading, readOnce, error, refresh };
+  return { candidates, listing, isLoading, error, refresh };
 }

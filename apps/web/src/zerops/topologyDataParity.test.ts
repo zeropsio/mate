@@ -8,6 +8,8 @@ import {
   reduceZeropsDataState,
   selectHistory,
   selectActivity,
+  knownProjectsOf,
+  knownServicesOf,
   selectProjectsOf,
   selectServicesOf,
   selectTopology,
@@ -26,7 +28,7 @@ import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
 import { readProjectProcesses } from "@t3tools/client-runtime/zerops/activity/dto";
 import { getPipelineState } from "@t3tools/client-runtime/zerops/activity/pipelineState";
 import { observe } from "@t3tools/client-runtime/zerops/activity/observe";
-import { projectZeropsCandidates } from "@t3tools/client-runtime/zerops/candidateLoading";
+import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   derivePublicRoutes,
   derivePublicRouteOffers,
@@ -291,11 +293,12 @@ describe("original topology behavior through the central data pipeline", () => {
         "direct-read",
       ),
     );
-    const candidates = projectZeropsCandidates(
-      selectProjectsOf(f.state(), owner.organization),
-      (record) => selectServicesOf(f.state(), record.ref),
-      new Map(),
-    ).candidates;
+    const listing = selectCandidates(
+      knownProjectsOf(selectProjectsOf(f.state(), owner.organization), 0),
+      (ref) => knownServicesOf(selectServicesOf(f.state(), ref), 0),
+    );
+    expect(listing.state).toBe("known");
+    const candidates = listing.state === "known" ? listing.value : [];
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.project.clientId).toBe(projectDto.clientId);
     expect(candidates[0]?.project).toEqual(projectDto);

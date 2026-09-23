@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 
-import { authenticatedZeropsOrigins } from "./useZeropsCandidates";
+import { authenticatedZeropsOrigins, withZeropsConnection } from "./useZeropsCandidates";
 
 const PROJECT: ZeropsProject = {
   id: "project-1",
@@ -23,6 +23,11 @@ const SERVICE: ZeropsService = {
   serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
 };
 
+const READY = {
+  ...deriveZeropsCandidates(PROJECT, [SERVICE], new Map())[0]!,
+  presence: "known" as const,
+};
+
 describe("authenticatedZeropsOrigins", () => {
   it("does not group a registered same-origin environment as connected until it authenticates", () => {
     const environmentId = EnvironmentId.make("environment-1");
@@ -34,7 +39,7 @@ describe("authenticatedZeropsOrigins", () => {
       },
     ]);
 
-    expect(deriveZeropsCandidates(PROJECT, [SERVICE], registeredButRejected)[0]).toMatchObject({
+    expect(withZeropsConnection(READY, registeredButRejected)).toMatchObject({
       group: "ready",
       containerOrigin: "https://zcp-24cb-8080.prg1.zerops.app",
     });
@@ -47,7 +52,7 @@ describe("authenticatedZeropsOrigins", () => {
       },
     ]);
 
-    expect(deriveZeropsCandidates(PROJECT, [SERVICE], authenticated)[0]).toMatchObject({
+    expect(withZeropsConnection(READY, authenticated)).toMatchObject({
       group: "connected",
       environmentId,
     });

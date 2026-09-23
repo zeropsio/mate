@@ -1,4 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import { AsyncResult } from "effect/unstable/reactivity";
@@ -11,6 +13,7 @@ import {
   hasNoZeropsProject,
   isZeropsBirthConnectTarget,
   nextZeropsBirthRetryDelayMs,
+  projectsListingNotice,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
@@ -470,6 +473,17 @@ describe("removeFailedZeropsProject", () => {
 describe("hasNoZeropsProject", () => {
   const candidate = (tagList: ReadonlyArray<string>) =>
     ({ project: { id: tagList.join("|"), name: "p", status: "ACTIVE", tagList } }) as never;
+  const listing = (
+    value: ReadonlyArray<ZeropsCandidate>,
+    overrides: Partial<Extract<Known<ReadonlyArray<ZeropsCandidate>>, { state: "known" }>> = {},
+  ): Known<ReadonlyArray<ZeropsCandidate>> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 10 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+    ...overrides,
+  });
 
   it.each([
     ["nothing at all", [], true],
@@ -478,27 +492,85 @@ describe("hasNoZeropsProject", () => {
     // A tool is not a project: an account holding only Gitea has not started.
     ["only a tool", [candidate(["mate:tool:gitea"])], true],
   ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
-    expect(hasNoZeropsProject({ candidates, unread: false })).toBe(expected);
+    expect(hasNoZeropsProject({ listing: listing(candidates) })).toBe(expected);
   });
 
-  it("answers no while the first list is still being read", () => {
+  it.each<{ readonly name: string; readonly listing: Known<ReadonlyArray<ZeropsCandidate>> }>([
+    { name: "unread", listing: { state: "unread", waitingFor: null } },
+    { name: "being read", listing: { state: "reading", sinceMs: 10, attempt: 1 } },
+    {
+      name: "failed",
+      listing: {
+        state: "failed",
+        failure: { kind: "transport", detail: "gateway" },
+        atMs: 10,
+        attempt: 1,
+        retryAtMs: 90,
+      },
+    },
+    { name: "partial", listing: listing([], { coverage: "partial" }) },
+  ])("answers no while the list is $name", ({ listing }) => {
     // Otherwise the invitation paints for a second and the roster takes it back.
-    expect(hasNoZeropsProject({ candidates: [], unread: true })).toBe(false);
+    expect(hasNoZeropsProject({ listing })).toBe(false);
   });
 
   it("keeps an empty organization's invitation up while its list is re-read", () => {
     // The owner's run of 2026-09-17: a re-read every twenty seconds while a
     // creation was on its way, and the page painted "Reading your projects…"
     // over what it had a moment ago.
-    expect(hasNoZeropsProject({ candidates: [], unread: false })).toBe(true);
+    expect(
+      hasNoZeropsProject({
+        listing: listing([], { freshness: { kind: "revalidating", sinceMs: 5 } }),
+      }),
+    ).toBe(true);
   });
 
   it("answers no while a creation this client made is not listed yet", () => {
     // The wizard lands here before the inventory carries the new project;
     // the invitation must not paint in that gap only to be taken back.
-    expect(hasNoZeropsProject({ candidates: [], unread: false, creationPending: true })).toBe(
-      false,
-    );
+    expect(hasNoZeropsProject({ listing: listing([]), creationPending: true })).toBe(false);
+  });
+});
+
+describe("the projects listing", () => {
+  it("the projects page shows a placeholder, never 'No projects', while the inventory is unread", () => {
+    const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
+
+    expect(projectsListingNotice(unread, 0)).toEqual({
+      kind: "placeholder",
+      text: "Reading your projects…",
+    });
+    expect(hasNoZeropsProject({ listing: unread })).toBe(false);
+  });
+
+  it("says why a failed read shows no projects, with its cause", () => {
+    expect(
+      projectsListingNotice(
+        {
+          state: "failed",
+          failure: { kind: "transport", detail: "gateway" },
+          atMs: 10,
+          attempt: 1,
+          retryAtMs: 90,
+        },
+        0,
+      ),
+    ).toEqual({ kind: "failed", text: "Couldn't read your projects. Zerops didn't answer." });
+  });
+
+  it("says nothing over a list it holds", () => {
+    expect(
+      projectsListingNotice(
+        {
+          state: "known",
+          value: [],
+          asOf: { ordinal: 1, atMs: 10 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
+        0,
+      ),
+    ).toBeNull();
   });
 });
 

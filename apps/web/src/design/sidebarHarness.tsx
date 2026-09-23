@@ -562,6 +562,7 @@ function Panel({ label, width }: { readonly label: string; readonly width: numbe
         <SidebarZeropsTree
           candidates={CANDIDATES}
           className="px-1"
+          complete
           getActivity={(item) => ACTIVITY.get(item.project.id)}
           getFlow={(groupId) => FLOWS.get(groupId)}
           onBrowseProjects={() => {}}

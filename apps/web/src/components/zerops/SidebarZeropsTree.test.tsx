@@ -70,6 +70,7 @@ function render(candidates: ReadonlyArray<ZeropsCandidate>, props: Record<string
   return renderToStaticMarkup(
     <SidebarZeropsTree
       candidates={candidates}
+      complete
       onBrowseProjects={() => {}}
       onSelect={() => {}}
       {...props}
@@ -158,9 +159,14 @@ describe("SidebarZeropsTree", () => {
   });
 
   it('says nothing while the candidate list is on its first read, rather than "none"', () => {
-    expect(render([], { unread: true })).toBe("");
-    // Read once and Mate-less: the empty state, as before.
-    expect(render([CRM_STAGE], { unread: false })).toContain("sidebar-environments-empty");
+    expect(render([], { complete: false })).toBe("");
+    // Read and Mate-less: the empty state, as before.
+    expect(render([CRM_STAGE], { complete: true })).toContain("sidebar-environments-empty");
+  });
+
+  it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
+    // The project is listed, but whether a container runs in it is not read yet.
+    expect(render([CRM_STAGE], { complete: false })).toBe("");
   });
 
   it("lights the open Mate's row the way the menu lights its open thread", () => {
@@ -646,6 +652,7 @@ describe("a stop's deployment", () => {
       <ZeropsProjectFlowContext.Provider value={flow}>
         <SidebarZeropsTree
           candidates={[CRM_DEV, CRM_STAGE, CRM_PROD]}
+          complete
           onBrowseProjects={() => {}}
           onSelect={() => {}}
         />

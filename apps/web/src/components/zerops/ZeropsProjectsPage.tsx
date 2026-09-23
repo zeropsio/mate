@@ -38,6 +38,11 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import {
+  knownPresentation,
+  type Known,
+  type KnownSurface,
+} from "@t3tools/client-runtime/zerops/knowledge";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMateIntent } from "~/zerops/addMateIntent";
 import { rememberZeropsEnvironment } from "~/zerops/firstPromptStorage";
@@ -67,6 +72,7 @@ import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessi
 import { withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
@@ -306,19 +312,13 @@ export function showsZeropsBirthLine(input: {
  * A tool is not a project (`tools.ts`), so an account holding nothing but
  * Gitea has still not started. Two readers ask: the header, which drops its
  * create button so the invitation is not said twice, and the tree, which
- * carries the invitation. Both must agree, and neither may answer before the
- * first list has been read — an invitation that paints for a second and is
- * then replaced by the roster is a shift the reader has to undo. A re-read
- * is not a first read: the list already read answers while it runs.
+ * carries the invitation. Both must agree, and neither may answer from a list
+ * that is not known and complete (DESIGN M5) — an invitation that paints for a
+ * second and is then replaced by the roster is a shift the reader has to undo.
+ * A re-read is not that: the list already read answers while it runs.
  */
 export function hasNoZeropsProject(input: {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  /**
-   * Nothing has been read for this organization yet. A re-read is not that:
-   * the list already read stays up and answers, so an empty organization
-   * keeps its invitation while a fresh baseline lands.
-   */
-  readonly unread: boolean;
+  readonly listing: Known<ReadonlyArray<ZeropsCandidate>>;
   /**
    * A creation this client made and has not connected to yet. The wizard
    * navigates here the moment the project exists, before the inventory lists
@@ -328,13 +328,43 @@ export function hasNoZeropsProject(input: {
   readonly creationPending?: boolean;
 }): boolean {
   if (input.creationPending === true) return false;
-  if (input.unread && input.candidates.length === 0) return false;
+  if (input.listing.state !== "known" || input.listing.coverage !== "complete") return false;
   // Emptiness does not depend on how the tree orders what it holds.
-  const view = buildZeropsGroupTree(input.candidates, {
+  const view = buildZeropsGroupTree(input.listing.value, {
     rank: rankZeropsCandidateForListing,
     order: "name",
   });
   return view.groups.length === 0 && view.ungrouped.length === 0;
+}
+
+const READING_PROJECTS = "Reading your projects…";
+
+const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
+  subject: "your projects",
+  entity: "project",
+  source: "zerops",
+  checking: READING_PROJECTS,
+  negative: null,
+};
+
+/**
+ * What the page says in place of the projects it does not hold yet (DESIGN
+ * §3.4): a placeholder while they are unread or being read, the cause when the
+ * read failed, and nothing over a list it holds.
+ */
+export function projectsListingNotice(
+  listing: Known<ReadonlyArray<ZeropsCandidate>>,
+  nowMs: number,
+): { readonly kind: "placeholder" | "failed"; readonly text: string } | null {
+  if (listing.state === "known") return null;
+  const presentation = knownPresentation(listing, PROJECTS_SURFACE, {
+    nowMs,
+    updateOffered: false,
+  });
+  return {
+    kind: presentation.region === "message" ? "failed" : "placeholder",
+    text: presentation.message?.text ?? READING_PROJECTS,
+  };
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -656,7 +686,8 @@ function ZeropsProjectsContent() {
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const { candidates: observedCandidates, isLoading, readOnce, error } = useZeropsCandidates();
+  const { candidates: observedCandidates, listing, isLoading, error } = useZeropsCandidates();
+  const nowMs = useNowMs();
   const {
     creatingIn,
     setCreatingIn,
@@ -2167,15 +2198,26 @@ function ZeropsProjectsContent() {
   // the same line — and the rest of the roster stays where it was.
   const connectErrorOnRow = connectError !== null && candidates.some(waitedOn);
   const pageError = (connectErrorOnRow ? null : connectError) ?? error;
+  const listingNotice = projectsListingNotice(listing, nowMs);
 
   return (
     <div className="space-y-6">
-      {!readOnce && candidates.length === 0 ? (
+      {listingNotice === null ? null : listingNotice.kind === "placeholder" ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
           <Spinner className="size-3.5" />
-          <span>Reading your projects…</span>
+          <span>{listingNotice.text}</span>
         </div>
-      ) : null}
+      ) : (
+        <div
+          className="flex items-center gap-3 rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
+          role="alert"
+        >
+          <span>{listingNotice.text}</span>
+          <Button onClick={refreshZeropsCandidates} size="sm" variant="outline">
+            Try again
+          </Button>
+        </div>
+      )}
       {pageError === null ? null : (
         <div
           className="rounded-md border border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] px-3 py-2 text-sm text-[var(--zerops-status-failed-text)]"
@@ -2194,7 +2236,7 @@ function ZeropsProjectsContent() {
         isMate={hasMate}
         onCreateEnvironment={requestEnvironment}
         onCreateProject={
-          hasNoZeropsProject({ candidates, unread: !readOnce, creationPending })
+          hasNoZeropsProject({ listing, creationPending })
             ? () => {
                 void navigate({ to: "/zerops/new" });
               }
@@ -2643,15 +2685,14 @@ function ZeropsProjectsContent() {
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
-  const { candidates, isLoading, readOnce, refresh } = useZeropsCandidates();
+  const { listing, isLoading, refresh } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
   // First run owns the page: an account with nothing in it gets the
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
   const firstRun = hasNoZeropsProject({
-    candidates,
-    unread: !readOnce,
+    listing,
     creationPending: pendingCreationProjects().length > 0,
   });
 
