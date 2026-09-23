@@ -10,9 +10,11 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { readZeropsContainer } from "@t3tools/client-runtime/zerops/containerHealth";
 import { ZeropsServiceId, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import {
+  containerVerdict,
   makeContainerStore,
   systemExchangeClock,
   type ContainerMachine,
+  type ContainerVerdict,
   type ContainerStore,
   type ContainerTarget,
   type IntentRequest,
@@ -21,12 +23,15 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
+import { environmentTarget } from "../routes/-environmentTargets";
 import { accountStorageKey, currentAccountEpoch, onAccountLifetimeClose } from "./accountLifetime";
 import { findInventoryProjectRef, type Inventory } from "./inventoryContext";
 import { readZeropsResourceOnce } from "./useZeropsDeployedVersion";
+import { useExchangeDriver } from "./useZeropsIdentityExchange";
 import {
   useZeropsAtomSelections,
   useZeropsData,
@@ -116,9 +121,16 @@ export function bindContainerInputs(inputs: ContainerInputs): void {
   if (hosted !== null) hosted.inputs = inputs;
 }
 
-/** Our verb was accepted for this target: its container shows it until a read fact settles it. */
-export function intendContainer(key: TargetKey, intent: IntentRequest): void {
-  hosted?.store.intend(key, intent);
+/**
+ * Our verb was accepted for this target: its container shows it until a read fact settles it.
+ * False when no container took it — the store holds no such target, or the platform's facts
+ * already overrule it — so nothing will say when it is over.
+ */
+export function intendContainer(key: TargetKey, intent: IntentRequest): boolean {
+  const store = hosted?.store;
+  if (store === undefined) return false;
+  store.intend(key, intent);
+  return (store.machine(key)?.intent ?? null) !== null;
 }
 
 /** The reading of a probe of this origin started from now on, through the tab's one pool. */
@@ -266,6 +278,37 @@ export function containerSnapshotOf(
     if (machine.mateFlag !== null) mateFlags.set(key, machine.mateFlag);
   }
   return { health, serverVersions, mateFlags };
+}
+
+export interface TargetContainer {
+  readonly key: TargetKey | null;
+  readonly verdict: ContainerVerdict;
+  /** The server version its descriptor last reported; undefined before one answered. */
+  readonly serverVersion: string | undefined;
+}
+
+const UNKNOWN: ContainerVerdict = { level: "unknown" };
+
+/** One target's container as the container store holds it now. */
+export function useTargetContainer(key: TargetKey | null): TargetContainer {
+  const store = hostContainerStore();
+  const machines = useSyncExternalStore(store.subscribe, store.machines);
+  const machine = key === null ? undefined : machines.get(key);
+  return useMemo(() => {
+    const reading = machine?.reading?.reading;
+    return {
+      key,
+      verdict: machine === undefined ? UNKNOWN : containerVerdict(machine),
+      serverVersion: reading?.kind === "ready" ? reading.descriptor.serverVersion : undefined,
+    };
+  }, [key, machine]);
+}
+
+/** The container of the target that holds or remembers this environment (§4.4). */
+export function useEnvironmentContainer(environmentId: EnvironmentId): TargetContainer {
+  const driver = useExchangeDriver();
+  const environments = useSyncExternalStore(driver.subscribe, driver.machines);
+  return useTargetContainer(environmentTarget(environments, environmentId)?.key ?? null);
 }
 
 /** Every Mate container of the account, as the container store holds it now. */

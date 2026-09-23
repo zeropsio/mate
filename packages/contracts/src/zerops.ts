@@ -574,8 +574,8 @@ export type ZeropsBrowserInput = typeof ZeropsBrowserInput.Type;
 /**
  * `zerops.mate.update`'s success result (spec-mate.md §2.9 MU-2): the
  * decoded `zcp mate update --json` answer, plus the server's own version
- * before the update ran — the proof the client's `restartAndVerifyMate`
- * flow waits to see change once the socket reconnects.
+ * before the update ran — the version the client's container machine
+ * waits to see change once the Mate answers again.
  */
 export const ZeropsMateUpdateAction = Schema.Literals(["none", "installed", "updated"]);
 export type ZeropsMateUpdateAction = typeof ZeropsMateUpdateAction.Type;

@@ -1,43 +1,41 @@
 /**
  * The one verb next to the update line (spec-mate.md §2.9, MU-2): calls
- * `zerops.mate.update`, then waits for the Mate to come back on a new
- * version — the same proof `restartAndVerifyMate` waits for on the
- * pre-connection door, read here off the live `serverVersion` the caller
- * already holds (the descriptor subscription behind `useEnvironment`).
+ * `zerops.mate.update`, and from its acceptance the Mate's container shows
+ * `updating` (DESIGN §4.5, C8) until a read fact proves it back — a connect
+ * after the update began, or its descriptor on another version. The container
+ * machine owns that wait and its budget; this hook only says where the verb
+ * stands.
  *
  * `idle → confirm → updating → updated/already-current → idle`, or
- * `→ failed` from an `exec:operate` refusal or the RPC's own
- * `ZeropsMateUpdateResult.error`. `already-current`/`updated` settle back to
- * `idle` on their own after a few seconds — nothing here is dismissable,
- * nothing is stored (MU-1).
+ * `→ failed` from an `exec:operate` refusal, the RPC's own
+ * `ZeropsMateUpdateResult.error`, or an update past its budget.
+ * `already-current`/`updated` settle back to `idle` on their own after a few
+ * seconds — nothing here is dismissable, nothing is stored (MU-1).
  *
- * **An update belongs to the Mate it was started on.** The state lives in a
- * map keyed by environment rather than in the component, because the surfaces
- * that show it — the thread header, the Mate card — are single components
- * reused across Mates: held in React, one Mate's "Updating…" was shown over
- * every other Mate the person opened, and so was one Mate's update check
- * (`verified.md`, 2026-09-19). Keyed this way an update also survives leaving
- * the conversation and coming back, which is the truth of it: the container
- * is restarting either way.
+ * **An update belongs to the Mate it was started on.** The verb's state lives
+ * in a map keyed by environment rather than in the component, because the
+ * surfaces that show it — the thread header, the Mate card — are single
+ * components reused across Mates: held in React, one Mate's "Updating…" was
+ * shown over every other Mate the person opened, and so was one Mate's update
+ * check (`verified.md`, 2026-09-19).
  *
  * **A dropped socket is what an update looks like from here.** Updating
  * restarts the server, which closes the connection the answer would have come
  * back on, so a transport failure is not a failure of the update — it is the
- * update happening. The wait for the new version is the same either way, and
- * only a Mate that never comes back is reported as one that did not.
+ * update happening, and the container follows it the same way.
  */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
+import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
+import { intendContainer, useEnvironmentContainer } from "./zeropsContainers";
 
 const SETTLE_DISPLAY_MS = 4_000;
-const VERIFY_ATTEMPTS = 60;
-const VERIFY_INTERVAL_MS = 2_000;
 
 export type MateUpdateState =
   | { readonly phase: "idle" }
@@ -67,13 +65,12 @@ interface MateUpdateEntry {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   /**
-   * What an update in flight is waiting for: the version the Mate was on, and
-   * the one the RPC promised if it answered before the restart closed the
-   * socket. Kept beside the phase rather than inside it, because the waiting
-   * outlives what the line says — a Mate that comes back after the window ran
-   * out has still updated, and says so.
+   * The container carrying this update's intent; null while no accepted
+   * update is being followed. Kept beside the phase rather than inside it,
+   * because the following outlives what the line says — a Mate that comes
+   * back after its budget ran out has still updated, and says so.
    */
-  readonly waiting: { readonly from: string | undefined; readonly to: string | undefined } | null;
+  readonly following: TargetKey | null;
   /** Bumped by every action, so an answer from an abandoned one is dropped. */
   readonly generation: number;
 }
@@ -81,7 +78,7 @@ interface MateUpdateEntry {
 const NOTHING: MateUpdateEntry = {
   state: { phase: "idle" },
   checked: undefined,
-  waiting: null,
+  following: null,
   generation: 0,
 };
 
@@ -105,10 +102,7 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/**
- * The one timer a Mate has at a time: the display settling back to idle, or
- * the window an update has to bring the server back.
- */
+/** The one timer a Mate has at a time: the display settling back to idle. */
 function schedule(environmentId: EnvironmentId, ms: number, run: () => void): void {
   clearTimer(environmentId);
   timers.set(
@@ -147,20 +141,11 @@ function describeFailure(cause: unknown, fallback: string): string | null {
   return cause instanceof Error && message.trim().length > 0 ? message : fallback;
 }
 
-function settle(
-  environmentId: EnvironmentId,
-  generation: number,
-  state: MateUpdateState,
-  options: { readonly keepWaiting?: boolean } = {},
-): void {
+function settle(environmentId: EnvironmentId, generation: number, state: MateUpdateState): void {
   const entry = entryFor(environmentId);
   if (entry.generation !== generation) return;
   clearTimer(environmentId);
-  write(environmentId, {
-    ...entry,
-    state,
-    waiting: options.keepWaiting === true ? entry.waiting : null,
-  });
+  write(environmentId, { ...entry, state, following: null });
   if (state.phase === "already-current" || state.phase === "updated") {
     settleToIdleAfter(environmentId, generation);
   }
@@ -169,9 +154,9 @@ function settle(
 export function useZeropsMateUpdate(
   environmentId: EnvironmentId,
   serverVersion: string | undefined,
-  options: { readonly verifyAttempts?: number; readonly verifyIntervalMs?: number } = {},
 ): MateUpdate {
   const entry = useSyncExternalStore(subscribe, () => entryFor(environmentId));
+  const container = useEnvironmentContainer(environmentId);
   const runUpdate = useAtomCommand(zeropsCommands.mateUpdate, {
     label: "zerops mate update",
     reportFailure: false,
@@ -180,34 +165,40 @@ export function useZeropsMateUpdate(
     label: "zerops mate check update",
     reportFailure: false,
   });
-  const waitMs =
-    (options.verifyAttempts ?? VERIFY_ATTEMPTS) * (options.verifyIntervalMs ?? VERIFY_INTERVAL_MS);
 
-  // The proof, wherever it is seen from: a Mate that is updating has come
-  // back once its descriptor reports a version it did not have before. Any
-  // surface showing this Mate can close it, and none has to be left open for
-  // the update to finish — an update the person walked away from is finished
-  // the moment they look again.
+  // The container machine decides when the update is over; any surface showing
+  // this Mate reads its verdict, and none has to be left open for the update to
+  // finish — an update the person walked away from is finished the moment they
+  // look again.
+  const verdict = container.verdict;
+  const updating = verdict.level === "updating";
+  const overdue = updating && verdict.overdue;
   useEffect(() => {
     const current = entryFor(environmentId);
-    const waiting = current.waiting;
-    if (waiting === null || serverVersion === undefined) return;
-    const landed =
-      waiting.to !== undefined
-        ? serverVersion === waiting.to
-        : waiting.from !== undefined && serverVersion !== waiting.from;
-    if (!landed) return;
-    clearTimer(environmentId);
+    if (current.following === null || current.following !== container.key) return;
+    if (updating) {
+      if (overdue && current.state.phase === "updating") {
+        write(environmentId, {
+          ...current,
+          state: {
+            phase: "failed",
+            message: "The server has not come back yet. Check the connection again.",
+          },
+        });
+      }
+      return;
+    }
+    if (serverVersion === undefined) return;
     // A check held from before the update has been overtaken by it; the
     // descriptor's own field is the current answer again.
     write(environmentId, {
       ...current,
       checked: undefined,
-      waiting: null,
+      following: null,
       state: { phase: "updated", to: serverVersion },
     });
     settleToIdleAfter(environmentId, current.generation);
-  }, [environmentId, serverVersion]);
+  }, [container.key, environmentId, overdue, serverVersion, updating]);
 
   const request = useCallback(() => {
     const current = entryFor(environmentId);
@@ -224,7 +215,7 @@ export function useZeropsMateUpdate(
     write(environmentId, {
       ...current,
       state: { phase: "confirm" },
-      waiting: null,
+      following: null,
       generation: current.generation + 1,
     });
   }, [environmentId]);
@@ -235,7 +226,7 @@ export function useZeropsMateUpdate(
     write(environmentId, {
       ...current,
       state: { phase: "idle" },
-      waiting: null,
+      following: null,
       generation: current.generation + 1,
     });
   }, [environmentId]);
@@ -244,26 +235,23 @@ export function useZeropsMateUpdate(
     const current = entryFor(environmentId);
     if (current.state.phase !== "confirm") return;
     const generation = current.generation + 1;
-    write(environmentId, {
-      ...current,
-      state: { phase: "updating" },
-      waiting: { from: serverVersion, to: undefined },
-      generation,
-    });
-    // However this goes, a Mate that never comes back is eventually said to
-    // have not come back.
-    schedule(environmentId, waitMs, () => {
-      settle(
-        environmentId,
-        generation,
-        {
+    write(environmentId, { ...current, state: { phase: "updating" }, following: null, generation });
+
+    // The update was accepted, or the socket closed under it: its container
+    // follows it from here, from the version it was started on.
+    const follow = () => {
+      const accepted = entryFor(environmentId);
+      if (accepted.generation !== generation) return;
+      const key = container.key;
+      if (key === null || !intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
+        settle(environmentId, generation, {
           phase: "failed",
-          message: "The server has not come back yet. Check the connection again.",
-        },
-        // Still waiting: a Mate that comes back late has updated all the same.
-        { keepWaiting: true },
-      );
-    });
+          message: "This Mate cannot be followed from here. Check the connection again.",
+        });
+        return;
+      }
+      write(environmentId, { ...accepted, following: key });
+    };
 
     void (async () => {
       const result = await runUpdate({ environmentId, input: {} });
@@ -274,8 +262,11 @@ export function useZeropsMateUpdate(
           "The update could not be started.",
         );
         // The update restarts the server, so the connection closing is the
-        // thing working, not failing: keep waiting for the version.
-        if (message === null) return;
+        // thing working, not failing.
+        if (message === null) {
+          follow();
+          return;
+        }
         settle(environmentId, generation, { phase: "failed", message });
         return;
       }
@@ -284,20 +275,14 @@ export function useZeropsMateUpdate(
         settle(environmentId, generation, { phase: "failed", message: value.error });
         return;
       }
+      // An update the RPC answers as already current creates no intent (§4.5).
       if (value.action === "none") {
         settle(environmentId, generation, { phase: "already-current" });
         return;
       }
-      // The version the RPC promised sharpens the wait that is already
-      // running; the deadline it was given stands.
-      const waiting = entryFor(environmentId);
-      if (waiting.waiting === null) return;
-      write(environmentId, {
-        ...waiting,
-        waiting: { from: waiting.waiting.from, to: value.to },
-      });
+      follow();
     })();
-  }, [environmentId, runUpdate, serverVersion, waitMs]);
+  }, [container.key, environmentId, runUpdate, serverVersion]);
 
   const check = useCallback(() => {
     const current = entryFor(environmentId);
@@ -305,7 +290,7 @@ export function useZeropsMateUpdate(
     if (phase !== "idle" && phase !== "failed" && phase !== "already-current") return;
     const generation = current.generation + 1;
     clearTimer(environmentId);
-    write(environmentId, { ...current, state: { phase: "checking" }, waiting: null, generation });
+    write(environmentId, { ...current, state: { phase: "checking" }, following: null, generation });
 
     void (async () => {
       const result = await runCheckUpdate({ environmentId, input: {} });

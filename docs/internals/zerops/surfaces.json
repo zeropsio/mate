@@ -852,7 +852,7 @@
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts",
-        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
         "apps/web/src/zerops/ZeropsInventoryProvider.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",
         "packages/client-runtime/src/zerops/data/inventory.test.ts",
@@ -994,7 +994,7 @@
         "packages/client-runtime/src/zerops/newProject.test.ts",
         "packages/client-runtime/src/zerops/data/commands.test.ts",
         "packages/client-runtime/src/zerops/data/runtime.test.ts",
-        "apps/web/src/zerops/upgradeRestart.test.ts",
+        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
