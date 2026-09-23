@@ -243,6 +243,7 @@ export function useGroupFlow(source: UseGroupFlowSource): GroupFlow {
           openPulls: new Map(),
           pulls: new Map(),
           tags: UNBOUND,
+          tiers: UNBOUND,
           mainHeads: new Map(),
           stops: new Map(),
         },

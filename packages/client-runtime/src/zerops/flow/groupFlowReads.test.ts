@@ -4,6 +4,7 @@ import { project, service } from "../data/__fixtures__/index.ts";
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore, PullKey } from "../forge/forgeStore.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
+import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import type { StopService } from "./deployment.ts";
 import { pullKey } from "./groupFlow.ts";
@@ -55,7 +56,21 @@ const PRODUCTION_STOP = known([
   { service: service("prod-app", PROD), hostname: "appdev", deployment: known({ kind: "none" }) },
 ] satisfies ReadonlyArray<StopService>);
 
+/** A tier's `import.yaml` on the group repo's `main`. */
+const tier = (path: string) => ({ kind: "file", ...repo("group"), path }) as const;
+
+/** A tier whose one service builds from `repository`. */
+const tierYaml = (hostname: string, repository: string) =>
+  [
+    "services:",
+    `  - hostname: ${hostname}`,
+    "    type: nodejs@22",
+    `    buildFromGit: ${GITEA}/harbor/${repository}.git`,
+  ].join("\n");
+
 const HELD: ReadonlyArray<readonly [ForgeFact, Shown<unknown>]> = [
+  [tier(RECIPE_TIER_PATHS.stage), known(null)],
+  [tier(RECIPE_TIER_PATHS.production), known(tierYaml("appdev", "appdev"))],
   [{ kind: "repos", origin: GITEA, org: "harbor" }, known([{ name: "appdev" }])],
   [
     { kind: "declarations", ...repo("group") },
@@ -79,6 +94,8 @@ describe("a group flow's reads", () => {
       { kind: "repos", origin: GITEA, org: "harbor" },
       { kind: "declarations", ...repo("group") },
       { kind: "tags", ...repo("group") },
+      tier(RECIPE_TIER_PATHS.stage),
+      tier(RECIPE_TIER_PATHS.production),
       { kind: "branch", ...repo("appdev"), branch: "main" },
       { kind: "open-pulls", ...repo("appdev") },
       { kind: "statuses", ...repo("appdev"), sha: "h4" },
@@ -110,5 +127,39 @@ describe("a group flow's reads", () => {
     expect(
       groupFlowStops({ ...SOURCE, members: { state: "reading", sinceMs: 1, attempt: 1 } }),
     ).toEqual([]);
+  });
+
+  it("a service whose tier builds from a repository with another name reads that repository's main", () => {
+    const held: ReadonlyArray<readonly [ForgeFact, Shown<unknown>]> = [
+      ...HELD,
+      [tier(RECIPE_TIER_PATHS.production), known(tierYaml("app", "appdev"))],
+    ];
+    const stores = {
+      forge: forge(held),
+      deployments: deployments(
+        new Map([
+          [
+            "p-prod",
+            known([
+              {
+                service: service("prod-app", PROD),
+                hostname: "app",
+                deployment: known({ kind: "none" }),
+              },
+            ] satisfies ReadonlyArray<StopService>),
+          ],
+        ]),
+      ),
+    };
+
+    const facts = groupFlowFacts(stores, SOURCE);
+    expect(facts).toContainEqual({ kind: "branch", ...repo("appdev"), branch: "main" });
+    expect(facts).not.toContainEqual({ kind: "branch", ...repo("app"), branch: "main" });
+    const inputs = groupFlowInputs(stores, SOURCE);
+    expect(inputs.tiers).toMatchObject({
+      state: "known",
+      value: { tiers: ["production"], repositories: new Map([["app", "appdev"]]) },
+    });
+    expect([...inputs.mainHeads.keys()]).toEqual(["appdev"]);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
-import type { GroupEnvironment } from "../groupEnvironments.ts";
+import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
 import { deployedVersion } from "../groupRows.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { FailureReason, Known, Shown } from "../knowledge/known.ts";
@@ -12,6 +12,7 @@ import type { Deployment, SettledDeployment, StopService } from "./deployment.ts
 import {
   groupFlow,
   pullKey,
+  tiersOnMain,
   type GroupFlowInputs,
   type GroupFlowMember,
   type GroupFlowPull,
@@ -123,6 +124,7 @@ const inputs = (overrides: Partial<GroupFlowInputs> = {}): GroupFlowInputs => ({
   ]),
   pulls: new Map([[pullKey("appdev", 4), known(openPull(4))]]),
   tags: known(TAGS),
+  tiers: known({ tiers: ["stage", "production"], repositories: new Map([["appdev", "appdev"]]) }),
   mainHeads: new Map([["appdev", known(MAIN_SHA)]]),
   stops: new Map([
     ["p-stage", known([stopService("p-stage", "appdev", known(running(MAIN_SHA)))])],
@@ -222,9 +224,16 @@ describe("groupFlow (DESIGN §4.7)", () => {
     ).toEqual({ kind: "retry", label: "Try again" });
   });
 
-  it("a production service with no repository of its name has no candidate and holds nothing", () => {
+  it("a production service no tier builds, or whose repository has no main, has no candidate and holds nothing", () => {
     const flow = groupFlow(
       inputs({
+        tiers: known({
+          tiers: ["stage", "production"],
+          repositories: new Map([
+            ["appdev", "appdev"],
+            ["static", "static"],
+          ]),
+        }),
         mainHeads: new Map([
           ["appdev", known(MAIN_SHA)],
           [
@@ -239,6 +248,7 @@ describe("groupFlow (DESIGN §4.7)", () => {
             known([
               stopService("p-prod", "appdev", known(running(PRODUCTION_SHA))),
               stopService("p-prod", "static", known(running(PRODUCTION_SHA))),
+              stopService("p-prod", "worker", known(running(PRODUCTION_SHA))),
             ]),
           ],
         ]),
@@ -417,5 +427,58 @@ describe("groupFlow (DESIGN §4.7)", () => {
 
     expect(flow.feeds("appdev")).toEqual([service("p-stage-appdev", project("p-stage"))]);
     expect(flow.feeds("group")).toEqual([]);
+  });
+
+  it("a service whose tier builds from a repository with another name releases that repository's main", () => {
+    const flow = groupFlow(
+      inputs({
+        tiers: known({
+          tiers: ["stage", "production"],
+          repositories: new Map([["app", "appdev"]]),
+        }),
+        stops: new Map([
+          ["p-stage", known([stopService("p-stage", "app", known(running(MAIN_SHA)))])],
+          ["p-prod", known([stopService("p-prod", "app", known(running(PRODUCTION_SHA)))])],
+        ]),
+      }),
+      RELEASER,
+      NOW,
+    );
+
+    expect(flow.releaseGate).toEqual({ allowed: true });
+    expect(flow.release.state === "known" ? flow.release.value.entries : []).toEqual([
+      { service: "app", commit: MAIN_SHA },
+    ]);
+    // A merge into `appdev` deploys the stage's `app`; nothing is named `app` on Gitea.
+    expect(flow.feeds("appdev")).toEqual([service("p-stage-app", project("p-stage"))]);
+    expect(flow.feeds("app")).toEqual([]);
+  });
+
+  it("the release waits for the tiers on main, which name where production's code lives", () => {
+    const flow = groupFlow(inputs({ tiers: READING }), RELEASER, NOW);
+
+    expect(flow.release.state).toBe("reading");
+    expect(flow.releaseGate).toEqual({ allowed: false, reason: CHECKING_RELEASE });
+  });
+
+  it("the tiers on main are those whose import main holds, known once every tier's file is", () => {
+    const production = [
+      "services:",
+      "  - hostname: app",
+      "    buildFromGit: https://gitea.example/harbor/appdev.git",
+      "  - hostname: db",
+    ].join("\n");
+    expect(
+      tiersOnMain(
+        new Map<GroupEnvironmentTier, Shown<string | null>>([
+          ["stage", known(null)],
+          ["production", known(production)],
+        ]),
+      ),
+    ).toMatchObject({
+      state: "known",
+      value: { tiers: ["production"], repositories: new Map([["app", "appdev"]]) },
+    });
+    expect(tiersOnMain(new Map([["production", known(production)]])).state).toBe("unread");
   });
 });

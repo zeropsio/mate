@@ -3,24 +3,31 @@
  * demands for it, and `groupFlow`'s inputs as the forge and the deployment store hold them now.
  *
  * What is demanded grows with what is known: the org's repositories name their open lists, a
- * list names its pull requests' heads, whose checks are read, and the production's services name
- * the repositories whose `main` a release would carry. A group read without a forge — before the
- * Gitea is known, or on a host with none — waits for the Gitea session.
+ * list names its pull requests' heads, whose checks are read, and the production's services, each
+ * through the repository its tier on `main` builds it from (`tiersOnMain`), name the repositories
+ * whose `main` a release would carry. A service's repository is never guessed from its hostname.
+ * A group read without a forge — before the Gitea is known, or on a host with none — waits for the
+ * Gitea session.
  *
  * @module flow/groupFlowReads
  */
 import type { ProjectRef } from "../data/types.ts";
 import type { ForgeFact, ForgeStore } from "../forge/forgeStore.ts";
+import type { GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { GROUP_REPOSITORY } from "../projectFlow.ts";
+import { RECIPE_TIER_PATHS } from "../recipeTier.ts";
 import type { StopService } from "./deployment.ts";
 import type { DeploymentStore } from "./deploymentStore.ts";
 import {
   pullKey,
+  tiersOnMain,
+  TIERS_ON_MAIN,
   type GroupFlowInputs,
   type GroupFlowMember,
   type GroupFlowPull,
+  type TiersOnMain,
 } from "./groupFlow.ts";
 
 export interface GroupFlowStores {
@@ -41,8 +48,32 @@ export interface GroupFlowSource {
 const UNREAD: Shown<never> = { state: "unread", waitingFor: null };
 const WAITING_FOR_GITEA: Shown<never> = { state: "unread", waitingFor: "gitea-session" };
 
-/** The hostnames of the production stops' services, as the deployment store holds them. */
-function productionHostnames(
+/** Each tier's `import.yaml` on the group repo's `main`, as a forge fact. */
+const tierFile = (origin: string, slug: string, tier: GroupEnvironmentTier): ForgeFact => ({
+  kind: "file",
+  origin,
+  owner: slug,
+  repo: GROUP_REPOSITORY,
+  path: RECIPE_TIER_PATHS[tier],
+});
+
+/** The tiers on the group repo's `main`, as the forge holds their files. */
+function readTiers(forge: ForgeStore, origin: string, slug: string): Shown<TiersOnMain> {
+  return tiersOnMain(
+    new Map(
+      TIERS_ON_MAIN.map((tier) => [
+        tier,
+        forge.read(tierFile(origin, slug, tier)) as Shown<string | null>,
+      ]),
+    ),
+  );
+}
+
+/**
+ * The repositories the production stops' services build from, as the deployment store holds the
+ * services and the tiers on `main` name their repositories; none before both are known.
+ */
+function productionRepositories(
   forge: ForgeStore,
   origin: string,
   deployments: DeploymentStore,
@@ -54,17 +85,27 @@ function productionHostnames(
     owner: source.entry.slug,
     repo: GROUP_REPOSITORY,
   });
-  const hostnames = new Set<string>();
-  if (declarations.state !== "known" || source.members.state !== "known") return [...hostnames];
+  const tiers = readTiers(forge, origin, source.entry.slug);
+  const repositories = new Set<string>();
+  if (
+    declarations.state !== "known" ||
+    source.members.state !== "known" ||
+    tiers.state !== "known"
+  ) {
+    return [...repositories];
+  }
   for (const declaration of declarations.value) {
     if (declaration.tier !== "production") continue;
     const member = source.members.value.find(({ projectId }) => projectId === declaration.project);
     if (member === undefined) continue;
     const stop = deployments.stop(member.project);
     if (stop.state !== "known") continue;
-    for (const { hostname } of stop.value) hostnames.add(hostname);
+    for (const { hostname } of stop.value) {
+      const repository = tiers.value.repositories.get(hostname);
+      if (repository !== undefined) repositories.add(repository);
+    }
   }
-  return [...hostnames].sort();
+  return [...repositories].sort();
 }
 
 /** The stops a group's flow demands of the deployment store: its members' projects. */
@@ -89,9 +130,10 @@ export function groupFlowFacts(
     { kind: "repos", origin, org: source.entry.slug },
     { kind: "declarations", ...repository(GROUP_REPOSITORY) },
     { kind: "tags", ...repository(GROUP_REPOSITORY) },
+    ...TIERS_ON_MAIN.map((tier) => tierFile(origin, source.entry.slug, tier)),
   );
-  for (const hostname of productionHostnames(forge, origin, stores.deployments, source)) {
-    facts.push({ kind: "branch", ...repository(hostname), branch: "main" });
+  for (const name of productionRepositories(forge, origin, stores.deployments, source)) {
+    facts.push({ kind: "branch", ...repository(name), branch: "main" });
   }
   const repos = forge.read({ kind: "repos", origin, org: source.entry.slug });
   if (repos.state !== "known") return facts;
@@ -151,8 +193,8 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
 
   const mainHeads = new Map<string, Shown<string>>();
   if (forge !== null && origin !== undefined) {
-    for (const hostname of productionHostnames(forge, origin, deployments, source)) {
-      mainHeads.set(hostname, read({ kind: "branch", ...repository(hostname), branch: "main" }));
+    for (const name of productionRepositories(forge, origin, deployments, source)) {
+      mainHeads.set(name, read({ kind: "branch", ...repository(name), branch: "main" }));
     }
   }
 
@@ -164,6 +206,8 @@ export function groupFlowInputs(stores: GroupFlowStores, source: GroupFlowSource
     openPulls,
     pulls,
     tags: read({ kind: "tags", ...repository(GROUP_REPOSITORY) }),
+    tiers:
+      forge === null || origin === undefined ? WAITING_FOR_GITEA : readTiers(forge, origin, slug),
     mainHeads,
     stops,
   };

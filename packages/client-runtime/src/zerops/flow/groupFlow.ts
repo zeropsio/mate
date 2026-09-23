@@ -5,9 +5,10 @@
  * - **The halves are independent.** The pull requests are known once every repository's open
  *   list is; each stop carries its own deployment. Nothing fills a missing half with `[]`.
  * - **The release offer** is known only when every input it is measured from is known — the
- *   declarations, the group repo's tags, each production service's deployment (what it runs, or
- *   what it deploys while a build runs) and the head of `main` it would release, where the
- *   repository has one — and is offered only while all of them are current. Until then the gate
+ *   declarations, the group repo's tags, the tiers on `main`, each production service's
+ *   deployment (what it runs, or what it deploys while a build runs) and the head of `main` of the
+ *   repository its tier builds it from, where it has one — and is offered only while all of them
+ *   are current. A service's repository is the tier's `buildFromGit`, never its hostname. Until then the gate
  *   says why in the one phrase producer's words (`knownPresentation`, §3.4): checking, or the
  *   cause of the input that failed.
  * - **What a stop is (D7):** `environments.yaml` declares which stops exist and in what order,
@@ -22,7 +23,7 @@
 import type { ServiceRef } from "../data/types.ts";
 import type { MergeState } from "../forge/mergeState.ts";
 import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
-import type { GroupEnvironment } from "../groupEnvironments.ts";
+import type { GroupEnvironment, GroupEnvironmentTier } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
 import {
@@ -30,6 +31,7 @@ import {
   type KnowledgeSource,
   type KnownAffordance,
 } from "../knowledge/presentation.ts";
+import { importReadyTier } from "../recipeTier.ts";
 import { isReleaseTag, releaseOffer, type ReleaseGate } from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import { CHECKING_RELEASE } from "./release.ts";
@@ -53,6 +55,20 @@ export interface GroupFlowPullRequest {
   readonly state: Extract<MergeState, { readonly kind: "open" }>;
 }
 
+/** What the group repo's `main` offers: the tiers whose import is on it, and where code lives. */
+export interface TiersOnMain {
+  /** The tiers whose import is on `main` — what a person can add. */
+  readonly tiers: ReadonlyArray<GroupEnvironmentTier>;
+  /**
+   * The repository each runtime builds from, by hostname, from the tiers' `buildFromGit`. A
+   * repository's name is its own: `appdev` for a pair's promoted runtime `app`.
+   */
+  readonly repositories: ReadonlyMap<string, string>;
+}
+
+/** The tiers a group repo's `main` may offer, in the order they are added. */
+export const TIERS_ON_MAIN: ReadonlyArray<GroupEnvironmentTier> = ["stage", "production"];
+
 export interface GroupFlowInputs {
   readonly entry: ZeropsRegistryGroup;
   readonly members: Shown<ReadonlyArray<GroupFlowMember>>;
@@ -65,6 +81,8 @@ export interface GroupFlowInputs {
   readonly pulls: ReadonlyMap<string, Shown<GroupFlowPull>>;
   /** The group repo's tags. */
   readonly tags: Shown<ReadonlyArray<GiteaTag>>;
+  /** The tiers on the group repo's `main` ({@link tiersOnMain}). */
+  readonly tiers: Shown<TiersOnMain>;
   /** The sha each repository's `main` holds, by repository. */
   readonly mainHeads: ReadonlyMap<string, Shown<string>>;
   /** Each stop's runtime services and what each runs, by Zerops project id. */
@@ -119,6 +137,41 @@ export const pullKey = (repository: string, number: number): string =>
   `${repository}#${String(number)}`;
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
+
+/** `appdev` from `https://gitea…/harbor/appdev` or `…/appdev.git`. */
+function repositoryName(cloneUrl: string): string | undefined {
+  const last = cloneUrl.replace(/\/+$/u, "").split("/").at(-1);
+  if (last === undefined || last.length === 0) return undefined;
+  return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
+}
+
+/**
+ * The tiers on the group repo's `main`, from each tier's `import.yaml` there (`null` where `main`
+ * holds none): known once every tier's file is. A later tier names a hostname's repository over
+ * an earlier one.
+ */
+export function tiersOnMain(
+  files: ReadonlyMap<GroupEnvironmentTier, Shown<string | null>>,
+): Shown<TiersOnMain> {
+  const parts = TIERS_ON_MAIN.map((tier) => ({
+    shown: files.get(tier) ?? UNREAD,
+    source: "gitea" as const,
+  }));
+  return withValue(combine(parts).shown, () => {
+    const tiers: Array<GroupEnvironmentTier> = [];
+    const repositories = new Map<string, string>();
+    for (const tier of TIERS_ON_MAIN) {
+      const file = files.get(tier);
+      if (file?.state !== "known" || file.value === null) continue;
+      tiers.push(tier);
+      for (const [hostname, source] of Object.entries(importReadyTier(file.value)?.sources ?? {})) {
+        const name = repositoryName(source.repository);
+        if (name !== undefined) repositories.set(hostname, name);
+      }
+    }
+    return { tiers, repositories };
+  });
+}
 
 /** An input and who answers for it, as a combination names the cause of one that failed. */
 interface Part {
@@ -310,10 +363,11 @@ function releaseOf(
   inputs: GroupFlowInputs,
   capabilities: GroupFlowCapabilities,
 ): { readonly release: Shown<ReleaseOffer>; readonly source: KnowledgeSource } {
-  const { declarations, members, tags } = inputs;
+  const { declarations, members, tags, tiers } = inputs;
   const parts: Array<Part> = [
     { shown: declarations, source: "gitea" },
     { shown: tags, source: "gitea" },
+    { shown: tiers, source: "gitea" },
   ];
   if (!isKnown(members)) parts.push({ shown: members, source: "zerops" });
   const production = new Map<string, string>();
@@ -330,17 +384,18 @@ function releaseOf(
     parts.push({ shown: services, source: "zerops" });
     if (!isKnown(services)) continue;
     for (const { hostname, deployment } of services.value) {
-      const head = inputs.mainHeads.get(hostname) ?? UNREAD;
       parts.push({ shown: deployment, source: "zerops" });
-      // A service with no repository of its name (or none on Gitea at all) has no candidate:
-      // it is left out of the release, never a reason to hold the others.
-      if (head.state !== "gone") parts.push({ shown: head, source: "gitea" });
+      // A service no tier builds from a repository, or whose repository has no `main`, has no
+      // candidate: it is left out of the release, never a reason to hold the others.
+      const repository = isKnown(tiers) ? tiers.value.repositories.get(hostname) : undefined;
+      const head = repository === undefined ? null : (inputs.mainHeads.get(repository) ?? UNREAD);
+      if (head !== null && head.state !== "gone") parts.push({ shown: head, source: "gitea" });
       // A production mid-deploy is measured against what it runs: its build may yet fail. Until
       // something states that, nothing proves production runs anything older than `main`.
       const runs = isKnown(deployment) ? runningOf(deployment.value) : null;
       if (runs === undefined) parts.push({ shown: UNREAD, source: "zerops" });
       if (runs?.version.sha !== undefined) production.set(hostname, runs.version.sha);
-      if (isKnown(head)) candidate.set(hostname, head.value);
+      if (head !== null && isKnown(head)) candidate.set(hostname, head.value);
     }
   }
   const combined = combine(parts);
@@ -400,11 +455,14 @@ export function groupFlow(
   const { release, source } = releaseOf(inputs, capabilities);
   const { gate, affordance } = releaseGateOf(release, source, nowMs);
   const fed = new Map<string, Array<ServiceRef>>();
-  if (isKnown(stops)) {
+  if (isKnown(stops) && isKnown(inputs.tiers)) {
+    const { repositories } = inputs.tiers.value;
     for (const { tier, services } of stops.value) {
       if (tier !== "stage" || services === null || !isKnown(services)) continue;
       for (const { hostname, service } of services.value) {
-        fed.set(hostname, [...(fed.get(hostname) ?? []), service]);
+        const repository = repositories.get(hostname);
+        if (repository !== undefined)
+          fed.set(repository, [...(fed.get(repository) ?? []), service]);
       }
     }
   }
