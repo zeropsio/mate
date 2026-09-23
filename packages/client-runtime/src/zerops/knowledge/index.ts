@@ -29,5 +29,6 @@ export type {
   InvalidationSignal,
   TargetKey,
 } from "./invalidation.ts";
+export * from "./mateFeed.ts";
 export * from "./presentation.ts";
 export * from "./retryPolicy.ts";
