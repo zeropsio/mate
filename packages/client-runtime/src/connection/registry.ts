@@ -304,11 +304,21 @@ export const make = Effect.gen(function* () {
       Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
         ? entry.profile.value.httpBaseUrl
         : undefined;
+    const storedBearer = Effect.gen(function* () {
+      const stored = yield* credentials.get(connectionId).pipe(Effect.orElseSucceed(Option.none));
+      return Option.isSome(stored) && stored.value._tag === "BearerConnectionCredential"
+        ? Option.some(stored.value)
+        : Option.none<BearerConnectionCredential>();
+    });
+    const stillStored = (credential: BearerConnectionCredential) =>
+      storedBearer.pipe(
+        Effect.map((stored) => Option.isSome(stored) && Equal.equals(stored.value, credential)),
+      );
     let previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
 
     for (;;) {
-      const stored = yield* credentials.get(connectionId).pipe(Effect.orElseSucceed(Option.none));
-      if (Option.isNone(stored) || stored.value._tag !== "BearerConnectionCredential") {
+      const stored = yield* storedBearer;
+      if (Option.isNone(stored)) {
         return;
       }
       const credential = stored.value;
@@ -331,6 +341,12 @@ export const make = Effect.gen(function* () {
       if (delayMs > 0) {
         yield* Effect.sleep(delayMs);
       }
+      // `rotateCredential` replaced the credential this schedule was built on.
+      // Start over on the stored one's own deadline.
+      if (!(yield* stillStored(credential))) {
+        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+        continue;
+      }
 
       const renewed = yield* renewer
         .renew({ environmentId, connectionId, httpBaseUrl, credential })
@@ -349,15 +365,30 @@ export const make = Effect.gen(function* () {
         // failed. Either way the reactive path still covers it.
         return;
       }
-      yield* credentials.put(connectionId, renewed.value).pipe(
-        Effect.tapError((error) =>
-          Effect.logWarning("Could not store the renewed environment credential.", {
-            environmentId,
-            error,
-          }),
-        ),
-        Effect.ignore,
+      // Checked and written under the lease `rotateCredential` holds, so a
+      // renewal of the replaced credential never overwrites the rotated one.
+      const replaced = yield* withLeaseLock(
+        environmentId,
+        Effect.gen(function* () {
+          if (!(yield* stillStored(credential))) {
+            return true;
+          }
+          yield* credentials.put(connectionId, renewed.value).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Could not store the renewed environment credential.", {
+                environmentId,
+                error,
+              }),
+            ),
+            Effect.ignore,
+          );
+          return false;
+        }),
       );
+      if (replaced) {
+        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+        continue;
+      }
       // A healthy socket is deliberately left alone — it stays authorised for
       // its lifetime and picks the new token up at its next upgrade. Only a
       // connection already parked on an auth failure needs prodding.

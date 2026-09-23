@@ -1573,4 +1573,134 @@ describe("EnvironmentRegistry", () => {
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
   );
+
+  it.effect("renewal follows a rotated credential instead of the one it replaced", () =>
+    Effect.gen(function* () {
+      // The renewal fiber scheduled itself on the revoked bearer's deadline.
+      // After a rotation it must renew the stored credential on that one's
+      // own deadline — never the revoked one, whose renewal would either fail
+      // and end proactive renewal or overwrite the rotated bearer.
+      const revoked = new BearerConnectionCredential({
+        token: "revoked-token",
+        issuedAtEpochMs: 0,
+        expiresAtEpochMs: 900_000,
+        origin: "zerops-identity",
+      });
+      const rotated = new BearerConnectionCredential({
+        token: "rotated-token",
+        issuedAtEpochMs: 60_000,
+        expiresAtEpochMs: 960_000,
+        origin: "zerops-identity",
+      });
+      const renewedTokens = yield* Ref.make<ReadonlyArray<string>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, revoked]],
+        {
+          credentialRenewer: {
+            renew: ({ credential }) =>
+              Ref.update(renewedTokens, (current) => [...current, credential.token]).pipe(
+                Effect.as(
+                  Option.some(
+                    new BearerConnectionCredential({
+                      token: `${credential.token}-renewed`,
+                      issuedAtEpochMs: 780_000,
+                      expiresAtEpochMs: 1_680_000,
+                      origin: "zerops-identity",
+                    }),
+                  ),
+                ),
+              ),
+          },
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* TestClock.adjust("1 minute");
+        yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
+
+        // Past the revoked bearer's renewal point (12 min), short of the
+        // rotated one's (13 min).
+        yield* TestClock.adjust("690 seconds");
+        expect(yield* Ref.get(renewedTokens)).toEqual([]);
+        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
+          rotated,
+        );
+
+        yield* TestClock.adjust("1 minute");
+        yield* eventuallyCredential(
+          harness.storedCredentials,
+          BEARER_TARGET.connectionId,
+          (credential) => credential.token === "rotated-token-renewed",
+        );
+        expect(yield* Ref.get(renewedTokens)).toEqual([rotated.token]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
+  it.effect("a renewal that completes after a rotation does not overwrite the rotated bearer", () =>
+    Effect.gen(function* () {
+      const current = new BearerConnectionCredential({
+        token: "current-token",
+        issuedAtEpochMs: 0,
+        expiresAtEpochMs: 900_000,
+        origin: "zerops-identity",
+      });
+      const rotated = new BearerConnectionCredential({
+        token: "rotated-token",
+        issuedAtEpochMs: 720_000,
+        expiresAtEpochMs: 1_620_000,
+        origin: "zerops-identity",
+      });
+      const renewalStarted = yield* Deferred.make<void>();
+      const releaseRenewal = yield* Deferred.make<void>();
+      const renewedTokens = yield* Ref.make<ReadonlyArray<string>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, current]],
+        {
+          credentialRenewer: {
+            renew: ({ credential }) =>
+              Effect.gen(function* () {
+                yield* Ref.update(renewedTokens, (tokens) => [...tokens, credential.token]);
+                if (credential.token === current.token) {
+                  yield* Deferred.succeed(renewalStarted, undefined);
+                  yield* Deferred.await(releaseRenewal);
+                }
+                return Option.some(
+                  new BearerConnectionCredential({
+                    token: `${credential.token}-renewed`,
+                    issuedAtEpochMs: 720_000,
+                    expiresAtEpochMs: 1_620_000,
+                    origin: "zerops-identity",
+                  }),
+                );
+              }),
+          },
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+        yield* TestClock.adjust("12 minutes");
+        yield* Deferred.await(renewalStarted);
+
+        yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
+        yield* Deferred.succeed(releaseRenewal, undefined);
+        yield* Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
+          discard: true,
+        });
+
+        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
+          rotated,
+        );
+        expect(yield* Ref.get(renewedTokens)).toEqual([current.token]);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
 });
