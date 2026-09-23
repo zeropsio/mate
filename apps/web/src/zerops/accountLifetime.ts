@@ -2,17 +2,24 @@
  * lifetime must never publish into a later account's stores. */
 let accountId: string | null = null;
 let generation = 0;
-let actionsAllowed = false;
-let actionsDeadlineMs = 0;
-export function setAccountActionsAllowed(
-  allowed: boolean,
-  deadlineMs: number = allowed ? Number.POSITIVE_INFINITY : 0,
-): void {
-  actionsAllowed = allowed;
-  actionsDeadlineMs = deadlineMs;
+/** When the evidence behind account actions runs out, on `Date.now()` and `performance.now()`. */
+export interface AccountActionsDeadline {
+  readonly wallMs: number;
+  readonly monoMs: number;
 }
+let actionsDeadline: AccountActionsDeadline | null = null;
+/** Opens account actions until `deadline`, or closes them with `null`. */
+export function setAccountActionsAllowed(deadline: AccountActionsDeadline | null): void {
+  actionsDeadline = deadline;
+}
+/** Allowed only before the deadline on both clocks (DESIGN G5). */
 export function accountActionsAllowed(): boolean {
-  return accountId !== null && actionsAllowed && Date.now() < actionsDeadlineMs;
+  return (
+    accountId !== null &&
+    actionsDeadline !== null &&
+    Date.now() < actionsDeadline.wallMs &&
+    performance.now() < actionsDeadline.monoMs
+  );
 }
 const onClose = new Set<() => void>();
 
@@ -33,15 +40,13 @@ export function openAccountLifetime(userId: string): void {
   if (accountId === userId) return;
   closeAccountLifetime();
   accountId = userId;
-  actionsAllowed = false;
-  actionsDeadlineMs = 0;
+  actionsDeadline = null;
   for (const open of onOpen) open();
 }
 
 export function closeAccountLifetime(): void {
   generation += 1;
-  actionsAllowed = false;
-  actionsDeadlineMs = 0;
+  actionsDeadline = null;
   // Writers flush while their original account still owns the keys. Every
   // cleanup must run even if a storage policy rejects one writer.
   for (const close of [...onClose].toReversed()) {

@@ -280,7 +280,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       },
     };
     setVerification({ status: "loading", revision: currentRevision });
-    setAccountActionsAllowed(false);
+    setAccountActionsAllowed(null);
     client.setWritesAllowed(false);
     void Effect.runPromise(
       runtime.observeAccess({
@@ -564,13 +564,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   useEffect(() => {
     if (verification.status !== "verified") {
-      setAccountActionsAllowed(false);
+      setAccountActionsAllowed(null);
       client.setWritesAllowed(false);
       return;
     }
     if (!projected.complete) {
       if (admission?.revision !== verification.revision) {
-        setAccountActionsAllowed(false);
+        setAccountActionsAllowed(null);
         client.setWritesAllowed(false);
       }
       return;
@@ -580,6 +580,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     grantedRevision.current = verification.revision;
     const verifiedAtMs = Date.now();
     const deadlineMs = verifiedAtMs + ACCESS_WINDOW_MS;
+    const monoDeadlineMs = performance.now() + ACCESS_WINDOW_MS;
     // The grant reaches the runtime *before* the gate opens. `ready` is what
     // mounts the children, and the first thing some of them do is lease a
     // resource — which the broker refuses, once and for good, until this
@@ -617,7 +618,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         mateDiagnostics.record({ kind: "access-grant", round: verification.revision });
         setReadWindowExpired(false);
         setAdmission({ revision: verification.revision, verifiedAtMs });
-        setAccountActionsAllowed(true, deadlineMs);
+        setAccountActionsAllowed({ wallMs: deadlineMs, monoMs: monoDeadlineMs });
         client.setWritesAllowed(true, deadlineMs);
       })
       .catch(() => {
@@ -641,7 +642,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     const remaining = Math.max(0, admission.verifiedAtMs + ACCESS_WINDOW_MS - Date.now());
     const timeout = window.setTimeout(() => {
       mateDiagnostics.record({ kind: "access-timer", timer: "expiry" });
-      setAccountActionsAllowed(false);
+      setAccountActionsAllowed(null);
       client.setWritesAllowed(false);
       setReadWindowExpired(true);
       void Effect.runPromise(
