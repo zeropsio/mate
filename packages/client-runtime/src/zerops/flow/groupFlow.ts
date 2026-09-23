@@ -24,7 +24,11 @@ import type { GiteaPullRequest, GiteaTag } from "../giteaClient.ts";
 import type { GroupEnvironment } from "../groupEnvironments.ts";
 import type { ZeropsRegistryGroup } from "../groupRegistry.ts";
 import type { Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
-import { knownPresentation, type KnowledgeSource } from "../knowledge/presentation.ts";
+import {
+  knownPresentation,
+  type KnowledgeSource,
+  type KnownAffordance,
+} from "../knowledge/presentation.ts";
 import { isReleaseTag, releaseOffer, type ReleaseGate } from "../release.ts";
 import type { Deployment, StopService } from "./deployment.ts";
 import { CHECKING_RELEASE } from "./release.ts";
@@ -103,6 +107,8 @@ export interface GroupFlow {
   readonly release: Shown<ReleaseOffer>;
   /** Whether *Release* is offered now, and why not. */
   readonly releaseGate: ReleaseGate;
+  /** What the person can do about a gate an input holds shut: *Try again* after a failed read. */
+  readonly releaseAffordance: KnownAffordance | null;
   /** The stage services a merge into `repository`'s `main` deploys to. */
   readonly feeds: (repository: string) => ReadonlyArray<ServiceRef>;
 }
@@ -335,12 +341,15 @@ function releaseOf(
   };
 }
 
-/** The gate the offer's own, only while it is current; otherwise why not, as its region says it. */
+/**
+ * The gate the offer's own, only while it is current; otherwise why not and what to do about it,
+ * as its region says them.
+ */
 function releaseGateOf(
   release: Shown<ReleaseOffer>,
   source: KnowledgeSource,
   nowMs: number,
-): ReleaseGate {
+): { readonly gate: ReleaseGate; readonly affordance: KnownAffordance | null } {
   const presentation = knownPresentation(
     release,
     {
@@ -352,10 +361,15 @@ function releaseGateOf(
     },
     { nowMs, updateOffered: false },
   );
-  if (release.state === "known" && presentation.current) return release.value.gate;
+  if (release.state === "known" && presentation.current) {
+    return { gate: release.value.gate, affordance: null };
+  }
   return {
-    allowed: false,
-    reason: presentation.message?.text ?? presentation.banner?.message.text ?? CHECKING_RELEASE,
+    gate: {
+      allowed: false,
+      reason: presentation.message?.text ?? presentation.banner?.message.text ?? CHECKING_RELEASE,
+    },
+    affordance: presentation.affordance ?? presentation.banner?.affordance ?? null,
   };
 }
 
@@ -366,6 +380,7 @@ export function groupFlow(
 ): GroupFlow {
   const stops = stopsOf(inputs);
   const { release, source } = releaseOf(inputs, capabilities);
+  const { gate, affordance } = releaseGateOf(release, source, nowMs);
   const fed = new Map<string, Array<ServiceRef>>();
   if (isKnown(stops)) {
     for (const { tier, services } of stops.value) {
@@ -381,7 +396,8 @@ export function groupFlow(
     pullRequests: pullRequestsOf(inputs),
     stops,
     release,
-    releaseGate: releaseGateOf(release, source, nowMs),
+    releaseGate: gate,
+    releaseAffordance: affordance,
     feeds: (repository) => fed.get(repository) ?? [],
   };
 }

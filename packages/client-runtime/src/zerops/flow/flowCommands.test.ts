@@ -254,6 +254,7 @@ describe("a group flow's commands", () => {
     stops: { state: "unread", waitingFor: null },
     release,
     releaseGate: { allowed: true },
+    releaseAffordance: null,
     feeds: (repository) => (repository === "appdev" ? [APPSTAGE] : []),
   });
   const offer = {

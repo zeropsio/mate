@@ -197,6 +197,15 @@ describe("groupFlow (DESIGN §4.7)", () => {
     expect(stale.releaseGate).toEqual({ allowed: false, reason: "Not up to date." });
   });
 
+  it("a release held by an input that failed offers Try again, and only then", () => {
+    expect(groupFlow(inputs(), RELEASER, NOW).releaseAffordance).toBeNull();
+    expect(groupFlow(inputs({ tags: READING }), RELEASER, NOW).releaseAffordance).toBeNull();
+    expect(
+      groupFlow(inputs({ tags: failed({ kind: "timeout", afterMs: 15_000 }) }), RELEASER, NOW)
+        .releaseAffordance,
+    ).toEqual({ kind: "retry", label: "Try again" });
+  });
+
   it("a production service with no repository of its name has no candidate and holds nothing", () => {
     const flow = groupFlow(
       inputs({
