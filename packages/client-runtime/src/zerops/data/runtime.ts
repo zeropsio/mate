@@ -13,11 +13,16 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import { makeGrantDriver, type ZeropsAccessGrant } from "./access/grantDriver.ts";
 import { createZeropsDataAtoms } from "./atoms.ts";
 import { commandAdmissionError, commandTarget } from "./commands.ts";
 import { BuildLogTransportError, type BuildLogTransport } from "./logTransport.ts";
 import { makeBuildLogRegistry, type BuildLogRegistry } from "./logs.ts";
-import { DEFAULT_ZEROPS_DATA_POLICY, type ZeropsDataPolicy } from "./policy.ts";
+import {
+  DEFAULT_ZEROPS_DATA_POLICY,
+  DEFAULT_ZEROPS_GRANT_POLICY,
+  type ZeropsDataPolicy,
+} from "./policy.ts";
 import {
   makeZeropsResourceBroker,
   type ZeropsResourceAdapter,
@@ -555,6 +560,8 @@ export type ManagedZeropsDataRuntime = ZeropsDataRuntime &
   ZeropsDataRuntimeDiagnostics & {
     readonly resources: ZeropsResourceBroker;
     readonly logs: BuildLogRegistry;
+    /** The epoch's access grant, interpreted here (DESIGN §4.2, D16(a)). */
+    readonly access: ZeropsAccessGrant;
   };
 
 const leaseError = (
@@ -3143,10 +3150,22 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.andThen(resources.reconcileAccess),
     );
 
+  const grant = yield* makeGrantDriver({
+    scope: options.scope,
+    policy: DEFAULT_ZEROPS_GRANT_POLICY,
+    clock,
+    atomRegistry: options.atomRegistry,
+    access: Ref.get(model).pipe(Effect.map((state) => state.access)),
+    observe: observeAccess,
+    fork: (work) => forkOwned(work),
+  });
+
   const shutdown: ZeropsDataRuntime["shutdown"] = (_reason) =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
         if (yield* Ref.get(closed)) return;
+        // No round, read or timer of the grant outlives the epoch.
+        yield* grant.close;
         // Fence publication and clear grants/model first; transport finalizers run afterward.
         yield* Ref.set(closed, true);
         yield* applyControl({ kind: "runtime-closed" });
@@ -3176,5 +3195,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     stateAtom: rootAtom,
     ingress: ingress.snapshot,
     observeAccess,
+    access: grant.grant,
   } satisfies ManagedZeropsDataRuntime;
 });
