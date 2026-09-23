@@ -393,8 +393,8 @@ export interface ProductionCell {
 }
 
 /**
- * Production's step. Its line is `groupFlow`'s; the detail says what a
- * release would carry. That production is the person's to add, not the
+ * Production's step. Its line is `groupFlow`'s; the detail names the
+ * release that would go. That production is the person's to add, not the
  * Mate's, is the add verb's to say (its tooltip), not the cell's.
  */
 export function productionCell(flow: GroupFlow): ProductionCell {
@@ -402,16 +402,14 @@ export function productionCell(flow: GroupFlow): ProductionCell {
   switch (production.kind) {
     case "absent":
       return { empty: true, line: production.line, detail: undefined, tone: "off" };
-    case "ready-to-release": {
-      const { tag, waiting } = production.candidate;
-      const count = waiting === 1 ? "1 change" : `${String(waiting)} changes`;
+    case "ready-to-release":
+      // How much it carries is `main`'s line 2 (`1 change not live`), beside it.
       return {
         empty: false,
         line: production.line,
-        detail: `${tag} ready · ${count}`,
+        detail: `${production.candidate.tag} ready`,
         tone: "busy",
       };
-    }
     case "deploy-failed":
       return { empty: false, line: production.line, detail: undefined, tone: "failed" };
     case "live":

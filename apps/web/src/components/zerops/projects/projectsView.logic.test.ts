@@ -472,11 +472,11 @@ describe("production's cell", () => {
     expect(FLOWS.addProduction.nextStep.verb).toBe(ADD_PRODUCTION_LABEL);
   });
 
-  it("names the release that would go and how much it carries", () => {
+  it("names the release that would go, not how much it carries: main's line already counts it", () => {
     expect(productionCell(FLOWS.release)).toEqual({
       empty: false,
       line: "Checking what runs here…",
-      detail: "v0.1.0 ready · 1 change",
+      detail: "v0.1.0 ready",
       tone: "busy",
     });
   });

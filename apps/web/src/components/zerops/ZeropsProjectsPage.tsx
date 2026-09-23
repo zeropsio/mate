@@ -2805,7 +2805,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
     switch (target.kind) {
       case "release":
-        // The version is the cell's line 2 (`v0.1.0 ready · 1 change`); the
+        // The version is the cell's line 2 (`v0.1.0 ready`); the
         // verb beside it is the one word, so the line stays readable.
         return (
           <ZeropsReleaseVerb groupId={group.groupId} label={flowVerbLabel("release", false)} />
